@@ -13,7 +13,13 @@ import {
   type PreviewStatus,
   type PreviewTab,
 } from "@jhin/preview-api";
-import { LIVE_STREAMS_CAPABILITY, createLiveStreams, type RpcClient } from "@jhin/rpc";
+import {
+  LIVE_STREAMS_CAPABILITY,
+  createLiveStreams,
+  createMemoryStreams,
+  type RpcClient,
+} from "@jhin/rpc";
+import type { Logger } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import {
   connectInMemory,
@@ -21,9 +27,11 @@ import {
   memoryStoragePlugin,
   mockCapability,
 } from "@jhin/testing";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 
+import { Chromium } from "../src/chromium.ts";
 import preview from "../src/index.ts";
+import { createTabs } from "../src/tabs.ts";
 
 const manifest = JSON.parse(
   Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -42,12 +50,31 @@ const PAGES: Record<string, string> = {
     <a href="/second">Second page</a>
     <script>setTimeout(() => console.log("page ready"), 0)</script>`,
   "/second": `<!doctype html><title>Second</title><p>Second page text</p>`,
+  "/popup": `<!doctype html><title>Opener</title><a href="/second" target="_blank">Open popup</a>`,
+  "/upload": `<!doctype html><title>Upload</title><input type="file" aria-label="File" id="file">`,
+  "/drag": `<!doctype html><title>Drag</title>
+    <div draggable="true" id="source" style="width:80px;height:40px">Drag me</div>
+    <div id="target" style="width:160px;height:80px;margin-top:40px">Drop here</div>
+    <script>
+      target.addEventListener("dragover", (event) => event.preventDefault());
+      target.addEventListener("drop", (event) => { event.preventDefault(); document.title = "Dropped"; });
+    </script>`,
 };
+
+/** Requests to /hold wait until the test lets them go. */
+let holding: (() => void)[] = [];
+let held: () => void = () => {};
+let heldArrived = new Promise<void>((resolve) => (held = resolve));
 
 let server: Http.Server;
 let origin = "";
 beforeAll(async () => {
   server = Http.createServer((request, response) => {
+    if (request.url === "/hold") {
+      holding.push(() => response.writeHead(200).end("released"));
+      held();
+      return;
+    }
     const page = PAGES[request.url ?? "/"];
     if (page === undefined) {
       response.writeHead(404).end("missing");
@@ -69,7 +96,7 @@ afterEach(async () => {
   for (const stop of stops.splice(0)) await stop();
 });
 
-async function node(options: { executablePath?: string } = {}) {
+async function startNode(options: { executablePath?: string } = {}) {
   const storage = memoryStoragePlugin();
   const live = createLiveStreams();
   const kernel = await createTestKernel({
@@ -86,12 +113,42 @@ async function node(options: { executablePath?: string } = {}) {
     },
   });
   const { client } = connectInMemory(kernel, { log: storage.storage.log, streams: live });
+  const other = (id: string) =>
+    connectInMemory(kernel, {
+      log: storage.storage.log,
+      streams: live,
+      caller: { id, permissions: ["*"] },
+    }).client;
   const stop = async () => {
     client.close();
     await kernel.stop();
   };
-  stops.push(stop);
-  return { kernel, client, storage, stop };
+  return { kernel, client, storage, live, other, stop };
+}
+
+// One node for the file: its browser starts once and stays up while a tab of another
+// thread keeps it open, and each test works in a thread of its own.
+let shared: Awaited<ReturnType<typeof startNode>>;
+beforeAll(async () => {
+  shared = await startNode();
+  await shared.client.call("preview.open", { threadId: "keeper", open: false });
+});
+afterAll(async () => {
+  await shared.stop();
+});
+
+let threads = 0;
+let thread = "";
+beforeEach(() => {
+  threads += 1;
+  thread = `thread-${threads}`;
+});
+
+async function node(options: { executablePath?: string } = {}) {
+  if (options.executablePath === undefined) return shared;
+  const started = await startNode(options);
+  stops.push(started.stop);
+  return started;
 }
 
 /** Follows a stream; resolves waits on events seen or still to come. */
@@ -126,18 +183,14 @@ async function rejection(promise: Promise<unknown>) {
   throw new Error("expected the call to fail");
 }
 
-const thread = "thread-1";
-
-// Every test starts a real Chromium, several at once on a loaded CI runner: the limit is a
-// ceiling for the browser's start, not a wait; each test waits for page events or results.
-describe("jhin.preview", { timeout: 30_000 }, () => {
+describe("jhin.preview", () => {
   it("opens a tab, reads its accessibility tree and acts on refs", async () => {
     const { client } = await node();
     const opened = await client.call<PreviewStatus>("preview.open", {
       threadId: thread,
       url: `${origin}/`,
     });
-    expect(opened.tabId).toMatch(/^tab_1_/);
+    expect(opened.tabId).toMatch(/^tab_[0-9a-z]+_[0-9a-f]{8}$/);
     expect(opened.control).toMatchObject({ owner: "agent", ownedByCaller: true });
     await client.call("preview.wait.for", { threadId: thread, text: "Preview home" });
 
@@ -404,5 +457,156 @@ describe("jhin.preview", { timeout: 30_000 }, () => {
     const failure = await rejection(client.call("preview.open", { threadId: thread }));
     expect(failure.code).toBe("PREVIEW_UNAVAILABLE");
     expect(failure.message).toContain("npx playwright install chromium");
+  });
+  it("asks for a tabId when a session owns several tabs and none is current", async () => {
+    const { client } = await node();
+    const tabs: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const opened = await client.call<PreviewStatus>("preview.open", {
+        threadId: thread,
+        reuseExistingTab: false,
+        open: false,
+      });
+      tabs.push(opened.tabId!);
+    }
+    // Closing the current tab leaves two owned tabs and no current one.
+    await client.call("preview.close", { threadId: thread, tabId: tabs[2] });
+    const ambiguous = await rejection(client.call("preview.press", { threadId: thread, key: "a" }));
+    expect(ambiguous.details).toMatchObject({ reason: "tabRequired" });
+    await client.call("preview.press", { threadId: thread, tabId: tabs[0], key: "a" });
+  });
+
+  it("keeps an agent session to 8 tabs", async () => {
+    const { client } = await node();
+    const open = () =>
+      client.call<PreviewStatus>("preview.open", {
+        threadId: thread,
+        reuseExistingTab: false,
+        open: false,
+      });
+    for (let index = 0; index < 8; index += 1) await open();
+    const refused = await rejection(open());
+    expect(refused.details).toMatchObject({ reason: "tabLimit" });
+    expect(refused.message).toContain("8 per agent session, 32 per server");
+    // Another session of the thread has its own 8.
+    await client.call("preview.open", { threadId: thread, session: "subagent", open: false });
+  });
+
+  it("tells two callers apart in one thread", async () => {
+    const { client, other } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/second`,
+    });
+    const stranger = other("another-agent");
+    const refused = await rejection(
+      stranger.call("preview.press", { threadId: thread, tabId: opened.tabId, key: "a" }),
+    );
+    expect(refused.details).toMatchObject({ reason: "agentMismatch" });
+    stranger.close();
+  });
+
+  it("adopts a popup as a tab of the thread with its opener", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/popup`,
+    });
+    const tabsStream = watch(client, previewTabsStream(thread));
+    await client.call("preview.click", {
+      threadId: thread,
+      locator: "role=link[name='Open popup']",
+    });
+    await tabsStream.until(() => lastTabs(tabsStream.events).length === 2);
+    const popup = lastTabs(tabsStream.events).find((tab) => tab.tabId !== opened.tabId)!;
+    expect(popup).toMatchObject({ openerTabId: opened.tabId, owner: "agent" });
+    tabsStream.subscription.dispose();
+  });
+
+  it("fails an agent's queued action when a human takes over", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/second`,
+    });
+    const tabId = opened.tabId!;
+    held = () => {};
+    heldArrived = new Promise<void>((resolve) => (held = resolve));
+    // The first action holds the queue until the page's request is answered.
+    const holder = client.call("preview.evaluate", {
+      threadId: thread,
+      expression: "fetch('/hold').then((response) => response.text())",
+    });
+    await heldArrived;
+    const queued = rejection(client.call("preview.press", { threadId: thread, key: "a" }));
+    const taken = client.call("preview.tab.control", {
+      threadId: thread,
+      tabId,
+      viewer: "v1",
+      take: true,
+    });
+    for (const release of holding.splice(0)) release();
+    expect(await holder).toEqual({ value: "released" });
+    expect((await queued).details).toMatchObject({ reason: "interrupted" });
+    await taken;
+  });
+
+  it("uploads a file to a file input and drags one element onto another", async () => {
+    const { client } = await node();
+    const file = Path.join(Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-upload-")), "notes.txt");
+    Fs.writeFileSync(file, "hello");
+    await client.call("preview.open", { threadId: thread, url: `${origin}/upload` });
+    await client.call("preview.upload", { threadId: thread, locator: "#file", paths: [file] });
+    const { value } = await client.call<{ value: unknown }>("preview.evaluate", {
+      threadId: thread,
+      expression: "document.querySelector('#file').files[0].name",
+    });
+    expect(value).toBe("notes.txt");
+    const relative = await rejection(
+      client.call("preview.upload", { threadId: thread, locator: "#file", paths: ["notes.txt"] }),
+    );
+    expect(relative.message).toBe("Upload paths must be absolute: notes.txt");
+
+    await client.call("preview.navigate", { threadId: thread, url: `${origin}/drag` });
+    await client.call("preview.drag", { threadId: thread, source: "#source", target: "#target" });
+    const status = await client.call<PreviewStatus>("preview.status", { threadId: thread });
+    expect(status.title).toBe("Dropped");
+  });
+
+  it("refuses an evaluation result over 64 000 bytes", async () => {
+    const { client } = await node();
+    await client.call("preview.open", { threadId: thread, url: `${origin}/second` });
+    const large = await rejection(
+      client.call("preview.evaluate", { threadId: thread, expression: "'x'.repeat(70000)" }),
+    );
+    expect(large.code).toBe("PREVIEW_RESULT_TOO_LARGE");
+    expect(large.details).toMatchObject({ maximumBytes: 64_000 });
+  });
+
+  it("sweeps an agent's tabs nobody watched or used for 30 minutes", async () => {
+    let time = Date.parse("2026-10-21T10:00:00Z");
+    const streams = createMemoryStreams();
+    const log = { debug() {}, info() {}, warn() {}, error() {} } as unknown as Logger;
+    const tabs = createTabs({
+      chromium: new Chromium(),
+      streams,
+      dataDir: Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-preview-")),
+      log,
+      now: () => new Date(time),
+    });
+    try {
+      const idle = await tabs.open("agent", { threadId: "t", open: false });
+      const watched = await tabs.open("agent", { threadId: "t", reuseExistingTab: false });
+      tabs.watch("t", watched.tabId!, 1);
+      time += 29 * 60_000;
+      await tabs.sweep();
+      expect(tabs.list("t")).toHaveLength(2);
+      time += 2 * 60_000;
+      await tabs.sweep();
+      expect(tabs.list("t").map((tab) => tab.tabId)).toEqual([watched.tabId]);
+      expect(idle.tabId).not.toBe(watched.tabId);
+    } finally {
+      await tabs.dispose();
+    }
   });
 });

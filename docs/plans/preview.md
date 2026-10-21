@@ -118,7 +118,10 @@ CLI, and the web client through RPC.
   current tab is the last tab a command of that session returned; a command
   without `tabId` targets it, else the newest tab the session owns, else the
   thread's tab a client watches, else its most recently used tab. With more
-  than one owned tab and no `tabId`, acting fails with `tabRequired`.
+  than one owned tab and no `tabId`, acting fails with `tabRequired`. An
+  invocation without a caller is trusted in-process code (D17): every such
+  invocation in a thread is one session, `local`, unless it names a
+  `session`.
 
 - **D397. Control, as T3's `SessionControl`.** A tab's owner is `agent` (it
   has an agent session), `human` (a viewer holds control) or `unclaimed`.
@@ -132,7 +135,10 @@ CLI, and the web client through RPC.
   pending dialog blocks every other action (`dialogPending`) until
   `preview.dialog` answers it. Viewers are named by an id the client picks;
   a viewer that stops watching (its frame subscription ends, as T3's socket
-  closes) releases control, and the held keys and buttons are released.
+  closes) releases control, and the held keys and buttons are released. A
+  viewer id is advisory: it tells the panels of one owner apart (D22), not
+  callers, so any holder of `preview.write` may name any viewer. Binding a
+  viewer to its caller or its subscription is deferred.
 
 - **D398. Operations do what T3's do**, with its defaults (15 s per action,
   at most 60 s) and limits: navigation by URL (T3's normalisation: schemeless
@@ -316,6 +322,7 @@ CLI, and the web client through RPC.
   reads them in each frame's own world.
 - T3's SOCKS proxy for `html.preview` and its outline of a page's boxes for
   the loading skeleton.
+- Viewer ids bound to their caller or their frame subscription (D397).
 - Devices: T3's device hub and `agent-device`, video streams and input to a
   device, device hosts over SSH, the setup wizard, the device tools panel
   (appearance, text size, location, permissions, push) and DeviceActions.

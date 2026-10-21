@@ -143,6 +143,7 @@ export interface TabsOptions {
   /** Where screenshots, recordings and downloads go. */
   readonly dataDir: string;
   readonly log: Logger;
+  /** The clock tabs are stamped and swept by. */
   readonly now?: () => Date;
 }
 
@@ -189,10 +190,13 @@ function editingCommand(key: string, modifiers: number): { commands: string[] } 
 /** The tabs of the node's browser (D394–D402). */
 export function createTabs(options: TabsOptions) {
   const { chromium, streams, log } = options;
-  const now = () => (options.now?.() ?? new Date()).toISOString();
+  const clock = () => options.now?.().getTime() ?? Date.now();
+  const now = () => new Date(clock()).toISOString();
   const instance = Crypto.randomUUID().slice(0, 8);
   let sequence = 0;
   const tabs = new Map<string, Tab>();
+  /** Subscribers of each tab's frames stream, by tab key. */
+  const viewerCounts = new Map<string, number>();
   /** The current tab of each agent session. */
   const current = new Map<string, string>();
   const pendingTabs = new Set<Promise<unknown>>();
@@ -323,7 +327,7 @@ export function createTabs(options: TabsOptions) {
       openerTabId: input.adopted?.openerTabId,
       openedAt: now(),
       updatedAt: now(),
-      usedAt: Date.now(),
+      usedAt: clock(),
       navStatus:
         input.url === undefined
           ? { state: "idle" }
@@ -439,7 +443,9 @@ export function createTabs(options: TabsOptions) {
     page.on("close", () => void dropTab(tab));
     page.on("crash", () => void dropTab(tab));
     tabs.set(tabKey(tab.threadId, tab.tabId), tab);
+    tab.viewers = viewerCounts.get(tabKey(tab.threadId, tab.tabId)) ?? 0;
     changed(tab);
+    if (tab.viewers > 0) void syncScreencast(tab);
     if (input.adopted === undefined && input.url !== undefined) {
       const url = input.url;
       const navigation = page
@@ -606,9 +612,14 @@ export function createTabs(options: TabsOptions) {
 
   /** A client began or stopped watching a tab's frames (its stream's subscribers). */
   function watch(threadId: string, tabId: string, delta: 1 | -1) {
-    const tab = tabs.get(tabKey(threadId, tabId));
+    const key = tabKey(threadId, tabId);
+    // Counted by stream, so a subscription that comes before its tab is registered counts.
+    const count = Math.max(0, (viewerCounts.get(key) ?? 0) + delta);
+    if (count === 0) viewerCounts.delete(key);
+    else viewerCounts.set(key, count);
+    const tab = tabs.get(key);
     if (tab === undefined) return;
-    tab.viewers = Math.max(0, tab.viewers + delta);
+    tab.viewers = count;
     if (tab.viewers === 0) {
       // The last viewer went: whoever held control lets go (D397).
       void tab.control.releaseAny(() => releaseInput(tab)).catch(() => undefined);
@@ -701,7 +712,7 @@ export function createTabs(options: TabsOptions) {
   }
 
   const markUsed = (agent: string, tab: Tab) => {
-    const at = Date.now();
+    const at = clock();
     tab.usedAt = at;
     for (const other of tabs.values()) if (other.control.agentId === agent) other.usedAt = at;
     current.set(agent, tab.tabId);
@@ -1005,7 +1016,7 @@ export function createTabs(options: TabsOptions) {
   // --- Idle agent tabs --------------------------------------------------------------
 
   async function sweepIdle() {
-    const cutoff = Date.now() - IDLE_AGENT_TAB_MS;
+    const cutoff = clock() - IDLE_AGENT_TAB_MS;
     const idle = [...tabs.values()].filter(
       (tab) => tab.control.agentId !== null && tab.viewers === 0 && tab.usedAt < cutoff,
     );
@@ -1041,6 +1052,8 @@ export function createTabs(options: TabsOptions) {
   return {
     instance,
     watch,
+    /** Closes agent tabs nobody watched or used for 30 minutes (run every minute). */
+    sweep: sweepIdle,
 
     tabs(threadId: string): PreviewTab[] {
       return threadTabs(threadId).map(summary);
