@@ -70,6 +70,7 @@ import {
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { registerThreadDetails } from "./thread-details.tsx";
+import { armPasteAsText } from "../../lib/attachment-files.ts";
 import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
@@ -452,6 +453,17 @@ export const chatPlugin = builtin(
       });
 
       // --- Commands -------------------------------------------------------------
+      context.commands.register({
+        name: "chat.composer.paste-as-text",
+        description:
+          "Makes the next paste into the composer stay inline as text, however large (T3's Paste as Text); it applies to a paste within a second",
+        input: z.object({}),
+        output: z.object({}),
+        handler: () => {
+          armPasteAsText();
+          return {};
+        },
+      });
       // T3's "Discard draft" (D451): a new thread's draft card goes, with an undo.
       const undo = context.services.tryGet<ThreadUndoService>(UNDO_CAPABILITY);
       context.commands.register({

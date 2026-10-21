@@ -79,6 +79,7 @@ import {
   type PromptHistoryPosition,
 } from "../../lib/composer.ts";
 import {
+  consumeArmedPasteAsText,
   formatAttachmentSize,
   isPasteAsTextShortcut,
   pastedTextDisposition,
@@ -1686,7 +1687,7 @@ export function Composer(props: ComposerProps) {
   const onPaste = (event: globalThis.ClipboardEvent): boolean => {
     const files = Array.from(event.clipboardData?.files ?? []);
     const plainText = event.clipboardData?.getData("text/plain") ?? "";
-    const bypass = pasteAsText.current;
+    const bypass = pasteAsText.current || consumeArmedPasteAsText();
     pasteAsText.current = false;
     if (files.length > 0 && shouldHandleAttachmentPaste({ files, plainText })) {
       event.preventDefault();

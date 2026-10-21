@@ -134,7 +134,7 @@ with its Lineage section. → `t3-parity.md#steering-and-history-leftovers-w19`
 The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 (built, served only by the app's node): window chrome, native menu items
 (`desktop.shell@1`), the badge from `client.notifications@1`, and the
-`desktop.update.*` commands. → `desktop.md`
+`desktop.update.*` and `desktop.paste-as-text` commands. → `desktop.md`
 
 ## Apps, tests, scripts
 

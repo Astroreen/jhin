@@ -275,6 +275,18 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   signing secrets; a dry run is unsigned, and packaging gives the secrets to
   electron-builder only, never to the install's scripts.
 
+- **D946. Paste as Text is T3's Edit menu item.** "Paste as Text"
+  (`CmdOrCtrl+Shift+V`, id `jhin.paste-as-text`) follows Paste. Its shortcut
+  reaches the page as a keydown, which arms the composer (D295's
+  `pasteAsText`) and pastes natively, so the menu ignores a click triggered
+  by its accelerator, as T3 does. A click with the mouse runs the client
+  command `desktop.paste-as-text`, which first runs
+  `chat.composer.paste-as-text` (when the chat plugin is there) and then
+  asks the app over the bridge's optional `pasteAsText()` to paste into the
+  focused page: armed before the paste, the composer keeps a large paste
+  inline for that one paste within a second, instead of attaching it as
+  `pasted-text.txt`.
+
 ## Deferred
 
 - The `desktop.update.*` commands over RPC, CLI and MCP: they are client
@@ -322,7 +334,7 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   origin stable, so the choice must be kept).
 - Restarting a node that exits by itself with a backoff, as T3's backend
   manager does, instead of D512's dialog.
-- Paste as Text, the quit-hold shortcut (T3's `QuitHold`), the trackpad
+- The quit-hold shortcut (T3's `QuitHold`), the trackpad
   scroll-end and window-fullscreen events beyond macOS's controls inset.
 - The browser preview and devices in the app (W12), WSL and SSH backends,
   screen captures, telemetry, the CLI shim, importing browser cookies,

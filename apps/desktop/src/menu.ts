@@ -174,6 +174,18 @@ export function buildApplicationMenu(options: {
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
+        {
+          id: "jhin.paste-as-text",
+          label: "Paste as Text",
+          accelerator: "CmdOrCtrl+Shift+V",
+          // The shortcut reaches the page as a keydown, which arms the composer and
+          // pastes natively; acting on it here too would paste twice (T3).
+          // A click from code (MenuItem.click()) comes without an event.
+          click: (_item, _window, event: { triggeredByAccelerator?: boolean } | undefined) => {
+            if (event?.triggeredByAccelerator === true) return;
+            handlers.runCommand("desktop.paste-as-text");
+          },
+        },
         { role: "delete" },
         separator,
         { role: "selectAll" },

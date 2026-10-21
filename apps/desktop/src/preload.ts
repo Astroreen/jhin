@@ -35,6 +35,7 @@ const bridge: DesktopBridge = {
   setMenuContributions: (items) => ipcRenderer.send(DESKTOP_CHANNELS.setMenuContributions, items),
   setNotificationBadge: (badge) => ipcRenderer.send(DESKTOP_CHANNELS.setNotificationBadge, badge),
   getWindowFullscreen: () => ipcRenderer.invoke(DESKTOP_CHANNELS.getWindowFullscreen),
+  pasteAsText: () => ipcRenderer.invoke(DESKTOP_CHANNELS.pasteAsText),
   onWindowFullscreen: (listener) => listen(DESKTOP_CHANNELS.windowFullscreen, listener),
 };
 
