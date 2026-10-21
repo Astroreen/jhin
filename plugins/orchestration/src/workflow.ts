@@ -36,6 +36,23 @@ export interface WorkflowHost {
   agent(prompt: string, options: AgentOptions & { readonly index: number }): Promise<unknown>;
   log(message: string): void;
   phase(title: string): void;
+  /**
+   * The result an earlier run gave this call, when it is resumed (D872). Asked
+   * in call order, as each call gets its index, so the reused calls are a prefix.
+   */
+  cached?(
+    prompt: string,
+    options: AgentOptions & { readonly index: number },
+  ): { value: unknown } | undefined;
+  /** The run's token target (output tokens), or null without one (D873). */
+  readonly budget?: number | null;
+  /** Output tokens the run's agents spent so far, counted as each agent ends. */
+  spent?(): number;
+  /**
+   * The script of a saved workflow (`name`) or of a file (`{ scriptPath }`),
+   * for `workflow()` (D874, D875).
+   */
+  load?(ref: string | { readonly scriptPath: string }): Promise<string>;
 }
 
 export interface WorkflowLimits {
@@ -266,6 +283,13 @@ export async function runWorkflow(
         );
       }
     }
+    // The token target is a hard ceiling (D873).
+    if (budget !== null && spent() >= budget) {
+      throw new WorkflowError(
+        "WORKFLOW_BUDGET",
+        `The workflow's budget of ${budget} tokens is spent`,
+      );
+    }
     if (started >= limits.maxAgents) {
       throw new WorkflowError(
         "WORKFLOW_SCRIPT",
@@ -275,6 +299,8 @@ export async function runWorkflow(
     const index = started++;
     // Copied: the script's objects belong to its own context.
     const copied = JSON.parse(JSON.stringify(chosen)) as AgentOptions;
+    const hit = host.cached?.(prompt, { ...copied, index });
+    if (hit !== undefined) return hit.value;
     return slot(async () => {
       stopped();
       return host.agent(prompt, { ...copied, index });
@@ -323,37 +349,72 @@ export async function runWorkflow(
     );
   };
 
-  const sandbox = Vm.createContext({
-    agent,
-    parallel,
-    pipeline,
-    phase: (title: unknown) => {
-      stopped();
-      host.phase(String(title));
-    },
-    log: (message: unknown) => host.log(String(message)),
-    args: args === undefined ? undefined : JSON.parse(JSON.stringify(args)),
-    console: { log: (...parts: unknown[]) => host.log(parts.map(String).join(" ")) },
-  });
-  Vm.runInContext(PRELUDE, sandbox);
-  let script: Vm.Script;
-  try {
-    script = new Vm.Script(`(async () => {\n${body}\n})()`, { filename: "workflow.js" });
-  } catch (error) {
-    throw new WorkflowError("WORKFLOW_INVALID", `The script does not parse: ${String(error)}`);
-  }
-  let running: Promise<unknown>;
-  try {
-    running = script.runInContext(sandbox, { timeout: limits.syncTimeoutMs }) as Promise<unknown>;
-  } catch (error) {
-    if ((error as { code?: unknown }).code === "ERR_SCRIPT_EXECUTION_TIMEOUT") {
-      throw new WorkflowError(
-        "WORKFLOW_SCRIPT",
-        `The script ran for more than ${limits.syncTimeoutMs} ms without waiting on anything`,
-      );
+  const budget = host.budget ?? null;
+  const spent = () => host.spent?.() ?? 0;
+  /** Runs a script body in a context of its own; a child (`group` set) cannot nest further. */
+  const runBody = (code: string, given: unknown, group: string | undefined): Promise<unknown> => {
+    const childAgent = (prompt: unknown, options: unknown = {}) =>
+      group === undefined
+        ? agent(prompt, options)
+        : agent(prompt, {
+            ...((options ?? {}) as object),
+            phase: (options as { phase?: unknown } | null)?.phase ?? group,
+          });
+    const sandbox = Vm.createContext({
+      agent: childAgent,
+      parallel,
+      pipeline,
+      phase: (title: unknown) => {
+        stopped();
+        host.phase(String(title));
+      },
+      log: (message: unknown) => host.log(String(message)),
+      args: given === undefined ? undefined : JSON.parse(JSON.stringify(given)),
+      budget: {
+        total: budget,
+        spent,
+        remaining: () => (budget === null ? Infinity : Math.max(0, budget - spent())),
+      },
+      workflow: async (ref: unknown, childArgs?: unknown) => {
+        stopped();
+        if (group !== undefined) {
+          throw new WorkflowError("WORKFLOW_SCRIPT", "workflow() nests one level only");
+        }
+        const scriptRef =
+          typeof ref === "string"
+            ? ref
+            : typeof (ref as { scriptPath?: unknown } | null)?.scriptPath === "string"
+              ? { scriptPath: (ref as { scriptPath: string }).scriptPath }
+              : undefined;
+        if (scriptRef === undefined || host.load === undefined) {
+          throw new WorkflowError("WORKFLOW_SCRIPT", "workflow() takes a name or { scriptPath }");
+        }
+        const child = parseWorkflow(await host.load(scriptRef));
+        host.log(`Workflow ${child.meta.name} started`);
+        return runBody(child.body, childArgs, `\u25b8 ${child.meta.name}`);
+      },
+      console: { log: (...parts: unknown[]) => host.log(parts.map(String).join(" ")) },
+    });
+    Vm.runInContext(PRELUDE, sandbox);
+    let script: Vm.Script;
+    try {
+      script = new Vm.Script(`(async () => {\n${code}\n})()`, { filename: "workflow.js" });
+    } catch (error) {
+      throw new WorkflowError("WORKFLOW_INVALID", `The script does not parse: ${String(error)}`);
     }
-    throw error;
-  }
+    try {
+      return script.runInContext(sandbox, { timeout: limits.syncTimeoutMs }) as Promise<unknown>;
+    } catch (error) {
+      if ((error as { code?: unknown }).code === "ERR_SCRIPT_EXECUTION_TIMEOUT") {
+        throw new WorkflowError(
+          "WORKFLOW_SCRIPT",
+          `The script ran for more than ${limits.syncTimeoutMs} ms without waiting on anything`,
+        );
+      }
+      throw error;
+    }
+  };
+  const running = runBody(body, args, undefined);
   const result = await running;
   stopped();
   return result === undefined ? null : JSON.parse(JSON.stringify(result));
