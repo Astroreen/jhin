@@ -88,6 +88,7 @@ const selectionOf = (thread: ThreadRecord): Selection => ({
   ...(thread.model === undefined ? {} : { model: thread.model }),
   ...(thread.runtimeMode === undefined ? {} : { runtimeMode: thread.runtimeMode }),
   ...(thread.interactionMode === undefined ? {} : { interactionMode: thread.interactionMode }),
+  ...(thread.modelOptions === undefined ? {} : { modelOptions: thread.modelOptions }),
 });
 
 export function ThreadView(props: {
@@ -661,6 +662,7 @@ export function DraftView(props: {
                 handleRef={handle}
                 history={[]}
                 onRespond={async () => false}
+                seedModelOptions
                 onSelectionChange={(next) => {
                   setSelection(next);
                   chat.lastSelection.set(target, next);

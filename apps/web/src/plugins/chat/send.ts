@@ -1,7 +1,7 @@
 // Sending, queueing and steering follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // packages/client-runtime/src/state/composerDispatch.ts (what a send does while a turn runs).
 // The queue itself lives on the node (docs/plans/t3-parity.md, D201).
-import type { TurnAttachment } from "@jhin/agent-api";
+import type { ModelOptionSelection, TurnAttachment } from "@jhin/agent-api";
 import type { NodeTarget, ThreadsCatalog } from "@jhin/client-api";
 
 /** The agent, model and modes a message is sent with. */
@@ -10,6 +10,7 @@ interface MessageSettings {
   readonly model?: string;
   readonly runtimeMode?: string;
   readonly interactionMode?: string;
+  readonly modelOptions?: readonly ModelOptionSelection[];
 }
 
 /** A message as the composer sends it. */

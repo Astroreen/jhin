@@ -52,6 +52,11 @@ export interface TurnRequest {
    * add it to their system prompt; one that cannot still runs the turn.
    */
   readonly instructions?: string;
+  /**
+   * Since 1.2: values chosen for the model's `options`, only of those it
+   * declares; its defaults for the rest.
+   */
+  readonly modelOptions?: readonly ModelOptionSelection[];
 }
 
 /** What kind of work a tool call does; clients pick icons and wording from it. */
@@ -173,10 +178,91 @@ export interface AgentTurn {
   steer?(input: TurnInput): void;
 }
 
+/** One choice of a `select` model option (T3 Code's `ProviderOptionChoice`). */
+export interface ModelOptionChoice {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+  /** What the model does when nobody chose: one choice at most. */
+  readonly isDefault?: boolean;
+}
+
+/**
+ * Something a turn can choose for its model (since 1.2, T3 Code's option
+ * descriptors): a `select`, such as the reasoning effort, or a `boolean`,
+ * such as fast mode.
+ */
+export type ModelOptionDescriptor =
+  | {
+      readonly type: "select";
+      readonly id: string;
+      readonly label: string;
+      readonly description?: string;
+      readonly options: readonly ModelOptionChoice[];
+      /**
+       * Choices that are written into the prompt instead of being sent as an
+       * option (Claude's "Ultrathink"): the client puts them there.
+       */
+      readonly promptInjectedValues?: readonly string[];
+    }
+  | {
+      readonly type: "boolean";
+      readonly id: string;
+      readonly label: string;
+      readonly description?: string;
+    };
+
+/** A value chosen for one of a model's options. */
+export interface ModelOptionSelection {
+  readonly id: string;
+  readonly value: string | boolean;
+}
+
+/**
+ * Claude's prompt-injected effort as T3 writes it (`applyClaudePromptEffortPrefix`):
+ * "Ultrathink:" before the trimmed prompt, never before a slash command (it would
+ * become prose) nor twice. The one rule both the composer and the runtime apply.
+ */
+export function applyUltrathinkPrefix(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed || /^\/[^\s/]+(?:\s|$)/u.test(trimmed) || trimmed.startsWith("Ultrathink:")) {
+    return trimmed;
+  }
+  return `Ultrathink:\n${trimmed}`;
+}
+
 export interface AgentModel {
   readonly id: string;
   readonly name: string;
   readonly description?: string;
+  /** Since 1.2: what a turn can choose for this model; none when absent. */
+  readonly options?: readonly ModelOptionDescriptor[];
+}
+
+/**
+ * The selections that apply to `descriptors`: unknown ids, values a select
+ * does not offer and values of the wrong type are dropped (D297).
+ */
+export function applicableModelOptions(
+  descriptors: readonly ModelOptionDescriptor[] | undefined,
+  selections: readonly ModelOptionSelection[] | undefined,
+): ModelOptionSelection[] {
+  if (descriptors === undefined || selections === undefined) return [];
+  const result: ModelOptionSelection[] = [];
+  for (const selection of selections) {
+    const descriptor = descriptors.find((candidate) => candidate.id === selection.id);
+    if (descriptor === undefined || result.some((kept) => kept.id === selection.id)) continue;
+    if (descriptor.type === "boolean" && typeof selection.value === "boolean") {
+      result.push({ id: selection.id, value: selection.value });
+    } else if (
+      descriptor.type === "select" &&
+      typeof selection.value === "string" &&
+      descriptor.options.some((option) => option.id === selection.value)
+    ) {
+      result.push({ id: selection.id, value: selection.value });
+    }
+  }
+  return result;
 }
 
 export interface AgentRuntimeStatus {
@@ -240,7 +326,7 @@ export const ThreadEvents = {
   /** `threads` index: `{ id }`. */
   projectDeleted: "threads.project.deleted",
   /**
-   * `{ turnId, agentId, runtimeId?, input, model?, runtimeMode?, interactionMode?, messageId?,
+   * `{ turnId, agentId, runtimeId?, input, model?, runtimeMode?, interactionMode?, modelOptions?, messageId?,
    * handoff? }`; `runtimeId` only when the agent is not a runtime itself (D601).
    * `handoff` (`{ kind: "merge-back", threadId, turnId }`) says the agent got a
    * fork's result before `input.text`. In a fork, events copied from its parent

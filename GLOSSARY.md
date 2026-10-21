@@ -110,6 +110,10 @@ Words about Jhin:
   (`jhin.agent-claude`), Codex (`jhin.agent-codex`), OpenCode
   (`jhin.agent-opencode`, off until enabled) and a fake one for tests and
   demos.
+- **Model option** — something a turn chooses for its model besides the
+  model itself: the reasoning effort, fast mode, the context window. A model
+  declares its options; the composer's traits menu (T3's term) picks them.
+  **Ultrathink** is Claude's effort written into the prompt itself.
 - **Session** — an agent's own conversation state for a thread (Claude Code
   keeps it in a session named after the thread); a turn resumes it.
 - **Live session** — an agent process kept running between a thread's turns,

@@ -55,6 +55,7 @@ import {
   userQuestions,
   type TaskList,
 } from "./mapping.ts";
+import { applyUltrathinkPrefix, compileClaudeSelection } from "./models.ts";
 
 export type { QueryFunction } from "./session.ts";
 
@@ -259,7 +260,16 @@ export function claudeTurn(
   const out = channel<AgentItem>(() => interrupted);
   const runtimeMode = request.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode = request.interactionMode ?? "default";
-  const model = request.model ?? deps.defaultModel;
+  // The turn's model options (D298): the model id with its suffix, effort and settings.
+  const selection = compileClaudeSelection(
+    request.model ?? deps.defaultModel,
+    request.modelOptions,
+    deps.settings.effort,
+  );
+  const model = selection.model;
+  const messageText = selection.ultrathink
+    ? applyUltrathinkPrefix(request.input.text)
+    : request.input.text;
   const answers = new Map<string, (response: AgentResponse | undefined) => void>();
   const live =
     deps.live ?? createLiveSessions({ query: deps.query, keepAlive: () => PER_TURN, ...log(deps) });
@@ -551,8 +561,11 @@ export function claudeTurn(
     ...(mode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
     canUseTool,
     includePartialMessages: true,
-    thinking: { type: "adaptive", display: "summarized" },
-    ...(deps.settings.effort === undefined ? {} : { effort: deps.settings.effort }),
+    ...(selection.thinking ? { thinking: { type: "adaptive", display: "summarized" } } : {}),
+    ...(selection.effort === undefined ? {} : { effort: selection.effort }),
+    ...(Object.keys(selection.settings).length === 0
+      ? {}
+      : { settings: { ...selection.settings } }),
     ...(deps.settings.binaryPath === undefined
       ? {}
       : { pathToClaudeCodeExecutable: deps.settings.binaryPath }),
@@ -669,7 +682,7 @@ export function claudeTurn(
     }
     // A thread Claude has a session of may have gone on with another agent since.
     const preface = transcript(request.history, hasSession ? CLAUDE_AGENT_ID : undefined);
-    const text = preface === undefined ? request.input.text : `${preface}${request.input.text}`;
+    const text = preface === undefined ? messageText : `${preface}${messageText}`;
     let result: SDKResultMessage | undefined;
     try {
       result = await attempt(hasSession, text);
@@ -683,8 +696,8 @@ export function claudeTurn(
       if (interrupted) return;
       const retryText =
         error.resume && transcript(request.history) !== undefined
-          ? `${transcript(request.history)}${request.input.text}`
-          : request.input.text;
+          ? `${transcript(request.history)}${messageText}`
+          : messageText;
       result = await attempt(!error.resume, retryText);
     }
     if (interrupted) return;
