@@ -16,6 +16,7 @@ const html: Probe = { status: 200, contentType: "text/html; charset=utf-8", loca
 function fakeHost(options: {
   platform?: NodeJS.Platform;
   programs?: Record<string, string | Error>;
+  exitCodes?: Record<string, number>;
   files?: Record<string, string>;
   dirs?: Record<string, string[]>;
   links?: Record<string, string>;
@@ -31,7 +32,7 @@ function fakeHost(options: {
       if (result === undefined || result instanceof Error) {
         throw result ?? Object.assign(new Error(`${command}: not found`), { code: "ENOENT" });
       }
-      return result;
+      return { stdout: result, exitCode: options.exitCodes?.[command] ?? 0 };
     },
     async readFile(path) {
       const file = options.files?.[path];
@@ -87,6 +88,27 @@ describe("local server discovery (D950)", () => {
     ]);
     // Another app's listener is never sent HTTP: it may speak something else.
     expect(probed).toEqual(["http://localhost:5173"]);
+  });
+
+  it("never probes a port another process shares with a terminal's", async () => {
+    // pid 4242 is the terminal's, pid 999 another app's, both on 5173.
+    const lsof = ["p4242", "cnode", "n*:5173", "p999", "cother", "n127.0.0.1:5173", ""].join("\n");
+    const { host, probed } = fakeHost({
+      programs: { lsof },
+      probes: { "http://localhost:5173": html },
+    });
+    expect(await createLocalServerScanner(host).scan(new Map([[4242, TERMINAL]]))).toEqual([]);
+    expect(probed).toEqual([]);
+  });
+
+  it("reads lsof's output when it exits 1 after a warning, as T3 does", async () => {
+    const { host } = fakeHost({
+      programs: { lsof: LSOF },
+      exitCodes: { lsof: 1 },
+      probes: { "http://localhost:5173": html },
+    });
+    const servers = await createLocalServerScanner(host).scan(new Map([[4242, TERMINAL]]));
+    expect(servers.map((server) => server.port)).toEqual([5173]);
   });
 
   it("excludes HTTP errors, non-navigation responses and non-documents; follows to HTTPS", async () => {

@@ -181,12 +181,15 @@ export function parseProcNetTcp(raw: string): { readonly port: number; readonly 
 /** What the scan reads of the machine; tests give their own. */
 export interface ScanHost {
   readonly platform: NodeJS.Platform;
-  /** Runs a program; rejects on a failed start, a non-zero exit or too much output. */
+  /**
+   * Runs a program with its exit code; rejects on a failed start (`code: "ENOENT"`
+   * when it is missing), a timeout or too much output.
+   */
   run(
     command: string,
     args: readonly string[],
     options: { timeout: number; maxBuffer: number },
-  ): Promise<string>;
+  ): Promise<{ stdout: string; exitCode: number }>;
   readFile(path: string): Promise<string>;
   readDir(path: string): Promise<string[]>;
   readLink(path: string): Promise<string>;
@@ -310,6 +313,7 @@ export function createLocalServerScanner(host: ScanHost) {
             timeout: WINDOWS_LISTENER_TIMEOUT_MS,
             maxBuffer: 64 * 1024,
           })
+          .then((result) => (result.exitCode === 0 ? result.stdout : ""))
           .catch(() => "");
         return { ...server, processName: parseTasklistProcessName(output, server.pid) };
       }),
@@ -328,7 +332,10 @@ export function createLocalServerScanner(host: ScanHost) {
           });
         // One failed query leaves a partial snapshot: show nothing rather than half.
         const listeners = await Promise.all([netstat("tcp"), netstat("tcpv6")]).then(
-          ([tcp4, tcp6]) => parseWindowsListenerOutput(`${tcp4}\n${tcp6}`, terminals),
+          ([tcp4, tcp6]) =>
+            tcp4.exitCode !== 0 || tcp6.exitCode !== 0
+              ? []
+              : parseWindowsListenerOutput(`${tcp4.stdout}\n${tcp6.stdout}`, terminals),
           () => [],
         );
         return withWindowsProcessNames(await probeWebServers(listeners));
@@ -341,7 +348,8 @@ export function createLocalServerScanner(host: ScanHost) {
             maxBuffer: 1024 * 1024,
           })
           .then(
-            (stdout) => parseLsofOutput(stdout, terminals),
+            // lsof exits 1 after any warning (an unreadable mount) with its output whole (T3).
+            (result) => parseLsofOutput(result.stdout, terminals),
             (error: unknown) => {
               if ((error as { code?: unknown }).code === "ENOENT") lsofMissing = true;
               return null;
@@ -364,8 +372,11 @@ export const nodeScanHost: ScanHost = {
         [...args],
         { ...options, windowsHide: true },
         (error, stdout) => {
-          if (error !== null) reject(error);
-          else resolve(stdout);
+          // A program that ran and exited non-zero: its output and code, for the caller to judge.
+          if (error === null) resolve({ stdout, exitCode: 0 });
+          else if (typeof error.code === "number" && !error.killed) {
+            resolve({ stdout, exitCode: error.code });
+          } else reject(error);
         },
       );
     }),

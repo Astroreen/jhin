@@ -545,20 +545,22 @@ function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalS
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const scan = () => {
-      latest.current
-        .call<{ servers: LocalServer[] }>("preview.servers.list", {})
-        // A node without the command or the scan: no local servers.
-        .then(
-          (result) => result.servers,
-          () => [],
-        )
-        .then((found) => {
+      // A hidden page does not scan; it looks again once shown.
+      if (document.hidden) {
+        timer = setTimeout(scan, LOCAL_SERVERS_SCAN_MS);
+        return;
+      }
+      latest.current.call<{ servers: LocalServer[] }>("preview.servers.list", {}).then(
+        (result) => {
           if (!live) return;
           setServers((current) =>
-            JSON.stringify(current) === JSON.stringify(found) ? current : found,
+            JSON.stringify(current) === JSON.stringify(result.servers) ? current : result.servers,
           );
           timer = setTimeout(scan, LOCAL_SERVERS_SCAN_MS);
-        });
+        },
+        // A node without the command (or one that refuses it) has no local servers: stop asking.
+        () => undefined,
+      );
     };
     scan();
     return () => {

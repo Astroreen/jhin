@@ -60,6 +60,9 @@ import { Chromium } from "./chromium.ts";
 import { createTabs, sessionKey } from "./tabs.ts";
 import { createLocalServerScanner, DiscoveredLocalServer, nodeScanHost } from "./local-servers.ts";
 
+/** How long one local server scan answers every panel (D950). */
+const SCAN_REUSE_MS = 2_000;
+
 const CONFIG_SECTION = "jhin.preview";
 
 const Config = z
@@ -171,6 +174,13 @@ export default definePlugin({
     });
     // T3's discovered local servers (D950): what terminals of this node serve.
     const scanner = createLocalServerScanner(nodeScanHost);
+    /** The scan running or just done, shared by the panels that ask meanwhile. */
+    let lastScan:
+      | {
+          readonly startedAt: number;
+          readonly result: Promise<{ servers: DiscoveredLocalServer[]; scannedAt: string }>;
+        }
+      | undefined;
     context.commands.register({
       name: "preview.servers.list",
       title: "List local servers",
@@ -179,7 +189,11 @@ export default definePlugin({
       input: z.object({}),
       output: z.object({ servers: z.array(DiscoveredLocalServer), scannedAt: z.string() }),
       permissions: read,
-      handler: async () => {
+      // Every open panel asks every 3 s: one scan serves them all for a while (T3 scans once per tick).
+      handler: () => {
+        if (lastScan !== undefined && Date.now() - lastScan.startedAt < SCAN_REUSE_MS) {
+          return lastScan.result;
+        }
         const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
         const owners = new Map<number, { threadId: string; terminalId: string }>();
         for (const terminal of terminals?.list() ?? []) {
@@ -187,7 +201,15 @@ export default definePlugin({
             owners.set(pid, { threadId: terminal.threadId, terminalId: terminal.terminalId });
           }
         }
-        return { servers: await scanner.scan(owners), scannedAt: new Date().toISOString() };
+        const result = scanner
+          .scan(owners)
+          .then((servers) => ({ servers, scannedAt: new Date().toISOString() }));
+        lastScan = { startedAt: Date.now(), result };
+        // A failed scan is not reused.
+        result.catch(() => {
+          if (lastScan?.result === result) lastScan = undefined;
+        });
+        return result;
       },
     });
     context.commands.register({
