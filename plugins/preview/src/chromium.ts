@@ -1,5 +1,6 @@
 // Launching and presenting the browser follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/preview/ServerBrowserContexts.ts (launch arguments, contexts, presentAsChrome).
+import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
@@ -202,18 +203,14 @@ export class Chromium {
   }
 
   /**
-   * The folder of a persistent profile; `.` and `..` cannot name a parent (T3),
-   * and capitals are escaped so `Work` and `work` stay apart where the file
-   * system ignores case (macOS, Windows).
+   * The folder of a persistent profile: a digest of its id, so any id (any case,
+   * `..`, `CON`, a trailing dot) is a distinct, valid folder name on every system.
    */
   #profileDirectory(profileId: string): string {
-    const encoded = encodeURIComponent(profileId).replace(
-      /[A-Z]/g,
-      (letter) => `%${letter.charCodeAt(0).toString(16).toUpperCase()}`,
-    );
+    const digest = Crypto.createHash("sha256").update(profileId).digest("hex").slice(0, 32);
     return Path.join(
       this.#options.profilesDir ?? Path.join(Os.tmpdir(), "jhin-preview-profiles"),
-      profileId === "." || profileId === ".." ? encoded.replaceAll(".", "%2E") : encoded,
+      digest,
     );
   }
 
@@ -227,13 +224,16 @@ export class Chromium {
       const directory = this.#profileDirectory(profileId);
       await Fs.promises.mkdir(directory, { recursive: true });
       const chromium = await this.#chromium();
-      return this.#start((options) =>
+      const context = await this.#start((options) =>
         chromium.launchPersistentContext(directory, {
           ...options,
           viewport: DEFAULT_VIEWPORT,
           deviceScaleFactor: RENDER_SCALE,
         }),
       );
+      // A persistent profile reopens with a blank page of its own: tabs bring theirs.
+      await Promise.all(context.pages().map((page) => page.close().catch(() => undefined)));
+      return context;
     });
     this.#profiles.set(profileId, pending);
     pending.then(
@@ -241,8 +241,6 @@ export class Chromium {
         context.on("close", () => {
           if (this.#profiles.get(profileId) === pending) this.#profiles.delete(profileId);
         });
-        // A persistent profile reopens with a blank page of its own: tabs bring theirs.
-        for (const page of context.pages()) void page.close().catch(() => undefined);
       },
       () => {
         if (this.#profiles.get(profileId) === pending) this.#profiles.delete(profileId);
@@ -268,14 +266,13 @@ export class Chromium {
     if (profileId === INCOGNITO_BROWSER_PROFILE_ID) return;
     // A clear of the same profile still running goes first.
     const previous = this.#clearing.get(profileId)?.catch(() => undefined);
+    // Gone from the cache at once: a tab asked for from now on waits for the clear.
+    const pending = this.#profiles.get(profileId);
+    this.#profiles.delete(profileId);
     const clearing = (async () => {
       await previous;
-      const pending = this.#profiles.get(profileId);
-      if (pending !== undefined) {
-        this.#profiles.delete(profileId);
-        const context = await pending.catch(() => undefined);
-        await context?.close();
-      }
+      const context = await pending?.catch(() => undefined);
+      await context?.close();
       await Fs.promises.rm(this.#profileDirectory(profileId), { recursive: true, force: true });
     })();
     this.#clearing.set(profileId, clearing);

@@ -163,13 +163,10 @@ describe("browser profiles (D952)", () => {
     await chromium.newPage(false, "work");
     await chromium.newPage(false, "..");
     await chromium.newPage(false, "Work");
-    expect(persistent).toEqual([
-      Path.join(root, "default"),
-      Path.join(root, "work"),
-      Path.join(root, "%2E%2E"),
-      // Apart from `work` also where the file system ignores case.
-      Path.join(root, "%57ork"),
-    ]);
+    // One folder each, valid anywhere: `Work` stays apart from `work` where case is ignored.
+    expect(persistent).toHaveLength(4);
+    expect(new Set(persistent.map((folder) => folder.toLowerCase())).size).toBe(4);
+    for (const folder of persistent) expect(Path.dirname(folder)).toBe(root);
     await chromium.newPage(false, "incognito");
     // Incognito and an agent's tab start the one shared browser, not a profile.
     await chromium.newPage(true);
@@ -181,12 +178,15 @@ describe("browser profiles (D952)", () => {
     const { launcher, persistent } = fakeLauncher(() => undefined);
     const chromium = new Chromium({ launcher, profilesDir: root });
     const { context } = await chromium.newPage(false, "work");
-    Fs.writeFileSync(Path.join(root, "work", "Cookies"), "session");
-    await chromium.clearProfile("work");
+    const folder = persistent[0]!;
+    Fs.writeFileSync(Path.join(folder, "Cookies"), "session");
+    // A tab asked for while the clear runs waits for it, then starts from nothing.
+    const clearing = chromium.clearProfile("work");
+    const next = chromium.newPage(false, "work");
+    await clearing;
     expect((context as unknown as { closed: boolean }).closed).toBe(true);
-    expect(Fs.existsSync(Path.join(root, "work"))).toBe(false);
-    // The next tab of that profile starts it again, from nothing.
-    await chromium.newPage(false, "work");
-    expect(persistent).toEqual([Path.join(root, "work"), Path.join(root, "work")]);
+    await next;
+    expect(persistent).toEqual([folder, folder]);
+    expect(Fs.existsSync(Path.join(folder, "Cookies"))).toBe(false);
   });
 });
