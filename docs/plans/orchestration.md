@@ -425,6 +425,9 @@ the rest of it is unchanged since D53's tag.
   test in the UI yet. Below the UI, the server tests of `jhin.scheduler`
   cover them, and unit tests cover the store and the editor's validation
   (`draftProblem`).
+- Releasing a run in-process when its completion cannot be recorded (T3's
+  `releaseStuckRun`): today a storage failure at that write leaves the task
+  marked running until the next start's recovery.
 - `secretRef` for webhook signing secrets, entered through
   `request_secret` (W13's secrets).
 - A public webhook URL through a relay, held deliveries while the node is
