@@ -157,11 +157,14 @@ describe("the preview of an attachment (T3's AttachmentFilePreview)", () => {
     const frame = page.getByTitle("page.html");
     await expect.element(frame).toBeVisible();
     const element = frame.element() as HTMLIFrameElement;
-    expect(element.getAttribute("sandbox")).toContain("allow-scripts");
+    // Never allow-same-origin: with scripts it would reach the client.
+    expect(element.getAttribute("sandbox")).toBe(
+      "allow-scripts allow-forms allow-popups allow-downloads",
+    );
     expect((await (await fetch(element.src)).blob()).type).toBe("text/html");
   });
 
-  it("plays a sent video from the node's bytes", async () => {
+  it("offers a retry when a sent video's bytes do not play", async () => {
     const { loader, reads } = nodeLoader("not really a video");
     await mount(
       <AttachmentFilePreview

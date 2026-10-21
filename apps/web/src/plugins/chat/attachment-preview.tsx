@@ -219,7 +219,13 @@ function useSourceUrl(
       .then(async (loaded) => {
         if (type === undefined) return loaded;
         const bytes = await (await fetch(loaded)).blob();
-        own = URL.createObjectURL(new Blob([bytes], { type }));
+        const made = URL.createObjectURL(new Blob([bytes], { type }));
+        // Closed meanwhile: the cleanup ran before this URL existed.
+        if (!current) {
+          URL.revokeObjectURL(made);
+          return made;
+        }
+        own = made;
         return own;
       })
       .then(
