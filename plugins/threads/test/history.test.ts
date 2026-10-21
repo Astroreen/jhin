@@ -733,7 +733,7 @@ describe("jhin.threads: merging a fork back (D226)", () => {
   });
 
   it("refuses merging again what the parent already got, until the fork goes on", async () => {
-    const { client, parent, fork } = await forked();
+    const { client, parent, fork, tried } = await forked();
     await client.call("threads.merge-back", { threadId: fork.id });
     await turn(client, parent.id, "go on");
     await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
@@ -743,6 +743,25 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     expect(await client.call<Fork>("threads.merge-back", { threadId: fork.id })).toMatchObject({
       pendingMergeBack: { turnId: more },
     });
+    await turn(client, parent.id, "once more");
+    // An earlier turn than the one the parent got is refused too.
+    await expect(
+      client.call("threads.merge-back", { threadId: fork.id, turnId: tried }),
+    ).rejects.toMatchObject({ code: "NOTHING_TO_MERGE" });
+  });
+
+  it("regenerates no turn whose start recorded no message", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    await turn(client, thread.id, "one");
+    // A start without its input, as an older or broken writer could leave it.
+    await storage.storage.log.append(`thread/${thread.id}`, [
+      { type: "agent.turn.started", payload: { turnId: "bare", agentId: "jhin.agent-fake" } },
+      { type: "agent.turn.completed", payload: { turnId: "bare" } },
+    ]);
+    await expect(
+      client.call("threads.regenerate", { threadId: thread.id, turnId: "bare" }),
+    ).rejects.toMatchObject({ code: "TURN_NOT_FOUND" });
   });
 
   it("merges again into a regenerated turn, leaving no mark", async () => {

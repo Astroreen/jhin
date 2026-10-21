@@ -3562,9 +3562,7 @@ export default definePlugin({
         }
         const parentId = fork.forkedFrom.threadId;
         // The parent already got the fork up to this turn: merging it again would say it twice.
-        const { events: parentEvents } = await visibleTurns(parentId).catch(() => ({
-          events: [] as StoredEvent[],
-        }));
+        const { events: parentEvents } = await visibleTurns(parentId);
         const delivered = parentEvents
           .filter(
             (event) =>
