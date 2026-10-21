@@ -129,6 +129,7 @@ type HostState =
 
 /** One request at a time, the rest queued, each answered exactly once. */
 export function createDialogs(): Dialogs & {
+  choose: NonNullable<Dialogs["choose"]>;
   state(): HostState;
   subscribe(listener: () => void): Disposable;
   /** `subscribe` as React's useSyncExternalStore takes it: one function, unsubscribing by return. */
