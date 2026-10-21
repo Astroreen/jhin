@@ -298,7 +298,7 @@ const BACKGROUND_MOVE_MS = 5_000;
  * call that started each: added when Claude Code calls `Agent` without
  * `run_in_background`, gone once the call returned (T3's sessionSubagentsByTaskId).
  */
-export function trackForegroundSubagents(message: SDKMessage, running: Set<string>): void {
+function trackForegroundSubagents(message: SDKMessage, running: Set<string>): void {
   if (message.type !== "assistant" && message.type !== "user") return;
   if (message.parent_tool_use_id) return;
   const content: unknown = message.message.content;
