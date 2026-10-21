@@ -31,7 +31,11 @@ interface ClaudeQuery extends AsyncIterable<SDKMessage> {
   setModel?(model?: string): Promise<void>;
   setPermissionMode?(mode: PermissionMode): Promise<void>;
   setMcpServers?(servers: Record<string, McpServerConfig>): Promise<McpSetServersResult>;
-  applyFlagSettings?(settings: { effortLevel?: EffortLevel | null }): Promise<void>;
+  applyFlagSettings?(settings: {
+    effortLevel?: EffortLevel | null;
+    fastMode?: boolean | null;
+    ultracode?: boolean | null;
+  }): Promise<void>;
 }
 
 /** MCP servers a Claude Code gets once started, and how to revoke their credentials. */
@@ -172,6 +176,8 @@ interface Live {
   model: string | undefined;
   /** Changed live with applyFlagSettings (D349). */
   effort: EffortLevel | undefined;
+  /** Fast Mode and Ultracode as last set, changed live too (t3-parity.md D298). */
+  flags: { fastMode?: boolean; ultracode?: boolean };
   /** Its non-ambient background tasks, as `background_tasks_changed` last said (D348). */
   background: number;
   /** Ends once its background work does: per-turn, or turned to it while the work ran. */
@@ -215,9 +221,32 @@ function launchKey(options: Options): string {
     sessionId: _sessionId,
     canUseTool: _canUseTool,
     effort: _effort,
+    settings,
     ...launch
   } = options;
-  return JSON.stringify(launch);
+  // Fast Mode and Ultracode are flags a running Claude Code takes (as T3 applies them).
+  const {
+    fastMode: _fast,
+    ultracode: _ultra,
+    ...kept
+  } = typeof settings === "object" && settings !== null ? settings : {};
+  return JSON.stringify({
+    ...launch,
+    ...(typeof settings === "string"
+      ? { settings }
+      : Object.keys(kept).length === 0
+        ? {}
+        : { settings: kept }),
+  });
+}
+
+/** The flags of a turn's settings a running Claude Code takes (`applyFlagSettings`). */
+function flagsOf(options: Options): { fastMode?: boolean; ultracode?: boolean } {
+  const settings = typeof options.settings === "object" ? options.settings : undefined;
+  return {
+    ...(typeof settings?.fastMode === "boolean" ? { fastMode: settings.fastMode } : {}),
+    ...(typeof settings?.ultracode === "boolean" ? { ultracode: settings.ultracode } : {}),
+  };
 }
 
 /**
@@ -453,6 +482,7 @@ export function createLiveSessions(options: {
       input,
       model: launch.model,
       effort: launch.effort,
+      flags: flagsOf(launch),
       background: 0,
       closeWhenDone: false,
       permissionMode: started.permissionMode,
@@ -572,6 +602,15 @@ export function createLiveSessions(options: {
         }
         await live.query.setPermissionMode(launch.permissionMode);
         live.permissionMode = launch.permissionMode;
+      }
+      const flags = flagsOf(launch);
+      if (flags.fastMode !== live.flags.fastMode || flags.ultracode !== live.flags.ultracode) {
+        if (live.query.applyFlagSettings === undefined) return false;
+        await live.query.applyFlagSettings({
+          fastMode: flags.fastMode ?? null,
+          ultracode: flags.ultracode ?? null,
+        });
+        live.flags = flags;
       }
       // Last: a session the model or mode cannot go to keeps its effort when it is kept.
       if (launch.effort !== live.effort) {

@@ -77,7 +77,11 @@ export async function editFromHere(
       });
       throw failure;
     });
-  const message = { prompt: turn.input.text, attachments: turn.input.attachments ?? [] };
+  // Uploads go back by id; D54's data URLs have no upload to keep.
+  const message = {
+    prompt: turn.input.text,
+    attachments: (turn.input.attachments ?? []).filter((item) => "id" in item),
+  };
   /** What the thread's composer holds now: the one on screen, else the stored draft. */
   const draftNow = () =>
     composer.current?.draftKey === key ? composer.current.draft() : drafts.get(key);

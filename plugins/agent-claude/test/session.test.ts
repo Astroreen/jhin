@@ -1089,6 +1089,21 @@ describe("jhin.agent-claude: W9 live sessions", () => {
     expect(calls[0]!.controls).toEqual(["effort:high", "effort:null"]);
   });
 
+  it("changes Fast Mode and Ultracode of the running Claude Code live, as T3 does (D298)", async () => {
+    const { turn, calls } = node([answering("one", "two", "three")]);
+    const opus = { model: "claude-opus-5-5" };
+    await turn(opus);
+    await turn({ ...opus, modelOptions: [{ id: "fastMode", value: true }] });
+    await turn({ ...opus, modelOptions: [{ id: "effort", value: "ultracode" }] });
+    // One Claude Code: the flags went to it, the effort map's xhigh with them.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.controls).toEqual([
+      "flags:fastMode=true,ultracode=null",
+      "flags:fastMode=false,ultracode=true",
+      "effort:xhigh",
+    ]);
+  });
+
   it("stops a message the interrupt did not reach once it starts (D350)", async () => {
     let received!: () => void;
     const sent = new Promise<void>((resolve) => (received = resolve));

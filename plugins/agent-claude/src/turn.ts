@@ -6,14 +6,15 @@
 // The live query a turn runs on is leased from ./session.ts: kept between turns, or started
 // for each turn and resumed, as the `session` setting says.
 import { randomUUID } from "node:crypto";
+import * as Path from "node:path";
 
 import type {
   AgentItem,
   AgentResponse,
   AgentTurn,
   InteractionMode,
+  RuntimeAttachment,
   RuntimeMode,
-  TurnAttachment,
   TurnRequest,
 } from "@jhin/agent-api";
 import { DEFAULT_RUNTIME_MODE, ThreadEvents, historyTranscript } from "@jhin/agent-api";
@@ -159,28 +160,57 @@ const asksForApproval = (runtimeMode: RuntimeMode, interactionMode: InteractionM
 
 const IMAGE_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 
-function userMessage(
+/** Claude's own limit on a message's text (T3's PROVIDER_SEND_TURN_MAX_INPUT_CHARS). */
+const MAX_INPUT_CHARS = 120_000;
+
+/**
+ * The message Claude Code gets: images as base64 blocks before the text, and the file
+ * of every stored attachment named after it, as T3 writes it
+ * (`[Attached file "name" is saved at: /path]`), so Claude can read files of any kind.
+ */
+async function userMessage(
   text: string,
-  attachments: readonly TurnAttachment[] = [],
-  skipped: (attachment: TurnAttachment) => void = () => {},
-): SDKUserMessage {
-  const images = attachments.flatMap((attachment) => {
-    const match = /^data:([^;,]+);base64,(.*)$/s.exec(attachment.dataUrl);
-    if (match === null || !IMAGE_TYPES.has(match[1]!)) {
-      skipped(attachment);
-      return [];
+  attachments: readonly RuntimeAttachment[] = [],
+  skipped: (attachment: RuntimeAttachment) => void = () => {},
+): Promise<SDKUserMessage> {
+  const images: {
+    type: "image";
+    source: { type: "base64"; media_type: "image/png"; data: string };
+  }[] = [];
+  let body = text;
+  for (const attachment of attachments) {
+    if ("dataUrl" in attachment) {
+      const match = /^data:([^;,]+);base64,(.*)$/s.exec(attachment.dataUrl);
+      if (match === null || !IMAGE_TYPES.has(match[1]!)) {
+        skipped(attachment);
+        continue;
+      }
+      images.push({
+        type: "image",
+        source: { type: "base64", media_type: match[1] as "image/png", data: match[2]! },
+      });
+      continue;
     }
-    return [
-      {
-        type: "image" as const,
-        source: {
-          type: "base64" as const,
-          media_type: match[1] as "image/png",
-          data: match[2]!,
-        },
-      },
-    ];
-  });
+    if (attachment.kind === "image") {
+      if (IMAGE_TYPES.has(attachment.mimeType)) {
+        images.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: attachment.mimeType as "image/png",
+            data: Buffer.from(await attachment.read()).toString("base64"),
+          },
+        });
+      } else {
+        skipped(attachment);
+      }
+    }
+    if (attachment.path !== undefined) {
+      const line = `[Attached ${attachment.kind} "${attachment.name}" is saved at: ${attachment.path}]`;
+      const candidate = body ? `${body}\n\n${line}` : line;
+      if (candidate.length <= MAX_INPUT_CHARS) body = candidate;
+    }
+  }
   return {
     type: "user",
     // Fresh for every message: Claude Code marks the frames answering it with this uuid,
@@ -188,7 +218,7 @@ function userMessage(
     uuid: randomUUID(),
     message: {
       role: "user",
-      content: images.length === 0 ? text : [...images, { type: "text", text }],
+      content: images.length === 0 ? body : [...images, { type: "text", text: body }],
     },
     parent_tool_use_id: null,
   };
@@ -276,6 +306,8 @@ export function claudeTurn(
   let current: Lease | undefined;
   /** Messages steered into the turn: each lease of the turn gets them after its own. */
   const steered: SDKUserMessage[] = [];
+  /** Steers being built (their images read): each goes in after the one before. */
+  let steering: Promise<void> = Promise.resolve();
   /** The turn read its result: it takes no steer any more. */
   let finished = false;
 
@@ -553,8 +585,20 @@ export function claudeTurn(
   const mode = permissionMode(runtimeMode, interactionMode);
   /** The session this turn runs on: the thread's id, or the one a rollback started (D222). */
   let sessionId = request.threadId;
+  // Claude reads the attachments' files where the node keeps them (T3 adds its
+  // attachments folder to additionalDirectories the same way).
+  const attachmentFolders = [
+    ...new Set(
+      (request.input.attachments ?? []).flatMap((attachment) =>
+        "path" in attachment && attachment.path !== undefined
+          ? [Path.dirname(attachment.path)]
+          : [],
+      ),
+    ),
+  ];
   const options = (resume: boolean): Options => ({
     cwd: request.cwd,
+    ...(attachmentFolders.length === 0 ? {} : { additionalDirectories: attachmentFolders }),
     model,
     ...(resume ? { resume: sessionId } : { sessionId }),
     permissionMode: mode,
@@ -590,7 +634,7 @@ export function claudeTurn(
       options: options(resume),
       ...(deps.mcp === undefined ? {} : { attach: deps.mcp.attach }),
       ...(deps.settings.inheritEnv === undefined ? {} : { inherit: deps.settings.inheritEnv }),
-      message: userMessage(text, request.input.attachments, (attachment) =>
+      message: await userMessage(text, request.input.attachments, (attachment) =>
         deps.log?.("claude takes no such attachment, skipped", {
           name: attachment.name,
           mimeType: attachment.mimeType,
@@ -743,15 +787,19 @@ export function claudeTurn(
       if (interrupted || finished) {
         throw new Error("The turn has ended: Claude Code takes no more messages for it.");
       }
-      const message = userMessage(input.text, input.attachments, (attachment) =>
-        deps.log?.("claude takes no such attachment, skipped", {
-          name: attachment.name,
-          mimeType: attachment.mimeType,
-        }),
-      );
-      // Into the running query now, or after the turn's message once it has one.
-      current?.steer(message);
-      steered.push(message);
+      // Uploaded images are read first; steers keep their order while they are.
+      steering = steering.then(async () => {
+        const message = await userMessage(input.text, input.attachments, (attachment) =>
+          deps.log?.("claude takes no such attachment, skipped", {
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+          }),
+        );
+        if (finished) return;
+        // Into the running query now, or after the turn's message once it has one.
+        current?.steer(message);
+        steered.push(message);
+      });
     },
   };
 }

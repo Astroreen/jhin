@@ -1,6 +1,7 @@
 // The timeline's design follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/MessagesTimeline.tsx, WorkLog.tsx, TimelineSystemDivider.tsx,
 // MessageCopyButton.tsx and ProposedPlanCard.tsx.
+import type { StoredAttachment, TurnAttachment } from "@jhin/agent-api";
 import type { ChatMessageActionProps, NodeTarget } from "@jhin/client-api";
 import { Badge, Button, Slot, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import {
@@ -14,9 +15,11 @@ import {
   CircleDashedIcon,
   CircleIcon,
   CopyIcon,
+  DownloadIcon,
   EyeIcon,
   GitForkIcon,
   GitMergeIcon,
+  FileIcon,
   GlobeIcon,
   HammerIcon,
   ListTodoIcon,
@@ -40,6 +43,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { formatAttachmentSize } from "../../lib/attachment-files.ts";
 import {
   formatDayAwareTimestamp,
   formatDuration,
@@ -143,6 +147,108 @@ function Timestamp({
   );
 }
 
+/**
+ * Reads an attachment of the thread's node as an object URL; absent where the
+ * timeline shows no node's thread (a test, a preview).
+ */
+export const AttachmentLoaderContext = createContext<
+  ((attachment: StoredAttachment) => Promise<string>) | undefined
+>(undefined);
+
+/** An attachment's object URL once loaded, or undefined while it loads or when it cannot. */
+function useAttachmentUrl(attachment: TurnAttachment): string | undefined {
+  const load = useContext(AttachmentLoaderContext);
+  const inline = "dataUrl" in attachment ? attachment.dataUrl : undefined;
+  const [url, setUrl] = useState<string | undefined>(inline);
+  const id = "id" in attachment ? attachment.id : undefined;
+  useEffect(() => {
+    if (inline !== undefined || load === undefined || !("id" in attachment)) return;
+    let current = true;
+    load(attachment).then(
+      (loaded) => current && setUrl(loaded),
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [id, inline, load]);
+  return url;
+}
+
+function ImageAttachment({ attachment }: { attachment: TurnAttachment }) {
+  const url = useAttachmentUrl(attachment);
+  return (
+    <div className="aspect-[4/3] overflow-hidden rounded-lg border border-border/80 bg-background/70">
+      {url === undefined ? (
+        <div aria-label={attachment.name} className="size-full" role="img" />
+      ) : (
+        <a href={url} rel="noopener noreferrer" target="_blank">
+          <img
+            alt={attachment.name}
+            className="block size-full cursor-zoom-in object-cover"
+            src={url}
+          />
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** T3's file row in a sent message: its icon, name and size, and a way to download it. */
+function FileAttachment({ attachment }: { attachment: StoredAttachment }) {
+  const load = useContext(AttachmentLoaderContext);
+  const download = () => {
+    void load?.(attachment).then((url) => {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = attachment.name;
+      anchor.click();
+    });
+  };
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/80 bg-background/70 px-2 py-1.5 text-sm">
+      <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+      <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+        {formatAttachmentSize(attachment.sizeBytes)}
+      </span>
+      {load === undefined ? null : (
+        <Button
+          aria-label={`Download ${attachment.name}`}
+          onClick={download}
+          size="icon-xs"
+          variant="ghost"
+        >
+          <DownloadIcon />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function MessageAttachments({ attachments }: { attachments: readonly TurnAttachment[] }) {
+  const images = attachments.filter((attachment) => attachment.kind === "image");
+  const files = attachments.filter(
+    (attachment): attachment is StoredAttachment =>
+      attachment.kind === "file" && "id" in attachment,
+  );
+  if (attachments.length === 0) return null;
+  return (
+    <div className="mb-2 flex flex-col gap-2">
+      {images.length > 0 ? (
+        <div className="grid max-w-[210px] grid-cols-2 gap-2">
+          {images.map((attachment, index) => (
+            <ImageAttachment attachment={attachment} key={`${attachment.name}-${index}`} />
+          ))}
+        </div>
+      ) : null}
+      {files.map((attachment) => (
+        <FileAttachment attachment={attachment} key={attachment.id} />
+      ))}
+    </div>
+  );
+}
+
 /** Long messages fold to a few lines (over 600 characters or 8 lines). */
 const isLong = (text: string) => text.length > 600 || text.split("\n").length > 8;
 
@@ -165,24 +271,7 @@ function UserMessage({
         aria-label="You"
         className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground"
       >
-        {turn.attachments.length > 0 ? (
-          <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
-            {turn.attachments.map((attachment, index) => (
-              <div
-                className="aspect-[4/3] overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                key={`${attachment.name}-${index}`}
-              >
-                <a href={attachment.dataUrl} rel="noopener noreferrer" target="_blank">
-                  <img
-                    alt={attachment.name}
-                    className="block size-full cursor-zoom-in object-cover"
-                    src={attachment.dataUrl}
-                  />
-                </a>
-              </div>
-            ))}
-          </div>
-        ) : null}
+        <MessageAttachments attachments={turn.attachments} />
         {turn.text === "" ? null : (
           <div
             className={cn(long && !expanded && "relative max-h-44 overflow-hidden")}

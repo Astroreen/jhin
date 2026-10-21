@@ -1,6 +1,6 @@
 // The layout and scroll behaviour follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/ChatView.tsx and chat/MessagesTimeline.tsx.
-import type { AgentResponse, TurnAttachment } from "@jhin/agent-api";
+import type { AgentResponse, StoredAttachment, TurnAttachment } from "@jhin/agent-api";
 import {
   targetKey,
   visitKey,
@@ -12,10 +12,19 @@ import {
 } from "@jhin/client-api";
 import { Alert, AlertAction, AlertDescription, Button, Slot } from "@jhin/ui";
 import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { buildPromptHistory, newThreadDraftKey, threadDraftKey } from "../../lib/composer.ts";
 import { useCatalog } from "../../lib/hooks.ts";
+import { downloadAttachment } from "../../lib/uploads.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
@@ -32,7 +41,7 @@ import { dispatchMode, sendMessage } from "./send.ts";
 import { useAgents, useChat } from "./services.ts";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
-import { TimelineView } from "./timeline.tsx";
+import { AttachmentLoaderContext, TimelineView } from "./timeline.tsx";
 
 /** Stick to the end while the user is there; a pill brings them back otherwise. */
 function useStickToEnd(dependency: unknown) {
@@ -321,6 +330,18 @@ export function ThreadView(props: {
             contents,
           });
 
+  // Attachments of sent messages, read back from the node once each.
+  const loadAttachment = useCallback(
+    (attachment: StoredAttachment) =>
+      chat.attachmentUrls.load(`${targetKey(target)}|${attachment.id}`, () =>
+        downloadAttachment(
+          (method, params) => chat.threads.call(target, method, params),
+          attachment.id,
+        ),
+      ),
+    [chat, targetKey(target)],
+  );
+
   const shownError = openError ?? error;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
@@ -408,40 +429,44 @@ export function ThreadView(props: {
                   This thread was deleted.
                 </div>
               ) : (
-                <TimelineView
-                  footer={
-                    thread === undefined
-                      ? undefined
-                      : (turn, latest) => (
-                          <Slot
-                            name="chat.turn.footer"
-                            props={
-                              {
-                                target,
-                                thread,
-                                turnId: turn.turnId,
-                                state: turn.state,
-                                latest,
-                              } satisfies ChatTurnFooterProps
-                            }
-                          />
-                        )
-                  }
-                  format={settings.timestampFormat}
-                  onRetry={(turn) =>
-                    chat.context.commands
-                      .execute("thread.regenerate", { ...target, threadId, turnId: turn.turnId })
-                      // The command shows its own toast.
-                      .catch(() => undefined)
-                  }
-                  onOpenThread={(id) => chat.navigation.navigate({ ...target, thread: id })}
-                  thread={{ target, threadId }}
-                  timeline={timeline}
-                  {...(savePlan === undefined || props.project === undefined
-                    ? {}
-                    : { onSavePlan: savePlan, projectPath: props.project.path })}
-                  titleOf={(id) => catalog?.threads.find((candidate) => candidate.id === id)?.title}
-                />
+                <AttachmentLoaderContext.Provider value={loadAttachment}>
+                  <TimelineView
+                    footer={
+                      thread === undefined
+                        ? undefined
+                        : (turn, latest) => (
+                            <Slot
+                              name="chat.turn.footer"
+                              props={
+                                {
+                                  target,
+                                  thread,
+                                  turnId: turn.turnId,
+                                  state: turn.state,
+                                  latest,
+                                } satisfies ChatTurnFooterProps
+                              }
+                            />
+                          )
+                    }
+                    format={settings.timestampFormat}
+                    onRetry={(turn) =>
+                      chat.context.commands
+                        .execute("thread.regenerate", { ...target, threadId, turnId: turn.turnId })
+                        // The command shows its own toast.
+                        .catch(() => undefined)
+                    }
+                    onOpenThread={(id) => chat.navigation.navigate({ ...target, thread: id })}
+                    thread={{ target, threadId }}
+                    timeline={timeline}
+                    {...(savePlan === undefined || props.project === undefined
+                      ? {}
+                      : { onSavePlan: savePlan, projectPath: props.project.path })}
+                    titleOf={(id) =>
+                      catalog?.threads.find((candidate) => candidate.id === id)?.title
+                    }
+                  />
+                </AttachmentLoaderContext.Provider>
               )}
             </div>
             <div aria-hidden style={{ height: composer.height }} />

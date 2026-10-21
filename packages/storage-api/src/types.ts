@@ -2,6 +2,8 @@ import { DOTTED_ID, toDisposable, type Disposable } from "@jhin/sdk";
 
 export const KV_CAPABILITY = "storage.kv";
 export const EVENTLOG_CAPABILITY = "storage.eventlog";
+/** `storage.blobs@1`: bytes beside the event log (attachments, screenshots, exports). */
+export const BLOBS_CAPABILITY = "storage.blobs";
 
 export type Json =
   | null
@@ -96,6 +98,64 @@ export interface EventLog {
   trim?(stream: string, through: number): Promise<number>;
 }
 
+export interface BlobInfo {
+  readonly key: string;
+  readonly size: number;
+  /** ISO 8601 time of the last write. */
+  readonly modifiedAt: string;
+}
+
+/**
+ * `storage.blobs@1`: byte strings under namespaced keys. A key is made of
+ * `/`-separated segments, none empty, `.` or `..`. Blobs are written by
+ * appending, so a large one is written in chunks as they arrive.
+ */
+export interface BlobStore {
+  /**
+   * Appends `bytes` to the blob (created when missing) and resolves with its
+   * new size. With `offset`, the append fails with CONFLICT unless the blob's
+   * size equals it, so a chunk sent twice is never written twice.
+   */
+  append(
+    namespace: string,
+    key: string,
+    bytes: Uint8Array,
+    options?: { offset?: number },
+  ): Promise<number>;
+  /** Bytes from `offset` (default 0), at most `length` (default: to the end); undefined when missing. */
+  read(
+    namespace: string,
+    key: string,
+    options?: { offset?: number; length?: number },
+  ): Promise<Uint8Array | undefined>;
+  stat(namespace: string, key: string): Promise<BlobInfo | undefined>;
+  /** Renames a blob, replacing one at `to`; resolves `false` when `from` is missing. */
+  move(namespace: string, from: string, to: string): Promise<boolean>;
+  /** Resolves `true` when the blob existed. */
+  delete(namespace: string, key: string): Promise<boolean>;
+  /** Blobs of a namespace in key order, optionally only keys starting with `prefix`. */
+  list(namespace: string, options?: { prefix?: string }): Promise<BlobInfo[]>;
+  /**
+   * The local file that holds a blob, for a program that reads files (an
+   * agent); absent on stores that keep no files.
+   */
+  path?(namespace: string, key: string): string;
+}
+
+/** Checks a blob key: segments separated by `/`, none empty, `.` or `..`. */
+export function assertBlobKey(key: string): void {
+  assertName("key", key);
+  if (key.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new StorageError(
+      "INVALID",
+      "A blob key is made of non-empty segments other than . and ..",
+      {
+        key,
+      },
+    );
+  }
+}
+
 export type StorageErrorCode = "CONFLICT" | "INVALID" | "CORRUPT";
 
 export class StorageError extends Error {
@@ -140,7 +200,7 @@ export function assertRecords(records: readonly RecordWrite[]): void {
 }
 
 export function assertCount(
-  name: "after" | "limit" | "expectedHead" | "through",
+  name: "after" | "limit" | "expectedHead" | "through" | "offset" | "length",
   value: number | undefined,
 ): void {
   if (value !== undefined && (!Number.isInteger(value) || value < 0)) {

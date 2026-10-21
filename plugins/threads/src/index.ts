@@ -39,8 +39,10 @@ import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
 import {
+  BLOBS_CAPABILITY,
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
+  type BlobStore,
   type EventLog,
   type Json,
   type KeyValueStore,
@@ -50,6 +52,7 @@ import {
 } from "@jhin/storage-api";
 
 import { matchTexts, mergeBackMessage, searchTexts, type SearchText } from "./history.ts";
+import { AttachmentRef, MAX_ATTACHMENTS, createAttachments } from "./attachments.ts";
 
 export { THREADS_STREAM };
 
@@ -69,13 +72,12 @@ const STATUS_TTL_MS = 30_000;
 /** The title a thread gets until its first message names it. */
 export const DEFAULT_THREAD_TITLE = "New thread";
 const MAX_TITLE_LENGTH = 60;
-/** Per image, as a data URL (base64 adds a third). */
+/** Per image sent as a data URL (D54; base64 adds a third). */
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
-const MAX_ATTACHMENTS = 10;
 /** What `projects.write-file` writes at most: a plan, a note, never a dump. */
 const MAX_WRITTEN_FILE_CHARS = 1_000_000;
-/** All images of one message together, as data URLs: they are stored in the turn's first event. */
-const MAX_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
+/** Images sent as data URLs, together: they are stored in the turn's first event. */
+const MAX_INLINE_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
 const MAX_BROWSE_ENTRIES = 500;
 /** The message texts a node keeps for searching, in characters, across its threads (D227). */
 const SEARCH_CACHE_CHARS = 32_000_000;
@@ -402,11 +404,14 @@ const Response: z.ZodType<AgentResponse> = z.discriminatedUnion("kind", [
   }),
 ]);
 
+/** Uploads by id (D293), or D54's data URLs, which are stored in the event. */
 const Attachments = z
-  .array(Attachment)
+  .array(z.union([AttachmentRef, Attachment]))
   .max(MAX_ATTACHMENTS)
   .refine(
-    (list) => list.reduce((total, item) => total + item.dataUrl.length, 0) <= MAX_ATTACHMENTS_TOTAL,
+    (list) =>
+      list.reduce((total, item) => total + ("dataUrl" in item ? item.dataUrl.length : 0), 0) <=
+      MAX_INLINE_ATTACHMENTS_TOTAL,
     "are too large together",
   );
 
@@ -414,7 +419,7 @@ const Attachments = z
 const QueuedMessage = z.object({
   id: z.string(),
   text: z.string(),
-  attachments: z.array(Attachment).optional(),
+  attachments: z.array(z.union([AttachmentRef, Attachment])).optional(),
   ...AgentSettings,
   createdAt: z.string(),
   updatedAt: z.string().optional(),
@@ -444,7 +449,7 @@ const QueueView = z.object({
   messages: z.array(
     QueuedMessage.extend({
       attachments: z.array(
-        z.object({ kind: z.literal("image"), name: z.string(), mimeType: z.string() }),
+        z.object({ kind: z.enum(["image", "file"]), name: z.string(), mimeType: z.string() }),
       ),
     }),
   ),
@@ -610,6 +615,7 @@ export default definePlugin({
     };
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
+    const blobs = context.services.tryGet<BlobStore>(BLOBS_CAPABILITY);
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
     // Reading threads takes what threads.get takes (security.md D415).
     const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
@@ -786,6 +792,22 @@ export default definePlugin({
       });
       return result;
     }
+
+    // Uploads and the attachments of messages (D291–D294).
+    const attachmentStore = createAttachments({
+      kv,
+      blobs,
+      namespace: NAMESPACE,
+      now: () => new Date(),
+      queued,
+      log: (message, data) => context.log.warn(message, data),
+    });
+    attachmentStore.register(context.commands);
+    void attachmentStore
+      .sweep()
+      .catch((error: unknown) =>
+        context.log.warn("could not sweep uploads", { error: String(error) }),
+      );
     function updateThread(id: string, change: (thread: Thread) => Thread): Promise<Thread> {
       return queued(id, async () => {
         const current = await getThread(id);
@@ -1122,6 +1144,8 @@ export default definePlugin({
         };
         // What the thread still shows: a rollback's dropped turns are not history (D221).
         const history = visibleThreadEvents(await log.read(stream));
+        // The runtime gets the bytes of what was uploaded, and its file (D294).
+        const resolved = await attachmentStore.resolve(input.attachments);
         // The record says the turn runs before its first event is written: a node
         // that stops in between finds it on restart and closes it.
         await setTurnStatus(thread.id, turnId, runtime.agentId, "running");
@@ -1184,7 +1208,10 @@ export default definePlugin({
           turn = runtime.startTurn({
             threadId: thread.id,
             turnId,
-            input: handoff === undefined ? input : { ...input, text: handoff.text },
+            input: {
+              text: handoff === undefined ? input.text : handoff.text,
+              ...(resolved === undefined ? {} : { attachments: resolved }),
+            },
             history,
             cwd: hookInput.cwd,
             ...settings,
@@ -1431,6 +1458,13 @@ export default definePlugin({
               // Its queue goes with it.
               [{ namespace: NAMESPACE, key: queueKey(thread.id), delete: true }],
             ),
+          );
+          // Its attachments go with it; one left behind is no reason to keep the thread.
+          await attachmentStore.deleteThread(thread.id).catch((error: unknown) =>
+            context.log.warn("could not delete a thread's attachments", {
+              threadId: thread.id,
+              error: String(error),
+            }),
           );
           deletions.delete(thread.id);
           // Gone: its record is, so nothing takes it for a thread any more.
@@ -2706,8 +2740,19 @@ export default definePlugin({
       input: Outgoing,
       output: z.object({ turnId: z.string() }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, ...message }) => {
-        assertMessage(message.text, message.attachments);
+      handler: async ({ threadId, ...sent }) => {
+        assertMessage(sent.text, sent.attachments);
+        // Uploads become the thread's: checked, then moved under it (D293).
+        const message =
+          sent.attachments === undefined || sent.attachments.length === 0
+            ? sent
+            : {
+                ...sent,
+                attachments: (await attachmentStore.claim(
+                  threadId,
+                  sent.attachments,
+                )) as Outgoing["attachments"],
+              };
         return { turnId: await startTurn(threadId, message) };
       },
     });
@@ -2908,8 +2953,10 @@ export default definePlugin({
           return false;
         }
         const input: TurnInput = { text, ...(attachments === undefined ? {} : { attachments }) };
+        // The runtime reads the uploads' bytes and files; the event keeps their ids.
+        const resolved = await attachmentStore.resolve(input.attachments);
         try {
-          turn.steer(input);
+          turn.steer({ text, ...(resolved === undefined ? {} : { attachments: resolved }) });
         } catch {
           // It ended before it took the message.
           return false;
@@ -2993,7 +3040,12 @@ export default definePlugin({
     }
 
     /** What every way of sending checks first: a message, a known agent, a live thread. */
-    const checkOutgoing = async (threadId: string, message: Outgoing) => {
+    /**
+     * What every way of sending checks first: a message, a known agent, a live
+     * thread. Its uploads become the thread's (D293): the message as returned
+     * names them as the node knows them.
+     */
+    const checkOutgoing = async (threadId: string, message: Outgoing): Promise<Outgoing> => {
       assertMessage(message.text, message.attachments);
       if (message.agentId !== undefined && registry.get(message.agentId) === undefined) {
         throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${message.agentId} on this node`, {
@@ -3002,6 +3054,14 @@ export default definePlugin({
       }
       const thread = await getThread(threadId);
       if (thread.archivedAt !== undefined) throw archivedError(threadId);
+      if (message.attachments === undefined || message.attachments.length === 0) return message;
+      return {
+        ...message,
+        attachments: (await attachmentStore.claim(
+          threadId,
+          message.attachments,
+        )) as Outgoing["attachments"],
+      };
     };
 
     const QueueTarget = z.object({ threadId: z.string(), messageId: z.string() });
@@ -3014,8 +3074,8 @@ export default definePlugin({
       input: Outgoing.extend({ messageId: MessageIdInput.optional() }),
       output: Sent,
       permissions: ["threads.write"],
-      handler: async ({ threadId, messageId, ...message }) => {
-        await checkOutgoing(threadId, message);
+      handler: async ({ threadId, messageId, ...sent }) => {
+        const message = await checkOutgoing(threadId, sent);
         return enqueue(threadId, messageId ?? Crypto.randomUUID(), message);
       },
     });
@@ -3179,8 +3239,8 @@ export default definePlugin({
       input: Outgoing.extend({ messageId: MessageIdInput.optional() }),
       output: Sent.extend({ outcome: z.enum(["steered", "started", "queued"]) }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, messageId: given, ...message }) => {
-        await checkOutgoing(threadId, message);
+      handler: async ({ threadId, messageId: given, ...outgoing }) => {
+        const message = await checkOutgoing(threadId, outgoing);
         const messageId = given ?? Crypto.randomUUID();
         const turnId = active.get(threadId)?.turnId;
         if (turnId !== undefined && (await steerInto(threadId, messageId, message))) {
@@ -3420,7 +3480,10 @@ export default definePlugin({
       input: z.object({ threadId: z.string(), turnId: z.string() }),
       output: z.object({
         turnId: z.string(),
-        input: z.object({ text: z.string(), attachments: z.array(Attachment).optional() }),
+        input: z.object({
+          text: z.string(),
+          attachments: z.array(z.union([AttachmentRef, Attachment])).optional(),
+        }),
         ...AgentSettings,
         agentId: z.string(),
         /** The turn before it, which a rollback to before this one keeps last. */

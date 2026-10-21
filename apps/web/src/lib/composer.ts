@@ -1,7 +1,9 @@
 // Prompt history is derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/composerPromptHistory.ts. Drafts follow apps/web/src/composerDraftStore.ts.
-import type { TurnAttachment } from "@jhin/agent-api";
+import type { StoredAttachment } from "@jhin/agent-api";
 import { targetKey, type NodeTarget } from "@jhin/client-api";
+
+import { ATTACHMENT_LIMITS } from "./uploads.ts";
 
 export interface PromptHistoryEntry {
   readonly id: string;
@@ -62,14 +64,17 @@ export function stepPromptHistory(input: {
   return { position: { entryId: entry.id, recalled: entry.prompt }, prompt: entry.prompt };
 }
 
-/** What a composer keeps between visits: its text and pasted images. */
+/** An uploaded attachment kept with a draft, with its thumbnail when it is an image. */
+export type DraftAttachment = StoredAttachment & { readonly previewUrl?: string };
+
+/** What a composer keeps between visits: its text and uploaded attachments. */
 export interface ComposerDraft {
   readonly prompt: string;
-  readonly attachments: readonly TurnAttachment[];
+  readonly attachments: readonly DraftAttachment[];
 }
 
 const DRAFTS_STORAGE_KEY = "jhin.drafts.v1";
-/** Drafts with images can be large; beyond this the images are not kept. */
+/** Drafts with thumbnails can be large; beyond this the attachments are not kept. */
 const MAX_STORED_BYTES = 2_000_000;
 
 /**
@@ -162,7 +167,7 @@ export const threadDraftKey = (target: NodeTarget, threadId: string) =>
 export const newThreadDraftKey = (target: NodeTarget, projectId: string) =>
   `${targetKey(target)}|draft|${projectId}`;
 
-/** A draft with a sent message put back after it: its text after the draft's (a blank line between), its images after the draft's. */
+/** A draft with a sent message put back after it: its text after the draft's (a blank line between), its attachments after the draft's. */
 export function appendToDraft(
   draft: ComposerDraft | undefined,
   message: ComposerDraft,
@@ -190,59 +195,26 @@ export function restoreIntoDraft(
   return dropped.length > 0 ? undefined : appendToDraft(draft, message);
 }
 
-/** Images the composer accepts, as T3 Code does (HEIC is not converted here). */
-const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
-/** Per image; the node takes data URLs up to 8 MB, and base64 adds a third. */
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-/** All images of one message, as data URLs; the node takes no more. */
-const MAX_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
-
-/** The attachments that fit together in one message, and those that do not. */
-export function fitAttachments(
-  current: readonly TurnAttachment[],
-  added: readonly TurnAttachment[],
-  limit = { count: 10, total: MAX_ATTACHMENTS_TOTAL },
-): { kept: TurnAttachment[]; dropped: TurnAttachment[] } {
+/**
+ * The attachments that fit together in one message (T3's limits: 100 of them,
+ * 80 MiB of images), and those that do not. Sizes are what will be uploaded.
+ */
+export function fitAttachments<T extends { readonly kind: string; readonly sizeBytes: number }>(
+  current: readonly T[],
+  added: readonly T[],
+  limit: { readonly count: number; readonly totalImageBytes: number } = ATTACHMENT_LIMITS,
+): { kept: T[]; dropped: T[] } {
   const kept = [...current];
-  const dropped: TurnAttachment[] = [];
-  let total = current.reduce((sum, item) => sum + item.dataUrl.length, 0);
+  const dropped: T[] = [];
+  const imageBytes = (item: T) => (item.kind === "image" ? item.sizeBytes : 0);
+  let total = current.reduce((sum, item) => sum + imageBytes(item), 0);
   for (const item of added) {
-    if (kept.length >= limit.count || total + item.dataUrl.length > limit.total) {
+    if (kept.length >= limit.count || total + imageBytes(item) > limit.totalImageBytes) {
       dropped.push(item);
       continue;
     }
     kept.push(item);
-    total += item.dataUrl.length;
+    total += imageBytes(item);
   }
   return { kept, dropped };
-}
-
-export function readImage(file: File): Promise<TurnAttachment> {
-  return new Promise((resolve, reject) => {
-    if (!(IMAGE_TYPES as readonly string[]).includes(file.type)) {
-      reject(
-        new Error(
-          `'${file.name}' is not a supported image type. Attach GIF, JPEG, PNG, or WebP images.`,
-        ),
-      );
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      reject(new Error(`'${file.name}' is larger than 5 MB.`));
-      return;
-    }
-    const reader = new FileReader();
-    reader.addEventListener("load", () =>
-      resolve({
-        kind: "image",
-        name: file.name || "image",
-        mimeType: file.type,
-        dataUrl: String(reader.result),
-      }),
-    );
-    reader.addEventListener("error", () =>
-      reject(reader.error ?? new Error(`Cannot read '${file.name}'`)),
-    );
-    reader.readAsDataURL(file);
-  });
 }

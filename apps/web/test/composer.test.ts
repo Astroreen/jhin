@@ -81,9 +81,11 @@ describe("prompt history", () => {
 describe("drafts", () => {
   const attachment = {
     kind: "image" as const,
+    id: "att-1",
     name: "a.png",
     mimeType: "image/png",
-    dataUrl: "data:image/png;base64,AAAA",
+    sizeBytes: 3,
+    previewUrl: "data:image/png;base64,AAAA",
   };
 
   it("loads what the device kept and ignores unreadable storage", () => {
@@ -128,22 +130,22 @@ describe("drafts", () => {
 });
 
 describe("attachments of one message", () => {
-  /** An image whose data URL is `length` characters long. */
-  const image = (name: string, length: number) => ({
-    kind: "image" as const,
-    name,
-    mimeType: "image/png",
-    dataUrl: "data:image/png;base64,".padEnd(length, "A"),
-  });
+  const image = (name: string, sizeBytes: number) => ({ kind: "image", name, sizeBytes });
+  const file = (name: string, sizeBytes: number) => ({ kind: "file", name, sizeBytes });
 
-  it("keeps what fits in count and size, in order, and names the rest", () => {
-    const limit = { count: 3, total: 100 };
+  it("keeps what fits in count and image bytes, in order, and names the rest", () => {
+    const limit = { count: 4, totalImageBytes: 100 };
     const kept = [image("a", 30)];
-    const result = fitAttachments(kept, [image("b", 40), image("c", 60), image("d", 25)], limit);
-    expect(result.kept.map((item) => item.name)).toEqual(["a", "b", "d"]);
+    const result = fitAttachments(
+      kept,
+      [image("b", 40), image("c", 60), file("big", 500), image("d", 25)],
+      limit,
+    );
+    // Files do not count towards the images' bytes.
+    expect(result.kept.map((item) => item.name)).toEqual(["a", "b", "big", "d"]);
     expect(result.dropped.map((item) => item.name)).toEqual(["c"]);
 
-    const full = fitAttachments(result.kept, [image("e", 25)], limit);
+    const full = fitAttachments(result.kept, [file("e", 1)], limit);
     expect(full.dropped.map((item) => item.name)).toEqual(["e"]);
   });
 });

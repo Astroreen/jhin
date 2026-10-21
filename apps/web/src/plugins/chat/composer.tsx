@@ -52,7 +52,6 @@ import {
   PencilRulerIcon,
   SearchIcon,
   ShieldIcon,
-  XIcon,
   CornerUpRightIcon,
   GripVerticalIcon,
   PencilIcon,
@@ -71,14 +70,19 @@ import {
 } from "react";
 
 import {
-  fitAttachments,
-  readImage,
   appendToDraft,
   stepPromptHistory,
   type ComposerDraft,
   type PromptHistoryEntry,
   type PromptHistoryPosition,
 } from "../../lib/composer.ts";
+import {
+  formatAttachmentSize,
+  isPasteAsTextShortcut,
+  pastedTextDisposition,
+  pastedTextFile,
+  shouldHandleAttachmentPaste,
+} from "../../lib/attachment-files.ts";
 import { formatTokens } from "../../lib/format.ts";
 import {
   currentOptionValue,
@@ -91,6 +95,13 @@ import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { isMacPlatform, currentPlatform } from "../../lib/keybindings.ts";
 import type { RequestItem, ThreadQueue } from "../../lib/timeline.ts";
 import { ComposerBanner } from "./banner.tsx";
+import {
+  ComposerAttachments,
+  attachmentItems,
+  draftAttachments,
+  useComposerAttachments,
+  type ComposerAttachment,
+} from "./composer-attachments.tsx";
 import {
   ComposerControl,
   ComposerControlChevron,
@@ -1095,9 +1106,14 @@ export function Composer(props: ComposerProps) {
   const settings = useSection(chat.context, CHAT_SECTION, ChatSettings);
   const initial = drafts.get(props.draftKey);
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
-  const [attachments, setAttachments] = useState<readonly TurnAttachment[]>(
-    initial?.attachments ?? [],
-  );
+  const uploads = useComposerAttachments({
+    call: (method, params) => chat.threads.call(props.target, method, params),
+    toasts,
+    initial: initial?.attachments,
+  });
+  const attachments = uploads.items;
+  /** Ctrl/⌘+Shift+V was pressed: the next paste stays text, however large (T3). */
+  const pasteAsText = useRef(false);
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -1116,14 +1132,16 @@ export function Composer(props: ComposerProps) {
   const [editing, setEditing] = useState<
     | {
         readonly id: string;
-        readonly draft: { prompt: string; attachments: readonly TurnAttachment[] };
+        readonly draft: { prompt: string; attachments: readonly ComposerAttachment[] };
       }
     | undefined
   >();
 
   useEffect(() => {
     // A queued message being edited is not the thread's draft.
-    if (editing === undefined) drafts.set(props.draftKey, { prompt, attachments });
+    if (editing === undefined) {
+      drafts.set(props.draftKey, { prompt, attachments: draftAttachments(attachments) });
+    }
   }, [drafts, props.draftKey, prompt, attachments, editing]);
 
   const queued = props.queue?.messages ?? [];
@@ -1141,7 +1159,7 @@ export function Composer(props: ComposerProps) {
     const { draft } = editing;
     if (draft.prompt.trim() !== "" || draft.attachments.length > 0) {
       setPrompt((typed) => (draft.prompt.trim() === "" ? typed : `${typed}\n\n${draft.prompt}`));
-      setAttachments((typed) => [...typed, ...draft.attachments]);
+      uploads.replace([...uploads.items, ...draft.attachments]);
     }
     setEditing(undefined);
   }, [editedGone]);
@@ -1163,7 +1181,7 @@ export function Composer(props: ComposerProps) {
       }
       setEditing({ id: messageId, draft: typedNow.current });
       setPrompt(message.text);
-      setAttachments(message.attachments);
+      uploads.replace(attachmentItems(message.attachments));
       textarea.current?.focus();
     } finally {
       queueBusy.current = false;
@@ -1172,7 +1190,7 @@ export function Composer(props: ComposerProps) {
   const cancelEdit = () => {
     if (editing === undefined) return;
     setPrompt(editing.draft.prompt);
-    setAttachments(editing.draft.attachments);
+    uploads.replace(editing.draft.attachments);
     setEditing(undefined);
   };
 
@@ -1236,13 +1254,13 @@ export function Composer(props: ComposerProps) {
   };
   useImperativeHandle(props.handleRef, () => ({
     restore(draft) {
-      const restored = appendToDraft({ prompt, attachments }, draft);
+      const restored = appendToDraft({ prompt, attachments: draftAttachments(attachments) }, draft);
       setPrompt(restored.prompt);
-      setAttachments(restored.attachments);
+      uploads.replace(restored.attachments.map((item) => attachmentItems([item])[0]!));
       historyPosition.current = null;
       focus();
     },
-    draft: () => ({ prompt, attachments }),
+    draft: () => ({ prompt, attachments: draftAttachments(attachments) }),
     focus,
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,
@@ -1321,38 +1339,7 @@ export function Composer(props: ComposerProps) {
     return () => subscription.dispose();
   }, [keybindings, typed]);
 
-  const addFiles = async (files: readonly File[]) => {
-    const images = files.filter((file) => file.type.startsWith("image/"));
-    if (images.length === 0) {
-      if (files.length > 0) toasts?.show({ type: "warning", title: "Only images can be attached" });
-      return;
-    }
-    const read = await Promise.allSettled(images.map(readImage));
-    const added: TurnAttachment[] = [];
-    for (const result of read) {
-      if (result.status === "fulfilled") added.push(result.value);
-      else
-        toasts?.show({
-          type: "error",
-          title: "Image not attached",
-          description: String(result.reason?.message ?? result.reason),
-        });
-    }
-    // What fits in one message (the node takes no more); the state is updated
-    // from its latest value, the warning from the one this drop started with.
-    const { dropped } = fitAttachments(attachments, added);
-    setAttachments((current) => fitAttachments(current, added).kept);
-    if (dropped.length > 0) {
-      toasts?.show({
-        type: "warning",
-        title:
-          dropped.length === 1
-            ? "An image was not attached"
-            : `${dropped.length} images were not attached`,
-        description: "A message takes up to 10 images, 20 MB together.",
-      });
-    }
-  };
+  const addFiles = (files: readonly File[]) => uploads.add(files);
 
   const hasContent = prompt.trim() !== "" || attachments.length > 0;
   // T3 shows the follow-up only while the composer holds no attachments.
@@ -1393,16 +1380,20 @@ export function Composer(props: ComposerProps) {
       return;
     }
     if (!hasContent) return;
+    const ready = uploads.forMessage();
+    if (!ready.ok) {
+      toasts?.show({ type: "error", title: ready.message });
+      return;
+    }
     const text = prompt;
-    const images = attachments;
     if (editing !== undefined) {
       // An edit is saved, never sent as a new message beside the queued one.
       if (props.queueActions === undefined) return;
       setBusy(true);
       try {
-        if (await props.queueActions.edit(editing.id, text, images)) {
+        if (await props.queueActions.edit(editing.id, text, ready.attachments)) {
           setPrompt(editing.draft.prompt);
-          setAttachments(editing.draft.attachments);
+          uploads.replace(editing.draft.attachments);
           setEditing(undefined);
         }
       } finally {
@@ -1412,14 +1403,16 @@ export function Composer(props: ComposerProps) {
     }
     // Cleared first, restored if sending fails (as T3 Code does).
     setPrompt("");
-    setAttachments([]);
+    const taken = uploads.take();
     historyPosition.current = null;
     setBusy(true);
     try {
-      const sent = await props.onSend(text, images, alternate);
+      const sent = await props.onSend(text, ready.attachments, alternate);
       if (!sent) {
         setPrompt(text);
-        setAttachments(images);
+        taken.restore();
+      } else {
+        taken.sent();
       }
     } finally {
       setBusy(false);
@@ -1499,6 +1492,11 @@ export function Composer(props: ComposerProps) {
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    // T3's ⌘/Ctrl+Shift+V: the paste it starts stays inline, however large.
+    if (isPasteAsTextShortcut(event, isMacPlatform(currentPlatform()))) {
+      pasteAsText.current = true;
+      return;
+    }
     if (event.key === "Tab" && event.shiftKey && planSupported) {
       event.preventDefault();
       togglePlanMode();
@@ -1560,13 +1558,32 @@ export function Composer(props: ComposerProps) {
 
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(event.clipboardData.files);
-    if (files.length === 0) return;
-    if (
-      files.some((file) => file.type.startsWith("image/")) ||
-      event.clipboardData.getData("text") === ""
-    ) {
+    const plainText = event.clipboardData.getData("text/plain");
+    const bypass = pasteAsText.current;
+    pasteAsText.current = false;
+    if (files.length > 0 && shouldHandleAttachmentPaste({ files, plainText })) {
       event.preventDefault();
       void addFiles(files);
+      return;
+    }
+    // A large paste becomes a file, as T3 attaches it (D295).
+    if (
+      pastedTextDisposition({ text: plainText, canAttach: true, bypassAutoAttachment: bypass }) ===
+      "attachment"
+    ) {
+      event.preventDefault();
+      const file = pastedTextFile(
+        plainText,
+        attachments.map((item) => item.name),
+      );
+      void addFiles([file]);
+      toasts?.show({
+        type: "info",
+        title: `Large paste attached as ${file.name}`,
+        description: `${formatAttachmentSize(file.size)} · Use ${
+          isMacPlatform(currentPlatform()) ? "⌘⇧V" : "Ctrl+Shift+V"
+        } to keep a large paste inline.`,
+      });
     }
   };
   const onDrop = (event: DragEvent<HTMLElement>) => {
@@ -1582,7 +1599,7 @@ export function Composer(props: ComposerProps) {
         ? "Type your own answer, or leave this blank to use the selected option"
         : props.unavailable !== undefined
           ? props.unavailable
-          : "Ask anything, or attach images";
+          : "Ask anything, or attach files";
   const disabled = approval !== undefined;
   const mode = RUNTIME_MODES[runtimeMode] ?? RUNTIME_MODES["full-access"]!;
 
@@ -1655,34 +1672,11 @@ export function Composer(props: ComposerProps) {
                       approval !== undefined && "pb-3 sm:pb-4",
                     )}
                   >
-                    {attachments.length > 0 ? (
-                      <div className="mb-3 flex max-w-full flex-wrap gap-2">
-                        {attachments.map((attachment, index) => (
-                          <div
-                            className="group/attachment relative h-16 w-16 shrink-0 snap-start overflow-hidden rounded-lg border border-border/80 bg-background"
-                            key={`${attachment.name}-${index}`}
-                          >
-                            <img
-                              alt={attachment.name}
-                              className="h-full w-full object-cover"
-                              src={attachment.dataUrl}
-                            />
-                            <span className="absolute top-1 right-1 flex">
-                              <Button
-                                aria-label={`Remove ${attachment.name}`}
-                                onClick={() =>
-                                  setAttachments((current) => current.filter((_, i) => i !== index))
-                                }
-                                size="icon-xs"
-                                variant="media-close"
-                              >
-                                <XIcon />
-                              </Button>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
+                    <ComposerAttachments
+                      items={attachments}
+                      onRemove={uploads.remove}
+                      onRetry={uploads.retry}
+                    />
                     <div className="relative flow-root text-sm max-sm:pointer-coarse:text-[16px]">
                       <textarea
                         aria-label="Message"
@@ -1839,7 +1833,6 @@ export function Composer(props: ComposerProps) {
                         data-chat-composer-actions="right"
                       >
                         <input
-                          accept="image/png,image/jpeg,image/gif,image/webp"
                           className="hidden"
                           multiple
                           onChange={(event) => {
@@ -1853,7 +1846,7 @@ export function Composer(props: ComposerProps) {
                           <TooltipTrigger
                             render={
                               <Button
-                                aria-label="Attach images"
+                                aria-label="Attach files"
                                 onClick={() => fileInput.current?.click()}
                                 onPointerDown={(event) => event.preventDefault()}
                                 size="icon-sm"
@@ -1864,7 +1857,7 @@ export function Composer(props: ComposerProps) {
                           >
                             <PaperclipIcon />
                           </TooltipTrigger>
-                          <TooltipPopup side="top">Attach images</TooltipPopup>
+                          <TooltipPopup side="top">Attach files</TooltipPopup>
                         </Tooltip>
                         {props.usage === undefined ? null : <ContextMeter usage={props.usage} />}
                         {question !== undefined ? (

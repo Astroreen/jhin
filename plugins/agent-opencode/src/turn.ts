@@ -161,6 +161,19 @@ async function withAttachments(
   await Fs.mkdir(folder, { recursive: true, mode: 0o700 });
   let result = text;
   for (const [index, attachment] of attachments.entries()) {
+    if (!("dataUrl" in attachment)) {
+      // An upload the node keeps as a file is named where it is (D294); one without a
+      // file is written next to the others.
+      let path = attachment.path;
+      if (path === undefined) {
+        const base = Path.basename(attachment.name).replaceAll(/[^\w.-]/g, "_") || "file";
+        path = Path.join(folder, `${index + 1}-${base}`);
+        await Fs.writeFile(path, await attachment.read(), { mode: 0o600 });
+      }
+      const note = `[Attached ${attachment.kind} "${attachment.name}" is saved at: ${path}]`;
+      result = result.length === 0 ? note : `${result}\n\n${note}`;
+      continue;
+    }
     const match = /^data:([^;,]+);base64,(.*)$/s.exec(attachment.dataUrl);
     if (match === null) continue;
     const base = Path.basename(attachment.name).replaceAll(/[^\w.-]/g, "_") || "image";
