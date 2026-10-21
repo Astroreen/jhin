@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vite-plus/test";
+import * as Fs from "node:fs";
+import * as Os from "node:os";
+import * as Path from "node:path";
+
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { Chromium } from "../src/chromium.ts";
 
@@ -8,17 +12,42 @@ function fakeLauncher(fail: (executablePath: string | undefined) => string | und
   const browser = {
     on: () => undefined,
     close: async () => undefined,
-    newContext: async () => ({ newPage: async () => ({}) }),
+    newContext: async () => ({ newPage: async () => ({}), on: () => undefined, pages: () => [] }),
   };
-  const launcher = async () => ({
-    launch: async (options?: { executablePath?: string }) => {
-      launched.push(options?.executablePath);
-      const failure = fail(options?.executablePath);
-      if (failure !== undefined) throw new Error(failure);
-      return browser as never;
-    },
-  });
-  return { launched, launcher };
+  /** Persistent profiles started, by folder. */
+  const persistent: string[] = [];
+  const launcher = async () =>
+    ({
+      launch: async (options?: { executablePath?: string }) => {
+        launched.push(options?.executablePath);
+        const failure = fail(options?.executablePath);
+        if (failure !== undefined) throw new Error(failure);
+        return browser;
+      },
+      launchPersistentContext: async (directory: string, options?: { executablePath?: string }) => {
+        launched.push(options?.executablePath);
+        const failure = fail(options?.executablePath);
+        if (failure !== undefined) throw new Error(failure);
+        persistent.push(directory);
+        let closed = false;
+        const listeners: (() => void)[] = [];
+        return {
+          pages: () => [],
+          on: (event: string, listener: () => void) => {
+            if (event === "close") listeners.push(listener);
+          },
+          newPage: async () => ({}),
+          close: async () => {
+            closed = true;
+            for (const listener of listeners) listener();
+          },
+          get closed() {
+            return closed;
+          },
+        };
+      },
+    }) as never;
+  return { launched, launcher, persistent };
 }
 
 function fakeShell() {
@@ -111,5 +140,50 @@ describe("which browser a tab starts (D951)", () => {
       new Chromium({ headlessShell: shell, launcher: broken.launcher }).newPage(true),
     ).rejects.toMatchObject({ code: "PREVIEW_UNAVAILABLE" });
     expect(shell.installs).toBe(0);
+  });
+});
+
+describe("browser profiles (D952)", () => {
+  const profilesDir = () => {
+    const dir = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-profiles-"));
+    dirs.push(dir);
+    return dir;
+  };
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) Fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("gives each persistent profile its own folder, once, and incognito the shared browser", async () => {
+    const root = profilesDir();
+    const { launched, launcher, persistent } = fakeLauncher(() => undefined);
+    const chromium = new Chromium({ launcher, profilesDir: root });
+    await chromium.newPage(false);
+    await chromium.newPage(false);
+    await chromium.newPage(false, "work");
+    await chromium.newPage(false, "..");
+    expect(persistent).toEqual([
+      Path.join(root, "default"),
+      Path.join(root, "work"),
+      Path.join(root, "%2E%2E"),
+    ]);
+    await chromium.newPage(false, "incognito");
+    // Incognito and an agent's tab start the one shared browser, not a profile.
+    await chromium.newPage(true);
+    expect(launched).toHaveLength(4);
+  });
+
+  it("clears a profile: its context closes and its folder goes", async () => {
+    const root = profilesDir();
+    const { launcher, persistent } = fakeLauncher(() => undefined);
+    const chromium = new Chromium({ launcher, profilesDir: root });
+    const { context } = await chromium.newPage(false, "work");
+    Fs.writeFileSync(Path.join(root, "work", "Cookies"), "session");
+    await chromium.clearProfile("work");
+    expect((context as unknown as { closed: boolean }).closed).toBe(true);
+    expect(Fs.existsSync(Path.join(root, "work"))).toBe(false);
+    // The next tab of that profile starts it again, from nothing.
+    await chromium.newPage(false, "work");
+    expect(persistent).toEqual([Path.join(root, "work"), Path.join(root, "work")]);
   });
 });

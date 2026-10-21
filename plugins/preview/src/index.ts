@@ -40,6 +40,7 @@ import {
   PreviewTabDialogInput,
   PreviewTabInputInput,
   PreviewTabNavigateInput,
+  PreviewProfileClearInput,
   PreviewTabOpenInput,
   PreviewTarget,
   PreviewTypeInput,
@@ -106,11 +107,17 @@ export default definePlugin({
     if (headlessShell !== undefined) {
       context.subscriptions.add({ dispose: () => headlessShell.dispose() });
     }
+    const chromium = new Chromium({
+      executablePath: () => context.config.get<Config>(CONFIG_SECTION).executablePath,
+      headlessShell,
+      // T3's persistent profiles, kept with the plugin's data (D952).
+      profilesDir: Path.join(
+        paths?.dataDir(context.plugin.id) ?? Path.join(Os.tmpdir(), "jhin-preview"),
+        "profiles",
+      ),
+    });
     const tabs = createTabs({
-      chromium: new Chromium({
-        executablePath: () => context.config.get<Config>(CONFIG_SECTION).executablePath,
-        headlessShell,
-      }),
+      chromium,
       streams,
       dataDir: paths?.dataDir(context.plugin.id) ?? Path.join(Os.tmpdir(), "jhin-preview"),
       log: context.log,
@@ -482,6 +489,19 @@ export default definePlugin({
     });
 
     // --- The panel's (T3's preview RPC and stream messages, D402) ----------------------
+    context.commands.register({
+      name: "preview.profile.clear",
+      title: "Clear browser profile",
+      description:
+        "Forgets a browser profile's cookies, logins and storage on this node (T3's Clear profile); its open tabs close. Incognito keeps nothing to clear",
+      input: PreviewProfileClearInput,
+      output: Done,
+      permissions: control,
+      handler: async ({ profileId }) => {
+        await chromium.clearProfile(profileId);
+        return {};
+      },
+    });
     context.commands.register({
       name: "preview.tab.open",
       title: "Open a browser tab",

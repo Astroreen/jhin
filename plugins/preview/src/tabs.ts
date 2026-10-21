@@ -46,6 +46,7 @@ import {
   type PreviewUploadInput,
   type PreviewViewportSetting,
   type PreviewWaitForInput,
+  DEFAULT_BROWSER_PROFILE_ID,
 } from "@jhin/preview-api";
 import type { MemoryStreams } from "@jhin/rpc";
 import type { Json } from "@jhin/storage-api";
@@ -96,6 +97,8 @@ interface Tab {
   readonly cdp: CDPSession;
   readonly context: BrowserContext;
   readonly isolated: boolean;
+  /** A human's tab: the profile it browses with (D952). */
+  readonly profileId: string | undefined;
   readonly control: TabControl;
   readonly openerTabId: string | undefined;
   readonly openedAt: string;
@@ -243,6 +246,7 @@ export function createTabs(options: TabsOptions) {
     visible: tab.viewers > 0,
     reveal: tab.reveal,
     ...(tab.openerTabId === undefined ? {} : { openerTabId: tab.openerTabId }),
+    ...(tab.profileId === undefined ? {} : { profileId: tab.profileId }),
     openedAt: tab.openedAt,
     updatedAt: tab.updatedAt,
   });
@@ -314,11 +318,19 @@ export function createTabs(options: TabsOptions) {
     reveal: boolean;
     setting?: PreviewViewportSetting | undefined;
     adopted?: { page: Page; openerTabId: string } | undefined;
+    profileId?: string | undefined;
   }): Promise<Tab> {
     const isolated = input.adopted === undefined && input.agentId !== null;
+    // A popup keeps its opener's profile (none for an agent's own context).
+    const profileId =
+      input.adopted !== undefined
+        ? input.profileId
+        : isolated
+          ? undefined
+          : (input.profileId ?? DEFAULT_BROWSER_PROFILE_ID);
     const opened = input.adopted
       ? { page: input.adopted.page, context: input.adopted.page.context() }
-      : await chromium.newPage(isolated);
+      : await chromium.newPage(isolated, profileId);
     const { page, context } = opened;
     const cdp = await context.newCDPSession(page);
     await presentAsChrome(cdp).catch(() => undefined);
@@ -332,6 +344,7 @@ export function createTabs(options: TabsOptions) {
       cdp,
       context,
       isolated,
+      profileId,
       control: new TabControl(input.agentId, () => {
         Ops.invalidateRefs(page);
         changed(tab);
@@ -495,6 +508,8 @@ export function createTabs(options: TabsOptions) {
       agentId,
       reveal: false,
       adopted: { page: popup, openerTabId: opener.tabId },
+      // A popup is in its opener's context, so in its profile too.
+      profileId: opener.profileId,
     });
     pendingTabs.add(created);
     try {
@@ -1346,6 +1361,7 @@ export function createTabs(options: TabsOptions) {
       threadId: string;
       url?: string | undefined;
       viewport?: PreviewViewportSetting | undefined;
+      profileId?: string | undefined;
     }): Promise<PreviewTab> {
       return withErrors(async () => {
         if (tabs.size >= SERVER_TAB_LIMIT) throw controlError("tabLimit");
@@ -1356,6 +1372,7 @@ export function createTabs(options: TabsOptions) {
           url,
           reveal: true,
           setting: input.viewport,
+          profileId: input.profileId,
         });
         pendingTabs.add(creating);
         try {
