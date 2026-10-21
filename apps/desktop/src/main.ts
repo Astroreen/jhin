@@ -54,6 +54,8 @@ const nodePaths = {
 
 let mainWindow: BrowserWindow | undefined;
 let node: RunningLocalNode | undefined;
+/** The node being started, so quitting meanwhile can wait for it and stop it. */
+let starting: Promise<RunningLocalNode> | undefined;
 /** The node last started, which the window shows; kept while `node` is cleared to quit. */
 let shownNode: RunningLocalNode | undefined;
 let nodeOrigin: string | undefined;
@@ -266,7 +268,15 @@ async function main(): Promise<void> {
   async function startNode(): Promise<RunningLocalNode> {
     for (;;) {
       try {
-        const started = await startLocalNode(nodePaths);
+        starting = startLocalNode(nodePaths);
+        const started = await starting;
+        starting = undefined;
+        if (quitting) {
+          // The app quit while the node started: stop it rather than leave it running.
+          await started.stop();
+          app.quit();
+          throw new Error("The app quit while its local node started.");
+        }
         node = started;
         shownNode = started;
         nodeOrigin = new URL(started.url).origin;
@@ -280,6 +290,11 @@ async function main(): Promise<void> {
         log("local node running", { url: started.url, home: started.home });
         return started;
       } catch (error) {
+        starting = undefined;
+        if (quitting) {
+          app.quit();
+          throw error;
+        }
         const choice = await dialog.showMessageBox({
           type: "error",
           title: "The local node did not start",
@@ -337,6 +352,24 @@ async function main(): Promise<void> {
     });
   };
 
+  // Quitting stops the node first and waits for it (D522).
+  app.on("before-quit", (event) => {
+    clearBadge();
+    updates.stop();
+    if (node === undefined) {
+      // Still starting: startNode stops the node once it is up, then quits (D522).
+      if (starting !== undefined) {
+        event.preventDefault();
+        quitting = true;
+      }
+      return;
+    }
+    event.preventDefault();
+    quitting = true;
+    const stopping = node;
+    node = undefined;
+    void stopping.stop().finally(() => app.quit());
+  });
   try {
     await startNode();
   } catch {
@@ -351,16 +384,5 @@ async function main(): Promise<void> {
   });
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
-  });
-  // Quitting stops the node first and waits for it (D522).
-  app.on("before-quit", (event) => {
-    clearBadge();
-    updates.stop();
-    if (node === undefined) return;
-    event.preventDefault();
-    quitting = true;
-    const stopping = node;
-    node = undefined;
-    void stopping.stop().finally(() => app.quit());
   });
 }
