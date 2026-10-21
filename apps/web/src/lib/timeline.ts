@@ -73,7 +73,23 @@ interface SteerItem {
   readonly at: string;
 }
 
+/**
+ * An event another plugin put into the thread (`preview.html.rendered`): it
+ * stays where it came among the agent's output and is rendered through the
+ * `chat.turn.item` slot (D407).
+ */
+export interface ExtensionItem {
+  readonly kind: "extension";
+  readonly event: StoredEvent;
+  readonly at: string;
+}
+
+/** Event types of other plugins: neither the threads plugin's nor the agent's. */
+const isExtensionEvent = (type: string) =>
+  !type.startsWith("agent.") && !type.startsWith("threads.");
+
 type TimelineItem =
+  | ExtensionItem
   | MessageItem
   | ReasoningItem
   | ToolItem
@@ -293,8 +309,19 @@ export function createTimeline() {
         changed.add(turn);
         continue;
       }
-      const turn = payload.turnId === undefined ? undefined : byId.get(payload.turnId);
+      const extension = isExtensionEvent(event.type);
+      // An event of another plugin without a turn belongs to the thread's latest one.
+      const turn =
+        payload.turnId === undefined
+          ? extension
+            ? turns.at(-1)
+            : undefined
+          : byId.get(payload.turnId);
       if (turn === undefined) continue;
+      if (extension) {
+        put(turn, `extension:${event.sequence}`, { kind: "extension", event, at });
+        continue;
+      }
       const itemId = payload.itemId;
       switch (event.type) {
         case ThreadEvents.turnSteered: {
@@ -514,7 +541,8 @@ export type TurnBlock =
   | { readonly kind: "work"; readonly entries: readonly WorkEntry[] }
   | { readonly kind: "plan"; readonly item: PlanItem }
   | { readonly kind: "proposed-plan"; readonly item: ProposedPlanItem }
-  | { readonly kind: "steer"; readonly item: SteerItem };
+  | { readonly kind: "steer"; readonly item: SteerItem }
+  | { readonly kind: "extension"; readonly item: ExtensionItem };
 
 /**
  * A turn's items as rendered: consecutive work entries become one work block;
@@ -546,6 +574,9 @@ export function turnBlocks(turn: TimelineTurn): TurnBlock[] {
     } else if (item.kind === "steer") {
       flush();
       blocks.push({ kind: "steer", item });
+    } else if (item.kind === "extension") {
+      flush();
+      blocks.push({ kind: "extension", item });
     } else if (item.kind === "request" && item.state === "open") {
       continue;
     } else {

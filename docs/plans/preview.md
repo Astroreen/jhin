@@ -246,28 +246,44 @@ CLI, and the web client through RPC.
   absolute paths are inlined (each at most 10 MiB, the page at most 25 MiB,
   files that are not images count as missing), and a fresh page of the
   plugin's headless Chromium loads it at `width` (240–1600, 728 by default)
-  in the `dark` or `light` theme with T3's measuring fonts; requests other
-  than the page and remote documents are refused, so the page reaches the
-  network only for what it loads from public hosts. It returns T3's result: a
-  PNG screenshot up to 4000 pixels tall, `contentHeight`, `capturedHeight`, at
-  most 20 console messages (500 characters each) and `missingImages`. T3's
-  SOCKS proxy that keeps a page from private addresses is deferred: the page
-  is blocked from loopback and private hosts by request interception
-  instead.
+  in the `dark` or `light` theme with T3's measuring fonts, served from
+  `http://jhin-page.localhost/page.html`. Every other request of the page,
+  loopback ones and WebSockets included, goes through T3's SOCKS5 proxy on
+  loopback, which connects only to addresses it checked as public (T3's list
+  of loopback, private, link-local, multicast, IPv4-mapped, NAT64 and 6to4
+  ranges and the node's own addresses), so a name that resolves elsewhere
+  later (DNS rebinding) reaches nothing local; WebRTC is removed. Loading and
+  settling (fonts, two frames) share one 20 s deadline. It returns T3's
+  result: a PNG screenshot up to 4000 pixels tall, `contentHeight`,
+  `capturedHeight`, at most 20 console messages (500 characters each, and how
+  many more were omitted) and `missingImages`. The browser starts for a page
+  and closes after the last one. As in T3, any image file of the node a page
+  names by its absolute path is inlined (its bytes must be an image), and with
+  `html.render` it travels with the thread: the commands are for the node's
+  own agents (`preview.write`, `threads.write`).
 
 - **D406. `html.render`, as T3's `html_render`**: the page, prepared as above
   (missing images fail it), is measured at T3's nine widths (its `heights`)
-  and appended to the thread's stream as `preview.html.rendered {renderId,
-  turnId?, title, height, heights?, html}` (the turn running in the thread,
-  when there is one). It returns T3's `htmlRender` reference and its message
-  to the agent. The page lives in the thread's event log, so it travels with
-  the thread through the mesh (D26) and needs no attachment store.
+  (in the dark theme, as T3 measures; a page whose layout differs between
+  themes may fit a light reader's frame less well) and appended to the
+  thread's stream as `preview.html.rendered {renderId,
+  title, height, heights?, html}`; the thread must exist. It names no turn:
+  the timeline shows it in the thread's latest turn, the one the agent is
+  running. It returns T3's `htmlRender` reference and its message to the
+  agent. The page lives in the thread's event log, so it travels with the
+  thread through the mesh (D26) and needs no attachment store; for the same
+  reason a stored page is at most 4 MiB with its images (T3 allows 25 MiB in
+  its attachment store), since every client and mesh member replays it.
 
 - **D407. Pages in the timeline.** The chat timeline gets a public slot,
-  `chat.timeline.items`, rendering events of other plugins that carry a
-  `turnId` inside their turn (or, without one, in the thread's last turn),
-  in order with the agent's items (D34: the UI renders event types through
-  slots). `jhin.html-render-view` contributes `jhin.html-render.frame`: T3's
+  `chat.turn.item` (`ChatTurnItemProps`): events of other plugins in a
+  thread's stream (any type outside `agent.*` and `threads.*`) become items of
+  the turn they name with `turnId`, or of the latest turn, in order with the
+  agent's output, and are never folded behind "Worked for …" (T3 never folds
+  a rendered page). Each renders through the slot, whose contributions draw
+  the types they know (D34: the UI renders event types through slots);
+  unknown `agent.*` events stay ignored. An event before the thread's first
+  turn is not shown. `jhin.html-render-view` contributes `jhin.html-render.frame`: T3's
   `HtmlRenderFrame`, a sandboxed iframe (`allow-scripts allow-forms`, never
   same-origin) loaded from `srcdoc`, themed from the client's own CSS
   variables and kept in step with light and dark, fitted to the page's
@@ -323,8 +339,11 @@ CLI, and the web client through RPC.
 - T3's work-log presentation of preview tools ("Used browser N times").
 - Reading password values in isolated worlds of out-of-process frames: Jhin
   reads them in each frame's own world.
-- T3's SOCKS proxy for `html.preview` and its outline of a page's boxes for
-  the loading skeleton.
+- T3's outline of a rendered page's boxes for the loading skeleton.
+- Rendered pages in an attachment store (W6's blobs) instead of the
+  thread's event log, and with it T3's 25 MiB pages.
+- In a rendered page: T3's image viewer for a clicked image and passing the
+  app's shortcuts through a focused frame.
 - Viewer ids bound to their caller or their frame subscription (D397).
 - Devices: T3's device hub and `agent-device`, video streams and input to a
   device, device hosts over SSH, the setup wizard, the device tools panel
@@ -370,6 +389,19 @@ Implements D403, D404.
 ### PR 3 — Rendered HTML
 
 Implements D405–D407.
+
+- `@jhin/preview-api` gains `preview.html@1` (limits, measured widths, frame
+  heights, the theme variables and guides, the page's bootstrap);
+  `jhin.html-render` (`plugins/html-render`) with `html.preview` and
+  `html.render`; the timeline's `chat.turn.item` slot; `jhin.html-render-view`
+  with the frame and its full-screen dialog, loaded as a chunk of its own.
+- **Done when:** unit tests inject the bootstrap, inline images and refuse
+  files that are not images, preview a page (screenshot, height, console,
+  missing images) without it reaching a service on the node, render one into
+  a thread's stream with nine heights and refuse missing images and unknown
+  threads; the timeline keeps a plugin's event in its turn; Playwright sees a
+  rendered page in its turn, themed in light and dark, and opens it full
+  screen.
 
 ### PR 4 — Devices
 

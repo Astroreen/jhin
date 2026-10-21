@@ -54,7 +54,10 @@ run bookkeeping, webhook tokens, signatures, prompt placeholders, rate limits
 and the delivery log), the browser preview (`plugins/preview` and
 `@jhin/preview-api`: the server browser's tabs, their control by agents and
 viewers, page operations, snapshots, recordings, viewport presets, URL
-normalisation and the tools' wording), pairing (`plugins/auth-token`:
+normalisation and the tools' wording), rendered HTML (`plugins/html-render` and
+`@jhin/preview-api`: the page's bootstrap, theme variables and guides, image
+inlining, the public proxy, console capture and measuring; the web client's
+frame), pairing (`plugins/auth-token`:
 pairing codes, the pairing and session endpoints; the web client's pairing
 links, saved nodes in IndexedDB, Authorized clients settings and QR code
 component) and the desktop app (`apps/desktop`, `plugins/desktop`,

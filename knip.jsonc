@@ -31,6 +31,7 @@
         "@jhin/plugin-terminal",
         "@jhin/plugin-scheduler",
         "@jhin/plugin-preview",
+        "@jhin/plugin-html-render",
         "@jhin/plugin-agent-claude",
         "@jhin/plugin-agent-codex",
         "@jhin/plugin-agent-fake",

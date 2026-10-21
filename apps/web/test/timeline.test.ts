@@ -175,7 +175,7 @@ describe("reduceTimeline", () => {
           },
         ],
         [ThreadEvents.itemDelta, { turnId: "other", itemId: "m", kind: "message", text: "x" }],
-        ["something.else", { turnId: "u1" }],
+        ["agent.something.else", { turnId: "u1" }],
       ),
     );
     const request = timeline.turns[0]!.items[0] as RequestItem;
@@ -313,7 +313,7 @@ describe("folding as events arrive", () => {
     expect(second.turns[0]).toBe(first.turns[0]);
     expect(second.turns[1]).not.toBe(first.turns[1]);
     expect(fold.apply([])).toBe(second);
-    const unknown = stream(["something.else", { turnId: "u1" }]).map((event) => ({
+    const unknown = stream(["agent.something.else", { turnId: "u1" }]).map((event) => ({
       ...event,
       sequence: events.length + 1,
     }));

@@ -476,6 +476,24 @@ export interface ChatTurnFooterProps {
 }
 
 /**
+ * What the `chat.turn.item` slot gives each contribution: an event another
+ * plugin put into the thread's stream (D407), in its place among the turn's
+ * output (or in the latest turn, when it names none). A contribution renders
+ * the types it knows and nothing for the others.
+ */
+export interface ChatTurnItemProps {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  readonly turnId: string;
+  readonly event: {
+    readonly type: string;
+    readonly payload: unknown;
+    readonly sequence: number;
+    readonly at: string;
+  };
+}
+
+/**
  * What the `chat.composer.context` slot gives each contribution: the strip
  * under the composer (T3 Code's branch toolbar) for the open thread, or the
  * project of a thread being drafted.

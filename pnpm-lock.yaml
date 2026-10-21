@@ -249,6 +249,9 @@ importers:
       '@jhin/plugin-example':
         specifier: workspace:*
         version: link:../../plugins/example
+      '@jhin/plugin-html-render':
+        specifier: workspace:*
+        version: link:../../plugins/html-render
       '@jhin/plugin-http':
         specifier: workspace:*
         version: link:../../plugins/http
@@ -877,6 +880,31 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+
+  plugins/html-render:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/preview-api':
+        specifier: workspace:*
+        version: link:../../packages/preview-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+      playwright-core:
+        specifier: 'catalog:'
+        version: 1.61.1
+    devDependencies:
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
 
   plugins/http:
     dependencies:

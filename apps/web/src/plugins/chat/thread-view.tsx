@@ -8,6 +8,7 @@ import {
   type ChatDrawerProps,
   type ChatTurnFooterProps,
   type ThreadCreateInput,
+  type ChatTurnItemProps,
   type NodeTarget,
   type ProjectRecord,
   type ThreadRecord,
@@ -434,6 +435,23 @@ export function ThreadView(props: {
               ) : (
                 <AttachmentLoaderContext.Provider value={loadAttachment}>
                   <TimelineView
+                    extension={
+                      thread === undefined
+                        ? undefined
+                        : (turn, event) => (
+                            <Slot
+                              name="chat.turn.item"
+                              props={
+                                {
+                                  target,
+                                  thread,
+                                  turnId: turn.turnId,
+                                  event,
+                                } satisfies ChatTurnItemProps
+                              }
+                            />
+                          )
+                    }
                     footer={
                       thread === undefined
                         ? undefined
