@@ -23,6 +23,9 @@ export interface RunningLocalNode {
   stop(): Promise<void>;
 }
 
+/** How long a node may take to stop after SIGTERM before it is killed (T3 waits 5 s). */
+const STOP_GRACE_MS = 5_000;
+
 /** The last lines a failed node printed, for the dialog that reports it. */
 const OUTPUT_LIMIT = 8_000;
 
@@ -91,8 +94,12 @@ export function startLocalNode(
         onExit: (listener) => void exitListeners.push(listener),
         async stop() {
           stopping = true;
-          if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+          if (child.exitCode !== null || child.signalCode !== null) return;
+          child.kill("SIGTERM");
+          // A node stuck in its plugins' dispose must not keep the app from quitting.
+          const kill = setTimeout(() => child.kill("SIGKILL"), STOP_GRACE_MS);
           await exited;
+          clearTimeout(kill);
         },
       });
     };

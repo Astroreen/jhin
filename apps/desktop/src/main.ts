@@ -139,7 +139,8 @@ function applyBadge({ count, image }: DesktopNotificationBadge): void {
 
 async function main(): Promise<void> {
   const settings = createSettingsStore(app.getPath("userData"));
-  const feedUrl = process.env["JHIN_DESKTOP_UPDATE_FEED"];
+  // The test feed is for builds that are not packaged: a packaged app updates from its own feed only.
+  const feedUrl = app.isPackaged ? undefined : process.env["JHIN_DESKTOP_UPDATE_FEED"];
   const environment = {
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged,
@@ -269,7 +270,13 @@ async function main(): Promise<void> {
         node = started;
         shownNode = started;
         nodeOrigin = new URL(started.url).origin;
-        started.onExit((output) => void nodeStopped(output));
+        started.onExit(
+          (output) =>
+            void nodeStopped(output).catch((error: unknown) =>
+              // The user chose Quit after a restart failed: the app is quitting.
+              log("local node not restarted", { error: String(error) }),
+            ),
+        );
         log("local node running", { url: started.url, home: started.home });
         return started;
       } catch (error) {

@@ -128,7 +128,9 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
 
 - **D519. Auto update is T3's flow on electron-updater against this
   repository's GitHub releases** (`provider: github`, owner `Astroreen`,
-  repo `jhin`). The state machine is T3's (`updateMachine.ts`): `disabled`,
+  repo `jhin`), which packaging writes into the app's `app-update.yml`;
+  until packaging lands (Deferred) no build has that feed, so updates show
+  as disabled with T3's "no update feed" reason. The state machine is T3's (`updateMachine.ts`): `disabled`,
   `idle`, `checking`, `up-to-date`, `available`, `downloading`,
   `downloaded`, `error` with the available and downloaded versions, progress,
   the error's context and whether it can be retried. Nothing downloads by
@@ -140,8 +142,9 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
   may go back to an older version. Updates are disabled, with T3's reasons,
   without an update feed, in a build that is not packaged, with
   `JHIN_DISABLE_AUTO_UPDATE`, or on Linux outside the AppImage and the .deb.
-  `JHIN_DESKTOP_UPDATE_FEED` points the app at a generic feed (T3's mock
-  updates), also in a build that is not packaged; tests use it.
+  `JHIN_DESKTOP_UPDATE_FEED` points a build that is not packaged at a
+  generic feed (T3's mock updates); tests use it. A packaged app ignores it,
+  so nothing that launches the app can redirect its updates.
 
 - **D520. The update UI is T3's.** The sidebar footer gets T3's update
   control (the contribution `desktop.update` in `sidebar.footer`): an icon
@@ -169,12 +172,15 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
   `@jhin/desktop-api`; the channel names are a module of their own
   (`@jhin/desktop-api/channels`), so the preload stays a few kilobytes
   without Zod. The main process validates every payload and answers only the
-  main window's top frame on the node's origin.
+  main window's top frame on the node's origin, except the synchronous app
+  info the preload reads before the page exists (the platform and the
+  version, nothing else).
 
 - **D522. One instance, recovered renderers, a clean quit (T3).** A second
   launch focuses the running app's window. A renderer that crashes, is
   killed or runs out of memory is reloaded after 500 ms, at most three times
-  a minute. Quitting stops the node first; installing an update does too.
+  a minute. Quitting stops the node first (SIGTERM, then SIGKILL after 5 s);
+  installing an update does too.
 
 - **D523. Proof with Playwright's Electron support.**
   `e2e/tests/desktop.spec.ts` starts the built app with `_electron.launch` in
@@ -191,6 +197,12 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
 
 ## Deferred
 
+- The release pipeline: an electron-builder config with the GitHub
+  `publish` provider and a workflow that publishes signed artifacts and
+  `latest*.yml` / `nightly*.yml` to this repository's releases. Until then
+  D519's feed exists only in tests.
+- A graceful stop of the node on Windows: `SIGTERM` is an immediate kill
+  there, so D522's "stops the node first" waits for no shutdown work.
 - Release notes in the update control (T3's popover for nightly builds), the
   Intel-on-Apple-Silicon warning, the record of an install that did not
   apply, and telling a .deb install apart (D519 treats Linux outside an
