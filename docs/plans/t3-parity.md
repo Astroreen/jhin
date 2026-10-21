@@ -1079,7 +1079,8 @@ and as events arrive).
   `forkSession` instead of a new session with the transcript, D222, D225;
   until then a Claude session record that could not be written, or one
   from before D222, lets the next turn resume a session that still holds
-  the dropped turns, D222),
+  the dropped turns, D222; and the Claude Code session a new one replaces is
+  left on disk),
   T3's in-thread find (`mod+f`), a search index on disk (the node reads
   each thread's texts once per run, D227) and T3's Lineage panel listing a
   thread's forks.

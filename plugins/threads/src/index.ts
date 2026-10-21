@@ -2872,8 +2872,13 @@ export default definePlugin({
       const read = await getThread(threadId);
       if (read.archivedAt !== undefined) throw archivedError(threadId);
       // Checking that the thread is free and holding it is one synchronous step.
-      if (active.has(threadId) || rollingBack.has(threadId)) {
+      if (active.has(threadId)) {
         throw new ThreadsError("TURN_IN_PROGRESS", "The thread is running a turn", { threadId });
+      }
+      if (rollingBack.has(threadId)) {
+        throw new ThreadsError("TURN_IN_PROGRESS", "The thread is rolling back its turns", {
+          threadId,
+        });
       }
       if (deleted.has(threadId)) {
         throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId}`, { threadId });
