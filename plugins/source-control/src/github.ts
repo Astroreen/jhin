@@ -447,6 +447,43 @@ function viewerOf(
 const WATCH_FIELDS =
   "number,url,state,headRefOid,mergeable,baseRefName,statusCheckRollup,comments,reviews,author";
 
+/**
+ * The names of the checks the base branch requires (`gh pr checks --required`,
+ * T3's `isRequired`, D908), or undefined when `gh` could not say; then no check
+ * is marked and every check is the gate. Its JSON answers whatever it exits with
+ * (8 while checks are pending, 1 when one failed).
+ */
+async function requiredChecks(
+  ghPath: string,
+  cwd: string,
+  url: string,
+): Promise<Set<string> | undefined> {
+  let result;
+  try {
+    result = await run(ghPath, ["pr", "checks", url, "--required", "--json", "name"], {
+      cwd,
+      env: GH_ENV,
+      timeoutMs: GH_TIMEOUT_MS,
+    });
+  } catch {
+    return undefined;
+  }
+  const out = result.stdout.trim();
+  // Nothing on stdout: gh says on stderr that the branch requires no checks, or why it failed.
+  if (out === "") return /no required checks/i.test(result.stderr) ? new Set() : undefined;
+  try {
+    const parsed: unknown = JSON.parse(out);
+    if (!Array.isArray(parsed)) return undefined;
+    return new Set(
+      parsed
+        .map((item) => text((item as { name?: unknown }).name))
+        .filter((name) => name !== undefined),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 /** What a watch reads of a pull request (D272): checks, mergeability and remarks. */
 async function readWatch(
   ghPath: string,
@@ -454,9 +491,10 @@ async function readWatch(
   url: string,
   viewers: Viewers,
 ): Promise<WatchRead> {
-  const [answer, viewer] = await Promise.all([
+  const [answer, viewer, required] = await Promise.all([
     ghJson(ghPath, cwd, ["pr", "view", url, "--json", WATCH_FIELDS]),
     viewerOf(viewers, ghPath, cwd, hostOf(url)),
+    requiredChecks(ghPath, cwd, url),
   ]);
   const raw = (answer ?? {}) as Record<string, unknown>;
   const state = text(raw["state"])?.toLowerCase();
@@ -487,12 +525,16 @@ async function readWatch(
     state: state === "merged" ? "merged" : state === "closed" ? "closed" : "open",
     headSha: text(raw["headRefOid"]) ?? null,
     baseBranch: text(raw["baseRefName"]) ?? "",
+    requiredKnown: required !== undefined,
     checks: rollup.map((check) => {
       const link = text(check.detailsUrl) ?? text(check.targetUrl);
       return {
         name: check.name ?? check.context ?? "check",
         status: checkStatus(check),
         ...(link ? { url: link } : {}),
+        ...(required === undefined
+          ? {}
+          : { required: required.has(check.name ?? check.context ?? "check") }),
       };
     }),
     mergeability:
