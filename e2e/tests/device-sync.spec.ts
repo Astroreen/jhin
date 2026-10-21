@@ -41,7 +41,18 @@ test("D486–D488: settings and a draft follow to another device, unless sync is
   await node.client().call("threads.send", { threadId: thread.id, text: "draft here" });
   const laptop = await (await browser.newContext()).newPage();
   const phone = await (await browser.newContext()).newPage();
-  for (const page of [laptop, phone]) await page.goto(`${node.ui}#token=${node.token}`);
+  // Sharing is asked for on each device: both switches start off (D488).
+  for (const page of [laptop, phone]) {
+    await page.goto(`${node.ui}#token=${node.token}`);
+    await page.getByRole("button", { name: "Settings" }).click();
+    for (const name of ["Sync settings across devices", "Sync drafts across devices"]) {
+      const toggle = page.getByRole("switch", { name });
+      await expect(toggle).not.toBeChecked();
+      await toggle.click();
+      await expect(toggle).toBeChecked();
+    }
+    await page.getByRole("button", { name: "Back" }).click();
+  }
 
   // A draft typed on the laptop is there when the phone opens the thread.
   await threadRow(laptop, "draft here").click();

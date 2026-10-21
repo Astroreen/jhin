@@ -267,10 +267,12 @@ rules of the form below), the decision says so.
   does the rest). Devices
   that share a node agree. What is not a device setting stays per device:
   the sidebar's width, the shelf and filter state, saved connections.
-- **D488. Syncing can be turned off per device.** General settings get
+- **D488. Syncing is turned on per device.** General settings get
   "Sync settings across devices" and "Sync drafts across devices" (section
-  `jhin.sync`, both on by default). That section is never synced itself;
-  with a switch off, the device neither sends nor takes that kind of state.
+  `jhin.sync`), both off by default: T3 keeps client settings and drafts per
+  device, so a device shares them only once its owner asks. That section is
+  never synced itself; with a switch off, the device neither sends nor takes
+  that kind of state.
   Visits are thread state on the node (D485) and always shared, as in T3.
 
 ## How to write a config schema (for plugin authors)

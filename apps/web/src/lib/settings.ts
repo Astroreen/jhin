@@ -44,9 +44,9 @@ export type ChatSettings = z.output<typeof ChatSettings>;
 export const SYNC_SECTION = "jhin.sync";
 export const SyncSettings = z.object({
   /** This device's settings follow the other devices', and they follow it. */
-  settings: z.boolean().default(true),
+  settings: z.boolean().default(false),
   /** Composer drafts follow their thread to every device. */
-  drafts: z.boolean().default(true),
+  drafts: z.boolean().default(false),
 });
 export type SyncSettings = z.output<typeof SyncSettings>;
 
