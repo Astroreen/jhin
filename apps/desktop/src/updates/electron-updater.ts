@@ -60,6 +60,9 @@ export function createElectronUpdater(options: {
     setAllowDowngrade(allow) {
       autoUpdater.allowDowngrade = allow;
     },
+    onError(listener) {
+      autoUpdater.on("error", listener);
+    },
   };
 }
 

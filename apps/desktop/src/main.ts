@@ -239,8 +239,12 @@ async function main(): Promise<void> {
   setMenu();
 
   // --- The bridge (D521). ---
+  // Synchronous and read before the page has an origin, so only the window is checked (D521).
   ipcMain.on(DESKTOP_CHANNELS.getAppInfo, (event) => {
-    event.returnValue = { platform: process.platform, appVersion: app.getVersion() };
+    event.returnValue =
+      mainWindow !== undefined && event.sender === mainWindow.webContents
+        ? { platform: process.platform, appVersion: app.getVersion() }
+        : null;
   });
   const none = z.undefined();
   handle(DESKTOP_CHANNELS.updateGetState, none, () => updates.state);

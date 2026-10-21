@@ -25,6 +25,7 @@ function fakeUpdater() {
   let next: { version: string } | null | Error = null;
   let download: ((onProgress: (percent: number) => void) => Promise<void>) | undefined;
   let quit: () => void = () => calls.push("quitAndInstall");
+  let reportError: (error: unknown) => void = () => undefined;
   const updater: Updater = {
     async check() {
       calls.push("check");
@@ -38,6 +39,7 @@ function fakeUpdater() {
     quitAndInstall: () => quit(),
     setChannel: (channel) => void calls.push(`channel:${channel}`),
     setAllowDowngrade: (allow) => void calls.push(`downgrade:${allow}`),
+    onError: (listener) => void (reportError = listener),
   };
   return {
     updater,
@@ -46,6 +48,7 @@ function fakeUpdater() {
     onDownload: (run: (onProgress: (percent: number) => void) => Promise<void>) =>
       void (download = run),
     onQuit: (run: () => void) => void (quit = run),
+    reportError: (error: unknown) => reportError(error),
   };
 }
 
@@ -269,5 +272,26 @@ describe("UpdateController", () => {
       "check",
       "downgrade:false",
     ]);
+  });
+
+  it("recovers when the updater reports the install failed after quitAndInstall returned", async () => {
+    const fake = fakeUpdater();
+    const { updates, lifecycle, states } = controller(fake);
+    fake.offer({ version: "1.2.0" });
+    await updates.check();
+    await updates.download();
+    expect(await updates.install()).toMatchObject({ accepted: true });
+
+    const recovered = new Promise<void>((resolve) =>
+      updates.onState((state) => state.errorContext === "install" && resolve()),
+    );
+    fake.reportError(new Error("installer exited"));
+    await recovered;
+
+    expect(lifecycle).toEqual(["node stopped", "node started"]);
+    expect(states.at(-1)).toMatchObject({ status: "downloaded", message: "installer exited" });
+    // The action is free again.
+    expect(await updates.check()).toMatchObject({ checked: true });
+    updates.stop();
   });
 });

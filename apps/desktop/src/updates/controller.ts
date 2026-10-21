@@ -36,6 +36,8 @@ export interface Updater {
   quitAndInstall(): void;
   setChannel(channel: DesktopUpdateChannel): void;
   setAllowDowngrade(allow: boolean): void;
+  /** An error the updater reports by itself, e.g. an install that did not start after `quitAndInstall`. */
+  onError(listener: (error: unknown) => void): void;
 }
 
 export interface UpdateEnvironment {
@@ -71,7 +73,7 @@ export function autoUpdateDisabledReason(environment: UpdateEnvironment): string
   return null;
 }
 
-type UpdateAction = "check" | "download" | "install" | "channel";
+type UpdateAction = "check" | "download" | "install" | "install-recovery" | "channel";
 
 export interface UpdateControllerOptions {
   readonly updater: Updater;
@@ -111,6 +113,10 @@ export class UpdateController {
       this.#disabledReason,
     );
     if (this.enabled) options.updater.setChannel(options.channel);
+    // electron-updater reports a failed install asynchronously, after quitAndInstall returned.
+    options.updater.onError((error) => {
+      if (this.#action === "install") void this.#installFailed(error);
+    });
   }
 
   get enabled(): boolean {
@@ -202,17 +208,24 @@ export class UpdateController {
       this.#options.updater.quitAndInstall();
       return { accepted: true, completed: false, state: this.#state };
     } catch (error) {
-      this.#log("update install failed", { error: describe(error) });
-      await this.#options
-        .afterFailedInstall()
-        .catch((restart: unknown) =>
-          this.#log("node restart after a failed install failed", { error: describe(restart) }),
-        );
-      this.#set(reduceDesktopUpdateStateOnInstallFailure(this.#state, describe(error)));
-      this.#action = undefined;
-      this.start();
+      await this.#installFailed(error);
       return { accepted: true, completed: false, state: this.#state };
     }
+  }
+
+  /** The node back, the failure in the state, the action free and the checks running again. */
+  async #installFailed(error: unknown): Promise<void> {
+    this.#log("update install failed", { error: describe(error) });
+    // Released first, so a second report of the same failure is ignored.
+    this.#action = "install-recovery";
+    await this.#options
+      .afterFailedInstall()
+      .catch((restart: unknown) =>
+        this.#log("node restart after a failed install failed", { error: describe(restart) }),
+      );
+    this.#set(reduceDesktopUpdateStateOnInstallFailure(this.#state, describe(error)));
+    this.#action = undefined;
+    this.start();
   }
 
   /** Switches the track, keeps the choice and checks at once, allowing an older version. */

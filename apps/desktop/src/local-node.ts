@@ -117,5 +117,12 @@ export function startLocalNode(
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
     child.once("exit", onEarlyExit);
+    // A spawn that fails (a missing executable, no processes left) emits this instead of `exit`.
+    child.once("error", (error) => {
+      child.stdout.off("data", onData);
+      child.stderr.off("data", onData);
+      child.off("exit", onEarlyExit);
+      reject(new Error(`The local node could not be started: ${error.message}`));
+    });
   });
 }

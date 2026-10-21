@@ -13,10 +13,13 @@ function listen<T>(channel: string, listener: (value: T) => void): () => void {
 }
 
 /** Read once from the main process when the page starts. */
-const { platform, appVersion } = ipcRenderer.sendSync(DESKTOP_CHANNELS.getAppInfo) as {
+const info = ipcRenderer.sendSync(DESKTOP_CHANNELS.getAppInfo) as {
   platform: string;
   appVersion: string;
-};
+} | null;
+// Anything but the app's window gets no bridge.
+if (info === null) throw new Error("The desktop bridge is only for the app's window");
+const { platform, appVersion } = info;
 
 const bridge: DesktopBridge = {
   version: DESKTOP_BRIDGE_VERSION,
