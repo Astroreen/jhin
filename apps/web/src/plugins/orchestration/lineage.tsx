@@ -286,6 +286,10 @@ export function DelegationLineage({ target, thread, services, view }: Props) {
   const tasks = [...view.tasks.values()]
     .filter((task) => task.workflowId === undefined)
     .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));
+  // The subagents the agent ran itself (D880): threads, not tasks.
+  const providerSubagents = (catalog?.threads ?? [])
+    .filter((item) => item.parentThreadId === thread.id && item.subagentOrigin === "provider")
+    .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));
   const workflows = [...view.workflows.values()].toSorted((left, right) =>
     right.createdAt.localeCompare(left.createdAt),
   );
@@ -342,6 +346,21 @@ export function DelegationLineage({ target, thread, services, view }: Props) {
           </li>
         );
       })}
+      {providerSubagents.map((child) => (
+        <li className="group relative flex h-8 items-center rounded-lg" key={child.id}>
+          <TipButton
+            className={ROW}
+            label={`Open ${child.title} chat`}
+            onClick={() => open(child.id)}
+            tip="Open subagent in this chat"
+            unavailable={false}
+          >
+            <BotIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <Title text={child.title} />
+            <Status label={lineageStatusLabel(child)} />
+          </TipButton>
+        </li>
+      ))}
       {workflows.map((workflow) => (
         <WorkflowRow
           busy={stopping !== null}

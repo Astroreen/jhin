@@ -43,6 +43,7 @@ import {
 import { ChatHeader } from "./header.tsx";
 import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
 import { useChat } from "./services.ts";
+import { SubagentBar } from "./subagent-bar.tsx";
 import { useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
@@ -554,7 +555,21 @@ export function ThreadView(props: {
           >
             <div className="w-full px-[calc(env(safe-area-inset-left)+0.75rem)] sm:px-12">
               <div className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)">
-                {timeline.deleted ? null : thread?.archivedAt !== undefined ? (
+                {timeline.deleted ? null : thread?.subagentOrigin === "provider" ? (
+                  // T3's ProviderSubagentBar: its parent's agent runs it (D880).
+                  <SubagentBar
+                    thread={thread}
+                    onOpenParent={
+                      thread.parentThreadId === undefined
+                        ? undefined
+                        : () =>
+                            chat.navigation.navigate({
+                              ...target,
+                              thread: thread.parentThreadId as string,
+                            })
+                    }
+                  />
+                ) : thread?.archivedAt !== undefined ? (
                   <ArchivedNotice
                     onUnarchive={() =>
                       void chat.context.commands

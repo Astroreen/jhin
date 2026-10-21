@@ -121,3 +121,39 @@ return await parallel(['east', 'west'].map((place) => () => agent('/hold ' + pla
   await back.click();
   await expect(page).toHaveURL(new RegExp(encodeURIComponent(parentId)));
 });
+
+test("D879–D880: a subagent the agent runs itself is a child thread that runs on its own", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/subagent survey the land");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText(
+    "Ran a subagent for survey the land",
+  );
+  const row = page.getByRole("button", { name: "Open survey the land", exact: true });
+  await expect(row).toContainText("Completed");
+  await expect(threadRow(page, "survey the land")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
+  const related = page
+    .getByRole("region", { name: "Thread details" })
+    .getByRole("list", { name: "Related threads" });
+  await expect(related.getByRole("button", { name: "Open survey the land chat" })).toContainText(
+    "Done",
+  );
+  await page.keyboard.press("Escape");
+
+  await row.click();
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: survey the land");
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
+  await expect(page.getByText("Runs on its own")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "subagent: Completed" })).toBeAttached();
+  await shot(page, info, "provider-subagent");
+  await page.getByRole("button", { name: "Open parent" }).click();
+  await expect(
+    page.getByRole("button", { name: "Open survey the land", exact: true }),
+  ).toBeVisible();
+});

@@ -234,6 +234,8 @@ export interface ThreadRecord {
   readonly parentThreadId?: string;
   /** Why it has a parent: a delegated task's thread is a `subagent` (D865). */
   readonly relationshipToParent?: "subagent";
+  /** A subagent its parent's agent ran itself (Claude Code's `Agent` tool), not a delegated task (D877). */
+  readonly subagentOrigin?: "provider";
   /** The thread and turn it was forked at. */
   readonly forkedFrom?: { readonly threadId: string; readonly turnId: string };
   /** A fork merged back, delivered to the agent with the next message. */
