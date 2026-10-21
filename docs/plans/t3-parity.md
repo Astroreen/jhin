@@ -1198,7 +1198,8 @@ for, built from the same rewind.
   (`{ query, limit?, projectId? }`: 2–200 characters, at most 50 results,
   50 by default) matches the visible user messages and completed answers of
   every thread that is not archived, ignoring ASCII case (T3's SQLite
-  `LIKE`) and comparing whitespace collapsed, as the snippet shows it, so
+  `LIKE`; this plan first said case- and accent-insensitive, T3 is not
+  accent-insensitive) and comparing whitespace collapsed, as the snippet shows it, so
   "foo bar" finds "foo↵bar", one match per thread (its newest user message, else its newest
   answer), user matches first, then by the thread's `updatedAt`; a match is
   `{ threadId, projectId, source: "user" | "assistant", snippet, at,

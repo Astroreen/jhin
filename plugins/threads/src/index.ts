@@ -3624,11 +3624,15 @@ export default definePlugin({
       const texts = [...kept, ...searchTexts(visibleThreadEvents(added))];
       // Deleted or archived while it was read: nothing is kept for it.
       if (read.dropped) return texts;
+      const readTo = added.at(-1)?.sequence ?? head;
+      // A read that started earlier and ends later keeps the newer entry it finds.
+      const newer = searchCache.get(threadId);
+      if (newer !== undefined && newer.head > readTo) return texts;
       uncache(threadId);
       // Each text is held twice: as written and folded for matching.
       const size = texts.reduce((total, text) => total + text.text.length + text.folded.length, 0);
       // Last searched last: Map order is the eviction order.
-      searchCache.set(threadId, { head: added.at(-1)?.sequence ?? head, texts, size });
+      searchCache.set(threadId, { head: readTo, texts, size });
       cachedChars += size;
       for (const [id] of searchCache) {
         if (cachedChars <= SEARCH_CACHE_CHARS || id === threadId) break;
