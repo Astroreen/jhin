@@ -1,7 +1,9 @@
 // Worktrees of a project, as T3 Code makes them (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/vcs/GitVcsDriverCore.ts (createWorktree, removeWorktree,
 // fetching a base branch from origin), apps/server/src/worktreesDirectory.ts
-// (where they live) and packages/shared/src/git.ts (temporary branch names).
+// (where they live), packages/shared/src/git.ts (temporary branch names,
+// sanitizeBranchFragment) and apps/server/src/orchestration-v2/ThreadLaunchService.ts
+// with GitVcsDriverCore.ts (renaming a temporary branch from the first message).
 import * as Crypto from "node:crypto";
 import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
@@ -60,6 +62,55 @@ async function temporaryBranch(git: Git): Promise<string> {
   return (await branchExists(git, BRANCH_PREFIX))
     ? `${BRANCH_PREFIX}-${hex}`
     : `${BRANCH_PREFIX}/${hex}`;
+}
+
+/** A branch this plugin named for a new worktree: `jhin/<8 hex>` or `jhin-<8 hex>`. */
+export const isTemporaryBranch = (branch: string) =>
+  new RegExp(`^${BRANCH_PREFIX}[-/][0-9a-f]{8}$`).test(branch.trim().toLowerCase());
+
+/** T3's `sanitizeBranchFragment`: lowercase, `[a-z0-9/_-]`, at most 64 characters. */
+export function sanitizeBranchFragment(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/['"`]/g, "")
+    .replace(/^[./\s_-]+|[./\s_-]+$/g, "");
+  const fragment = normalized
+    .replace(/[^a-z0-9/_-]+/g, "-")
+    .replace(/\/+/g, "/")
+    .replace(/-+/g, "-")
+    .replace(/^[./_-]+|[./_-]+$/g, "")
+    .slice(0, 64)
+    .replace(/[./_-]+$/g, "");
+  return fragment.length > 0 ? fragment : "update";
+}
+
+/**
+ * Renames a temporary branch to `jhin/<fragment>` (`jhin-<fragment>` when the
+ * temporary one was flat), taking `-1` to `-100` when that name is taken, as
+ * T3's `renameBranch` does; returns the new name.
+ */
+export async function renameTemporaryBranch(
+  git: Git,
+  oldBranch: string,
+  fragment: string,
+): Promise<string> {
+  const separator = oldBranch.charAt(BRANCH_PREFIX.length);
+  const wanted = `${BRANCH_PREFIX}${separator}${sanitizeBranchFragment(fragment)}`;
+  let target: string | undefined;
+  for (let suffix = 0; suffix <= 100 && target === undefined; suffix += 1) {
+    const candidate = suffix === 0 ? wanted : `${wanted}-${suffix}`;
+    if (!(await branchExists(git, candidate))) target = candidate;
+  }
+  if (target === undefined || !(await validBranch(git, target))) {
+    throw new SourceControlError(
+      "BRANCH_INVALID",
+      `Could not find an available branch name for '${wanted}'.`,
+      { branch: wanted },
+    );
+  }
+  await git(["branch", "-m", "--", oldBranch, target]);
+  return target;
 }
 
 async function validBranch(git: Git, name: string): Promise<boolean> {

@@ -545,6 +545,22 @@ with screenshots).
   recreating missing worktree"); if that fails the turn fails with
   `WORKTREE_MISSING` and git's reason.
 
+#### Worktree leftovers (W21, D901–D920)
+
+- **D901. A new worktree's temporary branch is named from its thread's first
+  message**, as T3's `ThreadLaunchService` does: when the first turn of a
+  thread starts in its worktree and that worktree is on a temporary
+  `jhin/<8 hex>` (or `jhin-<8 hex>`) branch, the plugin asks the writer
+  (D266, its agent and `writerTimeoutSeconds`) with T3's branch name prompt in
+  its default naming mode, sanitizes the answer as T3's
+  `sanitizeBranchFragment` does and runs `git branch -m` to `jhin/<fragment>`
+  (`jhin-<fragment>` after a flat temporary name), taking `-1` to `-100` when
+  that name is taken. It runs beside the turn and never holds it up or fails
+  it; a writer without an answer keeps the temporary branch (T3 has no
+  fallback either), and so does a fork's first turn or a branch the user
+  named. Every thread in that worktree records the new branch (D113); the
+  folder keeps its temporary name, as in T3.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -879,8 +895,9 @@ with the node's token, and without one).
   error strings T3 shows for a disconnected environment or a provider without
   rollback.
 - Worktrees, from W3 (D240): T3's setup scripts and their progress card
-  ("Setting up worktree…", "Work locally", cancelling a setup), naming a
-  temporary `jhin/<hex>` branch from the first message, the cleanup rules
+  ("Setting up worktree…", "Work locally", cancelling a setup), the
+  attachments of a first message in its branch name prompt (D901) and T3's
+  branch naming settings (semantic, a custom prefix, custom instructions), the cleanup rules
   (keep when, after days, on merge, on delete without asking), submodules,
   one worktree per model of a multi-model send, the `composer.workspace`
   shortcut, MCP tools that act as the calling thread (T3's `t3_worktree_status`;

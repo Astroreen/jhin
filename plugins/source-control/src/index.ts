@@ -85,9 +85,11 @@ import { followTurns } from "./turns.ts";
 import {
   createWorktree,
   isManagedWorktree,
+  isTemporaryBranch,
   listWorktrees,
   recreateWorktree,
   removeWorktree,
+  renameTemporaryBranch,
   worktreesRoot,
 } from "./worktrees.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
@@ -1221,17 +1223,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               filePaths: input.filePaths,
               defaultBranch: status.defaultBranch,
               forge: forgeOf(repo, root),
-              writer: agentWriter({
-                runtime: () => writerRuntime(input.threadId),
-                deadline: () => {
-                  let timer: ReturnType<typeof setTimeout> | undefined;
-                  const reached = new Promise<void>((resolve) => {
-                    timer = setTimeout(resolve, config().writerTimeoutSeconds * 1000);
-                  });
-                  return { reached, dispose: () => clearTimeout(timer) };
-                },
-                warn: (message, fields) => context.log.warn(message, { projectId, ...fields }),
-              }),
+              writer: writerFor(projectId, input.threadId),
               progress,
             });
             // The pull request the action created or opened is linked to its thread (T3's
@@ -1556,6 +1548,20 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return undefined;
   }
 
+  /** The writer of a project's commit messages, pull requests and branch names (D266). */
+  const writerFor = (projectId: string, threadId: string | undefined) =>
+    agentWriter({
+      runtime: () => writerRuntime(threadId),
+      deadline: () => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const reached = new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, config().writerTimeoutSeconds * 1000);
+        });
+        return { reached, dispose: () => clearTimeout(timer) };
+      },
+      warn: (message, fields) => context.log.warn(message, { projectId, ...fields }),
+    });
+
   /** The repository a command acts on: the thread's (its worktree's) when named, else the project's. */
   async function repoFor(projectId: string, threadId: string | undefined): Promise<Repo> {
     if (threadId === undefined) return repoOf(projectId);
@@ -1607,6 +1613,54 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       },
       { order: -10 },
     ),
+  );
+
+  /**
+   * T3's rename of a new worktree's temporary branch after its thread's first
+   * message (D901): beside the turn, never holding it up or failing it.
+   */
+  const renameFromFirstMessage = async (input: TurnHookInput) => {
+    const git = createGit(config().gitPath, input.cwd);
+    const branch = (await git(["branch", "--show-current"])).stdout.trim();
+    if (!isTemporaryBranch(branch)) return;
+    // The thread's own first turn only: a fork's first one follows its parent's.
+    const events = (await context.commands.execute("threads.events", {
+      threadId: input.threadId,
+      limit: 1000,
+    })) as StoredEvent[];
+    const first = events.find((event) => event.type === ThreadEvents.turnStarted)?.payload as
+      | { turnId?: string; input?: { text?: string } }
+      | undefined;
+    const text = first?.input?.text?.trim();
+    if (first?.turnId !== input.turnId || !text) return;
+    const fragment = await writerFor(input.projectId, input.threadId).branchName({
+      message: text,
+    });
+    if (fragment === undefined) return;
+    const renamed = await renameTemporaryBranch(git, branch, fragment);
+    context.log.info("renamed a worktree's temporary branch", {
+      threadId: input.threadId,
+      from: branch,
+      to: renamed,
+    });
+    // Every thread working in that worktree follows the new name.
+    for (const [threadId, dir] of threadDirs) {
+      if (dir.worktreePath === input.cwd) await recordThread(threadId, dir.projectId);
+    }
+  };
+
+  context.subscriptions.add(
+    context.hooks.before<TurnHookInput>(ThreadHooks.turnStart, async (input) => {
+      if (threadDirs.get(input.threadId)?.worktreePath === input.cwd) {
+        void renameFromFirstMessage(input).catch((error: unknown) =>
+          context.log.warn("could not rename a worktree's temporary branch", {
+            threadId: input.threadId,
+            error: String(error),
+          }),
+        );
+      }
+      return input;
+    }),
   );
 
   // --- Commands ---------------------------------------------------------------------------

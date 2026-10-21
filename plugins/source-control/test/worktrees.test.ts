@@ -220,6 +220,32 @@ describe("jhin.source-control: worktrees", () => {
     expect(git(thread.worktreePath!, "branch", "--show-current").trim()).toBe("feature/again");
   });
 
+  it("names a temporary branch from the thread's first message, beside a taken name", async () => {
+    const dir = repository();
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    // The fake agent echoes the writer's prompt: the message's JSON is its answer.
+    const message = '{"branch": "Fix the Login error"}';
+    const first = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await turn(sc, first.id, message);
+    await sc.until(branchOf(first.id, "jhin/fix-the-login-error"));
+    expect(git(first.worktreePath!, "branch", "--show-current").trim()).toBe(
+      "jhin/fix-the-login-error",
+    );
+
+    const second = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await turn(sc, second.id, message);
+    await sc.until(branchOf(second.id, "jhin/fix-the-login-error-1"));
+    // The folder keeps its temporary name, as in T3.
+    expect(Path.basename(second.worktreePath!)).toMatch(/^jhin-[0-9a-f]{8}$/);
+  });
+
   it("lets go of a worktree no thread works in any more", async () => {
     const dir = repository();
     const sc = await node({ watch: false });
