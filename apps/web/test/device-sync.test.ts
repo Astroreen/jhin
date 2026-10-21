@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { reconcile, shared } from "../src/plugins/device-sync.ts";
+import { reconcile, shared } from "../src/plugins/device-sync-engine.ts";
 
 describe("device settings across devices (D487, D488)", () => {
   it("takes what the node has later and sends what this device has later", () => {

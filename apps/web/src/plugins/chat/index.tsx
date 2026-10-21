@@ -46,7 +46,6 @@ import { createModelOptionsMemory } from "../../lib/model-options.ts";
 import { createAttachmentUrls } from "../../lib/uploads.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
-import { followDrafts } from "./drafts-sync.ts";
 import {
   CHAT_SECTION,
   ChatSettings,
@@ -296,7 +295,22 @@ export const chatPlugin = builtin(
           },
         }),
       );
-      context.subscriptions.add(followDrafts(connections, drafts, syncDrafts));
+      // Following other devices' drafts loads in a chunk of its own (D440).
+      let draftsStopped = false;
+      let draftsFeed: { dispose(): void } | undefined;
+      void import("./drafts-sync.ts")
+        .then(({ followDrafts }) => {
+          if (!draftsStopped) draftsFeed = followDrafts(connections, drafts, syncDrafts);
+        })
+        .catch((error: unknown) =>
+          context.log.warn("drafts of other devices not followed", { error: String(error) }),
+        );
+      context.subscriptions.add({
+        dispose: () => {
+          draftsStopped = true;
+          draftsFeed?.dispose();
+        },
+      });
       const attachmentUrls = createAttachmentUrls();
       context.subscriptions.add({ dispose: () => attachmentUrls.dispose() });
       const services: ChatServices = {

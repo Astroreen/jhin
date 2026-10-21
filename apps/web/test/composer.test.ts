@@ -180,6 +180,9 @@ describe("drafts shared through their thread's node (D486)", () => {
     drafts.set("k", { prompt: "", attachments: [] });
     drafts.flush();
     expect(sent.at(-1)).toEqual({ key: "k", prompt: "", at: "number" });
+    // The echo of the text typed before it does not bring it back.
+    expect(drafts.take("k", "from the phone", later)).toBe(false);
+    expect(drafts.get("k")).toBeUndefined();
   });
 
   it("maps a draft key to its node and the node's key", () => {

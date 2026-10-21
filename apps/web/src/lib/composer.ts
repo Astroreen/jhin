@@ -106,6 +106,11 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
   const changed = new Set<string>();
   /** Texts typed here since the last save, with when: what goes to the node (D486). */
   const typed = new Map<string, { prompt: string; at: number }>();
+  /**
+   * When each draft forgotten here was cleared: an older text from the node
+   * (the echo of what was typed before) must not bring it back (D486).
+   */
+  const cleared = new Map<string, number>();
   /** Composers following a key, told when another device's text is taken. */
   const followers = new Map<string, Set<(draft: ComposerDraft) => void>>();
   const mine = () =>
@@ -156,8 +161,10 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
       const at = textChanged ? Date.now() : before?.at;
       if (textChanged) typed.set(key, { prompt: draft.prompt, at: at! });
       const next = { ...drafts };
-      if (empty) delete next[key];
-      else next[key] = at === undefined ? draft : { ...draft, at };
+      if (empty) {
+        delete next[key];
+        if (at !== undefined) cleared.set(key, at);
+      } else next[key] = at === undefined ? draft : { ...draft, at };
       drafts = next;
       changed.add(key);
       if (timer !== undefined) clearTimeout(timer);
@@ -170,7 +177,8 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
      */
     take(key: string, prompt: string, at: number): boolean {
       const before = drafts[key];
-      if (at <= (before?.at ?? -1) || before?.prompt === prompt) return false;
+      const latest = Math.max(before?.at ?? -1, cleared.get(key) ?? -1);
+      if (at <= latest || (before?.prompt ?? "") === prompt) return false;
       const draft: ComposerDraft = { prompt, attachments: before?.attachments ?? [], at };
       const next = { ...drafts };
       if (prompt === "" && draft.attachments.length === 0) delete next[key];
