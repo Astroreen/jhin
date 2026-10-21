@@ -196,3 +196,78 @@ and terminals of threads on members work like local ones, and truncation of
 T3's desktop app on Jhin: an Electron shell that runs a local node and the
 web client, with its window chrome, native menus, notifications and
 auto update.
+
+## Round 2
+
+W1–W18 have landed their main scope. What a T3 Code user would still miss
+sits in the plans' Deferred lists. Round 2 takes it on in these workstreams;
+each continues the plans named and moves what it finishes out of their
+Deferred lists. Internal hardening that no user sees stays in Deferred
+unless a workstream needs it.
+
+| Id  | Workstream                                              | Plans                                                        | Decisions |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------ | --------- |
+| W19 | Steering and thread history leftovers                   | `t3-parity.md`                                               | D600–D619 |
+| W20 | Delegated work in the UI, subagent threads, automations | `orchestration.md`, `providers.md`                           | D620–D639 |
+| W21 | Worktree, git and pull request leftovers                | `source-control.md`                                          | D640–D659 |
+| W22 | Diff panel leftovers                                    | `source-control.md`                                          | D660–D679 |
+| W23 | Composer leftovers                                      | `t3-parity.md`, `terminal.md`                                | D680–D699 |
+| W24 | Codex and OpenCode parity                               | `providers.md`                                               | D700–D719 |
+| W25 | Preview, devices and the desktop app                    | `preview.md`, `desktop.md`                                   | D720–D739 |
+| W26 | Pairing, sidebar, terminal and config leftovers         | `security.md`, `t3-parity.md`, `terminal.md`, `config-ui.md` | D740–D759 |
+
+- **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
+  that waits for an approval, foreground subagents moved to the background
+  before a steer; find in a thread (`mod+f`), "Resume thread" for a stopped
+  turn, the Lineage panel of forks. Also clears the stale entries of
+  `t3-parity.md` Deferred.
+- **W20:** subagent rows and child threads hidden from the sidebar, the
+  workflow progress tree with its Stop button, a task's completion steered
+  into the parent's turn, per-turn options for a child, worktree isolation for
+  launches, `resumeFromRunId`, `budget`, nested and saved workflows; Claude
+  Code subagents shown as child threads; the thread's automations panel, the
+  editor's workspace and model pickers, `secretRef` webhook secrets through
+  `request_secret`.
+- **W21:** worktree setup scripts and their progress card, a temporary branch
+  named from the first message, cleanup rules, one worktree per model of a
+  multi-model send, `composer.workspace`; the pull request right panel, chat
+  header rows, native stacks with "Dismiss from thread", review comments on
+  lines, required checks as the gate, the sidebar's "Waiting", "Checkout pull
+  request", watching and icons for other forges, "Publish repository",
+  cancelling a git action, the per-file menu and icons on the changed files
+  card, "Roll back" in the item inspector.
+- **W22:** comment chips, comments shown in the diff with "Delete comment",
+  the review comment card in the timeline, in-app file preview, loading a
+  truncated diff file by file, expanding unchanged lines, find in the diff,
+  T3's file icons, "Reveal in file manager", remote editor URLs, the pop-out
+  panel.
+- **W23:** Shiki highlighting and the language picker, Tab indents, headings,
+  rules and task lists, citation and context chips with popovers, `#` pull
+  request mentions and threads in `@`, bracket and quote wrapping, plain-text
+  and literal modes, the hide-skills setting, file previews in the composer
+  and messages, video attachments, captured window context, thumbnails of
+  queued images, the inline terminal-context chip.
+- **W24:** for Codex: per-turn effort and fast mode, `/goal`, `/compact`,
+  `/feedback`, skills and `$skill`, revert, fork and rollback, async
+  questions, subagent threads and background terminals, MCP elicitations and
+  apps, the node's MCP server attached, usage windows and retry progress,
+  ChatGPT sign-in and several accounts, newer model slugs. For OpenCode: 1.x
+  support, reconnecting a lost event stream, per-turn variants, steering,
+  fork, rollback and subagent transcripts.
+- **W25:** the browser preview and devices inside the desktop app (preview.md
+  and desktop.md each defer it to the other; W25 owns it), browser profiles
+  and logins, `chrome-headless-shell` on first use, discovered local servers,
+  the mini player, touch input, uploads and downloads, rendered-page
+  extras, the device hub with input and video, SSH hosts and the setup wizard;
+  packaging, signing, notarization and a release workflow so auto update has a
+  feed, app icons, release notes in the update control, Paste as Text, the
+  quit-hold shortcut, WSL and SSH backends, the CLI shim.
+- **W26:** `jhin pair` with a terminal QR code, pairing links for a
+  `jhin client` page, device metadata and live updates in the authorized
+  clients list, an OS keychain store, Tailscale Serve, MCP OAuth, permission
+  titles; "Keep threads with a PR", per-project settle overrides,
+  "Regenerate titles (N)", the "Custom…" snooze, dragging a selection into the
+  chat, undo of a drag unpin or settle, the X that clears a draft; provider
+  environments for a terminal, clickable paths in terminal output,
+  right-panel terminals as surfaces; T3's color and font pickers, dragging
+  list items.
