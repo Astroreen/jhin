@@ -81,6 +81,10 @@ export function registerThreadDetails(
     const open = openFor !== undefined && openFor === threadId;
     const setOpen = (next: boolean) => setOpenFor(next ? threadId : undefined);
     const shortcut = useShortcutLabels(keybindings)("chat.thread-details.toggle");
+    // The Lineage chunk loads while the panel is still closed.
+    useEffect(() => {
+      void import("./lineage.tsx").catch(() => undefined);
+    }, []);
     useEffect(() => {
       if (threadId === undefined) return;
       const own = () => setOpenFor((current) => (current === threadId ? undefined : threadId));
@@ -158,8 +162,9 @@ export function registerThreadDetails(
       ),
     // A failed load shows nothing, as a thread without lineage does; opening the
     // panel again loads it again.
-    // While it loads, a row's room: the panel does not say it has nothing meanwhile.
-    { loading: () => <div aria-busy="true" className="h-12" />, failed: () => null },
+    // Loaded ahead, once the header's toggle shows (below), so opening the panel
+    // rarely waits for it.
+    { loading: () => null, failed: () => null },
   );
   context.subscriptions.add(
     slots.contribute<ChatThreadDetailsProps>("chat.thread.details", {
