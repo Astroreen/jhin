@@ -626,10 +626,10 @@ describe("pairing (security.md D419–D422)", () => {
       await post(`${httpUrl(node)}/auth/session`, { credential: short.token })
     ).json()) as { expiresAt: number; id: string };
     expect(opened.expiresAt).toBeLessThanOrEqual(short.expiresAt);
-    const { clients } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+    const listed = (await node.kernel.commands.execute("auth.clients.list", {})) as {
       clients: { id: string; method: string }[];
     };
-    expect(clients.find((client) => client.id === opened.id)?.method).toBe("issued");
+    expect(listed.clients.find((client) => client.id === opened.id)?.method).toBe("issued");
   });
 
   it("turns the owner's token from #token= into a session too", async () => {
