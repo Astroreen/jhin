@@ -29,6 +29,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/tool <command>" runs a pretend command and reports its output;
  * - "/approve <command>" asks for approval before running it;
  * - "/ask" asks a question and answers with the choice;
+ * - "/edit" asks for an answer prefilled with two lines (`initialAnswer`) and quotes it back;
  * - "/plan" publishes a three-step plan and completes it;
  * - "/options" answers with the model options the turn runs with;
  * - "/attachments" answers with each attachment's name, size and, for text, its content;
@@ -157,6 +158,31 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
       } else {
         yield* say(`Did not run ${command}`);
       }
+      return;
+    }
+    if (text.startsWith("/edit")) {
+      const requestId = nextId();
+      const answered = awaitAnswer(requestId);
+      yield {
+        kind: "request.opened",
+        requestId,
+        request: {
+          kind: "user-input",
+          questions: [
+            {
+              id: "draft",
+              header: "Draft",
+              question: "Edit the message before I send it",
+              options: [],
+              initialAnswer: "Dear team,\n  the build is green.",
+            },
+          ],
+        },
+      };
+      const response = await answered;
+      if (interrupted || response === undefined) return;
+      const written = response.kind === "user-input" ? response.answers["draft"] : undefined;
+      yield* say(`You wrote ${JSON.stringify(written ?? null)}`);
       return;
     }
     if (text.startsWith("/ask")) {

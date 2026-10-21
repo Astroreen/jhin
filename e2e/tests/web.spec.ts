@@ -89,6 +89,36 @@ test("answers the agent's question from the composer", async ({ page }) => {
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("You chose Blue");
 });
 
+test("edits a prefilled answer as literal text and sends it back as typed", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/edit");
+  await message.press("Enter");
+
+  // The answer is prefilled (D1001), its lines and leading spaces kept.
+  await expect(page.getByText("Edit the message before I send it")).toBeVisible();
+  await expect(message.locator("p")).toHaveText(["Dear team,", "  the build is green."]);
+  await message.press("ControlOrMeta+End");
+  await message.pressSequentially(" **Ship** it.");
+  // Literal text: `**` stays as typed, never bold.
+  await expect(message.locator("strong")).toHaveCount(0);
+  await expect(message.locator("p").last()).toHaveText("the build is green. **Ship** it.");
+  const shot = info.outputPath("prefilled-answer.png");
+  await page.screenshot({ path: shot });
+  await info.attach("prefilled-answer", { path: shot, contentType: "image/png" });
+  await page.getByRole("button", { name: "Submit answer" }).click();
+
+  // The answer went back exactly as edited: the two leading spaces (a pattern, not a string,
+  // which would fold them into one) and the `**` the agent's reply then shows as bold.
+  const reply = page.getByRole("article", { name: "Agent" });
+  await expect(reply).toHaveText(/^You wrote "Dear team,\\n {2}the build is green\. Ship it\."$/);
+  await expect(reply.locator("strong")).toHaveText("Ship");
+  await expect(message).toHaveText("");
+});
+
 test("archives a thread, which then takes no messages until it is unarchived", async ({ page }) => {
   await page.goto(`${node.ui}#token=${node.token}`);
   await page.getByRole("button", { name: "Start a thread" }).click();

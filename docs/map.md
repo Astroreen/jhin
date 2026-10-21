@@ -159,6 +159,8 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   preload (`plans/desktop.md#D521`).
 - `jhin serve --plugin-dir <dir>` — loads a plugin package from outside the
   plugin folders, as the dev layer (D15); the desktop app adds its plugin so.
+- `agent.runtime` 1.5 (`@jhin/agent-api`): a question's `initialAnswer`, an
+  answer to edit (`plans/t3-parity.md` D1001).
 - `@jhin/ui` also exports the settings layout (`SettingsSection`,
   `SettingsRow`), `useNativeTitlebarHeight` (`plans/desktop.md#D514`, `#D515`) and
   `ThreadDetailsSection` for sections of the thread details panel

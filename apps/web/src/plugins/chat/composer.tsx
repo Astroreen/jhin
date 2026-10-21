@@ -121,6 +121,7 @@ const PromptEditor = lazy(() =>
   import("./prompt-editor.tsx").then((module) => ({ default: module.PromptEditor })),
 );
 import { useComposerMenu } from "./use-composer-menu.ts";
+import { type PutAside, usePutAside } from "./put-aside.ts";
 import {
   useAttachmentLoader,
   useAttachmentUrl,
@@ -1226,21 +1227,18 @@ export function Composer(props: ComposerProps) {
     | undefined
   >();
 
-  useEffect(() => {
-    // A queued message being edited is not the thread's draft.
-    if (editing === undefined) {
-      drafts.set(props.draftKey, { prompt, attachments: draftAttachments(attachments) });
-    }
-  }, [drafts, props.draftKey, prompt, attachments, editing]);
-
   /** Whether the user is in the composer: another device's text never replaces what is typed. */
   const typingHere = useRef(false);
+  /** Set once the questions are known, further down: a remote draft may come before. */
+  const putAsideNow = useRef<PutAside | undefined>(undefined);
   // Another device's text for this draft (D486): read from the node when the
   // composer opens, and taken while the composer is not in use.
   useEffect(() => {
     const key = props.draftKey;
     const stop = drafts.follow(key, (draft) => {
-      if (!typingHere.current && editing === undefined) setPrompt(draft.prompt);
+      if (typingHere.current || editing !== undefined) return;
+      // While a prefilled answer shows, the draft that arrives is the one kept aside.
+      if (putAsideNow.current?.takeRemote(draft.prompt) !== true) setPrompt(draft.prompt);
     });
     const node = nodeDraftKey(key);
     if (node !== undefined && readSection(chat.context, SYNC_SECTION, SyncSettings).drafts) {
@@ -1367,6 +1365,8 @@ export function Composer(props: ComposerProps) {
   };
   /** Puts text into the prompt (Add to chat): at the caret while the editor has focus, else at the end. */
   const insert = (text: string) => {
+    // A prefilled answer is taken as typed: Add to chat leaves it alone, as T3's does.
+    if (literalAnswer) return;
     const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
     const before = prompt.slice(0, at);
     const gap = before.length > 0 && !/\s$/.test(before) ? "\n\n" : "";
@@ -1633,7 +1633,37 @@ export function Composer(props: ComposerProps) {
     if (!multi && questionIndex < questions.length - 1) setPicked(questionIndex);
   };
   const currentQuestion = questions[questionIndex];
-  const custom = prompt.trim();
+  /**
+   * A question with a prefilled answer is edited as literal text (T3's `isLiteralPendingAnswer`,
+   * D1001): no chips, no styling, and the answer goes back exactly as typed.
+   */
+  const literalAnswer =
+    currentQuestion?.initialAnswer !== undefined && currentQuestion.allowCustomAnswer !== false;
+  // The draft waits aside while an answer to edit shows (D1001).
+  const putAside = usePutAside({
+    draftKey: props.draftKey,
+    seed:
+      literalAnswer && question !== undefined && currentQuestion?.initialAnswer !== undefined
+        ? {
+            key: `${question.requestId}:${currentQuestion.id}`,
+            text: currentQuestion.initialAnswer,
+          }
+        : undefined,
+    asking: question !== undefined,
+    prompt,
+    setPrompt: (value) => {
+      setPrompt(value);
+      setCursor(value.length);
+    },
+  });
+  putAsideNow.current = putAside;
+  useEffect(() => {
+    // A queued message being edited is not the thread's draft, nor is a prefilled answer.
+    if (editing === undefined && !putAside.active) {
+      drafts.set(props.draftKey, { prompt, attachments: draftAttachments(attachments) });
+    }
+  }, [drafts, props.draftKey, prompt, attachments, editing, putAside.active]);
+  const custom = literalAnswer ? prompt : prompt.trim();
   /** A question's answer with the typed one: added to a multi-select's options, else instead. */
   const withCustom = (item: UserQuestion): readonly string[] => {
     const chosen = answers[item.id] ?? [];
@@ -1935,6 +1965,7 @@ export function Composer(props: ComposerProps) {
                           onSubmit={() => void send()}
                           placeholder={placeholder}
                           readOnly={busy && question === undefined}
+                          literalText={literalAnswer}
                           richText={settings.composerRichTextEnabled}
                           sendShortcut={
                             settings.sendShortcut === "mod-enter" ? "mod-enter" : "enter"
