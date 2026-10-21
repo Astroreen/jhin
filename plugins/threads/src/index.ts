@@ -3366,17 +3366,16 @@ export default definePlugin({
           );
         }
         // A turn whose message cannot be sent again is refused before anything is dropped.
-        assertMessage(payload.input?.text ?? "", payload.input?.attachments);
+        const { input } = payload;
+        assertMessage(input.text ?? "", input.attachments);
         let dropped: string[] = [];
         // Its agent, unless that is gone from the node: then the thread's, as a send.
         const own = payload.agentId !== undefined && registry.get(payload.agentId) !== undefined;
         const next = await startTurn(
           threadId,
           {
-            text: payload.input?.text ?? "",
-            ...(payload.input?.attachments === undefined
-              ? {}
-              : { attachments: payload.input.attachments }),
+            text: input.text ?? "",
+            ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
             ...(own ? { agentId: payload.agentId } : {}),
             ...(own && payload.model !== undefined ? { model: payload.model } : {}),
             ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),
