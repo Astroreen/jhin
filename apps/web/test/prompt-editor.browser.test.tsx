@@ -16,6 +16,8 @@ interface Mounted {
   setFromParent(value: string): void;
   /** Disables the editor from outside, as a busy composer does. */
   setDisabled(disabled: boolean): void;
+  /** Turns the rich text setting on or off from outside, as the settings page does. */
+  setRichText(richText: boolean): void;
   /** Resolves once the editor reports `expected` (and `cursor`, when given), or already has. */
   reported(expected: string, cursor?: number): Promise<void>;
   editable(): HTMLElement;
@@ -45,10 +47,13 @@ function mount(
   let current = initial;
   let setOutside: ((value: string) => void) | undefined;
   let setDisabledOutside: ((disabled: boolean) => void) | undefined;
+  let setRichTextOutside: ((richText: boolean | undefined) => void) | undefined;
 
   function Harness() {
     const [value, setValue] = useState(initial);
     const [disabled, setDisabled] = useState(false);
+    const [richText, setRichText] = useState(options.richText);
+    setRichTextOutside = setRichText;
     setOutside = setValue;
     setDisabledOutside = setDisabled;
     return (
@@ -68,7 +73,7 @@ function mount(
         disabled={disabled}
         placeholder="Ask anything"
         sendShortcut={options.sendShortcut ?? "enter"}
-        richText={options.richText}
+        richText={richText}
         literalText={options.literalText}
         handleRef={handleRef}
       />
@@ -93,6 +98,7 @@ function mount(
       act(() => setOutside!(value));
     },
     setDisabled: (disabled) => act(() => setDisabledOutside!(disabled)),
+    setRichText: (richText) => act(() => setRichTextOutside!(richText)),
     reported: (expected, cursor) => {
       const matches = (value: string, at: number) =>
         value === expected && (cursor === undefined || at === cursor);
@@ -584,6 +590,20 @@ describe("plain and literal text (T3's Rich text composer setting and literal an
     expect(root.querySelector("strong, code, ul, blockquote, h1, hr, pre")).toBeNull();
     expect(root.querySelector("[data-mention='src/a.ts']")?.textContent).toBe("a.ts");
     editor.handle.setValue(editor.value());
+    expect(editor.value()).toBe(prompt);
+  });
+
+  it("builds the editor again when the setting changes, keeping the prompt", async () => {
+    const prompt = "**bold**\n- one";
+    const editor = mount(prompt);
+    expect(editor.editable().querySelector("strong")?.textContent).toBe("bold");
+    editor.setRichText(false);
+    expect(editor.editable().getAttribute("data-composer-rich-text")).toBe("false");
+    expect(editor.editable().querySelector("strong, ul")).toBeNull();
+    expect(editor.editable().textContent).toBe("**bold**- one");
+    editor.setRichText(true);
+    expect(editor.editable().getAttribute("data-composer-rich-text")).toBe("true");
+    expect(editor.editable().querySelector("strong")?.textContent).toBe("bold");
     expect(editor.value()).toBe(prompt);
   });
 
