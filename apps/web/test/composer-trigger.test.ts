@@ -5,6 +5,8 @@ import {
   isPathWord,
   parseStandaloneComposerSlashCommand,
   serializeComposerFileLink,
+  serializeComposerPullRequestLink,
+  serializeComposerThreadLink,
   splitPromptIntoSegments,
   submitsOnKey,
 } from "../src/lib/composer-trigger.ts";
@@ -51,10 +53,26 @@ describe("the composer's trigger at the caret (D303, as T3's detectComposerTrigg
     });
   });
 
-  it("sees nothing in plain words, after whitespace, or in a pull request reference", () => {
+  it("reads a pull request after #: a number, words, or nothing yet", () => {
+    expect(detectComposerTrigger("see #12", 7)).toEqual({
+      kind: "pull-request",
+      query: "12",
+      rangeStart: 4,
+      rangeEnd: 7,
+    });
+    expect(detectComposerTrigger("#", 1)).toMatchObject({ kind: "pull-request", query: "" });
+    expect(detectComposerTrigger("#fix-cache", 10)).toMatchObject({ query: "fix-cache" });
+    expect(detectComposerTrigger("#é", 2)).toMatchObject({ query: "é" });
+    // A heading's hashes, a second #, or a query starting with a dash is not one.
+    for (const prompt of ["##", "#-x", "#12#", "a#1"]) {
+      expect(detectComposerTrigger(prompt, prompt.length)).toBeNull();
+    }
+  });
+
+  it("sees nothing in plain words or after whitespace", () => {
     expect(detectComposerTrigger("hello", 5)).toBeNull();
     expect(detectComposerTrigger("@a ", 3)).toBeNull();
-    expect(detectComposerTrigger("#12", 3)).toBeNull();
+    expect(detectComposerTrigger("#12 ", 4)).toBeNull();
     expect(detectComposerTrigger("", 0)).toBeNull();
   });
 
@@ -124,6 +142,77 @@ describe("the prompt's chips", () => {
       path: "my dir/a.ts",
       source: '@"my dir/a.ts"',
     });
+  });
+});
+
+describe("a picked pull request or thread in the prompt", () => {
+  it("is a link labelled #number to the pull request, split back out as a reference chip", () => {
+    const link = serializeComposerPullRequestLink({
+      number: 12,
+      url: "https://github.com/acme/app/pull/12",
+    });
+    expect(link).toBe("[#12](https://github.com/acme/app/pull/12)");
+    expect(splitPromptIntoSegments(`look at ${link} please`)).toEqual([
+      { type: "text", text: "look at " },
+      {
+        type: "reference",
+        kind: "pull-request",
+        label: "#12",
+        href: "https://github.com/acme/app/pull/12",
+        source: link,
+      },
+      { type: "text", text: " please" },
+    ]);
+  });
+
+  it("leaves a #number link to anything but that pull request as a plain link", () => {
+    for (const url of [
+      "https://example.com/phish",
+      "https://github.com/acme/app/pull/13",
+      "https://github.com/acme/app/issues/12",
+    ]) {
+      const kinds = splitPromptIntoSegments(`see [#12](${url})`).map((segment) =>
+        "kind" in segment ? segment.kind : segment.type,
+      );
+      expect(kinds, url).not.toContain("pull-request");
+    }
+    expect(
+      splitPromptIntoSegments("[#7](https://gitlab.com/a/b/-/merge_requests/7)").map((segment) =>
+        "kind" in segment ? segment.kind : segment.type,
+      ),
+    ).toEqual(["pull-request"]);
+  });
+
+  it("encodes a thread address that holds a parenthesis or a space", () => {
+    const link = serializeComposerThreadLink("Cache", "jhin://node (a)/threads/t)1");
+    const [segment] = splitPromptIntoSegments(link);
+    expect(segment).toMatchObject({ type: "reference", kind: "thread", source: link });
+  });
+
+  it("is a link labelled with the thread's title to its jhin:// address", () => {
+    const link = serializeComposerThreadLink(
+      "  Fix [the] cache\n now ",
+      "jhin://node-1/threads/t-2",
+    );
+    expect(link).toBe("[Fix the cache now](jhin://node-1/threads/t-2)");
+    expect(serializeComposerThreadLink("[]", "jhin://n/threads/t")).toBe(
+      "[thread](jhin://n/threads/t)",
+    );
+    expect(splitPromptIntoSegments(link)).toEqual([
+      {
+        type: "reference",
+        kind: "thread",
+        label: "Fix the cache now",
+        href: "jhin://node-1/threads/t-2",
+        source: link,
+      },
+    ]);
+  });
+
+  it("leaves other links alone: a #label to a file, another jhin:// address", () => {
+    for (const prompt of ["[#12](src/a.ts)", "[agent](jhin://n/agents/a)", "#12"]) {
+      expect(splitPromptIntoSegments(prompt)).toEqual([{ type: "text", text: prompt }]);
+    }
   });
 });
 

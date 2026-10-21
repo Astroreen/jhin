@@ -71,6 +71,12 @@ export interface Forge {
   at(url: string): Promise<PullRequest>;
   /** A pull request by its number, URL or head branch, to check out (D902). */
   resolve?(reference: string): Promise<CheckoutTarget>;
+  /**
+   * The repository's pull requests, any state, most recently updated first;
+   * `query` is searched on the forge (T3's `listChangeRequests` with a query,
+   * for the composer's `#` menu).
+   */
+  list?(input: { readonly query?: string; readonly limit: number }): Promise<PullRequest[]>;
   create(input: {
     readonly base: string;
     readonly head: HeadContext;

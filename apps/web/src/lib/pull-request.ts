@@ -50,7 +50,7 @@ const PULL_REQUEST_STATE_PRESENTATION = {
   },
 } as const satisfies Record<PullRequest["state"] | "draft", PullRequestStatePresentation>;
 
-function resolvePullRequestState(input: {
+export function resolvePullRequestState(input: {
   readonly state: PullRequest["state"];
   readonly isDraft: boolean;
 }): PullRequestStatePresentation {

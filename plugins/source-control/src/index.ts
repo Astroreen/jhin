@@ -2064,6 +2064,51 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   });
 
   context.commands.register({
+    name: "git.pr.search",
+    title: "Search pull requests",
+    description:
+      "A project's repository's pull requests, any state, most recently updated first; `query` is searched on the forge (the composer's `#` menu)",
+    input: z.object({
+      projectId: z.string().min(1),
+      query: z.string().max(200).optional(),
+      limit: z.number().int().positive().max(100).optional(),
+    }),
+    output: z.object({ pullRequests: z.array(PullRequest) }),
+    permissions: ["git.read"],
+    handler: async ({ projectId, query, limit }) => {
+      const repo = await repoOf(projectId);
+      const { root } = await gitOf(repo);
+      const forge =
+        repo.forge === undefined ? undefined : makeForge(repo.forge.kind, root, repo.forge.url);
+      if (forge?.list === undefined) {
+        throw new SourceControlError(
+          "ACTION_UNAVAILABLE",
+          forge === undefined
+            ? "This repository has no remote on a known forge."
+            : `Listing the ${forge.terminology.singular}s of ${forge.name} is not supported yet.`,
+          { projectId },
+        );
+      }
+      try {
+        return {
+          pullRequests: await forge.list({
+            ...(query === undefined ? {} : { query }),
+            limit: limit ?? 30,
+          }),
+        };
+      } catch (error) {
+        // A missing or signed-out CLI will not answer the next `#` either.
+        const unavailable = error instanceof ForgeUnavailable && error.kind !== "failed";
+        throw new SourceControlError(
+          unavailable ? "ACTION_UNAVAILABLE" : "PULL_REQUEST_FAILED",
+          (error as Error).message,
+          { projectId },
+        );
+      }
+    },
+  });
+
+  context.commands.register({
     name: "git.pr.checkout",
     title: "Checkout pull request",
     description:

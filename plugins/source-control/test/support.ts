@@ -83,6 +83,8 @@ export function fakeGh(): {
   recover(): void;
   /** What `gh pr view <url ending in number>` prints. */
   view(number: number, value: unknown): void;
+  /** What `gh pr list --search` prints: the repository's pull requests. */
+  list(value: unknown[]): void;
   /** Makes `gh pr create` print `stderr` and exit with `code`. */
   failCreate(code: number, stderr: string): void;
   /** The body file `gh pr create` was given for `head`. */
@@ -122,6 +124,10 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ] && [ "$3" = "--head" ]; then
   if [ -f "${dir}/pr-$4.json" ]; then cat "${dir}/pr-$4.json"; else echo "[]"; fi
   exit 0
 fi
+if [ "$1" = "pr" ] && [ "$2" = "list" ] && [ "$3" = "--state" ]; then
+  if [ -f "${dir}/list.json" ]; then cat "${dir}/list.json"; else echo "[]"; fi
+  exit 0
+fi
 echo "unexpected gh call: $*" >&2
 exit 1
 `;
@@ -142,6 +148,7 @@ exit 1
     recover: () => Fs.rmSync(Path.join(dir, "exit")),
     view: (number, value) =>
       Fs.writeFileSync(Path.join(dir, `view-${number}.json`), JSON.stringify(value)),
+    list: (value) => Fs.writeFileSync(Path.join(dir, "list.json"), JSON.stringify(value)),
     failCreate(code, stderr) {
       Fs.writeFileSync(Path.join(dir, "create-stderr"), stderr);
       Fs.writeFileSync(Path.join(dir, "create-exit"), String(code));

@@ -1,17 +1,26 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/chat/ComposerCommandMenu.tsx
-// at eb7b35ac (the rows, their wording, the empty and loading states). T3 builds it on its
+// at eb7b35ac (the rows, their wording, the empty and loading states, a pull request's state
+// icon and a thread's icon). T3 builds it on its
 // Command list; here it is a plain listbox the editor drives with the arrow keys.
 import { cn } from "@jhin/ui";
-import { FileIcon, FolderIcon, SparklesIcon, SquareSlashIcon } from "lucide-react";
+import {
+  FileIcon,
+  FolderIcon,
+  MessagesSquareIcon,
+  SparklesIcon,
+  SquareSlashIcon,
+} from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 
 import { skillDisplayName, type ComposerMenuItem } from "../../lib/composer-menu.ts";
+import { resolvePullRequestState } from "../../lib/pull-request.ts";
 import { ComposerBanner } from "./banner.tsx";
 
-export type MenuTrigger = "slash-command" | "skill" | "path";
+export type MenuTrigger = "slash-command" | "skill" | "path" | "pull-request";
 
 const LISTBOX_LABEL_BY_TRIGGER: Record<MenuTrigger, string> = {
   path: "Files and folders",
+  "pull-request": "Pull requests",
   "slash-command": "Commands",
   skill: "Skills",
 };
@@ -28,6 +37,8 @@ export function ComposerCommandMenu(props: {
   readonly isLoading: boolean;
   readonly trigger: MenuTrigger;
   readonly activeItemId: string | null;
+  /** What it says with no rows once loaded, when the trigger has its own words (`#`). */
+  readonly emptyStateText?: string | undefined;
   onHighlight(itemId: string | null): void;
   onSelect(item: ComposerMenuItem): void;
 }) {
@@ -71,7 +82,14 @@ export function ComposerCommandMenu(props: {
                 }}
                 role="option"
               >
-                {item.type === "path" ? (
+                {item.type === "pull-request" ? (
+                  <PullRequestStateIcon pullRequest={item.pullRequest} />
+                ) : item.type === "thread" ? (
+                  <MessagesSquareIcon
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
+                ) : item.type === "path" ? (
                   item.pathKind === "directory" ? (
                     <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
                   ) : (
@@ -112,15 +130,32 @@ export function ComposerCommandMenu(props: {
             {props.isLoading
               ? props.trigger === "skill"
                 ? "Searching workspace skills..."
-                : "Searching workspace files..."
-              : props.trigger === "skill"
-                ? "No skills found. Try / to browse provider commands."
-                : props.trigger === "path"
-                  ? "No matching files or folders."
-                  : "No matching command."}
+                : props.trigger === "pull-request"
+                  ? "Finding pull request..."
+                  : "Searching workspace files..."
+              : (props.emptyStateText ??
+                (props.trigger === "skill"
+                  ? "No skills found. Try / to browse provider commands."
+                  : props.trigger === "path"
+                    ? "No matching files or folders."
+                    : "No matching command."))}
           </p>
         </div>
       )}
     </ComposerBanner.Surface>
+  );
+}
+
+/** A pull request's state as T3 shows it in the row: its glyph in the state's tone, named. */
+function PullRequestStateIcon(props: {
+  readonly pullRequest: Extract<ComposerMenuItem, { type: "pull-request" }>["pullRequest"];
+}) {
+  const presentation = resolvePullRequestState(props.pullRequest);
+  return (
+    <presentation.Icon
+      aria-label={presentation.label}
+      className={cn("size-4 shrink-0", presentation.toneClassName)}
+      role="img"
+    />
   );
 }

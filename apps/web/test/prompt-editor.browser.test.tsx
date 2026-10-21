@@ -186,6 +186,27 @@ describe("the prompt editor (D303)", () => {
     await editor.reported(`${prompt} ok`);
   });
 
+  it("shows a picked pull request and thread as chips by their label, written back unchanged", async () => {
+    const editor = mount("see #1");
+    const pr = "[#12](https://github.com/acme/app/pull/12) ";
+    editor.handle.replaceRange(4, 6, pr);
+    const root = editor.editable();
+    const prChip = root.querySelector("[data-reference='pull-request']")!;
+    expect(prChip.textContent).toBe("#12");
+    expect(prChip.getAttribute("title")).toBe("https://github.com/acme/app/pull/12");
+
+    const thread = "[Fix the cache](jhin://node-1/threads/t-2) ";
+    const end = editor.value().length;
+    editor.handle.replaceRange(end, end, `and @fix`);
+    editor.handle.replaceRange(end + 4, end + 8, thread);
+    expect(root.querySelector("[data-reference='thread']")?.textContent).toBe("Fix the cache");
+    expect(editor.value()).toBe(`see ${pr}and ${thread}`);
+
+    editor.handle.focus();
+    await userEvent.keyboard("ok");
+    await editor.reported(`see ${pr}and ${thread}ok`);
+  });
+
   it("keeps markdown styling and blocks round-trip", async () => {
     const prompt =
       "**bold** and *it* ~~gone~~ `code`\n- one\n- two\n> quote\n\n```ts\nconst a = 1;\n```";
@@ -407,11 +428,23 @@ describe("wrapping a selection (D844)", () => {
     const end = tiptap.state.doc.content.size - 1;
     // The space after the chip and "next".
     tiptap.commands.setTextSelection({ from: end - 5, to: end });
-    tiptap.commands.focus();
     expect(tiptap.state.doc.textBetween(end - 5, end)).toBe(" next");
-    await userEvent.keyboard("(");
-    // Replaced, as T3 does, rather than wrapped.
-    await editor.reported("[a.ts](src/a.ts)(");
+    // The editor's text input handler declines, so the browser's plain replace runs, as T3's
+    // does. Asked directly: how a browser replaces a range beside a chip varies.
+    const view = tiptap.view;
+    const wrapped = view.someProp("handleTextInput", (handle) =>
+      handle(view, end - 5, end, "(", () => view.state.tr),
+    );
+    expect(wrapped).toBeFalsy();
+    expect(editor.value()).toBe("[a.ts](src/a.ts) next");
+    // Without the chip's space, the same selection wraps.
+    tiptap.commands.setTextSelection({ from: end - 4, to: end });
+    expect(
+      view.someProp("handleTextInput", (handle) =>
+        handle(view, end - 4, end, "(", () => view.state.tr),
+      ),
+    ).toBe(true);
+    await editor.reported("[a.ts](src/a.ts) (next)");
   });
 });
 

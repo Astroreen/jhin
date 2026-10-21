@@ -1676,6 +1676,29 @@ T3 Code `eb7b35ac` as D290 says.
   `[ ] ` at the start of a bullet item turns it into a task; Enter continues
   with an unchecked task and leaves from an empty one. As T3's tests fix,
   `[X]` is written back as `[x]`.
+- **D849. `#` mentions a pull request,** as T3's `detectComposerTrigger`
+  (`#` and a word at a word's start) and its composer menu "Pull requests":
+  the project's 99 latest pull requests in any state, a typed number found
+  even when it is not among them (`git.pr.resolve`), the thread's linked
+  ones first while a number or nothing is typed (words rank by T3's search alone), T3's ranking (`composerPullRequestMatches.ts`,
+  `pullRequestList.logic.ts`), a state icon per row and T3's wording for
+  loading, no match and no forge. Words typed after `#` are searched on the
+  host after 180 ms. A list is reused for a minute per project and query, where
+  T3's query cache serves it, so a pull request opened in that minute shows
+  after it. The list is the new command `git.pr.search`
+  (`{ projectId, query?, limit? }` → `{ pullRequests }`, under `git.read`),
+  which GitHub answers through `gh pr list`; a forge without listing says
+  "Pull requests are not available for this project."
+- **D850. The `@` menu offers other threads,** as T3's
+  `matchComposerThreadItems`: up to five threads of the same node whose title
+  holds the query, newest first, never the open thread or an archived one,
+  above the files, described "Thread".
+- **D851. A picked pull request or thread is a chip that writes a link,**
+  where T3 writes a context record (`t3-context://`): a pull request is
+  `[#12](<its URL>)`, shown `#12`; a thread is `[<title>](jhin://<node>/threads/<id>)`
+  (D24), its label cleaned as T3's `sanitizeComposerContextLabel`. The agent
+  gets the link; reading the thread goes through the node's thread tools.
+  The context records themselves come with the context chips.
 
 ### Sidebar leftovers (W26)
 
@@ -1737,8 +1760,9 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   none), the vertical spacing T3 gives headings (the composer's blocks have
   none), visible marks at the caret,
   citation and context-reference chips, chip popovers (file icons, a skill's
-  description and "View instructions"), `#` pull-request mentions and other
-  threads in the `@` menu, the
+  description and "View instructions"), T3's context record for a mentioned pull
+  request or thread (D851; its title, branches and "untrusted data" block),
+  listing pull requests on forges other than GitHub (D849), the
   plain-text and literal modes, `aria-activedescendant` from the editor to the
   menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing

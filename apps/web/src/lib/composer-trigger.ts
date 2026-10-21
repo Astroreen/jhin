@@ -1,11 +1,13 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): packages/shared/src/composerTrigger.ts,
-// packages/shared/src/composerInlineTokens.ts, apps/web/src/composer-logic.ts and
-// apps/web/src/composer-editor-mentions.ts at eb7b35ac.
+// packages/shared/src/composerInlineTokens.ts, packages/shared/src/composerContextReferences.ts
+// (sanitizeComposerContextLabel, a reference as a markdown link), apps/web/src/composer-logic.ts
+// and apps/web/src/composer-editor-mentions.ts at eb7b35ac.
 //
 // Pure helpers over the prompt, which is a markdown string: what the caret is typing (a `/`
-// command, a `$` skill, an `@` path), how a picked file is written, and where the chips are.
+// command, a `#` pull request, a `$` skill, an `@` path or thread), how a picked file, pull
+// request or thread is written, and where the chips are.
 
-type ComposerTriggerKind = "path" | "slash-command" | "skill";
+type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
 
 export interface ComposerTrigger {
   readonly kind: ComposerTriggerKind;
@@ -40,6 +42,51 @@ export function serializeComposerFileLink(path: string): string {
   return `[${label}](${encodeMarkdownLinkDestination(path)})`;
 }
 
+/** T3's sanitizeComposerContextLabel: one line, no brackets, at most 200 characters. */
+function sanitizeReferenceLabel(label: string, fallback: string): string {
+  const cleaned = label
+    .replace(/[[\]\\\r\n]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
+/**
+ * A picked pull request as the prompt writes it: a link labelled `#number` (T3's chip label)
+ * to the pull request, which the agent can read.
+ */
+export function serializeComposerPullRequestLink(pullRequest: {
+  readonly number: number;
+  readonly url: string;
+}): string {
+  return `[#${pullRequest.number}](${encodeMarkdownLinkDestination(pullRequest.url)})`;
+}
+
+/**
+ * A picked thread as the prompt writes it: a link labelled with its title to its
+ * `jhin://<nodeId>/threads/<id>` address (D24), as T3 links a thread context.
+ */
+export function serializeComposerThreadLink(title: string, address: string): string {
+  return `[${sanitizeReferenceLabel(title, "thread")}](${encodeMarkdownLinkDestination(address)})`;
+}
+
+const THREAD_ADDRESS_REGEX = /^jhin:\/\/[^/\s]+\/threads\/[^/\s?#]+$/;
+const PULL_REQUEST_LABEL_REGEX = /^#(\d+)$/;
+
+/**
+ * A `#n` link whose URL is that pull request (`…/pull/n`, `…/merge_requests/n`,
+ * `…/pullrequest/n`, `…/pulls/n`): another destination stays a plain link, so a
+ * chip never hides where it goes.
+ */
+function isPullRequestLink(label: string, url: string): boolean {
+  const number = PULL_REQUEST_LABEL_REGEX.exec(label)?.[1];
+  if (number === undefined || !/^https?:\/\//i.test(url)) return false;
+  return new RegExp(`/(?:pull|pulls|merge_requests|pullrequest)/${number}/?(?:[?#].*)?$`, "i").test(
+    url,
+  );
+}
+
 function clampCursor(text: string, cursor: number): number {
   if (!Number.isFinite(cursor)) return text.length;
   return Math.max(0, Math.min(text.length, Math.floor(cursor)));
@@ -61,7 +108,8 @@ export function isPathWord(text: string, wordStart: number, cursor: number): boo
 
 /**
  * The trigger the caret is typing, read from the whitespace-delimited token that ends at the
- * caret: `/name` a command, `$name` (any currency sign) a skill, `@path` a file.
+ * caret: `/name` a command, `#` and a number or words a pull request, `$name` (any currency
+ * sign) a skill, `@path` a file or a thread.
  */
 export function detectComposerTrigger(text: string, cursorInput: number): ComposerTrigger | null {
   const cursor = clampCursor(text, cursorInput);
@@ -74,6 +122,15 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
     return {
       kind: "slash-command",
       query: token.slice(1),
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
+  }
+  const pullRequestMatch = /^#([\p{L}\p{N}][\p{L}\p{N}_-]*)?$/u.exec(token);
+  if (pullRequestMatch) {
+    return {
+      kind: "pull-request",
+      query: pullRequestMatch[1] ?? "",
       rangeStart: tokenStart,
       rangeEnd: cursor,
     };
@@ -119,11 +176,23 @@ export function submitsOnKey(
 export type ComposerPromptSegment =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "mention"; readonly path: string; readonly source: string }
-  | { readonly type: "skill"; readonly name: string; readonly source: string };
+  | { readonly type: "skill"; readonly name: string; readonly source: string }
+  | {
+      readonly type: "reference";
+      readonly kind: ReferenceKind;
+      readonly label: string;
+      readonly href: string;
+      readonly source: string;
+    };
+
+/** What a reference chip points at: a pull request or a thread. */
+type ReferenceKind = "pull-request" | "thread";
 
 interface InlineToken {
-  readonly type: "mention" | "skill";
+  readonly type: "mention" | "skill" | ReferenceKind;
   readonly value: string;
+  /** A reference's label. */
+  readonly label?: string;
   readonly start: number;
   readonly end: number;
 }
@@ -162,9 +231,24 @@ function collectInlineTokens(text: string): InlineToken[] {
       path = decodeURIComponent(encoded);
     } catch {}
     const external = URI_SCHEME_REGEX.test(path) && !WINDOWS_DRIVE_PATH_REGEX.test(path);
+    const start = (match.index ?? 0) + prefix.length;
+    const reference: ReferenceKind | undefined = THREAD_ADDRESS_REGEX.test(encoded)
+      ? "thread"
+      : isPullRequestLink(label, path)
+        ? "pull-request"
+        : undefined;
+    if (reference !== undefined) {
+      tokens.push({
+        type: reference,
+        value: encoded,
+        label,
+        start,
+        end: start + match[0].length - prefix.length,
+      });
+      continue;
+    }
     // A link labelled with anything but its file's name is a link the user wrote, not a chip.
     if (!path || external || label !== basename(path)) continue;
-    const start = (match.index ?? 0) + prefix.length;
     tokens.push({
       type: "mention",
       value: path,
@@ -197,7 +281,8 @@ function collectInlineTokens(text: string): InlineToken[] {
 
 /**
  * The prompt as text and chips: a file link `[name](path)` or a legacy `@path` is a mention, a
- * `$name` a skill. Joining every segment's text or source gives the prompt back unchanged.
+ * `$name` a skill, a `[#12](url)` or `[title](jhin://node/threads/id)` link a reference. Joining
+ * every segment's text or source gives the prompt back unchanged.
  */
 export function splitPromptIntoSegments(prompt: string): ComposerPromptSegment[] {
   const segments: ComposerPromptSegment[] = [];
@@ -216,7 +301,15 @@ export function splitPromptIntoSegments(prompt: string): ComposerPromptSegment[]
     segments.push(
       token.type === "mention"
         ? { type: "mention", path: token.value, source }
-        : { type: "skill", name: token.value, source },
+        : token.type === "skill"
+          ? { type: "skill", name: token.value, source }
+          : {
+              type: "reference",
+              kind: token.type,
+              label: token.label ?? "",
+              href: token.value,
+              source,
+            },
     );
     cursor = token.end;
   }

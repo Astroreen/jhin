@@ -6,7 +6,7 @@
 //
 // The composer's prompt editor (D303): a tiptap document over a prompt that stays a markdown
 // string. Inline marks, lists, task lists, quotes, headings, rules and code blocks show styled;
-// file links and skills show as chips that write back their exact text. The parent owns the prompt, its history and its menus.
+// file links, skills, pull requests and threads show as chips that write back their exact text. The parent owns the prompt, its history and its menus.
 import { cn } from "@jhin/ui";
 import {
   type Command,
@@ -366,7 +366,17 @@ function buildTiptapContent(value: string, options?: { blocks?: boolean }): Json
       atoms.push(
         segment.type === "mention"
           ? { type: "composer-mention", attrs: { path: segment.path, source: segment.source } }
-          : { type: "composer-skill", attrs: { name: segment.name, source: segment.source } },
+          : segment.type === "skill"
+            ? { type: "composer-skill", attrs: { name: segment.name, source: segment.source } }
+            : {
+                type: "composer-reference",
+                attrs: {
+                  kind: segment.kind,
+                  label: segment.label,
+                  href: segment.href,
+                  source: segment.source,
+                },
+              },
       );
       atomSources.push(segment.source);
       return sentinel;
@@ -1101,6 +1111,55 @@ const ComposerSkillExtension = Node.create({
 });
 
 /**
+ * A pull request (`[#12](url)`) or a thread (`[title](jhin://node/threads/id)`), shown by its
+ * label as T3 shows a context reference.
+ */
+const ComposerReferenceExtension = Node.create({
+  name: "composer-reference",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      kind: {
+        default: "thread",
+        parseHTML: (element) => element.getAttribute("data-reference") ?? "thread",
+        renderHTML: (attrs) => ({ "data-reference": attrs["kind"] }),
+      },
+      label: {
+        default: "",
+        parseHTML: (element) => element.textContent ?? "",
+        renderHTML: () => ({}),
+      },
+      href: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("data-href") ?? "",
+        renderHTML: (attrs) => ({ "data-href": attrs["href"], title: attrs["href"] }),
+      },
+      source: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("data-source") ?? "",
+        renderHTML: (attrs) => ({ "data-source": attrs["source"] }),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-reference]" }];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, { class: CHIP_CLASS_NAME, contenteditable: "false" }),
+      String(node.attrs["label"]),
+    ];
+  },
+  renderText({ node }) {
+    return atomSource(node);
+  },
+});
+
+/**
  * Tiptap's block extensions each bind a chord that turns the current block into their node. The
  * composer does not offer them, and run inside a quote they nest a block the serializer cannot
  * write.
@@ -1617,6 +1676,7 @@ const EXTENSIONS = [
   ComposerUndoGroupingExtension,
   ComposerMentionExtension,
   ComposerSkillExtension,
+  ComposerReferenceExtension,
   ComposerCodeExtension,
   ComposerCodeBlockExtension,
   ComposerCodeBlockHighlight,
