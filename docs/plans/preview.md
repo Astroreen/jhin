@@ -353,6 +353,17 @@ Implements D390–D402 (the server side), D409 for the browser.
 
 Implements D403, D404.
 
+- `jhin.preview-panel` (`apps/web/src/plugins/preview/`): the `app.panel`
+  contribution with T3's tab strip, chrome row, more menu, device toolbar,
+  control strip, empty state, "This site can’t be reached" and dialogs; the
+  canvas surface with mouse, wheel and key input; the header toggle;
+  `preview.toggle`, `preview.refresh`, `preview.focus.url`; a tab an agent
+  opens to show brings up its thread's panel.
+- **Done when:** Playwright against `jhin serve --ui` sees an agent's tab come
+  up in the panel, the agent's click land, the user take control, click and
+  type into the page and hand control back; and the user open a page from
+  the address bar, size it as an iPhone 12 Pro and close the tab.
+
 ### PR 3 — Rendered HTML
 
 Implements D405–D407.

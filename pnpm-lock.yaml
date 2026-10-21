@@ -261,6 +261,9 @@ importers:
       '@jhin/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@jhin/preview-api':
+        specifier: workspace:*
+        version: link:../../packages/preview-api
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
