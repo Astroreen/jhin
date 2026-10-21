@@ -31,6 +31,31 @@ const withUrlState = (
 
 const LOADING: SchedulerView = { status: "loading", tasks: [] };
 
+const RUN_FIELDS = [
+  "lastRunAt",
+  "lastRunStatus",
+  "lastRunError",
+  "lastRunThreadId",
+  "runCount",
+  "nextRunAt",
+  "updatedAt",
+] as const;
+
+/** Whether `next` differs from `known` in run bookkeeping only, and in it at all. */
+function isRunUpdate(known: ScheduledTask, next: ScheduledTask): boolean {
+  const { webhook: _a, ...before } = known as ScheduledTask & Record<string, unknown>;
+  const { webhook: _b, ...after } = next as ScheduledTask & Record<string, unknown>;
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  let ran = false;
+  for (const key of keys) {
+    const same = JSON.stringify(before[key]) === JSON.stringify(after[key]);
+    if (same) continue;
+    if (!(RUN_FIELDS as readonly string[]).includes(key)) return false;
+    if (key !== "updatedAt" && key !== "nextRunAt") ran = true;
+  }
+  return ran && known.webhook?.hasSecret === next.webhook?.hasSecret;
+}
+
 /** Applies one event of a node's `scheduler` stream to a view. */
 export function applySchedulerEvent(
   view: SchedulerView,
@@ -44,8 +69,18 @@ export function applySchedulerEvent(
       index === -1
         ? [...view.tasks, task]
         : view.tasks.map((item, at) => (at === index ? task : item));
-    // The stream never carries the URL: it is unknown until the task is read
-    // again, never the old one a rotation may have killed.
+    // A run's own bookkeeping cannot have rotated the URL (a rotation changes
+    // nothing but the token and updatedAt): the task keeps the URL it had.
+    const known = index === -1 ? undefined : view.tasks[index];
+    if (task.webhook?.path === null && known?.webhook?.path && isRunUpdate(known, task)) {
+      const kept = {
+        ...task,
+        webhook: { ...task.webhook, path: known.webhook.path, url: known.webhook.url },
+      };
+      return { ...view, tasks: tasks.map((item) => (item.id === task.id ? kept : item)) };
+    }
+    // Otherwise the stream never carries the URL: it is unknown until the task
+    // is read again, never the old one a rotation may have killed.
     // A task that is no webhook (any more), or came with its URL, has no URL to wait for.
     if (task.webhook?.path !== null) {
       return view.urls?.has(task.id)
@@ -218,7 +253,14 @@ export function createSchedulerStore(
             }
             set(feed, next);
             // The stream never carries a webhook's URL token: the task is read again for it.
-            if (event.type !== SchedulerEvents.taskUpdated || task?.webhook?.path !== null) return;
+            // Only a task whose URL is now unknown is read again.
+            if (
+              event.type !== SchedulerEvents.taskUpdated ||
+              typeof task?.id !== "string" ||
+              next.urls?.get(task.id) !== "loading"
+            ) {
+              return;
+            }
             // Only the latest read of a task counts: an older one may hold a rotated-away URL.
             const read = (reads.get(task.id) ?? 0) + 1;
             reads.set(task.id, read);

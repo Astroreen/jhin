@@ -458,9 +458,12 @@ function DeliveriesDialog(props: { connection: string; task: ScheduledTask; onCl
               </DeliveryBlock>
             </div>
           ) : selectedId !== null ? null : deliveries === null ? (
-            <p className="text-sm text-muted-foreground" role="status">
-              Loading deliveries…
-            </p>
+            // A failed read shows its error above, not a load that never ends.
+            error === null ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                Loading deliveries…
+              </p>
+            ) : null
           ) : deliveries.length === 0 ? (
             <p className="text-sm text-muted-foreground">No requests yet.</p>
           ) : (

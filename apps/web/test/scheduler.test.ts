@@ -85,6 +85,25 @@ describe("applySchedulerEvent", () => {
     );
   });
 
+  it("keeps the URL through a run's own bookkeeping, which cannot rotate it", () => {
+    const ran = applySchedulerEvent(view, {
+      type: SchedulerEvents.taskUpdated,
+      payload: hook(null, {
+        lastRunStatus: "succeeded",
+        runCount: 1,
+        updatedAt: "2026-10-19T10:01:00.000Z",
+      }),
+    });
+    expect(ran.tasks[1]?.webhook?.path).toBe("/api/hooks/h1/abc");
+    expect(ran.urls?.has("h1")).toBeFalsy();
+    // Only updatedAt changed: maybe a rotation, so the URL is read again.
+    const rotated = applySchedulerEvent(view, {
+      type: SchedulerEvents.taskUpdated,
+      payload: hook(null, { updatedAt: "2026-10-19T10:02:00.000Z" }),
+    });
+    expect(rotated.urls?.get("h1")).toBe("loading");
+  });
+
   it("shows no URL for a webhook task the stream changed until it is read again", () => {
     const next = applySchedulerEvent(view, {
       type: SchedulerEvents.taskUpdated,
