@@ -5,7 +5,7 @@
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
-import { SKILL_MENTION_PATTERN, type AgentSkill, type AgentSlashCommand } from "@jhin/agent-api";
+import { skillMentionPattern, type AgentSkill, type AgentSlashCommand } from "@jhin/agent-api";
 
 /** T3's COMPACT_SLASH_COMMAND: Claude Code compacts, but its initialization does not list it. */
 export const COMPACT_SLASH_COMMAND: AgentSlashCommand = {
@@ -123,7 +123,7 @@ export function planSkillDispatch(
   prompt: string,
   skillNames: ReadonlySet<string>,
 ): { leadingText?: string; commandText: string; skillName: string } | undefined {
-  const mentions = [...prompt.matchAll(SKILL_MENTION_PATTERN)].flatMap((match) => {
+  const mentions = [...prompt.matchAll(skillMentionPattern())].flatMap((match) => {
     const name = match[2] ?? "";
     if (!skillNames.has(name)) return [];
     const start = (match.index ?? 0) + (match[1]?.length ?? 0);

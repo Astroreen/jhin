@@ -616,7 +616,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   context usage"). A turn whose input is `/compact` alone (no attachments)
   calls `thread/compact/start` instead of `turn/start`, as T3's
   `compactThread` does; Codex runs the compaction as a turn of its own and
-  names it in `turn/started`, which the turn takes as its id. Codex's
+  names it in `turn/started`, which the turn takes as its id. As for
+  `turn/start` (Deferred), no time limit applies: a Codex that never names
+  the compaction's turn holds it until it is stopped. Codex's
   `contextCompaction` item, in this turn or an automatic compaction in any
   other, is the tool item "Compacting context" (as OpenCode's is). A
   compaction hands Codex no message, so a thread Codex has not seen yet
@@ -631,11 +633,13 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   offered, and the description is Codex's, else its short one. A turn's
   skill mention with any currency sigil goes to Codex as `$name` (T3's
   `codexSkillMentionText`). The mention pattern is shared: `agent-api`
-  exports it as `SKILL_MENTION_PATTERN`, which the Claude plugin uses too.
+  exports `skillMentionPattern()` (a new regex per call), which the Claude
+  plugin uses too.
 
 - **D886. Errors Codex retries show while it retries (W24).** An `error`
   with `willRetry` opens one tool item per turn, "Provider retry" (T3's
-  retry item), whose detail is the first error and whose output gains a
+  retry item; a later episode in the same turn is an item of its own),
+  whose detail is the first error and whose output gains a
   line per attempt, `Attempt 2/5: …` when the message names one (T3's
   `parseCodexRetryProgress`), with Codex's details after the message. New
   output from the model (a delta or a started item) completes it, as T3's

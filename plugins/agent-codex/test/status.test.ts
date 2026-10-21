@@ -268,6 +268,19 @@ describe("jhin.agent-codex: status", () => {
     codex.dispose();
   });
 
+  it("asks for a folder's skills again after a failed ask", async () => {
+    const cwd = process.cwd();
+    const { codex, fake } = runtime({
+      errors: { "skills/list": [{ message: "boom" }] },
+      skills: [{ cwd, skills: [{ name: "review", path: "/s/SKILL.md", enabled: true }] }],
+    });
+    expect((await codex.commands!({ cwd })).skills).toEqual([]);
+    expect((await codex.commands!({ cwd })).skills).toEqual([
+      { name: "review", path: "/s/SKILL.md" },
+    ]);
+    expect(fake.received("skills/list")).toHaveLength(2);
+  });
+
   it("falls back to Codex's own default, and the config's wins", async () => {
     const first = runtime({ models: [[model("a"), model("b", { isDefault: true })]] });
     await first.codex.status!();

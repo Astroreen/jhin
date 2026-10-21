@@ -216,6 +216,20 @@ describe("jhin.agent-codex: a turn", () => {
             params: { threadId: "$thread", turnId: "$turn", itemId: "m1", delta: "Back." },
           },
           message("m1", "Back."),
+          {
+            notify: "error",
+            params: {
+              threadId: "$thread",
+              turnId: "$turn",
+              willRetry: true,
+              error: { message: "Reconnecting... 1/5" },
+            },
+          },
+          {
+            notify: "item/agentMessage/delta",
+            params: { threadId: "$thread", turnId: "$turn", itemId: "m2", delta: "Again." },
+          },
+          message("m2", "Again."),
           { complete: "completed" },
         ],
       ],
@@ -227,7 +241,7 @@ describe("jhin.agent-codex: a turn", () => {
     const events = await completed;
     expect(payloads(events, "agent.item.completed")).toEqual([
       expect.objectContaining({
-        itemId: "turn-1:retry",
+        itemId: "turn-1:retry:1",
         kind: "tool",
         status: "completed",
         output:
@@ -235,7 +249,28 @@ describe("jhin.agent-codex: a turn", () => {
           "Attempt 2/5: Reconnecting... 2/5 stream closed\n",
       }),
       expect.objectContaining({ itemId: "m1", kind: "message", text: "Back." }),
+      // A later retry in the same turn is an item of its own.
+      expect.objectContaining({
+        itemId: "turn-1:retry:2",
+        status: "completed",
+        output: "Attempt 1/5: Reconnecting... 1/5\n",
+      }),
+      expect.objectContaining({ itemId: "m2", kind: "message", text: "Again." }),
     ]);
+  });
+
+  it("fails a /compact Codex refuses", async () => {
+    const fake = fakeCodex({
+      errors: { "thread/compact/start": [{ message: "nothing to compact" }] },
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const failed = until(client, thread.id, "agent.turn.failed");
+    await client.call("threads.send", { threadId: thread.id, text: "/compact" });
+    expect(payloads(await failed, "agent.turn.failed")[0]).toMatchObject({
+      error: expect.stringContaining("nothing to compact"),
+    });
+    expect(fake.received("turn/start")).toHaveLength(0);
   });
 
   it("fails the turn with Codex's error", async () => {
@@ -274,11 +309,11 @@ describe("jhin.agent-codex: a turn", () => {
     });
     // The retry Codex gave up on shows as a failed "Provider retry".
     expect(payloads(events, "agent.item.started")[0]).toMatchObject({
-      itemId: "turn-1:retry",
+      itemId: "turn-1:retry:1",
       tool: { name: "retry", title: "Provider retry", detail: "Reconnecting... 1/5" },
     });
     expect(payloads(events, "agent.item.completed")[0]).toMatchObject({
-      itemId: "turn-1:retry",
+      itemId: "turn-1:retry:1",
       status: "failed",
       output: "Attempt 1/5: Reconnecting... 1/5\n",
       error: "The model is overloaded.",

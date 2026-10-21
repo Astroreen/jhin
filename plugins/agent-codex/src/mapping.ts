@@ -8,8 +8,8 @@
 // (PREFERRED_DEFAULT_CODEX_MODELS), packages/provider-core/src/server/snapshotProbe.ts
 // (COMPACT_SLASH_COMMAND).
 import {
-  SKILL_MENTION_PATTERN,
   applicableModelOptions,
+  skillMentionPattern,
   type AgentModel,
   type AgentSkill,
   type AgentSlashCommand,
@@ -309,7 +309,7 @@ export type TurnInput =
  * (T3's codexSkillMentionText, D885).
  */
 export const codexSkillMentionText = (text: string) =>
-  text.replace(SKILL_MENTION_PATTERN, "$1$$$2");
+  text.replace(skillMentionPattern(), "$1$$$2");
 
 /** The skills of `skills/list` for `cwd` (T3's parseCodexSkillsListResponse), enabled ones. */
 export function listedSkills(response: unknown, cwd: string): AgentSkill[] {

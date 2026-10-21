@@ -304,9 +304,11 @@ export function codexTurn(
   let retrying: string | undefined;
   /** Each retried error, one line per attempt. */
   let retries = "";
+  /** Retry episodes so far: each is an item of its own. */
+  let episodes = 0;
   const retried = (message: string) => {
     if (retrying === undefined) {
-      retrying = `${turnId ?? request.turnId}:retry`;
+      retrying = `${turnId ?? request.turnId}:retry:${++episodes}`;
       out.push({
         kind: "tool.started",
         itemId: retrying,
@@ -820,11 +822,16 @@ export function codexTurn(
         // `/compact` compacts the Codex thread (T3's compactThread): Codex runs it as a turn
         // of its own and names it in `turn/started`.
         const named = new Promise<string>((resolve) => (onTurnStarted = resolve));
-        await untilEnded(
-          current.session.connection.request("thread/compact/start", { threadId: codexThreadId }),
-        );
-        id = await untilEnded(named);
-        onTurnStarted = undefined;
+        try {
+          await untilEnded(
+            current.session.connection.request("thread/compact/start", {
+              threadId: codexThreadId,
+            }),
+          );
+          id = await untilEnded(named);
+        } finally {
+          onTurnStarted = undefined;
+        }
       } else {
         const startedTurn = (await untilEnded(
           current.session.connection.request(

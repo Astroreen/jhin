@@ -338,7 +338,10 @@ export function createCodexRuntime(options: {
         entry = { at: Date.now(), skills: probeSkills(launch, options.config(), cwd) };
         skillProbes.set(key, entry);
         // A probe that failed is not kept.
-        void entry.skills.catch(() => skillProbes.delete(key));
+        const probing = entry;
+        void probing.skills.catch(() => {
+          if (skillProbes.get(key) === probing) skillProbes.delete(key);
+        });
       }
       const skills = await entry.skills.catch((error: unknown) => {
         options.log?.("codex did not list its skills", { cwd, error: String(error) });
