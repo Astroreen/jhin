@@ -3593,7 +3593,11 @@ export default definePlugin({
     };
     const forgetTexts = (threadId: string) => {
       const read = reading.get(threadId);
-      if (read !== undefined) read.dropped = true;
+      if (read !== undefined) {
+        read.dropped = true;
+        // A search that starts after this reads afresh: the thread may be unarchived by then.
+        reading.delete(threadId);
+      }
       uncache(threadId);
     };
     function textsOf(threadId: string): Promise<SearchText[]> {
