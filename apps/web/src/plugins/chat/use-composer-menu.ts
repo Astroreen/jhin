@@ -181,7 +181,11 @@ export function useComposerMenu(options: {
   const prNumber = /^\d+$/u.test(prQuery) && Number(prQuery) > 0 ? Number(prQuery) : undefined;
   const listedHasNumber = prListReady && prList.entries.some((entry) => entry.number === prNumber);
   const exactKey =
-    prTrigger === undefined || prNumber === undefined || !prListReady || listedHasNumber
+    prTrigger === undefined ||
+    prNumber === undefined ||
+    !prListReady ||
+    prList.status !== "ready" ||
+    listedHasNumber
       ? undefined
       : `${projectId}|${prTrigger.rangeStart}|${prNumber}`;
   const [exact, setExact] = useState<{ key: string; pullRequest: PullRequest | null }>();

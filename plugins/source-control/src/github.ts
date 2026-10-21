@@ -271,14 +271,24 @@ async function checkoutTarget(
 /**
  * The repository's pull requests (`gh pr list --search`), any state, most
  * recently updated first; `query` is GitHub's search, as T3 searches on the host. Its
- * qualifiers (`is:`, `author:`) pass through, as in T3: the user narrows their own repository.
+ * qualifiers (`is:`, `author:`) pass through, as in T3, but not those that name a scope
+ * (`repo:`, `org:`, `user:`): GitHub would add their repositories to the project's.
  */
+/** A search query without qualifiers that would reach past the project's repository. */
+export function withoutScopeQualifiers(query: string): string {
+  return query
+    .split(/\s+/)
+    .filter((word) => !/^-?(?:repo|org|user|owner):/i.test(word))
+    .join(" ")
+    .trim();
+}
+
 async function listPullRequests(
   ghPath: string,
   cwd: string,
   input: { readonly query?: string; readonly limit: number },
 ): Promise<PullRequest[]> {
-  const query = input.query?.trim() ?? "";
+  const query = withoutScopeQualifiers(input.query ?? "");
   const parsed = await ghJson(ghPath, cwd, [
     "pr",
     "list",

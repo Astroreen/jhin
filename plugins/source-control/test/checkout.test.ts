@@ -10,7 +10,7 @@ import {
   isPullRequestOf,
   normalizeReference,
 } from "../src/checkout.ts";
-import { githubForge } from "../src/github.ts";
+import { githubForge, withoutScopeQualifiers } from "../src/github.ts";
 import type { CheckoutTarget } from "../src/forge.ts";
 import { createGit } from "../src/git.ts";
 import { fakeGh, ghPullRequest, git, node, repository, temp, write } from "./support.ts";
@@ -436,5 +436,12 @@ describe("git.pr.search", () => {
     await expect(
       sc.client.call("git.pr.search", { projectId: await sc.project(repository()) }),
     ).rejects.toThrow("This repository has no remote on a known forge.");
+  });
+});
+
+describe("a pull request search's query (D849)", () => {
+  it("keeps GitHub's qualifiers but drops those that reach other repositories", () => {
+    expect(withoutScopeQualifiers("  cache is:open author:me ")).toBe("cache is:open author:me");
+    expect(withoutScopeQualifiers("repo:other/app fix org:acme -user:x Owner:y")).toBe("fix");
   });
 });
