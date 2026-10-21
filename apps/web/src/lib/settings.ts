@@ -31,6 +31,8 @@ export const ChatSettings = z.object({
   confirmUnpin: z.boolean().default(false),
   /** T3's "Show skills in slash menu": skills in the `/` menu too, not only after `$` (D845). */
   showSkillsInSlashMenu: z.boolean().default(true),
+  /** T3's "Rich text composer": the prompt shows its Markdown formatted while it is typed. */
+  composerRichTextEnabled: z.boolean().default(true),
   /** T3's Working section (beta): threads at work leave the inbox until they need you (D452). */
   workingSection: z.boolean().default(false),
 });

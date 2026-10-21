@@ -1699,6 +1699,17 @@ T3 Code `eb7b35ac` as D290 says.
   (D24), its label cleaned as T3's `sanitizeComposerContextLabel`. The agent
   gets the link; reading the thread goes through the node's thread tools.
   The context records themselves come with the context chips.
+- **D852. T3's "Rich text composer"** setting (General, on by default,
+  "Show formatted Markdown as you type."; `composerRichTextEnabled` in
+  `jhin.chat`). Off, the prompt shows as typed: no marks, blocks or markdown
+  input rules, as T3's `PLAIN_TEXT_EXTENSIONS`; file and skill chips stay.
+  The prompt is the same markdown string either way, and changing the
+  setting builds the editor again in place with the other extensions.
+- **D853. Literal text in the editor,** as T3's `literalText`: one line per
+  paragraph, no chips, no styling, no wrapping of a selection, and a paste
+  that goes in exactly as copied. Nothing in the composer turns it on yet:
+  T3 does for a pending question with an `initialAnswer`, which no Jhin
+  runtime asks (Deferred).
 
 ### Sidebar leftovers (W26)
 
@@ -1754,17 +1765,21 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
 
 - Applying Fast Mode and Ultracode to a live Claude Code session through
   `applyFlagSettings` (T3 does): a change of them starts it again (D298).
-- The editor's parts T3 has and this port left out (D303): the file icons
-  of the code-block language picker (D842; with the chips' file icons), a
-  keyboard way out of a code block other than moving the caret (D843; T3 has
-  none), the vertical spacing T3 gives headings (the composer's blocks have
-  none), visible marks at the caret,
-  citation and context-reference chips, chip popovers (file icons, a skill's
-  description and "View instructions"), T3's context record for a mentioned pull
-  request or thread (D851; its title, branches and "untrusted data" block),
-  listing pull requests on forges other than GitHub (D849), the
-  plain-text and literal modes, `aria-activedescendant` from the editor to the
-  menu.
+- The editor's parts T3 has and this port left out (D303):
+  - the file icons of the code-block language picker (D842; with the chips'
+    file icons);
+  - a keyboard way out of a code block other than moving the caret (D843;
+    T3 has none);
+  - the vertical spacing T3 gives headings (the composer's blocks have none);
+  - visible marks at the caret;
+  - citation and context-reference chips, and chip popovers (file icons, a
+    skill's description and "View instructions");
+  - T3's context record for a mentioned pull request or thread (D851; its
+    title, branches and "untrusted data" block);
+  - listing pull requests on forges other than GitHub (D849);
+  - the composer's literal mode for a question that comes with an answer to
+    edit (D853; needs `initialAnswer` on `UserQuestion` in `agent.runtime`);
+  - `aria-activedescendant` from the editor to the menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's preview of a file in the composer and in the

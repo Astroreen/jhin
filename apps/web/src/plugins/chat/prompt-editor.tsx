@@ -7,6 +7,8 @@
 // The composer's prompt editor (D303): a tiptap document over a prompt that stays a markdown
 // string. Inline marks, lists, task lists, quotes, headings, rules and code blocks show styled;
 // file links, skills, pull requests and threads show as chips that write back their exact text. The parent owns the prompt, its history and its menus.
+// Without rich text (T3's "Rich text composer" off) the prompt shows its markdown as typed and
+// keeps only the chips; literal text (T3's prefilled answer) keeps not even those.
 import { cn } from "@jhin/ui";
 import {
   type Command,
@@ -91,6 +93,16 @@ export interface PromptEditorProps {
   readonly disabled?: boolean | undefined;
   readonly readOnly?: boolean | undefined;
   readonly sendShortcut: ComposerSendShortcut;
+  /**
+   * Markdown shows formatted as it is typed (T3's `richTextEnabled`, default on). Off, the prompt
+   * is plain text with chips: no marks, no blocks, no markdown input rules.
+   */
+  readonly richText?: boolean | undefined;
+  /**
+   * The prompt is taken character for character (T3's `literalText`): no formatting, no chips and
+   * no surround, and a paste goes in as it is. Wins over `richText`.
+   */
+  readonly literalText?: boolean | undefined;
   /** Classes of the editable element. */
   readonly className?: string | undefined;
   readonly handleRef?: Ref<PromptEditorHandle> | undefined;
@@ -349,9 +361,23 @@ function textJson(text: string, marks: RichTextMark[]): Json {
   return json;
 }
 
-/** `blocks: false` reads only inline syntax, for a paste inside a list item or a quote. */
-function buildTiptapContent(value: string, options?: { blocks?: boolean }): Json[] {
-  const blockSyntax = options?.blocks ?? true;
+/**
+ * `blocks: false` reads only inline syntax, for a paste inside a list item or a quote;
+ * `styling: false` reads no markdown at all, only chips; `literalText` reads nothing, one
+ * paragraph per line.
+ */
+function buildTiptapContent(
+  value: string,
+  options?: { blocks?: boolean; styling?: boolean; literalText?: boolean },
+): Json[] {
+  if (options?.literalText) {
+    return value.split("\n").map((line) => ({
+      type: "paragraph",
+      ...(line ? { content: [{ type: "text", text: line }] } : {}),
+    }));
+  }
+  const styling = options?.styling ?? true;
+  const blockSyntax = styling && (options?.blocks ?? true);
   // Chips are cut out first and stand in as one sentinel character each, so markdown parsing
   // never looks inside a file link.
   let sentinel = "￼";
@@ -385,7 +411,8 @@ function buildTiptapContent(value: string, options?: { blocks?: boolean }): Json
   let atomIndex = 0;
   const buildInline = (content: string): Json[] => {
     const inline: Json[] = [];
-    for (const span of parseInlineMarkdown(content)) {
+    const spans = styling ? parseInlineMarkdown(content) : [{ text: content, marks: [] }];
+    for (const span of spans) {
       span.text.split(sentinel).forEach((piece, index) => {
         if (index > 0)
           inline.push({ ...atoms[atomIndex++]!, marks: textJson("", span.marks)["marks"] });
@@ -565,8 +592,11 @@ function buildTiptapContent(value: string, options?: { blocks?: boolean }): Json
 }
 
 /** A draft ending in a rule gets an empty line after it, for the caret. */
-function buildDocJson(value: string): JSONContent {
-  const content = buildTiptapContent(value);
+function buildDocJson(
+  value: string,
+  options?: { styling?: boolean; literalText?: boolean },
+): JSONContent {
+  const content = buildTiptapContent(value, options);
   if (content.at(-1)?.["type"] === "horizontalRule") content.push({ type: "paragraph" });
   return { type: "doc", content: content as JSONContent[] };
 }
@@ -1655,40 +1685,51 @@ const ComposerUndoGroupingExtension = Extension.create<
   },
 });
 
-const EXTENSIONS = [
-  StarterKit.configure({
-    blockquote: false,
-    bulletList: false,
-    codeBlock: false,
-    heading: false,
-    horizontalRule: false,
-    listItem: false,
-    link: false,
-    orderedList: false,
-    underline: false,
-    dropcursor: false,
-    gapcursor: false,
-    trailingNode: false,
-    code: false,
-    listKeymap: false,
-    undoRedo: { newGroupDelay: UNDO_GROUP_DELAY },
-  }),
-  ComposerUndoGroupingExtension,
-  ComposerMentionExtension,
-  ComposerSkillExtension,
-  ComposerReferenceExtension,
-  ComposerCodeExtension,
-  ComposerCodeBlockExtension,
-  ComposerCodeBlockHighlight,
-  ComposerBlockquoteExtension,
-  ComposerHorizontalRuleExtension,
-  ComposerHeadingExtension,
-  ComposerBulletListExtension,
-  ComposerOrderedListExtension,
-  ComposerListItemExtension,
-  ComposerTaskListExtension,
-  ComposerTaskItemExtension,
-];
+// Extensions are fixed when an editor is created: a change of text mode mounts a new editor.
+function createComposerExtensions(richText: boolean) {
+  return [
+    StarterKit.configure({
+      blockquote: false,
+      bulletList: false,
+      codeBlock: false,
+      heading: false,
+      horizontalRule: false,
+      listItem: false,
+      link: false,
+      orderedList: false,
+      underline: false,
+      dropcursor: false,
+      gapcursor: false,
+      trailingNode: false,
+      code: false,
+      listKeymap: false,
+      undoRedo: { newGroupDelay: UNDO_GROUP_DELAY },
+      ...(richText ? {} : { bold: false, italic: false, strike: false }),
+    }),
+    ComposerUndoGroupingExtension,
+    ComposerMentionExtension,
+    ComposerSkillExtension,
+    ComposerReferenceExtension,
+    ...(richText
+      ? [
+          ComposerCodeExtension,
+          ComposerCodeBlockExtension,
+          ComposerCodeBlockHighlight,
+          ComposerBlockquoteExtension,
+          ComposerHorizontalRuleExtension,
+          ComposerHeadingExtension,
+          ComposerBulletListExtension,
+          ComposerOrderedListExtension,
+          ComposerListItemExtension,
+          ComposerTaskListExtension,
+          ComposerTaskItemExtension,
+        ]
+      : []),
+  ];
+}
+
+const RICH_TEXT_EXTENSIONS = createComposerExtensions(true);
+const PLAIN_TEXT_EXTENSIONS = createComposerExtensions(false);
 
 // ---------------------------------------------------------------------------------------------
 // Surround (ComposerPromptEditorTiptap.tsx handleTextInput, composer-editor-mentions.ts)
@@ -1955,6 +1996,9 @@ const EDITOR_CLASS_NAME = [
 
 export function PromptEditor(props: PromptEditorProps) {
   const { value, placeholder, disabled = false, readOnly = false, className, handleRef } = props;
+  const literalText = props.literalText === true;
+  const richText = !literalText && props.richText !== false;
+  const docOptions = { styling: richText, literalText };
   const latest = useRef(props);
   useLayoutEffect(() => {
     latest.current = props;
@@ -1980,7 +2024,7 @@ export function PromptEditor(props: PromptEditorProps) {
   const apply = (editor: Editor, next: string, caret: number, emit: boolean) => {
     applying.current = true;
     try {
-      editor.commands.setContent(buildDocJson(next), { emitUpdate: false });
+      editor.commands.setContent(buildDocJson(next, docOptions), { emitUpdate: false });
       const map = serializeEditorDoc(editor.state.doc);
       const tr = editor.state.tr.setSelection(
         TextSelection.create(editor.state.doc, flatToPm(map, markdownToFlat(map, caret))),
@@ -2007,7 +2051,7 @@ export function PromptEditor(props: PromptEditorProps) {
     }
     if (event.key !== "Enter") return false;
     const mod = event.metaKey || event.ctrlKey;
-    if (!mod && codeBlockText(view.state) !== null) {
+    if (richText && !mod && codeBlockText(view.state) !== null) {
       return (
         exitCodeBlockOnClosingFence(view.state, dispatch) ||
         exitCodeBlockOnTrailingBlankLines(view) ||
@@ -2015,16 +2059,17 @@ export function PromptEditor(props: PromptEditorProps) {
         newlineInCode(view.state, dispatch)
       );
     }
-    if (!mod && convertCodeFenceOnEnter(view.state, dispatch)) return true;
+    if (richText && !mod && convertCodeFenceOnEnter(view.state, dispatch)) return true;
     if (submitsOnKey(event, current.sendShortcut)) {
       // A held Enter sends once.
       if (!event.repeat) current.onSubmit();
       return true;
     }
     const editor = editorRef.current;
-    if (editor && splitOrLiftListItem(editor)) return true;
+    if (richText && editor && splitOrLiftListItem(editor)) return true;
     const { $from } = view.state.selection;
     if (
+      richText &&
       editor &&
       inBlockquote($from) &&
       $from.parent.content.size === 0 &&
@@ -2037,7 +2082,7 @@ export function PromptEditor(props: PromptEditorProps) {
 
   /** T3's surround (D844): a bracket or quote typed over a selection wraps it. */
   const surroundSelection = (view: EditorView, from: number, to: number, text: string) => {
-    if (view.composing || text.length !== 1) return false;
+    if (literalText || view.composing || text.length !== 1) return false;
     const closer = SURROUND_CLOSE[text];
     const { selection, doc } = view.state;
     // An input method's update replaces a range even without a user selection.
@@ -2082,15 +2127,15 @@ export function PromptEditor(props: PromptEditorProps) {
       return true;
     }
     // A chip pasted at either end keeps a space from the text around it.
-    const segments = splitPromptIntoSegments(text);
-    if (segments.at(-1)?.type !== "text") text += " ";
-    if (segments[0]?.type !== "text") {
+    const segments = literalText ? [] : splitPromptIntoSegments(text);
+    if (segments.length > 0 && segments.at(-1)?.type !== "text") text += " ";
+    if (segments.length > 0 && segments[0]?.type !== "text") {
       const map = serializeEditorDoc(view.state.doc);
       const offset = caretInMarkdown(view.state, map);
       if (offset > 0 && !/\s/.test(map.value[offset - 1]!)) text = ` ${text}`;
     }
     const nested = listItemTypeAt($from) !== null || inBlockquote($from);
-    const blocks = buildTiptapContent(text, { blocks: !nested }) as JSONContent[];
+    const blocks = buildTiptapContent(text, { ...docOptions, blocks: !nested }) as JSONContent[];
     const content =
       blocks.length === 1 && blocks[0]?.type === "paragraph" ? (blocks[0].content ?? []) : blocks;
     if (Array.isArray(content) && content.length === 0) return true;
@@ -2124,14 +2169,15 @@ export function PromptEditor(props: PromptEditorProps) {
     "aria-label": "Message",
     "aria-multiline": "true",
     "aria-placeholder": placeholder,
+    "data-composer-rich-text": richText ? "true" : "false",
     ...(disabled ? { "aria-disabled": "true" } : {}),
     ...(readOnly ? { "aria-readonly": "true" } : {}),
   };
 
   const editor = useEditor(
     {
-      extensions: EXTENSIONS,
-      content: buildDocJson(value),
+      extensions: richText ? RICH_TEXT_EXTENSIONS : PLAIN_TEXT_EXTENSIONS,
+      content: buildDocJson(value, docOptions),
       editable,
       editorProps: {
         attributes,
@@ -2170,7 +2216,9 @@ export function PromptEditor(props: PromptEditorProps) {
       onFocus: () => latest.current.onFocus?.(),
       onBlur: () => latest.current.onBlur?.(),
     },
-    [],
+    // Extensions are creation-time: a change of text mode builds the editor again, in place,
+    // so the component and the parent's handle stay.
+    [richText, literalText],
   );
 
   useEffect(() => {
