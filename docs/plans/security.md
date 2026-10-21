@@ -118,14 +118,40 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
 - **D417. `host.config.get` redacts secrets.** Every value under a
   `writeOnly` field of a section's JSON Schema (config-ui D83) is replaced
   by T3's marker `••••••` (`SECRET_REDACTED`) in the effective value and in
-  both layers; an unset secret stays absent. `host.config.patch` and
-  `mesh.config.patch` treat the marker as "keep what is stored": by key, by
-  position in a list. A marker where nothing is stored is refused
-  (`CONFIG_SECRET_MISSING`). The settings page's `<hidden secret>`
-  placeholder sends the marker, so a saved form keeps its secrets without
-  ever receiving them. T3 keeps secrets in a secret store apart from the
-  settings file; Jhin keeps them in the config files (D18) and redacts on
-  the way out.
+  both layers; an unset secret stays absent. Inside a list the marker names
+  its secret's place as a JSON Pointer (`••••••#/keys/1`), so a reordered
+  or shortened list keeps each secret; `isRedactedSecret`
+  (`@jhin/host-api`) tells either form. The walk follows `$ref` (with the keywords beside it), unions and
+  intersections, `if`/`then`/`else`, `dependentSchemas`, tuples
+  (`prefixItems`), `items`, `contains`, `properties`, `patternProperties`,
+  `additionalProperties` and `unevaluatedProperties`. What no schema
+  describes is unknown and redacted like a secret (a field that takes
+  anything, `{}` as `z.unknown()` gives, holds data and is shown): every scalar of a
+  section no plugin defines, a key the section's schema does not name (a
+  typo in a file), an item of a list without `items`.
+
+  `host.config.patch` and `mesh.config.patch` treat the marker as "keep
+  what is stored", only where the schema has a secret (elsewhere the marker
+  is a value like any other): a plain marker by its own key, an addressed
+  one at its address, which must name a secret; inside a list only an
+  addressed marker is taken, a plain one is refused; always from the layer
+  being changed, by own keys only. A secret only another layer (or a
+  default) holds is never copied into this one: its key is left out of the
+  change, and the other layer keeps providing it. A marker no layer has a
+  value for, or a list item only another layer holds, is refused
+  (`CONFIG_SECRET_MISSING`).
+
+  An invalid section reports `Config section <s> is invalid` with its
+  issues: an issue about a secret says only that it is not valid, and the
+  others have every secret's text replaced by the marker, since a
+  refinement may quote it (a secret under 4 characters where it stands as
+  a word; hiding a few extra characters is safe). Other errors (a section no
+  plugin defines) are reported as they are.
+
+  The settings page's `<hidden secret>` placeholder sends the marker, so a
+  saved form keeps its secrets without ever receiving them. T3 keeps
+  secrets in a secret store apart from the settings file; Jhin keeps them
+  in the config files (D18) and redacts on the way out.
 
 ### Browsers
 
@@ -250,6 +276,21 @@ scripts, revoking the client disconnects it, and `jhin pair` prints the link
 and QR code.
 
 ## Deferred
+
+- A secret whose real value starts with the marker and `#`
+  (`••••••#note`) reads as an addressed marker and is refused on save
+  (D417); such a value has to be changed to be saved.
+
+- `host.config.get` and `host.config.patch` convert every section's schema
+  (`config.jsonSchema()`) to pick one; a kernel call for one section's
+  schema, or a cache cleared on `kernel.config.changed`, would avoid it.
+
+- Secrets stay in the config files in clear (D417): T3 keeps them in a
+  secret store apart from its settings. A key store (the OS keychain, an
+  encrypted file) would let a config file be shared without them.
+- A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
+  target against that node's own stored value; a target with none refuses
+  the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.
 
 - T3 Connect: pairing and remote access through a T3 account, the hosted
   relay and the hosted-app pairing link (out of scope, `t3-roadmap.md`).

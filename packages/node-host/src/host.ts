@@ -50,6 +50,7 @@ import { readNodeId, resolveHome, type JhinHome } from "./home.ts";
 import { createFileModuleLoader } from "./loader.ts";
 import { createNodeLogger, type NodeLogger } from "./logger.ts";
 import { detectMachineKind, systemProbe } from "./machine.ts";
+import { redactSecrets, restoreSecrets, scrub, secretPaths, secretTexts } from "./secrets.ts";
 import { buildOutputFilter, watch, type WatchTarget } from "./watcher.ts";
 
 export interface NodeHostOptions {
@@ -309,10 +310,25 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         }),
         permissions: ["host.config.read"],
         handler: ({ section }) => {
-          const files = {
+          // Secrets never leave the node (security.md D417).
+          const schema = sectionSchema(section);
+          const hide = (value: unknown) => redactSecrets(schema, value);
+          const raw = {
             node: readLayer(home.config, log)?.[section],
             project: readLayer(projectConfig, log)?.[section],
           };
+          const files = { node: hide(raw.node), project: hide(raw.project) };
+          // A refinement's message may quote the value it refused.
+          const secrets = [...secretTexts(schema, raw.node), ...secretTexts(schema, raw.project)];
+          // Issue paths are dotted, as the kernel reports them.
+          const secretAt = new Set(
+            [...secretPaths(schema, raw.node), ...secretPaths(schema, raw.project)].map((path) =>
+              path.join("."),
+            ),
+          );
+          /** An issue about a secret says so without its own message, which may quote it. */
+          const aboutSecret = (path: string) =>
+            [...secretAt].some((secret) => path === secret || path.startsWith(`${secret}.`));
           const comments: ConfigComment[] = [];
           const seen = new Set<string>();
           for (const file of [home.config, projectConfig]) {
@@ -324,15 +340,31 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
             }
           }
           try {
-            return { value: kernel.config.get(section), layers: files, comments };
+            return { value: hide(kernel.config.get(section)), layers: files, comments };
           } catch (error) {
             const issues =
               error instanceof KernelError && Array.isArray(error.details["issues"])
                 ? (error.details["issues"] as { path: string; message: string }[])
                 : undefined;
             return {
-              error: error instanceof Error ? error.message : String(error),
-              ...(issues === undefined ? {} : { issues }),
+              // An invalid value: the summary without the issues' messages, which may
+              // quote a secret. Anything else (a section no plugin defines) as it is.
+              error:
+                error instanceof KernelError && error.code === "CONFIG_INVALID"
+                  ? `Config section ${section} is invalid${issues === undefined ? "" : ` (${issues.length} ${issues.length === 1 ? "issue" : "issues"})`}`
+                  : error instanceof Error
+                    ? error.message
+                    : String(error),
+              ...(issues === undefined
+                ? {}
+                : {
+                    issues: issues.map((issue) => ({
+                      path: issue.path,
+                      message: aboutSecret(issue.path)
+                        ? "Not valid (a secret, so its message is not shown)"
+                        : scrub(issue.message, secrets),
+                    })),
+                  }),
               layers: files,
               comments,
             };
@@ -460,6 +492,13 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
 
   /** Last write time per layer and section, so a stale change from elsewhere can lose (D50). */
   const writesFile = Path.join(home.root, "config-writes.json");
+  /** One section's JSON Schema, or undefined when no plugin defines it (D417 reads it). */
+  function sectionSchema(section: string): unknown {
+    return (kernel.config.jsonSchema() as { properties: Record<string, unknown> }).properties[
+      section
+    ];
+  }
+
   function patchConfig(
     layer: "node" | "project",
     section: string,
@@ -491,8 +530,19 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     if (localAt !== undefined && at < localAt) return { applied: false, at, conflict: { localAt } };
 
     const file = layer === "node" ? home.config : projectConfig;
+    // A redacted secret sent back keeps what the file holds (security.md D417).
+    const stored = readLayer(file, log)?.[section];
+    const schema = sectionSchema(section);
+    // The page shows the effective value: a secret only another layer sets stays there.
+    let effective: unknown;
+    try {
+      effective = kernel.config.get(section);
+    } catch {
+      // An invalid section has no effective value to keep a secret from.
+    }
+    const restored = Object.entries(restoreSecrets(schema, values, stored, effective, [section]));
     let text = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
-    for (const [key, value] of Object.entries(values)) {
+    for (const [key, value] of restored) {
       text = applyEdits(
         text,
         modify(text, [section, key], value, {

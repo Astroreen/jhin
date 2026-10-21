@@ -89,3 +89,19 @@ export const isMachineKind = (value: unknown): value is MachineKind =>
 
 /** The config section where a node's owner names its machine kind (`jhin.host.machine`). */
 export const HOST_CONFIG_SECTION = "jhin.host";
+
+/**
+ * What `host.config.get` returns in place of a secret (a value under a
+ * `writeOnly` schema); sent back in a change, it keeps the stored value
+ * (security.md D417). T3 Code's `SECRET_REDACTED`.
+ */
+export const SECRET_REDACTED = "••••••";
+
+/**
+ * True for the marker, alone or with the address of the secret it stands
+ * for as a JSON Pointer (`••••••#/keys/1`): a secret inside a list carries its place in the
+ * section, so it stays the same secret when the list is reordered.
+ */
+export const isRedactedSecret = (value: unknown): value is string =>
+  typeof value === "string" &&
+  (value === SECRET_REDACTED || value.startsWith(`${SECRET_REDACTED}#`));

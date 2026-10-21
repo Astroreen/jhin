@@ -3,6 +3,8 @@
 // forms (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/settings/ProviderSettingsForm.tsx.
 
+import { isRedactedSecret } from "@jhin/client-api";
+
 /** A JSON Schema as `host.config.schema` serves it (Zod's `z.toJSONSchema`). */
 export type JsonSchema = Readonly<Record<string, unknown>>;
 
@@ -432,6 +434,10 @@ function check(
     out.push({ path: join(path), message: "Enter the secret: there is no stored one here" });
     return;
   }
+  // A secret the node keeps (security.md D417): saved back as it came, it stays. The
+  // node decides where a secret is (it follows every schema keyword), so the marker
+  // passes here wherever it is; where the node has none, it is checked as a value there.
+  if (isRedactedSecret(value)) return;
   if (raw === false) {
     out.push({ path: join(path), message: "Not allowed here" });
     return;
