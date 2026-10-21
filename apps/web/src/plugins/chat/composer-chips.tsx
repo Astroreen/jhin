@@ -7,7 +7,15 @@
 // The prompt's chips as T3 draws them (t3-parity.md D1002–D1005): a file with its icon, a skill
 // with its description and "View instructions", a pull request and a thread. The document keeps
 // the chip's source; these only show it.
-import { type AgentSkill, type MessageContextRecord, parseContextHref } from "@jhin/agent-api";
+import {
+  type AgentSkill,
+  formatAssistantCitationHref,
+  type MessageContextRecord,
+  parseAssistantCitationHref,
+  parseContextHref,
+  serializeAssistantCitation,
+  withAssistantCitationComment,
+} from "@jhin/agent-api";
 import type { NodeTarget } from "@jhin/client-api";
 import {
   Button,
@@ -23,10 +31,12 @@ import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { BoxIcon, GitPullRequestIcon, MessagesSquareIcon } from "lucide-react";
 import { createContext, type ReactNode, use, useRef, useState } from "react";
 
-import { threadLinks } from "../../lib/composer-context.ts";
+import { revealAssistantCitation } from "../../lib/assistant-text-selection.ts";
+import { citationSource, threadLinks } from "../../lib/composer-context.ts";
 import { skillDisplayName } from "../../lib/composer-menu.ts";
 import { FILE_TEXT_PREVIEW_MAX_BYTES, filePreviewKind } from "../../lib/file-preview.ts";
 import { AttachmentPreviewDialog } from "./attachment-media.tsx";
+import { ComposerCitationChip } from "./citation-chips.tsx";
 import { type ContextChipActions, ContextRecordChip } from "./context-chips.tsx";
 import { useChat } from "./services.ts";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
@@ -135,11 +145,36 @@ export function SkillNodeView({ node }: NodeViewProps) {
 }
 
 /** A pull request (`[#12](url)`) or a thread (`[title](jhin://…)`), by its label. */
-export function ReferenceNodeView({ node }: NodeViewProps) {
+export function ReferenceNodeView({ node, editor, getPos }: NodeViewProps) {
   const actions = use(ComposerChipsContext);
   const kind = String(node.attrs["kind"] ?? "thread");
   const label = String(node.attrs["label"] ?? "");
   const href = String(node.attrs["href"] ?? "");
+  const citation = kind === "citation" ? parseAssistantCitationHref(href) : null;
+  if (citation !== null) {
+    // T3's onSaveComment: the atom's link is written again with the comment in it.
+    const comment = (text: string) => {
+      const pos = typeof getPos === "function" ? getPos() : undefined;
+      if (!editor.isEditable || typeof pos !== "number") return;
+      const next = withAssistantCitationComment(citation, text);
+      editor.view.dispatch(
+        editor.state.tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          href: formatAssistantCitationHref(next),
+          source: serializeAssistantCitation(next),
+        }),
+      );
+    };
+    return (
+      <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME} contentEditable={false}>
+        <ComposerCitationChip
+          citation={citation}
+          onComment={editor.isEditable ? comment : undefined}
+          showSource={actions.showCitationSource}
+        />
+      </NodeViewWrapper>
+    );
+  }
   if (kind === "context") {
     const reference = parseContextHref(href);
     return (
@@ -270,13 +305,17 @@ export function useComposerChipActions(options: {
       },
     );
   };
+  const links = threadLinks(
+    { target, nodeId: options.nodeId, selfNodeId: options.selfNodeId },
+    (at) => chat.threads.catalog(at),
+    (route) => chat.navigation.navigate(route),
+  );
   const actions: ComposerChipActions = {
     skills: options.skills,
     records: options.records,
-    ...threadLinks(
-      { target, nodeId: options.nodeId, selfNodeId: options.selfNodeId },
-      (at) => chat.threads.catalog(at),
-      (route) => chat.navigation.navigate(route),
+    ...links,
+    showCitationSource: citationSource(links, (citation) =>
+      revealAssistantCitation(document, citation),
     ),
     previewFile:
       projectId === undefined

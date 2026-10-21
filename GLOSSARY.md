@@ -201,6 +201,9 @@ Words about Jhin:
   context). The text names it by a **context reference**, a
   `jhin-context://v1/<kind>/<id>` link, shown as a **chip**; the agent reads
   the records projected into the text (`plans/t3-parity.md` D1006).
+- **Quote** (T3's citation) — a passage of an agent's message put into a
+  user's message with "Cite", with an optional comment; a
+  `jhin-citation://` link holds all of it (`plans/t3-parity.md` D1010).
 - **Proposed plan** — a plan an agent proposes in plan mode for the user to
   accept (`agent.plan.proposed`); the composer offers to implement the latest
   one, in its thread or a new one. T3 Code's term.

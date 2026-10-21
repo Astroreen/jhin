@@ -2,6 +2,7 @@
 // apps/web/src/components/chat/MessagesTimeline.tsx, WorkLog.tsx, TimelineSystemDivider.tsx,
 // MessageCopyButton.tsx and ProposedPlanCard.tsx.
 import {
+  type AssistantCitation,
   contextReferencesAsLabels,
   type MessageContext,
   type TurnAttachment,
@@ -54,7 +55,8 @@ import {
   formatWorkingTimer,
   type TimestampFormat,
 } from "../../lib/format.ts";
-import { knownRecordsById, threadLinks } from "../../lib/composer-context.ts";
+import { revealAssistantCitation } from "../../lib/assistant-text-selection.ts";
+import { citationSource, knownRecordsById, threadLinks } from "../../lib/composer-context.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { useCopy, useNow } from "../../lib/hooks.ts";
 import {
@@ -142,22 +144,25 @@ function MessageActions(props: {
  */
 function useMessageContextChips(
   context: MessageContext | undefined,
+  text: string,
 ): MessageContextChips | undefined {
   const where = useContext(MessageActionsContext);
   const chat = useContext(ChatContext);
   // The mesh's members, to reach a thread chip's node: followed only for a message with one.
   const threads = context?.records.some((record) => record.kind === "thread") === true;
+  // A message with quotes needs the chips too, records or not (D1011).
+  const citations = text.includes("](jhin-citation:");
   // Without the chat there is no connection to follow, and the mesh is never read.
   const members = useMeshMembers(
     chat?.mesh as MeshMembership,
-    threads && chat !== undefined ? where?.target.node : undefined,
+    (threads || citations) && chat !== undefined ? where?.target.node : undefined,
   );
   const selfNodeId = members?.find((member) => member.self)?.nodeId;
   return useMemo(() => {
-    if (context === undefined) return undefined;
+    if (context === undefined && !citations) return undefined;
     const links =
       where === undefined || chat === undefined
-        ? {}
+        ? undefined
         : threadLinks(
             {
               target: where.target,
@@ -168,15 +173,19 @@ function useMessageContextChips(
             (route) => chat.navigation.navigate(route),
           );
     return {
-      records: knownRecordsById(context.records),
+      records: knownRecordsById(context?.records),
       actions: {
         ...links,
+        showCitationSource:
+          links === undefined
+            ? (citation: AssistantCitation) => void revealAssistantCitation(document, citation)
+            : citationSource(links, (citation) => revealAssistantCitation(document, citation)),
         openUrl: (url: string) => {
           if (/^https?:\/\//i.test(url)) window.open(url, "_blank", "noopener,noreferrer");
         },
       },
     };
-  }, [context, where, chat, selfNodeId]);
+  }, [context, citations, where, chat, selfNodeId]);
 }
 
 /** The clock of the timeline: "today" and "yesterday" labels roll over with it. */
@@ -232,7 +241,7 @@ function UserMessage({
 }) {
   const [expanded, setExpanded] = useState(false);
   const long = isLong(turn.text);
-  const chips = useMessageContextChips(turn.context);
+  const chips = useMessageContextChips(turn.context, turn.text);
   // A copy reads the references by their labels, as the message shows them.
   const copied = contextReferencesAsLabels(turn.text);
   return (
@@ -300,9 +309,16 @@ function AssistantMessage(props: {
   paddingClass: string;
 }) {
   const { item, streaming } = props;
+  const where = useContext(MessageActionsContext);
   return (
     <div className={cn("group/assistant relative min-w-0 px-1 py-0.5", props.paddingClass)}>
-      <article aria-busy={streaming} aria-label="Agent">
+      <article
+        aria-busy={streaming}
+        aria-label="Agent"
+        // Where a quote of it is found (D1012): its item in its thread.
+        data-assistant-citation-source={where === undefined ? undefined : item.itemId}
+        data-assistant-citation-thread={where?.threadId}
+      >
         <MessageText
           streaming={streaming}
           text={item.text || (streaming ? "" : "(empty response)")}

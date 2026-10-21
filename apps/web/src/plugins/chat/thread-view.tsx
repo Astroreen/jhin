@@ -24,6 +24,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 
 import { buildPromptHistory, newThreadDraftKey, threadDraftKey } from "../../lib/composer.ts";
 import { useCatalog } from "../../lib/hooks.ts";
+import { useMeshMembers } from "../../lib/mesh.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
@@ -53,6 +54,11 @@ const SubagentBar = lazyChunk(
     // Never a thread without a way on: the bar can be loaded again.
     failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load this bar.</ChunkFailed>,
   },
+);
+/** "Cite" by a selection in an agent's message (D1012), a chunk of its own (D440). */
+const CiteSelection = lazyChunk(
+  () => import("./cite-selection.tsx").then((module) => module.CiteSelection),
+  { loading: () => null, failed: () => null },
 );
 /** T3's find bar, a chunk of its own (D440): the find itself stays with the view. */
 const ThreadFindBar = lazyChunk(
@@ -148,6 +154,9 @@ export function ThreadView(props: {
   const composer = useHeight<HTMLDivElement>();
   const { scroller, onScroll, showPill, scrollToEnd } = useStickToEnd(count);
   const handle = useRef<ComposerHandleApi>(null);
+  // The thread's node, which a quote of its messages names (D1012).
+  const members = useMeshMembers(chat.mesh, target.node);
+  const nodeId = target.remote ?? members?.find((member) => member.self)?.nodeId;
   // T3's find in the thread (D801): mod+f opens its bar over the messages.
   const find = useThreadFind(scroller, `${targetKey(target)}|${threadId}`);
   useEffect(() => {
@@ -467,6 +476,8 @@ export function ThreadView(props: {
           )}
           <div
             aria-label="Messages"
+            // Where a quote's message is looked for (D1011).
+            data-assistant-citation-viewport=""
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] sm:px-12"
             onScroll={onScroll}
             ref={scroller}
@@ -474,6 +485,18 @@ export function ThreadView(props: {
             // Scrollable by keyboard too.
             tabIndex={0}
           >
+            <CiteSelection
+              nodeId={nodeId}
+              onCite={(citation) => {
+                const done = handle.current?.insertCitation(citation) ?? "not-now";
+                if (done !== "inserted") {
+                  chat.toasts?.show({ type: "info", title: "The message box takes no quote now" });
+                }
+                return done === "inserted";
+              }}
+              threadId={threadId}
+              viewport={scroller}
+            />
             {/* The find bar's room, so it covers no message (T3's THREAD_FIND_BAR_RESERVED_HEIGHT). */}
             <div className={find.bar.open ? "h-14" : "h-6"} />
             <div className="chat-content-lane overflow-x-clip">

@@ -1881,6 +1881,44 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   is no message box. Only the records the prompt still names count towards
   the 200, a record picked again replaces its own, and two inserts in one
   moment see each other's.
+- **D1010. A quote of an agent's message,** as T3's `assistantCitations.ts`:
+  the link `[Assistant quote](jhin-citation://v1/<node>/<thread>/<message>?…)`
+  holds the quoted text (up to 8 000 characters), its place in the
+  message's rendered text (T3's UTF-16 offsets with white space folded, and
+  32 characters before and after, so it is found again if the offsets drift)
+  and the user's optional comment (up to 8 000), checked as T3 checks it
+  (`@jhin/agent-api`'s `citations.ts`). No record is needed: the link is the
+  whole quote. What the agent reads is T3's: each quote as
+  `[assistant-quote-n]` and one `<assistant_citations>` block after the text
+  that says the quotes are reference material, not instructions, and a
+  comment the user's own; it is expanded in the user's text alone, never in
+  a record's payload (D1006). A title, a search snippet and a copy read the
+  quote's text, a comment after it.
+- **D1011. Its chips,** as T3's `AssistantCitationChip`: in the prompt,
+  "View cited assistant text: <label>" (its comment, else its quote, at
+  most 64 characters) shows the quote in its message, selected, and the
+  pencil ("Add comment to citation" / "Edit citation comment") opens T3's
+  comment editor ("Comment on selected text", "Add an optional comment...",
+  Enter saves, Escape cancels, "Cancel" and "Save"), which writes the link
+  again with the comment. In a sent message the chip ("Quoted assistant
+  text: <label>") shows the quote and comment, and "Go to source". The
+  quote is looked for in the messages on screen; when its thread is not
+  open, its thread opens (D1005's routing). `@jhin/ui` gains T3's
+  `ContextChipAction`.
+- **D1012. "Cite" by a selection,** as T3's `AssistantSelectionToolbar`: a
+  selection in an agent's message, once made, shows "Cite" by its end
+  ("Cite selection in composer"; past 8 000 characters "Shorten
+  selection"), which puts the quote at the composer's cursor as its chip.
+  The selection is read as T3's `captureAssistantTextSelection` reads it
+  (`lib/assistant-text-selection.ts`): text of the message's own, not of
+  its buttons or of rows that cannot be selected. A prefilled answer
+  (D1001) or an approval takes no quote. The button is a chunk of its own
+  (D440).
+- **D1013. Captured window context on screenshots is left out:** T3 takes
+  it with its desktop SnapShot (a window's app, title and accessibility
+  text, read when the capture is taken), which Jhin's desktop app does not
+  port (`desktop.md` D510, screen captures deferred). It comes with
+  SnapShot.
 
 ### Sidebar leftovers (W26)
 
@@ -1943,8 +1981,12 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
     T3 has none);
   - the vertical spacing T3 gives headings (the composer's blocks have none);
   - visible marks at the caret;
-  - T3's citation chips (a passage of an agent's message quoted into the
-    prompt, with a comment) and the chips of a sent message;
+  - T3's citations (D1010–D1012) as T3 has them besides: the comment
+    editor opening at the quote's place in the message right after "Cite",
+    "Save and send" (Mod+Enter), the quote highlighted after its thread
+    opens from another one, and the legacy text for a node from before D1010;
+  - the file and skill chips of a sent message (T3 shows them as in the
+    prompt; a sent message shows its links and `$name`s);
   - a preview of a mentioned file in a panel beside the thread (D1003
     opens a dialog, T3 its right-hand file panel);
   - T3's legacy send for a node from before D1006 (`composerContextLegacySend.ts`,
@@ -1957,8 +1999,8 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   - `aria-activedescendant` from the editor to the menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
-  not for millions); T3's captured window context on screenshots; T3's
-  right-hand file panel for a message's file (D854 opens a dialog), its table
+  not for millions); T3's captured window context on screenshots (D1013: with
+  the desktop SnapShot, `desktop.md` D510); T3's right-hand file panel for a message's file (D854 opens a dialog), its table
   preview of CSV and TSV, and its virtualized preview of text past 1 MiB; a bound on the page's cache
   of attachment bytes (a video is read whole to show its first frame, D855). A live Claude Code session starts again
   when a turn's attachments add their folder to `additionalDirectories`.

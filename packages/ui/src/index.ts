@@ -112,6 +112,7 @@ export {
 } from "./components/menu.tsx";
 export {
   ContextChip,
+  ContextChipAction,
   ContextChipLabel,
   ContextChipPopover,
   ContextChipShell,

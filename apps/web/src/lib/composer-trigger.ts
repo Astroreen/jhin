@@ -6,7 +6,7 @@
 // Pure helpers over the prompt, which is a markdown string: what the caret is typing (a `/`
 // command, a `#` pull request, a `$` skill, an `@` path or thread), how a picked file, pull
 // request or thread is written, and where the chips are.
-import { parseContextHref } from "@jhin/agent-api";
+import { parseAssistantCitationHref, parseContextHref } from "@jhin/agent-api";
 
 type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
 
@@ -158,8 +158,11 @@ export type ComposerPromptSegment =
     };
 
 /** What a reference chip points at: a pull request or a thread. */
-/** `context`: a `jhin-context://` reference to one of the prompt's context records (D1006). */
-type ReferenceKind = "pull-request" | "thread" | "context";
+/**
+ * `context`: a `jhin-context://` reference to one of the prompt's context records (D1006);
+ * `citation`: a quote of an agent's message, `[Assistant quote](jhin-citation://…)` (D1010).
+ */
+type ReferenceKind = "pull-request" | "thread" | "context" | "citation";
 
 interface InlineToken {
   readonly type: "mention" | "skill" | ReferenceKind;
@@ -208,11 +211,13 @@ function collectInlineTokens(text: string): InlineToken[] {
     const reference: ReferenceKind | undefined =
       parseContextHref(encoded) !== null
         ? "context"
-        : THREAD_ADDRESS_REGEX.test(encoded)
-          ? "thread"
-          : isPullRequestLink(label, path)
-            ? "pull-request"
-            : undefined;
+        : label === "Assistant quote" && parseAssistantCitationHref(encoded) !== null
+          ? "citation"
+          : THREAD_ADDRESS_REGEX.test(encoded)
+            ? "thread"
+            : isPullRequestLink(label, path)
+              ? "pull-request"
+              : undefined;
     if (reference !== undefined) {
       tokens.push({
         type: reference,

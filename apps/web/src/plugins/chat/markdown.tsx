@@ -1,5 +1,9 @@
 // The rendering follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/ChatMarkdown.tsx.
-import { parseContextHref } from "@jhin/agent-api";
+import {
+  type AssistantCitation,
+  parseAssistantCitationHref,
+  parseContextHref,
+} from "@jhin/agent-api";
 import { Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import { CheckIcon, CopyIcon, WrapTextIcon } from "lucide-react";
 import {
@@ -18,6 +22,7 @@ import remarkGfm from "remark-gfm";
 
 import { highlight, languageOf } from "../../lib/highlight.ts";
 import { useCopy } from "../../lib/hooks.ts";
+import { MessageCitationChip } from "./citation-chips.tsx";
 import { ContextRecordChip } from "./context-chips.tsx";
 import { CHAT_MARKDOWN_CLASS, type ChatMarkdownProps } from "./markdown-style.ts";
 import { MessageContextChipsContext } from "./message-context.ts";
@@ -133,6 +138,8 @@ const COMPONENTS: Components = {
   a({ children, href, node: _node, ...props }) {
     const reference = typeof href === "string" ? parseContextHref(href) : null;
     if (reference !== null) return <ContextReference href={href!} label={textOf(children)} />;
+    const citation = typeof href === "string" ? parseAssistantCitationHref(href) : null;
+    if (citation !== null) return <CitationReference citation={citation} />;
     return (
       <a {...props} href={href} rel="noopener noreferrer" target="_blank">
         {children}
@@ -171,7 +178,18 @@ const COMPONENTS: Components = {
 
 /** A message's context references (D1007) keep their `jhin-context:` links; others as before. */
 function keepContextReferences(url: string): string {
-  return parseContextHref(url) === null ? defaultUrlTransform(url) : url;
+  return parseContextHref(url) === null && parseAssistantCitationHref(url) === null
+    ? defaultUrlTransform(url)
+    : url;
+}
+
+/** A quote of an agent's message (D1011): its chip in a user message, its text elsewhere. */
+function CitationReference(props: { citation: AssistantCitation }) {
+  const chips = use(MessageContextChipsContext);
+  if (chips === undefined) return <q>{props.citation.text}</q>;
+  return (
+    <MessageCitationChip citation={props.citation} showSource={chips.actions.showCitationSource} />
+  );
 }
 
 /** A `jhin-context://` reference: its record's chip, or its label outside a user message. */

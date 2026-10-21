@@ -7,6 +7,8 @@
 // `[label](jhin-context://v1/<kind>/<id>)`. The text stays the user's; what an agent reads is
 // `projectMessageContext`'s, the references as markers and the records in one envelope after it.
 
+import { assistantCitationsToPlainText, expandAssistantCitationsForAgent } from "./citations.ts";
+
 /** T3's `t3-context://v1/`, under Jhin's scheme. */
 const CONTEXT_HREF_PREFIX = "jhin-context://v1/";
 const CONTEXT_KIND_PATTERN = /^[a-z][a-z0-9-]{0,39}$/;
@@ -333,18 +335,21 @@ export function projectMessageContext(input: {
   readonly records?: readonly MessageContextRecord[] | undefined;
 }): string {
   const occurrences = collectContextReferences(input.text);
-  if (occurrences.length === 0) return input.text;
+  // The user's quotes of agents' messages (D1010) are expanded in the text alone, never in a
+  // record's payload, which is the record's own, untrusted text.
+  if (occurrences.length === 0) return expandAssistantCitationsForAgent(input.text);
   const byId = new Map<string, MessageContextRecord | undefined>();
   for (const record of input.records ?? []) {
     byId.set(record.contextId, byId.has(record.contextId) ? undefined : record);
   }
-  const body = replaceContextReferences(input.text, (occurrence) =>
+  const markers = replaceContextReferences(input.text, (occurrence) =>
     formatContextMarker(
       byId.get(occurrence.contextId)?.kind ?? occurrence.kind,
       occurrence.label,
       occurrence.contextId,
     ),
   );
+  const body = expandAssistantCitationsForAgent(markers);
   const seen = new Set<string>();
   const entries: string[] = [];
   // What the envelope may add to the prompt; past it an entry is cut, later ones only named.
@@ -365,7 +370,12 @@ export function projectMessageContext(input: {
   return `${body}\n\n<${CONTEXT_ENVELOPE_TAG} version="1">\n${entries.join("\n")}\n</${CONTEXT_ENVELOPE_TAG}>`;
 }
 
-/** The text as a person reads it: each reference by its label (a title, a search snippet). */
+/**
+ * The text as a person reads it: each reference by its label, each quote by its text (a title,
+ * a search snippet, a copy).
+ */
 export function contextReferencesAsLabels(text: string): string {
-  return replaceContextReferences(text, (occurrence) => occurrence.label);
+  return assistantCitationsToPlainText(
+    replaceContextReferences(text, (occurrence) => occurrence.label),
+  );
 }

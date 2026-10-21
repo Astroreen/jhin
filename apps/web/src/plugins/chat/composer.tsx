@@ -3,9 +3,14 @@
 // ComposerPendingApprovalPanel.tsx, ComposerPendingApprovalActions.tsx,
 // ComposerPendingUserInputPanel.tsx, QueuedRunsControl.tsx, ProviderModelPicker.tsx,
 // ContextWindowMeter.tsx and runtimeModeConfig.ts. The prompt is T3's tiptap editor (prompt-editor.tsx).
-import { applicableModelOptions, referencedContext } from "@jhin/agent-api";
+import {
+  applicableModelOptions,
+  referencedContext,
+  serializeAssistantCitation,
+} from "@jhin/agent-api";
 import type {
   AgentResponse,
+  AssistantCitation,
   MessageContext,
   MessageContextRecord,
   ModelOptionDescriptor,
@@ -198,6 +203,8 @@ export interface ComposerHandleApi {
    * addTerminalContext, D1009), or why it cannot.
    */
   insertContext(record: MessageContextRecord): ContextInsertion;
+  /** Puts a quote of an agent's message at the cursor as its chip (T3's onCite, D1012). */
+  insertCitation(citation: AssistantCitation): ContextInsertion;
   toggleModelPicker(): void;
   cycleRuntimeMode(): void;
   togglePlanMode(): void;
@@ -1432,6 +1439,15 @@ export function Composer(props: ComposerProps) {
     editor.current?.focus();
     return "inserted";
   };
+  const insertCitation = (citation: AssistantCitation): ContextInsertion => {
+    if (literalAnswer || approval !== undefined) return "not-now";
+    const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
+    const before = prompt.slice(0, at);
+    const gap = before.length > 0 && !/\s$/.test(before) ? " " : "";
+    editor.current?.replaceRange(at, at, `${gap}${serializeAssistantCitation(citation)} `);
+    editor.current?.focus();
+    return "inserted";
+  };
   const menuListId = useId();
   // `@` offers the node's other threads, linked by their address (D24): the node's own id.
   // They are followed only while `@` is typed, as T3's useThreadShells(isPathTrigger).
@@ -1523,6 +1539,7 @@ export function Composer(props: ComposerProps) {
     focus,
     insert,
     insertContext,
+    insertCitation,
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,
     togglePlanMode,

@@ -14,6 +14,7 @@ export * from "./agents.ts";
 export * from "./messages.ts";
 export * from "./orchestration.ts";
 export * from "./context.ts";
+export * from "./citations.ts";
 export * from "./context-schema.ts";
 
 import { contextReferencesAsLabels } from "./context.ts";
