@@ -1237,6 +1237,10 @@ W2 lands as a stack of pull requests: the rollback first (D220–D222, which
 W3 builds on), then editing and regenerating (D223, D224), forks and merging
 back (D225, D226), and search (D227, D228).
 
+D227 and D228 were refined in review before they shipped: ASCII case
+folding instead of accents, `updatedAt` in a match, the 10 s deadline and
+the failure label, the cache's bound and shared reads.
+
 The proof of D223–D228: `plugins/threads/test/history.test.ts`
 (regenerating the latest or an earlier turn with its settings, refusals;
 forking with times kept and the fork's history, refusals; merging back with

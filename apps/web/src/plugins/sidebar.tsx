@@ -43,7 +43,6 @@ import {
   type ThreadSection,
   type ThreadsCatalog,
   VISITS_CAPABILITY,
-  targetKey,
   visitKey,
   type ThreadVisits,
   type NodeActionProps,
