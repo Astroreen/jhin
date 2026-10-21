@@ -88,12 +88,16 @@ export const connectionsPlugin = builtin(
         });
         for (const listener of Array.from(listeners)) listener();
       };
-      const persist = () =>
-        void store
-          .save([...nodes.values()].map((node) => node.saved))
+      // One save after another, each with the list as it is then: two quick
+      // changes never land in the wrong order.
+      let saving: Promise<void> = Promise.resolve();
+      const persist = () => {
+        saving = saving
+          .then(() => store.save([...nodes.values()].map((node) => node.saved)))
           .catch((error: unknown) =>
             context.log.error("saving nodes failed", { error: String(error) }),
           );
+      };
 
       const open = (saved: Saved) => {
         // A session node sends no token: the browser adds its cookie to the upgrade.
@@ -138,7 +142,15 @@ export const connectionsPlugin = builtin(
           const node = nodes.get(id);
           node?.client.close();
           // Forgetting the page's own node signs this page out of it.
-          if (node !== undefined && "session" in node.saved) void closeSession();
+          if (node !== undefined && "session" in node.saved) {
+            // Best effort: a node that cannot be reached keeps its session cookie
+            // until it expires, and offers the node again on the next visit.
+            void closeSession().catch((error: unknown) =>
+              context.log.warn("signing out of this page's node failed", {
+                error: String(error),
+              }),
+            );
+          }
           nodes.delete(id);
           persist();
           changed();

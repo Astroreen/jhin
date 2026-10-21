@@ -27,6 +27,12 @@ describe("pairing links (security.md D422)", () => {
   it("maps a node's RPC address to its HTTP one and back", () => {
     expect(httpBase("wss://jhin.example.com/rpc")).toBe("https://jhin.example.com");
     expect(httpBase("ws://127.0.0.1:7777/rpc")).toBe("http://127.0.0.1:7777");
-    expect(rpcUrl("https://jhin.example.com/some/page")).toBe("wss://jhin.example.com/rpc");
+    expect(rpcUrl("https://jhin.example.com/")).toBe("wss://jhin.example.com/rpc");
+    // A node under a path behind a proxy keeps it; a pairing link's /pair does not count.
+    expect(rpcUrl("https://h.example/jhin/")).toBe("wss://h.example/jhin/rpc");
+    expect(parsePairingUrl("https://h.example/jhin/pair#token=ABCDEFGHJKMN")?.url).toBe(
+      "wss://h.example/jhin/rpc",
+    );
+    expect(httpBase(rpcUrl("https://h.example/jhin/"))).toBe("https://h.example/jhin");
   });
 });

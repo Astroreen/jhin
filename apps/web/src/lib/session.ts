@@ -15,7 +15,10 @@ export function httpBase(webSocketUrl: string): string {
 /** `http(s)://host[/…]` → `ws(s)://host/rpc`, the node's RPC endpoint. */
 export function rpcUrl(httpUrl: string): string {
   const url = new URL(httpUrl);
-  return `${url.protocol === "https:" ? "wss" : "ws"}://${url.host}/rpc`;
+  // A node under a path behind a proxy (`https://h/jhin/`) keeps it; a pairing
+  // link's own `/pair` is not part of it.
+  const base = url.pathname.replace(/\/pair\/?$/, "").replace(/\/+$/, "");
+  return `${url.protocol === "https:" ? "wss" : "ws"}://${url.host}${base}/rpc`;
 }
 
 /** A pairing link (`<node>/pair#token=<CODE>`, also `?token=`): the node and the code. */
@@ -88,5 +91,6 @@ export async function openSession(credential: string): Promise<void> {
 
 /** Signs this page out of its node: the token behind the cookie is revoked. */
 export async function closeSession(): Promise<void> {
-  await fetch("/auth/session", { method: "DELETE", credentials: "same-origin" });
+  const response = await fetch("/auth/session", { method: "DELETE", credentials: "same-origin" });
+  if (!response.ok) throw await failure(response);
 }
