@@ -378,6 +378,8 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
 - The configured preview URLs of project scripts (T3's `configuredUrls` in
   the port scan and the empty state), a pushed server list instead of the
   client's 3 s rescans (T3's subscription), and a favicon per local server.
+- Tests of the panel's local server polling (backoff, the hidden-page pause)
+  and of the node's shared scan; the e2e covers the path end to end.
 - The floating mini player ("Float preview over chat").
 - Touch input and the editable-at-point probe for soft keyboards; human
   uploads through the file chooser (the panel can only cancel it) and saving
