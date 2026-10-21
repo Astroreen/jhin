@@ -73,7 +73,10 @@ export function withInfoStringLanguage(info: string, language: string): string {
 }
 
 export function codeLanguageEntry(language: string): CodeBlockLanguage | null {
-  const id = language === "text" ? "" : (LANGUAGE_ALIASES[language.toLowerCase()] ?? language);
+  const lower = language.toLowerCase();
+  // Own keys only: a fence named `constructor` must not find Object's.
+  const alias = Object.hasOwn(LANGUAGE_ALIASES, lower) ? LANGUAGE_ALIASES[lower] : undefined;
+  const id = language === "text" ? "" : (alias ?? language);
   return CODE_BLOCK_LANGUAGES.find((entry) => entry.id === id.toLowerCase()) ?? null;
 }
 

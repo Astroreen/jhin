@@ -86,8 +86,9 @@ const ALIASES: Record<string, string> = {
 export function languageOf(fence: string | undefined): string | undefined {
   if (fence === undefined) return undefined;
   const name = fence.trim().toLowerCase();
-  const resolved = ALIASES[name] ?? name;
-  return LANGUAGES[resolved] === undefined ? undefined : resolved;
+  // Own keys only: a fence named `constructor` must not find Object's.
+  const resolved = Object.hasOwn(ALIASES, name) ? ALIASES[name]! : name;
+  return Object.hasOwn(LANGUAGES, resolved) ? resolved : undefined;
 }
 
 let core: Promise<HighlighterCore> | undefined;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { highlightTokens } from "../src/lib/highlight.ts";
+import { codeLanguageEntry } from "../src/lib/code-languages.ts";
+import { highlightTokens, languageOf } from "../src/lib/highlight.ts";
 
 describe("highlightTokens (D841)", () => {
   it.each([
@@ -14,5 +15,13 @@ describe("highlightTokens (D841)", () => {
     expect(words).toContain("const");
     expect(words).toContain("let");
     for (const token of tokens) expect(token.style).toMatch(/--shiki-light:.*--shiki-dark:/);
+  });
+
+  it("finds no language in Object's own names", () => {
+    expect(languageOf("constructor")).toBeUndefined();
+    expect(languageOf("__proto__")).toBeUndefined();
+    expect(codeLanguageEntry("toString")).toBeNull();
+    expect(languageOf("ts")).toBe("typescript");
+    expect(codeLanguageEntry("py")?.label).toBe("Python");
   });
 });

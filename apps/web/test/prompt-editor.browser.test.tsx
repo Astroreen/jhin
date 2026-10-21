@@ -277,6 +277,10 @@ describe("code blocks in the prompt (D841–D843)", () => {
     tiptap.commands.insertContentAt(tiptap.state.doc.child(0).nodeSize - 1, " ");
     expect(editor.value()).toBe("```ts\nconst a = 1; \n```");
     expect(page.getByText("const", { exact: true }).element()).toHaveClass("composer-code-token");
+
+    // A new language drops the old one's colours until its own arrive.
+    tiptap.commands.updateAttributes("codeBlock", { language: "python" });
+    expect(editor.editable().querySelector(".composer-code-token[style]")).toBeNull();
   });
 
   it("indents with Tab and outdents with Shift+Tab, in a code block only", async () => {

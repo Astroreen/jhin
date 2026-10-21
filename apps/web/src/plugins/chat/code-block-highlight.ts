@@ -51,10 +51,13 @@ function decorations(
   previous: DecorationSet = DecorationSet.empty,
 ) {
   const found: Decoration[] = [];
-  for (const { node, pos, signature } of codeBlocks(state)) {
+  for (const { node, pos, language, signature } of codeBlocks(state)) {
     const tokens = cache.get(signature);
     if (tokens === undefined) {
-      found.push(...previous.find(pos + 1, pos + node.nodeSize - 1));
+      // Another language's colours would be wrong for the new one: those go.
+      found.push(
+        ...previous.find(pos + 1, pos + node.nodeSize - 1, (spec) => spec["language"] === language),
+      );
       continue;
     }
     // Token offsets index the block's text, which lines up with positions only
@@ -62,10 +65,15 @@ function decorations(
     if (node.content.size !== node.textContent.length) continue;
     for (const token of tokens) {
       found.push(
-        Decoration.inline(pos + 1 + token.from, pos + 1 + token.to, {
-          class: CODE_TOKEN_CLASS_NAME,
-          style: token.style,
-        }),
+        Decoration.inline(
+          pos + 1 + token.from,
+          pos + 1 + token.to,
+          {
+            class: CODE_TOKEN_CLASS_NAME,
+            style: token.style,
+          },
+          { language },
+        ),
       );
     }
   }
