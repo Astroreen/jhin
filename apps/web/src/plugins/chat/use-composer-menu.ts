@@ -172,7 +172,7 @@ export function useComposerMenu(options: {
         (error: unknown) => {
           if (!current) return;
           const status = PULL_REQUESTS_UNAVAILABLE.has(errorCode(error)) ? "unavailable" : "error";
-          const list = { key: prListKey, status, entries: [] };
+          const list: PullRequestList = { key: prListKey, status, entries: [] };
           // A forge that cannot list will not on the next `#` either; a failure is tried again.
           if (status === "unavailable")
             prListCache.current.set(prListKey, { at: Date.now(), list });
