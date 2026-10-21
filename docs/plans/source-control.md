@@ -562,7 +562,9 @@ with screenshots).
   the next. It runs beside the turn and never holds it up or fails
   it; a writer without an answer keeps the temporary branch (T3 has no
   fallback either), and so does a fork's first turn or a branch the user
-  named. Every thread in that worktree records the new branch (D113); the
+  named (one that looks temporary, `jhin/deadbeef`, is still renamed: T3's
+  `isTemporaryWorktreeBranch` matches it too), or a branch switched or
+  renamed while the writer ran. Every thread in that worktree records the new branch (D113); the
   folder keeps its temporary name, as in T3. A plugin stopped while its writer
   runs renames nothing. There is no switch to turn it off: T3 renames on
   every launch too, and the off switch comes with its naming settings

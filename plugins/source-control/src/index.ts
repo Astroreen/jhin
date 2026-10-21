@@ -1633,8 +1633,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     const fragment = await writerFor(input.projectId, input.threadId).branchName({
       message: text,
     });
-    // A plugin stopped while its writer ran leaves the repository alone.
+    // A plugin stopped while its writer ran leaves the repository alone, and so does a
+    // branch switched or renamed meanwhile.
     if (fragment === undefined || stopped) return;
+    if ((await git(["branch", "--show-current"])).stdout.trim() !== branch) return;
     const renamed = await renameTemporaryBranch(git, branch, fragment);
     context.log.info("renamed a worktree's temporary branch", {
       threadId: input.threadId,
