@@ -13,10 +13,8 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createDiffPanel } from "../src/plugins/source-control/diff-panel.tsx";
-import {
-  createGitActionsControl,
-  createRunningActions,
-} from "../src/plugins/source-control/git-actions.tsx";
+import { createGitActionsControl } from "../src/plugins/source-control/git-actions.tsx";
+import { createRunningActions } from "../src/plugins/source-control/running.ts";
 import { createCardIndicators } from "../src/plugins/source-control/indicators.tsx";
 import type { SourceControlServices } from "../src/plugins/source-control/services.ts";
 import type { SourceControlStore, SourceControlView } from "../src/plugins/source-control/store.ts";
