@@ -94,6 +94,14 @@ export function createContentSearch(
           if (found === "failed") failed += 1;
           else matches = [...matches, ...found].toSorted(byRank);
           publish({ query, pending: waiting > 0, matches, failed });
+          if (found !== "failed") return;
+          // Past its deadline: an answer that still comes for this query counts after all.
+          void answer.then((late) => {
+            if (id !== generation || late === "failed") return;
+            failed -= 1;
+            matches = [...matches, ...late].toSorted(byRank);
+            publish({ query, pending: waiting > 0, matches, failed });
+          });
         });
     }
   };

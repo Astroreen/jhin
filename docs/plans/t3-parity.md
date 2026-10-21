@@ -1221,7 +1221,8 @@ for, built from the same rewind.
   thread messages…" while asking (T3's buildThreadActionItems). Across
   nodes the matches keep D227's order (user matches first, then by the
   thread's `updatedAt`). A node that has not answered after 10 seconds counts
-  as having failed, so a hung relay never leaves a view waiting; a node that
+  as having failed until its answer comes, so a hung relay never leaves a
+  view waiting; a node that
   failed, unlike one older than `threads.search`, makes the empty sidebar
   say "No threads found. Some nodes could not search their messages.", and
   the palette ranks a thread by a snippet of the query typed now only; a view

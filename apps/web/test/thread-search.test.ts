@@ -134,6 +134,10 @@ describe("searching thread contents on every node (D228)", () => {
     expect(emptySearchLabel(search.get(), "lisbon")).toBe(
       "No threads found. Some nodes could not search their messages.",
     );
+    // b answers after all, still on the same query: its matches count.
+    calls[1]!.answer([match("t2", "user", "2026-10-20T11:00:00Z")]);
+    await until(search, (state) => state.failed === 0);
+    expect(search.get().matches.map((found) => found.threadId)).toEqual(["t2", "t1"]);
   });
 
   it("tells a failed search apart from a node that has no such command", async () => {
