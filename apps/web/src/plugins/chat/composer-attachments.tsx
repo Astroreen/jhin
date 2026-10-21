@@ -156,8 +156,14 @@ export function useComposerAttachments(options: {
       }
       let file = original;
       if (classification === "image") {
-        const { prepareImageForAttachment } = await imageCompression();
-        const result = await prepareImageForAttachment(
+        // The image code is a chunk of its own: when it cannot load, this file is
+        // reported and the rest of the batch still goes on.
+        const compression = await imageCompression().catch(() => undefined);
+        if (compression === undefined) {
+          error(`'${original.name}' could not be prepared: reload the page and try again.`);
+          continue;
+        }
+        const result = await compression.prepareImageForAttachment(
           normalizeImageFileMimeType(original),
           ATTACHMENT_LIMITS.imageBytes,
         );
