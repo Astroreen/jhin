@@ -6,7 +6,7 @@
 // refreshCheckedOutBranch) and the GitHub provider's checkoutChangeRequest.
 import * as Path from "node:path";
 
-import type { PreparedPullRequest } from "@jhin/source-control-api";
+import type { PreparedPullRequest, PullRequest } from "@jhin/source-control-api";
 
 import type { CheckoutTarget } from "./forge.ts";
 import { SourceControlError, type Git } from "./git.ts";
@@ -29,12 +29,22 @@ export function normalizeReference(reference: string): string {
   return /^#\d+$/.test(trimmed) ? trimmed.slice(1) : trimmed;
 }
 
-/** `origin`, else the first remote. */
-async function primaryRemote(git: Git): Promise<string> {
+/**
+ * The remote of the pull request's own repository (its base), when one points
+ * there: with `origin` a fork and `upstream` the repository, `gh` reads the
+ * pull request in `upstream`. Else `origin`, else the first remote.
+ */
+async function primaryRemote(git: Git, pullRequestUrl?: string): Promise<string> {
   const remotes = (await git(["remote"])).stdout
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "");
+  if (pullRequestUrl !== undefined) {
+    for (const remote of remotes) {
+      const url = await git(["config", "--get", `remote.${remote}.url`], { ok: [0, 1] });
+      if (url.code === 0 && isPullRequestOf(url.stdout, pullRequestUrl)) return remote;
+    }
+  }
   const remote = remotes.includes("origin") ? "origin" : remotes[0];
   if (remote === undefined) {
     throw new SourceControlError("GIT_FAILED", "No git remote is configured for this repository.");
@@ -99,7 +109,7 @@ async function ensureRemote(git: Git, name: string, url: string): Promise<string
 
 /** The remote the head branch lives on: the primary one, or the fork's (added when missing). */
 async function headRemote(git: Git, target: CheckoutTarget): Promise<string> {
-  if (!target.crossRepository) return primaryRemote(git);
+  if (!target.crossRepository) return primaryRemote(git, target.pr.url);
   if (target.headRepository === undefined) {
     throw new SourceControlError("PULL_REQUEST_FAILED", "The fork of this pull request is gone.");
   }
@@ -120,10 +130,10 @@ async function fetchHead(git: Git, remote: string, head: string): Promise<string
   return `refs/remotes/${remote}/${head}`;
 }
 
-/** The commit of `refs/pull/<n>/head` on the primary remote. */
-async function fetchPullRequestHead(git: Git, number: number): Promise<string> {
-  const remote = await primaryRemote(git);
-  await git(["fetch", "--quiet", "--no-tags", "--", remote, `refs/pull/${number}/head`]);
+/** The commit of `refs/pull/<n>/head` on the pull request's repository. */
+async function fetchPullRequestHead(git: Git, pr: PullRequest): Promise<string> {
+  const remote = await primaryRemote(git, pr.url);
+  await git(["fetch", "--quiet", "--no-tags", "--", remote, `refs/pull/${pr.number}/head`]);
   return (await git(["rev-parse", "--verify", "FETCH_HEAD^{commit}"])).stdout.trim();
 }
 
@@ -166,7 +176,7 @@ async function headCommit(
       headBranch: target.pr.headBranch,
       error: (error as Error).message,
     });
-    return { commit: await fetchPullRequestHead(git, target.pr.number) };
+    return { commit: await fetchPullRequestHead(git, target.pr) };
   }
 }
 
@@ -270,8 +280,8 @@ async function materialize(
  * safe (T3's `refreshCheckedOutBranch`): already there, or a fast-forward of
  * a clean checkout. Returns whether it is on the head.
  */
-async function refresh(git: Git, number: number): Promise<boolean> {
-  const target = await fetchPullRequestHead(git, number);
+async function refresh(git: Git, pr: PullRequest): Promise<boolean> {
+  const target = await fetchPullRequestHead(git, pr);
   const head = (await git(["rev-parse", "HEAD"])).stdout.trim();
   if (head === target) return true;
   if ((await git(["status", "--porcelain"])).stdout.trim() !== "") return false;
@@ -314,7 +324,7 @@ export async function checkoutWorktree(
   if (found !== undefined) {
     const worktreeGit = options.createGit(found.path);
     await configureUpstream(worktreeGit, target, local, options.warn);
-    const onHead = await refresh(worktreeGit, pr.number).catch((error: unknown) => {
+    const onHead = await refresh(worktreeGit, pr).catch((error: unknown) => {
       options.warn("could not refresh a reused pull request worktree", {
         worktreePath: found.path,
         error: (error as Error).message,

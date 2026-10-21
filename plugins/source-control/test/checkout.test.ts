@@ -180,6 +180,25 @@ describe("checking a pull request out (D902)", () => {
     );
   });
 
+  it("reads the pull request from its repository's remote when origin is a fork", async () => {
+    const { dir: upstreamClone, origin: upstream, head } = withPullRequest();
+    // `origin` is the user's fork, without the pull request; `upstream` has it.
+    const dir = temp("jhin-sc-forked-");
+    const fork = temp("jhin-sc-own-fork-");
+    git(fork, "clone", "--quiet", "--bare", upstreamClone, ".");
+    git(dir, "clone", "--quiet", fork, ".");
+    git(dir, "remote", "add", "upstream", "https://github.com/acme/demo");
+    git(dir, "config", `url.${upstream}.insteadOf`, "https://github.com/acme/demo");
+    const prepared = await checkoutLocal(
+      createGit("git", dir),
+      { pr: pr(), crossRepository: false },
+      warn,
+    );
+    expect(prepared.branch).toBe("feature");
+    expect(git(dir, "rev-parse", "HEAD").trim()).toBe(head);
+    expect(git(dir, "rev-parse", "--abbrev-ref", "@{upstream}").trim()).toBe("upstream/feature");
+  });
+
   it("falls back to the pull request's ref when its head branch is gone", async () => {
     const { dir, origin, head } = withPullRequest();
     git(origin, "branch", "-D", "feature");

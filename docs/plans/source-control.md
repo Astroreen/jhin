@@ -582,8 +582,9 @@ with screenshots).
   repository's pull request (its refs are not this one's; T3 would check that
   repository's out), compared by host, owner and name whatever the remote's
   protocol, user or port. A forge without `resolve` answers
-  `ACTION_UNAVAILABLE`. The head is fetched from the primary remote
-  (`origin`, else the first) or from the fork's remote (one whose configured
+  `ACTION_UNAVAILABLE`. The head is fetched from the remote of the pull
+  request's own repository (with `origin` a fork, the `upstream` that `gh`
+  read it in), else `origin`, else the first remote, or from the fork's remote (one whose configured
   URL is the fork's, else a new one named after its owner, `-1`… when
   taken); when that fetch fails (a head branch that is gone, for one) it
   falls back to `refs/pull/<n>/head` without an upstream, as T3 does, and
