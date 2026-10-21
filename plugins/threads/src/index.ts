@@ -1461,11 +1461,13 @@ export default definePlugin({
      * starting then is given up on as soon as it has started; its start only
      * waits on storage and the turn start hooks, as recording its end would.
      */
-    async function stopTurn(threadId: string): Promise<void> {
+    async function stopTurn(threadId: string, forRestart = false): Promise<void> {
       // A rollback under way is never cut short: it ends by itself (D220).
       await rollingBack.get(threadId);
       const current = active.get(threadId);
       if (current === undefined) return;
+      // Any other stop (archiving, deleting) is a stop: a restart under way gives way (D803).
+      if (!forRestart) current.restartWith = undefined;
       current.interrupted = true;
       current.turn?.interrupt();
       let timer: NodeJS.Timeout | undefined;
@@ -3372,9 +3374,15 @@ export default definePlugin({
       // A Stop came while the queue was written (`restartWith` cleared): it waits,
       // as a steer that came too late.
       if (current.restartWith !== messageId) return false;
-      restartStarts.set(`${threadId}:${messageId}`, undefined);
+      const key = `${threadId}:${messageId}`;
+      restartStarts.set(key, undefined);
       // A user's Stop: bounded, and given up on for an agent that ignores it.
-      await stopTurn(threadId);
+      try {
+        await stopTurn(threadId, true);
+      } catch (error) {
+        restartStarts.delete(key);
+        throw error;
+      }
       return "restarted";
     }
 
