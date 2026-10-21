@@ -33,8 +33,9 @@ Thumbs.db
 *.db
 *.log
 secrets/
-# The secret store plugin is code, not secrets.
+# The secret store plugins are code, not secrets.
 !/plugins/secrets/
+!/apps/web/src/plugins/secrets/
 .env
 .env.*
 

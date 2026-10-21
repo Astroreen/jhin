@@ -53,7 +53,6 @@ export const SECRETS_ERROR_MESSAGES = {
     "Asking for a secret requires a running turn in the thread the request is for.",
   SECRET_REQUEST_NOT_FOUND: "This secret request no longer exists.",
   SECRET_REQUEST_ANSWERED: "This secret request was already answered.",
-  SECRET_REQUEST_AGENT_STOPPED: "The agent that asked has stopped, so this secret can't be used.",
   SECRET_REF_INVALID: "That secretRef is not valid.",
   SECRET_REF_UNAVAILABLE:
     "That secretRef was already used or does not exist. Ask the user again with secrets_request.",
@@ -78,7 +77,6 @@ export class SecretsError extends Error {
 export const SECRET_REQUEST_USER_FACING_CODES: readonly string[] = [
   "SECRET_REQUEST_NOT_FOUND",
   "SECRET_REQUEST_ANSWERED",
-  "SECRET_REQUEST_AGENT_STOPPED",
   "SECRET_STORE_UNAVAILABLE",
   "SECRET_STORE_UNREADABLE",
 ];

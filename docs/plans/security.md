@@ -399,8 +399,8 @@ The reference is T3 Code at D53 (`eb7b35ac`):
   do not hold, so an agent cannot answer its own request. T3's failures and
   messages: `SECRET_REQUEST_NOT_FOUND` ("This secret request no longer
   exists."), `SECRET_REQUEST_ANSWERED` ("This secret request was already
-  answered."), `SECRET_REQUEST_AGENT_STOPPED` ("The agent that asked has
-  stopped, so this secret can't be used."). An input that fails validation
+  answered."): a request whose turn ended is closed, so it is answered
+  already. An input that fails validation
   is reported without the value.
 - **D1030. A `secretRef` is one-use, bound and short-lived.**
   `secret-ref:<32 hex>`, random. It holds the value with the thread's

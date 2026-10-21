@@ -17,7 +17,16 @@ import {
   type SecretStore,
 } from "@jhin/secrets-api";
 
+import { AGENT_REGISTRY_CAPABILITY } from "@jhin/agent-api";
+import {
+  EVENTLOG_CAPABILITY,
+  KV_CAPABILITY,
+  type EventLog,
+  type KeyValueStore,
+} from "@jhin/storage-api";
+
 import { findKeychain } from "./keychain.ts";
+import { registerSecretRequests } from "./requests.ts";
 import { openStore } from "./store.ts";
 
 const Config = z
@@ -85,6 +94,10 @@ export default definePlugin({
         title: "View the secret store",
         description: "See where secrets are kept and how many; never their values.",
       },
+      "secrets.write": {
+        title: "Answer secret requests",
+        description: "Save a secret an agent asked for, or decline; the agent never sees it.",
+      },
     });
 
     context.commands.register({
@@ -97,5 +110,16 @@ export default definePlugin({
       permissions: ["secrets.read"],
       handler: () => store.status(),
     });
+
+    // Secret requests live in threads: with the threads plugin and storage (D1028).
+    const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
+    const kv = context.services.tryGet<KeyValueStore>(KV_CAPABILITY);
+    if (
+      log !== undefined &&
+      kv !== undefined &&
+      context.services.tryGet(AGENT_REGISTRY_CAPABILITY) !== undefined
+    ) {
+      await registerSecretRequests(context, store, log, kv);
+    }
   },
 });
