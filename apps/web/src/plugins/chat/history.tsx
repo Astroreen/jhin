@@ -286,20 +286,24 @@ export function registerHistory(
       (candidate) => candidate.id === thread.forkedFrom!.threadId,
     );
     const ran = forkRan(thread);
+    // Gone from its node (not just still loading): nothing to merge into, as in the panel.
+    const missing = catalog?.status === "ready" && parent === undefined;
     const label =
       parent === undefined ? "Merge back to source conversation" : `Merge back to ${parent.title}`;
-    const tooltip = !ran
-      ? "Complete a run in this fork before merging it back"
-      : parent === undefined
-        ? "Merge this conversation back into its source"
-        : `Merge this conversation back into ${parent.title}`;
+    const tooltip = missing
+      ? "This related thread is unavailable"
+      : !ran
+        ? "Complete a run in this fork before merging it back"
+        : parent === undefined
+          ? "Merge this conversation back into its source"
+          : `Merge this conversation back into ${parent.title}`;
     return (
       <Tooltip>
         <TooltipTrigger
           render={
             <Button
               aria-label={label}
-              disabled={!ran}
+              disabled={!ran || missing}
               onClick={() =>
                 void context.commands
                   .execute("thread.merge-back", {
