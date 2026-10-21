@@ -126,6 +126,13 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 - `apps/web` — the web client.
 - `apps/desktop` — the Electron desktop app: runs `jhin serve --ui` and shows
   the web client (`desktop.md`).
+- `packages/desktop-api` — the desktop bridge's contract (`window.jhinDesktop`,
+  update state, `desktop.shell@1`), with its channel names apart for the
+  preload (`desktop.md#D521`).
+- `jhin serve --plugin-dir <dir>` — loads a plugin package from outside the
+  plugin folders, as the dev layer (D15); the desktop app adds its plugin so.
+- `@jhin/ui` also exports the settings layout (`SettingsSection`,
+  `SettingsRow`) and `useNativeTitlebarHeight` (`desktop.md#D514`, `#D515`).
 - `e2e/` — Playwright end-to-end tests.
 - `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
   `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a

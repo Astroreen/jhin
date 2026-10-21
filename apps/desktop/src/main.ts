@@ -60,6 +60,8 @@ let starting: Promise<RunningLocalNode> | undefined;
 let shownNode: RunningLocalNode | undefined;
 let nodeOrigin: string | undefined;
 let quitting = false;
+/** A quit stops the node; a second quit meanwhile waits for it. */
+let stoppingNode = false;
 let menuContributions: DesktopMenuContribution[] = [];
 
 /** One app at a time: a second launch shows the running one's window (D522). */
@@ -107,7 +109,6 @@ function on<T>(channel: string, input: z.ZodType<T>, handler: (value: T) => void
   });
 }
 
-/** Sends to the page once it loaded; `menuCommand` also brings the window up (T3). */
 /** Messages held while the page loads, sent in order by one `did-finish-load` listener. */
 const held: { window: BrowserWindow; channel: string; value: unknown }[] = [];
 function sendToPage(channel: string, value: unknown): void {
@@ -381,18 +382,19 @@ async function main(): Promise<void> {
     clearBadge();
     updates.stop();
     if (node === undefined) {
-      // Still starting: startNode stops the node once it is up, then quits (D522).
-      if (starting !== undefined) {
-        event.preventDefault();
-        quitting = true;
-      }
+      // Still starting (startNode stops it once up, then quits), or a stop runs
+      // that quits when it is done: either way the node is not left behind (D522).
+      if (starting !== undefined || stoppingNode) event.preventDefault();
       return;
     }
     event.preventDefault();
-    quitting = true;
     const stopping = node;
     node = undefined;
-    void stopping.stop().finally(() => app.quit());
+    stoppingNode = true;
+    void stopping.stop().finally(() => {
+      stoppingNode = false;
+      app.quit();
+    });
   });
   try {
     await startNode();

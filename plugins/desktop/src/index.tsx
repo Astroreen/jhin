@@ -334,7 +334,8 @@ export default definePlugin({
       try {
         confirmed =
           dialogs === undefined
-            ? true
+            ? // Without the page's dialogs, the window's own confirmation: never install unasked.
+              window.confirm(Object.values(getDesktopUpdateInstallConfirmation(state)).join("\n\n"))
             : await dialogs.confirm({
                 ...getDesktopUpdateInstallConfirmation(state),
                 confirmLabel: "Install",

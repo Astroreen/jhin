@@ -211,7 +211,8 @@ export class UpdateController {
       this.#options.updater.quitAndInstall();
       return { accepted: true, completed: false, state: this.#state };
     } catch (error) {
-      await this.#installFailed(error);
+      // The updater may have reported the same failure already.
+      if (this.#action === "install") await this.#installFailed(error);
       return { accepted: true, completed: false, state: this.#state };
     }
   }
