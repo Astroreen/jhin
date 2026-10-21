@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { makeHome, serve, untilStream, type Node } from "./support/nodes.ts";
 
 const running: Node[] = [];
+// Each test starts a real node: the limit bounds a slow start, it waits for nothing.
+const LIMIT = { timeout: 60_000 };
 afterEach(async () => {
   for (const node of running.splice(0)) await node.stop();
 });
 
 describe("pushing a node's config changes to its clients (D483)", () => {
-  it("tells a client which sections of which file changed", async () => {
+  it("tells a client which sections of which file changed", LIMIT, async () => {
     const node = await serve("a", makeHome("a"), running);
     // Subscribed before the change is sent: one connection keeps their order.
     const changed = untilStream(node, "host/config", (events) => events.length > 0);
@@ -41,7 +43,7 @@ describe("pushing a node's config changes to its clients (D483)", () => {
 });
 
 describe("device settings kept for the owner's devices (D487)", () => {
-  it("keeps the later change of a section and tells the node's clients", async () => {
+  it("keeps the later change of a section and tells the node's clients", LIMIT, async () => {
     const node = await serve("d", makeHome("d"), running);
     expect(await node.client.call("host.device-settings.get", {})).toEqual({ sections: {} });
     const changed = untilStream(node, "host/device-settings", (events) => events.length > 0);

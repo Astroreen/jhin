@@ -555,6 +555,15 @@ describe("jhin.threads: drafts kept for every device (D486)", () => {
       prompt: "",
       at: 20,
     });
+    // Sent together, older last: the later one still wins.
+    await Promise.all([
+      client.call("threads.draft.set", { key: "thread:t2", prompt: "newer", at: 40 }),
+      client.call("threads.draft.set", { key: "thread:t2", prompt: "older", at: 30 }),
+    ]);
+    expect(await client.call("threads.draft.get", { key: "thread:t2" })).toEqual({
+      prompt: "newer",
+      at: 40,
+    });
     await expect(client.call("threads.draft.get", { key: "nonsense" })).rejects.toMatchObject({
       code: "COMMAND_INPUT_INVALID",
     });
