@@ -381,7 +381,9 @@ export function createServerOwner(options: {
     });
     await server.opening;
     // A reconnect under way when this began, which gave up: no stream to listen on.
-    if (server.stream === undefined && !server.stopped) throw new OpenCodeError(RECONNECT_FAILED);
+    if (server.stream === undefined && !server.stopped) {
+      throw new OpenCodeError(server.exited ? "The OpenCode server exited." : RECONNECT_FAILED);
+    }
   };
 
   /**

@@ -811,14 +811,20 @@ export function openCodeTurn(
           if (sessionId in active) return;
           throw new Error(STREAM_LOST);
         }
-        const recent = read;
-        for (const message of recent.toReversed()) {
+        const running = sessionId in active;
+        // A session still running may still be writing its newest message: its texts end on
+        // the stream, not from a half-written copy.
+        const writing = running
+          ? read.find((message) => message.type === "assistant")?.id
+          : undefined;
+        for (const message of read.toReversed()) {
           if (message.type !== "assistant") continue;
           const ordinals = { text: 0, reasoning: 0 };
           for (const part of message.content ?? []) {
             const type = part["type"];
             if (type === "text" || type === "reasoning") {
               const ordinal = ordinals[type]++;
+              if (message.id === writing) continue;
               onEvent({
                 type: `session.${type}.ended`,
                 data: { assistantMessageID: message.id, ordinal, text: part["text"] },
@@ -850,10 +856,10 @@ export function openCodeTurn(
             }
           }
         }
-        if (sessionId in active) return;
+        if (running) return;
         // Not running and no `idle` after the prompt: a restarted server writes none for the
         // execution it lost (T3's reading), so the turn was stopped.
-        const idle = recent.find((message) => message.type === "idle");
+        const idle = read.find((message) => message.type === "idle");
         finish?.(
           idle?.outcome === "succeeded" || interrupted
             ? undefined

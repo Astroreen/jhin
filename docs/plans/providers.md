@@ -907,7 +907,8 @@ OpenCode 2 behaviour.
   reads back what it missed (T3's `backfill` and `reconcile`): the session's
   messages newest first, back to the turn's own prompt, are replayed as the
   events they would have been (a text, reasoning or tool completes once,
-  streamed or read back), and a session that `GET /api/session/active`,
+  streamed or read back; the texts of a running session's newest message
+  end on the stream, as it may still write them), and a session that `GET /api/session/active`,
   asked after the history, no longer lists ended while the stream was down:
   completed when its last `idle` message says `succeeded`, failed with
   "OpenCode ended the turn with an error while Jhin was reconnecting." for

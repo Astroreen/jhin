@@ -1139,13 +1139,23 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
     });
     const done = drain(runtime.startTurn(request()));
     await running;
+    // Half written when read back: its text ends on the stream, whole.
+    fake.record("ses_1", { id: "msg_jhin_turn_ses_1:turn-1", type: "user" });
+    fake.record("ses_1", {
+      id: "msg_a1",
+      type: "assistant",
+      content: [{ type: "text", text: "Still" }],
+    });
     fake.resetStreamOpened();
     const read = fake.next("GET", "/message");
     fake.dropStreams();
     await fake.streamOpened();
     await read;
     reopened();
-    expect((await done).at(-2)).toMatchObject({ kind: "message.completed", text: "Still here" });
+    const items = await done;
+    expect(items.filter((item) => item.kind === "message.completed")).toEqual([
+      { kind: "message.completed", itemId: "msg_a1:text:0", text: "Still here" },
+    ]);
   });
 
   it("fails a turn whose event stream is lost, and lets the next one wait for the stop", async () => {
