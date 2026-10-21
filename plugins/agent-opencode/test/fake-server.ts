@@ -78,6 +78,8 @@ export async function fakeOpenCode(
   let sessionCount = 0;
   let unavailable = options.unavailable ?? 0;
   const rejections: { status: number; body: unknown }[] = [];
+  const steerRejections: { status: number; body: unknown }[] = [];
+  const inboxCancels: number[] = [];
   const holds: Promise<void>[] = [];
   const streamClosed: (() => void)[] = [];
   let streamOpened: (() => void) | undefined;
@@ -243,6 +245,8 @@ export async function fakeOpenCode(
     }
     // A steer goes into the running execution: the script playing it reads it with `next`.
     if (rest === "/prompt" && body["delivery"] === "steer") {
+      const rejection = steerRejections.shift();
+      if (rejection !== undefined) return json(res, rejection.status, rejection.body);
       return json(res, 200, { data: { id: body["id"] } });
     }
     if (rest === "/prompt" || rest === "/command" || rest === "/compact") {
@@ -260,7 +264,10 @@ export async function fakeOpenCode(
       return;
     }
     if (rest === "/synthetic") return json(res, 204);
-    if (method === "DELETE" && /^\/inbox\/[^/]+$/.test(rest)) return json(res, 204);
+    if (method === "DELETE" && /^\/inbox\/[^/]+$/.test(rest)) {
+      const status = inboxCancels.shift() ?? 204;
+      return status === 204 ? json(res, 204) : notFound(res, "NotFound", "no such inbox item");
+    }
     if (/^\/permission\/[^/]+\/reply$/.test(rest)) return json(res, 204);
     if (/^\/form\/[^/]+(\/reply)?$/.test(rest)) return json(res, 204);
     return json(res, 404, { _tag: "NotFound", message: `no route ${method} ${path}` });
@@ -299,6 +306,14 @@ export async function fakeOpenCode(
       let release!: () => void;
       holds.push(new Promise<void>((resolve) => (release = resolve)));
       return release;
+    },
+    /** Refuses the next steer with this status and `_tag`. */
+    rejectSteer(status: number, tag: string, message: string) {
+      steerRejections.push({ status, body: { _tag: tag, message } });
+    },
+    /** Answers the next inbox cancel with 404. */
+    inboxGone() {
+      inboxCancels.push(404);
     },
     /** Refuses the next prompt with this status and `_tag`. */
     rejectPrompt(status: number, tag: string, message: string) {

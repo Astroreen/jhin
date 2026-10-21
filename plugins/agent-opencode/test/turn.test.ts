@@ -301,7 +301,7 @@ describe("jhin.agent-opencode: a turn", () => {
     ]);
   });
 
-  it("steers a message into the running turn, which waits for its delivery", async () => {
+  it("steers a message into the running turn, which waits for its answer", async () => {
     const { fake, runtime } = await setup({
       scripts: [
         async (play) => {
@@ -314,14 +314,26 @@ describe("jhin.agent-opencode: a turn", () => {
             sessionID: play.sessionId,
             inboxID: steer.body!["id"],
           });
+          // The execution that answers it asks first: the turn is still listening.
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          tool(play, "call_1", "shell", { command: "ls" });
+          play.emit("permission.asked", {
+            id: "per_1",
+            sessionID: play.sessionId,
+            action: "shell",
+            resources: ["ls"],
+            save: [],
+            source: { type: "tool", messageID: "msg_a1", id: "call_1" },
+          });
+          await play.next("POST", "/permission/per_1/reply");
           await answer("Steered")(play);
         },
       ],
     });
-    const turn = runtime.startTurn(request());
+    const turn = runtime.startTurn(request({ runtimeMode: "approval-required" }));
     // Sent before OpenCode took the prompt: it goes out once it did.
     turn.steer!({ text: "  also this  " });
-    const items = await drain(turn);
+    const items = await drain(turn, () => ({ kind: "approval", decision: "accept" }));
     expect(items.find((item) => item.kind === "message.completed")).toMatchObject({
       text: "Steered",
     });
@@ -333,6 +345,25 @@ describe("jhin.agent-opencode: a turn", () => {
     expect(() => turn.steer!({ text: "late" })).toThrow(
       "The OpenCode turn takes no more messages.",
     );
+  });
+
+  it("ends a held turn whose steer OpenCode refused", async () => {
+    const { fake, runtime } = await setup({
+      scripts: [
+        async (play) => {
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          play.emit("session.execution.succeeded", { sessionID: play.sessionId });
+        },
+        answer("Next"),
+      ],
+    });
+    fake.rejectSteer(400, "InvalidRequestError", "no");
+    const turn = runtime.startTurn(request());
+    turn.steer!({ text: "more" });
+    expect(await drain(turn)).toEqual([]);
+    // A clear refusal is not taken back later.
+    await drain(runtime.startTurn(request({ turnId: "turn-2" })));
+    expect(fake.calls("DELETE", "/inbox/msg_jhin_steer_ses_1%3Aturn-1%3A1")).toHaveLength(0);
   });
 
   it("ends a turn whose undelivered steer OpenCode cancelled", async () => {
@@ -366,8 +397,11 @@ describe("jhin.agent-opencode: a turn", () => {
           stopTurn();
         },
         answer("Next"),
+        answer("Again"),
       ],
     });
+    // Gone by the time it is taken back: done, not asked for again.
+    fake.inboxGone();
     const turn = runtime.startTurn(request());
     stopTurn = () => turn.interrupt();
     turn.steer!({ text: "never delivered" });
@@ -376,6 +410,8 @@ describe("jhin.agent-opencode: a turn", () => {
     await drain(runtime.startTurn(request({ turnId: "turn-2" })));
     const cancelled = fake.calls("DELETE", "/inbox/msg_jhin_steer_ses_1%3Aturn-1%3A1");
     expect(cancelled).toHaveLength(1);
+    await drain(runtime.startTurn(request({ turnId: "turn-3" })));
+    expect(fake.received.filter((call) => call.method === "DELETE")).toHaveLength(1);
     // Taken back before the next prompt went out.
     const order = fake.received.map((call) => `${call.method} ${call.path}`);
     expect(order.indexOf(`DELETE ${cancelled[0]!.path}`)).toBeLessThan(

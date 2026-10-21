@@ -401,13 +401,17 @@ export function openCodeTurn(
       if (!sameModel(ref, session.model)) await client.switchModel(sessionId, ref);
       // Steers a stopped turn never delivered would reach the model first (T3).
       const stranded = deps.strandedSteers?.get(sessionId);
-      for (const inboxId of [...(stranded ?? [])]) {
+      for (const inboxId of stranded === undefined ? [] : [...stranded]) {
         await client.cancelInbox(sessionId, inboxId).then(
           () => stranded!.delete(inboxId),
-          (error: unknown) =>
-            deps.log?.("could not take back an opencode steer", { error: String(error) }),
+          (error: unknown) => {
+            // Not there any more: delivered or cancelled meanwhile, nothing to take back.
+            if (error instanceof OpenCodeError && error.status === 404) stranded!.delete(inboxId);
+            else deps.log?.("could not take back an opencode steer", { error: String(error) });
+          },
         );
       }
+      if (stranded?.size === 0) deps.strandedSteers?.delete(sessionId);
       const strand = (inboxId: string) => {
         if (deps.strandedSteers === undefined) return;
         const set = deps.strandedSteers.get(sessionId) ?? new Set<string>();
@@ -615,6 +619,9 @@ export function openCodeTurn(
             finish?.();
             return;
           case "session.inbox.delivered":
+            // The execution that answers it is the turn's too: its end ends the turn.
+            steers.delete(String(data["inboxID"]));
+            return;
           case "session.inbox.cancelled":
             if (!steers.delete(String(data["inboxID"]))) return;
             if (heldEnd && steers.size === 0) finish?.();
@@ -899,6 +906,13 @@ export function openCodeTurn(
     try {
       await run();
     } finally {
+      over = true;
+      // Steered before a prompt OpenCode never took: there is no execution to take them.
+      if (queuedSteers.length > 0) {
+        deps.log?.("opencode took no prompt, dropping the messages steered into it", {
+          count: queuedSteers.splice(0).length,
+        });
+      }
       await writes;
     }
   };

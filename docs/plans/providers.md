@@ -856,13 +856,15 @@ OpenCode 2 behaviour.
   turn's are; one steered before OpenCode took the turn's prompt goes out
   once it did. An execution that ends while a steer is undelivered does not
   end the turn: OpenCode runs another execution for it, which the turn owns
-  too; the turn ends when the steer is cancelled instead
-  (`session.inbox.cancelled`). A stopped turn's undelivered steers, and one
-  whose prompt failed in a way OpenCode may still have taken it, are taken
-  back (`DELETE /api/session/<id>/inbox/<inbox>`) before the next turn's
-  prompt, so they do not reach the model first. A turn that ended or is
-  ending refuses a steer, which then becomes a turn of its own; a steer
-  OpenCode refuses is only logged, as Codex's is.
+  too, and its end ends the turn; the turn ends at once when the steer is
+  cancelled (`session.inbox.cancelled`) or its prompt refused. A stopped
+  turn's undelivered steers, and one whose prompt failed in a way OpenCode
+  may still have taken it, are taken back
+  (`DELETE /api/session/<id>/inbox/<inbox>`) before the next turn's prompt,
+  so they do not reach the model first; one OpenCode no longer has (404) is
+  done. A turn that ended or is ending refuses a steer, which then becomes a
+  turn of its own; a steer OpenCode refuses, and those queued for a prompt
+  it never took, are only logged, as Codex's are.
 
 ### Not ported
 
