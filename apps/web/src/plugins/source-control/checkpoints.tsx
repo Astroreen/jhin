@@ -122,10 +122,8 @@ function ChangedFilesTree(props: {
   files: readonly { path: string; additions: number; deletions: number }[];
   allDirectoriesExpanded: boolean;
   onOpen(filePath: string): void;
-  /** A file's context menu is about to open; false when it has none. */
-  onMenu?(filePath: string): boolean;
 }) {
-  const { files, allDirectoriesExpanded, onOpen, onMenu } = props;
+  const { files, allDirectoriesExpanded, onOpen } = props;
   const resolvedTheme = useResolvedTheme();
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const nodes = buildTurnDiffTree(files);
@@ -177,11 +175,8 @@ function ChangedFilesTree(props: {
       <button
         className={row}
         key={`file:${node.path}`}
+        data-changed-file={node.path}
         onClick={() => onOpen(node.path)}
-        onContextMenu={(event) => {
-          // Only a file with something to open it with has a menu (T3's onFileContextMenu).
-          if (onMenu?.(node.path) !== true) event.stopPropagation();
-        }}
         style={{ paddingLeft }}
         type="button"
       >
@@ -301,12 +296,20 @@ function ChangedFilesCard(props: {
         />
       ) : (
         <ContextMenu>
-          <ContextMenuTrigger render={<div />}>
+          <ContextMenuTrigger
+            onContextMenuCapture={(event) => {
+              // Only a file's row has a menu, and only a file there is something to open with
+              // (T3's onFileContextMenu): a folder or the space between rows has none.
+              const row = (event.target as HTMLElement).closest("[data-changed-file]");
+              const filePath = row?.getAttribute("data-changed-file");
+              if (!filePath || !menu.onMenu(filePath)) event.stopPropagation();
+            }}
+            render={<div />}
+          >
             <ChangedFilesTree
               allDirectoriesExpanded={allExpanded}
               files={files}
               key={String(allExpanded)}
-              onMenu={menu.onMenu}
               onOpen={(path) => onOpen(path)}
             />
           </ContextMenuTrigger>

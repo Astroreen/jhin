@@ -1459,6 +1459,45 @@ describe("checkpoints in the client", () => {
     await userEvent.click(page.getByRole("menuitem", { name: "Zed" }));
     expect(opens().at(-1)).toEqual({ projectId: "app", path: "src/lib/b.ts", editor: "zed" });
     localStorage.removeItem("jhin.lastEditor");
+
+    // A folder's row has no menu.
+    await userEvent.click(page.getByRole("button", { name: /^lib/ }), { button: "right" });
+    await act(async () => undefined);
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it("offers no file menu for a file outside the project's folder, nor without editors (D905)", async () => {
+    const outside = services(
+      withCheckpoints(second),
+      {
+        "git.checkpoints": { checkpoints: [checkpoint(1), second] },
+        "editors.list": { editors: [{ id: "zed", label: "Zed" }], revealKind: "finder" },
+      },
+      deviceConfig(),
+      // The project is the repository's `docs` folder: `src/lib/b.ts` is outside it.
+      "/src/app/docs",
+    );
+    const Outside = createChangedFilesFooter(outside.value, () => undefined);
+    const first = mount(
+      <Outside latest state="completed" target={target} thread={thread} turnId="turn-2" />,
+    );
+    const file = page.getByRole("button", { name: /b\.ts/ });
+    await expect.element(file).toBeVisible();
+    await userEvent.click(file, { button: "right" });
+    await act(async () => undefined);
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    first.unmount();
+
+    const none = services(withCheckpoints(second), {
+      "git.checkpoints": { checkpoints: [checkpoint(1), second] },
+      "editors.list": { editors: [], revealKind: "finder" },
+    });
+    const NoEditors = createChangedFilesFooter(none.value, () => undefined);
+    mount(<NoEditors latest state="completed" target={target} thread={thread} turnId="turn-2" />);
+    await expect.element(page.getByRole("button", { name: /b\.ts/ })).toBeVisible();
+    await userEvent.click(page.getByRole("button", { name: /b\.ts/ }), { button: "right" });
+    await act(async () => undefined);
+    expect(document.querySelector('[role="menu"]')).toBeNull();
   });
 });
 
