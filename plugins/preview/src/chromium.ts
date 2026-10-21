@@ -17,6 +17,10 @@ export interface ChromiumOptions {
    * set nor Playwright has a browser here (D951).
    */
   readonly headlessShell?: { executable(): Promise<string> } | undefined;
+  /** Playwright's Chromium launcher; tests give their own. */
+  readonly launcher?:
+    | (() => Promise<Pick<typeof import("playwright-core").chromium, "launch">>)
+    | undefined;
 }
 
 const NO_BROWSER_MESSAGE =
@@ -78,7 +82,8 @@ export class Chromium {
 
   #launch(): Promise<Browser> {
     this.#browser ??= (async () => {
-      const { chromium } = await import("playwright-core");
+      const chromium =
+        (await this.#options.launcher?.()) ?? (await import("playwright-core")).chromium;
       const configured = this.#options.executablePath?.();
       const launch = (executablePath: string | undefined) =>
         chromium.launch({
@@ -100,8 +105,15 @@ export class Chromium {
         } catch (cause) {
           const message = cause instanceof Error ? cause.message : String(cause);
           const shell = this.#options.headlessShell;
-          // No browser of Playwright's here: T3's pinned shell, installed now (D951).
-          if (configured !== undefined || shell === undefined || !missing(message)) throw cause;
+          // No browser of Playwright's here: T3's pinned shell, installed now (D951). A
+          // browser that is there but does not start is reported, not replaced.
+          if (
+            configured !== undefined ||
+            shell === undefined ||
+            !/Executable doesn't exist/i.test(message)
+          ) {
+            throw cause;
+          }
           let executable: string;
           try {
             executable = await shell.executable();
