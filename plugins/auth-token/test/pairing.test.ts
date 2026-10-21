@@ -24,12 +24,12 @@ describe("pairing codes (security.md D419)", () => {
     });
     const typed = `${code.slice(0, 4).toLowerCase()}-${code.slice(4, 8)} ${code.slice(8)}`;
     expect(normalizeCode(typed)).toBe(code);
-    expect(store.consume(typed, 1)).toEqual(link);
-    expect(store.consume(code, 2)).toBeUndefined();
+    expect(store.redeem(typed, 1, (link) => link)).toEqual(link);
+    expect(store.redeem(code, 2, (link) => link)).toBeUndefined();
 
     const late = store.create({ permissions: ["*"], now: 0, expiresAt: 100 });
     expect(store.list(50).map((entry) => entry.id)).toEqual([late.link.id]);
-    expect(store.consume(late.code, 100)).toBeUndefined();
+    expect(store.redeem(late.code, 100, (link) => link)).toBeUndefined();
     expect(store.list(100)).toEqual([]);
   });
 
@@ -38,6 +38,18 @@ describe("pairing codes (security.md D419)", () => {
     const { link, code } = store.create({ permissions: ["*"], now: 0, expiresAt: 10 });
     expect(JSON.stringify(store.list(1))).not.toContain(code);
     expect(store.revoke(link.id)).toBe(true);
-    expect(store.consume(code, 1)).toBeUndefined();
+    expect(store.redeem(code, 1, (link) => link)).toBeUndefined();
+  });
+
+  it("keeps a code valid when using it fails", () => {
+    const store = createPairingStore();
+    const { code } = store.create({ permissions: ["*"], now: 0, expiresAt: 10 });
+    expect(() =>
+      store.redeem(code, 1, () => {
+        throw new Error("disk full");
+      }),
+    ).toThrow("disk full");
+    expect(store.redeem(code, 2, (link) => link.permissions)).toEqual(["*"]);
+    expect(store.redeem(code, 3, () => "again")).toBeUndefined();
   });
 });

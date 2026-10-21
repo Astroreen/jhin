@@ -615,6 +615,35 @@ describe("pairing (security.md D419–D422)", () => {
     expect((await fetch(`${own}/auth/session`, { headers: { cookie } })).status).toBe(401);
   });
 
+  it("answers the preflight, refuses a malformed body and limits attempts per route", async () => {
+    const node = await startNode();
+    const preflight = await fetch(`${httpUrl(node)}/auth/pair`, { method: "OPTIONS" });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect((await post(`${httpUrl(node)}/auth/pair`, { nope: 1 })).status).toBe(400);
+
+    // A foreign page refused at /auth/session spends no attempts.
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const refused = await post(
+        `${httpUrl(node)}/auth/session`,
+        { credential: "x" },
+        {
+          origin: "https://evil.example",
+        },
+      );
+      expect(refused.status).toBe(403);
+    }
+    // /auth/pair has its own bucket: 19 more (one went to the 400) still answer, then 429.
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 20; attempt++) {
+      statuses.push((await post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" })).status);
+    }
+    expect(statuses.slice(0, 19).every((status) => status === 401)).toBe(true);
+    expect(statuses[19]).toBe(429);
+    // The session bucket is untouched.
+    expect((await post(`${httpUrl(node)}/auth/session`, { credential: "x" })).status).toBe(401);
+  });
+
   it("never lets a session outlive the token it was opened with", async () => {
     const node = await startNode();
     const short = (await node.kernel.commands.execute("auth.tokens.issue", {

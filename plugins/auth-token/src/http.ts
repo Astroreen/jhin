@@ -164,7 +164,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
 
   store.add(
     http.route("POST", "/auth/session", async (request, response) => {
-      if (!admit("session", request, response)) return;
+      // Refused before it counts: another page cannot spend this client's attempts.
       if (!ownPage(http, request)) {
         send(response, 403, {
           code: "ORIGIN_NOT_ALLOWED",
@@ -172,6 +172,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         });
         return;
       }
+      if (!admit("session", request, response)) return;
       const parsed = SessionRequest.safeParse(await readJson(request).catch(() => undefined));
       if (!parsed.success) {
         send(response, 400, { code: "INVALID", message: "Expected { credential }" });

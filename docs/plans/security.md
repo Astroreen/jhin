@@ -174,7 +174,9 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
 ### Pairing
 
 - **D419. A pairing code is one-time, short-lived and scoped.**
-  `auth.pairing.create {label?, permissions?, ttlMinutes?}` returns
+  `auth.pairing.create {label?, permissions?, ttlMinutes?, baseUrl?}`
+  (`ttlMinutes` at most 1440; `baseUrl`, where the device reaches the node,
+  defaults to its HTTP address) returns
   `{id, code, url, expiresAt}`: twelve characters of T3's alphabet
   `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`, valid 5 minutes by default, used
   once. Its permissions default to every permission the creator holds (T3's

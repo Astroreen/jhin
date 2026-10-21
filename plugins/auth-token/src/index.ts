@@ -207,7 +207,11 @@ export default definePlugin({
         now,
         expiresAt: from?.expiresAt === undefined ? longest : Math.min(longest, from.expiresAt),
       });
-      context.log.warn("device paired", { client: record.id, label, permissions });
+      if (from === undefined) {
+        context.log.warn("device paired", { client: record.id, label, permissions });
+      } else {
+        context.log.info("page session opened", { client: record.id, permissions });
+      }
       return {
         id: record.id,
         token: issued,
@@ -304,14 +308,15 @@ export default definePlugin({
           http,
           log: context.log,
           pair(code, label) {
-            const link = pairing.consume(code, Date.now());
-            return link === undefined
-              ? undefined
-              : issuePaired(link.permissions, link.label ?? label ?? "Paired device");
+            return pairing.redeem(code, Date.now(), (link) =>
+              issuePaired(link.permissions, link.label ?? label ?? "Paired device"),
+            );
           },
           async openSession(credential) {
-            const link = pairing.consume(credential, Date.now());
-            if (link !== undefined) return issuePaired(link.permissions, link.label ?? "Browser");
+            const paired = pairing.redeem(credential, Date.now(), (link) =>
+              issuePaired(link.permissions, link.label ?? "Browser"),
+            );
+            if (paired !== undefined) return paired;
             // A token (e.g. the owner's from `#token=`) opens a session with its own grants.
             const principal = await verifier.verify({ token: credential });
             return principal === undefined

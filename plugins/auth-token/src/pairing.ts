@@ -47,8 +47,12 @@ export interface PairingStore {
   /** Open codes at `now`, oldest first. */
   list(now: number): PairingLink[];
   revoke(id: string): boolean;
-  /** The link a code opens, used up by this call; undefined for a wrong, used or expired code. */
-  consume(code: string, now: number): PairingLink | undefined;
+  /**
+   * Runs `use` with the link a code opens and uses the code up only when
+   * `use` returns: a failure leaves it valid. Undefined for a wrong, used or
+   * expired code.
+   */
+  redeem<T>(code: string, now: number, use: (link: PairingLink) => T): T | undefined;
 }
 
 /** Open pairing codes, kept in memory: a restart ends them, as their five minutes would. */
@@ -76,14 +80,16 @@ export function createPairingStore(): PairingStore {
       entries = entries.filter((entry) => entry.id !== id);
       return entries.length < before;
     },
-    consume(code, now) {
+    redeem(code, now, use) {
       const wanted = hash(normalizeCode(code));
       const entry = open(now).find((candidate) =>
         Crypto.timingSafeEqual(Buffer.from(candidate.codeHash), Buffer.from(wanted)),
       );
       if (entry === undefined) return undefined;
+      // `use` is synchronous, so no second redeem runs in between.
+      const result = use(view(entry));
       entries = entries.filter((candidate) => candidate !== entry);
-      return view(entry);
+      return result;
     },
   };
 }
