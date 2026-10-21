@@ -484,6 +484,11 @@ read again from a snapshot).
 - Windows itself (D468): the PowerShell process table is tested with a
   fake runner only; no Windows machine ran it. PowerShell's cold start may
   pass T3's 1.5 s timeout, which the poll's back-off (D144) then absorbs.
+- From the last review of #86: `chat.composer.insert` builds the prompt
+  from the rendered one, so two inserts before a re-render keep only the
+  second (a ref to the latest prompt fixes it); the live font settings
+  (D472) and the ⌘/Ctrl-click activation of a URL have no test of their
+  own (the e2e run and the extraction tests cover the rest).
 - A per-connection bound on waiting events (D470): each windowed
   subscription holds at most 16 MiB, so a client that opens many and never
   acknowledges costs that many times 16 MiB (before D470 the socket's own
