@@ -1809,30 +1809,36 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   link to no web page) is no button, and a thread one says "Thread no longer
   available". The state of a pull request and the thread's current title
   come with their context records.
-- **D1006. A message's context records,** as T3's `OrchestrationMessageContext`
-  and `composerContextReferences.ts`: a user message may carry `context`
-  (`{ version: 1, records }`) beside its text, which names each record by a
-  reference link `[label](jhin-context://v1/<kind>/<id>)` (T3's
-  `t3-context://`). `threads.send`, `threads.queue.add`, `threads.steer` and
+- **D1006. A message's context records,** as T3's
+  `OrchestrationMessageContext` and `composerContextReferences.ts`: a user
+  message may carry `context` (`{ version: 1, records }`) beside its text,
+  which names each record by a reference link
+  `[label](jhin-context://v1/<kind>/<id>)` (T3's `t3-context://`).
+  `threads.send`, `threads.queue.add`, `threads.steer` and
   `threads.queue.edit` take it (additive); each record is checked on its own
-  and one that fails is dropped, not the message, at most 200 records and
-  16 MB, as in T3. Known kinds are T3's `review-comment` (with
-  `pullRequest` for a `#` mention), `thread` (`nodeId` where T3 has an
-  environment, and the node in its id, since two nodes may name threads
-  alike) and `terminal`; any other kind is kept with its JSON payload. The
-  schemas are `MessageContextSchema` and `MessageContextRecordSchema` in
-  `@jhin/agent-api`, for every command that takes records.
-  The event keeps the user's text and the records, and `threads.turn` gives
-  them back for editing the message; what the agent reads is T3's
-  projection (`projectMessageContext` in `@jhin/agent-api`): each reference
-  as a marker `[Review comment: #12; ref=…]`, and after the text one
-  `<jhin_context version="1">` envelope with an entry per record, a missing
-  one `unavailable`, and a closing tag inside a record escaped so it cannot
-  forge one. A joining agent's transcript (`historyTranscript`) reads the
-  same; a title, a search snippet, a merge-back handoff and a branch name
-  read the references by their labels. The composer sends only the records
-  its text still names (T3's `buildMessageContext`), and keeps them in the
-  draft on this device.
+  and one that fails is dropped, not the message, at most 200 records and 16
+  MB, as in T3, and the node keeps only the records the text names, whoever
+  sends them (an edit of a queued message that drops a reference drops its
+  record). Known kinds are T3's `review-comment` (with `pullRequest` for a
+  `#` mention), `thread` (`nodeId` where T3 has an environment, and the node
+  in its id, since two nodes may name threads alike) and `terminal`; any
+  other kind is kept with its JSON payload. The schemas are
+  `MessageContextSchema` and `MessageContextRecordSchema` in
+  `@jhin/agent-api`, for every command that takes records. The event keeps
+  the user's text and the records, and `threads.turn` gives them back for
+  editing the message; what the agent reads is T3's projection
+  (`projectMessageContext` in `@jhin/agent-api`): each reference as a marker
+  `[Review comment: #12; ref=…]`, and after the text one `<jhin_context
+  version="1">` envelope with an entry per record, a missing one
+  `unavailable`, a closing tag inside a record, a label or a title escaped
+  so it cannot forge one, and at most 200 000 characters of records
+  (`MESSAGE_CONTEXT_PROJECTED_MAX_CHARS`: past it an entry is cut and marked
+  `truncated`, later ones only named; T3 has no such bound). A joining
+  agent's transcript (`historyTranscript`) reads earlier messages'
+  references by their labels, not their records again; a title, a search
+  snippet, a merge-back handoff and a branch name read the references by
+  their labels. The composer sends only the records its text still names
+  (T3's `buildMessageContext`), and keeps them in the draft on this device.
 - **D1007. The context chips of the prompt and of a sent message,** as T3's
   `composerContextPresentation.tsx` and `MessagesTimeline.tsx`: one chip per
   record, in the prompt and in the user's message alike. A pull request is

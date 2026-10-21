@@ -34,6 +34,8 @@ function run(command: string, args: readonly string[], cwd: string): string {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
+    // `inspect` prints every command's schemas, past spawnSync's 1 MiB default.
+    maxBuffer: 256 * 1024 * 1024,
     // On Windows pnpm and the installed jhin are .cmd shims, which only a shell resolves.
     shell: process.platform === "win32",
   });

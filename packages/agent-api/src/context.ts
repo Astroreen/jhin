@@ -21,6 +21,11 @@ const CONTEXT_LINK = new RegExp(
 export const MESSAGE_CONTEXT_LABEL_MAX_CHARS = 200;
 /** A terminal excerpt keeps at most this much text (T3's). */
 export const MESSAGE_CONTEXT_TERMINAL_TEXT_MAX_CHARS = 64_000;
+/**
+ * At most this much of the records goes into what an agent reads of one message: past it an entry
+ * is cut and said to be, later ones only named. T3 has no bound; its 16 MB is what is stored.
+ */
+export const MESSAGE_CONTEXT_PROJECTED_MAX_CHARS = 200_000;
 /** At most this many records ride on one message (T3's COMPOSER_CONTEXT_MAX_RECORDS). */
 export const MESSAGE_CONTEXT_MAX_RECORDS = 200;
 
@@ -304,13 +309,18 @@ function formatEntry(
   kind: string,
   contextId: string,
   record: MessageContextRecord | undefined,
+  budget: number,
 ): string {
   const open = `<${CONTEXT_ENTRY_TAG} kind="${escapeAttribute(kind)}" id="${escapeAttribute(contextId)}"`;
   if (record === undefined) return `${open} unavailable="true"/>`;
-  const body = isKnownContextRecord(record)
-    ? formatPayload(record)
-    : JSON.stringify((record as UnknownContextRecord).payload);
-  return `${open}>\n${escapePayloadText(body)}\n</${CONTEXT_ENTRY_TAG}>`;
+  if (budget <= 0) return `${open} truncated="true"/>`;
+  const body = escapePayloadText(
+    isKnownContextRecord(record)
+      ? formatPayload(record)
+      : JSON.stringify((record as UnknownContextRecord).payload),
+  );
+  if (body.length <= budget) return `${open}>\n${body}\n</${CONTEXT_ENTRY_TAG}>`;
+  return `${open} truncated="true">\n${body.slice(0, budget)}\n… truncated …\n</${CONTEXT_ENTRY_TAG}>`;
 }
 
 /**
@@ -337,11 +347,20 @@ export function projectMessageContext(input: {
   );
   const seen = new Set<string>();
   const entries: string[] = [];
+  // What the envelope may add to the prompt; past it an entry is cut, later ones only named.
+  let budget = MESSAGE_CONTEXT_PROJECTED_MAX_CHARS;
   for (const occurrence of occurrences) {
     if (seen.has(occurrence.contextId)) continue;
     seen.add(occurrence.contextId);
     const record = byId.get(occurrence.contextId);
-    entries.push(formatEntry(record?.kind ?? occurrence.kind, occurrence.contextId, record));
+    const entry = formatEntry(
+      record?.kind ?? occurrence.kind,
+      occurrence.contextId,
+      record,
+      budget,
+    );
+    budget -= entry.length;
+    entries.push(entry);
   }
   return `${body}\n\n<${CONTEXT_ENVELOPE_TAG} version="1">\n${entries.join("\n")}\n</${CONTEXT_ENVELOPE_TAG}>`;
 }

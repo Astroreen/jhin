@@ -113,4 +113,86 @@ describe("jhin.threads: a message's context records (D1006)", () => {
       `<context kind="review-comment" id="${pullRequest.contextId}">`,
     );
   });
+
+  it("keeps only the records the text names, whoever sends them", async () => {
+    const seen: TurnRequest[] = [];
+    const { client } = await node({ runtime: recordingRuntime(seen) });
+    const thread = await client.call<{ id: string }>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    const other = { ...pullRequest, contextId: "review-comment_other" };
+
+    await client.call("threads.send", {
+      threadId: thread.id,
+      text: `Only [#12](${href})`,
+      context: { version: 1, records: [pullRequest, other] },
+    });
+    const started = await until("agent.turn.started");
+    expect(started.payload).toMatchObject({ input: { context: { records: [pullRequest] } } });
+  });
+
+  it("drops a queued message's records when an edit drops their references", async () => {
+    const { client } = await node({ runtime: holdingRuntime([]).runtime });
+    const thread = await client.call<{ id: string }>("threads.create", {});
+    // A turn that holds, so what follows waits in the queue.
+    await client.call("threads.send", { threadId: thread.id, text: "hold" });
+    const queued = await client.call<{ messageId: string }>("threads.queue.add", {
+      threadId: thread.id,
+      text: `See [#12](${href})`,
+      context: { version: 1, records: [pullRequest] },
+    });
+    const listed = () =>
+      client.call<{ messages: { context?: unknown }[] }>("threads.queue.list", {
+        threadId: thread.id,
+      });
+    expect((await listed()).messages[0]?.context).toMatchObject({ records: [pullRequest] });
+    // The text alone changes: the record it no longer names goes, without `context` given.
+    await client.call("threads.queue.edit", {
+      threadId: thread.id,
+      messageId: queued.messageId,
+      text: "See nothing",
+    });
+    expect((await listed()).messages[0]?.context).toBeUndefined();
+  });
+
+  it("gives a steer's records to the agent projected too", async () => {
+    const steered: string[] = [];
+    const held = holdingRuntime(steered);
+    const { client } = await node({ runtime: held.runtime });
+    const thread = await client.call<{ id: string }>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    await client.call("threads.send", { threadId: thread.id, text: "hold" });
+    await until("agent.turn.started");
+    await client.call("threads.steer", {
+      threadId: thread.id,
+      text: `Also [#12](${href})`,
+      context: { version: 1, records: [pullRequest] },
+    });
+    expect(steered[0]).toContain(`[Review comment: #12; ref=${pullRequest.contextId}]`);
+    expect(steered[0]).toContain(`<context kind="review-comment" id="${pullRequest.contextId}">`);
+    held.release();
+    await until("agent.turn.completed");
+  });
 });
+
+/** A steering runtime whose turn runs until `release`, recording the steers it takes. */
+function holdingRuntime(steered: string[]) {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  const runtime: AgentRuntime = {
+    agentId: "acme.holding",
+    steering: true,
+    startTurn() {
+      return {
+        interrupt() {},
+        steer(input) {
+          steered.push(input.text);
+        },
+        items: (async function* () {
+          await released;
+          yield { kind: "message.completed", itemId: "m", text: "done" } as const;
+        })(),
+      };
+    },
+  };
+  return { runtime, release: () => release() };
+}

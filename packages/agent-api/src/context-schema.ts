@@ -1,9 +1,9 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac: the schemas of
 // packages/contracts/src/composerContext.ts (OrchestrationMessageContext and its records).
 //
-// A message's context records as commands take them (t3-parity.md D1006): `threads.send`, the
-// queue and the composer's `chat.composer.insert-context`. In a message each record is checked
-// on its own, and one that fails is dropped, not the message, as in T3.
+// A message's context records as commands take them (t3-parity.md D1006): `threads.send` and the
+// queue. In a message each record is checked on its own, and one that fails is dropped, not the
+// message, as in T3.
 import { z } from "@jhin/sdk";
 
 import {
@@ -104,7 +104,7 @@ export const MessageContextSchema = z
     records: z
       .array(z.unknown())
       .describe(
-        "Context records (D1006), each a review-comment (sectionId, filePath, rangeLabel, text, diff, pullRequest?), a thread (nodeId, threadId, title), a terminal excerpt (terminalId, terminalLabel, lineStart, lineEnd, text) or another kind with a payload, beside version 1, contextId and label; one that fails its check is dropped",
+        "Context records (t3-parity.md D1006): review-comment, thread, terminal or another kind",
       )
       .max(MESSAGE_CONTEXT_MAX_RECORDS)
       .refine((records) => {

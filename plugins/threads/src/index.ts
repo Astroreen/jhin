@@ -22,6 +22,7 @@ import {
   MessageContextSchema,
   MessageOrigin,
   projectMessageContext,
+  referencedContext,
   ThreadEvents,
   ThreadHooks,
   threadStream,
@@ -36,6 +37,7 @@ import {
   type AgentTurn,
   type InteractionMode,
   type MessageContext,
+  type MessageContextRecord,
   type ModelOptionSelection,
   type RuntimeMode,
   type TurnAttachment,
@@ -546,6 +548,19 @@ const Outgoing = z.object({
   origin: MessageOrigin.optional(),
 });
 type Outgoing = Omit<z.infer<typeof Outgoing>, "threadId">;
+
+/**
+ * A message with only the context records its text names (D1006): what is kept is what its
+ * agent reads, whoever sent it (the web client, the CLI, an agent over MCP).
+ */
+function withNamedContext<Message extends { text: string; context?: MessageContext | undefined }>(
+  message: Message,
+  records: readonly MessageContextRecord[] | undefined = message.context?.records,
+): Message {
+  const { context: _context, ...rest } = message;
+  const named = records === undefined ? undefined : referencedContext(message.text, records);
+  return (named === undefined ? rest : { ...rest, context: named }) as Message;
+}
 
 /** A message id a caller chooses (D201): queuing it again changes nothing. */
 const MessageIdInput = z
@@ -3434,7 +3449,8 @@ export default definePlugin({
       input: Outgoing,
       output: z.object({ turnId: z.string() }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, ...sent }) => {
+      handler: async ({ threadId, ...given }) => {
+        const sent = withNamedContext(given);
         assertMessage(sent.text, sent.attachments);
         // Uploads become the thread's: checked, then moved under it (D293).
         const message =
@@ -3839,7 +3855,8 @@ export default definePlugin({
      * thread. Its uploads become the thread's (D293): the message as returned
      * names them as the node knows them.
      */
-    const checkOutgoing = async (threadId: string, message: Outgoing): Promise<Outgoing> => {
+    const checkOutgoing = async (threadId: string, given: Outgoing): Promise<Outgoing> => {
+      const message = withNamedContext(given);
       assertMessage(message.text, message.attachments);
       if (message.agentId !== undefined && registry.get(message.agentId) === undefined) {
         throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${message.agentId} on this node`, {
@@ -3902,13 +3919,16 @@ export default definePlugin({
         changeQueue(threadId, async (queue) => {
           const message = queue.messages.find((item) => item.id === messageId);
           if (message === undefined) throw notQueued(threadId, messageId);
-          const next: QueuedMessage = {
-            ...message,
-            text,
-            ...(attachments === undefined ? {} : { attachments }),
-            ...(edited === undefined ? {} : { context: edited }),
-            updatedAt: now(),
-          };
+          // The records the new text still names: the given ones, else those it had.
+          const next: QueuedMessage = withNamedContext(
+            {
+              ...message,
+              text,
+              ...(attachments === undefined ? {} : { attachments }),
+              updatedAt: now(),
+            },
+            edited?.records ?? message.context?.records,
+          );
           assertMessage(next.text, next.attachments);
           return viewOf(
             await writeQueue(threadId, {

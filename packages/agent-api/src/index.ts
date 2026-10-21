@@ -16,7 +16,7 @@ export * from "./orchestration.ts";
 export * from "./context.ts";
 export * from "./context-schema.ts";
 
-import { type MessageContextRecord, projectMessageContext } from "./context.ts";
+import { contextReferencesAsLabels } from "./context.ts";
 import type { InteractionMode, RuntimeMode } from "./modes.ts";
 
 /** D54's form: an image inlined as a data URL, still accepted and read from older events. */
@@ -563,13 +563,15 @@ export const THREADS_STREAM = "threads";
  * names an agent with no turn in the history (its session already holds what it saw).
  * The text ends with a line saying the user's new message follows.
  */
-/** A user message's text as its agent read it: its context records projected in (D1006). */
+/**
+ * An earlier user message as a joining agent reads it: its references by their labels (D1006),
+ * not their records again, which its own agent read then and which would be replayed with every
+ * new session.
+ */
 function userText(input: unknown): string | undefined {
-  const message = input as
-    | { text?: unknown; context?: { records?: readonly MessageContextRecord[] } }
-    | undefined;
+  const message = input as { text?: unknown } | undefined;
   if (typeof message?.text !== "string") return undefined;
-  return projectMessageContext({ text: message.text, records: message.context?.records });
+  return contextReferencesAsLabels(message.text);
 }
 
 export function historyTranscript(
