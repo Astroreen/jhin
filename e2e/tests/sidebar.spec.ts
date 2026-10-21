@@ -547,3 +547,41 @@ test("D453: holding the jump modifier shows the rows' numbers", async ({ page },
   await page.keyboard.up("Control");
   await expect(hints).toHaveCount(0);
 });
+
+test("D454: select several threads and act on them at once", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["one", "two", "three", "four"]) await addThread(x, title);
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["four", "three", "two", "one"]);
+
+  // Ctrl+click picks a row, Shift+click adds the rows up to another; Escape clears.
+  await threadRow(page, "four").click({ modifiers: ["Control"] });
+  await expect(threadRow(page, "four")).toHaveAttribute("data-selected", "");
+  await page.keyboard.press("Escape");
+  await expect(threadRow(page, "four")).not.toHaveAttribute("data-selected");
+  await threadRow(page, "four").click({ modifiers: ["Control"] });
+  await threadRow(page, "two").click({ modifiers: ["Shift"] });
+  for (const title of ["four", "three", "two"])
+    await expect(threadRow(page, title)).toHaveAttribute("data-selected", "");
+  await expect(threadRow(page, "one")).not.toHaveAttribute("data-selected");
+  await expect(page.locator("main")).toContainText("No active thread");
+
+  await threadRow(page, "three").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Settle (3)" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Mark unread (3)" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete (3)" })).toBeVisible();
+  const shot = info.outputPath("multi-select.png");
+  await page.screenshot({ path: shot });
+  await info.attach("multi-select", { path: shot, contentType: "image/png" });
+  await page.getByRole("menuitem", { name: "Settle (3)" }).click();
+  await expect(page.getByRole("button", { name: "Settled (3)" })).toBeVisible();
+  await expect(cardTitles(page)).toHaveText(["one"]);
+  await expect(page.getByRole("status").filter({ hasText: "Settled" })).toHaveText(
+    "Settled 3 threads, Ctrl+Z to undo",
+  );
+
+  // A plain click opens one thread and ends the selection: its menu is the thread's own.
+  await threadRow(page, "one").click();
+  await threadRow(page, "one").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Settle thread" })).toBeVisible();
+});

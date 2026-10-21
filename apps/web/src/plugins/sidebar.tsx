@@ -72,6 +72,9 @@ import {
   MenuPopup,
   MenuSeparator,
   MenuShortcut,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
   MenuTrigger,
   SidebarContent,
   SidebarFooter,
@@ -111,6 +114,7 @@ import {
   MessageSquareDashedIcon,
   PencilIcon,
   PinIcon,
+  MailOpenIcon,
   PinOffIcon,
   PlusIcon,
   SearchIcon,
@@ -120,6 +124,7 @@ import {
   TriangleAlertIcon,
   Undo2Icon,
   XIcon,
+  Trash2Icon,
 } from "lucide-react";
 import {
   useEffect,
@@ -141,7 +146,7 @@ import { useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
 import { MachineIcon } from "../lib/machine-icon.tsx";
 import { useMachineKind } from "../lib/machines.ts";
 import { createShownNodes, showsHosts, type NodeWithCatalog } from "../lib/nodes.ts";
-import { holdsShortcutModifiers } from "../lib/keybindings.ts";
+import { currentPlatform, holdsShortcutModifiers, isMacPlatform } from "../lib/keybindings.ts";
 import { CHAT_SECTION, ChatSettings, readSection, useSection } from "../lib/settings.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 import {
@@ -527,6 +532,241 @@ export const sidebarPlugin = builtin(
           window.removeEventListener("blur", hideJumpHints);
         },
       });
+      /** T3's multi-select of rows (D454): the selected keys and the range's anchor. */
+      const selection = createValue<{ readonly keys: readonly string[]; readonly anchor?: string }>(
+        {
+          keys: [],
+        },
+      );
+      const clearSelection = () => {
+        if (selection.get().keys.length > 0) selection.set({ keys: [] });
+      };
+      // Escape clears a selection (T3).
+      const onSelectionKey = (event: KeyboardEvent) => {
+        if (event.key === "Escape" && selection.get().keys.length > 0) {
+          event.preventDefault();
+          selection.set({ keys: [] });
+        }
+      };
+      window.addEventListener("keydown", onSelectionKey);
+      context.subscriptions.add({
+        dispose: () => window.removeEventListener("keydown", onSelectionKey),
+      });
+      /**
+       * A click on a row (T3's handleThreadClick): ⌘/Ctrl adds or removes it,
+       * Shift adds the rows from the anchor to it, a plain click opens it and
+       * clears the selection.
+       */
+      const clickRow = (
+        event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean },
+        key: string,
+        open: () => void,
+      ) => {
+        const mod = isMacPlatform(currentPlatform()) ? event.metaKey : event.ctrlKey;
+        const { keys, anchor } = selection.get();
+        if (mod) {
+          selection.set({
+            keys: keys.includes(key) ? keys.filter((item) => item !== key) : [...keys, key],
+            anchor: key,
+          });
+          return;
+        }
+        if (event.shiftKey) {
+          const rows = orderedThreads().map((entry) => entry.key);
+          const from = anchor === undefined ? -1 : rows.indexOf(anchor);
+          const to = rows.indexOf(key);
+          const range =
+            from === -1 || to === -1
+              ? [key]
+              : rows.slice(Math.min(from, to), Math.max(from, to) + 1);
+          selection.set({
+            keys: [...keys, ...range.filter((item) => !keys.includes(item))],
+            ...(anchor === undefined ? { anchor: key } : { anchor }),
+          });
+          return;
+        }
+        selection.set({ keys: [], anchor: key });
+        open();
+      };
+      /** The selected threads still listed. */
+      const selected = (): Entry[] => {
+        const every = everyThread();
+        return selection.get().keys.flatMap((key) => {
+          const entry = every.get(key);
+          return entry === undefined ? [] : [entry];
+        });
+      };
+      const refOf = (entry: Entry) => ({ ...entry.node.target, threadId: entry.thread.id });
+      /** Runs a thread command for each selected thread, then clears the selection. */
+      const forSelected = async (
+        pick: (entry: Entry) => boolean,
+        each: (entry: Entry) => Promise<unknown>,
+        failure: (count: number) => string,
+      ) => {
+        const entries = selected().filter(pick);
+        selection.set({ keys: [] });
+        let failed = 0;
+        let reason = "";
+        for (const entry of entries) {
+          try {
+            await each(entry);
+          } catch (error) {
+            failed += 1;
+            reason = (error as Error).message;
+          }
+        }
+        if (failed > 0)
+          toasts?.show({ type: "error", title: failure(failed), description: reason });
+        return {};
+      };
+      const SelectionInput = z.object({});
+      context.commands.register({
+        name: "sidebar.selection.settle",
+        title: "Settle selected threads",
+        description: 'Settles every thread selected in the sidebar (T3\'s "Settle (N)")',
+        input: SelectionInput,
+        output: z.object({}),
+        handler: () =>
+          forSelected(
+            (entry) => entry.section !== "settled",
+            (entry) => context.commands.execute("thread.settle", refOf(entry)),
+            (count) => `Failed to settle ${count} thread${count === 1 ? "" : "s"}`,
+          ),
+      });
+      context.commands.register({
+        name: "sidebar.selection.unpin",
+        title: "Unpin selected threads",
+        description: 'Unpins every pinned thread selected in the sidebar (T3\'s "Unpin (N)")',
+        input: SelectionInput,
+        output: z.object({}),
+        handler: () =>
+          forSelected(
+            (entry) => entry.thread.pinnedAt !== undefined,
+            (entry) => context.commands.execute("thread.unpin", refOf(entry)),
+            (count) => `Failed to unpin ${count} thread${count === 1 ? "" : "s"}`,
+          ),
+      });
+      context.commands.register({
+        name: "sidebar.selection.snooze",
+        title: "Snooze selected threads",
+        description:
+          'Snoozes every thread selected in the sidebar until `until` (T3\'s "Snooze (N)")',
+        input: z.object({ until: z.iso.datetime({ offset: true }) }),
+        output: z.object({}),
+        handler: ({ until }) =>
+          forSelected(
+            () => true,
+            (entry) => context.commands.execute("thread.snooze", { ...refOf(entry), until }),
+            (count) => `Failed to snooze ${count} thread${count === 1 ? "" : "s"}`,
+          ),
+      });
+      context.commands.register({
+        name: "sidebar.selection.mark-unread",
+        title: "Mark selected threads unread",
+        description:
+          'Marks every thread selected in the sidebar unread on this device (T3\'s "Mark unread (N)")',
+        input: SelectionInput,
+        output: z.object({}),
+        handler: () =>
+          forSelected(
+            () => true,
+            async (entry) => visits?.markUnread(entry.node.target, entry.thread.id),
+            (count) => `Failed to mark ${count} thread${count === 1 ? "" : "s"} unread`,
+          ),
+      });
+      context.commands.register({
+        name: "sidebar.selection.delete",
+        title: "Delete selected threads",
+        description:
+          'Deletes every thread selected in the sidebar, after asking when the settings say so (T3\'s "Delete (N)")',
+        input: SelectionInput,
+        output: z.object({}),
+        handler: async () => {
+          const count = selected().length;
+          if (count === 0) return {};
+          if (
+            readSection(context, CHAT_SECTION, ChatSettings).confirmDelete &&
+            dialogs !== undefined &&
+            !(await dialogs.confirm({
+              title: `Delete ${count} thread${count === 1 ? "" : "s"}?`,
+              description: "This permanently clears conversation history for these threads.",
+              confirmLabel: "Delete",
+              variant: "destructive",
+            }))
+          )
+            return {};
+          return forSelected(
+            () => true,
+            (entry) =>
+              threads.call(entry.node.target, "threads.delete", { threadId: entry.thread.id }),
+            () => "Failed to delete threads",
+          );
+        },
+      });
+      context.commands.register({
+        name: "sidebar.selection.clear",
+        title: "Clear the selection",
+        description: "Clears the threads selected in the sidebar",
+        input: SelectionInput,
+        output: z.object({}),
+        handler: () => {
+          clearSelection();
+          return {};
+        },
+      });
+
+      /** T3's menu for a selection (handleMultiSelectContextMenu): each item acts on every selected thread. */
+      function SelectionMenu() {
+        const entries = selected();
+        const count = entries.length;
+        const pinned = entries.filter((entry) => entry.thread.pinnedAt !== undefined).length;
+        const allSettled = entries.every((entry) => entry.section === "settled");
+        const canSnoozeAll = entries.every((entry) => canSnooze(entry.thread));
+        return (
+          <>
+            {pinned > 0 ? (
+              <MenuItem onClick={() => run("sidebar.selection.unpin", {})}>
+                <PinOffIcon />
+                Unpin ({pinned})
+              </MenuItem>
+            ) : null}
+            <MenuItem disabled={allSettled} onClick={() => run("sidebar.selection.settle", {})}>
+              <CircleCheckIcon />
+              Settle ({count})
+            </MenuItem>
+            {canSnoozeAll ? (
+              <MenuSub>
+                <MenuSubTrigger>
+                  <ClockIcon />
+                  Snooze ({count})
+                </MenuSubTrigger>
+                <MenuSubPopup>
+                  {snoozePresets(new Date()).map((preset) => (
+                    <MenuItem
+                      key={preset.id}
+                      onClick={() =>
+                        run("sidebar.selection.snooze", { until: preset.snoozedUntil })
+                      }
+                    >
+                      {preset.label} ({preset.whenLabel})
+                    </MenuItem>
+                  ))}
+                </MenuSubPopup>
+              </MenuSub>
+            ) : null}
+            <MenuItem onClick={() => run("sidebar.selection.mark-unread", {})}>
+              <MailOpenIcon />
+              Mark unread ({count})
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem onClick={() => run("sidebar.selection.delete", {})} variant="destructive">
+              <Trash2Icon />
+              Delete ({count})
+            </MenuItem>
+          </>
+        );
+      }
+
       /** T3's Working section is collapsed until opened, kept per device (D452). */
       const workingExpanded = createValue(false, {
         key: WORKING_EXPANDED_STORAGE_KEY,
@@ -878,7 +1118,9 @@ export const sidebarPlugin = builtin(
         const unread = isUnread(thread, lastVisit);
         const woke = isWoke(thread, lastVisit, now);
         const top = sidebarTopStatus(status, unread, woke);
-        const recede = shouldRecede({ status, unread, active, woke });
+        const isSelected = useExternal(selection, () => selection.get().keys.includes(entry.key));
+        const selectionSize = useExternal(selection, () => selection.get().keys.length);
+        const recede = shouldRecede({ status, unread, active, woke }) && !isSelected;
         const settled = section === "settled";
         const snoozed = section === "snoozed";
         const dragging = sortable?.isDragging === true;
@@ -988,9 +1230,11 @@ export const sidebarPlugin = builtin(
           settled && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
           active || dragging
             ? "bg-sidebar-row-active text-sidebar-foreground"
-            : recede
-              ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-              : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+            : isSelected
+              ? "bg-sidebar-row-selected text-sidebar-foreground"
+              : recede
+                ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
           dragging && "shadow-lg ring-1 ring-sidebar-border",
           recede &&
             status === "working" &&
@@ -1330,9 +1574,11 @@ export const sidebarPlugin = builtin(
                           className={rowClassName}
                           data-active={active}
                           data-section={section}
+                          data-selected={isSelected ? "" : undefined}
                           data-testid={variant === "card" ? "sidebar-row-card" : "sidebar-row-slim"}
-                          onClick={() => {
-                            if (renaming === undefined) openThread(target, thread.id);
+                          onClick={(event) => {
+                            if (renaming === undefined)
+                              clickRow(event, entry.key, () => openThread(target, thread.id));
                           }}
                           onDoubleClick={(event) => {
                             if (
@@ -1378,18 +1624,22 @@ export const sidebarPlugin = builtin(
                 </TooltipPopup>
               </Tooltip>
               <ContextMenuPopup>
-                <Slot
-                  name="thread.actions"
-                  props={
-                    {
-                      target,
-                      thread,
-                      ...(project === undefined ? {} : { project }),
-                      rename: startRename,
-                      section,
-                    } satisfies ThreadActionProps
-                  }
-                />
+                {isSelected && selectionSize > 1 ? (
+                  <SelectionMenu />
+                ) : (
+                  <Slot
+                    name="thread.actions"
+                    props={
+                      {
+                        target,
+                        thread,
+                        ...(project === undefined ? {} : { project }),
+                        rename: startRename,
+                        section,
+                      } satisfies ThreadActionProps
+                    }
+                  />
+                )}
               </ContextMenuPopup>
             </ContextMenu>
           </li>
