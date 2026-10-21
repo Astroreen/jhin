@@ -48,6 +48,7 @@ import {
   type ThreadVisits,
   type NodeActionProps,
   type ThreadActionProps,
+  type ThreadSelectionActionProps,
   type ThreadIndicatorProps,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
@@ -543,7 +544,14 @@ export const sidebarPlugin = builtin(
       };
       // Escape clears a selection (T3).
       const onSelectionKey = (event: KeyboardEvent) => {
-        if (event.key === "Escape" && selection.get().keys.length > 0) {
+        const target = event.target as HTMLElement | null;
+        if (
+          event.key === "Escape" &&
+          !event.defaultPrevented &&
+          selection.get().keys.length > 0 &&
+          // Escape that closes a menu or dialog, or leaves a field, is theirs.
+          target?.closest("input, textarea, [contenteditable], [role=menu], [role=dialog]") == null
+        ) {
           event.preventDefault();
           selection.set({ keys: [] });
         }
@@ -670,7 +678,10 @@ export const sidebarPlugin = builtin(
         handler: () =>
           forSelected(
             () => true,
-            async (entry) => visits?.markUnread(entry.node.target, entry.thread.id),
+            async (entry) => {
+              if (visits === undefined) throw new Error("No visits plugin keeps what was read");
+              visits.markUnread(entry.node.target, entry.thread.id);
+            },
             (count) => `Failed to mark ${count} thread${count === 1 ? "" : "s"} unread`,
           ),
       });
@@ -715,30 +726,44 @@ export const sidebarPlugin = builtin(
         },
       });
 
-      /** T3's menu for a selection (handleMultiSelectContextMenu): each item acts on every selected thread. */
-      function SelectionMenu() {
-        const entries = selected();
-        const count = entries.length;
-        const pinned = entries.filter((entry) => entry.thread.pinnedAt !== undefined).length;
-        const allSettled = entries.every((entry) => entry.section === "settled");
-        const canSnoozeAll = entries.every((entry) => canSnooze(entry.thread));
-        return (
-          <>
-            {pinned > 0 ? (
+      // T3's menu for a selection (handleMultiSelectContextMenu): the `thread.selection.actions`
+      // slot, each item acting on every selected thread.
+      const selectionItems: [string, number, ComponentType<ThreadSelectionActionProps>][] = [
+        [
+          "unpin",
+          0,
+          ({ threads: chosen }) => {
+            const pinned = chosen.filter((item) => item.thread.pinnedAt !== undefined).length;
+            return pinned === 0 ? null : (
               <MenuItem onClick={() => run("sidebar.selection.unpin", {})}>
                 <PinOffIcon />
                 Unpin ({pinned})
               </MenuItem>
-            ) : null}
-            <MenuItem disabled={allSettled} onClick={() => run("sidebar.selection.settle", {})}>
+            );
+          },
+        ],
+        [
+          "settle",
+          10,
+          ({ threads: chosen }) => (
+            <MenuItem
+              disabled={chosen.every((item) => item.section === "settled")}
+              onClick={() => run("sidebar.selection.settle", {})}
+            >
               <CircleCheckIcon />
-              Settle ({count})
+              Settle ({chosen.length})
             </MenuItem>
-            {canSnoozeAll ? (
+          ),
+        ],
+        [
+          "snooze",
+          20,
+          ({ threads: chosen }) =>
+            chosen.every((item) => canSnooze(item.thread)) ? (
               <MenuSub>
                 <MenuSubTrigger>
                   <ClockIcon />
-                  Snooze ({count})
+                  Snooze ({chosen.length})
                 </MenuSubTrigger>
                 <MenuSubPopup>
                   {snoozePresets(new Date()).map((preset) => (
@@ -753,17 +778,51 @@ export const sidebarPlugin = builtin(
                   ))}
                 </MenuSubPopup>
               </MenuSub>
-            ) : null}
-            <MenuItem onClick={() => run("sidebar.selection.mark-unread", {})}>
-              <MailOpenIcon />
-              Mark unread ({count})
-            </MenuItem>
-            <MenuSeparator />
+            ) : null,
+        ],
+        [
+          "mark-unread",
+          30,
+          ({ threads: chosen }) =>
+            visits === undefined ? null : (
+              <MenuItem onClick={() => run("sidebar.selection.mark-unread", {})}>
+                <MailOpenIcon />
+                Mark unread ({chosen.length})
+              </MenuItem>
+            ),
+        ],
+        ["separator", 40, () => <MenuSeparator />],
+        [
+          "delete",
+          50,
+          ({ threads: chosen }) => (
             <MenuItem onClick={() => run("sidebar.selection.delete", {})} variant="destructive">
               <Trash2Icon />
-              Delete ({count})
+              Delete ({chosen.length})
             </MenuItem>
-          </>
+          ),
+        ],
+      ];
+      for (const [id, order, component] of selectionItems) {
+        context.subscriptions.add(
+          slots.contribute("thread.selection.actions", {
+            id: `jhin.sidebar.selection.${id}`,
+            order,
+            component,
+          }),
+        );
+      }
+      function SelectionMenu() {
+        const chosen = selected().map((entry) => ({
+          target: entry.node.target,
+          thread: entry.thread,
+          section: entry.section,
+        }));
+        return (
+          <Slot
+            name="thread.selection.actions"
+            props={{ threads: chosen } satisfies ThreadSelectionActionProps}
+          />
         );
       }
 
@@ -1119,7 +1178,8 @@ export const sidebarPlugin = builtin(
         const woke = isWoke(thread, lastVisit, now);
         const top = sidebarTopStatus(status, unread, woke);
         const isSelected = useExternal(selection, () => selection.get().keys.includes(entry.key));
-        const selectionSize = useExternal(selection, () => selection.get().keys.length);
+        // Threads that went away meanwhile do not count.
+        const selectionSize = useExternal(selection, () => (isSelected ? selected().length : 0));
         const recede = shouldRecede({ status, unread, active, woke }) && !isSelected;
         const settled = section === "settled";
         const snoozed = section === "snoozed";

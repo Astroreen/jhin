@@ -1072,7 +1072,11 @@ Ctrl+2 opens the second, releasing hides them), with a screenshot.
   plain click opens a thread and ends the selection, Escape clears it.
   Selected rows take T3's selected background (`bg-sidebar-row-selected`)
   and `data-selected`. The context menu of a row in a selection of two or
-  more is T3's selection menu instead of `thread.actions`: "Unpin (N)"
+  more is T3's selection menu instead of `thread.actions`: the new slot
+  `thread.selection.actions` (`ThreadSelectionActionProps`: the selected
+  threads, additive), where the sidebar contributes
+  `jhin.sidebar.selection.unpin`, `.settle`, `.snooze`, `.mark-unread`,
+  `.separator` and `.delete`: "Unpin (N)"
   (while any is pinned), "Settle (N)" (disabled when all are settled),
   "Snooze (N)" with T3's presets "label (when)" (while every one can
   snooze), "Mark unread (N)" and "Delete (N)" (destructive, asking "Delete N
@@ -1087,7 +1091,8 @@ Ctrl+2 opens the second, releasing hides them), with a screenshot.
 The proof of D454: `e2e/tests/sidebar.spec.ts` ("D454": Ctrl-click, Escape,
 Shift-click range, the selection menu, "Settle (3)" landing three threads on
 the shelf with one grouped notice, a plain click back to the thread's own
-menu), with a screenshot.
+menu; "Mark unread (2)", and "Delete (2)" asking once and deleting both on
+the node), with a screenshot.
 
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 

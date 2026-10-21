@@ -585,3 +585,31 @@ test("D454: select several threads and act on them at once", async ({ page }, in
   await threadRow(page, "one").click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Settle thread" })).toBeVisible();
 });
+
+test("D454: a selection's Delete asks once, and Mark unread marks them all", async ({ page }) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["keep", "drop a", "drop b"]) await addThread(x, title);
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["drop b", "drop a", "keep"]);
+
+  await threadRow(page, "drop b").click({ modifiers: ["Control"] });
+  await threadRow(page, "drop a").click({ modifiers: ["Control"] });
+  await threadRow(page, "drop a").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Mark unread (2)" }).click();
+  await expect(threadRow(page, "drop a")).not.toHaveAttribute("data-selected");
+
+  await threadRow(page, "drop b").click({ modifiers: ["Control"] });
+  await threadRow(page, "drop a").click({ modifiers: ["Control"] });
+  await threadRow(page, "drop a").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete (2)" }).click();
+  const dialog = page.getByRole("alertdialog").or(page.getByRole("dialog"));
+  await expect(dialog).toContainText("Delete 2 threads?");
+  await expect(dialog).toContainText(
+    "This permanently clears conversation history for these threads.",
+  );
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect(cardTitles(page)).toHaveText(["keep"]);
+  expect(
+    (await x.client().call<{ title: string }[]>("threads.list", {})).map((t) => t.title),
+  ).toEqual(["keep"]);
+});
