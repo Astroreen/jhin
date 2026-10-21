@@ -642,6 +642,13 @@ describe("pairing (security.md D419–D422)", () => {
       statuses.push((await post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" })).status);
     }
     expect(statuses).toContain(429);
+    // Parallel attempts are counted as they come in, not once each has failed.
+    const parallel = await Promise.all(
+      Array.from({ length: 30 }, () =>
+        post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" }).then((r) => r.status),
+      ),
+    );
+    expect(parallel.filter((status) => status === 401).length).toBeLessThanOrEqual(20);
     expect(statuses.every((status) => status === 401 || status === 429)).toBe(true);
     // The session bucket is untouched.
     expect((await post(`${httpUrl(node)}/auth/session`, { credential: "x" })).status).toBe(401);
