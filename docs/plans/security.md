@@ -165,7 +165,11 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   `jhin client` and other nodes' web clients still connect cross-origin
   (D21), and only from listed origins once the owner lists any. A refused
   upgrade gets 403 before the WebSocket opens. Requests without `Origin`
-  (the CLI, nodes, MCP clients) are not browsers and are not checked.
+  (the CLI, nodes, MCP clients) are not browsers and are not checked. An
+  `Origin` that is no URL (`null`, from a sandboxed frame or a `file:` page)
+  is always refused. The host the client asked for comes from
+  `http.server` 1.2's `requestedHost`, so a node behind a reverse proxy
+  compares with the proxy's host.
 
 ### Pairing
 
@@ -277,21 +281,24 @@ and QR code.
 
 ## Deferred
 
+- DNS rebinding (D418): a page on a name re-pointed at the node's address
+  sends `Origin` and `Host` with that name, so it counts as the node's own
+  page. It gets no session cookie (the browser keeps the node's cookie for
+  the node's own host) and has no token, so it can call nothing; a `Host`
+  allowlist (`jhin.http.allowedHosts`: loopback names, the bound and
+  advertised addresses) would refuse it outright.
 - A secret whose real value starts with the marker and `#`
   (`••••••#note`) reads as an addressed marker and is refused on save
   (D417); such a value has to be changed to be saved.
-
 - `host.config.get` and `host.config.patch` convert every section's schema
   (`config.jsonSchema()`) to pick one; a kernel call for one section's
   schema, or a cache cleared on `kernel.config.changed`, would avoid it.
-
 - Secrets stay in the config files in clear (D417): T3 keeps them in a
   secret store apart from its settings. A key store (the OS keychain, an
   encrypted file) would let a config file be shared without them.
 - A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
   target against that node's own stored value; a target with none refuses
   the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.
-
 - T3 Connect: pairing and remote access through a T3 account, the hosted
   relay and the hosted-app pairing link (out of scope, `t3-roadmap.md`).
 - Tailscale Serve (`--tailscale-serve`, `t3 pair --tailscale`): publishing

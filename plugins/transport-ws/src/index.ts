@@ -18,7 +18,7 @@ import {
   webSocketPeer,
   type WebSocketLike,
 } from "@jhin/rpc";
-import { definePlugin, type Disposable } from "@jhin/sdk";
+import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -29,6 +29,72 @@ export const RPC_PATH = "/rpc";
 
 /** Tells clients to come back: used when this plugin stops or reloads. */
 const CLOSE_SERVICE_RESTART = 1012;
+
+const CONFIG_SECTION = "jhin.transport-ws";
+
+/** `jhin.transport-ws` (security.md D418). */
+export const TransportConfig = z
+  .object({
+    /** security.md D418. */
+    allowedOrigins: z
+      .array(
+        z
+          .string()
+          .refine(
+            (value) =>
+              URL.canParse(value) &&
+              /^https?:$/.test(new URL(value).protocol) &&
+              ["", "/"].includes(new URL(value).pathname) &&
+              new URL(value).search === "" &&
+              new URL(value).hash === "",
+            "must be an origin: scheme, host and port, e.g. https://jhin.example.com",
+          )
+          // Kept as an origin is compared: `https://Jhin.example.com/` is `https://jhin.example.com`.
+          .transform((value) => new URL(value).origin),
+      )
+      .default([])
+      .meta({
+        title: "Allowed origins",
+        description:
+          "Web pages on other origins that may connect with a token, e.g. a jhin client page. While empty, a page on any origin may connect with a token; the node's own pages always may.",
+        examples: ["https://jhin.example.com"],
+        advanced: true,
+      }),
+  })
+  .default({ allowedOrigins: [] })
+  .meta({ title: "Browser access", description: "Which web pages may connect to this node." });
+
+/**
+ * Whether `requested` (a `Host` value: `name`, `name:port`, `[::1]:port`)
+ * is the origin's host. Read with the origin's scheme, so a default port
+ * written out (`node:443` for https) or left off is the same host.
+ */
+function sameHost(origin: URL, requested: string): boolean {
+  // Only a host and a port: `good@evil`, `evil/x` or `evil?x` would parse as another host.
+  if (!/^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d+)?$/i.test(requested)) return false;
+  const target = `${origin.protocol}//${requested}`;
+  return URL.canParse(target) && new URL(target).host === origin.host;
+}
+
+/**
+ * Whether a browser page may open a connection (security.md D418). A request
+ * without `Origin` is not a browser's (the CLI, another node). The node's own
+ * pages are always allowed, recognised by host and port alone (T3's rule): behind
+ * a TLS proxy the page is `https` while the node speaks `http`. Other pages only
+ * while no origin is listed, or when listed, compared by scheme, host and port.
+ */
+export function originAllowed(
+  origin: string | undefined,
+  requestedHost: string | undefined,
+  allowed: readonly string[],
+): boolean {
+  if (origin === undefined) return true;
+  const parsed = URL.canParse(origin) ? new URL(origin) : undefined;
+  if (parsed === undefined) return false;
+  if (requestedHost !== undefined && sameHost(parsed, requestedHost)) return true;
+  if (allowed.length === 0) return true;
+  return allowed.some((entry) => URL.canParse(entry) && new URL(entry).origin === parsed.origin);
+}
 
 function tokenFrom(header: string | string[] | undefined): string | undefined {
   const protocols = (Array.isArray(header) ? header.join(",") : (header ?? "")).split(",");
@@ -41,6 +107,7 @@ function tokenFrom(header: string | string[] | undefined): string | undefined {
 
 export default definePlugin({
   activate(context) {
+    context.config.define(CONFIG_SECTION, TransportConfig);
     const http = context.services.get<HttpServer>(HTTP_SERVER_CAPABILITY);
     const verifier = context.services.get<AuthVerifier>(AUTH_VERIFIER_CAPABILITY);
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
@@ -119,6 +186,18 @@ export default definePlugin({
 
     context.subscriptions.add(
       http.upgrade(RPC_PATH, (request, socket, head) => {
+        const { allowedOrigins } =
+          context.config.get<z.output<typeof TransportConfig>>(CONFIG_SECTION);
+        const origin = request.headers.origin;
+        if (!originAllowed(origin, http.requestedHost(request), allowedOrigins)) {
+          // The header is the client's: logged short, never whole.
+          // A hostile page may retry in a loop: kept out of the warnings.
+          context.log.debug("connection refused: origin not allowed", {
+            origin: origin === undefined ? undefined : origin.slice(0, 200),
+          });
+          socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+          return;
+        }
         const token = tokenFrom(request.headers["sec-websocket-protocol"]);
         server.handleUpgrade(request, socket, head, (ws) => {
           void accept(ws, token).catch((error: unknown) => {

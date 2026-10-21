@@ -13,10 +13,11 @@ import {
   type TestKernel,
 } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { WebSocket } from "ws";
 
 import auth from "../../auth-token/src/index.ts";
 import http from "../../http/src/index.ts";
-import transport from "../src/index.ts";
+import transport, { TransportConfig, originAllowed } from "../src/index.ts";
 
 const manifest = (dir: string) =>
   JSON.parse(Fs.readFileSync(new URL(`../../${dir}/package.json`, import.meta.url), "utf8")).jhin;
@@ -58,7 +59,9 @@ afterEach(async () => {
   for (const kernel of kernels.splice(0)) await kernel.stop();
 });
 
-async function startNode(options: { tokenFile?: string } = {}): Promise<Node> {
+async function startNode(
+  options: { tokenFile?: string; allowedOrigins?: string[]; trustProxy?: string[] } = {},
+): Promise<Node> {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-transport-"));
   if (options.tokenFile !== undefined) {
     Fs.mkdirSync(Path.join(data, "jhin.auth-token"), { recursive: true });
@@ -84,7 +87,17 @@ async function startNode(options: { tokenFile?: string } = {}): Promise<Node> {
       real("transport-ws", transport),
       echo,
     ],
-    config: { node: { "jhin.http": { port: 0 } } },
+    config: {
+      node: {
+        "jhin.http": {
+          port: 0,
+          ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
+        },
+        ...(options.allowedOrigins === undefined
+          ? {}
+          : { "jhin.transport-ws": { allowedOrigins: options.allowedOrigins } }),
+      },
+    },
   });
   kernels.push(kernel);
   const failed = kernel.inspect().plugins.filter((plugin) => plugin.status !== "active");
@@ -373,5 +386,100 @@ describe("a revoke while a token is checked (security.md D414)", () => {
     answer({ id: "client:a", permissions: ["*"] });
     await closed(device);
     expect(device.closeReason).toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+});
+
+describe("Origin allowlist (security.md D418)", () => {
+  /** Opens a socket as a browser page on `origin` would; resolves with the HTTP status or "open". */
+  const openFrom = (node: Node, origin: string | undefined, headers: Record<string, string> = {}) =>
+    new Promise<number | "open">((resolve, reject) => {
+      const socket = new WebSocket(node.url, ["jhin.v1", `jhin.token.${node.token}`], {
+        ...(origin === undefined ? {} : { origin }),
+        headers,
+      });
+      socket.once("open", () => {
+        socket.close();
+        resolve("open");
+      });
+      socket.once("unexpected-response", (_request, response) => resolve(response.statusCode ?? 0));
+      socket.once("error", reject);
+    });
+
+  it("lets any page connect with a token while no origin is listed", async () => {
+    const node = await startNode();
+    expect(await openFrom(node, "https://elsewhere.example")).toBe("open");
+    expect(await openFrom(node, undefined)).toBe("open");
+  });
+
+  it("refuses other pages with 403 once origins are listed, keeping the node's own and listed ones", async () => {
+    const node = await startNode({ allowedOrigins: ["https://client.example"] });
+    const own = new URL(node.url.replace(/^ws/, "http")).origin;
+
+    expect(await openFrom(node, "https://elsewhere.example")).toBe(403);
+    expect(await openFrom(node, "null")).toBe(403);
+    expect(await openFrom(node, own)).toBe("open");
+    expect(await openFrom(node, "https://client.example")).toBe("open");
+    // The CLI and other nodes send no Origin.
+    expect(await openFrom(node, undefined)).toBe("open");
+  });
+
+  it("knows the node's own page behind a trusted proxy by X-Forwarded-Host", async () => {
+    const node = await startNode({
+      allowedOrigins: ["https://client.example"],
+      trustProxy: ["127.0.0.0/8", "::1"],
+    });
+    const behindProxy = (origin: string, forwardedHost = "jhin.example") =>
+      openFrom(node, origin, { "x-forwarded-host": forwardedHost });
+    expect(await behindProxy("https://jhin.example")).toBe("open");
+    expect(await behindProxy("https://elsewhere.example")).toBe(403);
+    // A forwarded host that parses as another host is no host at all.
+    expect(await behindProxy("https://evil.example", "jhin.example@evil.example")).toBe(403);
+    expect(await behindProxy("https://evil.example", "evil.example/x")).toBe(403);
+  });
+
+  it("keeps allowed origins as canonical origins and refuses anything else", () => {
+    expect(
+      TransportConfig.parse({
+        allowedOrigins: ["https://Jhin.example.com/", "http://a.example:8080"],
+      }),
+    ).toEqual({ allowedOrigins: ["https://jhin.example.com", "http://a.example:8080"] });
+    expect(TransportConfig.parse(undefined)).toEqual({ allowedOrigins: [] });
+    for (const entry of [
+      "https://jhin.example.com/path",
+      "https://jhin.example.com/?q=1",
+      "https://jhin.example.com/#x",
+      "ftp://jhin.example.com",
+      "not a url",
+    ]) {
+      expect(TransportConfig.safeParse({ allowedOrigins: [entry] }).success).toBe(false);
+    }
+  });
+
+  it("compares listed origins by scheme, host and port, and the node's own by host and port", () => {
+    const listed = ["https://client.example"];
+    expect(originAllowed("https://client.example", "node:7777", listed)).toBe(true);
+    expect(originAllowed("http://client.example", "node:7777", listed)).toBe(false);
+    expect(originAllowed("https://client.example:8443", "node:7777", listed)).toBe(false);
+    expect(originAllowed("http://node:7777", "node:7777", listed)).toBe(true);
+    // The node's own page behind a TLS proxy: https, though the node speaks http.
+    expect(originAllowed("https://node:7777", "node:7777", listed)).toBe(true);
+    // A default port written out or left off is the same host; another port is not.
+    expect(originAllowed("https://node.example", "node.example:443", listed)).toBe(true);
+    expect(originAllowed("https://node.example", "node.example", listed)).toBe(true);
+    expect(originAllowed("http://node.example", "node.example:443", listed)).toBe(false);
+    // IPv6 hosts compare as hosts too.
+    expect(originAllowed("http://[::1]:7777", "[::1]:7777", listed)).toBe(true);
+    expect(originAllowed("http://[::1]:7777", "[::1]:7778", listed)).toBe(false);
+    for (const hostile of [
+      "node.example@evil.example",
+      "evil.example/x",
+      "evil.example?x",
+      "a b",
+    ]) {
+      expect(originAllowed("https://evil.example", hostile, listed)).toBe(false);
+    }
+    expect(originAllowed("not an origin", "node:7777", [])).toBe(false);
+    // `null` (a sandboxed frame, a file: page) is refused even while nothing is listed.
+    expect(originAllowed("null", "node:7777", [])).toBe(false);
   });
 });

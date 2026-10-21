@@ -1,16 +1,24 @@
 import * as Fs from "node:fs";
+import * as Http from "node:http";
 
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import { definePlugin } from "@jhin/sdk";
 import { createTestKernel, testManifest, type TestKernel } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { clientAddress, trustList } from "../src/client-address.ts";
+import { clientAddress, trustList, trusted } from "../src/client-address.ts";
 import http from "../src/index.ts";
 
 const manifest = JSON.parse(
   Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).jhin;
+
+describe("trusted", () => {
+  it("reads an IPv4-mapped peer as its IPv4 address, as a dual-stack listener reports it", () => {
+    expect(trusted(trustList(["127.0.0.0/8"]), "::ffff:127.0.0.1")).toBe(true);
+    expect(trusted(trustList(["127.0.0.0/8"]), "::ffff:10.0.0.1")).toBe(false);
+  });
+});
 
 describe("clientAddress", () => {
   const xff = (peer: string, header: string | undefined, trust: string[]) =>
@@ -129,5 +137,72 @@ describe("http.server clientAddress", () => {
     const who = await node({ trustProxy: ["127.0.0.0/8"] });
     expect(await who({ "x-forwarded-for": "198.51.100.1" })).toBe("198.51.100.1");
     expect(await who({ forwarded: "for=198.51.100.2" })).toBe("127.0.0.1");
+  });
+});
+
+describe("http.server requestedHost (security.md D418)", () => {
+  let kernel: TestKernel | undefined;
+  afterEach(async () => {
+    await kernel?.stop();
+    kernel = undefined;
+  });
+
+  /** A node whose `/host` answers with the host the http plugin says the client asked for. */
+  async function node(config: Record<string, unknown>) {
+    let server: HttpServer | undefined;
+    kernel = await createTestKernel({
+      config: { node: { "jhin.http": { port: 0, ...config } } },
+      plugins: [
+        { manifest, definition: http },
+        {
+          manifest: testManifest("test.host", {
+            side: "server",
+            requires: { [HTTP_SERVER_CAPABILITY]: "^1.2" },
+          }),
+          definition: definePlugin({
+            activate(context) {
+              server = context.services.get<HttpServer>(HTTP_SERVER_CAPABILITY);
+              context.subscriptions.add(
+                server.route("GET", "/host", (request, response) => {
+                  response.end(server!.requestedHost(request) ?? "(none)");
+                }),
+              );
+            },
+          }),
+        },
+      ],
+    });
+    const { port } = new URL(server!.url);
+    // `fetch` cannot set Host; a raw request can, as a proxy or a browser does.
+    return (headers: Record<string, string>) =>
+      new Promise<string>((resolve, reject) => {
+        const request = Http.request(
+          { host: "127.0.0.1", port, path: "/host", headers },
+          (response) => {
+            let body = "";
+            response.on("data", (chunk: Buffer) => (body += chunk.toString()));
+            response.on("end", () => resolve(body));
+          },
+        );
+        request.on("error", reject);
+        request.end();
+      });
+  }
+
+  it("is the Host header, lowercased, and ignores X-Forwarded-Host from an untrusted peer", async () => {
+    const host = await node({});
+    expect(await host({ host: "Node.Example:7777" })).toBe("node.example:7777");
+    expect(await host({ host: "node.example", "x-forwarded-host": "evil.example" })).toBe(
+      "node.example",
+    );
+  });
+
+  it("is the first X-Forwarded-Host behind a trusted proxy", async () => {
+    const host = await node({ trustProxy: ["127.0.0.0/8"] });
+    expect(
+      await host({ host: "10.0.0.5:7777", "x-forwarded-host": "Jhin.Example, inner.example" }),
+    ).toBe("jhin.example");
+    // An empty forwarded host falls back to Host.
+    expect(await host({ host: "10.0.0.5:7777", "x-forwarded-host": "" })).toBe("10.0.0.5:7777");
   });
 });
