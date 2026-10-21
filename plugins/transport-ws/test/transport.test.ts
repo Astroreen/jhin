@@ -4,6 +4,7 @@ import * as Path from "node:path";
 
 import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
 import {
+  PERMISSIONS_DESCRIBE_HOOK,
   definePlugin,
   describePermissions,
   z,
@@ -67,7 +68,12 @@ afterEach(async () => {
 });
 
 async function startNode(
-  options: { tokenFile?: string; allowedOrigins?: string[]; trustProxy?: string[] } = {},
+  options: {
+    tokenFile?: string;
+    allowedOrigins?: string[];
+    trustProxy?: string[];
+    plugins?: { manifest: unknown; definition: PluginDefinition }[];
+  } = {},
 ): Promise<Node> {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-transport-"));
   if (options.tokenFile !== undefined) {
@@ -93,6 +99,7 @@ async function startNode(
       real("auth-token", auth),
       real("transport-ws", transport),
       echo,
+      ...(options.plugins ?? []),
     ],
     config: {
       node: {
@@ -375,6 +382,24 @@ describe("device tokens (security.md D411–D414)", () => {
       "auth.pairing.revoke",
       "auth.tokens.issue",
     ]);
+  });
+
+  it("lists the permissions without titles when a description hook throws (D961)", async () => {
+    const broken = {
+      manifest: testManifest("app.broken"),
+      definition: definePlugin({
+        activate(context) {
+          context.hooks.after(PERMISSIONS_DESCRIBE_HOOK, () => {
+            throw new Error("broken");
+          });
+        },
+      }),
+    };
+    const node = await startNode({ plugins: [broken] });
+    const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
+      permissions: PermissionEntry[];
+    };
+    expect(permissions).toContainEqual({ permission: "app.write", commands: ["app.write"] });
   });
 });
 

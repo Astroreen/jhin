@@ -487,7 +487,15 @@ export default definePlugin({
           .map(([permission, commands]) => ({ permission, commands }))
           .toSorted((a, b) => a.permission.localeCompare(b.permission));
         // Each plugin titles the permissions its commands need (security.md D961).
-        const described = await context.hooks.run(PERMISSIONS_DESCRIBE_HOOK, {}, () => entries);
+        // A throwing hook costs the titles, not the list (D961).
+        const described = await context.hooks
+          .run(PERMISSIONS_DESCRIBE_HOOK, {}, () => entries)
+          .catch((error: unknown) => {
+            context.log.error("a permission description hook failed; listing without titles", {
+              error: String(error),
+            });
+            return entries;
+          });
         return {
           // An empty title or description says nothing: the id stands in for it.
           permissions: described.map(({ title, description, ...entry }) => ({
