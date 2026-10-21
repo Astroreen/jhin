@@ -85,7 +85,7 @@ export const schedulerPlugin = builtin(
         () =>
           load().then(
             ({ module: { SchedulerProvider, ScheduledTasksSection }, services }) =>
-              function Section() {
+              function ScheduledTasks() {
                 return (
                   <SchedulerProvider services={services}>
                     <ScheduledTasksSection />
@@ -106,7 +106,7 @@ export const schedulerPlugin = builtin(
         () =>
           load().then(
             ({ module, services }) =>
-              function Automations(props: ChatThreadDetailsProps) {
+              function LoadedAutomations(props: ChatThreadDetailsProps) {
                 return (
                   <module.ThreadAutomations
                     {...props}
