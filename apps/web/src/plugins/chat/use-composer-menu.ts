@@ -33,6 +33,8 @@ export function useComposerMenu(options: {
   readonly prompt: string;
   readonly cursor: number;
   readonly planMode: boolean;
+  /** T3's "Show skills in slash menu" (D845). */
+  readonly showSkillsInSlashMenu: boolean;
   /** No menu while the composer answers a question or an approval. */
   readonly enabled: boolean;
 }) {
@@ -109,6 +111,7 @@ export function useComposerMenu(options: {
       planMode: options.planMode,
       commands: value.commands,
       skills: value.skills,
+      showSkills: options.showSkillsInSlashMenu,
       query: trigger.query,
       atPromptStart: before.trim() === "",
       promptOtherwiseEmpty: before.trim() === "" && after.trim() === "",

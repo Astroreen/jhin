@@ -1543,6 +1543,18 @@ T3 Code `eb7b35ac` as D290 says.
   from each. Inside a block Tab never leaves the editor, as in T3, so the
   keyboard way out is to move the caret below the block. Outside code blocks
   Tab keeps its list nesting (D303) and otherwise leaves the editor.
+- **D844. Typing a bracket or quote over a selection wraps it,** as T3's
+  `handleTextInput` with `SURROUND_CLOSE`: `(`, `[`, `{`, `'`, `"`, `“`,
+  `` ` ``, `<`, `«`, `*` and `_` put their closer after the selection and
+  keep the text selected inside. As in T3 it never wraps a chip, styled text
+  (the plain replace keeps its marks) or the space that bounds a chip, and an
+  input method's composition is left alone.
+- **D845. T3's "Show skills in slash menu"** setting (General, on by
+  default): "Also include skills in the / command menu. Skills always appear
+  when you type $." Off, the `/` menu lists no skills, and a provider command
+  that shares a skill's name shows again, as T3's
+  `getProviderSkillsForSlashMenu` and `getProviderSlashCommandsForSlashMenu`. It is `showSkillsInSlashMenu` in
+  the client's `jhin.chat` section.
 
 ## Not ported (out of scope)
 
@@ -1564,9 +1576,9 @@ T3 Code `eb7b35ac` as D290 says.
   horizontal rules and task lists (kept as text), visible marks at the caret,
   citation and context-reference chips, chip popovers (file icons, a skill's
   description and "View instructions"), `#` pull-request mentions and other
-  threads in the `@` menu, wrapping a selection in brackets or quotes, the
+  threads in the `@` menu, the
   plain-text and literal modes, `aria-activedescendant` from the editor to the
-  menu, and T3's setting to hide skills from the `/` menu.
+  menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's preview of a file in the composer and in the

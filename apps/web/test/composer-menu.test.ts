@@ -52,6 +52,20 @@ describe("composer menus (D301, T3's search)", () => {
     expect(labels("plan")[0]).toBe("/plan");
   });
 
+  it("leaves skills out of / when the setting hides them, and shows a command they shadowed (D845)", () => {
+    const labels = slashMenuItems({
+      planMode: false,
+      commands,
+      skills,
+      showSkills: false,
+      query: "",
+      atPromptStart: true,
+      promptOtherwiseEmpty: true,
+    }).map((item) => item.label);
+    expect(labels).toEqual(["/model", "/review", "/compact", "/deploy"]);
+    expect(searchSkills(skills, "").map((skill) => skill.name)).toEqual(["deploy", "write-tests"]);
+  });
+
   it("ranks skills by name, display name, description and scope", () => {
     expect(searchSkills(skills, "$test").map((skill) => skill.name)).toEqual(["write-tests"]);
     expect(searchSkills(skills, "app").map((skill) => skill.name)).toEqual(["deploy"]);
