@@ -1,6 +1,15 @@
 // Rows follow T3 Code's general and appearance settings (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/settings/SettingsPanels.tsx and ThemeSettings.tsx.
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue, Switch, cn } from "@jhin/ui";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+  Slot,
+  Switch,
+  cn,
+} from "@jhin/ui";
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 
 import { useConfig } from "../../lib/hooks.ts";
@@ -121,6 +130,8 @@ export function GeneralSection() {
           title="Show skills in slash menu"
         />
         <DiffRows />
+        {/* Rows other plugins add to Behavior, e.g. the desktop app's quit shortcut (D947). */}
+        <Slot name="settings.general.behavior" props={{}} />
       </SettingsSection>
       {/* T3's "Organization" section; its auto-settle rows are node config (jhin.threads, D444). */}
       <SettingsSection title="Organization">

@@ -36,6 +36,9 @@ const bridge: DesktopBridge = {
   setNotificationBadge: (badge) => ipcRenderer.send(DESKTOP_CHANNELS.setNotificationBadge, badge),
   getWindowFullscreen: () => ipcRenderer.invoke(DESKTOP_CHANNELS.getWindowFullscreen),
   pasteAsText: () => ipcRenderer.invoke(DESKTOP_CHANNELS.pasteAsText),
+  getQuitShortcut: () => ipcRenderer.invoke(DESKTOP_CHANNELS.quitShortcutGet),
+  setQuitShortcut: (mode) => ipcRenderer.invoke(DESKTOP_CHANNELS.quitShortcutSet, mode),
+  onQuitShortcut: (listener) => listen(DESKTOP_CHANNELS.quitShortcut, listener),
   onWindowFullscreen: (listener) => listen(DESKTOP_CHANNELS.windowFullscreen, listener),
 };
 

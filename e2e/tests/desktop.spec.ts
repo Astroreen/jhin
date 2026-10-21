@@ -269,6 +269,47 @@ test("Paste as Text in the Edit menu keeps a large paste inline (D946)", async (
     .attach("paste as text", { body: await window.screenshot(), contentType: "image/png" });
 });
 
+test("Ctrl+Q shows T3's hold hint, and the setting chooses the quit shortcut (D947)", async () => {
+  const { app, window } = await launch();
+  const press = (type: "keyDown" | "keyUp") =>
+    app.evaluate(({ BrowserWindow }, inputType) => {
+      BrowserWindow.getAllWindows()[0]!.webContents.sendInputEvent({
+        type: inputType,
+        keyCode: "Q",
+        modifiers: ["control"],
+      });
+    }, type);
+
+  // Hold (T3's default): a short press only shows the hint, and the app stays.
+  await press("keyDown");
+  const hint = window.getByRole("status").filter({ hasText: "Hold Ctrl+Q or press twice to quit" });
+  await expect(hint).toBeVisible();
+  const hintShot = test.info().outputPath("quit-hold-hint.png");
+  await window.screenshot({ path: hintShot });
+  await test.info().attach("quit hold hint", { path: hintShot, contentType: "image/png" });
+  await press("keyUp");
+  await expect(hint).toHaveCount(0);
+
+  // The row in General → Behavior, T3's wording.
+  await app.evaluate(({ Menu }) =>
+    Menu.getApplicationMenu()!.getMenuItemById("jhin.settings")!.click(),
+  );
+  const shortcut = window.getByRole("combobox", { name: "Quit shortcut behavior" });
+  await expect(shortcut).toHaveText("Hold");
+  await shortcut.click();
+  await window.getByRole("option", { name: "Double press" }).click();
+  await expect(shortcut).toHaveText("Double press");
+  const rowShot = test.info().outputPath("quit-shortcut-setting.png");
+  await window.screenshot({ path: rowShot });
+  await test.info().attach("quit shortcut setting", { path: rowShot, contentType: "image/png" });
+
+  await press("keyDown");
+  await expect(
+    window.getByRole("status").filter({ hasText: "Press Ctrl+Q again to quit" }),
+  ).toBeVisible();
+  await press("keyUp");
+});
+
 test("a thread that completes in the background badges the app until a window gains focus", async () => {
   const launchedApp = await launch();
   const { app, window } = launchedApp;

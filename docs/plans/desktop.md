@@ -288,9 +288,24 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   spends it too), instead of attaching it as
   `pasted-text.txt`.
 
+- **D947. ⌘/Ctrl+Q is T3's quit hold.** The main process runs T3's
+  `QuitHold` handler on the window's `before-input-event`
+  (`apps/desktop/src/quit-hold.ts`, with T3's tests): in Hold mode (T3's
+  default) the shortcut quits when held for 1.2 s, or on two presses within
+  0.5 s, and the window is hidden until the keys are released so their
+  repeats cannot reach the next app; Double press quits on the second press;
+  Direct quits at once. While the keys are down the page shows T3's hint
+  ("Hold Ctrl+Q or press twice to quit", "Press Ctrl+Q again to quit"),
+  contributed to `app.global` by `jhin.desktop`. The choice is kept in the
+  app's data folder with the update track; the bridge gets the optional
+  `getQuitShortcut`, `setQuitShortcut` and `onQuitShortcut`, and the client
+  command `desktop.quit-shortcut.set` sets it. T3's "Quit shortcut" row
+  (Direct, Hold, Double press) sits in General → Behavior through the new
+  slot `settings.general.behavior`, where other plugins add rows too.
+
 ## Deferred
 
-- The `desktop.update.*` commands over RPC, CLI and MCP: they are client
+- The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
   commands of the app's page (D520), as every client command is today, so
   only the palette, keybindings and client plugins reach them.
 - A machine-readable ready signal from `jhin serve` (the app reads the CLI's
@@ -336,7 +351,7 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   origin stable, so the choice must be kept).
 - Restarting a node that exits by itself with a backoff, as T3's backend
   manager does, instead of D512's dialog.
-- The quit-hold shortcut (T3's `QuitHold`), the trackpad
+- The trackpad
   scroll-end and window-fullscreen events beyond macOS's controls inset.
 - The browser preview and devices in the app (W12), WSL and SSH backends,
   screen captures, telemetry, the CLI shim, importing browser cookies,
