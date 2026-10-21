@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   evaluateWhen,
   formatShortcutLabel,
+  holdsShortcutModifiers,
   keybindingConflicts,
   keyFromEvent,
   matchesShortcut,
@@ -258,5 +259,41 @@ describe("keybindingConflicts (D441)", () => {
     ];
     expect(keybindingConflicts(rules, 0, LINUX)).toEqual([]);
     expect(keybindingConflicts(rules, 5, LINUX)).toEqual([]);
+  });
+});
+
+describe("holdsShortcutModifiers (D453)", () => {
+  const rules = [1, 2, 3].map((n) => ({ key: `mod+${n}`, command: `sidebar.thread.jump.${n}` }));
+  const jumps = new Set(rules.map((rule) => rule.command));
+  const held = (
+    modifiers: Partial<Record<"metaKey" | "ctrlKey" | "shiftKey" | "altKey", boolean>>,
+  ) => ({
+    metaKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    ...modifiers,
+  });
+
+  it("is true while exactly the jump shortcuts' modifiers are held", () => {
+    expect(holdsShortcutModifiers(held({ metaKey: true }), rules, jumps, MAC)).toBe(true);
+    expect(holdsShortcutModifiers(held({ ctrlKey: true }), rules, jumps, LINUX)).toBe(true);
+    // Another modifier with it, or the other platform's: no hints.
+    expect(holdsShortcutModifiers(held({ metaKey: true, shiftKey: true }), rules, jumps, MAC)).toBe(
+      false,
+    );
+    expect(holdsShortcutModifiers(held({ ctrlKey: true }), rules, jumps, MAC)).toBe(false);
+    expect(holdsShortcutModifiers(held({}), rules, jumps, MAC)).toBe(false);
+  });
+
+  it("follows the rules: other commands' shortcuts do not count", () => {
+    expect(
+      holdsShortcutModifiers(
+        held({ altKey: true }),
+        [{ key: "alt+1", command: "other" }],
+        jumps,
+        MAC,
+      ),
+    ).toBe(false);
   });
 });

@@ -527,3 +527,23 @@ test("D452: the Working section folds threads at work until they need you", asyn
   await expect(page.getByRole("button", { name: /^Working/ })).toHaveCount(0);
   await expect(cardTitles(page)).toHaveText(["/hold busy one", "quiet one"]);
 });
+
+test("D453: holding the jump modifier shows the rows' numbers", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["first", "second", "third"]) await addThread(x, title);
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["third", "second", "first"]);
+  const hints = page.locator("[data-jump-hint]");
+  await expect(hints).toHaveCount(0);
+
+  // Held (after T3's 200 ms), the rows show the shortcuts that open them.
+  await page.keyboard.down("Control");
+  await expect(hints).toHaveText(["Ctrl+1", "Ctrl+2", "Ctrl+3"]);
+  const shot = info.outputPath("jump-hints.png");
+  await page.screenshot({ path: shot });
+  await info.attach("jump-hints", { path: shot, contentType: "image/png" });
+  await page.keyboard.press("2");
+  await expect(threadRow(page, "second")).toHaveAttribute("aria-current", "page");
+  await page.keyboard.up("Control");
+  await expect(hints).toHaveCount(0);
+});
