@@ -1,7 +1,6 @@
 # Config UI plan
 
-Status: **implemented**; W16 (D475–D488, below) **in progress**, landing as
-a stack of PRs. This file records how the settings page edits a
+Status: **implemented**, W16 (D475–D488, below) included. This file records how the settings page edits a
 node's config: a form generated from each section's schema instead of
 hand-edited JSON. It supersedes the JSON editor part of D66
 (`t3-parity.md`); the section picker, the node picker and the mesh scope
@@ -246,26 +245,34 @@ rules of the form below), the decision says so.
 - **D486. Drafts follow the thread to every device.** T3 keeps drafts per
   device; here a draft's text is also kept on the node of its thread (or of
   its project, for a new thread): `threads.draft.get` and
-  `threads.draft.set` (`{ key, prompt, at }`, an empty prompt removes it)
-  keep it in `storage.kv`, the later `at` winning, and the live stream
+  `threads.draft.set` (`{ key, prompt, at }`, key `thread:<id>` or
+  `project:<id>`; an empty prompt is kept as cleared, so an older text
+  cannot come back) keep it in `storage.kv`, the later `at` winning, and the live stream
   `threads/drafts` tells a node's clients of a change. A composer takes the
   node's draft when it is later than its own and the composer is not
-  focused, so typing is never overwritten under the cursor. Pasted images
+  focused, so typing is never overwritten under the cursor; it reads the
+  node's draft when it opens, and a draft of a mesh member's thread is read
+  only then (its stream does not cross the mesh). Pasted images
   stay on the device that has them (they travel as data URLs, D54).
 - **D487. Device settings follow the owner to every device.** The device
   layer (`client.settings@1`) is also kept by every node the device is
   connected to: `host.device-settings.get` and `host.device-settings.patch`
-  (`{ section, values, at }`, keys set to `null` removed) write
+  (`{ section, values, at }`, the whole section as the device has it) write
   `device-settings.json` in the node's home, per section, the later `at`
   winning; the live stream `host/device-settings` tells its clients. A
   device sends each change to its open connections and, when a connection
-  opens, takes every section that node holds later than its own. Devices
+  opens, takes every section that node holds later than its own and sends
+  the ones it holds later (`client.settings@1.1` adds `sections`,
+  `changedAt`, `apply` and `onDidChange`; the builtin `jhin.device-sync`
+  does the rest). Devices
   that share a node agree. What is not a device setting stays per device:
   the sidebar's width, the shelf and filter state, saved connections.
-- **D488. Syncing can be turned off per device.** General settings get
+- **D488. Syncing is turned on per device.** General settings get
   "Sync settings across devices" and "Sync drafts across devices" (section
-  `jhin.sync`, both on by default). That section is never synced itself;
-  with a switch off, the device neither sends nor takes that kind of state.
+  `jhin.sync`), both off by default: T3 keeps client settings and drafts per
+  device, so a device shares them only once its owner asks. That section is
+  never synced itself; with a switch off, the device neither sends nor takes
+  that kind of state.
   Visits are thread state on the node (D485) and always shared, as in T3.
 
 ## How to write a config schema (for plugin authors)
@@ -352,6 +359,19 @@ context.config.define("acme.http", Config);
 - First-party contributed controls: the slot exists (D482), but no
   first-party section asks for a control yet; T3's color and font pickers
   come with the workstreams that port their settings.
+- Drafts and device settings through mesh members: a device shares them
+  with the nodes it is connected to (D486, D487); two devices that share no
+  node do not agree, and a member's `threads/drafts` is not followed.
+- Sending a draft again after its node could not take it (D486): the text
+  goes to the node when it is typed; if the call fails, the node has it
+  only after the next edit of that draft.
+- Pruning kept drafts (D486): a node keeps a draft per thread and project
+  until it is cleared, also after its thread is deleted.
+- Clock skew between devices: a draft's and a device setting's `at` is
+  the typing device's clock (D486, D487), so a device whose clock is
+  behind loses a change it made after another device's.
+- Pasted images of a draft on other devices (D486): attachments stay on
+  the device they were pasted on.
 - Following a mesh member's `host/config`: a client hears of config
   changes of its connections only (D484); a member's change shows after its
   next read. W17's relayed live streams could carry it.
@@ -428,3 +448,13 @@ A stack of PRs, each on the previous one. Public API, all additive:
    `@jhin/client-api`. The proof: `plugins/threads/test/arrangement.test.ts`
    ("visits shared by every device"), `apps/web/test/thread-status.test.ts`
    ("visits shared through the thread's node").
+5. Drafts and device settings across devices (D486–D488):
+   `threads.draft.get`, `threads.draft.set` and the stream `threads/drafts`;
+   `host.device-settings.get`, `host.device-settings.patch` and the stream
+   `host/device-settings` (permission `host.device-settings`);
+   `client.settings@1.1`; the section `jhin.sync`. The proof:
+   `plugins/threads/test/arrangement.test.ts` ("drafts kept for every
+   device"), `apps/jhin/test/config-push.test.ts` ("device settings kept for
+   the owner's devices"), `apps/web/test/composer.test.ts` ("drafts shared
+   through their thread's node"), `apps/web/test/device-sync.test.ts` and
+   Playwright `e2e/tests/device-sync.spec.ts`.

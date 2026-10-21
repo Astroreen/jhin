@@ -534,3 +534,38 @@ describe("jhin.threads: visits shared by every device (D485)", () => {
     expect(Date.parse(unread.lastVisitedAt!)).toBe(Date.parse(done.lastTurn!.at) - 1);
   });
 });
+
+describe("jhin.threads: drafts kept for every device (D486)", () => {
+  it("keeps the later text of a draft and tells the node's clients", async () => {
+    const { client } = await node({ liveStreams: true });
+    const changes = watch(client, "stream:threads/drafts");
+    expect(await client.call("threads.draft.get", { key: "thread:t1" })).toBeNull();
+    expect(
+      await client.call("threads.draft.set", { key: "thread:t1", prompt: "hello", at: 10 }),
+    ).toEqual({ applied: true });
+    const event = await changes.untilMatch((item) => item.type === "threads.draft.changed");
+    expect(event.payload).toEqual({ key: "thread:t1", prompt: "hello", at: 10 });
+    // Older than what is kept: ignored.
+    expect(
+      await client.call("threads.draft.set", { key: "thread:t1", prompt: "stale", at: 5 }),
+    ).toEqual({ applied: false });
+    // Cleared: kept as empty, so an older text cannot come back.
+    await client.call("threads.draft.set", { key: "thread:t1", prompt: "", at: 20 });
+    expect(await client.call("threads.draft.get", { key: "thread:t1" })).toEqual({
+      prompt: "",
+      at: 20,
+    });
+    // Sent together, older last: the later one still wins.
+    await Promise.all([
+      client.call("threads.draft.set", { key: "thread:t2", prompt: "newer", at: 40 }),
+      client.call("threads.draft.set", { key: "thread:t2", prompt: "older", at: 30 }),
+    ]);
+    expect(await client.call("threads.draft.get", { key: "thread:t2" })).toEqual({
+      prompt: "newer",
+      at: 40,
+    });
+    await expect(client.call("threads.draft.get", { key: "nonsense" })).rejects.toMatchObject({
+      code: "COMMAND_INPUT_INVALID",
+    });
+  });
+});

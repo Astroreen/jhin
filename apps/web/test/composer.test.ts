@@ -4,6 +4,9 @@ import {
   buildPromptHistory,
   createDrafts,
   fitAttachments,
+  newThreadDraftKey,
+  nodeDraftKey,
+  threadDraftKey,
   stepPromptHistory,
   type PromptHistoryPosition,
 } from "../src/lib/composer.ts";
@@ -147,5 +150,50 @@ describe("attachments of one message", () => {
 
     const full = fitAttachments(result.kept, [file("e", 1)], limit);
     expect(full.dropped.map((item) => item.name)).toEqual(["e"]);
+  });
+});
+
+describe("drafts shared through their thread's node (D486)", () => {
+  it("sends text typed here once saved, and not a text taken from another device", () => {
+    const sent: unknown[] = [];
+    const drafts = createDrafts(memoryStorage(), {
+      send: (key, prompt, at) => sent.push({ key, prompt, at: typeof at }),
+    });
+    drafts.set("k", { prompt: "hello", attachments: [] });
+    // The same text again (a composer mounting): nothing new to share.
+    drafts.set("k", { prompt: "hello", attachments: [] });
+    drafts.flush();
+    expect(sent).toEqual([{ key: "k", prompt: "hello", at: "number" }]);
+
+    const seen: string[] = [];
+    drafts.follow("k", (draft) => seen.push(draft.prompt));
+    const later = (drafts.get("k")?.at ?? 0) + 1;
+    expect(drafts.take("k", "from the phone", later)).toBe(true);
+    // Older than what is here: ignored.
+    expect(drafts.take("k", "stale", 1)).toBe(false);
+    drafts.flush();
+    expect(seen).toEqual(["from the phone"]);
+    expect(drafts.get("k")).toMatchObject({ prompt: "from the phone", at: later });
+    expect(sent).toHaveLength(1);
+
+    // Cleared here: the empty text is shared too, so the old one does not come back.
+    drafts.set("k", { prompt: "", attachments: [] });
+    drafts.flush();
+    expect(sent.at(-1)).toEqual({ key: "k", prompt: "", at: "number" });
+    // The echo of the text typed before it does not bring it back.
+    expect(drafts.take("k", "from the phone", later)).toBe(false);
+    expect(drafts.get("k")).toBeUndefined();
+  });
+
+  it("maps a draft key to its node and the node's key", () => {
+    expect(nodeDraftKey(threadDraftKey({ node: "ws://a" }, "t1"))).toEqual({
+      target: { node: "ws://a" },
+      key: "thread:t1",
+    });
+    expect(nodeDraftKey(newThreadDraftKey({ node: "ws://a", remote: "n2" }, "p1"))).toEqual({
+      target: { node: "ws://a", remote: "n2" },
+      key: "project:p1",
+    });
+    expect(nodeDraftKey("nonsense")).toBeUndefined();
   });
 });

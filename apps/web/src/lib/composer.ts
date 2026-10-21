@@ -71,6 +71,14 @@ export type DraftAttachment = StoredAttachment & { readonly previewUrl?: string 
 export interface ComposerDraft {
   readonly prompt: string;
   readonly attachments: readonly DraftAttachment[];
+  /** When the text was last typed (ms), here or on another device (D486). */
+  readonly at?: number;
+}
+
+/** Where drafts are shared with the owner's other devices (D486): their thread's node. */
+export interface DraftsRemote {
+  /** Keeps the text of the draft at `key` as of `at`; an empty text clears it. */
+  send(key: string, prompt: string, at: number): void;
 }
 
 const DRAFTS_STORAGE_KEY = "jhin.drafts.v1";
@@ -82,7 +90,7 @@ const MAX_STORED_BYTES = 2_000_000;
  * device. Several tabs share them: a save merges this tab's changes into what
  * is stored, and a change saved by another tab is taken in.
  */
-export function createDrafts(storage: Storage = localStorage) {
+export function createDrafts(storage: Storage = localStorage, remote?: DraftsRemote) {
   const read = (): Record<string, ComposerDraft> => {
     try {
       const value: unknown = JSON.parse(storage.getItem(DRAFTS_STORAGE_KEY) ?? "{}");
@@ -96,6 +104,15 @@ export function createDrafts(storage: Storage = localStorage) {
   let drafts = read();
   /** Keys changed here since the last save: they win over what another tab stored. */
   const changed = new Set<string>();
+  /** Texts typed here since the last save, with when: what goes to the node (D486). */
+  const typed = new Map<string, { prompt: string; at: number }>();
+  /**
+   * When each draft forgotten here was cleared: an older text from the node
+   * (the echo of what was typed before) must not bring it back (D486).
+   */
+  const cleared = new Map<string, number>();
+  /** Composers following a key, told when another device's text is taken. */
+  const followers = new Map<string, Set<(draft: ComposerDraft) => void>>();
   const mine = () =>
     Object.fromEntries([...changed].flatMap((key) => (drafts[key] ? [[key, drafts[key]]] : [])));
   const merged = () => {
@@ -107,6 +124,8 @@ export function createDrafts(storage: Storage = localStorage) {
   const flush = () => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
+    for (const [key, text] of typed) remote?.send(key, text.prompt, text.at);
+    typed.clear();
     if (changed.size === 0) return;
     drafts = merged();
     changed.clear();
@@ -136,13 +155,52 @@ export function createDrafts(storage: Storage = localStorage) {
     set(key: string, draft: ComposerDraft) {
       const empty = draft.prompt === "" && draft.attachments.length === 0;
       if (empty && drafts[key] === undefined) return;
+      // Typed now when the text changed; images alone are not shared.
+      const before = drafts[key];
+      const textChanged = (before?.prompt ?? "") !== draft.prompt;
+      const at = textChanged ? Date.now() : before?.at;
+      if (textChanged) typed.set(key, { prompt: draft.prompt, at: at! });
       const next = { ...drafts };
-      if (empty) delete next[key];
-      else next[key] = draft;
+      if (empty) {
+        delete next[key];
+        if (at !== undefined) cleared.set(key, at);
+      } else next[key] = at === undefined ? draft : { ...draft, at };
       drafts = next;
       changed.add(key);
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(flush, 300);
+    },
+    /**
+     * Takes another device's text for `key` when it is later than this one's
+     * (D486), keeping this device's attachments; the composers following the
+     * key are told. Returns whether it was taken.
+     */
+    take(key: string, prompt: string, at: number): boolean {
+      const before = drafts[key];
+      const latest = Math.max(before?.at ?? -1, cleared.get(key) ?? -1);
+      if (at <= latest || (before?.prompt ?? "") === prompt) return false;
+      const draft: ComposerDraft = { prompt, attachments: before?.attachments ?? [], at };
+      const next = { ...drafts };
+      if (prompt === "" && draft.attachments.length === 0) {
+        delete next[key];
+        cleared.set(key, at);
+      } else next[key] = draft;
+      drafts = next;
+      changed.add(key);
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(flush, 300);
+      for (const follower of Array.from(followers.get(key) ?? [])) follower(draft);
+      return true;
+    },
+    /** Follows `key` for texts taken from other devices. */
+    follow(key: string, listener: (draft: ComposerDraft) => void): () => void {
+      let set = followers.get(key);
+      if (set === undefined) followers.set(key, (set = new Set()));
+      set.add(listener);
+      return () => {
+        set.delete(listener);
+        if (set.size === 0) followers.delete(key);
+      };
     },
     /** Saves what changed now instead of shortly after. */
     flush,
@@ -158,6 +216,21 @@ export function createDrafts(storage: Storage = localStorage) {
 }
 
 export type Drafts = ReturnType<typeof createDrafts>;
+
+/**
+ * The node and the node's key of a draft key (D486): `thread:<id>` or
+ * `project:<id>`, on the connection (and mesh member) the key names.
+ */
+export function nodeDraftKey(key: string): { target: NodeTarget; key: string } | undefined {
+  const parts = key.split("|");
+  const [node, remote, kind, id] =
+    parts.length === 4 ? parts : [parts[0], undefined, parts[1], parts[2]];
+  if (node === undefined || id === undefined || (kind !== "thread" && kind !== "draft")) return;
+  return {
+    target: remote === undefined ? { node } : { node, remote },
+    key: `${kind === "thread" ? "thread" : "project"}:${id}`,
+  };
+}
 
 /** Where a thread's composer keeps its draft. */
 export const threadDraftKey = (target: NodeTarget, threadId: string) =>

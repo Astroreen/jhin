@@ -101,6 +101,10 @@ const HOST_STREAMS_LOCATION = "host://jhin.host-streams";
 const HOST_CONFIG_CHANGED = "host.config.changed";
 /** The live stream clients follow for config changes (D483). */
 const HOST_CONFIG_STREAM = "host/config";
+/** Emitted when a device changed a section of the shared device settings (D487). */
+const DEVICE_SETTINGS_CHANGED = "host.device-settings.changed";
+/** The live stream clients follow for shared device settings (D487). */
+const DEVICE_SETTINGS_STREAM = "host/device-settings";
 
 /**
  * `jhin.host-streams`: the host's live streams (D483). A plugin of its own,
@@ -119,11 +123,19 @@ const hostStreamsPlugin = definePlugin({
       live.serve(HOST_CONFIG_STREAM, streams, { permissions: ["host.config.read"] }),
     );
     context.subscriptions.add(
-      context.events.on(HOST_CONFIG_CHANGED, (payload) => {
-        streams.append(HOST_CONFIG_STREAM, HOST_CONFIG_CHANGED, payload as Json);
-        streams.clear(HOST_CONFIG_STREAM);
-      }),
+      live.serve(DEVICE_SETTINGS_STREAM, streams, { permissions: ["host.device-settings"] }),
     );
+    for (const [type, stream] of [
+      [HOST_CONFIG_CHANGED, HOST_CONFIG_STREAM],
+      [DEVICE_SETTINGS_CHANGED, DEVICE_SETTINGS_STREAM],
+    ] as const) {
+      context.subscriptions.add(
+        context.events.on(type, (payload) => {
+          streams.append(stream, type, payload as Json);
+          streams.clear(stream);
+        }),
+      );
+    }
   },
 });
 const RECENT_EVENTS = 100;
@@ -494,6 +506,70 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
               comments,
             };
           }
+        },
+      });
+      const DeviceSection = z.object({
+        values: z.record(z.string(), z.unknown()),
+        /** When a device last changed it (ms on that device); the later change wins. */
+        at: z.number().int().nonnegative(),
+      });
+      const deviceSettingsFile = Path.join(home.root, "device-settings.json");
+      /** What the file keeps; `undefined` when it is there but unreadable, so nothing overwrites it. */
+      const readDeviceSettings = (): Record<string, z.output<typeof DeviceSection>> | undefined => {
+        if (!Fs.existsSync(deviceSettingsFile)) return {};
+        try {
+          const parsed = z
+            .record(z.string(), DeviceSection)
+            .safeParse(JSON.parse(Fs.readFileSync(deviceSettingsFile, "utf8")));
+          return parsed.success ? parsed.data : undefined;
+        } catch {
+          return undefined;
+        }
+      };
+      context.commands.register({
+        name: "host.device-settings.get",
+        description:
+          "The device settings this node keeps for its owner's devices, by section, each with when it last changed (D487)",
+        input: z.object({}),
+        output: z.object({ sections: z.record(z.string(), DeviceSection) }),
+        permissions: ["host.device-settings"],
+        handler: () => ({ sections: readDeviceSettings() ?? {} }),
+      });
+      context.commands.register({
+        name: "host.device-settings.patch",
+        description:
+          "Keeps a device's settings of one section for the owner's other devices; an older change than the kept one is ignored (D487)",
+        input: z.object({ section: z.string().regex(DOTTED_ID) }).extend(DeviceSection.shape),
+        output: z.object({ applied: z.boolean() }),
+        permissions: ["host.device-settings"],
+        handler: ({ section, values, at }) => {
+          // Settings, not storage: a section is small, and so is the file.
+          if (JSON.stringify(values).length > 64 * 1024) {
+            throw Object.assign(new Error("A device settings section is limited to 64 kB"), {
+              code: "DEVICE_SETTINGS_TOO_LARGE",
+            });
+          }
+          const kept = readDeviceSettings();
+          if (kept === undefined) {
+            // A damaged file is the owner's to look at: overwriting it would drop every section.
+            throw Object.assign(
+              new Error(`${deviceSettingsFile} cannot be read; fix or remove it`),
+              {
+                code: "DEVICE_SETTINGS_UNREADABLE",
+              },
+            );
+          }
+          if (kept[section] === undefined && Object.keys(kept).length >= 200) {
+            throw Object.assign(new Error("A node keeps at most 200 device settings sections"), {
+              code: "DEVICE_SETTINGS_TOO_LARGE",
+            });
+          }
+          const current = kept[section];
+          if (current !== undefined && current.at >= at) return { applied: false };
+          kept[section] = { values, at };
+          writeAtomically(deviceSettingsFile, `${JSON.stringify(kept, null, 2)}\n`);
+          context.events.emit(DEVICE_SETTINGS_CHANGED, { section, values, at });
+          return { applied: true };
         },
       });
       context.commands.register({

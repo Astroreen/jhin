@@ -54,6 +54,7 @@ import {
   type StoredEvent,
 } from "@jhin/storage-api";
 
+import { registerDrafts } from "./drafts.ts";
 import { matchTexts, mergeBackMessage, searchTexts, type SearchText } from "./history.ts";
 import { AttachmentRef, MAX_ATTACHMENTS, createAttachments } from "./attachments.ts";
 import { createProjectEntries } from "./project-entries.ts";
@@ -656,6 +657,7 @@ export default definePlugin({
       context.subscriptions.add(live.guard(THREADS_STREAM, ["threads.read"]));
       context.subscriptions.add(live.guard("thread/", ["threads.read"]));
     }
+    registerDrafts(context, kv, live);
     const active = new Map<string, Running>();
     /** Rollbacks under way (D220): they hold their thread as a turn does. */
     const rollingBack = new Map<string, Promise<void>>();
