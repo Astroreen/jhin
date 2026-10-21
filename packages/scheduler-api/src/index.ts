@@ -135,7 +135,6 @@ export const WebhookEndpoint = z.object({
 });
 export type WebhookEndpoint = z.output<typeof WebhookEndpoint>;
 
-/** Agent settings of the threads an unbound task creates. */
 /**
  * Where a run's new thread works (T3's launch workspace strategies,
  * orchestration.md D983): the project checkout, a new worktree, or a given
@@ -157,6 +156,7 @@ export const WorkspaceStrategy = z.discriminatedUnion("type", [
 ]);
 export type WorkspaceStrategy = z.output<typeof WorkspaceStrategy>;
 
+/** Agent settings of the threads an unbound task creates. */
 const AgentSettings = {
   agentId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
@@ -231,6 +231,9 @@ export const UpdateTaskInput = z.object({
   enabled: z.boolean().optional().describe("false pauses the task without deleting it."),
   threadId: z.string().min(1).nullable().optional(),
   ...AgentSettings,
+  /** null clears it: the task's runs take the node's default agent and model again (D984). */
+  agentId: z.string().min(1).nullable().optional(),
+  model: z.string().min(1).nullable().optional(),
 });
 export type UpdateTaskInput = z.output<typeof UpdateTaskInput>;
 

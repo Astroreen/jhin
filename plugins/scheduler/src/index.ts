@@ -745,12 +745,21 @@ function activateScheduler(context: PluginContext): void {
                 : { webhookSecret: existing.webhookSecret }),
             }
           : webhookCredentials(scheduleInput!, existing);
+      // null clears the agent (and its model) or the model alone (D984).
+      const kept: Partial<typeof rest> = { ...rest };
+      if (input.agentId === null) {
+        delete kept.agentId;
+        delete kept.model;
+      }
+      if (input.model === null) delete kept.model;
       return {
-        ...rest,
+        ...(kept as typeof rest),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
-        ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
-        ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.agentId === undefined || input.agentId === null
+          ? {}
+          : { agentId: input.agentId }),
+        ...(input.model === undefined || input.model === null ? {} : { model: input.model }),
         ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
         ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
         ...(input.workspaceStrategy === undefined

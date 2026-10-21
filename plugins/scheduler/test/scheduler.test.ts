@@ -423,5 +423,20 @@ describe("jhin.scheduler: a run's workspace (D983)", () => {
       workspaceStrategy: { type: "root" },
     });
     expect(updated.workspaceStrategy).toEqual({ type: "root" });
+
+    // A model is chosen, then cleared back to the node's default (D984).
+    const chosen = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      agentId: "jhin.agent-fake",
+      model: "plain",
+    });
+    expect(chosen).toMatchObject({ agentId: "jhin.agent-fake", model: "plain" });
+    const cleared = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      agentId: null,
+      model: null,
+    });
+    expect(cleared.agentId).toBeUndefined();
+    expect(cleared.model).toBeUndefined();
   });
 });

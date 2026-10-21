@@ -743,7 +743,12 @@ function EditorForm(props: {
           projectId: selectedProjectId,
         });
       } else {
-        await call(connection, "scheduler.tasks.update", { id: draft.editingId, ...common });
+        await call(connection, "scheduler.tasks.update", {
+          id: draft.editingId,
+          ...common,
+          // "The node's default" clears a model chosen before (D984).
+          ...(draft.modelKey === "" ? { agentId: null, model: null } : {}),
+        });
       }
     } catch (error) {
       setSaving(false);
