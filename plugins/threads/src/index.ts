@@ -3622,8 +3622,8 @@ export default definePlugin({
       );
       const kept = (cached?.texts ?? []).filter((text) => !dropped.has(text.turnId));
       const texts = [...kept, ...searchTexts(visibleThreadEvents(added))];
-      // Deleted or archived while it was read: nothing is kept for it.
-      if (read.dropped) return texts;
+      // Deleted or archived while it was read: it matches nothing, and nothing is kept.
+      if (read.dropped) return [];
       const readTo = added.at(-1)?.sequence ?? head;
       // A read that started earlier and ends later keeps the newer entry it finds.
       const newer = searchCache.get(threadId);

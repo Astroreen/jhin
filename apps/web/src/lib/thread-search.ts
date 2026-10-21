@@ -30,6 +30,8 @@ export interface ContentSearchState {
 
 /** T3 searches messages from two characters on. */
 const MIN_CONTENT_QUERY = 2;
+/** How a node older than `threads.search` (or a relay in front of it) says it has no such command. */
+const UNKNOWN_COMMAND = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "UNKNOWN_COMMAND"]);
 /** What `threads.search` takes at most (D227). */
 const MAX_CONTENT_QUERY = 200;
 
@@ -86,7 +88,7 @@ export function createContentSearch(
             result.matches.map((match) => ({ ...match, target })),
           // A node without the command finds nothing; any other failure is told apart.
           (error: unknown): ContentMatch[] | "failed" =>
-            (error as { code?: unknown } | null)?.code === "COMMAND_NOT_FOUND" ? [] : "failed",
+            UNKNOWN_COMMAND.has(String((error as { code?: unknown } | null)?.code)) ? [] : "failed",
         );
       void Promise.race([answer, late])
         .finally(() => {
