@@ -4,6 +4,8 @@ import {
   AUTH_VERIFIER_CAPABILITY,
   AuthEvents,
   OWNER_PRINCIPAL_ID,
+  readCookie,
+  sessionCookieName,
   type AuthVerifier,
 } from "@jhin/auth-api";
 import { HOST_TRACE_CAPABILITY, type HostTrace } from "@jhin/host-api";
@@ -87,12 +89,14 @@ export function originAllowed(
   origin: string | undefined,
   requestedHost: string | undefined,
   allowed: readonly string[],
+  /** Authenticated by the session cookie, which a browser sends from any page: never "any". */
+  byCookie = false,
 ): boolean {
   if (origin === undefined) return true;
   const parsed = URL.canParse(origin) ? new URL(origin) : undefined;
   if (parsed === undefined) return false;
   if (requestedHost !== undefined && sameHost(parsed, requestedHost)) return true;
-  if (allowed.length === 0) return true;
+  if (allowed.length === 0) return !byCookie;
   return allowed.some((entry) => URL.canParse(entry) && new URL(entry).origin === parsed.origin);
 }
 
@@ -109,6 +113,7 @@ export default definePlugin({
   activate(context) {
     context.config.define(CONFIG_SECTION, TransportConfig);
     const http = context.services.get<HttpServer>(HTTP_SERVER_CAPABILITY);
+    const sessionCookie = sessionCookieName(new URL(http.url).port);
     const verifier = context.services.get<AuthVerifier>(AUTH_VERIFIER_CAPABILITY);
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
     const trace = context.services.tryGet<HostTrace>(HOST_TRACE_CAPABILITY);
@@ -189,16 +194,20 @@ export default definePlugin({
         const { allowedOrigins } =
           context.config.get<z.output<typeof TransportConfig>>(CONFIG_SECTION);
         const origin = request.headers.origin;
-        if (!originAllowed(origin, http.requestedHost(request), allowedOrigins)) {
+        // A token in the subprotocol first; else the page's own session cookie (security.md D421).
+        const offered = tokenFrom(request.headers["sec-websocket-protocol"]);
+        const token = offered ?? readCookie(request.headers.cookie, sessionCookie);
+        const byCookie = offered === undefined && token !== undefined;
+        if (!originAllowed(origin, http.requestedHost(request), allowedOrigins, byCookie)) {
           // The header is the client's: logged short, never whole.
           // A hostile page may retry in a loop: kept out of the warnings.
           context.log.debug("connection refused: origin not allowed", {
             origin: origin === undefined ? undefined : origin.slice(0, 200),
+            byCookie,
           });
           socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
           return;
         }
-        const token = tokenFrom(request.headers["sec-websocket-protocol"]);
         server.handleUpgrade(request, socket, head, (ws) => {
           void accept(ws, token).catch((error: unknown) => {
             context.log.error("connection setup failed", { error: String(error) });

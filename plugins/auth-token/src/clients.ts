@@ -19,6 +19,8 @@ export const ClientRecord = z.object({
   lastSeenAt: z.number().optional(),
   /** SHA-256 of the secret, base64url; the secret itself is never kept. */
   secretHash: z.string(),
+  /** The principal whose token opened it (a page session, D421): revoked with that one. */
+  parent: z.string().optional(),
 });
 export type ClientRecord = z.infer<typeof ClientRecord>;
 
@@ -42,6 +44,7 @@ export interface ClientStore {
     permissions: readonly string[];
     method: ClientRecord["method"];
     expiresAt?: number;
+    parent?: string;
     now: number;
   }): { record: ClientRecord; token: string };
   /** The record a token belongs to, if the token is one of ours and still valid at `now`. */
@@ -92,7 +95,7 @@ export function createClientStore(
   return {
     list: () => records,
     get: (id) => records.find((record) => record.id === id),
-    issue({ label, permissions, method, expiresAt, now }) {
+    issue({ label, permissions, method, expiresAt, now, parent }) {
       const id = Crypto.randomBytes(9).toString("base64url");
       const secret = Crypto.randomBytes(32).toString("base64url");
       const record: ClientRecord = {
@@ -102,6 +105,7 @@ export function createClientStore(
         method,
         createdAt: now,
         ...(expiresAt === undefined ? {} : { expiresAt }),
+        ...(parent === undefined ? {} : { parent }),
         secretHash: hash(secret),
       };
       // Expired tokens go with the next write; nothing can use them any more.

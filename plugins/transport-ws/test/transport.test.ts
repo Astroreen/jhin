@@ -350,6 +350,8 @@ describe("device tokens (security.md D411–D414)", () => {
     expect(permissions.find((entry) => entry.permission === "auth.write")?.commands).toEqual([
       "auth.clients.revoke",
       "auth.clients.revoke-others",
+      "auth.pairing.create",
+      "auth.pairing.revoke",
       "auth.tokens.issue",
     ]);
   });
@@ -481,5 +483,292 @@ describe("Origin allowlist (security.md D418)", () => {
     expect(originAllowed("not an origin", "node:7777", [])).toBe(false);
     // `null` (a sandboxed frame, a file: page) is refused even while nothing is listed.
     expect(originAllowed("null", "node:7777", [])).toBe(false);
+  });
+});
+
+describe("pairing (security.md D419–D422)", () => {
+  const httpUrl = (node: Node) => node.url.replace(/^ws/, "http").replace(/\/rpc$/, "");
+  const createCode = (node: Node, input: Record<string, unknown> = {}) =>
+    node.kernel.commands.execute("auth.pairing.create", input) as Promise<{
+      id: string;
+      code: string;
+      url: string;
+      expiresAt: number;
+    }>;
+  const post = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
+  it("exchanges a one-time code for a scoped device token over HTTP", async () => {
+    const node = await startNode();
+    const { code, url } = await createCode(node, {
+      label: "Living room iPad",
+      permissions: ["app.*"],
+    });
+    expect(url).toBe(`${httpUrl(node)}/pair#token=${code}`);
+
+    const paired = await post(
+      `${httpUrl(node)}/auth/pair`,
+      { code, label: "ignored" },
+      {
+        origin: "https://client.example",
+      },
+    );
+    expect(paired.status).toBe(200);
+    expect(paired.headers.get("cache-control")).toBe("no-store");
+    expect(paired.headers.get("access-control-allow-origin")).toBe("*");
+    const issued = (await paired.json()) as { id: string; token: string; permissions: string[] };
+    expect(issued.permissions).toEqual(["app.*"]);
+
+    const device = connect(node.url, issued.token);
+    expect(await device.call("app.write", { text: "paired" })).toEqual({ text: "paired" });
+    const { clients: listed } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+      clients: { id: string; label: string; method: string }[];
+    };
+    // The code's label wins over the device's, as in T3.
+    expect(listed).toContainEqual(
+      expect.objectContaining({ id: issued.id, label: "Living room iPad", method: "pairing" }),
+    );
+
+    const again = await post(`${httpUrl(node)}/auth/pair`, { code });
+    expect(again.status).toBe(401);
+    expect(await again.json()).toMatchObject({ code: "PAIRING_CODE_INVALID" });
+  });
+
+  it("gives a pairing code no more than its creator holds", async () => {
+    const node = await startNode();
+    await expect(
+      node.kernel.commands.execute(
+        "auth.pairing.create",
+        { permissions: ["*"] },
+        { caller: { id: "someone", permissions: ["auth.write", "app.read"] } },
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_NOT_HELD" });
+    // Without permissions named: the creator's own grants.
+    const { code } = (await node.kernel.commands.execute(
+      "auth.pairing.create",
+      {},
+      { caller: { id: "someone", permissions: ["auth.write", "app.read"] } },
+    )) as { code: string };
+    const issued = (await (await post(`${httpUrl(node)}/auth/pair`, { code })).json()) as {
+      permissions: string[];
+    };
+    expect(issued.permissions).toEqual(["auth.write", "app.read"]);
+  });
+
+  it("opens the page's own session as an httpOnly cookie the page never reads", async () => {
+    const node = await startNode({ allowedOrigins: [] });
+    const own = httpUrl(node);
+    const { code } = await createCode(node);
+
+    const foreign = await post(
+      `${own}/auth/session`,
+      { credential: code },
+      {
+        origin: "https://evil.example",
+      },
+    );
+    expect(foreign.status).toBe(403);
+
+    const opened = await post(`${own}/auth/session`, { credential: code }, { origin: own });
+    expect(opened.status).toBe(200);
+    const body = (await opened.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ authenticated: true });
+    expect(body).not.toHaveProperty("token");
+    const setCookie = opened.headers.get("set-cookie")!;
+    expect(setCookie).toMatch(/^jhin_session_\d+=jhd1\./);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+    const cookie = setCookie.split(";")[0]!;
+
+    expect(
+      await (await fetch(`${own}/auth/session`, { headers: { cookie } })).json(),
+    ).toMatchObject({ authenticated: true, permissions: ["*"] });
+
+    // The cookie authenticates a socket from the node's own page, never from another one,
+    // even while no origin is listed.
+    const open = (origin: string) =>
+      new Promise<number | "open">((resolve, reject) => {
+        const socket = new WebSocket(node.url, ["jhin.v1"], { origin, headers: { cookie } });
+        socket.once("message", () => {
+          socket.close();
+          resolve("open");
+        });
+        socket.once("unexpected-response", (_request, response) =>
+          resolve(response.statusCode ?? 0),
+        );
+        socket.once("close", (status) => resolve(status));
+        socket.once("error", reject);
+      });
+    expect(await open(own)).toBe("open");
+    expect(await open("https://elsewhere.example")).toBe(403);
+
+    // Signing out revokes the token behind the cookie.
+    const signedOut = await fetch(`${own}/auth/session`, {
+      method: "DELETE",
+      headers: { cookie, origin: own },
+    });
+    expect(signedOut.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect((await fetch(`${own}/auth/session`, { headers: { cookie } })).status).toBe(401);
+  });
+
+  it("answers the preflight, refuses a malformed body and limits attempts per route", async () => {
+    const node = await startNode();
+    const preflight = await fetch(`${httpUrl(node)}/auth/pair`, { method: "OPTIONS" });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect((await post(`${httpUrl(node)}/auth/pair`, { nope: 1 })).status).toBe(400);
+    const huge = await post(`${httpUrl(node)}/auth/pair`, { code: "x".repeat(20_000) });
+    expect(huge.status).toBe(413);
+
+    // A foreign page refused at /auth/session spends no attempts.
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const refused = await post(
+        `${httpUrl(node)}/auth/session`,
+        { credential: "x" },
+        {
+          origin: "https://evil.example",
+        },
+      );
+      expect(refused.status).toBe(403);
+    }
+    // Only failures count, per route. The limit is per clock minute, so these
+    // tests rely on a margin: 41 wrong codes cross 20 a minute even when they
+    // straddle a minute boundary (as /mesh/join's test does).
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 41; attempt++) {
+      statuses.push((await post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" })).status);
+    }
+    expect(statuses).toContain(429);
+    expect(statuses.every((status) => status === 401 || status === 429)).toBe(true);
+    // The session bucket is untouched.
+    expect((await post(`${httpUrl(node)}/auth/session`, { credential: "x" })).status).toBe(401);
+  });
+
+  it("never lets a session outlive the token it was opened with", async () => {
+    const node = await startNode();
+    const short = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "short",
+      permissions: ["app.*"],
+      ttlDays: 1,
+    })) as { token: string; expiresAt: number };
+    const opened = (await (
+      await post(`${httpUrl(node)}/auth/session`, { credential: short.token })
+    ).json()) as { expiresAt: number; id: string };
+    expect(opened.expiresAt).toBeLessThanOrEqual(short.expiresAt);
+    const listed = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+      clients: { id: string; method: string }[];
+    };
+    expect(listed.clients.find((client) => client.id === opened.id)?.method).toBe("issued");
+  });
+
+  it("counts parallel attempts as they come in, not once each has failed", async () => {
+    const node = await startNode();
+    const parallel = await Promise.all(
+      Array.from({ length: 50 }, () =>
+        post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" }).then((r) => r.status),
+      ),
+    );
+    // Counted only once failed, all 50 would pass and fail with 401. Counted on
+    // arrival, at most 20 a minute pass: even split by a minute boundary, 10 get 429.
+    expect(parallel.filter((status) => status === 429).length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("ends the open codes of a token when it is revoked", async () => {
+    const node = await startNode();
+    const admin = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "admin",
+      permissions: ["auth.*", "app.*"],
+    })) as { id: string; token: string };
+    const device = connect(node.url, admin.token);
+    const { code } = await device.call<{ code: string }>("auth.pairing.create", {});
+    device.close();
+    await node.kernel.commands.execute("auth.clients.revoke", { id: admin.id });
+    expect((await post(`${httpUrl(node)}/auth/pair`, { code })).status).toBe(401);
+  });
+
+  it("limits failed sign-ins on its own route, through a reload of the token plugin", async () => {
+    const node = await startNode();
+    const attempt = () => post(`${httpUrl(node)}/auth/session`, { credential: "wrong" });
+    const responses: Response[] = [];
+    for (let index = 0; index < 15; index++) responses.push(await attempt());
+    // Counted failures stay counted when the plugin reloads.
+    await node.kernel.reload("jhin.auth-token");
+    for (let index = 0; index < 26; index++) responses.push(await attempt());
+    // 41 failures cross 20 a minute even split by a minute boundary.
+    const limited = responses.find((response) => response.status === 429);
+    expect(limited).toBeDefined();
+    expect(limited!.headers.get("access-control-allow-origin")).toBeNull();
+    expect(await limited!.json()).toMatchObject({ code: "TOO_MANY_SESSION_ATTEMPTS" });
+  });
+
+  it("keeps open codes through a reload of the token plugin", async () => {
+    const node = await startNode();
+    const { code } = await createCode(node);
+    await node.kernel.reload("jhin.auth-token");
+    expect((await post(`${httpUrl(node)}/auth/pair`, { code })).status).toBe(200);
+  });
+
+  it("refuses to sign a page out from another origin", async () => {
+    const node = await startNode();
+    const refused = await fetch(`${httpUrl(node)}/auth/session`, {
+      method: "DELETE",
+      headers: { origin: "https://evil.example" },
+    });
+    expect(refused.status).toBe(403);
+  });
+
+  it("refuses a base URL with credentials, a query or a fragment", async () => {
+    const node = await startNode();
+    for (const baseUrl of [
+      "https://user:pw@jhin.example",
+      "https://jhin.example/?x=1",
+      "https://jhin.example/#x",
+      "ftp://jhin.example",
+    ]) {
+      await expect(createCode(node, { baseUrl })).rejects.toMatchObject({
+        code: "COMMAND_INPUT_INVALID",
+      });
+    }
+    expect((await createCode(node, { baseUrl: "https://jhin.example/node/" })).url).toMatch(
+      /^https:\/\/jhin\.example\/node\/pair#token=/,
+    );
+  });
+
+  it("ends a page session with the token that opened it", async () => {
+    const node = await startNode();
+    const source = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "source",
+      permissions: ["app.*"],
+    })) as { id: string; token: string };
+    const fromSource = (await (
+      await post(`${httpUrl(node)}/auth/session`, { credential: source.token })
+    ).json()) as { id: string };
+    const fromOwner = (await (
+      await post(`${httpUrl(node)}/auth/session`, { credential: node.token })
+    ).json()) as { id: string };
+    const ids = async () =>
+      (
+        (await node.kernel.commands.execute("auth.clients.list", {})) as {
+          clients: { id: string }[];
+        }
+      ).clients.map((client) => client.id);
+
+    await node.kernel.commands.execute("auth.clients.revoke", { id: source.id });
+    expect(await ids()).not.toContain(fromSource.id);
+    expect(await ids()).toContain(fromOwner.id);
+    await node.kernel.commands.execute("auth.token.rotate", {});
+    expect(await ids()).not.toContain(fromOwner.id);
+  });
+
+  it("turns the owner's token from #token= into a session too", async () => {
+    const node = await startNode();
+    const opened = await post(`${httpUrl(node)}/auth/session`, { credential: node.token });
+    expect(await opened.json()).toMatchObject({ authenticated: true, permissions: ["*"] });
+    const refused = await post(`${httpUrl(node)}/auth/session`, { credential: "nope" });
+    expect(refused.status).toBe(401);
   });
 });

@@ -653,6 +653,9 @@ importers:
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../../packages/host-api
+      '@jhin/http-api':
+        specifier: workspace:*
+        version: link:../../packages/http-api
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc

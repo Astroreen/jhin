@@ -34,6 +34,7 @@
   "dependencies": {
     "@jhin/auth-api": "workspace:*",
     "@jhin/host-api": "workspace:*",
+    "@jhin/http-api": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*"
   },
@@ -52,6 +53,9 @@
     },
     "requires": {
       "host.paths": "^1"
+    },
+    "optional": {
+      "http.server": "^1.2"
     },
     "entry": "src/index.ts"
   }

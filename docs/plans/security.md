@@ -174,13 +174,17 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
 ### Pairing
 
 - **D419. A pairing code is one-time, short-lived and scoped.**
-  `auth.pairing.create {label?, permissions?, ttlMinutes?}` returns
+  `auth.pairing.create {label?, permissions?, ttlMinutes?, baseUrl?}`
+  (`ttlMinutes` at most 1440; `baseUrl`, where the device reaches the node,
+  defaults to its HTTP address) returns
   `{id, code, url, expiresAt}`: twelve characters of T3's alphabet
   `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`, valid 5 minutes by default, used
   once. Its permissions default to every permission the creator holds (T3's
   standard scopes) and follow D413. Only the code's SHA-256 is kept (T3
   keeps it in clear). `auth.pairing.list` and `auth.pairing.revoke {id}`
   manage open codes; both need `auth.read` / `auth.write`.
+  Open codes live in the plugin's kernel-scoped state: they outlive a
+  reload of `jhin.auth-token`, not a restart of the node.
 - **D420. Pairing exchanges the code for a device token over HTTP.**
   `POST /auth/pair {code, label?}` (no token: the device has none yet)
   returns `{id, token, permissions, expiresAt}` with
@@ -193,8 +197,18 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   code or a token, and answers with the cookie `jhin_session_<port>`
   (`HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` on HTTPS) holding a device
   token the page's scripts never see; `DELETE /auth/session` revokes it and
-  clears the cookie. The WebSocket upgrade from the page then authenticates
-  by the cookie, under D418's origin rule.
+  clears the cookie; `GET /auth/session` tells the page whether it has one.
+  `POST`/`DELETE` are refused (403) from any page but the node's own. The
+  WebSocket upgrade from the page then authenticates by the cookie when no
+  token is offered, and such an upgrade needs the node's own or a listed
+  origin even while the list is empty (D418). The endpoints need
+  `http.server@^1.2`, optional for `jhin.auth-token`; without it the pairing
+  commands still create codes, with no `url`. A token traded for the
+  session gives an `issued` token that never outlives it and is revoked with
+  it (a rotated owner token ends the sessions it opened). Each endpoint has
+  its own rate-limit bucket per client address, counting failed attempts
+  only, in fixed clock minutes (behind a proxy, set
+  `jhin.http.trustProxy` so clients are told apart).
 - **D422. The pairing URL is T3's: `<base>/pair#token=<CODE>`.** The code is
   in the fragment, so it never reaches a server log; the web client accepts
   `#token=` on any path, and also an owner or device token there (as
@@ -274,10 +288,20 @@ and from listed origins.
 
 ### PR 4 — Pairing
 
-Implements D419–D425. **Done when:** Playwright pairs a second browser
-context with a node by its pairing URL, the page's token is not readable by
-scripts, revoking the client disconnects it, and `jhin pair` prints the link
-and QR code.
+Implements D419–D425, in two layers:
+
+- **PR 4a — the node** (D419–D421): pairing codes and commands, `POST
+  /auth/pair`, the `/auth/session` cookie and the transport accepting it.
+  **Done when:** tests over real HTTP and WebSocket exchange a code for a
+  scoped token, refuse it a second time, open a session cookie only from the
+  node's own page and accept it on the socket only from there.
+- **PR 4b — the web client** (D422–D424): the pairing link, tokens out of
+  `localStorage`, the Authorized clients settings and the QR code. **Done
+  when:** Playwright pairs a second browser context with a node by its
+  pairing URL, the page's token is not readable by scripts, and revoking the
+  client disconnects it.
+
+`jhin pair` (D425) is in Deferred.
 
 ## Deferred
 
@@ -287,6 +311,10 @@ and QR code.
   the node's own host) and has no token, so it can call nothing; a `Host`
   allowlist (`jhin.http.allowedHosts`: loopback names, the bound and
   advertised addresses) would refuse it outright.
+- The session cookie's `Secure` flag (D421) follows `x-forwarded-proto`
+  from any client; a client can only change its own cookie this way. Read
+  only from a trusted proxy once `http.server` tells the protocol it trusts,
+  next to the `Host` allowlist.
 - A secret whose real value starts with the marker and `#`
   (`••••••#note`) reads as an addressed marker and is refused on save
   (D417); such a value has to be changed to be saved.
