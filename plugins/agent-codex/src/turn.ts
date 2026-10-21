@@ -73,8 +73,10 @@ export interface CodexTurnDependencies {
   readonly settings: CodexSettings;
   /** The turn's model; a promise while it is still being asked for (`status()`). */
   readonly model: string | Promise<string>;
-  /** Gives a new app-server the node's MCP server (D889); absent when it gets none. */
-  /** `writes`: the credential may run writing commands too (full access only). */
+  /**
+   * Gives a new app-server the node's MCP server (D889); absent when it gets none. `writes`:
+   * the credential may run writing commands too (full access only).
+   */
   readonly mcp?: (threadId: string, writes: boolean) => McpAttachment;
   /** What a turn can choose for `model`, as `model/list` described it (D881). */
   readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
