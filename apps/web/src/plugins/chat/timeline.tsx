@@ -592,6 +592,7 @@ function TurnView(props: {
   onRetry?(): Promise<unknown>;
   projectPath?: string;
   onSavePlan?: SavePlan;
+  footer?: ReactNode;
 }) {
   const { turn, format } = props;
   const now = useContext(NowContext);
@@ -708,6 +709,7 @@ function TurnView(props: {
           );
         })}
       </div>
+      {props.footer}
       {turn.state === "failed" ? (
         <div className="pb-4">
           <WorkLine
@@ -763,6 +765,8 @@ export function TimelineView(props: {
   onOpenThread?(threadId: string): void;
   /** A thread's title, where the node's catalog knows it. */
   titleOf?(threadId: string): string | undefined;
+  /** What goes under a turn's answer (the `chat.turn.footer` slot). */
+  footer?: ((turn: TimelineTurn, latest: boolean) => ReactNode) | undefined;
 }) {
   const { turns, forkedFrom } = props.timeline;
   const now = useNow();
@@ -804,6 +808,7 @@ export function TimelineView(props: {
               turn={turn}
               {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
               {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
+              footer={props.footer?.(turn, index === turns.length - 1)}
               {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
             />
             {forkedFrom?.turnId === turn.turnId ? (

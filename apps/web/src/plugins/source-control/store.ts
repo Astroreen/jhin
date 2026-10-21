@@ -13,6 +13,7 @@ import {
   type StatusSnapshot,
   type ThreadBranch,
   type ThreadPullRequest,
+  type TurnCheckpoint,
 } from "@jhin/source-control-api";
 
 /** What a client knows of one node's repositories and threads' branches. */
@@ -27,6 +28,8 @@ export interface SourceControlView {
   readonly threads: ReadonlyMap<string, ThreadBranch>;
   /** The pull requests linked to each thread that has any (D267). */
   readonly links: ReadonlyMap<string, readonly ThreadPullRequest[]>;
+  /** Each thread's latest checkpoint (D245); none from a node before 1.1. */
+  readonly checkpoints: ReadonlyMap<string, TurnCheckpoint>;
 }
 
 const LOADING: SourceControlView = {
@@ -34,6 +37,7 @@ const LOADING: SourceControlView = {
   projects: new Map(),
   threads: new Map(),
   links: new Map(),
+  checkpoints: new Map(),
 };
 
 const withLinks = (
@@ -72,10 +76,12 @@ export function applySourceControlEvent(
     }
     case SourceControlEvents.threadRemoved: {
       const threads = new Map(view.threads);
+      const checkpoints = new Map(view.checkpoints);
       threads.delete(String(payload?.["threadId"]));
+      checkpoints.delete(String(payload?.["threadId"]));
       const links = new Map(view.links);
       links.delete(String(payload?.["threadId"]));
-      return { ...view, threads, links };
+      return { ...view, threads, links, checkpoints };
     }
     case SourceControlEvents.pullRequestLinked:
     case SourceControlEvents.pullRequestUpdated: {
@@ -94,6 +100,17 @@ export function applySourceControlEvent(
       if (typeof threadId !== "string" || typeof key !== "string") return view;
       return withLinks(view, threadId, (list) => list.filter((item) => item.key !== key));
     }
+    case SourceControlEvents.checkpointChanged: {
+      const checkpoint = payload as unknown as TurnCheckpoint;
+      if (typeof checkpoint?.threadId !== "string") return view;
+      // The latest one stays: a change to an earlier turn (one reverted past) is not it.
+      const known = view.checkpoints.get(checkpoint.threadId);
+      if (known !== undefined && known.turn > checkpoint.turn) return view;
+      return {
+        ...view,
+        checkpoints: new Map(view.checkpoints).set(checkpoint.threadId, checkpoint),
+      };
+    }
     default:
       return view;
   }
@@ -105,6 +122,9 @@ function viewOf(snapshot: StatusSnapshot): SourceControlView {
     projects: new Map(snapshot.projects.map((project) => [project.projectId, project])),
     threads: new Map(snapshot.threads.map((thread) => [thread.threadId, thread])),
     links: new Map((snapshot.links ?? []).map((entry) => [entry.threadId, entry.pullRequests])),
+    checkpoints: new Map(
+      (snapshot.checkpoints ?? []).map((checkpoint) => [checkpoint.threadId, checkpoint]),
+    ),
   };
 }
 
