@@ -155,6 +155,15 @@ return { p, q }`,
     ).rejects.toThrow(/requires properties it does not define: y/);
     await expect(
       runWorkflow(
+        "return agent('x', { effort: 5 })",
+        undefined,
+        h.host,
+        limits,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(/effort must be a non-empty string/);
+    await expect(
+      runWorkflow(
         "return parallel([1, 2, 3].map(() => () => 1))",
         undefined,
         h.host,
