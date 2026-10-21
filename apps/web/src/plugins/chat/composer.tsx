@@ -58,6 +58,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  Suspense,
+  lazy,
   useEffect,
   useId,
   useImperativeHandle,
@@ -99,7 +101,12 @@ import { isMacPlatform, currentPlatform } from "../../lib/keybindings.ts";
 import type { RequestItem, ThreadQueue } from "../../lib/timeline.ts";
 import { ComposerBanner } from "./banner.tsx";
 import { ComposerCommandMenu } from "./command-menu.tsx";
-import { PromptEditor, type PromptEditorHandle } from "./prompt-editor.tsx";
+import type { PromptEditorHandle } from "./prompt-editor.tsx";
+
+/** tiptap loads with the first composer, not with the page (D440's entry budget). */
+const PromptEditor = lazy(() =>
+  import("./prompt-editor.tsx").then((module) => ({ default: module.PromptEditor })),
+);
 import { useComposerMenu } from "./use-composer-menu.ts";
 import {
   ComposerAttachments,
@@ -1741,28 +1748,41 @@ export function Composer(props: ComposerProps) {
                       onRetry={uploads.retry}
                     />
                     <div className="relative flow-root text-sm max-sm:pointer-coarse:text-[16px]">
-                      <PromptEditor
-                        className={cn(
-                          "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed wrap-break-word text-foreground outline-none",
-                          approval !== undefined && "min-h-10",
-                        )}
-                        disabled={disabled}
-                        handleRef={editor}
-                        onBlur={() => setFocused(false)}
-                        onChange={(value, caret) => {
-                          if (value !== prompt) setPrompt(value);
-                          setCursor(caret);
-                          setCaretAtStart(caret === 0);
-                        }}
-                        onFocus={() => setFocused(true)}
-                        onKeyDown={onKeyDown}
-                        onPaste={onPaste}
-                        onSubmit={() => void send()}
-                        placeholder={placeholder}
-                        readOnly={busy && question === undefined}
-                        sendShortcut={settings.sendShortcut === "mod-enter" ? "mod-enter" : "enter"}
-                        value={approval !== undefined ? "" : prompt}
-                      />
+                      <Suspense
+                        fallback={
+                          <div
+                            aria-busy="true"
+                            className="-m-1 block min-h-19.5 w-[calc(100%+0.5rem)] p-1 leading-relaxed text-placeholder/75"
+                          >
+                            {placeholder}
+                          </div>
+                        }
+                      >
+                        <PromptEditor
+                          className={cn(
+                            "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed wrap-break-word text-foreground outline-none",
+                            approval !== undefined && "min-h-10",
+                          )}
+                          disabled={disabled}
+                          handleRef={editor}
+                          onBlur={() => setFocused(false)}
+                          onChange={(value, caret) => {
+                            if (value !== prompt) setPrompt(value);
+                            setCursor(caret);
+                            setCaretAtStart(caret === 0);
+                          }}
+                          onFocus={() => setFocused(true)}
+                          onKeyDown={onKeyDown}
+                          onPaste={onPaste}
+                          onSubmit={() => void send()}
+                          placeholder={placeholder}
+                          readOnly={busy && question === undefined}
+                          sendShortcut={
+                            settings.sendShortcut === "mod-enter" ? "mod-enter" : "enter"
+                          }
+                          value={approval !== undefined ? "" : prompt}
+                        />
+                      </Suspense>
                     </div>
                   </div>
                   {approval === undefined ? (
