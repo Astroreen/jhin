@@ -6,10 +6,13 @@
 // The composer's context records (docs/plans/t3-parity.md D1006–D1008): what a `#` or `@` pick and
 // "Add to chat" put beside the prompt, named in it by a `jhin-context://` reference.
 import {
+  formatContextReference,
   isKnownContextRecord,
+  MESSAGE_CONTEXT_MAX_RECORDS,
   MESSAGE_CONTEXT_TERMINAL_TEXT_MAX_CHARS,
   type MessageContextRecord,
   type PullRequestContextMetadata,
+  referencedContext,
   type ReviewCommentContextRecord,
   sanitizeContextLabel,
   type TerminalContextRecord,
@@ -227,5 +230,39 @@ export function threadLinks(
       navigate(route);
       return true;
     },
+  };
+}
+
+/**
+ * Where a record's reference goes into the prompt (T3's addTerminalContext, D1009): at the caret,
+ * else at the end, a space before it when the text runs up to it and one after. Only the records
+ * the prompt still names count towards T3's 200, and a record picked again replaces its own.
+ */
+export function planContextInsertion(input: {
+  readonly prompt: string;
+  /** The caret while the prompt has focus; at the end otherwise. */
+  readonly caret: number | undefined;
+  readonly records: readonly MessageContextRecord[];
+  readonly record: MessageContextRecord;
+}):
+  | { readonly kind: "full" }
+  | {
+      readonly kind: "insert";
+      readonly records: readonly MessageContextRecord[];
+      readonly at: number;
+      readonly text: string;
+    } {
+  const named = referencedContext(input.prompt, input.records)?.records ?? [];
+  const fresh = !named.some((kept) => kept.contextId === input.record.contextId);
+  if (fresh && named.length >= MESSAGE_CONTEXT_MAX_RECORDS) return { kind: "full" };
+  const at =
+    input.caret === undefined ? input.prompt.length : Math.min(input.caret, input.prompt.length);
+  const before = input.prompt.slice(0, at);
+  const gap = before.length > 0 && !/\s$/.test(before) ? " " : "";
+  return {
+    kind: "insert",
+    records: withContexts(input.records, [input.record]),
+    at,
+    text: `${gap}${formatContextReference(input.record)} `,
   };
 }

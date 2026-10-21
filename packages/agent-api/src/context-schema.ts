@@ -2,8 +2,8 @@
 // packages/contracts/src/composerContext.ts (OrchestrationMessageContext and its records).
 //
 // A message's context records as commands take them (t3-parity.md D1006): `threads.send`, the
-// queue and the composer's `chat.composer.insert-context` (D1009). In a message each record is checked on its own, and one that fails is dropped, not the
-// message, as in T3.
+// queue and the composer's `chat.composer.insert-context` (D1009). In a message each record is
+// checked on its own, and one that fails is dropped, not the message, as in T3.
 import { z } from "@jhin/sdk";
 
 import {
@@ -88,11 +88,9 @@ const UnknownRecord = z.object({
 });
 
 /** One record: T3's known kinds by their shapes, any other kind with a JSON payload. */
-export const MessageContextRecordSchema = z
+export const MessageContextRecordSchema: z.ZodType<MessageContextRecord> = z
   .union([ReviewCommentRecord, ThreadRecord, TerminalRecord, UnknownRecord])
-  .describe(
-    "A context record (docs/plans/t3-parity.md D1006): review-comment, thread, terminal, or another kind with a JSON payload",
-  );
+  .describe("A context record (t3-parity.md D1006): review-comment, thread, terminal or other");
 
 /** The records' JSON, at most 16 MB together (T3's bound). */
 const MAX_SERIALIZED_CHARS = 16_000_000;

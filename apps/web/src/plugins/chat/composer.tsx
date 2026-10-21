@@ -3,12 +3,7 @@
 // ComposerPendingApprovalPanel.tsx, ComposerPendingApprovalActions.tsx,
 // ComposerPendingUserInputPanel.tsx, QueuedRunsControl.tsx, ProviderModelPicker.tsx,
 // ContextWindowMeter.tsx and runtimeModeConfig.ts. The prompt is T3's tiptap editor (prompt-editor.tsx).
-import {
-  applicableModelOptions,
-  formatContextReference,
-  MESSAGE_CONTEXT_MAX_RECORDS,
-  referencedContext,
-} from "@jhin/agent-api";
+import { applicableModelOptions, referencedContext } from "@jhin/agent-api";
 import type {
   AgentResponse,
   MessageContext,
@@ -133,7 +128,11 @@ const PromptEditor = lazy(() =>
 );
 import { useComposerMenu } from "./use-composer-menu.ts";
 import { type PutAside, usePutAside } from "./put-aside.ts";
-import { knownRecordsById, withContexts } from "../../lib/composer-context.ts";
+import {
+  knownRecordsById,
+  planContextInsertion,
+  withContexts,
+} from "../../lib/composer-context.ts";
 import { ComposerChipsContext, useComposerChipActions } from "./composer-chips.tsx";
 import {
   useAttachmentLoader,
@@ -1227,6 +1226,9 @@ export function Composer(props: ComposerProps) {
   const [contexts, setContexts] = useState<readonly MessageContextRecord[]>(
     initial?.contexts ?? [],
   );
+  /** The records as the latest render or insert left them, for inserts between renders. */
+  const contextsNow = useRef(contexts);
+  contextsNow.current = contexts;
   /** Where the caret is in the prompt (a markdown string): the menus read the trigger there. */
   const [cursor, setCursor] = useState(prompt.length);
   const uploads = useComposerAttachments({
@@ -1416,14 +1418,17 @@ export function Composer(props: ComposerProps) {
   };
   const insertContext = (record: MessageContextRecord): ContextInsertion => {
     if (literalAnswer || approval !== undefined) return "not-now";
-    // T3's bound on a message's records; one picked again replaces its own.
-    const fresh = !contexts.some((kept) => kept.contextId === record.contextId);
-    if (fresh && contexts.length >= MESSAGE_CONTEXT_MAX_RECORDS) return "full";
-    setContexts((current) => withContexts(current, [record]));
-    const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
-    const before = prompt.slice(0, at);
-    const gap = before.length > 0 && !/\s$/.test(before) ? " " : "";
-    editor.current?.replaceRange(at, at, `${gap}${formatContextReference(record)} `);
+    // What the editor and the records hold now: two inserts in one tick see each other's.
+    const plan = planContextInsertion({
+      prompt: editor.current?.value() ?? prompt,
+      caret: focused ? (editor.current?.cursor() ?? cursor) : undefined,
+      records: contextsNow.current,
+      record,
+    });
+    if (plan.kind === "full") return "full";
+    contextsNow.current = plan.records;
+    setContexts(plan.records);
+    editor.current?.replaceRange(plan.at, plan.at, plan.text);
     editor.current?.focus();
     return "inserted";
   };

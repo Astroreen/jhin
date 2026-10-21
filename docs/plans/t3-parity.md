@@ -1870,12 +1870,17 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   reference at the cursor, through the new client command
   `chat.composer.insert-context` (`{ record }`, checked with
   `MessageContextRecordSchema`, → `{ inserted, reason? }`: no composer, one
-  that takes no context now, or one holding T3's 200 records). The chip is T3's: the terminal glyph and "Terminal 1 lines 1-19",
-  and pressed a popover with the terminal's name, "Lines 1–19" and the
-  captured output; an excerpt with no text is T3's expired chip. The agent
-  reads T3's numbered lines (`3 | $ make`) in the envelope (D1006). A prefilled
-  answer (D1001) takes no record. A chat without the command gets T3's legacy
-  text as before (D473).
+  that takes no context now, or one holding T3's 200 records). The chip is
+  T3's: the terminal glyph and "Terminal 1 lines 1-19", and pressed a
+  popover with the terminal's name, "Lines 1–19" and the captured output; an
+  excerpt with no text is T3's expired chip. The agent reads T3's numbered
+  lines (`3 | $ make`) in the envelope (D1006). A prefilled answer (D1001)
+  takes no record. Where the chat has no such command, "Add to chat" writes
+  T3's legacy text as before (D473); the choice is by the command being
+  there, not by a composer being open, so with no thread open it says there
+  is no message box. Only the records the prompt still names count towards
+  the 200, a record picked again replaces its own, and two inserts in one
+  moment see each other's.
 
 ### Sidebar leftovers (W26)
 

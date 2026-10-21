@@ -61,8 +61,8 @@ export interface ReviewCommentContextRecord extends ContextRecordBase {
   readonly rangeLabel: string;
   readonly text: string;
   readonly diff: string;
-  readonly fenceLanguage?: string;
-  readonly pullRequest?: PullRequestContextMetadata;
+  readonly fenceLanguage?: string | undefined;
+  readonly pullRequest?: PullRequestContextMetadata | undefined;
 }
 
 /** Another thread, as reference material (T3's ThreadContextRecord; `nodeId` for its environment). */

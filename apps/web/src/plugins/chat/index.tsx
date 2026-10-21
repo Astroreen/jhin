@@ -1,6 +1,6 @@
 // Empty states follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/NoActiveThreadState.tsx
 // and NoProjectsHero.tsx.
-import { type MessageContextRecord, MessageContextRecordSchema } from "@jhin/agent-api";
+import { MessageContextRecordSchema } from "@jhin/agent-api";
 import {
   CHAT_DRAFTS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
@@ -632,7 +632,7 @@ export const chatPlugin = builtin(
         handler: ({ record }) => {
           const target = composer.current;
           if (target === undefined) return { inserted: false, reason: "no-composer" as const };
-          const done = target.insertContext(record as MessageContextRecord);
+          const done = target.insertContext(record);
           return done === "inserted" ? { inserted: true } : { inserted: false, reason: done };
         },
       });
