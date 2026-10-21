@@ -1,7 +1,4 @@
 import type { RpcClient } from "@jhin/rpc";
-
-/** T3's output window: at most this much output is on its way to a terminal (D470). */
-export const TERMINAL_OUTPUT_WINDOW = { events: 8, bytes: 64 * 1024 };
 import type { Disposable } from "@jhin/sdk";
 import {
   TerminalEvents,
@@ -9,6 +6,9 @@ import {
   type TerminalSnapshot,
   type TerminalSummary,
 } from "@jhin/terminal-api";
+
+/** T3's output window: at most this much output is on its way to a terminal (D470). */
+export const TERMINAL_OUTPUT_WINDOW = { events: 8, bytes: 64 * 1024 };
 
 /** Where an attached terminal's output goes: an xterm.js instance, or a test's record. */
 export interface TerminalSink {
@@ -158,8 +158,11 @@ export function attachTerminal(options: {
         onError: (error) => {
           if (stale()) return;
           // Too far behind the output: read the terminal again from what it keeps.
-          if (error.code === "SUBSCRIPTION_OVERFLOW") void attach();
-          else sink.system(error.message);
+          // Each time takes 16 MiB of output the client did not show, so a
+          // flood re-reads at most that often (accepted, D470).
+          if (error.code === "SUBSCRIPTION_OVERFLOW") {
+            void attach().catch((failure: unknown) => sink.system((failure as Error).message));
+          } else sink.system(error.message);
         },
       },
       (event) => {

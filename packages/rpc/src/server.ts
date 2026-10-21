@@ -104,8 +104,18 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     let unackedSize = 0;
     const waiting: { sequence: number; text: string }[] = [];
     let waitingSize = 0;
-    const full = () =>
-      window !== undefined && (unacked.length >= window.events || unackedSize >= window.bytes);
+    /** Past the bound while the backlog is read: `subscribe` fails instead (no id is known yet). */
+    let overflowed = false;
+    let bufferedSize = 0;
+    /**
+     * Whether an event of `size` fits the window: at most `events` events and
+     * `bytes` characters unacknowledged; one larger than the window goes
+     * alone, when nothing else is unacknowledged.
+     */
+    const fits = (size: number) =>
+      window === undefined ||
+      unacked.length === 0 ||
+      (unacked.length < window.events && unackedSize + size <= window.bytes);
     const send = (sequence: number, text: string) => {
       if (window !== undefined) {
         unacked.push({ sequence, size: text.length });
@@ -121,13 +131,15 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
         method: RPC_EVENT,
         params: { subscription: id, event },
       });
-      if (waiting.length === 0 && !full()) {
+      if (waiting.length === 0 && fits(text.length)) {
         send(event.sequence, text);
         return;
       }
       waiting.push({ sequence: event.sequence, text });
       waitingSize += text.length;
-      if (waitingSize > MAX_WAITING_CHARACTERS) overflow();
+      if (waitingSize <= MAX_WAITING_CHARACTERS) return;
+      if (live) overflow();
+      else overflowed = true;
     };
     /** The subscriber fell too far behind: the subscription ends, and says why. */
     const overflow = () => {
@@ -136,24 +148,35 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       subscriptions.delete(id);
       waiting.length = 0;
       waitingSize = 0;
-      peer.send(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          method: RPC_SUBSCRIPTION_ENDED,
-          params: {
-            subscription: id,
-            error: {
-              code: ErrorCodes.SERVER_ERROR,
-              message: `Subscription ${id} to ${stream} fell too far behind`,
-              data: { code: "SUBSCRIPTION_OVERFLOW", details: { stream } },
+      try {
+        peer.send(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            method: RPC_SUBSCRIPTION_ENDED,
+            params: {
+              subscription: id,
+              error: {
+                code: ErrorCodes.SERVER_ERROR,
+                message: `Subscription ${id} to ${stream} fell too far behind`,
+                data: { code: "SUBSCRIPTION_OVERFLOW", details: { stream } },
+              },
             },
-          },
-        }),
-      );
+          }),
+        );
+      } catch (error) {
+        // The peer closed under us: nobody is left to tell.
+        options.logger.debug("subscription end not sent", { error: String(error) });
+      }
+    };
+    const keep = (event: StoredEvent) => {
+      buffered.push(event);
+      if (window === undefined) return;
+      bufferedSize += JSON.stringify(event).length;
+      if (bufferedSize > MAX_WAITING_CHARACTERS) overflowed = true;
     };
     // Subscribe first, then read the backlog: an event appended in between is
     // in the buffer, in the backlog, or both; `lastSent` drops duplicates.
-    const live$ = log.subscribe(stream, (event) => (live ? deliver(event) : buffered.push(event)));
+    const live$ = log.subscribe(stream, (event) => (live ? deliver(event) : keep(event)));
     const subscription: Subscription = {
       dispose: () => live$.dispose(),
       ...(window === undefined
@@ -163,7 +186,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
               while (unacked.length > 0 && unacked[0]!.sequence <= sequence) {
                 unackedSize -= unacked.shift()!.size;
               }
-              while (waiting.length > 0 && !full()) {
+              while (waiting.length > 0 && fits(waiting[0]!.text.length)) {
                 const next = waiting.shift()!;
                 waitingSize -= next.text.length;
                 send(next.sequence, next.text);
@@ -181,7 +204,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       head = await log.head(stream);
       for (;;) {
         const page = await log.read(stream, { after: lastSent, limit: BACKLOG_PAGE });
-        if (!active()) break;
+        if (!active() || overflowed) break;
         for (const event of page) deliver(event);
         if (page.length < BACKLOG_PAGE) break;
       }
@@ -191,10 +214,21 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       if (active()) subscriptions.delete(id);
       throw error;
     }
-    if (active()) {
+    if (active() && !overflowed) {
       for (const event of buffered) deliver(event);
-      live = true;
+      buffered.length = 0;
     }
+    if (overflowed) {
+      // More waits than a windowed subscriber may hold before it even started:
+      // it reads a snapshot instead (D470).
+      live$.dispose();
+      if (active()) subscriptions.delete(id);
+      throw Object.assign(new Error(`Subscription ${id} to ${stream} fell too far behind`), {
+        code: "SUBSCRIPTION_OVERFLOW",
+        details: { stream },
+      });
+    }
+    if (active()) live = true;
     return { subscription: id, head };
   }
 

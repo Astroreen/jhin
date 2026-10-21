@@ -23,7 +23,7 @@ export {
   toErrorObject,
   type ErrorObject,
 } from "./protocol.ts";
-export { MAX_WAITING_CHARACTERS, serveRpc, type RpcServerOptions } from "./server.ts";
+export { serveRpc, type RpcServerOptions } from "./server.ts";
 export {
   LIVE_STREAMS_CAPABILITY,
   UNGUARDED_STREAM_PERMISSION,

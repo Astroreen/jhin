@@ -76,6 +76,12 @@ interface SubscriptionState {
   readonly onEvent: (event: StoredEvent) => void | Promise<void>;
   readonly onError: ((error: RpcError) => void) | undefined;
   readonly window: SubscriptionWindow | undefined;
+  /**
+   * Events of the current server subscription not acknowledged yet, in the
+   * order they came: acknowledgements are cumulative on the node, so only
+   * the settled ones at the front are acknowledged (D470).
+   */
+  handling: { sequence: number; done: boolean }[];
   /** Server-side id on the current connection. */
   serverId: string | undefined;
   disposed: boolean;
@@ -159,6 +165,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
     // The id is set before the call: backlog events arrive before its result.
     const id = String(nextSubscriptionId++);
     subscription.serverId = id;
+    subscription.handling = [];
     try {
       await send(target, RPC_SUBSCRIBE, {
         subscription: id,
@@ -199,29 +206,54 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
       const { subscription: id, event } = message.params;
       for (const subscription of subscriptions) {
         if (subscription.serverId !== id || subscription.disposed) continue;
-        // Exactly once: a resumed subscription may resend the last event.
-        if (event.sequence <= subscription.lastSequence) continue;
-        subscription.lastSequence = event.sequence;
-        const handled = subscription.onEvent(event);
-        if (subscription.window === undefined) continue;
+        const windowed = subscription.window !== undefined;
+        const entry = { sequence: event.sequence, done: false };
         const target = peer;
-        const ack = () => {
+        const handling = subscription.handling;
+        if (windowed) handling.push(entry);
+        /** Acknowledges the settled events at the front, in order. */
+        const settle = () => {
+          entry.done = true;
+          let last: number | undefined;
+          while (handling[0]?.done === true) last = handling.shift()!.sequence;
           // Only on the connection that sent it: a new one starts its own window.
-          if (target === undefined || peer !== target || subscription.serverId !== id) return;
+          if (last === undefined || target === undefined || peer !== target) return;
+          if (subscription.serverId !== id || subscription.handling !== handling) return;
           try {
             target.send(
               JSON.stringify({
                 jsonrpc: "2.0",
                 method: RPC_ACK,
-                params: { subscription: id, sequence: event.sequence },
+                params: { subscription: id, sequence: last },
               }),
             );
           } catch {
             // Closed meanwhile: the next connection subscribes afresh.
           }
         };
-        if (handled instanceof Promise) void handled.then(ack, ack);
-        else ack();
+        // Exactly once: a resumed subscription may resend the last event. The
+        // node counts it as sent all the same, so it is acknowledged.
+        if (event.sequence <= subscription.lastSequence) {
+          if (windowed) settle();
+          continue;
+        }
+        subscription.lastSequence = event.sequence;
+        let handled: void | Promise<void>;
+        try {
+          handled = subscription.onEvent(event);
+        } catch (error) {
+          // A handler that throws still frees its place in the window.
+          if (windowed) settle();
+          throw error;
+        }
+        if (!windowed) continue;
+        if (handled instanceof Promise) {
+          void handled.then(settle, (error: unknown) => {
+            settle();
+            // Reported as a throwing handler would be.
+            throw error;
+          });
+        } else settle();
       }
       return;
     }
@@ -338,6 +370,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         onEvent,
         onError: subscribeOptions.onError,
         window: subscribeOptions.window,
+        handling: [],
         serverId: undefined,
         disposed: false,
       };

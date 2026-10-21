@@ -421,6 +421,7 @@ describe("attaching a terminal (the drawer's viewport)", () => {
     await observer;
     // Everything sent before this answer arrived first: at most the window.
     await client.call("terminals.list", {});
+    expect(shown.length).toBeGreaterThan(0);
     expect(shown.length).toBeLessThanOrEqual(TERMINAL_OUTPUT_WINDOW.events);
     expect(written).not.toContain("\n20000");
 

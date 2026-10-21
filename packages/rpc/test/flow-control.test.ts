@@ -3,7 +3,6 @@ import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  MAX_WAITING_CHARACTERS,
   RPC_ACK,
   RPC_EVENT,
   RPC_SUBSCRIPTION_ENDED,
@@ -15,6 +14,7 @@ import {
   type Peer,
   type RpcError,
 } from "../src/index.ts";
+import { MAX_WAITING_CHARACTERS } from "../src/server.ts";
 
 /** A node serving `live/` from memory, and the raw client end of one connection. */
 function rawConnection() {
@@ -173,6 +173,100 @@ describe("flow control (D470)", () => {
     memory.append("live/a", "app.n", half);
     memory.append("live/a", "app.n", half);
     expect((await failure).code).toBe("SUBSCRIPTION_OVERFLOW");
+    client.close();
+  });
+
+  /** A client of a node serving `live/` from memory, whose connection the test can cut. */
+  function windowedClient() {
+    const live = createLiveStreams();
+    const memory = createMemoryStreams({ firstSequence: 1 });
+    live.serve("live/", memory);
+    const servers: Peer[] = [];
+    const client = createRpcClient({
+      retryDelay: () => 0,
+      async connect() {
+        const [clientEnd, serverEnd] = createPeerPair();
+        servers.push(serverEnd);
+        serveRpc(serverEnd, {
+          caller: { id: "caller", permissions: ["*"] },
+          streams: live,
+          logger: noopLogger,
+          hello: () => ({}),
+          newTraceId: () => "trace",
+          execute: async () => ({}),
+        });
+        return clientEnd;
+      },
+    });
+    return { client, memory, servers };
+  }
+
+  it("fails a subscription whose backlog is past the bound, instead of hanging (D470)", async () => {
+    const { client, memory } = windowedClient();
+    const half = "z".repeat(MAX_WAITING_CHARACTERS / 2);
+    memory.append("live/a", "app.n", "first");
+    memory.append("live/a", "app.n", half);
+    memory.append("live/a", "app.n", half);
+    const failure = new Promise<RpcError>((resolve) =>
+      client.subscribe(
+        "live/a",
+        { window: { events: 1, bytes: 1024 }, onError: resolve },
+        () =>
+          // Never shown: the window stays full.
+          new Promise<void>(() => undefined),
+      ),
+    );
+    expect((await failure).code).toBe("SUBSCRIPTION_OVERFLOW");
+    client.close();
+  });
+
+  it("acknowledges the settled front only, and resent events after a reconnect", async () => {
+    const { client, memory, servers } = windowedClient();
+    const seen: number[] = [];
+    const done = new Map<number, () => void>();
+    const arrivals: { count: number; resolve: () => void }[] = [];
+    const arrived = (count: number) =>
+      seen.length >= count
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => arrivals.push({ count, resolve }));
+    client.subscribe("live/a", { window: { events: 2, bytes: 1024 * 1024 } }, (event) => {
+      seen.push(event.payload as number);
+      for (const waiter of arrivals.filter((item) => seen.length >= item.count)) {
+        arrivals.splice(arrivals.indexOf(waiter), 1);
+        waiter.resolve();
+      }
+      return new Promise<void>((resolve) => done.set(event.payload as number, resolve));
+    });
+    for (const n of [1, 2, 3]) memory.append("live/a", "app.n", n);
+    await arrived(2);
+    // The second is shown before the first: nothing may be acknowledged yet.
+    done.get(2)!();
+    await client.call("rpc.hello");
+    await client.call("rpc.hello");
+    expect(seen).toEqual([1, 2]);
+    done.get(1)!();
+    await arrived(3);
+    expect(seen).toEqual([1, 2, 3]);
+
+    // A reconnect resends from where the client is; with a window of one,
+    // an event the client already had must not hold the window.
+    done.get(3)!();
+    await client.call("rpc.hello");
+    const reopened = new Promise<void>((resolve) => {
+      const watching = client.onState((state) => {
+        if (state !== "open") return;
+        watching.dispose();
+        resolve();
+      });
+    });
+    servers.at(-1)!.close(1006, "cut by test");
+    await reopened;
+    memory.append("live/a", "app.n", 4);
+    await arrived(4);
+    done.get(4)!();
+    memory.append("live/a", "app.n", 5);
+    await arrived(5);
+    expect(seen).toEqual([1, 2, 3, 4, 5]);
     client.close();
   });
 });
