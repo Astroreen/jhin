@@ -494,6 +494,37 @@ test("D451: discard a new thread's draft from its card, and undo it", async ({ p
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveText("a new thought");
 });
 
+test("D963: a card with an unsent draft says so, and its X discards it", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  await addThread(x, "half done");
+  await addThread(x, "elsewhere");
+  await page.goto(`${x.ui}#token=${x.token}`);
+
+  // Written in one thread, then another opened: the first card keeps the draft.
+  await threadRow(page, "half done").click();
+  await page.getByRole("textbox", { name: "Message" }).fill("not sent yet");
+  const card = threadRow(page, "half done");
+  // Never on the open thread.
+  await expect(card.getByRole("img", { name: "Unsent draft" })).toHaveCount(0);
+  await threadRow(page, "elsewhere").click();
+  await expect(card.getByRole("img", { name: "Unsent draft" })).toBeVisible();
+
+  await card.hover();
+  const shot = info.outputPath("card-draft.png");
+  await page.screenshot({ path: shot });
+  await info.attach("card-draft", { path: shot, contentType: "image/png" });
+  await card.getByRole("button", { name: "Discard draft" }).click();
+  await expect(card.getByRole("img", { name: "Unsent draft" })).toHaveCount(0);
+  const notice = page.getByRole("status").filter({ hasText: "Discarded" });
+  await expect(notice).toHaveText("Discarded 1 draft, Ctrl+Z to undo");
+
+  // Undo: the draft is back on the card and in its composer.
+  await notice.getByRole("button", { name: "Ctrl+Z to undo" }).click();
+  await expect(card.getByRole("img", { name: "Unsent draft" })).toBeVisible();
+  await card.click();
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveText("not sent yet");
+});
+
 test("D452: the Working section folds threads at work until they need you", async ({
   page,
 }, info) => {

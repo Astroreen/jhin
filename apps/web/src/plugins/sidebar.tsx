@@ -43,9 +43,11 @@ import {
   type ThreadParkInput,
   type ThreadSection,
   type ThreadsCatalog,
+  CHAT_DRAFTS_CAPABILITY,
   VISITS_CAPABILITY,
   lastVisitOf,
   visitKey,
+  type ChatDrafts,
   type ThreadVisits,
   type NodeActionProps,
   type ThreadActionProps,
@@ -254,6 +256,9 @@ function createValue<T>(
     },
   };
 }
+
+/** Without `chat.drafts`: no card shows a draft (D963). */
+const NO_DRAFTS = { subscribe: () => ({ dispose: () => undefined }) };
 
 /** Without `client.visits`: nothing was seen, so nothing shows as unread. */
 const NO_VISITS: Pick<ThreadVisits, "snapshot" | "subscribe"> = {
@@ -466,6 +471,7 @@ export const sidebarPlugin = builtin(
       [KEYBINDINGS_CAPABILITY]: "^1",
       [VISITS_CAPABILITY]: "^1",
       [MACHINES_CAPABILITY]: "^1",
+      [CHAT_DRAFTS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -479,6 +485,7 @@ export const sidebarPlugin = builtin(
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
+      const drafts = context.services.tryGet<ChatDrafts>(CHAT_DRAFTS_CAPABILITY);
       const machines = context.services.tryGet<NodeMachines>(MACHINES_CAPABILITY);
       const search = createValue("");
       /** The threads the nodes find by their messages while a search is typed (D228). */
@@ -1331,6 +1338,11 @@ export const sidebarPlugin = builtin(
         });
         // Threads that went away meanwhile do not count.
         const selectionSize = useExternal(selection, () => (isSelected ? selected().length : 0));
+        // T3's unsent draft: kept by the chat plugin, never shown on the open thread (D963).
+        const hasDraft = useExternal(
+          drafts ?? NO_DRAFTS,
+          () => !active && drafts?.hasThreadDraft(target, thread.id) === true,
+        );
         const recede = shouldRecede({ status, unread, active, woke }) && !isSelected;
         const settled = section === "settled";
         const snoozed = section === "snoozed";
@@ -1443,9 +1455,11 @@ export const sidebarPlugin = builtin(
             ? "bg-sidebar-row-active text-sidebar-foreground"
             : isSelected || swept !== undefined
               ? "bg-sidebar-row-selected text-sidebar-foreground"
-              : recede
-                ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+              : hasDraft
+                ? "bg-warning/4 text-sidebar-foreground hover:bg-warning/8"
+                : recede
+                  ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                  : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
           dragging && "shadow-lg ring-1 ring-sidebar-border",
           recede &&
             status === "working" &&
@@ -1561,6 +1575,23 @@ export const sidebarPlugin = builtin(
           </Tooltip>
         );
 
+        const draftIndicator = hasDraft ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  aria-label="Unsent draft"
+                  className="inline-flex shrink-0 items-center"
+                  role="img"
+                />
+              }
+            >
+              <SquarePenIcon aria-hidden className="size-3 shrink-0 text-warning-foreground" />
+            </TooltipTrigger>
+            <TooltipPopup side="top">Unsent draft</TooltipPopup>
+          </Tooltip>
+        ) : null;
+
         const body =
           variant === "slim" ? (
             <>
@@ -1576,6 +1607,7 @@ export const sidebarPlugin = builtin(
                   <ProjectIcon className="size-4" project={project} />
                 )}
               </span>
+              {draftIndicator}
               {title}
               {pin}
               {dragging || swept !== undefined ? (
@@ -1634,6 +1666,7 @@ export const sidebarPlugin = builtin(
               <span className="sr-only">{thread.title}</span>
               <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
                 <div className="flex h-5 min-w-0 items-center gap-1.5">
+                  {draftIndicator}
                   {project === undefined ? null : (
                     <ProjectIcon className="size-4 shrink-0" project={project} />
                   )}
@@ -1679,6 +1712,28 @@ export const sidebarPlugin = builtin(
                           menuOpen && "pointer-events-auto static opacity-100",
                         )}
                       >
+                        {hasDraft ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  aria-label="Discard draft"
+                                  className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    run("chat.draft.discard", { ...target, threadId: thread.id });
+                                  }}
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  type="button"
+                                />
+                              }
+                            >
+                              <XIcon className="size-3.5" />
+                            </TooltipTrigger>
+                            <TooltipPopup side="top">Discard draft</TooltipPopup>
+                          </Tooltip>
+                        ) : null}
                         {showSnooze ? (
                           <SnoozeMenu
                             onOpenChange={setSnoozeMenuOpen}
