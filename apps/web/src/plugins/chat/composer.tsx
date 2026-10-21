@@ -1423,14 +1423,17 @@ export function Composer(props: ComposerProps) {
       await submitAnswers();
       return;
     }
-    if (planFollowUp !== undefined && !hasContent) {
+    // What the editor holds now: a key can come before the render of what was
+    // just typed (or cleared), so the state may still be the text before it.
+    const typed = editor.current?.value() ?? prompt;
+    const hasTyped = typed.trim() !== "" || attachments.length > 0;
+    if (planFollowUp !== undefined && !hasTyped) {
       await implement(false);
       return;
     }
-    if (!hasContent) return;
+    if (!hasTyped) return;
     // `/plan` or `/default` sent alone switch the mode instead (T3).
-    const standalone =
-      attachments.length === 0 ? parseStandaloneComposerSlashCommand(prompt) : null;
+    const standalone = attachments.length === 0 ? parseStandaloneComposerSlashCommand(typed) : null;
     if (standalone !== null && planSupported) {
       props.onSelectionChange({ ...props.selection, interactionMode: standalone });
       setPrompt("");
@@ -1442,7 +1445,7 @@ export function Composer(props: ComposerProps) {
       toasts?.show({ type: "error", title: ready.message });
       return;
     }
-    const text = prompt;
+    const text = typed;
     if (editing !== undefined) {
       // An edit is saved, never sent as a new message beside the queued one.
       if (props.queueActions === undefined) return;

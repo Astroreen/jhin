@@ -51,6 +51,8 @@ export interface PromptEditorHandle {
   replaceRange(start: number, end: number, text: string): void;
   /** Sets the whole prompt and puts the caret at the end. */
   setValue(value: string): void;
+  /** The prompt as the editor holds it now, ahead of a render that reports it. */
+  value(): string;
   caretOnFirstLine(): boolean;
   caretOnLastLine(): boolean;
 }
@@ -1677,6 +1679,10 @@ export function PromptEditor(props: PromptEditorProps) {
       setValue: (next) => {
         if (editor && mountedEditor.current === editor) apply(editor, next, next.length, true);
       },
+      value: () =>
+        editor && mountedEditor.current === editor
+          ? serializeEditorDoc(editor.state.doc).value
+          : snapshot.current.value,
       caretOnFirstLine: () => caretOnVisualEdge(editor, "start"),
       caretOnLastLine: () => caretOnVisualEdge(editor, "end"),
     }),
