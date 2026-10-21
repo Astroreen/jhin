@@ -315,8 +315,8 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
   the new shell's first output; a file cut that way is written back capped.
   A process that exits and starts again in the same run starts with empty
   history, as in T3. `terminals.close` (the drawer's "clears its history"),
-  a deleted or archived thread and an evicted session delete the file;
-  stopping the plugin (a node restart) keeps it, after waiting for the
+  and a deleted or archived thread delete the file; an evicted session
+  (D465) and stopping the plugin (a node restart) keep it, after waiting for the
   pending writes (a session still starting then leaves its file as it was). Without `host.paths@1` nothing is written.
 
 - **D465. At most 128 exited sessions** (T3's
