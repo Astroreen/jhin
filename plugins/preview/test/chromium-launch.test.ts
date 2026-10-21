@@ -53,6 +53,16 @@ describe("which browser a tab starts (D951)", () => {
     expect(launched).toEqual([undefined, path, path]);
   });
 
+  it("says the installed shell did not start, not that there is no browser", async () => {
+    const shell = fakeShell();
+    const { launcher } = fakeLauncher((path) =>
+      path === undefined ? MISSING : "browserType.launch: Failed to launch: libnss3.so missing",
+    );
+    await expect(new Chromium({ headlessShell: shell, launcher }).newPage(true)).rejects.toThrow(
+      "The browser did not start: browserType.launch: Failed to launch: libnss3.so missing",
+    );
+  });
+
   it("keeps Playwright's browser when it is there", async () => {
     const shell = fakeShell();
     const { launched, launcher } = fakeLauncher(() => undefined);

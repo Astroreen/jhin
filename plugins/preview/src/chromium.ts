@@ -131,7 +131,17 @@ export class Chromium {
               installing instanceof Error ? installing.message : String(installing),
             );
           }
-          browser = await launch(executable);
+          try {
+            browser = await launch(executable);
+          } catch (failed) {
+            // The shell is there but does not start (libraries the host lacks): say so,
+            // not that there is no browser.
+            const reason = failed instanceof Error ? failed.message : String(failed);
+            throw new PreviewError(
+              "PREVIEW_UNAVAILABLE",
+              `The browser did not start: ${reason.split("\n")[0]}`,
+            );
+          }
         }
         browser.on("disconnected", () => {
           this.#browser = undefined;
