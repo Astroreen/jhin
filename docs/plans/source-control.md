@@ -746,8 +746,9 @@ with screenshots).
 - **D908. Required checks are the gate of a watch's "passed" wake**, as T3's
   `evaluatePullRequestWatch` has it: GitHub's required checks come from `gh
   pr checks <url> --required --json name` (T3 asks GraphQL's `isRequired`),
-  read from its JSON whatever it exits with; no output with exit 1 means the
-  branch requires none, and any other failure leaves the checks unmarked.
+  read from its JSON whatever it exits with; no output and its "no required
+  checks" message mean the branch requires none, and any other failure
+  leaves the checks unmarked.
   When some are required, only they must finish without failing for "All N
   required checks passed"; an advisory check still running no longer holds
   the wake back. A required check that appears already finished after that
@@ -1121,8 +1122,9 @@ with the node's token, and without one).
   reference forms and terminology), and a "Checkout pull request" offered
   while the node cannot write (T3's `canWriteSourceControl`).
 - Watching (D274): review thread comments on lines, required checks of
-  forges other than GitHub (D908), read fingerprints, rate limit pauses, a notification for a wake and
-  the sidebar's "Waiting" for a watched thread (W14 may take it).
+  forges other than GitHub (D908), read fingerprints, rate limit pauses, a
+  notification for a wake and the sidebar's "Waiting" for a watched thread
+  (W14 may take it).
 - T3's right panel of a thread's pull requests, its chat header rows, native
   stacks of a forge (and their "Dismiss from thread") and the instructions
   that tell agents to link what they open.

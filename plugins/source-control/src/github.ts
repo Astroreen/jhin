@@ -469,8 +469,8 @@ async function requiredChecks(
     return undefined;
   }
   const out = result.stdout.trim();
-  // Exit 1 with nothing on stdout: the branch requires no checks (gh says so on stderr).
-  if (out === "") return result.code === 1 ? new Set() : undefined;
+  // Nothing on stdout: gh says on stderr that the branch requires no checks, or why it failed.
+  if (out === "") return /no required checks/i.test(result.stderr) ? new Set() : undefined;
   try {
     const parsed: unknown = JSON.parse(out);
     if (!Array.isArray(parsed)) return undefined;
