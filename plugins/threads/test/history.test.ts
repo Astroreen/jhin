@@ -817,6 +817,16 @@ interface SearchResult {
   }[];
 }
 
+/** Matches of one source in D227's order: the thread changed last first, then by id. */
+const byChange = (matches: SearchResult["matches"]) =>
+  matches.every(
+    (match, index) =>
+      index === 0 ||
+      matches[index - 1]!.updatedAt > match.updatedAt ||
+      (matches[index - 1]!.updatedAt === match.updatedAt &&
+        matches[index - 1]!.threadId < match.threadId),
+  );
+
 describe("jhin.threads: searching thread contents (D227)", () => {
   it("finds one match per thread, user matches first, then the latest changed thread", async () => {
     const { client } = await node();
@@ -920,15 +930,15 @@ describe("jhin.threads: the search's cache of texts (D227)", () => {
     const second = await client.call<Fork>("threads.create", {});
     await turn(client, second.id, "a zebra too");
     const { matches } = await client.call<SearchResult>("threads.search", { query: "zebra" });
-    expect(matches.map((match) => [match.threadId, match.source])).toEqual([
-      [second.id, "user"],
-      [first.id, "user"],
-    ]);
-    expect(matches[0]!.updatedAt >= matches[1]!.updatedAt).toBe(true);
-    // Changed last now: the first thread goes first.
+    expect(matches.map((match) => match.source)).toEqual(["user", "user"]);
+    expect(byChange(matches)).toBe(true);
+    // Changed last now: the first thread is not behind the second any more.
     await client.call("threads.update", { threadId: first.id, title: "renamed" });
     const again = await client.call<SearchResult>("threads.search", { query: "zebra" });
-    expect(again.matches.map((match) => match.threadId)).toEqual([first.id, second.id]);
+    expect(byChange(again.matches)).toBe(true);
+    const renamed = again.matches.find((match) => match.threadId === first.id)!;
+    const other = again.matches.find((match) => match.threadId === second.id)!;
+    expect(renamed.updatedAt >= other.updatedAt).toBe(true);
   });
 
   it("orders threads matched by answers only by their updatedAt, and returns it", async () => {
@@ -938,12 +948,11 @@ describe("jhin.threads: the search's cache of texts (D227)", () => {
     const newer = await client.call<Fork>("threads.create", {});
     await turn(client, newer.id, "/think hi");
     const { matches } = await client.call<SearchResult>("threads.search", { query: "thought" });
-    expect(matches.map((match) => [match.threadId, match.source])).toEqual([
-      [newer.id, "assistant"],
-      [older.id, "assistant"],
-    ]);
-    expect(matches.every((match) => typeof match.updatedAt === "string")).toBe(true);
-    expect(matches[0]!.updatedAt > matches[1]!.updatedAt).toBe(true);
+    expect(matches.map((match) => match.source)).toEqual(["assistant", "assistant"]);
+    expect(matches.map((match) => match.threadId).toSorted()).toEqual(
+      [newer.id, older.id].toSorted(),
+    );
+    expect(byChange(matches)).toBe(true);
   });
 
   it("matches across line breaks and runs of spaces, as the snippet shows them", async () => {

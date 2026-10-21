@@ -103,7 +103,8 @@ export function createContentSearch(
     request(raw: string, targets: readonly NodeTarget[]) {
       const query = raw.trim();
       const key = `${query}\n${targets.map(targetKey).join("\n")}`;
-      if (key === asked) return;
+      // The same request again asks nothing, unless a node failed it: then it is asked again.
+      if (key === asked && !(state.failed > 0 && !state.pending)) return;
       asked = key;
       generation += 1;
       clearTimeout(timer);
