@@ -807,9 +807,7 @@ export const sidebarPlugin = builtin(
                     </MenuItem>
                   ))}
                   {/* The dialog is another plugin's command: no "Custom…" without it. */}
-                  {context.commands
-                    .list()
-                    .some((command) => command.name === "thread.snooze.choose") ? (
+                  {hasCommand("thread.snooze.choose") ? (
                     <>
                       <MenuSeparator />
                       <MenuItem onClick={() => run("sidebar.selection.snooze", {})}>
@@ -3439,13 +3437,8 @@ export const sidebarPlugin = builtin(
               if (hasCommand("thread.settle"))
                 await context.commands.execute("thread.settle", refOf(entry));
               else await settle(entry);
-            } else if (
-              plan.kind === "move-active" &&
-              plan.unpin &&
-              !plan.unsettle &&
-              !plan.unsnooze &&
-              undo !== undefined
-            ) {
+              // A pinned thread is neither settled nor snoozed: unpinning is all this drop does to it.
+            } else if (plan.kind === "move-active" && plan.unpin && undo !== undefined) {
               const orderKey = entry.thread.pinOrderKey;
               await undo.run({
                 kind: "pin",
