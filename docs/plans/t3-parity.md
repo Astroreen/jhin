@@ -1583,6 +1583,11 @@ Reference: T3 Code at `eb7b35ac` (D53).
 - Find in a thread (D801): matches inside a finished turn's folded work,
   which T3 finds and opens the fold for; here they are found once the fold
   is open.
+  While the bar is open, each change of the thread's text (every streamed
+  token, once a frame) walks the whole thread again; finding again only in
+  the turns that changed would keep a long streaming thread cheap. And white
+  space counts as one space everywhere but `<pre>`, also in text shown with
+  `white-space: pre-wrap` (reading the computed style would match it).
 - Steering (W1): moving Claude's foreground subagents to the background
   before a steer (T3 does, so a steer does not cancel them; here the steer's
   `priority: "now"` may stop them), restarting a turn with the new message
