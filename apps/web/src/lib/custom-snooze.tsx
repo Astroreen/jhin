@@ -8,7 +8,13 @@ import { lazyChunk } from "./lazy-chunk.tsx";
 
 /** Who asked for a custom snooze; one at a time, a new request cancels the previous one. */
 export function createCustomSnoozeRequests() {
-  let current: { readonly id: number; resolve(until: string | undefined): void } | undefined;
+  let current:
+    | {
+        readonly id: number;
+        resolve(until: string | undefined): void;
+        reject(error: Error): void;
+      }
+    | undefined;
   let ids = 0;
   const listeners = new Set<() => void>();
   const changed = () => {
@@ -18,8 +24,8 @@ export function createCustomSnoozeRequests() {
     /** The chosen wake time, or undefined when cancelled. */
     request(): Promise<string | undefined> {
       current?.resolve(undefined);
-      return new Promise((resolve) => {
-        current = { id: ++ids, resolve };
+      return new Promise((resolve, reject) => {
+        current = { id: ++ids, resolve, reject };
         changed();
       });
     },
@@ -27,6 +33,13 @@ export function createCustomSnoozeRequests() {
       const request = current;
       current = undefined;
       request?.resolve(until);
+      changed();
+    },
+    /** Ends the request with an error, which reaches whoever asked (a toast, a caller). */
+    fail(error: Error) {
+      const request = current;
+      current = undefined;
+      request?.reject(error);
       changed();
     },
     current: () => current?.id,
@@ -47,9 +60,9 @@ export function CustomSnoozeDialogHost({ requests }: { requests: CustomSnoozeReq
   return id === undefined ? null : <CustomSnoozeDialog key={id} requests={requests} />;
 }
 
-/** Cancels the request whose dialog could not load, so its snooze does not wait forever. */
+/** Fails the request whose dialog could not load: its snooze says so instead of waiting. */
 function Cancelled({ requests }: { requests: CustomSnoozeRequests }) {
-  useEffect(() => requests.finish(undefined), [requests]);
+  useEffect(() => requests.fail(new Error("Couldn't load the custom snooze dialog.")), [requests]);
   return null;
 }
 

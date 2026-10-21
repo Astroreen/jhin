@@ -1706,7 +1706,8 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   drop does not (`thread.unpin` asks when the settings say so). A drop
   that wakes or un-settles offers nothing, as T3's. To keep the entry
   chunk under D440's 500 kB, the custom snooze dialog became a chunk of its
-  own (`custom-snooze-dialog.tsx`); a failed load cancels the request.
+  own (`custom-snooze-dialog.tsx`); a failed load fails the snooze with "Couldn't load the custom
+  snooze dialog.", which its caller shows.
 
 ## Not ported (out of scope)
 
