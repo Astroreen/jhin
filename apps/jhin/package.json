@@ -29,6 +29,7 @@
     "@jhin/plugin-agent-opencode": "workspace:*",
     "@jhin/plugin-agents": "workspace:*",
     "@jhin/plugin-auth-token": "workspace:*",
+    "@jhin/plugin-context": "workspace:*",
     "@jhin/plugin-devices": "workspace:*",
     "@jhin/plugin-editors": "workspace:*",
     "@jhin/plugin-example": "workspace:*",
@@ -79,6 +80,7 @@
     "@jhin/plugin-orchestration",
     "@jhin/plugin-agent-opencode",
     "@jhin/plugin-agents",
+    "@jhin/plugin-context",
     "@jhin/plugin-mcp-server",
     "@jhin/plugin-mesh"
   ],

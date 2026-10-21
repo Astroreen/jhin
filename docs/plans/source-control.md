@@ -845,7 +845,7 @@ with screenshots).
   turn is interrupted), does not fail the action: a plain writer names the files
   ("Update greet.ts", "Update 3 files") and lists the commits under T3's
   "## Summary" and "## Testing" headings. A repository's pull request
-  template (`.github/pull_request_template.md` and GitHub's other places, read
+  template (`pull_request_template.md` under `.github/` and GitHub's other places, read
   at the base) is handed to the writer. What would be committed goes to that agent as
   T3 sends it: every change git does not ignore, untracked files included,
   so a secret file that is neither ignored nor excluded from the commit

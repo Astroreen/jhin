@@ -24,6 +24,7 @@ import {
   type AgentRegistry,
   type AgentRuntime,
   type AgentStatus,
+  type AgentTurn,
   type TurnRequest,
   type TurnStatus,
 } from "@jhin/agent-api";
@@ -145,6 +146,47 @@ export function knowledgePreface(dir: string): string | undefined {
   return `${head}${parts.join("")}${note}${tail}`;
 }
 
+/**
+ * A turn whose runtime starts once `before` resolves: what a generation's
+ * first turn needs, since its lore brief is a command (A4, D671). An
+ * interrupt before then ends the turn at once and the runtime never starts;
+ * a steer before then is refused, so the message gets a turn of its own
+ * (threads asks the runtime's `steering`, not this turn, whether to steer).
+ */
+export function deferredTurn<T>(before: Promise<T>, begin: (value: T) => AgentTurn): AgentTurn {
+  let inner: AgentTurn | undefined;
+  let interrupted = false;
+  let stop!: () => void;
+  const stopped = new Promise<undefined>((resolve) => (stop = () => resolve(undefined)));
+  const ready = before.then((value) => {
+    if (interrupted) return undefined;
+    inner = begin(value);
+    return inner;
+  });
+  // A turn that fails to start fails its items; nobody reading them is no unhandled rejection.
+  ready.catch(() => undefined);
+  return {
+    items: (async function* () {
+      const turn = await Promise.race([ready, stopped]);
+      if (turn === undefined) return;
+      yield* turn.items;
+    })(),
+    interrupt() {
+      interrupted = true;
+      stop();
+      inner?.interrupt();
+    },
+    respond(requestId, response) {
+      // Only the runtime's turn opens requests, so it exists by now.
+      inner?.respond?.(requestId, response);
+    },
+    steer(input) {
+      if (inner?.steer === undefined) throw new Error("The turn is not running yet");
+      inner.steer(input);
+    },
+  };
+}
+
 /** What a generation is told besides the conversation (D605). */
 export function agentInstructions(agent: {
   readonly title: string;
@@ -183,6 +225,28 @@ export default definePlugin({
     const now = () => new Date().toISOString();
     const run = <T>(name: string, input: unknown) =>
       context.commands.execute(name, input) as Promise<T>;
+
+    /**
+     * The lore brief of the agent's home project and its own lore, from
+     * `lore.brief` (jhin.context, A4, D671), or nothing on a node without it.
+     */
+    const loreBrief = async (agentId: string): Promise<string> => {
+      const home = homes.get(agentId);
+      if (home === undefined) return "";
+      try {
+        const brief = await run<{ markdown: string; stories: string[] }>("lore.brief", {
+          projectId: home.id,
+          agent: agentId,
+          reason: "start",
+        });
+        return brief.stories.length === 0 ? "" : `${brief.markdown}\n---\n\n`;
+      } catch (error) {
+        if ((error as { code?: unknown }).code !== "COMMAND_NOT_FOUND") {
+          context.log.warn("no lore brief for a generation", { agentId, error: String(error) });
+        }
+        return "";
+      }
+    };
 
     // --- Definitions and what is stored ---------------------------------------
     /** The last valid section: a broken file edit keeps the agents as they were. */
@@ -393,17 +457,20 @@ export default definePlugin({
           const model = request.model ?? current.model;
           const runtimeMode = request.runtimeMode ?? current.runtimeMode;
           const interactionMode = request.interactionMode ?? current.interactionMode;
-          return runtime.startTurn({
-            ...request,
-            input: { ...request.input, text: `${preface ?? ""}${request.input.text}` },
-            ...(model === undefined ? {} : { model }),
-            ...(runtimeMode === undefined ? {} : { runtimeMode }),
-            ...(interactionMode === undefined ? {} : { interactionMode }),
-            instructions:
-              request.instructions === undefined
-                ? instructions
-                : `${instructions}\n\n${request.instructions}`,
-          });
+          const begin = (lore: string) =>
+            runtime.startTurn({
+              ...request,
+              input: { ...request.input, text: `${lore}${preface ?? ""}${request.input.text}` },
+              ...(model === undefined ? {} : { model }),
+              ...(runtimeMode === undefined ? {} : { runtimeMode }),
+              ...(interactionMode === undefined ? {} : { interactionMode }),
+              instructions:
+                request.instructions === undefined
+                  ? instructions
+                  : `${instructions}\n\n${request.instructions}`,
+            });
+          // A generation's first turn also starts from the lore (A4, D671).
+          return first ? deferredTurn(loreBrief(agentId), begin) : begin("");
         },
       };
       return agent as AgentRuntime;

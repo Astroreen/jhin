@@ -11,12 +11,27 @@ Words about the docs themselves (`docs/README.md`):
 - **Map** — `docs/map.md`: everything that exists, one line each, with the
   route to its details.
 - **Route** — a link that makes a piece of knowledge reachable from the
-  trailhead. Knowledge without a route does not exist for an agent.
+  trailhead. Knowledge without a route does not exist for an agent. A
+  Markdown link, or a **mention**: a path in backticks (`docs/map.md#shape`).
+- **Section address** — `path#heading` (or `path#D11` for a decision): how
+  `context.read` names one section of a page.
+- **Reachability** — whether every page of the library can be reached from
+  the trailhead by routes; `jhin context.map` reports the pages it cannot
+  reach and the routes that lead nowhere.
+- **Maturity** — how far a page or section is trusted: `observation`,
+  `note`, `insight` or `canon`, from its front matter or its location
+  (`jhin.context` config). Canon wins on conflicts.
 - **Canon** — knowledge the project relies on: `AGENTS.md`, this file,
   implemented plans, the map. Below it, in falling trust: insight, note,
   observation, exhaust.
 - **Lore** — `docs/lore/`: named stories of recurring failures ("moonbase"),
   told instead of adding one more rule.
+- **Lore brief** — the lore handed to an agent on start or after a
+  compaction (`lore.brief`): each story's name and lesson, or the whole
+  stories.
+- **Router skill** — the skill generated from the trailhead and the map
+  (`jhin context.skill.install`) that sends an agent to the right part of
+  the library.
 
 Words about Jhin:
 

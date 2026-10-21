@@ -413,6 +413,109 @@ What `docs/README.md` does by hand, as a plugin for any project:
 - A **router skill** for the project, generated from its map and installed
   where the runtime looks for skills.
 
+Decisions:
+
+- **D661. A plugin with commands, no capability.** `jhin.context`
+  (`plugins/context`) is a server plugin any project can use. It provides no
+  service yet: every operation is a command. A project's root is the
+  `projectId` given (through `projects.list`), else the directory the node
+  runs in, which `host.paths@1.1` now exposes as `cwd` (optional, additive).
+  The plugin requires `host.paths@^1.1`, so it never guesses a directory.
+  It reads and writes project files with `node:fs` directly, so it runs on
+  server nodes only (`side: server`), under the node process's own rights;
+  its path guard (D662) keeps it inside the project.
+  Projects are no capability: `projectId` is looked up through the
+  `projects.list` command, as `jhin.source-control` does, and a node without
+  it answers `PROJECT_NOT_FOUND`. How a project arranges its library is the
+  `jhin.context` config section: `trailhead` (`AGENTS.md`), `map`
+  (`docs/map.md`), `library` (`["docs"]`), `lore` (`docs/lore`), `maturity`
+  and `skill`.
+- **D662. Section addresses.** `context.read { path, heading? }` takes
+  `path#heading` or a separate `heading`. A heading is named by its GitHub
+  anchor (duplicates get `-1`, `-2`), or by its text in any case. `#D11`
+  names the decision written as `**D11.`: its list item or paragraph. A
+  section runs to the next heading of the same or a higher level. Paths are
+  project-relative and name Markdown pages; anything else, or outside the
+  project, also through a symlink (a page, or a directory a skill is
+  written into), fails with `PATH_INVALID`, an unknown `projectId` with
+  `PROJECT_NOT_FOUND`, a missing heading with `HEADING_NOT_FOUND` and the
+  page's anchors. The output carries the page's outline (`headings`), so a reader can pick the
+  next section without reading the page.
+- **D663. Views keep the caller's order.** `context.view { sections }`
+  joins the sections in the order given, each under an HTML comment naming
+  its address and maturity, so the composed text still says where every
+  part came from. It does not reorder by trust.
+- **D664. Routes and reachability.** A route is a Markdown link or a
+  **mention**: a path in backticks ending in `.md` or `/`. A link resolves
+  against its page's directory, a mention first there, then against the
+  project root (the nearest page wins, as for links), a leading `/` against
+  the root, and
+  a directory routes to its `README.md`. Code blocks and code inside link
+  labels are not routes. `context.map` walks breadth-first from the trailhead
+  and returns every page reached (hops, and the page that first routed to
+  it), the `library` pages it never reaches (`unreachable`), links and
+  mentions of a section (`docs/map.md#shape`) that lead nowhere or to a
+  missing anchor (`broken`), and plain mentions of pages that resolve nowhere
+  (`unresolved`: a page still to be written, like `preview.md`, or a file of
+  another repository). Only `broken` and `unreachable` are errors, so prose
+  may name paths outside the project.
+- **D665. Maturity from front matter, then location.** A page sets
+  `maturity: <level>` in its front matter, and a section
+  `maturity.<anchor>: <level>`, inherited by its subsections. Without one,
+  the longest matching key in the `maturity` config wins: a page
+  (`AGENTS.md`) or a directory (`docs/lore/`, the `/` optional), never a
+  plain string prefix. Levels are
+  `observation`, `note`, `insight` and `canon`; exhaust is never committed,
+  so it has no level. Every section comes back with `maturity` and a `rank`
+  (0 unmarked … 4 canon): on a conflict the higher rank wins, and the caller
+  compares ranks. This repository's levels follow `docs/README.md#maturity`
+  in its project config (`.jhin/config.jsonc`), with plans in progress at
+  `note`.
+- **D666. Lore is a directory with an index.** `lore.list` lists the
+  Markdown files of the project's lore directory and, with `agent`, of the
+  agent's own (`.jhin/agents/<id>/lore/`, under A1's inherited knowledge).
+  A story's name and lesson come from the row or item of the directory's
+  `README.md` that links it ("moonbase"), else from its front matter (`name`,
+  `lesson`), else from its file name. `lore.get { name }` finds a story by
+  name, title, file name or path. A story's maturity is what `context.read`
+  returns for its page: this repository sets `docs/lore/` to `insight`.
+- **D667. The lore brief is a command with a hook.** `lore.brief { agent?,
+  reason: start | compaction | request, full? }` returns the Markdown an
+  agent gets on start or after a compaction: every story's name, address and
+  lesson, or the whole stories with `full`. It runs through the
+  `lore.brief` hook, so a team (A5) or refocus (A6) can add to it. A generation's
+  start calls it (D671); a compaction does not yet (see [Deferred](#deferred)).
+- **D668. The router skill is generated.** `context.skill` generates a skill
+  from three canon sources: the trailhead's route section (`skill.route`,
+  default `find-your-way`), the map's second-level sections as addresses, and
+  the lore with its lessons. `context.skill.install` writes it to `<dir>/<name>/SKILL.md`
+  for each of `skill.dirs` (default `.claude/skills`). Name and description
+  are config, so the skill's "clickbait" stays the project's own. Both are
+  written as JSON strings, so any description is valid YAML, and the name is
+  a slug (`[a-z0-9-]`), so it cannot leave its directory. An `agent` input
+  is an id for the same reason. This
+  repository's `jhin-map` skill is now generated; regenerate it instead of
+  editing it.
+- **D669. The library is checked like code.** A unit test runs
+  `context.map` on this repository and fails on any unreachable page or
+  broken route, and when the committed `jhin-map` skill differs from what
+  `context.skill` generates. Routes the first run found broken are fixed (`docs/map.md` named
+  plans by bare file name; one `lore/` mention in this plan pointed nowhere).
+- **D670. Permissions.** Reading commands, `context.skill` included, need
+  `context.read`; `context.skill.install` writes files and needs
+  `context.write`.
+
+- **D671. A generation starts from the lore.** A1 landed first, so A4
+  wires it: on a generation's first turn `jhin.agents` calls `lore.brief`
+  (`reason: start`, the home project and the agent) and puts its Markdown in
+  front of the inherited knowledge (D607). A node without `jhin.context`
+  starts generations as before. The runtime starts once the brief is there
+  (`deferredTurn`): an interrupt before then ends the turn at once and the
+  runtime never starts, a failing brief is logged and the turn starts
+  without it, and a steer before then gets a turn of its own.
+
+D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
+
 ### A5. Teams and team bundles (D681–D700)
 
 - A **team spec** names a team's agents (role, runtime, model, skills,
@@ -480,7 +583,7 @@ What `docs/README.md` does by hand, as a plugin for any project:
 - A registry of shared team bundles (like openrig.dev/rigs). Bundles install
   from npm or a path first.
 - An epidemiology team that traces a wrong idea through files and agents and
-  fixes every copy (`lore/mind-viruses.md`), as a bundle once A5 lands.
+  fixes every copy ([`lore/mind-viruses.md`](../lore/mind-viruses.md)), as a bundle once A5 lands.
 - Chat integrations (Slack, Telegram) for reaching the owner. Notifications
   come first.
 - Agents of runtimes without MCP.
@@ -505,6 +608,30 @@ What `docs/README.md` does by hand, as a plugin for any project:
   re-plans them; `missions.get` shows them.
 - A3: fencing an agent's `missions.write` to the slices that link its own
   thread (D652); agents are node-wide like the rest of D341 for now.
+- A4: the lore brief after a compaction (`reason: compaction`). No runtime
+  reports a compaction yet; whoever adds that event (A6's refocus) calls
+  `lore.brief` there, as D671 does on start.
+- A4: team lore (`lore.list { team }`), once A5 settles where a team's files
+  live.
+- A4: detecting conflicts between sections (two pages saying different
+  things). Only the ranks to settle one exist.
+- A4: a client view of the library (browse by address, the reachability
+  report, the lore), in Civilization mode's slots (A8, D741).
+- A4: dropping the cached library of a removed project when `jhin.threads`
+  reports the removal (its project-deleted event). Today it is dropped on the
+  next call with a `projectId` or when the plugin deactivates.
+- A4: opening every directory of a skill's path without following links
+  (`openat`-style), so a parent swapped for a symlink between the check and
+  the write cannot redirect it. Today the path is checked again after
+  `mkdir` and the file is opened with `O_NOFOLLOW`; only the project's own
+  processes could race it.
+- A4: reading the library off the event loop (`fs/promises`, or a cache
+  kept by file watching). `context.map` and the lore commands read the
+  library synchronously, which is quick for a docs tree of this size.
+- A4: a bound on how long a generation's first turn waits for its lore
+  brief (D671); `lore.brief` reads local files, so it ends.
+- A4: reference-style links (`[x][ref]`) and HTML links as routes; events
+  when pages change (pages are re-read when their mtime changes).
 
 ## Landing
 
@@ -523,3 +650,5 @@ Each workstream lists its PRs here as they merge.
   and `slices.*` commands, the stream guarded by `missions.read`, agents
   reaching it (D641–D652). The mission view in Civilization mode waits for
   A8's slots (#105).
+- A4: `jhin.context` (D661–D670), and the lore brief on a generation's
+  start in `jhin.agents` (D671).
