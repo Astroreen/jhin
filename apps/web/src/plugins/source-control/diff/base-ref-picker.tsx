@@ -54,7 +54,8 @@ export function BaseRefPicker(props: {
         // Said as it is, not as "No matching refs.": the next opening reads them again.
         (error: unknown) => {
           if (read !== reads.current) return;
-          setFailed(error instanceof Error ? error.message : String(error));
+          const reason = error instanceof Error ? error.message : String(error);
+          setFailed(reason === "" ? "unknown error" : reason);
           setBranches([]);
         },
       );
