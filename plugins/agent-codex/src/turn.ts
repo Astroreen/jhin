@@ -177,6 +177,15 @@ export function codexTurn(
   let over = false;
   const finish = (outcome: Outcome) => {
     over = true;
+    // A turn that ends any other way than `turn/completed` (Codex exits, a stop's grace runs
+    // out) ends its retry too.
+    settleRetry(
+      outcome.error !== undefined
+        ? outcome.error.message
+        : interrupted
+          ? "Stopped while retrying."
+          : undefined,
+    );
     resolveFinished(outcome);
   };
   /** Proposed plans streamed so far, by item. */
