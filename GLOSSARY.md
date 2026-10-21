@@ -101,6 +101,10 @@ Words about Jhin:
   and model (`tasks.delegate`, T3 Code's `delegate_task`): a **child thread**
   (`relationshipToParent: "subagent"`) runs the task prompt, and the parent
   follows it by its task id and is woken when it ends.
+- **Provider subagent** — a subagent the agent of a turn runs itself
+  (Claude Code's `Agent` tool), shown as a child thread with
+  `subagentOrigin: "provider"` that runs on its own; unlike a delegated
+  task's thread, it takes no messages (orchestration.md D877).
 - **Workflow** — a script that runs several agents (`agent`, `parallel`,
   `pipeline`, `phase`), each one a delegated task of the thread that started
   it (`workflows.run`). A **saved workflow** is one kept as
