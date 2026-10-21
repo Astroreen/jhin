@@ -1849,6 +1849,12 @@ describe("worktrees in the client", () => {
     const drafts = createDraftWorkspaces();
     const Toolbar = createBranchToolbar(value, drafts);
     const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    // A started thread's toolbar alone: its fixed label offers no menu.
+    const started = mount(<Toolbar project={project} target={target} thread={thread} />);
+    await expect.element(page.getByRole("img", { name: /^Workspace: / })).toBeVisible();
+    expect(drafts.openMenu()).toBe(false);
+
+    // A draft beside it offers its menu, and takes it back when it goes.
     const draft = mount(<Toolbar project={project} target={target} />);
     await expect.element(page.getByRole("button", { name: "Workspace" })).toBeVisible();
     let opened = false;
@@ -1859,9 +1865,8 @@ describe("worktrees in the client", () => {
     await expect.element(page.getByRole("menuitemradio", { name: /New worktree/ })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     draft.unmount();
-
-    mount(<Toolbar project={project} target={target} thread={thread} />);
     expect(drafts.openMenu()).toBe(false);
+    started.unmount();
   });
 
   it("never offers to delete a worktree this node did not make", async () => {
