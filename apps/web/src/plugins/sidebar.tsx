@@ -613,8 +613,9 @@ export const sidebarPlugin = builtin(
         pick: (entry: Entry) => boolean,
         each: (entry: Entry) => Promise<unknown>,
         failure: (count: number) => string,
+        chosen: readonly Entry[] = selected(),
       ) => {
-        const entries = selected().filter(pick);
+        const entries = chosen.filter(pick);
         selection.set({ keys: [] });
         // What failed stays selected, as T3 keeps it, to try again.
         const failed: string[] = [];
@@ -664,15 +665,25 @@ export const sidebarPlugin = builtin(
         name: "sidebar.selection.snooze",
         title: "Snooze selected threads",
         description:
-          'Snoozes every thread selected in the sidebar until `until` (T3\'s "Snooze (N)")',
-        input: z.object({ until: z.iso.datetime({ offset: true }) }),
+          'Snoozes every thread selected in the sidebar until `until`, or a time asked for in the custom snooze dialog (T3\'s "Snooze (N)")',
+        input: z.object({ until: z.iso.datetime({ offset: true }).optional() }),
         output: z.object({}),
-        handler: ({ until }) =>
-          forSelected(
+        handler: async (input) => {
+          // "Custom…" asks once for every selected thread (t3-parity.md D962),
+          // and snoozes the threads chosen when it was asked.
+          const chosen = selected();
+          const until =
+            input.until ??
+            ((await context.commands.execute("thread.snooze.choose", {})) as { until?: string })
+              .until;
+          if (until === undefined) return {};
+          return forSelected(
             () => true,
             (entry) => context.commands.execute("thread.snooze", { ...refOf(entry), until }),
             (count) => `Failed to snooze ${count} thread${count === 1 ? "" : "s"}`,
-          ),
+            chosen,
+          );
+        },
       });
       context.commands.register({
         name: "sidebar.selection.mark-unread",
@@ -782,6 +793,17 @@ export const sidebarPlugin = builtin(
                       {preset.label} ({preset.whenLabel})
                     </MenuItem>
                   ))}
+                  {/* The dialog is another plugin's command: no "Custom…" without it. */}
+                  {context.commands
+                    .list()
+                    .some((command) => command.name === "thread.snooze.choose") ? (
+                    <>
+                      <MenuSeparator />
+                      <MenuItem onClick={() => run("sidebar.selection.snooze", {})}>
+                        Custom…
+                      </MenuItem>
+                    </>
+                  ) : null}
                 </MenuSubPopup>
               </MenuSub>
             ) : null,

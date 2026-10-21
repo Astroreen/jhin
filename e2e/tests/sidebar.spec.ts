@@ -586,6 +586,42 @@ test("D454: select several threads and act on them at once", async ({ page }, in
   await expect(page.getByRole("menuitem", { name: "Settle thread" })).toBeVisible();
 });
 
+test("D962: a selection's Custom… snooze asks once and snoozes them all", async ({
+  page,
+}, info) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["stay", "stay too", "nap a", "nap b"]) await addThread(x, title);
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["nap b", "nap a", "stay too", "stay"]);
+
+  await threadRow(page, "nap b").click({ modifiers: ["Control"] });
+  await threadRow(page, "nap a").click({ modifiers: ["Control"] });
+  await threadRow(page, "nap a").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Snooze (2)" }).hover();
+  await page.getByRole("menuitem", { name: "Custom…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Custom snooze" });
+  await dialog.getByRole("button", { name: "Duration" }).click();
+  await dialog.getByRole("spinbutton", { name: "Snooze for" }).fill("2");
+  const shot = info.outputPath("selection-custom-snooze.png");
+  await page.screenshot({ path: shot });
+  await info.attach("selection-custom-snooze", { path: shot, contentType: "image/png" });
+  await dialog.getByRole("button", { name: "Snooze" }).click();
+  await expect(page.getByRole("button", { name: "Snoozed (2)" })).toBeVisible();
+  await expect(cardTitles(page)).toHaveText(["stay too", "stay"]);
+
+  // Cancelled, it snoozes nothing and keeps the selection.
+  await threadRow(page, "stay too").click({ modifiers: ["Control"] });
+  await threadRow(page, "stay").click({ modifiers: ["Control"] });
+  await threadRow(page, "stay").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Snooze (2)" }).hover();
+  await page.getByRole("menuitem", { name: "Custom…" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(cardTitles(page)).toHaveText(["stay too", "stay"]);
+  for (const title of ["stay too", "stay"])
+    await expect(threadRow(page, title)).toHaveAttribute("data-selected", "");
+});
+
 test("D454: a selection's Delete asks once, and Mark unread marks them all", async ({ page }) => {
   const x = await start({ mode: "ui" });
   for (const title of ["keep", "drop a", "drop b"]) await addThread(x, title);
