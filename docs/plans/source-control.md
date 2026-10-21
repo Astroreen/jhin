@@ -1087,6 +1087,10 @@ with the node's token, and without one).
   no longer matches the patch shown (D921), find in the diff, revealing a file of a WSL node in Windows File Explorer
   (D922), opening a remote node's file in a local editor (T3's remote editor
   URLs), and the pop-out (non-inline) panel mode.
+- The diff panel test "shows the branch's changes with Pierre" counts Shiki's
+  highlighted spans as soon as the text shows; highlighting comes later from
+  a worker, so under load it can count none. It should wait for a
+  highlighted token instead (seen in W22, D923).
 - Settling a thread on a merged pull request (T3's sidebar) and the
   terminal indicator (the terminal plugin contributes it to
   `sidebar.thread.indicators`). The branch-mismatch warning is done
