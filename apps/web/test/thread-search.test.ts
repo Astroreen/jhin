@@ -165,6 +165,20 @@ describe("searching thread contents on every node (D228)", () => {
     );
   });
 
+  it("leaves no timer behind once a newer query or disposal supersedes the asking", () => {
+    vi.useFakeTimers();
+    const { threads } = nodes();
+    const search = createContentSearch(threads);
+    search.request("lisbon", [a, b]);
+    vi.advanceTimersByTime(200);
+    // Two nodes asked: one deadline each.
+    expect(vi.getTimerCount()).toBe(2);
+    search.request("porto", [a]);
+    expect(vi.getTimerCount()).toBe(1);
+    search.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("marks every occurrence of the query, ignoring ASCII case", () => {
     expect(highlightParts("Lisbon and lisbon", "LISBON")).toEqual([
       { text: "Lisbon", highlighted: true },
@@ -172,5 +186,10 @@ describe("searching thread contents on every node (D228)", () => {
       { text: "lisbon", highlighted: true },
     ]);
     expect(highlightParts("plain", " ")).toEqual([{ text: "plain", highlighted: false }]);
+    // Whitespace counts as the node matched it: collapsed.
+    expect(highlightParts("foo bar baz", "foo  bar")).toEqual([
+      { text: "foo bar", highlighted: true },
+      { text: " baz", highlighted: false },
+    ]);
   });
 });

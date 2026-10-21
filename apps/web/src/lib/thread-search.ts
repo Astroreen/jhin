@@ -57,6 +57,12 @@ export function createContentSearch(
     state = next;
     for (const listener of Array.from(listeners)) listener();
   };
+  /** The deadlines of the nodes still asked; a newer query or disposal clears them. */
+  const deadlines = new Set<ReturnType<typeof setTimeout>>();
+  const dropDeadlines = () => {
+    for (const deadline of deadlines) clearTimeout(deadline);
+    deadlines.clear();
+  };
   const run = (query: string, targets: readonly NodeTarget[], id: number) => {
     let waiting = targets.length;
     let matches: ContentMatch[] = [];
@@ -66,6 +72,7 @@ export function createContentSearch(
       let deadline: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<ContentMatch[] | "failed">((resolve) => {
         deadline = setTimeout(() => resolve("failed"), options.deadlineMs ?? NODE_DEADLINE_MS);
+        deadlines.add(deadline);
       });
       const answer = threads
         .call<{ matches: Omit<ContentMatch, "target">[] }>(target, "threads.search", { query })
@@ -77,7 +84,10 @@ export function createContentSearch(
             (error as { code?: unknown } | null)?.code === "COMMAND_NOT_FOUND" ? [] : "failed",
         );
       void Promise.race([answer, late])
-        .finally(() => clearTimeout(deadline))
+        .finally(() => {
+          clearTimeout(deadline);
+          deadlines.delete(deadline!);
+        })
         .then((found) => {
           if (id !== generation) return;
           waiting -= 1;
@@ -97,6 +107,7 @@ export function createContentSearch(
       asked = key;
       generation += 1;
       clearTimeout(timer);
+      dropDeadlines();
       if (query.length < MIN_CONTENT_QUERY) {
         publish(IDLE);
         return;
@@ -117,6 +128,7 @@ export function createContentSearch(
     },
     dispose() {
       clearTimeout(timer);
+      dropDeadlines();
       generation += 1;
       listeners.clear();
     },
@@ -146,7 +158,8 @@ export function highlightParts(
   text: string,
   rawQuery: string,
 ): { readonly text: string; readonly highlighted: boolean }[] {
-  const query = rawQuery.trim();
+  // Whitespace collapsed, as the node matches and the snippet shows it.
+  const query = rawQuery.replace(/\s+/g, " ").trim();
   if (query === "") return [{ text, highlighted: false }];
   const fold = (value: string) => value.replace(/[A-Z]/g, (character) => character.toLowerCase());
   const haystack = fold(text);
