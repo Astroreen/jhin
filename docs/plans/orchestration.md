@@ -456,8 +456,9 @@ user sees, which their Deferred lists left out.
   "Run <title> now" (not for a webhook; `scheduler.tasks.run`) and the
   switch "Pause <title>"/"Resume <title>" (`scheduler.tasks.update` with
   `enabled` alone); "Manage scheduled tasks" in its heading. A failure is
-  told in a toast. It shows only while the thread has such tasks, for a
-  thread of the connection's own node.
+  told in a toast. It shows while the thread has such tasks, or with
+  the error when they cannot be read (as in T3), for a thread of the
+  connection's own node.
 - **D982. One scheduler store per client, loaded with its first view:** the
   settings page and the automations section share it, in the page's chunk
   (D440); a chunk that failed to load is tried again.
