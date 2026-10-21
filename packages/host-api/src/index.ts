@@ -105,6 +105,8 @@ export const SECRET_REDACTED = "••••••";
 export const isRedactedSecret = (value: unknown): value is string =>
   typeof value === "string" &&
   (value === SECRET_REDACTED || value.startsWith(`${SECRET_REDACTED}#`));
+
+/**
  * `host.editors@1`, provided by `jhin.editors`: the editors installed on a node
  * and opening a project's file in one (docs/plans/source-control.md, D286).
  * Its commands are `editors.list` and `editors.open`.
