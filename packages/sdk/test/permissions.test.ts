@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  PERMISSIONS_DESCRIBE_HOOK,
+  describePermissions,
   holdsPermission,
   intersectPermissions,
   isGrant,
   missingPermissions,
+  type Hooks,
+  type PermissionEntry,
 } from "../src/index.ts";
 
 describe("permissions (security.md D410)", () => {
@@ -49,5 +53,59 @@ describe("permissions (security.md D410)", () => {
     for (const grant of ["", "git.*.read", "*.read", "Git.read", "git.", ".*", "git*"]) {
       expect(isGrant(grant)).toBe(false);
     }
+  });
+});
+
+describe("describePermissions (security.md D961)", () => {
+  // The `after` half of the kernel's hooks: enough to run one pipeline.
+  function hooks() {
+    const after = new Set<(output: PermissionEntry[]) => PermissionEntry[]>();
+    return {
+      hooks: {
+        after: (name: string, hook: (output: PermissionEntry[]) => PermissionEntry[]) => {
+          expect(name).toBe(PERMISSIONS_DESCRIBE_HOOK);
+          after.add(hook);
+          return { dispose: () => after.delete(hook) };
+        },
+      } as unknown as Hooks,
+      run: (entries: PermissionEntry[]) =>
+        [...after].reduce((output, hook) => hook(output), entries),
+    };
+  }
+  const entries = (): PermissionEntry[] => [
+    { permission: "git.read", commands: ["git.status"] },
+    { permission: "other.read", commands: [] },
+  ];
+
+  it("titles the permissions it knows and leaves the others alone", () => {
+    const { hooks: context, run } = hooks();
+    describePermissions(
+      { hooks: context },
+      { "git.read": { title: "View", description: "Read." } },
+    );
+    expect(run(entries())).toEqual([
+      { permission: "git.read", commands: ["git.status"], title: "View", description: "Read." },
+      { permission: "other.read", commands: [] },
+    ]);
+  });
+
+  it("keeps the first description of a permission", () => {
+    const { hooks: context, run } = hooks();
+    describePermissions({ hooks: context }, { "git.read": { title: "First" } });
+    describePermissions(
+      { hooks: context },
+      { "git.read": { title: "Second", description: "No." } },
+    );
+    expect(run(entries())[0]).toEqual({
+      permission: "git.read",
+      commands: ["git.status"],
+      title: "First",
+    });
+  });
+
+  it("stops describing once disposed", () => {
+    const { hooks: context, run } = hooks();
+    describePermissions({ hooks: context }, { "git.read": { title: "View" } }).dispose();
+    expect(run(entries())).toEqual(entries());
   });
 });

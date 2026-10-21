@@ -202,14 +202,14 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                         />
                         <span className="min-w-0">
                           <span className="block text-xs font-medium text-foreground">
-                            {title ?? permission}
+                            {title || permission}
                           </span>
-                          {description === undefined ? null : (
+                          {!description ? null : (
                             <span className="block text-xs leading-snug text-muted-foreground">
                               {description}
                             </span>
                           )}
-                          {title === undefined ? null : (
+                          {!title ? null : (
                             <code className="block text-[11px] text-muted-foreground">
                               {permission}
                             </code>

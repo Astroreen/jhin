@@ -53,7 +53,11 @@ test("pairs a second browser by its pairing link, keeps tokens away from scripts
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("textbox", { name: "Client label (optional)" }).fill("Second browser");
   // Permissions carry their plugin's title (security.md D961).
-  await expect(dialog.getByRole("checkbox", { name: /^View terminals/ })).toBeChecked();
+  const terminals = dialog.getByRole("checkbox", { name: /^View terminals/ });
+  await expect(terminals).toBeChecked();
+  await expect(terminals).toHaveAccessibleName(
+    "View terminals Read existing terminal output and status. terminals.read",
+  );
   await page.screenshot({ path: info.outputPath("pairing-permissions.png") });
   await dialog.getByRole("button", { name: "Create link" }).click();
   await expect(

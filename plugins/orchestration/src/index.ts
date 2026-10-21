@@ -19,7 +19,7 @@ import {
   type InteractionMode,
   type RuntimeMode,
 } from "@jhin/agent-api";
-import { definePlugin, z, type Invocation } from "@jhin/sdk";
+import { definePlugin, describePermissions, z, type Invocation } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -1080,6 +1080,13 @@ export default definePlugin({
     const RuntimeModeInput = z.enum(["inherit", ...RUNTIME_MODES]);
     const InteractionModeInput = z.enum(["inherit", ...INTERACTION_MODES]);
 
+    // The title of the permission workflow scripts need (security.md D961).
+    describePermissions(context, {
+      [WORKFLOWS_RUN_PERMISSION]: {
+        title: "Run workflow scripts",
+        description: "Run scripts that orchestrate agents; a script runs code on this node.",
+      },
+    });
     context.commands.register({
       name: "tasks.delegate",
       description:

@@ -470,8 +470,8 @@ export default definePlugin({
           z.object({
             permission: z.string(),
             commands: z.array(z.string()),
-            title: z.string().optional(),
-            description: z.string().optional(),
+            title: z.string().min(1).optional(),
+            description: z.string().min(1).optional(),
           }),
         ),
       }),
@@ -487,8 +487,14 @@ export default definePlugin({
           .map(([permission, commands]) => ({ permission, commands }))
           .toSorted((a, b) => a.permission.localeCompare(b.permission));
         // Each plugin titles the permissions its commands need (security.md D961).
+        const described = await context.hooks.run(PERMISSIONS_DESCRIBE_HOOK, {}, () => entries);
         return {
-          permissions: await context.hooks.run(PERMISSIONS_DESCRIBE_HOOK, {}, () => entries),
+          // An empty title or description says nothing: the id stands in for it.
+          permissions: described.map(({ title, description, ...entry }) => ({
+            ...entry,
+            ...(title ? { title } : {}),
+            ...(description ? { description } : {}),
+          })),
         };
       },
     });

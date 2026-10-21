@@ -380,6 +380,10 @@ export default definePlugin({
         title: "Manage the mesh",
         description: "Invite and join nodes, and change their config.",
       },
+      "mesh.call": {
+        title: "Call other nodes",
+        description: "Run commands on other nodes of the mesh, within this client's permissions.",
+      },
     });
     context.commands.register({
       name: "mesh.open",
