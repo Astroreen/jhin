@@ -1768,7 +1768,14 @@ export default definePlugin({
       try {
         result = await liveAgent(workflow, prompt, options, signal, traceId);
       } finally {
-        if (state !== undefined) await countTokens(workflow.workflowId, state, index);
+        // Counting is bookkeeping: its failure never replaces the agent's own outcome.
+        if (state !== undefined) {
+          await countTokens(workflow.workflowId, state, index).catch((error: unknown) =>
+            context.log.error("could not count a workflow agent's tokens", {
+              error: String(error),
+            }),
+          );
+        }
       }
       const entry = workflows
         .get(workflow.workflowId)
@@ -1785,13 +1792,14 @@ export default definePlugin({
       return result;
     }
 
-    /** Keeps a run's journal, in `storage.kv` (`journal/<id>`), for a later resume. */
+    /** Keeps a run's journal, one key per call (`journal/<id>/<index>`), for a later resume. */
     function record(workflowId: string, state: RunState, entry: JournalEntry) {
       state.journal.push(entry);
-      const entries = state.journal.toSorted((a, b) => a.index - b.index);
       state.writing = state.writing
         .catch(() => undefined)
-        .then(() => kv.set(NAMESPACE, `journal/${workflowId}`, entries as unknown as Json))
+        .then(() =>
+          kv.set(NAMESPACE, `journal/${workflowId}/${entry.index}`, entry as unknown as Json),
+        )
         .catch((error: unknown) =>
           context.log.error("could not record a workflow's journal", { error: String(error) }),
         );
@@ -2097,10 +2105,9 @@ export default definePlugin({
               { workflowId: resumeFromRunId },
             );
           }
-          prior =
-            ((await kv.get(NAMESPACE, `journal/${resumeFromRunId}`)) as
-              | JournalEntry[]
-              | undefined) ?? [];
+          prior = (await kv.list(NAMESPACE, { prefix: `journal/${resumeFromRunId}/` })).map(
+            (entry) => entry.value as unknown as JournalEntry,
+          );
         }
         const dir = await workingDirectory(parent);
         const script =

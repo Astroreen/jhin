@@ -26,18 +26,18 @@ describe("resuming a workflow (D872)", () => {
     const first = await client.call<{ workflowId: string }>("workflows.run", {
       script: run(
         "r",
-        "const a = await agent('one', { label: 'a' })\nreturn [a, await agent('two', { label: 'b' })]",
+        "const a = await agent('one', { label: 'a' })\nconst b = await agent('two', { label: 'b' })\nreturn [a, b, await agent('four', { label: 'c' })]",
       ),
       parentThreadId: parent.id,
     });
     const done = await feed.workflow(first.workflowId, (record) => record.status === "completed");
-    expect(done.result).toEqual(["Echo: one", "Echo: two"]);
+    expect(done.result).toEqual(["Echo: one", "Echo: two", "Echo: four"]);
     const [cachedTask] = (done.agents as Agent[]).map((agent) => agent.taskId);
 
     const second = await client.call<{ workflowId: string }>("workflows.run", {
       script: run(
         "r",
-        "const a = await agent('one', { label: 'a' })\nreturn [a, await agent('three', { label: 'b' })]",
+        "const a = await agent('one', { label: 'a' })\nconst b = await agent('three', { label: 'b' })\nreturn [a, b, await agent('four', { label: 'c' })]",
       ),
       parentThreadId: parent.id,
       resumeFromRunId: first.workflowId,
@@ -46,7 +46,7 @@ describe("resuming a workflow (D872)", () => {
       second.workflowId,
       (record) => record.status === "completed",
     );
-    expect(resumed.result).toEqual(["Echo: one", "Echo: three"]);
+    expect(resumed.result).toEqual(["Echo: one", "Echo: three", "Echo: four"]);
     expect(resumed.resumedFrom).toBe(first.workflowId);
     const agents = (resumed.agents as Agent[]).toSorted((a, b) => a.index - b.index);
     expect(agents[0]).toMatchObject({
@@ -57,6 +57,9 @@ describe("resuming a workflow (D872)", () => {
     });
     expect(agents[1]).toMatchObject({ label: "b", status: "completed" });
     expect(agents[1]!.cached).toBeUndefined();
+    // After the first changed call, an unchanged one runs live too.
+    expect(agents[2]).toMatchObject({ label: "c", status: "completed" });
+    expect(agents[2]!.cached).toBeUndefined();
 
     // A run still going cannot be resumed.
     const held = await client.call<{ workflowId: string }>("workflows.run", {

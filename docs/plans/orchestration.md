@@ -381,8 +381,10 @@ user sees, which their Deferred lists left out.
 
 - **D872. `resumeFromRunId`** (`workflows.run`): a run of the same thread
   that no longer runs (`WORKFLOW_RUNNING` otherwise: stop it first). Each run
-  keeps a journal of its completed `agent()` calls (`storage.kv`,
-  `journal/<id>`: call index, `[prompt, options]` and result). On resume the
+  keeps a journal of its completed `agent()` calls (`storage.kv`, one key
+  per call, `journal/<id>/<index>`: `[prompt, options]` and result); a call
+  that failed or answered `null` is not journaled, so a resume runs it, and
+  everything after it, live. On resume the
   calls answer from it in order while each matches the journal's call of the
   same index; the first that differs, and every call after it, runs live,
   as the Workflow tool resumes. A reused call is a `cached` agent of the new
@@ -392,8 +394,8 @@ user sees, which their Deferred lists left out.
   and `remaining()` is `Infinity`. `spent()` adds up the output tokens of the
   run's agents (the last `agent.usage.updated` of each of their turns),
   counted as each agent ends; the record keeps `budget` and `spent`. It is a
-  hard ceiling: once spent, `agent()` throws "The workflow's budget of N
-  tokens is spent".
+  hard ceiling: once spent, `agent()` throws `WORKFLOW_BUDGET` ("The
+  workflow's budget of N tokens is spent").
 - **D874. `workflow(nameOrRef, args?)`** runs a saved workflow or
   `{ scriptPath }` inline, in a context of its own with `args`, sharing the
   run's agents, concurrency, budget and stop. Its agents go into the phase
