@@ -177,6 +177,8 @@ export function createHeadlessShell(options: HeadlessShellOptions) {
   const installRoot = Path.join(options.root, release?.platform ?? `${platform}`);
   const progress = { downloadedBytes: 0, unpacking: false };
   let installing: Promise<string> | undefined;
+  /** Stops a download in progress when the plugin goes (rule 5). */
+  const stopped = new AbortController();
 
   function installed(found: HeadlessShellRelease): string | undefined {
     const executable = Path.join(installRoot, found.version, executableName);
@@ -193,7 +195,9 @@ export function createHeadlessShell(options: HeadlessShellOptions) {
   async function fetchArchive(found: HeadlessShellRelease, archivePath: string): Promise<void> {
     let response: Response;
     try {
-      response = await download(found.url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+      response = await download(found.url, {
+        signal: AbortSignal.any([AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS), stopped.signal]),
+      });
     } catch (cause) {
       throw new HeadlessShellInstallError(
         "The download from storage.googleapis.com failed. Check this machine's network access.",
@@ -308,8 +312,12 @@ export function createHeadlessShell(options: HeadlessShellOptions) {
         );
       }
       const destination = Path.join(installRoot, found.version);
-      await Fs.promises.rm(destination, { recursive: true, force: true });
-      await Fs.promises.rename(unpacked, destination);
+      // Another node of this home may have published the same version meanwhile, and
+      // may be running it: a finished install is kept, not replaced.
+      if (installed(found) === undefined) {
+        await Fs.promises.rm(destination, { recursive: true, force: true });
+        await Fs.promises.rename(unpacked, destination);
+      }
     } finally {
       await Fs.promises.rm(staging, { recursive: true, force: true });
     }
@@ -332,6 +340,10 @@ export function createHeadlessShell(options: HeadlessShellOptions) {
   }
 
   return {
+    /** Stops a download in progress; the plugin calls it when it goes. */
+    dispose(): void {
+      stopped.abort();
+    },
     /** The installed executable, if any, without installing. */
     installed: (): string | undefined => (release === null ? undefined : installed(release)),
     /**

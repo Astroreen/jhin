@@ -74,7 +74,11 @@ export async function presentAsChrome(cdp: CDPSession): Promise<void> {
 export class Chromium {
   readonly #options: ChromiumOptions;
   #browser: Promise<Browser> | undefined;
-  /** Playwright had no browser here: later starts go straight to the shell (D951). */
+  /**
+   * Playwright had no browser here: later starts go straight to the shell (D951).
+   * Kept for the plugin's run: a browser of Playwright's installed meanwhile is
+   * found on the node's next start.
+   */
   #playwrightMissing = false;
   #shared: Promise<BrowserContext> | undefined;
 

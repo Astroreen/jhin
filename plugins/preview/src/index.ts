@@ -94,18 +94,22 @@ export default definePlugin({
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
     const paths = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY);
     const streams = createMemoryStreams({ log: context.log });
+    // Kept in Jhin's home, shared by every plugin of the node (T3: `<home>/tools`); a
+    // plugin run without a home (tests) never installs one into a shared temp folder.
+    const headlessShell =
+      paths === undefined
+        ? undefined
+        : createHeadlessShell({
+            root: Path.join(paths.home, "tools", "chrome-headless-shell"),
+            release: headlessShellRelease(process.platform, process.arch),
+          });
+    if (headlessShell !== undefined) {
+      context.subscriptions.add({ dispose: () => headlessShell.dispose() });
+    }
     const tabs = createTabs({
       chromium: new Chromium({
         executablePath: () => context.config.get<Config>(CONFIG_SECTION).executablePath,
-        // Kept in Jhin's home, shared by every plugin of the node (T3: `<home>/tools`); a
-        // plugin run without a home (tests) never installs one into a shared temp folder.
-        headlessShell:
-          paths === undefined
-            ? undefined
-            : createHeadlessShell({
-                root: Path.join(paths.home, "tools", "chrome-headless-shell"),
-                release: headlessShellRelease(process.platform, process.arch),
-              }),
+        headlessShell,
       }),
       streams,
       dataDir: paths?.dataDir(context.plugin.id) ?? Path.join(Os.tmpdir(), "jhin-preview"),
