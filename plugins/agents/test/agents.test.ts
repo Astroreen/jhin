@@ -413,4 +413,55 @@ describe("defined agents", () => {
     );
     expect(thread).toMatchObject({ generationOf: "builder", title: "builder #1" });
   });
+
+  it("says how far an update got when a file cannot be written", async () => {
+    const { client, hostConfig } = await node({
+      agents: { builder },
+      project: {
+        "jhin.agents": { agents: { builder: { title: "Project builder", model: "m1" } } },
+      },
+    });
+    hostConfig.failNext = "node";
+    await expect(
+      client.call("agents.update", { agentId: "builder", unset: ["model"] }),
+    ).rejects.toMatchObject({ details: { updatedIn: ["project"], failed: "node" } });
+  });
+
+  it("keeps a generation whose thread was made though its answer was lost", async () => {
+    const { client, storage } = await node({ agents: { builder } });
+    const { log } = storage.storage;
+    const append = log.append.bind(log);
+    log.append = async (stream, events, options) => {
+      const result = await append(stream, events, options);
+      // The thread is made; only the answer of threads.create fails after it.
+      if (stream === "threads") throw new Error("connection lost");
+      return result;
+    };
+    const rotated = await client.call<{ generation: { threadId: string } }>("agents.rotate", {
+      agentId: "builder",
+    });
+    log.append = append;
+    expect(
+      await client.call<{ threadId: string }[]>("agents.generations", { agentId: "builder" }),
+    ).toMatchObject([{ threadId: rotated.generation.threadId, current: true }]);
+  });
+
+  it("leaves out a knowledge file it cannot read", async () => {
+    const { client, requests } = await node({ agents: { builder } });
+    const { generation } = await client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      { agentId: "builder" },
+    );
+    const { knowledgeDir } = await client.call<{ knowledgeDir: string }>("agents.get", {
+      agentId: "builder",
+    });
+    Fs.writeFileSync(Path.join(knowledgeDir, "a.md"), "readable");
+    Fs.writeFileSync(Path.join(knowledgeDir, "b.md"), "locked");
+    Fs.chmodSync(Path.join(knowledgeDir, "b.md"), 0o000);
+    const events = watch(client, threadStream(generation.threadId));
+    await client.call("threads.send", { threadId: generation.threadId, text: "Go" });
+    await events.until(ThreadEvents.turnCompleted);
+    expect(requests[0]?.input.text).toContain("readable");
+    expect(requests[0]?.input.text).not.toContain("locked");
+  });
 });

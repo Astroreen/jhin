@@ -176,7 +176,8 @@ types and the schemas of the `agents.*` commands) is
   changed keys into the highest file that defines the agent and clears an
   `unset` field from every file that sets it; `remove` empties the files
   highest first, so a write that fails leaves a valid definition, and its
-  error names the files already done (`removedFrom`). A file edited by hand
+  error names the files already done (`removedFrom`; `updatedIn` for an
+  update, which writes several files the same way). A file edited by hand
   counts the same; a hand edit that breaks the section keeps the agents as
   they were until it is fixed.
   The plugin compares each change of the section with what it last recorded

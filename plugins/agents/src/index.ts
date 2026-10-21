@@ -116,12 +116,18 @@ export function knowledgePreface(dir: string): string | undefined {
   const skipped: string[] = [];
   for (const name of names) {
     const path = Path.join(dir, name);
-    // UTF-8 takes at most 4 bytes a character: past that, the file cannot fit.
-    if (Fs.statSync(path).size > budget * 4) {
-      skipped.push(name);
+    let text: string;
+    try {
+      // UTF-8 takes at most 4 bytes a character: past that, the file cannot fit.
+      if (Fs.statSync(path).size > budget * 4) {
+        skipped.push(name);
+        continue;
+      }
+      text = Fs.readFileSync(path, "utf8").trim();
+    } catch {
+      // The agent writes the folder itself: a file gone or locked meanwhile is left out.
       continue;
     }
-    const text = Fs.readFileSync(path, "utf8").trim();
     if (text === "") continue;
     const part = `${parts.length === 0 ? "" : "\n\n"}## ${name}\n\n${text}`;
     if (part.length > budget) {
@@ -540,6 +546,33 @@ export default definePlugin({
       await reconcile();
     }
 
+    /**
+     * Writes several files one by one; a failure says which files were done
+     * (`done`) and which failed, as `removedFrom` or `updatedIn` (D604).
+     */
+    async function eachLayer(
+      agentId: string,
+      verb: "removed" | "updated",
+      layers: readonly Writable[],
+      write: (layer: Writable) => Promise<void>,
+    ): Promise<Writable[]> {
+      const done: Writable[] = [];
+      for (const layer of layers) {
+        try {
+          await write(layer);
+        } catch (error) {
+          const where = verb === "removed" ? "removedFrom" : "updatedIn";
+          throw new AgentsError(
+            (error as { code?: string }).code ?? "CONFIG_UNAVAILABLE",
+            `The agent ${agentId} was ${verb} in ${done.join(", ") || "no file"} but not in the ${layer} file: ${(error as Error).message}`,
+            { agentId, [where]: done, failed: layer },
+          );
+        }
+        done.push(layer);
+      }
+      return done;
+    }
+
     const stripUndefined = (definition: Record<string, unknown>) =>
       Object.fromEntries(
         Object.entries(definition).filter(([, value]) => value !== undefined),
@@ -681,16 +714,16 @@ export default definePlugin({
           // so each step leaves a valid definition.
           const given = stripUndefined(changes) as Record<string, unknown>;
           const cleared = new Set<string>(unset ?? []);
-          for (const layer of layers.toReversed()) {
-            await writeLayer(layer, agentId, (own) => {
+          await eachLayer(agentId, "updated", layers.toReversed(), (layer) =>
+            writeLayer(layer, agentId, (own) => {
               const next: Record<string, unknown> = {
                 ...own,
                 ...(layer === top ? given : {}),
               };
               for (const key of cleared) delete next[key];
               return next;
-            });
-          }
+            }),
+          );
           return recordOf(agentId, definitionOf(agentId));
         }),
     });
@@ -710,19 +743,12 @@ export default definePlugin({
           }
           // Highest first: should a later write fail, the agent is still defined
           // by the files left (a valid definition), and removing again goes on.
-          const removedFrom: Writable[] = [];
-          for (const layer of (await writableLayersOf(agentId)).toReversed()) {
-            try {
-              await writeLayer(layer, agentId, () => undefined);
-            } catch (error) {
-              throw new AgentsError(
-                (error as { code?: string }).code ?? "CONFIG_UNAVAILABLE",
-                `The agent ${agentId} was removed from ${removedFrom.join(", ") || "no file"} but not from the ${layer} file: ${(error as Error).message}`,
-                { agentId, removedFrom, failed: layer },
-              );
-            }
-            removedFrom.push(layer);
-          }
+          const removedFrom = await eachLayer(
+            agentId,
+            "removed",
+            (await writableLayersOf(agentId)).toReversed(),
+            (layer) => writeLayer(layer, agentId, () => undefined),
+          );
           if (definitions()[agentId] !== undefined) {
             throw new AgentsError(
               "CONFIG_UNAVAILABLE",
@@ -775,8 +801,11 @@ export default definePlugin({
           try {
             await createGeneration(agentId, definition, home, generation);
           } catch (error) {
-            await save(agentId, state);
-            throw error;
+            // Made after all (only its answer was lost): the generation stands.
+            if ((await threadOf(generation.threadId)) === undefined) {
+              await save(agentId, state);
+              throw error;
+            }
           }
           await append(AgentEvents.generationStarted, {
             agentId,
