@@ -2937,7 +2937,8 @@ export default definePlugin({
           ]);
           const last = toTurnId === undefined ? undefined : endedTurn(events, toTurnId);
           // A dropped turn that delivered a fork's merge gives the mark back (D226): the
-          // next message, or the turn run again, delivers it again.
+          // next message, or the turn run again, delivers it again. Of several, the
+          // newest merge, as a newer merge replaces an older one.
           const droppedIds = new Set(dropped);
           const merged = events
             .filter(
@@ -2948,7 +2949,7 @@ export default definePlugin({
               (event) =>
                 (event.payload as { handoff?: { threadId?: unknown; turnId?: unknown } }).handoff,
             )
-            .find(
+            .findLast(
               (handoff) =>
                 typeof handoff?.threadId === "string" && typeof handoff.turnId === "string",
             );
