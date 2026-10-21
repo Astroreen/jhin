@@ -169,7 +169,10 @@ export default definePlugin({
         const { allowedOrigins } = context.config.get<z.output<typeof Config>>(CONFIG_SECTION);
         const origin = request.headers.origin;
         if (!originAllowed(origin, http.requestedHost(request), allowedOrigins)) {
-          context.log.warn("connection refused: origin not allowed", { origin });
+          // The header is the client's: logged short, never whole.
+          context.log.warn("connection refused: origin not allowed", {
+            origin: origin === undefined ? undefined : origin.slice(0, 200),
+          });
           socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
           return;
         }

@@ -258,7 +258,11 @@ and engineering practices.
   `JHIN_PACK_STAGED=1 pnpm publish` still bypasses it. Repacked tarballs are
   not byte-reproducible yet (file times and order come from the local `tar`).
 - An `Origin` allowlist on the WebSocket transport. Done in `security.md`
-  (D418): `jhin.transport-ws.allowedOrigins`.
+  (D418) as an opt-in: `jhin.transport-ws.allowedOrigins`. While it is
+  empty a page that knows a token may still connect from any origin, so
+  `jhin client` and other nodes' pages keep working (D21); the page's own
+  session cookie (D421) is only ever accepted from the node's own or a
+  listed origin.
 - Keeping node tokens somewhere safer than `localStorage` in the web client:
   any script on the client's origin (including user client plugins) can read
   them today.

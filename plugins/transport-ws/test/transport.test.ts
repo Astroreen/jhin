@@ -430,5 +430,7 @@ describe("Origin allowlist (security.md D418)", () => {
     // The node's own page behind a TLS proxy: https, though the node speaks http.
     expect(originAllowed("https://node:7777", "node:7777", listed)).toBe(true);
     expect(originAllowed("not an origin", "node:7777", [])).toBe(false);
+    // `null` (a sandboxed frame, a file: page) is refused even while nothing is listed.
+    expect(originAllowed("null", "node:7777", [])).toBe(false);
   });
 });
