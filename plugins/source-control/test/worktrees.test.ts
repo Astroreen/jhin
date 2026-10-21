@@ -17,6 +17,7 @@ import type { AgentRuntime } from "@jhin/agent-api";
 
 import { createGit } from "../src/git.ts";
 import {
+  availableBranchName,
   firstMessageOf,
   isTemporaryBranch,
   parseWorktreeList,
@@ -584,6 +585,21 @@ describe("naming a temporary branch (D901)", () => {
     // Attachments alone name nothing.
     expect(firstMessageOf([started("t1", "  ")], "t1")).toBeUndefined();
     expect(firstMessageOf([], "t1")).toBeUndefined();
+    // A rolled back first turn: the next one is the first that counts.
+    const rolledBack = [
+      started("t1", "Dropped"),
+      { type: "threads.thread.rolled-back", payload: { turnIds: ["t1"] } },
+      started("t2", "Fix login"),
+    ];
+    expect(firstMessageOf(rolledBack, "t2")).toBe("Fix login");
+  });
+
+  it("steps around branches that are in a name's way, part by part", () => {
+    expect(availableBranchName([], "jhin/feat/x")).toBe("jhin/feat/x");
+    // A branch where a folder is wanted, and a folder where a branch is wanted.
+    expect(availableBranchName(["jhin/feat"], "jhin/feat/x")).toBe("jhin/feat-1/x");
+    expect(availableBranchName(["jhin/fix/a"], "jhin/fix")).toBe("jhin/fix-1");
+    expect(availableBranchName(["jhin/fix", "jhin/fix-1"], "jhin/fix")).toBe("jhin/fix-2");
   });
 
   it("keeps a flat temporary name flat, and gives up after a hundred taken names", async () => {

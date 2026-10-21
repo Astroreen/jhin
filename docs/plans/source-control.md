@@ -554,8 +554,12 @@ with screenshots).
   (D266, its agent and `writerTimeoutSeconds`) with T3's branch name prompt in
   its default naming mode, sanitizes the answer as T3's
   `sanitizeBranchFragment` does and runs `git branch -m` to `jhin/<fragment>`
-  (`jhin-<fragment>` after a flat temporary name), taking `-1` to `-100` when
-  that name is taken. It runs beside the turn and never holds it up or fails
+  (`jhin-<fragment>` after a flat temporary name). A part of that name that an
+  existing branch is in the way of (the name itself, a branch where a folder
+  is wanted, a folder where a branch is wanted) takes `-1` to `-100`, walked
+  part by part as T3's `resolveAutoFeatureBranchName` does. The first turn is
+  the first one a rollback left, so a dropped first turn hands the naming to
+  the next. It runs beside the turn and never holds it up or fails
   it; a writer without an answer keeps the temporary branch (T3 has no
   fallback either), and so does a fork's first turn or a branch the user
   named. Every thread in that worktree records the new branch (D113); the

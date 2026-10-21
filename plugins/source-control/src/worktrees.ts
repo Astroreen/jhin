@@ -9,7 +9,7 @@ import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { ThreadEvents } from "@jhin/agent-api";
+import { ThreadEvents, visibleThreadEvents } from "@jhin/agent-api";
 
 import { SourceControlError, type Git } from "./git.ts";
 
@@ -72,14 +72,15 @@ export const isTemporaryBranch = (branch: string) =>
 
 /**
  * The text of a thread's first message when `turnId` is the thread's own first
- * turn: a fork's first turn follows its parent's, and a message of attachments
- * alone names nothing.
+ * turn that a rollback did not drop: a fork's first turn follows its parent's,
+ * and a message of attachments alone names nothing.
  */
 export function firstMessageOf(
   events: readonly { readonly type: string; readonly payload: unknown }[],
   turnId: string,
 ): string | undefined {
-  const first = events.find((event) => event.type === ThreadEvents.turnStarted)?.payload as
+  const visible = visibleThreadEvents(events as Parameters<typeof visibleThreadEvents>[0]);
+  const first = visible.find((event) => event.type === ThreadEvents.turnStarted)?.payload as
     | { turnId?: string; input?: { text?: string } }
     | undefined;
   const text = first?.input?.text?.trim();
@@ -104,9 +105,38 @@ export function sanitizeBranchFragment(raw: string): string {
 }
 
 /**
+ * A branch name no existing branch is in the way of, part by part as T3's
+ * `resolveAutoFeatureBranchName` walks it: a part that is a branch, or a last
+ * part that is a branch or a folder of branches, takes `-1` to `-100`.
+ */
+export function availableBranchName(existing: readonly string[], wanted: string): string {
+  const taken = new Set(existing);
+  const parts = wanted.split("/");
+  let resolved = "";
+  for (const [index, part] of parts.entries()) {
+    const base = resolved === "" ? part : `${resolved}/${part}`;
+    const last = index === parts.length - 1;
+    const clashes = (candidate: string) =>
+      taken.has(candidate) || (last && existing.some((name) => name.startsWith(`${candidate}/`)));
+    let candidate = base;
+    for (let suffix = 1; clashes(candidate); suffix += 1) {
+      if (suffix > 100) {
+        throw new SourceControlError(
+          "BRANCH_INVALID",
+          `Could not find an available branch name for '${wanted}'.`,
+          { branch: wanted },
+        );
+      }
+      candidate = `${base}-${suffix}`;
+    }
+    resolved = candidate;
+  }
+  return resolved;
+}
+
+/**
  * Renames a temporary branch to `jhin/<fragment>` (`jhin-<fragment>` when the
- * temporary one was flat), taking `-1` to `-100` when that name is taken, as
- * T3's `renameBranch` does; returns the new name.
+ * temporary one was flat), clear of the branches there are; returns the new name.
  */
 export async function renameTemporaryBranch(
   git: Git,
@@ -115,17 +145,14 @@ export async function renameTemporaryBranch(
 ): Promise<string> {
   const separator = oldBranch.charAt(BRANCH_PREFIX.length);
   const wanted = `${BRANCH_PREFIX}${separator}${sanitizeBranchFragment(fragment)}`;
-  let target: string | undefined;
-  for (let suffix = 0; suffix <= 100 && target === undefined; suffix += 1) {
-    const candidate = suffix === 0 ? wanted : `${wanted}-${suffix}`;
-    if (!(await branchExists(git, candidate))) target = candidate;
-  }
-  if (target === undefined || !(await validBranch(git, target))) {
-    throw new SourceControlError(
-      "BRANCH_INVALID",
-      `Could not find an available branch name for '${wanted}'.`,
-      { branch: wanted },
-    );
+  const existing = (await git(["for-each-ref", "--format=%(refname:short)", "refs/heads/"])).stdout
+    .split("\n")
+    .filter((name) => name !== "" && name !== oldBranch);
+  const target = availableBranchName(existing, wanted);
+  if (!(await validBranch(git, target))) {
+    throw new SourceControlError("BRANCH_INVALID", `${target} is not a valid branch name`, {
+      branch: target,
+    });
   }
   await git(["branch", "-m", "--", oldBranch, target]);
   return target;
