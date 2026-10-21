@@ -3406,6 +3406,33 @@ export default definePlugin({
       },
     });
 
+    /**
+     * How far into a fork's own turns the parent already got it: the index of the
+     * latest own turn a parent's turn carried as its handoff, -1 when none.
+     */
+    async function mergedUpTo(
+      parentId: string,
+      forkId: string,
+      own: readonly string[],
+    ): Promise<number> {
+      const { events } = await visibleTurns(parentId);
+      return Math.max(
+        -1,
+        ...events
+          .filter(
+            (event) =>
+              event.type === ThreadEvents.turnStarted &&
+              (event.payload as { inheritedAt?: unknown }).inheritedAt === undefined,
+          )
+          .map(
+            (event) =>
+              (event.payload as { handoff?: { threadId?: unknown; turnId?: unknown } }).handoff,
+          )
+          .filter((handoff) => handoff?.threadId === forkId)
+          .map((handoff) => own.indexOf(String(handoff?.turnId))),
+      );
+    }
+
     /** A fork's turns of its own after its fork point, oldest first, and its visible events. */
     async function ownTurns(fork: Thread) {
       const { events, turns } = await visibleTurns(fork.id);
@@ -3448,6 +3475,10 @@ export default definePlugin({
         const { events, own } = await ownTurns(fork);
         const index = own.indexOf(merge.turnId);
         if (index === -1) return "gone";
+        // The parent already got the fork this far (two merges raced): it is not said twice.
+        if (merge.id !== undefined && (await mergedUpTo(thread.id, fork.id, own)) >= index) {
+          return "gone";
+        }
         return {
           payload: {
             kind: "merge-back",
@@ -3570,20 +3601,7 @@ export default definePlugin({
         // An archived parent is refused first: it takes no message to deliver a merge with.
         if ((await getThread(parentId)).archivedAt !== undefined) throw archivedError(parentId);
         // The parent already got the fork up to this turn: merging it again would say it twice.
-        const { events: parentEvents } = await visibleTurns(parentId);
-        const delivered = parentEvents
-          .filter(
-            (event) =>
-              event.type === ThreadEvents.turnStarted &&
-              (event.payload as { inheritedAt?: unknown }).inheritedAt === undefined,
-          )
-          .map(
-            (event) =>
-              (event.payload as { handoff?: { threadId?: unknown; turnId?: unknown } }).handoff,
-          )
-          .filter((handoff) => handoff?.threadId === threadId)
-          .map((handoff) => own.indexOf(String(handoff?.turnId)));
-        if (delivered.some((index) => index >= own.indexOf(target))) {
+        if ((await mergedUpTo(parentId, threadId, own)) >= own.indexOf(target)) {
           throw new ThreadsError(
             "NOTHING_TO_MERGE",
             "The source thread already has this fork up to that turn",

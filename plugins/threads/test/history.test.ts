@@ -762,6 +762,28 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     });
   });
 
+  it("delivers no mark for a fork turn the parent already got (two merges raced)", async () => {
+    const { client, storage, parent, fork, tried, requests } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    await turn(client, parent.id, "go on");
+    // A second mark for the same turn, as a merge-back that passed its check just before.
+    const { thread: record } = await client.call<{ thread: Fork }>("threads.get", {
+      threadId: parent.id,
+    });
+    await storage.storage.kv.set("jhin.threads", `thread/${parent.id}`, {
+      ...record,
+      pendingMergeBack: {
+        id: "raced",
+        threadId: fork.id,
+        turnId: tried,
+        at: new Date().toISOString(),
+      },
+    } as never);
+    await turn(client, parent.id, "and then");
+    expect(requests.at(-1)!.input.text).toBe("and then");
+    expect(await pendingOf(client, parent.id)).toBeUndefined();
+  });
+
   it("regenerates no turn whose start recorded no message", async () => {
     const { client, storage } = await node();
     const thread = await client.call<Thread>("threads.create", {});
