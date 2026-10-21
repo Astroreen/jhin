@@ -180,7 +180,7 @@ export default definePlugin({
      */
     let lastScan:
       | {
-          readonly startedAt: number;
+          finishedAt?: number;
           readonly result: Promise<{ servers: DiscoveredLocalServer[]; scannedAt: string }>;
         }
       | undefined;
@@ -195,7 +195,11 @@ export default definePlugin({
       permissions: [...read, "terminals.read"],
       // Every open panel asks every 3 s: one scan serves them all for a while (T3 scans once per tick).
       handler: () => {
-        if (lastScan !== undefined && Date.now() - lastScan.startedAt < SCAN_REUSE_MS) {
+        // A scan still running is shared however long it takes; a finished one for 2 s.
+        if (
+          lastScan !== undefined &&
+          (lastScan.finishedAt === undefined || Date.now() - lastScan.finishedAt < SCAN_REUSE_MS)
+        ) {
           return lastScan.result;
         }
         const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
@@ -208,7 +212,12 @@ export default definePlugin({
         const result = scanner
           .scan(owners)
           .then((servers) => ({ servers, scannedAt: new Date().toISOString() }));
-        lastScan = { startedAt: Date.now(), result };
+        const scan: { finishedAt?: number; result: typeof result } = { result };
+        lastScan = scan;
+        void result.then(
+          () => (scan.finishedAt = Date.now()),
+          () => undefined,
+        );
         // A failed scan is not reused.
         result.catch(() => {
           if (lastScan?.result === result) lastScan = undefined;
