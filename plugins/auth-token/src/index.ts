@@ -21,6 +21,7 @@ import {
   isGrant,
   z,
   type Invocation,
+  type PermissionDescription,
   type PermissionEntry,
 } from "@jhin/sdk";
 
@@ -487,26 +488,33 @@ export default definePlugin({
           .map(([permission, commands]) => ({ permission, commands }))
           .toSorted((a, b) => a.permission.localeCompare(b.permission));
         // Each plugin titles the permissions its commands need (security.md D961).
-        // A throwing hook costs the titles, not the list (D961).
-        const described = await context.hooks
-          .run<object, unknown>(PERMISSIONS_DESCRIBE_HOOK, {}, () => entries)
-          .then((output) => {
-            if (!Array.isArray(output)) throw new Error("a hook did not return the entries");
-            return output as PermissionEntry[];
-          })
-          .catch((error: unknown) => {
-            context.log.error("a permission description hook failed; listing without titles", {
-              error: String(error),
+        // A hook that throws or answers something else costs the titles, not
+        // the list (D961): only string titles and descriptions are read from
+        // its answer, by permission, onto this node's own entries.
+        const titles = new Map<string, PermissionDescription>();
+        try {
+          const output = await context.hooks.run<object, unknown>(
+            PERMISSIONS_DESCRIBE_HOOK,
+            {},
+            () => entries,
+          );
+          for (const item of Array.isArray(output) ? (output as unknown[]) : []) {
+            const { permission, title, description } = (item ?? {}) as Record<string, unknown>;
+            if (typeof permission !== "string" || typeof title !== "string" || title === "") {
+              continue;
+            }
+            titles.set(permission, {
+              title,
+              ...(typeof description === "string" && description !== "" ? { description } : {}),
             });
-            return entries;
+          }
+        } catch (error) {
+          context.log.error("a permission description hook failed; listing without titles", {
+            error: String(error),
           });
+        }
         return {
-          // An empty title or description says nothing: the id stands in for it.
-          permissions: described.map(({ title, description, ...entry }) => ({
-            ...entry,
-            ...(title ? { title } : {}),
-            ...(description ? { description } : {}),
-          })),
+          permissions: entries.map((entry) => ({ ...entry, ...titles.get(entry.permission) })),
         };
       },
     });

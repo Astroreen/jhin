@@ -3,6 +3,7 @@
 // apps/web/src/components/settings/ConnectionsSettings.tsx — its wording, the
 // "Create pairing link" dialog and the QR code of the link.
 import type { NodeConnection } from "@jhin/client-api";
+import type { PermissionEntry } from "@jhin/sdk";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -46,13 +47,6 @@ interface Client {
   readonly current: boolean;
 }
 
-/** An entry of `auth.permissions.list`, titled by its plugin (security.md D961). */
-interface Permission {
-  readonly permission: string;
-  readonly title?: string;
-  readonly description?: string;
-}
-
 interface PairingLink {
   readonly id: string;
   readonly label?: string;
@@ -70,7 +64,7 @@ const when = (time: number) => new Date(time).toLocaleString();
 function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCreated(): void }) {
   const id = useId();
   const [label, setLabel] = useState("");
-  const [permissions, setPermissions] = useState<readonly Permission[] | undefined>();
+  const [permissions, setPermissions] = useState<readonly PermissionEntry[] | undefined>();
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [bases, setBases] = useState<readonly string[]>([httpBase(props.node.url)]);
   const [base, setBase] = useState(httpBase(props.node.url));
@@ -83,7 +77,7 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
     // An answer after the dialog closed (or switched node) changes nothing.
     let alive = true;
     const { client } = props.node;
-    client.call<{ permissions: Permission[] }>("auth.permissions.list").then(
+    client.call<{ permissions: PermissionEntry[] }>("auth.permissions.list").then(
       ({ permissions: listed }) => {
         if (!alive) return;
         setPermissions(listed);

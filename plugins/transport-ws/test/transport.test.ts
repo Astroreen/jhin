@@ -401,6 +401,23 @@ describe("device tokens (security.md D411–D414)", () => {
     };
     expect(permissions).toContainEqual({ permission: "app.write", commands: ["app.write"] });
   });
+
+  it("keeps the list when a description hook answers something else (D961)", async () => {
+    const careless = {
+      manifest: testManifest("app.careless"),
+      definition: definePlugin({
+        activate(context) {
+          // An `after` hook written without a return.
+          context.hooks.after(PERMISSIONS_DESCRIBE_HOOK, () => undefined);
+        },
+      }),
+    };
+    const node = await startNode({ plugins: [careless] });
+    const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
+      permissions: PermissionEntry[];
+    };
+    expect(permissions).toContainEqual({ permission: "app.write", commands: ["app.write"] });
+  });
 });
 
 describe("a revoke while a token is checked (security.md D414)", () => {
