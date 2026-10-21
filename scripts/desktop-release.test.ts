@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   builderConfig,
+  catalogVersion,
   nightlyVersion,
   packageOptions,
   releaseVersion,
@@ -156,6 +157,31 @@ describe("packageOptions", () => {
     expect(() => packageOptions({ platform: "win" }, host)).toThrow("build on that system");
     expect(() => packageOptions({}, { platform: "freebsd", arch: "x64" })).toThrow(
       "Cannot package",
+    );
+  });
+});
+
+describe("catalogVersion", () => {
+  const workspace = [
+    "packages:",
+    "  - apps/*",
+    "",
+    "catalog:",
+    '  "@types/node": 24.19.2',
+    '  electron: "44.4.5" # the app',
+    "  electron-updater: 6.8.9",
+    "",
+    "overrides:",
+    '  electron-builder: "catalog:"',
+    "",
+  ].join("\n");
+
+  it("reads the catalog block only, without quotes and comments", () => {
+    expect(catalogVersion(workspace, "electron")).toBe("44.4.5");
+    expect(catalogVersion(workspace, "electron-updater")).toBe("6.8.9");
+    expect(catalogVersion(workspace, "@types/node")).toBe("24.19.2");
+    expect(() => catalogVersion(workspace, "electron-builder")).toThrow(
+      "not in the workspace catalog",
     );
   });
 });

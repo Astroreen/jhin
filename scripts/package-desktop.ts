@@ -24,7 +24,13 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 import { parseArgs } from "node:util";
 
-import { builderConfig, packageOptions, signing, SIGNING_SECRETS } from "./desktop-release.ts";
+import {
+  builderConfig,
+  catalogVersion,
+  packageOptions,
+  signing,
+  SIGNING_SECRETS,
+} from "./desktop-release.ts";
 import { lockedPins } from "./packing.ts";
 import { closure, type Manifest, readJson, ROOT, workspacePackages } from "./workspace-packages.ts";
 
@@ -42,7 +48,13 @@ function quote(arg: string): string {
   return /[\s&|<>^()]/.test(arg) ? `"${arg}"` : arg;
 }
 
-function run(command: string, args: readonly string[], cwd: string, env = process.env): void {
+/** Runs a command; only electron-builder is given the signing secrets. */
+function run(
+  command: string,
+  args: readonly string[],
+  cwd: string,
+  env = withoutSecrets(process.env),
+): void {
   // pnpm and electron-builder are .cmd shims on Windows, which only cmd.exe runs;
   // the line is quoted here rather than joined unquoted by `shell: true`.
   const result = windows
@@ -56,12 +68,13 @@ function run(command: string, args: readonly string[], cwd: string, env = proces
     throw new Error(`${command} ${args.join(" ")} exited with ${result.status}`);
 }
 
-/** A version from the workspace catalog (pnpm-workspace.yaml). */
-function catalogVersion(name: string): string {
-  const workspace = Fs.readFileSync(Path.join(ROOT, "pnpm-workspace.yaml"), "utf8");
-  const version = new RegExp(`^ {2}"?${name}"?: (\\S+)$`, "m").exec(workspace)?.[1];
-  if (version === undefined) throw new Error(`${name} is not in the workspace catalog`);
-  return version;
+const catalog = (name: string) =>
+  catalogVersion(Fs.readFileSync(Path.join(ROOT, "pnpm-workspace.yaml"), "utf8"), name);
+
+/** The environment without signing secrets: installing runs third-party scripts (D924). */
+function withoutSecrets(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const secrets = new Set([...SIGNING_SECRETS.mac, ...SIGNING_SECRETS.win]);
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !secrets.has(name)));
 }
 
 function main(): void {
@@ -130,7 +143,7 @@ function main(): void {
           packageManager: root.packageManager,
           dependencies: {
             ...Object.fromEntries(ROOTS.map((name) => [name, `file:${tarball.get(name)}`])),
-            "electron-updater": catalogVersion("electron-updater"),
+            "electron-updater": catalog("electron-updater"),
           },
         },
         null,
@@ -158,7 +171,7 @@ function main(): void {
     const config = builderConfig({
       platform,
       version,
-      electronVersion: catalogVersion("electron"),
+      electronVersion: catalog("electron"),
       repository: values.repository,
       signed: sign.signed,
       env: process.env,
@@ -191,7 +204,9 @@ function main(): void {
       ],
       ROOT,
       // An unsigned build must not pick a certificate out of the keychain.
-      sign.signed ? process.env : { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: "false" },
+      sign.signed
+        ? process.env
+        : { ...withoutSecrets(process.env), CSC_IDENTITY_AUTO_DISCOVERY: "false" },
     );
     step(`done: ${Path.join(DESKTOP, "release")}`);
   } finally {

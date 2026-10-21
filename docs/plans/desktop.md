@@ -266,7 +266,10 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   the installers as workflow artifacts. The last job creates the GitHub
   release with T3's generated notes and uploads the installers, their
   blockmaps and the feed files; a re-run uploads into the release that
-  already exists, so "Re-run failed jobs" finishes a run one platform broke.
+  already exists, so "Re-run failed jobs" finishes a run one platform broke,
+  while a new run of an already released version fails instead of replacing
+  its files. Pull request runs get no signing secrets, and packaging gives
+  them to electron-builder only, never to the install's scripts.
 
 ## Deferred
 
