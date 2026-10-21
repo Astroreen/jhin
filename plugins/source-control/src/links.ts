@@ -120,12 +120,13 @@ export function createLinks(deps: LinksDeps): Links {
 
   const save = async (threadId: string, list: ThreadPullRequest[]) => {
     if (disposed) return;
+    // Stored first: a write that fails leaves nothing behind in memory either.
     if (list.length === 0) {
-      links.delete(threadId);
       await deps.kv.delete(NAMESPACE, `links/${threadId}`);
+      links.delete(threadId);
     } else {
-      links.set(threadId, list);
       await deps.kv.set(NAMESPACE, `links/${threadId}`, list as unknown as Json);
+      links.set(threadId, list);
     }
   };
 
