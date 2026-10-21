@@ -18,4 +18,5 @@ export const DESKTOP_CHANNELS = {
   setNotificationBadge: "jhin-desktop:set-notification-badge",
   getWindowFullscreen: "jhin-desktop:get-window-fullscreen",
   windowFullscreen: "jhin-desktop:window-fullscreen",
+  pasteAsText: "jhin-desktop:paste-as-text",
 } as const;

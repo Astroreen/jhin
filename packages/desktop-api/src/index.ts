@@ -107,6 +107,11 @@ export interface DesktopBridge {
   setNotificationBadge(badge: DesktopNotificationBadge): void;
   getWindowFullscreen(): Promise<boolean>;
   onWindowFullscreen(listener: (fullscreen: boolean) => void): Unsubscribe;
+  /**
+   * Pastes the clipboard into the focused element of the window (T3's Paste as
+   * Text, D946). Optional: an older app's bridge lacks it.
+   */
+  pasteAsText?(): Promise<void>;
 }
 
 /** `desktop.shell@1`: the app, for client plugins. */

@@ -32,7 +32,15 @@ const find = (
     .flatMap((item) => [item, ...(Array.isArray(item.submenu) ? item.submenu : [])])
     .find((item) => item.id === id)!;
 
-const click = (item: MenuItemConstructorOptions) => (item.click as unknown as () => void)();
+const click = (
+  item: MenuItemConstructorOptions,
+  event: { triggeredByAccelerator?: boolean } = {},
+) =>
+  (item.click as unknown as (item: unknown, window: unknown, event: unknown) => void)(
+    undefined,
+    undefined,
+    event,
+  );
 
 describe("buildApplicationMenu", () => {
   it("is T3's template on Linux and Windows", () => {
@@ -45,7 +53,20 @@ describe("buildApplicationMenu", () => {
     });
     expect(outline(menu)).toEqual([
       { File: ["Settings...", "-", "quit"] },
-      { Edit: ["undo", "redo", "-", "cut", "copy", "paste", "delete", "-", "selectAll"] },
+      {
+        Edit: [
+          "undo",
+          "redo",
+          "-",
+          "cut",
+          "copy",
+          "paste",
+          "Paste as Text",
+          "delete",
+          "-",
+          "selectAll",
+        ],
+      },
       {
         View: [
           "Reload",
@@ -200,5 +221,22 @@ describe("buildApplicationMenu", () => {
     expect(find(menu, "acme.two")).not.toHaveProperty("accelerator");
     expect(find(menu, "acme.reload")).not.toHaveProperty("accelerator");
     expect(find(menu, "acme.alias")).not.toHaveProperty("accelerator");
+  });
+
+  it("routes Paste as Text through the page, but not from its shortcut (D946)", () => {
+    const { calls, handlers } = recorder();
+    const menu = buildApplicationMenu({
+      platform: "darwin",
+      appName: "Jhin",
+      handlers,
+      contributions: [],
+    });
+    const item = find(menu, "jhin.paste-as-text");
+    expect(item.accelerator).toBe("CmdOrCtrl+Shift+V");
+    // The shortcut's keydown reaches the page, which arms the composer and pastes itself.
+    click(item, { triggeredByAccelerator: true });
+    expect(calls).toEqual([]);
+    click(item, { triggeredByAccelerator: false });
+    expect(calls).toEqual(["command:desktop.paste-as-text"]);
   });
 });

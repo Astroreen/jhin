@@ -52,6 +52,7 @@ import {
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
 } from "./update-logic.ts";
+import { pasteAsText } from "./paste-as-text.ts";
 
 const DOWNLOAD_PROGRESS_RADIUS = 14;
 const DOWNLOAD_PROGRESS_CIRCUMFERENCE = 2 * Math.PI * DOWNLOAD_PROGRESS_RADIUS;
@@ -225,6 +226,23 @@ export default definePlugin({
     };
     context.services.provide(DESKTOP_SHELL_CAPABILITY, shell);
 
+    // T3's Paste as Text from the Edit menu (D946, paste-as-text.ts).
+    context.commands.register({
+      name: "desktop.paste-as-text",
+      title: "Paste as Text",
+      description:
+        "Pastes the clipboard into the focused field as plain text; in the composer a large paste stays inline instead of becoming a file",
+      input: z.object({}),
+      output: z.object({}),
+      handler: async () => {
+        await pasteAsText({
+          has: (command) => context.commands.list().some((info) => info.name === command),
+          execute: (command) => context.commands.execute(command, {}),
+          paste: bridge.pasteAsText?.bind(bridge),
+        });
+        return {};
+      },
+    });
     // Every update action is a command (D520), so the palette, keybindings and other plugins reach it.
     context.commands.register({
       name: "desktop.update.state",

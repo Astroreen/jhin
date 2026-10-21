@@ -12,6 +12,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  webContents,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -266,6 +267,18 @@ async function main(): Promise<void> {
     updates.setChannel(channel),
   );
   handle(DESKTOP_CHANNELS.getWindowFullscreen, none, () => mainWindow?.isFullScreen() ?? false);
+  // T3's pasteAsText: the page armed its composer first, then asks for the paste (D946).
+  handle(DESKTOP_CHANNELS.pasteAsText, none, () => {
+    if (mainWindow === undefined || mainWindow.isDestroyed()) return;
+    // The focused page of the window, else its own page (no focus, or the
+    // developer tools have it); `handle` answers the main window's page only.
+    const focused = webContents.getFocusedWebContents();
+    const target =
+      focused !== null && BrowserWindow.fromWebContents(focused) === mainWindow
+        ? focused
+        : mainWindow.webContents;
+    target.paste();
+  });
   on(DESKTOP_CHANNELS.setMenuContributions, z.array(DesktopMenuContribution).max(200), (items) => {
     const previous = menuContributions;
     menuContributions = items;

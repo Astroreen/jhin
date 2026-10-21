@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  armPasteAsText,
   classifyAttachmentFile,
+  consumeArmedPasteAsText,
   fileAttachmentTooLargeMessage,
   formatAttachmentSize,
   inferImageMimeTypeFromName,
@@ -157,5 +159,18 @@ describe("sizes", () => {
     expect(fileAttachmentTooLargeMessage("a.zip", 1500)).toBe(
       "'a.zip' exceeds the 1500 bytes attachment limit.",
     );
+  });
+});
+
+describe("Paste as Text from the desktop menu (D946)", () => {
+  it("keeps the next paste inline within a second, once", () => {
+    armPasteAsText(1_000);
+    expect(consumeArmedPasteAsText(1_500)).toBe(true);
+    expect(consumeArmedPasteAsText(1_600)).toBe(false);
+  });
+
+  it("expires after a second", () => {
+    armPasteAsText(1_000);
+    expect(consumeArmedPasteAsText(2_001)).toBe(false);
   });
 });

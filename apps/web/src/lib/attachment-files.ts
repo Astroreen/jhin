@@ -187,3 +187,20 @@ export function isHeicImageFile(file: Pick<File, "name" | "type">): boolean {
     HEIC_IMAGE_EXTENSION.test(file.name)
   );
 }
+
+/**
+ * T3's Paste as Text from the desktop app's Edit menu (D946): the menu arms the
+ * composer, then the app pastes. A short deadline bridges the two, and the
+ * next paste anywhere spends it. Not kept across reloads: it lasts a second.
+ */
+let pasteAsTextDeadline = 0;
+
+export function armPasteAsText(now = Date.now()): void {
+  pasteAsTextDeadline = now + 1_000;
+}
+
+export function consumeArmedPasteAsText(now = Date.now()): boolean {
+  const armed = now <= pasteAsTextDeadline;
+  pasteAsTextDeadline = 0;
+  return armed;
+}

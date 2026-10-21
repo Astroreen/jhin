@@ -251,6 +251,24 @@ test("the native menus are T3's, and Settings... opens the settings with the Abo
   await expect(window.getByRole("dialog")).toBeVisible();
 });
 
+test("Paste as Text in the Edit menu keeps a large paste inline (D946)", async () => {
+  const { app, window } = await launch();
+  await window.getByRole("button", { name: "Start a thread" }).click();
+  const message = window.getByRole("textbox", { name: "Message" });
+  await message.focus();
+  const large = "x".repeat(40 * 1024);
+  await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), large);
+  await app.evaluate(({ Menu }) =>
+    Menu.getApplicationMenu()!.getMenuItemById("jhin.paste-as-text")!.click(),
+  );
+  // A plain paste would attach it as pasted-text.txt (D295); Paste as Text keeps it as text.
+  await expect(message).toHaveText(large);
+  await expect(window.getByText("Large paste attached as pasted-text.txt")).toHaveCount(0);
+  await test
+    .info()
+    .attach("paste as text", { body: await window.screenshot(), contentType: "image/png" });
+});
+
 test("a thread that completes in the background badges the app until a window gains focus", async () => {
   const launchedApp = await launch();
   const { app, window } = launchedApp;
