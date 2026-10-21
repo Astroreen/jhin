@@ -559,7 +559,11 @@ with screenshots).
   it; a writer without an answer keeps the temporary branch (T3 has no
   fallback either), and so does a fork's first turn or a branch the user
   named. Every thread in that worktree records the new branch (D113); the
-  folder keeps its temporary name, as in T3.
+  folder keeps its temporary name, as in T3. A plugin stopped while its writer
+  runs renames nothing. There is no switch to turn it off: T3 renames on
+  every launch too, and the off switch comes with its naming settings
+  (Deferred). Two threads that share a fresh worktree and start at once both
+  try; the second rename fails and is only logged.
 
 #### Reverting
 
@@ -896,8 +900,9 @@ with the node's token, and without one).
   rollback.
 - Worktrees, from W3 (D240): T3's setup scripts and their progress card
   ("Setting up worktree…", "Work locally", cancelling a setup), the
-  attachments of a first message in its branch name prompt (D901) and T3's
-  branch naming settings (semantic, a custom prefix, custom instructions), the cleanup rules
+  attachments of a first message in its branch name prompt (D901), T3's
+  branch naming settings (semantic, a custom prefix, custom instructions,
+  and with them a way to turn the rename off), the cleanup rules
   (keep when, after days, on merge, on delete without asking), submodules,
   one worktree per model of a multi-model send, the `composer.workspace`
   shortcut, MCP tools that act as the calling thread (T3's `t3_worktree_status`;

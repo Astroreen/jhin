@@ -9,6 +9,8 @@ import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+import { ThreadEvents } from "@jhin/agent-api";
+
 import { SourceControlError, type Git } from "./git.ts";
 
 /** T3's `t3/<8 hex>`, here under `jhin`. */
@@ -67,6 +69,22 @@ async function temporaryBranch(git: Git): Promise<string> {
 /** A branch this plugin named for a new worktree: `jhin/<8 hex>` or `jhin-<8 hex>`. */
 export const isTemporaryBranch = (branch: string) =>
   new RegExp(`^${BRANCH_PREFIX}[-/][0-9a-f]{8}$`).test(branch.trim().toLowerCase());
+
+/**
+ * The text of a thread's first message when `turnId` is the thread's own first
+ * turn: a fork's first turn follows its parent's, and a message of attachments
+ * alone names nothing.
+ */
+export function firstMessageOf(
+  events: readonly { readonly type: string; readonly payload: unknown }[],
+  turnId: string,
+): string | undefined {
+  const first = events.find((event) => event.type === ThreadEvents.turnStarted)?.payload as
+    | { turnId?: string; input?: { text?: string } }
+    | undefined;
+  const text = first?.input?.text?.trim();
+  return first?.turnId === turnId && text ? text : undefined;
+}
 
 /** T3's `sanitizeBranchFragment`: lowercase, `[a-z0-9/_-]`, at most 64 characters. */
 export function sanitizeBranchFragment(raw: string): string {

@@ -84,6 +84,7 @@ import { createWatcher } from "./watcher.ts";
 import { followTurns } from "./turns.ts";
 import {
   createWorktree,
+  firstMessageOf,
   isManagedWorktree,
   isTemporaryBranch,
   listWorktrees,
@@ -1622,21 +1623,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const renameFromFirstMessage = async (input: TurnHookInput) => {
     const git = createGit(config().gitPath, input.cwd);
     const branch = (await git(["branch", "--show-current"])).stdout.trim();
-    if (!isTemporaryBranch(branch)) return;
-    // The thread's own first turn only: a fork's first one follows its parent's.
+    if (stopped || !isTemporaryBranch(branch)) return;
     const events = (await context.commands.execute("threads.events", {
       threadId: input.threadId,
       limit: 1000,
     })) as StoredEvent[];
-    const first = events.find((event) => event.type === ThreadEvents.turnStarted)?.payload as
-      | { turnId?: string; input?: { text?: string } }
-      | undefined;
-    const text = first?.input?.text?.trim();
-    if (first?.turnId !== input.turnId || !text) return;
+    const text = firstMessageOf(events, input.turnId);
+    if (text === undefined) return;
     const fragment = await writerFor(input.projectId, input.threadId).branchName({
       message: text,
     });
-    if (fragment === undefined) return;
+    // A plugin stopped while its writer ran leaves the repository alone.
+    if (fragment === undefined || stopped) return;
     const renamed = await renameTemporaryBranch(git, branch, fragment);
     context.log.info("renamed a worktree's temporary branch", {
       threadId: input.threadId,
@@ -1645,6 +1643,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     });
     // Every thread working in that worktree follows the new name.
     for (const [threadId, dir] of threadDirs) {
+      if (stopped) return;
       if (dir.worktreePath === input.cwd) await recordThread(threadId, dir.projectId);
     }
   };
