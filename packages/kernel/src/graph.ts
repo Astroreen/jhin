@@ -1,5 +1,6 @@
 import type { PluginManifest } from "@jhin/sdk";
-import { satisfies } from "semver";
+// The one function, not the whole package: it is in the web client's entry chunk (D440).
+import satisfies from "semver/functions/satisfies.js";
 
 import type { ErrorInfo } from "./errors.ts";
 
