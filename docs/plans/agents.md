@@ -188,10 +188,11 @@ types and the schemas of the `agents.*` commands) is
   A2) and titled `<title> #<n>`. Its thread record carries
   **`generationOf: <agentId>`** (`GenerationOf`), set once by `threads.create`
   (an optional input) and never changed. This is the D741 mark, agreed with
-  A8: A8's PR adds the field and the input to the threads plugin, and the
-  filter (`threads.list` and `threads.catalog` leave such threads out unless
-  `includeGenerations: true`; Threads mode's store drops them from the
-  index). The generation's number is not on the thread: the list of
+  A8: A1 owns the field (`GenerationOf` in `agent-api`, the `Thread`
+  schema of the threads plugin, the `threads.create` input and the client's
+  `ThreadRecord`), and A8 owns the filter (`threads.list` and
+  `threads.catalog` leave such threads out unless `includeGenerations: true`,
+  and Threads mode's store drops them from the index). The generation's number is not on the thread: the list of
   generations (number, thread, start, reason) is kept in `storage.kv`
   (`jhin.agents`, `agent/<id>`), one source for it. `agents.generations`
   reads the threads with `threads.get`, which is unfiltered. Rotating leaves

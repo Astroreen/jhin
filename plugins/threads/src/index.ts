@@ -12,6 +12,7 @@ import {
   AGENT_REGISTRY_CAPABILITY,
   AGENT_RUNTIME_CAPABILITY,
   APPROVAL_DECISIONS,
+  GenerationOf,
   INTERACTION_MODES,
   RUNTIME_MODES,
   THREADS_STREAM,
@@ -205,6 +206,8 @@ const Thread = z.object({
   lastMessageAt: z.string().optional(),
   /** Set while the thread never settles by itself (T3's per-thread "Auto-settle behavior"). */
   autoSettleDisabledAt: z.string().optional(),
+  /** The defined agent this thread is a generation of; set at creation, never changed (D606, D741). */
+  generationOf: GenerationOf.optional(),
 });
 type Thread = z.infer<typeof Thread>;
 
@@ -1865,6 +1868,9 @@ export default definePlugin({
         ...AgentSettings,
         parentThreadId: z.string().min(1).optional(),
         relationshipToParent: z.enum(["subagent"]).optional(),
+        generationOf: GenerationOf.optional().meta({
+          description: "The defined agent whose generation the thread is (D606); set once, here",
+        }),
         worktreePath: z.string().min(1).optional().meta({
           description:
             "The thread's own working directory (a git worktree of the project); its turns run there",

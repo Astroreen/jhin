@@ -84,9 +84,22 @@ describe("defined agents", () => {
     );
     expect(rotated.generation).toMatchObject({ number: 1, reason: "first" });
     const { thread } = await client.call<{
-      thread: { title: string; agentId: string; projectId: string };
+      thread: { title: string; agentId: string; projectId: string; generationOf?: string };
     }>("threads.get", { threadId: rotated.generation.threadId });
-    expect(thread).toMatchObject({ title: "builder #1", agentId: "builder", projectId: "scratch" });
+    expect(thread).toMatchObject({
+      title: "builder #1",
+      agentId: "builder",
+      projectId: "scratch",
+      // The D741 mark: Threads mode leaves the thread out of its lists.
+      generationOf: "builder",
+    });
+
+    // A rename leaves the mark as it is: it is set once.
+    const renamed = await client.call<{ generationOf?: string }>("threads.update", {
+      threadId: rotated.generation.threadId,
+      title: "Renamed",
+    });
+    expect(renamed.generationOf).toBe("builder");
 
     const record = await client.call<{ knowledgeDir: string }>("agents.get", {
       agentId: "builder",
