@@ -108,14 +108,24 @@ function on<T>(channel: string, input: z.ZodType<T>, handler: (value: T) => void
 }
 
 /** Sends to the page once it loaded; `menuCommand` also brings the window up (T3). */
+/** Messages held while the page loads, sent in order by one `did-finish-load` listener. */
+const held: { window: BrowserWindow; channel: string; value: unknown }[] = [];
 function sendToPage(channel: string, value: unknown): void {
   const window = mainWindow;
   if (window === undefined || window.isDestroyed()) return;
-  const send = () => {
-    if (!window.isDestroyed()) window.webContents.send(channel, value);
-  };
-  if (window.webContents.isLoadingMainFrame()) window.webContents.once("did-finish-load", send);
-  else send();
+  if (!window.webContents.isLoadingMainFrame()) {
+    window.webContents.send(channel, value);
+    return;
+  }
+  if (!held.some((message) => message.window === window)) {
+    window.webContents.once("did-finish-load", () => {
+      for (const message of held.splice(0)) {
+        if (!message.window.isDestroyed())
+          message.window.webContents.send(message.channel, message.value);
+      }
+    });
+  }
+  held.push({ window, channel, value });
 }
 
 /** The badge (D518): a count on macOS and Linux, T3's drawn overlay on Windows; none while focused. */

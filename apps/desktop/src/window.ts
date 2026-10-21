@@ -159,6 +159,19 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
 
   // --- The context menu (D517). ---
   const contents = window.webContents;
+  // Only what the web client asks for: notifications (D518), copying, full
+  // screen. Anything else (camera, microphone, location) is refused.
+  const ALLOWED = new Set(["notifications", "clipboard-sanitized-write", "fullscreen"]);
+  const allowed = (permission: string, origin: string) =>
+    ALLOWED.has(permission) &&
+    URL.canParse(origin) &&
+    new URL(origin).origin === new URL(options.node().url).origin;
+  contents.session.setPermissionRequestHandler((_contents, permission, callback, details) =>
+    callback(allowed(permission, details.requestingUrl)),
+  );
+  contents.session.setPermissionCheckHandler((_contents, permission, origin) =>
+    allowed(permission, origin),
+  );
   contents.on("context-menu", (_event, params) => {
     if (window.isDestroyed()) return;
     const template: MenuItemConstructorOptions[] = [];

@@ -40,8 +40,9 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
 
 - **D511. `apps/desktop` is the package `@jhin/desktop`** (private), an
   Electron app on Electron 44, T3's major. The main process and the preload
-  are TypeScript built by `tsc` into `dist/`: the main process as ES modules,
-  the preload as one CommonJS file, because a sandboxed preload can be
+  are TypeScript bundled by Vite (`vp build`) into `dist/`: the main process
+  as one ES module (`vite.config.ts`), the preload as one CommonJS file
+  (`vite.preload.config.ts`), because a sandboxed preload can be
   neither an ES module nor `require` anything but `electron`. The product name
   is "Jhin", the app id `io.github.astroreen.jhin`.
 

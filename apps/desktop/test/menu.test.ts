@@ -185,6 +185,13 @@ describe("buildApplicationMenu", () => {
           command: "d",
           accelerator: "cmdorctrl+r",
         },
+        {
+          id: "acme.alias",
+          menu: "view",
+          label: "Alias",
+          command: "e",
+          accelerator: "CommandOrControl+Z",
+        },
       ],
     });
 
@@ -192,5 +199,6 @@ describe("buildApplicationMenu", () => {
     expect(find(menu, "acme.one")).toMatchObject({ accelerator: "CmdOrCtrl+Shift+P" });
     expect(find(menu, "acme.two")).not.toHaveProperty("accelerator");
     expect(find(menu, "acme.reload")).not.toHaveProperty("accelerator");
+    expect(find(menu, "acme.alias")).not.toHaveProperty("accelerator");
   });
 });

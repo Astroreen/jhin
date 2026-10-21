@@ -66,8 +66,23 @@ const BUILT_IN_ACCELERATORS = [
 
 /** A shortcut's keys, whatever their order and case: `Shift+CmdOrCtrl+R` is `cmdorctrl+r+shift`. */
 function keys(accelerator: string): string {
-  return accelerator.toLowerCase().split("+").toSorted().join("+");
+  return accelerator
+    .toLowerCase()
+    .split("+")
+    .map((key) => KEY_ALIASES[key] ?? key)
+    .toSorted()
+    .join("+");
 }
+
+/** Electron's other names for the same keys. */
+const KEY_ALIASES: Readonly<Record<string, string>> = {
+  commandorcontrol: "cmdorctrl",
+  cmd: "command",
+  control: "ctrl",
+  option: "alt",
+  return: "enter",
+  esc: "escape",
+};
 
 /**
  * The plugins' items the menu can show: the first item of an id, and no
