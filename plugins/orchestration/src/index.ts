@@ -128,8 +128,11 @@ const OptionValue = z.union([z.string(), z.boolean()]);
 /** T3's target options: a list of selections, or a record of them by id (D870). */
 const TargetOptions = z
   .union([
-    z.array(z.object({ id: z.string().min(1), value: OptionValue })),
-    z.record(z.string().min(1), OptionValue),
+    // The input is bounded as given, before the ids are counted.
+    z.array(z.object({ id: z.string().min(1).max(256), value: OptionValue })).max(100),
+    z
+      .record(z.string().min(1).max(256), OptionValue)
+      .refine((record) => Object.keys(record).length <= 100, "At most 100 entries."),
   ])
   .transform((options): ModelOption[] =>
     Array.isArray(options)

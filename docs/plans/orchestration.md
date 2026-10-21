@@ -364,7 +364,9 @@ user sees, which their Deferred lists left out.
   into it.** T3 delivers a child's completion with `queue_after_active` and
   keeps `steer` for `t3_thread_send`; D368 already waits for the parent's
   turn to end, so the roadmap's "steered into the parent's turn" needs no
-  change. Unlike T3, a result read before that turn ends is not delivered.
+  change. Unlike T3, a result read before that turn ends is not delivered (D368;
+  `tasks.test.ts`, "wakes a busy parent only after its turn, and not at all
+  once the result was read").
 - **D870. Model options of a child.** `tasks.delegate`'s `target.options` is
   T3's: `[{ id, value }]` or `{ id: value }`, passed as the child's
   `modelOptions` (the threads plugin keeps those its model declares, D297),

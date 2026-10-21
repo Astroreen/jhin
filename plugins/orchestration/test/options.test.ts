@@ -44,6 +44,13 @@ describe("model options of a child (D870)", () => {
         },
       }),
     ).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
+    await expect(
+      client.call("tasks.delegate", {
+        task: "x",
+        parentThreadId: parent.id,
+        target: { options: Array.from({ length: 101 }, () => ({ id: "effort", value: "low" })) },
+      }),
+    ).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
     // Another model of the agent: the parent's options stay with the parent's model.
     expect(await summary({ target: { model: "plain" } })).toBe("Options: none");
   });
