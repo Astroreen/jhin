@@ -1374,17 +1374,25 @@ export default definePlugin({
             subagentOrigin: "provider",
           });
           const childTurn = Crypto.randomUUID();
-          await setTurnStatus(child.id, childTurn, runtime.agentId, "running");
-          await log.append(threadStream(child.id), [
-            {
-              type: ThreadEvents.turnStarted,
-              payload: {
-                turnId: childTurn,
-                agentId: runtime.agentId,
-                input: { text: item.prompt, attachments: [] },
+          try {
+            await setTurnStatus(child.id, childTurn, runtime.agentId, "running");
+            await log.append(threadStream(child.id), [
+              {
+                type: ThreadEvents.turnStarted,
+                payload: {
+                  turnId: childTurn,
+                  agentId: runtime.agentId,
+                  input: { text: item.prompt, attachments: [] },
+                },
               },
-            },
-          ]);
+            ]);
+          } catch (error) {
+            // Half made: its thread does not stay running (a node restart would close it too).
+            await setTurnStatus(child.id, childTurn, runtime.agentId, "failed").catch(
+              () => undefined,
+            );
+            throw error;
+          }
           // Known once its turn is recorded: its items and its end have somewhere to go.
           subagents.set(item.subagentId, { threadId: child.id, turnId: childTurn, open: true });
           // The turn ended while it was being made: it ends with the turn too.
