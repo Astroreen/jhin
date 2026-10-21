@@ -1674,7 +1674,9 @@ T3 Code `eb7b35ac` as D290 says.
   ones first while a number or nothing is typed (words rank by T3's search alone), T3's ranking (`composerPullRequestMatches.ts`,
   `pullRequestList.logic.ts`), a state icon per row and T3's wording for
   loading, no match and no forge. Words typed after `#` are searched on the
-  host after 180 ms. The list is the new command `git.pr.search`
+  host after 180 ms. A list is reused for a minute per project and query, where
+  T3's query cache serves it, so a pull request opened in that minute shows
+  after it. The list is the new command `git.pr.search`
   (`{ projectId, query?, limit? }` → `{ pullRequests }`, under `git.read`),
   which GitHub answers through `gh pr list`; a forge without listing says
   "Pull requests are not available for this project."
