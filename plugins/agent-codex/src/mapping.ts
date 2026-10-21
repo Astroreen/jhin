@@ -181,6 +181,40 @@ export function compileModelOptions(
 /** `openai.gpt-6-astra` → `gpt-6-astra` (T3's codexModelFamily). */
 const modelFamily = (slug: string) => (slug.startsWith("openai.gpt-") ? slug.slice(7) : slug);
 
+/**
+ * The config's custom models after the listed ones (T3's providerModelsFromSettings, D888):
+ * a slug Codex lists is only renamed by an entry with a name; any other is added, with the
+ * options of the first listed model that has some.
+ */
+export function withCustomModels(
+  models: readonly AgentModel[],
+  custom: readonly (string | { readonly slug: string; readonly name?: string | undefined })[],
+): readonly AgentModel[] {
+  if (custom.length === 0) return models;
+  // The first entry of a slug counts; a later one of the same slug is ignored.
+  const entries: { slug: string; name: string }[] = [];
+  for (const entry of custom) {
+    const slug = typeof entry === "string" ? entry : entry.slug;
+    if (entries.some((kept) => kept.slug === slug)) continue;
+    entries.push({ slug, name: typeof entry === "string" ? entry : (entry.name ?? entry.slug) });
+  }
+  const renamed = new Map(
+    entries.filter((entry) => entry.name !== entry.slug).map((entry) => [entry.slug, entry.name]),
+  );
+  const listed = models.map((model) => {
+    const name = renamed.get(model.id);
+    return name === undefined ? model : { ...model, name };
+  });
+  const options = models.find((model) => model.options !== undefined)?.options;
+  const seen = new Set(listed.map((model) => model.id));
+  const added: AgentModel[] = [];
+  for (const entry of entries) {
+    if (seen.has(entry.slug)) continue;
+    added.push({ id: entry.slug, name: entry.name, ...(options === undefined ? {} : { options }) });
+  }
+  return [...listed, ...added];
+}
+
 /** T3's applyPreferredCodexDefaultModel: a preferred model, else Codex's default, else the first. */
 export function preferredDefault(models: readonly ListedModel[]): string | undefined {
   for (const preferred of PREFERRED_MODELS) {

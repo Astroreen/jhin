@@ -647,6 +647,15 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   error, and a stop fails it with "Stopped while retrying.". The item is
   generic: T3's dedicated retry row is not ported.
 
+- **D888. Custom Codex models come from the config (W24).** The config
+  section gains `customModels` (T3's setting of the same name): slugs, or
+  `{ slug, name }` entries. They follow Codex's own models, also before
+  Codex listed any (T3's `providerModelsFromSettings`); the first entry of a
+  slug counts. An entry whose slug
+  Codex lists only renames it, any other is added once, with the options of
+  the first listed model that has some, so a newer model Codex does not
+  list yet can be picked and given an effort.
+
 ### Deferred
 
 - Goals (`/goal`) and `/feedback` in the composer; reverting, forking and
@@ -661,8 +670,8 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   usage-limit wording with the reset time.
 - ChatGPT sign-in from Jhin, several Codex accounts per node and shadow
   homes; signing in is `codex login` on the node.
-- Models a newer Codex would list (T3's `updateRequiredModels`) and custom
-  model slugs.
+- Models a newer Codex would list (T3's `updateRequiredModels`), and custom
+  models with options of their own (T3's `capabilities` on an entry).
 - The manual check of Landing: a supervised turn against a signed-in Codex
   asks before a command, runs it once approved and answers (only a sign-in
   with an invalid API key was at hand: Codex took Jhin's `thread/start`,

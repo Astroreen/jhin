@@ -30,6 +30,7 @@ import {
   accountStatus,
   listedModels,
   listedSkills,
+  withCustomModels,
   preferredDefault,
   type Account,
   type ListedModel,
@@ -82,6 +83,19 @@ export const Config = z
       description: "Extra arguments after `codex app-server`, e.g. `-c` config overrides",
       advanced: true,
     }),
+    customModels: z
+      .array(
+        z.union([
+          z.string().trim().min(1),
+          z.object({ slug: z.string().trim().min(1), name: z.string().trim().min(1).optional() }),
+        ]),
+      )
+      .default([])
+      .meta({
+        title: "Custom models",
+        description:
+          "Model slugs Codex takes that it does not list, e.g. a newer model; an entry with a name also renames a listed model",
+      }),
     defaultModel: z
       .string()
       .optional()
@@ -270,7 +284,22 @@ export function createCodexRuntime(options: {
   const current = () => (probed?.key === probeKey() ? probed.probe : undefined);
   /** The skills of each folder Codex was asked about, by config and folder. */
   const skillProbes = new Map<string, { at: number; skills: Promise<AgentSkill[]> }>();
-  const models = () => current()?.models ?? BUNDLED_MODELS;
+  /** The last list with the config's custom models, kept while neither changed. */
+  let withCustom:
+    | { listed: readonly AgentModel[]; custom: string; models: readonly AgentModel[] }
+    | undefined;
+  const models = () => {
+    const listed = current()?.models ?? BUNDLED_MODELS;
+    const custom = JSON.stringify(options.config().customModels);
+    if (withCustom?.listed !== listed || withCustom.custom !== custom) {
+      withCustom = {
+        listed,
+        custom,
+        models: withCustomModels(listed, options.config().customModels),
+      };
+    }
+    return withCustom.models;
+  };
   const defaultModel = () =>
     options.config().defaultModel ??
     current()?.defaultModel ??

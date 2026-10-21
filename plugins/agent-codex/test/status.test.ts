@@ -5,6 +5,7 @@ import { z } from "@jhin/sdk";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { CODEX_AGENT_ID, Config, createCodexRuntime, expandHome } from "../src/index.ts";
+import { BUNDLED_MODELS } from "../src/mapping.ts";
 import { fakeCodex, node, stopAll, type Scenario } from "./support.ts";
 
 afterEach(async () => {
@@ -279,6 +280,76 @@ describe("jhin.agent-codex: status", () => {
       { name: "review", path: "/s/SKILL.md" },
     ]);
     expect(fake.received("skills/list")).toHaveLength(2);
+  });
+
+  it("adds the config's custom models after Codex's, with the options of its models", async () => {
+    const efforts = {
+      defaultReasoningEffort: "medium",
+      supportedReasoningEfforts: [{ reasoningEffort: "medium" }, { reasoningEffort: "high" }],
+    };
+    const { codex, fake } = runtime(
+      { models: [[model("gpt-6.1-sol", efforts), model("gpt-6-luna")]] },
+      { customModels: ["gpt-7", { slug: "gpt-6.1-sol", name: "Sol" }, { slug: "gpt-7" }] },
+    );
+    await codex.status!();
+    expect(codex.models?.map(({ id, name }) => ({ id, name }))).toEqual([
+      { id: "gpt-6.1-sol", name: "Sol" },
+      { id: "gpt-6-luna", name: "GPT-6-Luna" },
+      { id: "gpt-7", name: "gpt-7" },
+    ]);
+    expect(codex.models?.[2]?.options).toEqual(codex.models?.[0]?.options);
+    const turn = codex.startTurn({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      input: { text: "hi" },
+      history: [],
+      cwd: process.cwd(),
+      model: "gpt-7",
+      modelOptions: [{ id: "reasoningEffort", value: "high" }],
+    });
+    for await (const _ of turn.items) void _;
+    expect(fake.received("turn/start")[0]?.params).toMatchObject({
+      model: "gpt-7",
+      effort: "high",
+    });
+    codex.dispose();
+  });
+
+  it("offers the custom models before Codex listed any, the first entry of a slug counting", () => {
+    const { codex } = runtime(
+      {},
+      {
+        customModels: [
+          { slug: "gpt-6-astra", name: "Astra" },
+          { slug: "gpt-6-astra", name: "Ignored" },
+          "gpt-7",
+          { slug: "gpt-7", name: "Ignored too" },
+        ],
+        defaultModel: "gpt-7",
+      },
+    );
+    const models = codex.models!;
+    expect(models.map(({ id, name }) => ({ id, name }))).toEqual([
+      ...BUNDLED_MODELS.map(({ id, name }) => ({
+        id,
+        name: id === "gpt-6-astra" ? "Astra" : name,
+      })),
+      { id: "gpt-7", name: "gpt-7" },
+    ]);
+    // No listed model has options yet: none to lend.
+    expect(models.at(-1)).not.toHaveProperty("options");
+    // The same list while nothing changed.
+    expect(codex.models).toBe(models);
+    expect(codex.defaultModel).toBe("gpt-7");
+  });
+
+  it("checks the custom models it is given", () => {
+    expect(Config.parse({}).customModels).toEqual([]);
+    expect(
+      Config.parse({ customModels: [" gpt-7 ", { slug: "a", name: " A " }] }).customModels,
+    ).toEqual(["gpt-7", { slug: "a", name: "A" }]);
+    expect(Config.safeParse({ customModels: [""] }).success).toBe(false);
+    expect(Config.safeParse({ customModels: [{ slug: "a", name: "" }] }).success).toBe(false);
   });
 
   it("falls back to Codex's own default, and the config's wins", async () => {
