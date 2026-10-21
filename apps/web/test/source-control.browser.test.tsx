@@ -819,6 +819,7 @@ describe("the diff panel", () => {
       () => {
         throw new Error("composer is busy");
       },
+      () => "yes",
     ];
     const config = deviceConfig(
       { filesCollapsed: false },
@@ -859,6 +860,16 @@ describe("the diff panel", () => {
       type: "error",
       title: "Could not add the comment to the chat",
       description: "composer is busy",
+    });
+
+    // An answer the panel does not understand is an error, not "no message box".
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(shown[2]).toEqual({
+      type: "error",
+      title: "Could not add the comment to the chat",
+      description: "The composer gave an answer the panel does not understand.",
     });
   });
 

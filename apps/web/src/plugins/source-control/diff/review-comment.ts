@@ -1,6 +1,8 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/reviewCommentContext.ts
 // (a comment on lines of a diff: its rows, range label and patch) and
 // packages/shared/src/composerContextLegacySend.ts (renderReviewComment: the `<review_comment>` block).
+// Unlike T3, a `<review_comment` or `</review_comment` inside the comment or its lines is
+// neutralized (neutralizeClosingTag), so the text can neither end the block nor fake another.
 import type {
   AnnotationSide,
   FileDiffMetadata,

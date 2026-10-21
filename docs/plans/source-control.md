@@ -259,7 +259,10 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   filePath=… rangeLabel=… startIndex=… endIndex=…>` with the comment and
   the lines as a fenced `diff` (T3's `buildDiffReviewComment` in
   `reviewCommentContext.ts` and `renderReviewComment` in
-  `composerContextLegacySend.ts`). The section is the scope (`Changes`,
+  `composerContextLegacySend.ts`). Unlike T3, a `<review_comment` or
+  `</review_comment` inside the comment or its lines is neutralized (a
+  zero-width space, an escaped slash), so the text can neither end the block
+  nor fake another. The section is the scope (`Changes`,
   `Turn 2`, …). Without that command (no chat plugin) lines offer no "+";
   with no message box on screen the panel says "No message box to add the
   comment to". A refresh that drops the lines closes the draft with "These
