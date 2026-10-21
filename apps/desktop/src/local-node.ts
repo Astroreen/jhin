@@ -5,7 +5,7 @@ import * as Path from "node:path";
 
 /** Where the app finds the CLI and its own client plugin (resolved from the app's package). */
 export interface LocalNodePaths {
-  /** `bin/jhin.js` of the `jhin-ai` package. */
+  /** The `jhin` bin of the `jhin-ai` package. */
   readonly cli: string;
   /** The `jhin.desktop` client plugin's package directory (D514). */
   readonly plugin: string;

@@ -146,6 +146,9 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 - `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
   `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a
   checkout, see its README).
+- `scripts/package-desktop.ts` (`pnpm package:desktop`) — the desktop app's
+  installers with electron-builder; `.github/workflows/release-desktop.yml`
+  publishes them and the update feed to GitHub releases (`desktop.md#D921`).
 
 ## In progress
 

@@ -38,3 +38,6 @@ secrets/
 
 # Dev home and tool shims of scripts/t3
 .jhin-dev/
+
+# Desktop installers of scripts/package-desktop.ts
+apps/desktop/release/

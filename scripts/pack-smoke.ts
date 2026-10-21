@@ -20,18 +20,10 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import { lockedPackages, lockedPins } from "./packing.ts";
+import { closure, type Manifest, readJson, ROOT, workspacePackages } from "./workspace-packages.ts";
 
-const ROOT = Path.resolve(import.meta.dirname, "..");
 const CLI = "jhin-ai";
 const keep = process.argv.includes("--keep");
-
-interface Manifest {
-  readonly name: string;
-  readonly packageManager?: string;
-  readonly dependencies?: Record<string, string>;
-}
-
-const readJson = <T>(file: string): T => JSON.parse(Fs.readFileSync(file, "utf8")) as T;
 
 function step(text: string): void {
   process.stdout.write(`\n== ${text}\n`);
@@ -49,33 +41,6 @@ function run(command: string, args: readonly string[], cwd: string): string {
     throw new Error(`${command} ${args.join(" ")} exited with ${result.status}\n${result.stdout}`);
   }
   return result.stdout;
-}
-
-/** Workspace package directories by package name. */
-function workspacePackages(): Map<string, string> {
-  const packages = new Map<string, string>();
-  for (const parent of ["packages", "plugins", "apps"]) {
-    for (const child of Fs.readdirSync(Path.join(ROOT, parent))) {
-      const file = Path.join(ROOT, parent, child, "package.json");
-      if (Fs.existsSync(file)) packages.set(readJson<Manifest>(file).name, Path.dirname(file));
-    }
-  }
-  return packages;
-}
-
-/** The CLI and every workspace package it needs at runtime (`dependencies` only). */
-function closure(packages: ReadonlyMap<string, string>): string[] {
-  const found = new Set<string>();
-  const visit = (name: string) => {
-    if (found.has(name)) return;
-    found.add(name);
-    const manifest = readJson<Manifest>(Path.join(packages.get(name)!, "package.json"));
-    for (const [dep, spec] of Object.entries(manifest.dependencies ?? {})) {
-      if (spec.startsWith("workspace:")) visit(dep);
-    }
-  };
-  visit(CLI);
-  return [...found].toSorted();
 }
 
 /**
@@ -170,7 +135,7 @@ async function main(): Promise<void> {
   const tmp = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-pack-"));
   try {
     const packages = workspacePackages();
-    const names = closure(packages);
+    const names = closure(packages, [CLI]);
 
     step("every plugin package guards against a bare pnpm pack");
     for (const [name, dir] of packages) {

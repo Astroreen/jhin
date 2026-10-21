@@ -34,6 +34,7 @@ catalog:
   "@xterm/xterm": 6.0.0
   class-variance-authority: 0.7.1
   electron: 44.4.5
+  electron-builder: 26.15.3
   electron-updater: 6.8.9
   heic-to: 1.5.2
   jsonc-parser: 3.3.1
@@ -76,3 +77,5 @@ allowBuilds:
   # Electron downloads its binary at install (the desktop app, docs/plans/desktop.md).
   electron: true
   node-pty: true
+  # electron-builder's Squirrel.Windows maker; Jhin builds NSIS installers only.
+  electron-winstaller: false

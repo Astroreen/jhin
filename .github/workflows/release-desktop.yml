@@ -1,0 +1,166 @@
+# Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): .github/workflows/release.yml
+# and release-desktop.yml, reduced to the desktop app (docs/plans/desktop.md, D924).
+#
+# Builds the desktop app on Linux, macOS and Windows and publishes the
+# installers with electron-updater's feed files to this repository's releases,
+# which is where the app looks for updates (D519):
+#   - a pushed tag v1.2.3 publishes a stable release (`latest*.yml`);
+#   - "nightly" publishes the prerelease v<version>-nightly.<date>.<run> (`nightly*.yml`);
+#   - "dry-run" (the default) builds without a feed and publishes nothing.
+# Each platform signs only when all its secrets are set (scripts/desktop-release.ts,
+# SIGNING_SECRETS); without them the installers are unsigned.
+
+name: Release desktop
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "What to publish"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - nightly
+          - stable
+      version:
+        description: "Stable version (for example 1.2.3); defaults to apps/desktop/package.json"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    name: Resolve the version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            apps/desktop/package.json
+            package.json
+          sparse-checkout-cone-mode: false
+      # Node 24 runs the TypeScript helpers as they are.
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+      - id: meta
+        name: Resolve the version
+        env:
+          CHANNEL: ${{ github.event_name == 'push' && 'stable' || inputs.channel }}
+          INPUT_VERSION: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          node --input-type=module -e '
+            import * as Fs from "node:fs";
+            import { nightlyVersion, releaseVersion, updateChannel } from "./scripts/desktop-release.ts";
+            const { CHANNEL, INPUT_VERSION, RUN_NUMBER, GITHUB_REF_NAME, GITHUB_EVENT_NAME, GITHUB_OUTPUT } = process.env;
+            const base = JSON.parse(Fs.readFileSync("apps/desktop/package.json", "utf8")).version;
+            const version =
+              CHANNEL === "nightly" ? nightlyVersion(base, new Date(), Number(RUN_NUMBER))
+              : GITHUB_EVENT_NAME === "push" ? releaseVersion(GITHUB_REF_NAME)
+              : releaseVersion(INPUT_VERSION || base);
+            const prerelease = CHANNEL === "nightly" || version.includes("-");
+            Fs.appendFileSync(GITHUB_OUTPUT, `version=${version}\nchannel=${CHANNEL}\nprerelease=${prerelease}\n`);
+            console.log(`${CHANNEL} ${version} (${updateChannel(version)} feed files)`);
+          '
+
+  build:
+    name: Build (${{ matrix.platform }} ${{ matrix.arch }})
+    needs: [meta]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, platform: linux, arch: x64 }
+          - { os: macos-latest, platform: mac, arch: arm64 }
+          - { os: windows-latest, platform: win, arch: x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      - name: Package
+        shell: bash
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          REPOSITORY: ${{ needs.meta.outputs.channel != 'dry-run' && github.repository || '' }}
+          # macOS: a Developer ID Application certificate and an App Store Connect API key.
+          CSC_LINK: ${{ matrix.platform == 'mac' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'mac' && secrets.CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY_TEXT: ${{ matrix.platform == 'mac' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'mac' && secrets.APPLE_API_ISSUER || '' }}
+          # Windows: Azure Trusted Signing.
+          AZURE_TENANT_ID: ${{ matrix.platform == 'win' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ matrix.platform == 'win' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ matrix.platform == 'win' && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_ENDPOINT || '' }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME || '' }}
+          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME || '' }}
+          AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME || '' }}
+        run: |
+          set -euo pipefail
+          # electron-builder's notarization reads the API key from a file.
+          if [[ -n "$APPLE_API_KEY_TEXT" ]]; then
+            key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            printf '%s' "$APPLE_API_KEY_TEXT" > "$key"
+            export APPLE_API_KEY="$key"
+          fi
+          args=(--platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --version "$VERSION")
+          if [[ -n "$REPOSITORY" ]]; then args+=(--repository "$REPOSITORY"); fi
+          node scripts/package-desktop.ts "${args[@]}"
+      - name: Upload installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest*.yml
+            apps/desktop/release/nightly*.yml
+
+  release:
+    name: Publish the release
+    needs: [meta, build]
+    if: needs.meta.outputs.channel != 'dry-run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: release
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.meta.outputs.version }}
+          PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=(--repo "$GITHUB_REPOSITORY" --title "Jhin $TAG" --generate-notes --target "$GITHUB_SHA")
+          if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease --latest=false); fi
+          gh release create "$TAG" "${flags[@]}" release/*

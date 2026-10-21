@@ -47,8 +47,13 @@ if (userDataOverride !== undefined) app.setPath("userData", userDataOverride);
 app.setName(APP_NAME);
 
 /** The CLI and the client plugin the app's node runs with (D512, D514). */
+const cliManifest = require.resolve("jhin-ai/package.json");
 const nodePaths = {
-  cli: Path.join(Path.dirname(require.resolve("jhin-ai/package.json")), "bin", "jhin.js"),
+  // The manifest's `jhin` bin: `bin/jhin.js` in the workspace, `dist/main.js` packed (D921).
+  cli: Path.join(
+    Path.dirname(cliManifest),
+    (require(cliManifest) as { bin: { jhin: string } }).bin.jhin,
+  ),
   plugin: Path.dirname(require.resolve("@jhin/plugin-desktop/package.json")),
 };
 
