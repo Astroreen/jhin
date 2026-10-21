@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { node } from "./support.ts";
+import { node, watch } from "./support.ts";
 
 interface Thread {
   id: string;
@@ -159,5 +159,29 @@ describe("jhin.threads: the node settles threads by itself (D444–D447)", () =>
         }),
       ).toEqual({ settled: false });
     }
+  });
+
+  it("sweeps by itself: when its rule changes and every minute", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const { client, kernel, create } = await withThreads({ autoSettleInactive: false });
+    const index = watch(client, "stream:threads");
+    const settledEvent = (id: string) =>
+      index.untilMatch((event) => {
+        const record = event.payload as unknown as Thread;
+        return record.id === id && record.settledOverride === "settled";
+      });
+    const first = await create();
+    vi.setSystemTime(Date.now() + 4 * DAY_MS);
+    // Switching the rule on sweeps at once, without threads.sweep.
+    const firstSettled = settledEvent(first.id);
+    kernel.config.setLayer("node", { "jhin.threads": { autoSettleInactive: true } });
+    await firstSettled;
+
+    // A thread that goes quiet later is swept on the next minute.
+    const second = await create();
+    vi.setSystemTime(Date.now() + 4 * DAY_MS);
+    const secondSettled = settledEvent(second.id);
+    vi.advanceTimersByTime(60_000);
+    await secondSettled;
   });
 });

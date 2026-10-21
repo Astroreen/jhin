@@ -612,25 +612,32 @@ export function activateSourceControl(context: PluginContext): SourceControl {
    * threads decide whether it may (`threads.auto-settle`), source control says
    * which threads work on the branch. Told once per pull request and state.
    */
+  /** Threads told about a pull request in a state; a failed call is told again next lookup. */
+  const announced = new Set<string>();
   const settleOnPullRequest = (repo: Repo, branch: string, pr: PullRequest) => {
-    // Without a time it closed, there is nothing to weigh against the user's last message.
-    const closedAt = pr.closedAt ?? pr.updatedAt;
+    // The time it merged or closed, never its last update (a later comment moves that);
+    // without one there is nothing to weigh against the user's last message.
+    const closedAt = (pr.state === "merged" ? pr.mergedAt : undefined) ?? pr.closedAt;
     if (closedAt === undefined) return;
     for (const thread of threads.values()) {
       if (thread.projectId !== repo.project.id || thread.branch !== branch) continue;
+      const key = JSON.stringify([repo.project.id, thread.threadId, pr.number, pr.state]);
+      if (announced.has(key)) continue;
+      announced.add(key);
       context.commands
         .execute("threads.auto-settle", {
           threadId: thread.threadId,
           reason: pr.state === "merged" ? "pull-request-merged" : "pull-request-closed",
           closedAt,
         })
-        .catch((error: unknown) =>
+        .catch((error: unknown) => {
+          announced.delete(key);
           context.log.warn("settling a thread on its pull request failed", {
             threadId: thread.threadId,
             pullRequest: pr.number,
             error: String(error),
-          }),
-        );
+          });
+        });
     }
   };
 
@@ -657,14 +664,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         if (!stale) continue;
         try {
           const pr = await pullRequestFor(ghPath, location.root, branch);
-          const before = repo.pullRequests.get(branch)?.pr;
           repo.pullRequests.set(branch, { pr, at: Date.now() });
-          if (
-            pr !== null &&
-            pr.state !== "open" &&
-            (before?.state !== pr.state || before.number !== pr.number)
-          )
-            settleOnPullRequest(repo, branch, pr);
+          if (pr !== null && pr.state !== "open") settleOnPullRequest(repo, branch, pr);
         } catch (error) {
           if (!(error instanceof GitHubUnavailable)) throw error;
           provider = { kind: "github", available: false, reason: error.message };
