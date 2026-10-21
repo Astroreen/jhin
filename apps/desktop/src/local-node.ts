@@ -42,8 +42,11 @@ function localNodeHome(env: NodeJS.ProcessEnv = process.env): string {
 export function startLocalNode(
   paths: LocalNodePaths,
   home = localNodeHome(),
-  /** How long `stop` waits after SIGTERM; tests shorten it. */
-  stopGraceMs = STOP_GRACE_MS,
+  /** Arms the SIGKILL after SIGTERM and returns its cancel; tests run it at once. */
+  scheduleKill: (kill: () => void) => () => void = (kill) => {
+    const timer = setTimeout(kill, STOP_GRACE_MS);
+    return () => clearTimeout(timer);
+  },
 ): Promise<RunningLocalNode> {
   Fs.mkdirSync(home, { recursive: true });
   const child = ChildProcess.spawn(
@@ -73,19 +76,27 @@ export function startLocalNode(
     if (child.exitCode !== null || child.signalCode !== null) return;
     child.kill("SIGTERM");
     // A node stuck in its plugins' dispose must not keep the app from quitting.
-    const kill = setTimeout(() => child.kill("SIGKILL"), stopGraceMs);
+    const cancel = scheduleKill(() => child.kill("SIGKILL"));
     await exited;
-    clearTimeout(kill);
+    cancel();
   };
 
   return new Promise((resolve, reject) => {
     const onData = () => {
       // Printed once every plugin is active: `ui: http://127.0.0.1:7777/` then `logs: <file>`.
-      const url = /^ui: (http:\/\/\S+)$/m.exec(output)?.[1];
-      if (url === undefined || !/^logs: /m.test(output)) return;
+      if (!/^logs: /m.test(output)) return;
       child.stdout.off("data", onData);
       child.stderr.off("data", onData);
       child.off("exit", onEarlyExit);
+      // `logs:` is the last line; without `ui:` before it the web client is not served
+      // (its plugin failed, the port is taken): the node's problem lines say why.
+      const url = /^ui: (http:\/\/\S+)$/m.exec(output)?.[1];
+      if (url === undefined) {
+        void stop().then(() =>
+          reject(new Error(`The local node does not serve the web client:\n${output.trim()}`)),
+        );
+        return;
+      }
       // jhin.auth-token writes its token before the node reports itself ready.
       const tokenFile = Path.join(home, "data", "jhin.auth-token", "token");
       let token = "";

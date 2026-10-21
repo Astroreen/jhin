@@ -38,9 +38,20 @@ describe("startLocalNode (D512)", () => {
     );
   });
 
+  it("stops a node that does not serve the web client and shows its problems", async () => {
+    process.env["FAKE_CLI"] = "no-ui";
+    await expect(startLocalNode(PATHS, home())).rejects.toThrow(
+      /does not serve the web client:\nfailed jhin\.http: Port 7777/,
+    );
+  });
+
   it("kills a node that ignores SIGTERM, and tells nobody it stopped", async () => {
     process.env["FAKE_CLI"] = "stuck";
-    const node = await startLocalNode(PATHS, home(), 50);
+    // The grace period ends at once: SIGKILL follows SIGTERM.
+    const node = await startLocalNode(PATHS, home(), (kill) => {
+      kill();
+      return () => undefined;
+    });
     const exits: string[] = [];
     node.onExit((output) => exits.push(output));
     await node.stop();
