@@ -3,6 +3,7 @@
 // apps/web/src/components/settings/ConnectionsSettings.tsx — its wording, the
 // "Create pairing link" dialog and the QR code of the link.
 import type { NodeConnection } from "@jhin/client-api";
+import type { PermissionEntry } from "@jhin/sdk";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -63,7 +64,7 @@ const when = (time: number) => new Date(time).toLocaleString();
 function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCreated(): void }) {
   const id = useId();
   const [label, setLabel] = useState("");
-  const [permissions, setPermissions] = useState<readonly string[] | undefined>();
+  const [permissions, setPermissions] = useState<readonly PermissionEntry[] | undefined>();
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [bases, setBases] = useState<readonly string[]>([httpBase(props.node.url)]);
   const [base, setBase] = useState(httpBase(props.node.url));
@@ -76,12 +77,11 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
     // An answer after the dialog closed (or switched node) changes nothing.
     let alive = true;
     const { client } = props.node;
-    client.call<{ permissions: { permission: string }[] }>("auth.permissions.list").then(
+    client.call<{ permissions: PermissionEntry[] }>("auth.permissions.list").then(
       ({ permissions: listed }) => {
         if (!alive) return;
-        const all = listed.map((entry) => entry.permission);
-        setPermissions(all);
-        setChosen(new Set(all));
+        setPermissions(listed);
+        setChosen(new Set(listed.map((entry) => entry.permission)));
       },
       (failure: unknown) => alive && setError((failure as Error).message),
     );
@@ -174,10 +174,14 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                     </p>
                   )
                 ) : (
-                  <div className="grid max-h-56 grid-cols-2 gap-1.5 overflow-y-auto">
-                    {permissions.map((permission) => (
-                      <Label className="flex items-center gap-2 font-normal" key={permission}>
+                  <div className="flex max-h-72 flex-col divide-y overflow-y-auto rounded-lg border">
+                    {permissions.map(({ permission, title, description }) => (
+                      <Label
+                        className="flex cursor-pointer items-start gap-3 px-3 py-2.5 font-normal transition-colors hover:bg-muted/40"
+                        key={permission}
+                      >
                         <Checkbox
+                          className="mt-0.5"
                           checked={chosen.has(permission)}
                           onCheckedChange={(checked) => {
                             // A choice made answers "Select at least one permission."
@@ -190,7 +194,21 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                             });
                           }}
                         />
-                        <code className="truncate text-xs">{permission}</code>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-medium text-foreground">
+                            {title || permission}
+                          </span>
+                          {!description ? null : (
+                            <span className="block text-xs leading-snug text-muted-foreground">
+                              {description}
+                            </span>
+                          )}
+                          {!title ? null : (
+                            <code className="block text-[11px] text-muted-foreground">
+                              {permission}
+                            </code>
+                          )}
+                        </span>
                       </Label>
                     ))}
                   </div>

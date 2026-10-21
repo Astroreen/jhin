@@ -13,7 +13,17 @@ import {
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import { UNGUARDED_STREAM_PERMISSION } from "@jhin/rpc";
-import { definePlugin, holdsPermission, isGrant, z, type Invocation } from "@jhin/sdk";
+import {
+  PERMISSIONS_DESCRIBE_HOOK,
+  definePlugin,
+  describePermissions,
+  holdsPermission,
+  isGrant,
+  z,
+  type Invocation,
+  type PermissionDescription,
+  type PermissionEntry,
+} from "@jhin/sdk";
 
 import { ClientRecord, createClientStore } from "./clients.ts";
 import { serveAuthHttp } from "./http.ts";
@@ -110,6 +120,25 @@ export default definePlugin({
       },
     };
     context.services.provide(AUTH_VERIFIER_CAPABILITY, verifier);
+    // T3's "View access" and "Manage access" (security.md D961).
+    describePermissions(context, {
+      "auth.read": {
+        title: "View access",
+        description: "Inspect pairing links and authorized clients.",
+      },
+      "auth.write": {
+        title: "Manage access",
+        description: "Issue and revoke credentials for other clients.",
+      },
+      "auth.admin": {
+        title: "Manage the owner token",
+        description: "Show and rotate this node's access token.",
+      },
+      [UNGUARDED_STREAM_PERMISSION]: {
+        title: "Read event streams",
+        description: "Subscribe to event streams no other permission guards.",
+      },
+    });
 
     context.commands.register({
       name: "auth.token.show",
@@ -438,20 +467,54 @@ export default definePlugin({
         "Every permission this node's commands need, with the commands that need it, to grant to a token",
       input: z.object({}),
       output: z.object({
-        permissions: z.array(z.object({ permission: z.string(), commands: z.array(z.string()) })),
+        permissions: z.array(
+          z.object({
+            permission: z.string(),
+            commands: z.array(z.string()),
+            title: z.string().min(1).optional(),
+            description: z.string().min(1).optional(),
+          }),
+        ),
       }),
       permissions: ["auth.read"],
-      handler: () => {
+      handler: async () => {
         const needed = new Map<string, string[]>([[UNGUARDED_STREAM_PERMISSION, []]]);
         for (const command of context.commands.list()) {
           for (const permission of command.permissions) {
             needed.set(permission, [...(needed.get(permission) ?? []), command.name]);
           }
         }
+        const entries: PermissionEntry[] = [...needed]
+          .map(([permission, commands]) => ({ permission, commands }))
+          .toSorted((a, b) => a.permission.localeCompare(b.permission));
+        // Each plugin titles the permissions its commands need (security.md D961).
+        // A hook that throws or answers something else costs the titles, not
+        // the list (D961): only string titles and descriptions are read from
+        // its answer, by permission, onto this node's own entries.
+        const titles = new Map<string, PermissionDescription>();
+        try {
+          const output = await context.hooks.run<object, unknown>(
+            PERMISSIONS_DESCRIBE_HOOK,
+            {},
+            () => entries,
+          );
+          for (const item of Array.isArray(output) ? (output as unknown[]) : []) {
+            const { permission, title, description } = (item ?? {}) as Record<string, unknown>;
+            if (typeof permission !== "string" || typeof title !== "string" || title === "") {
+              continue;
+            }
+            titles.set(permission, {
+              title,
+              ...(typeof description === "string" && description !== "" ? { description } : {}),
+            });
+          }
+        } catch (error) {
+          context.log.error("a permission description hook failed; listing without titles", {
+            error: String(error),
+          });
+        }
         return {
-          permissions: [...needed]
-            .map(([permission, commands]) => ({ permission, commands }))
-            .toSorted((a, b) => a.permission.localeCompare(b.permission)),
+          permissions: entries.map((entry) => ({ ...entry, ...titles.get(entry.permission) })),
         };
       },
     });

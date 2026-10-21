@@ -37,6 +37,7 @@ import {
   z,
   type Disposable,
   type Logger,
+  describePermissions,
 } from "@jhin/sdk";
 import { applyEdits, modify } from "jsonc-parser";
 import { createMemoryStreams, LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
@@ -279,6 +280,29 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         },
       };
       context.services.provide(HOST_PLUGINS_CAPABILITY, plugins);
+      // The titles of this plugin's permissions (security.md D961).
+      describePermissions(context, {
+        "host.config.read": {
+          title: "View settings",
+          description: "Read this node's config and its schemas.",
+        },
+        "host.config.write": {
+          title: "Change environment settings",
+          description: "Edit this node's config.",
+        },
+        "host.inspect": {
+          title: "View diagnostics",
+          description: "Read plugins, services, commands, hooks and recent events.",
+        },
+        "host.identity": {
+          title: "View identity",
+          description: "Read this node's id and machine.",
+        },
+        "host.plugins.reload": {
+          title: "Maintain environment",
+          description: "Reload and rescan plugins.",
+        },
+      });
       context.commands.register({
         name: "host.inspect",
         description:

@@ -32,7 +32,7 @@ import {
   type LiveStreams,
   type WebSocketLike,
 } from "@jhin/rpc";
-import { definePlugin, isGrant, z } from "@jhin/sdk";
+import { definePlugin, isGrant, z, describePermissions } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -366,6 +366,25 @@ export default definePlugin({
       }),
     );
 
+    // The titles of this plugin's permissions (security.md D961).
+    describePermissions(context, {
+      "mesh.read": {
+        title: "View the mesh",
+        description: "Read the mesh's nodes and resolve addresses.",
+      },
+      "mesh.open": {
+        title: "Connect nodes",
+        description: "Open and close connections to other nodes.",
+      },
+      "mesh.admin": {
+        title: "Manage the mesh",
+        description: "Invite and join nodes, and change their config.",
+      },
+      "mesh.call": {
+        title: "Call other nodes",
+        description: "Run commands on other nodes of the mesh, within this client's permissions.",
+      },
+    });
     context.commands.register({
       name: "mesh.open",
       description:

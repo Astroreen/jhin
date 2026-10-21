@@ -3,7 +3,14 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
-import { definePlugin, z, type PluginDefinition } from "@jhin/sdk";
+import {
+  PERMISSIONS_DESCRIBE_HOOK,
+  definePlugin,
+  describePermissions,
+  z,
+  type PermissionEntry,
+  type PluginDefinition,
+} from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import {
   createTestKernel,
@@ -41,6 +48,7 @@ const echo = {
         permissions: ["app.write"],
         handler: (input) => input,
       });
+      describePermissions(context, { "app.write": { title: "Write echoes" } });
     },
   }),
 };
@@ -60,7 +68,12 @@ afterEach(async () => {
 });
 
 async function startNode(
-  options: { tokenFile?: string; allowedOrigins?: string[]; trustProxy?: string[] } = {},
+  options: {
+    tokenFile?: string;
+    allowedOrigins?: string[];
+    trustProxy?: string[];
+    plugins?: { manifest: unknown; definition: PluginDefinition }[];
+  } = {},
 ): Promise<Node> {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-transport-"));
   if (options.tokenFile !== undefined) {
@@ -86,6 +99,7 @@ async function startNode(
       real("auth-token", auth),
       real("transport-ws", transport),
       echo,
+      ...(options.plugins ?? []),
     ],
     config: {
       node: {
@@ -343,10 +357,24 @@ describe("device tokens (security.md D411–D414)", () => {
   it("lists the permissions the node's commands need", async () => {
     const node = await startNode();
     const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
-      permissions: { permission: string; commands: string[] }[];
+      permissions: PermissionEntry[];
     };
-    expect(permissions).toContainEqual({ permission: "app.write", commands: ["app.write"] });
-    expect(permissions).toContainEqual({ permission: "events.read", commands: [] });
+    expect(permissions).toContainEqual({
+      permission: "app.write",
+      commands: ["app.write"],
+      title: "Write echoes",
+    });
+    expect(permissions).toContainEqual({
+      permission: "events.read",
+      commands: [],
+      title: "Read event streams",
+      description: "Subscribe to event streams no other permission guards.",
+    });
+    // T3's wording for a permission that matches its scope (security.md D961).
+    expect(permissions.find((entry) => entry.permission === "auth.write")).toMatchObject({
+      title: "Manage access",
+      description: "Issue and revoke credentials for other clients.",
+    });
     expect(permissions.find((entry) => entry.permission === "auth.write")?.commands).toEqual([
       "auth.clients.revoke",
       "auth.clients.revoke-others",
@@ -354,6 +382,41 @@ describe("device tokens (security.md D411–D414)", () => {
       "auth.pairing.revoke",
       "auth.tokens.issue",
     ]);
+  });
+
+  it("lists the permissions without titles when a description hook throws (D961)", async () => {
+    const broken = {
+      manifest: testManifest("app.broken"),
+      definition: definePlugin({
+        activate(context) {
+          context.hooks.after(PERMISSIONS_DESCRIBE_HOOK, () => {
+            throw new Error("broken");
+          });
+        },
+      }),
+    };
+    const node = await startNode({ plugins: [broken] });
+    const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
+      permissions: PermissionEntry[];
+    };
+    expect(permissions).toContainEqual({ permission: "app.write", commands: ["app.write"] });
+  });
+
+  it("keeps the list when a description hook answers something else (D961)", async () => {
+    const careless = {
+      manifest: testManifest("app.careless"),
+      definition: definePlugin({
+        activate(context) {
+          // An `after` hook written without a return.
+          context.hooks.after(PERMISSIONS_DESCRIBE_HOOK, () => undefined);
+        },
+      }),
+    };
+    const node = await startNode({ plugins: [careless] });
+    const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
+      permissions: PermissionEntry[];
+    };
+    expect(permissions).toContainEqual({ permission: "app.write", commands: ["app.write"] });
   });
 });
 

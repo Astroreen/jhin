@@ -27,7 +27,7 @@ import {
   type LiveStreams,
   type StreamSource,
 } from "@jhin/rpc";
-import { definePlugin, toDisposable, z } from "@jhin/sdk";
+import { definePlugin, toDisposable, z, describePermissions } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog, type Json } from "@jhin/storage-api";
 
 import { createLocalHost } from "./hosts.ts";
@@ -204,6 +204,17 @@ export default definePlugin({
       context.log.warn("devices not listed", { error: String(error) }),
     );
 
+    // The titles of this plugin's permissions (security.md D961).
+    describePermissions(context, {
+      "devices.read": {
+        title: "View devices",
+        description: "List simulators and emulators and take screenshots.",
+      },
+      "devices.write": {
+        title: "Control devices",
+        description: "Open and close simulators and emulators.",
+      },
+    });
     context.commands.register({
       name: "device.list",
       title: "List devices",

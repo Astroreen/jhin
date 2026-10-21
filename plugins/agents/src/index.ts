@@ -28,7 +28,7 @@ import {
   type TurnStatus,
 } from "@jhin/agent-api";
 import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
-import { definePlugin, type Disposable } from "@jhin/sdk";
+import { definePlugin, type Disposable, describePermissions } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -615,6 +615,17 @@ export default definePlugin({
     // --- Commands (D609) --------------------------------------------------------
     const commands = AgentCommands;
 
+    // The titles of this plugin's permissions (security.md D961).
+    describePermissions(context, {
+      "agents.read": {
+        title: "View agents",
+        description: "Read defined agents, their catalog and generations.",
+      },
+      "agents.write": {
+        title: "Manage agents",
+        description: "Define, update, stop and resume agents.",
+      },
+    });
     context.commands.register({
       name: "agents.get",
       description:

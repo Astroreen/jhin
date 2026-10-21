@@ -10,10 +10,14 @@ export {
   PluginSide,
 } from "./manifest.ts";
 export {
+  PERMISSIONS_DESCRIBE_HOOK,
+  describePermissions,
   holdsPermission,
   intersectPermissions,
   isGrant,
   missingPermissions,
+  type PermissionDescription,
+  type PermissionEntry,
 } from "./permissions.ts";
 export {
   definePlugin,
