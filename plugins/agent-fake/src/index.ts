@@ -7,6 +7,9 @@ import {
   type TurnInput,
   type TurnRequest,
 } from "@jhin/agent-api";
+import * as Fs from "node:fs/promises";
+import * as Path from "node:path";
+
 import { definePlugin } from "@jhin/sdk";
 
 export const FAKE_AGENT_ID = "jhin.agent-fake";
@@ -28,6 +31,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/ask" asks a question and answers with the choice;
  * - "/plan" publishes a three-step plan and completes it;
  * - in plan mode, anything else is answered with a proposed plan titled after it;
+ * - "/write <file> <text>" writes the text to a file of its working directory;
  * - anything else is answered "Echo: <text>", one word per delta.
  * A message steered into a turn (D204) is answered "Echo: <text>" before the
  * turn ends; it ends a "/hold" turn.
@@ -93,6 +97,24 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
       yield { kind: "reasoning.delta", itemId, text: "the request" };
       yield { kind: "reasoning.completed", itemId, text: "Thinking about the request" };
       yield* say(`Thought about: ${command}`);
+      return;
+    }
+    if (/^\/write(\s|$)/.test(text)) {
+      const [file = "notes.txt", ...words] = command.split(" ");
+      const path = Path.resolve(request.cwd, file);
+      if (!path.startsWith(Path.resolve(request.cwd) + Path.sep)) {
+        throw new Error("fake agent: writes only inside its working directory");
+      }
+      const itemId = nextId();
+      yield {
+        kind: "tool.started",
+        itemId,
+        tool: { name: "Write", kind: "file_change", title: "Edited file", detail: file },
+      };
+      await Fs.mkdir(Path.dirname(path), { recursive: true });
+      await Fs.writeFile(path, `${words.join(" ")}\n`);
+      yield { kind: "tool.completed", itemId, status: "completed" };
+      yield* say(`Wrote ${file}`);
       return;
     }
     if (text.startsWith("/tool")) {

@@ -1,15 +1,19 @@
 // The diff panel follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/DiffPanel.tsx
 // (the scope menu, the "head → base" label, the header's controls and its empty states),
-// DiffPanelShell.tsx (the inline panel and its loading skeleton) and chat/DiffStatLabel.tsx.
+// DiffPanelShell.tsx (the inline panel and its loading skeleton) and chat/DiffStatLabel.tsx;
+// the turn scopes ("Latest turn", "Turn N") follow DiffPanel.tsx at the same commit.
 // T3 renders files with @pierre/diffs; here a stacked view of the unified diff stands in.
 import type { NodeTarget } from "@jhin/client-api";
-import type { Diff, DiffScope, ProjectStatus } from "@jhin/source-control-api";
+import type { Diff, ProjectStatus } from "@jhin/source-control-api";
 import {
   Button,
   Menu,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
   MenuTrigger,
   Skeleton,
   Toggle,
@@ -28,32 +32,19 @@ import {
   RefreshCwIcon,
   TextWrapIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { parsePatch, type DiffFile } from "../../lib/diff.ts";
+import { formatShortTimestamp } from "../../lib/format.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
-import { formatCompactDiffCount } from "../../lib/pull-request.ts";
+import {
+  DiffStatLabel,
+  selectionKey,
+  useDiffSelection,
+  useThreadCheckpoints,
+  type DiffSelection,
+} from "./checkpoints.tsx";
 import { useSourceControl, type SourceControlServices, DIFF_PANEL } from "./services.ts";
-
-const SCOPE_LABEL: Record<DiffScope, string> = { branch: "Changes", uncommitted: "Uncommitted" };
-
-/** T3's DiffStatLabel, inline layout. */
-function DiffStatLabel(props: { additions: number; deletions: number; className?: string }) {
-  return (
-    <span
-      aria-label={`${props.additions} additions, ${props.deletions} deletions`}
-      className={cn("inline-flex items-center gap-1 tabular-nums align-middle", props.className)}
-      role="group"
-    >
-      <span aria-hidden="true" className="font-mono text-diff-addition">
-        +{formatCompactDiffCount(props.additions)}
-      </span>
-      <span aria-hidden="true" className="font-mono text-diff-deletion">
-        -{formatCompactDiffCount(props.deletions)}
-      </span>
-    </span>
-  );
-}
 
 function DiffFileHeaderSkeleton({ width }: { width: string }) {
   return (
@@ -183,66 +174,191 @@ function FileDiff(props: { file: DiffFile; collapsed: boolean; wrap: boolean; on
   );
 }
 
+/** The label of the scope menu's trigger, as T3's DiffPanel names the selection. */
+function scopeLabel(
+  selection: DiffSelection,
+  turn: number | undefined,
+  latest: number | undefined,
+) {
+  if (selection.kind === "branch") return "Changes";
+  if (selection.kind === "uncommitted") return "Uncommitted";
+  return turn === undefined || turn === latest ? "Latest turn" : `Turn ${turn}`;
+}
+
 export function createDiffPanel(services: SourceControlServices) {
-  const { store, threads, navigation } = services;
+  const { store, threads, navigation, selections } = services;
 
   function Panel(props: {
     target: NodeTarget;
     projectId: string;
+    threadId: string | undefined;
     status: ProjectStatus | undefined;
   }) {
-    const { target, projectId, status } = props;
-    const [scope, setScope] = useState<DiffScope>("uncommitted");
+    const { target, projectId, threadId, status } = props;
+    const key = selectionKey(target, { thread: threadId, project: projectId });
+    const selection = useDiffSelection(selections, key);
+    const timestampFormat = services.timestampFormat();
+    const checkpoints = useThreadCheckpoints(services, target, threadId ?? "");
+    // Newest first, as T3 lists them; only turns whose checkpoint can be diffed.
+    const turns = (threadId === undefined ? [] : (checkpoints ?? []))
+      .filter((checkpoint) => checkpoint.status === "ready")
+      .toSorted((a, b) => b.turn - a.turn);
+    const latest = turns[0];
+    const selectedTurn =
+      selection.kind !== "turn"
+        ? undefined
+        : (turns.find((checkpoint) => checkpoint.turn === selection.turn) ?? latest);
     const [wrap, setWrap] = useState(false);
     const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-    const [state, setState] = useState<{ key: string; diff?: Diff; error?: string }>({ key: "" });
+    const [state, setState] = useState<{
+      key: string;
+      /** The scope the answer is for: another scope's diff is never shown under this one. */
+      scope?: DiffSelection["kind"];
+      diff?: Diff;
+      error?: string;
+    }>({ key: "" });
     const [refreshing, setRefreshing] = useState(false);
+    const [reloads, setReloads] = useState(0);
     const isRepo = status?.isRepo ?? true;
-    // The diff is read again whenever the project's status changes on its node.
-    const key = JSON.stringify([target, projectId, scope, ignoreWhitespace, status?.checkedAt]);
+    const scope = selection.kind;
+    // A git scope is read again whenever the project's status changes on its node, a turn
+    // when its checkpoint does.
+    const fetchKey = JSON.stringify([
+      target,
+      projectId,
+      threadId,
+      scope,
+      ignoreWhitespace,
+      scope === "turn"
+        ? [selectedTurn?.turn, selectedTurn?.capturedAt, reloads]
+        : status?.checkedAt,
+    ]);
+    const waitingForTurns = scope === "turn" && checkpoints === undefined && threadId !== undefined;
     useEffect(() => {
-      if (!isRepo) return;
+      if (!isRepo || waitingForTurns) return;
+      if (scope === "turn" && selectedTurn === undefined) return;
       let current = true;
-      void threads.call<Diff>(target, "git.diff", { projectId, scope, ignoreWhitespace }).then(
-        (diff) => current && setState({ key, diff }),
-        (error: unknown) => current && setState({ key, error: (error as Error).message }),
+      const request =
+        scope === "turn"
+          ? { threadId, scope, turn: selectedTurn!.turn, ignoreWhitespace }
+          : { projectId, scope, ignoreWhitespace };
+      void threads.call<Diff>(target, "git.diff", request).then(
+        (diff) => current && setState({ key: fetchKey, scope, diff }),
+        (error: unknown) =>
+          current && setState({ key: fetchKey, scope, error: (error as Error).message }),
       );
       return () => {
         current = false;
       };
-    }, [key, isRepo]);
+    }, [fetchKey, isRepo, waitingForTurns]);
 
-    const diff = state.diff;
+    // A git scope keeps showing its last diff while the status that changed is read
+    // again; a turn, or another scope, waits for its own.
+    const diff =
+      state.key === fetchKey || (scope !== "turn" && state.scope === scope)
+        ? state.diff
+        : undefined;
     const files = diff === undefined ? [] : parsePatch(diff.patch);
-    const loading = state.key !== key && state.diff === undefined && state.error === undefined;
+    const loading = waitingForTurns || (state.key !== fetchKey && diff === undefined);
     const allCollapsed = files.length > 0 && files.every((file) => collapsed.has(file.path));
     const refresh = () => {
+      if (scope === "turn") {
+        setReloads((count) => count + 1);
+        return;
+      }
       setRefreshing(true);
       void store.refresh(target, projectId).finally(() => setRefreshing(false));
     };
+    // A file opened from a turn's changed files card is shown, unfolded.
+    const filesRef = useRef<HTMLDivElement>(null);
+    const reveal = selection.kind === "turn" ? selection.filePath : undefined;
+    const revealRequest = selection.kind === "turn" ? selection.reveal : 0;
+    const revealed = reveal !== undefined && files.some((file) => file.path === reveal);
+    useEffect(() => {
+      if (reveal === undefined || !revealed) return;
+      setCollapsed((previous) => {
+        if (!previous.has(reveal)) return previous;
+        const next = new Set(previous);
+        next.delete(reveal);
+        return next;
+      });
+      filesRef.current
+        ?.querySelector(`[data-diff-file="${CSS.escape(reveal)}"]`)
+        ?.scrollIntoView({ block: "start" });
+    }, [reveal, revealRequest, revealed]);
+    const select = (next: DiffSelection) => selections.set(key, next);
+    const selectValue = (value: string) => {
+      if (value === "branch" || value === "uncommitted") select({ kind: value });
+      else if (value === "latest") select({ kind: "turn", reveal: 0 });
+      else if (value.startsWith("turn:")) {
+        select({ kind: "turn", turn: Number(value.slice(5)), reveal: 0 });
+      }
+    };
+    const label = scopeLabel(selection, selectedTurn?.turn, latest?.turn);
+    const scopeValue =
+      selection.kind !== "turn"
+        ? selection.kind
+        : selectedTurn === undefined || selectedTurn.turn === latest?.turn
+          ? "latest"
+          : "";
+    const turnValue = selectedTurn === undefined ? "" : `turn:${selectedTurn.turn}`;
 
     const header = (
       <>
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Menu>
             <MenuTrigger
-              aria-label={`Diff scope: ${SCOPE_LABEL[scope]}`}
+              aria-label={`Diff scope: ${label}`}
               className="max-w-full"
               render={<Button size="xs" variant="secondary" />}
             >
-              <span className="truncate">{SCOPE_LABEL[scope]}</span>
+              <span className="truncate">{label}</span>
               <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
             </MenuTrigger>
             <MenuPopup align="start">
-              <MenuRadioGroup onValueChange={(value) => setScope(value as DiffScope)} value={scope}>
+              <MenuRadioGroup
+                onValueChange={(value) => selectValue(String(value))}
+                value={scopeValue}
+              >
                 <MenuRadioItem closeOnClick value="branch">
                   <span>Changes</span>
                 </MenuRadioItem>
                 <MenuRadioItem closeOnClick value="uncommitted">
                   <span>Uncommitted</span>
                 </MenuRadioItem>
+                {threadId === undefined ? null : (
+                  <MenuRadioItem closeOnClick value="latest">
+                    <span>Latest turn</span>
+                  </MenuRadioItem>
+                )}
               </MenuRadioGroup>
+              {threadId === undefined ? null : (
+                <MenuSub>
+                  <MenuSubTrigger>Turn</MenuSubTrigger>
+                  <MenuSubPopup>
+                    <MenuRadioGroup
+                      onValueChange={(value) => selectValue(String(value))}
+                      value={turnValue}
+                    >
+                      {turns.map((checkpoint) => (
+                        <MenuRadioItem
+                          closeOnClick
+                          key={checkpoint.turnId}
+                          value={`turn:${checkpoint.turn}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span>Turn {checkpoint.turn}</span>
+                            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                              {formatShortTimestamp(checkpoint.capturedAt, timestampFormat)}
+                            </span>
+                          </span>
+                        </MenuRadioItem>
+                      ))}
+                    </MenuRadioGroup>
+                  </MenuSubPopup>
+                </MenuSub>
+              )}
             </MenuPopup>
           </Menu>
           {scope === "branch" && diff?.baseRef ? (
@@ -363,13 +479,19 @@ export function createDiffPanel(services: SourceControlServices) {
           <EmptyState>
             Turn diffs are unavailable because this project is not a git repository.
           </EmptyState>
+        ) : scope === "turn" && checkpoints !== undefined && selectedTurn === undefined ? (
+          <EmptyState>No completed turns yet.</EmptyState>
         ) : loading ? (
           <DiffPanelLoadingState
             label={
-              scope === "uncommitted" ? "Loading uncommitted changes..." : "Loading changes..."
+              scope === "turn"
+                ? "Loading checkpoint diff..."
+                : scope === "uncommitted"
+                  ? "Loading uncommitted changes..."
+                  : "Loading changes..."
             }
           />
-        ) : state.error !== undefined && diff === undefined ? (
+        ) : state.key === fetchKey && state.error !== undefined && diff === undefined ? (
           <div className="px-3 py-2">
             <p className="mb-2 text-2xs text-error/80">{state.error}</p>
           </div>
@@ -383,7 +505,7 @@ export function createDiffPanel(services: SourceControlServices) {
                 all changes.
               </p>
             ) : null}
-            <div className="min-h-0 flex-1 overflow-auto" data-diff-files>
+            <div className="min-h-0 flex-1 overflow-auto" data-diff-files ref={filesRef}>
               {files.map((file) => (
                 <FileDiff
                   collapsed={collapsed.has(file.path)}
@@ -439,10 +561,11 @@ export function createDiffPanel(services: SourceControlServices) {
     }
     return (
       <Panel
-        key={`${JSON.stringify(props.target)}|${projectId}`}
+        key={`${JSON.stringify(props.target)}|${projectId}|${props.thread ?? ""}`}
         projectId={projectId}
         status={view.projects.get(projectId)}
         target={props.target}
+        threadId={props.thread}
       />
     );
   }

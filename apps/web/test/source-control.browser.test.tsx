@@ -7,11 +7,22 @@ import type {
   ThreadsCatalog,
 } from "@jhin/client-api";
 import { toDisposable, type PluginContext } from "@jhin/sdk";
-import type { Diff, ProjectStatus, PullRequest, ThreadPullRequest } from "@jhin/source-control-api";
+import type {
+  Diff,
+  ProjectStatus,
+  PullRequest,
+  ThreadPullRequest,
+  TurnCheckpoint,
+} from "@jhin/source-control-api";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vite-plus/test";
 
+import {
+  createChangedFilesFooter,
+  createDiffSelections,
+  selectionKey,
+} from "../src/plugins/source-control/checkpoints.tsx";
 import { createDiffPanel } from "../src/plugins/source-control/diff-panel.tsx";
 import { createGitActionsControl } from "../src/plugins/source-control/git-actions.tsx";
 import { createRunningActions } from "../src/plugins/source-control/running.ts";
@@ -105,6 +116,8 @@ function services(view: SourceControlView, answers: Record<string, unknown> = {}
       update: () => undefined,
       close: () => undefined,
     },
+    selections: createDiffSelections(),
+    timestampFormat: () => "24-hour",
     shortcut: () => undefined,
   };
   return { value, calls, shown };
@@ -124,11 +137,15 @@ function mount(element: React.ReactNode) {
   };
 }
 
-const viewWith = (project: ProjectStatus, branch: string | null = "feature/toolbar") => ({
+const viewWith = (
+  project: ProjectStatus,
+  branch: string | null = "feature/toolbar",
+): SourceControlView => ({
   status: "ready" as const,
   projects: new Map([["app", project]]),
   threads: new Map([["t1", { threadId: "t1", projectId: "app", branch, at: "" }]]),
   links: new Map<string, readonly ThreadPullRequest[]>(),
+  checkpoints: new Map(),
 });
 
 describe("a thread card's source control indicators", () => {
@@ -431,3 +448,228 @@ describe("the git actions in the chat header", () => {
     view.unmount();
   });
 });
+
+describe("checkpoints in the client", () => {
+  const checkpoint = (turn: number, fields: Partial<TurnCheckpoint> = {}): TurnCheckpoint => ({
+    threadId: "t1",
+    turnId: `turn-${turn}`,
+    turn,
+    ref: `refs/jhin/checkpoints/t1/${turn}`,
+    status: "ready",
+    files: [],
+    fileCount: 0,
+    insertions: 0,
+    deletions: 0,
+    capturedAt: "2026-10-20T10:00:00.000Z",
+    ...fields,
+  });
+  const second = checkpoint(2, {
+    files: [
+      { path: "src/a.ts", status: "modified", insertions: 5, deletions: 2, binary: false },
+      { path: "src/lib/b.ts", status: "added", insertions: 2, deletions: 0, binary: false },
+    ],
+    fileCount: 2,
+    insertions: 7,
+    deletions: 2,
+  });
+  const withCheckpoints = (...checkpoints: TurnCheckpoint[]): SourceControlView => ({
+    // Another branch is checked out: the card counts the latest turn all the same.
+    ...viewWith(status({ branch: "main" })),
+    checkpoints: new Map(checkpoints.map((item) => [item.threadId, item])),
+  });
+  const turnDiff: Diff = {
+    projectId: "app",
+    scope: "turn",
+    baseRef: null,
+    headRef: null,
+    fromTurn: 1,
+    turn: 2,
+    patch: [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "",
+    ].join("\n"),
+    truncated: false,
+    files: second.files,
+    insertions: 7,
+    deletions: 2,
+  };
+
+  it("counts the thread's latest turn on its card", () => {
+    const { DiffCount } = createCardIndicators(services(withCheckpoints(second)).value);
+    const card = mount(<DiffCount active={false} target={target} thread={thread} />);
+    expect(card.container.textContent).toBe("+7 −2");
+    card.unmount();
+
+    // A latest turn whose changes are unknown: the uncommitted changes of the checkout.
+    const failed = createCardIndicators(
+      services({
+        ...viewWith(status()),
+        checkpoints: new Map([["t1", checkpoint(3, { status: "error" })]]),
+      }).value,
+    );
+    const fallback = mount(<failed.DiffCount active={false} target={target} thread={thread} />);
+    expect(fallback.container.textContent).toBe("+1,234 −5");
+    fallback.unmount();
+
+    // A latest turn that changed nothing shows nothing, whatever is uncommitted.
+    const quiet = createCardIndicators(services(withCheckpoints(checkpoint(3))).value);
+    const empty = mount(<quiet.DiffCount active={false} target={target} thread={thread} />);
+    expect(empty.container.textContent).toBe("");
+    empty.unmount();
+  });
+
+  it("shows the latest turn's diff and lists every turn in the scope menu", async () => {
+    const { value, calls } = services(withCheckpoints(second), {
+      "git.checkpoints": { checkpoints: [checkpoint(1), second] },
+      "git.diff": turnDiff,
+    });
+    value.selections.set(selectionKey(target, { thread: "t1" }), { kind: "turn", reveal: 0 });
+    const Panel = createDiffPanel(value);
+    const panel = mount(<Panel />);
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(calls).toContainEqual({
+      method: "git.diff",
+      params: { threadId: "t1", scope: "turn", turn: 2, ignoreWhitespace: false },
+    });
+    const trigger = panel.container.querySelector('[aria-label^="Diff scope"]')!;
+    expect(trigger.getAttribute("aria-label")).toBe("Diff scope: Latest turn");
+    expect(panel.container.querySelector('[data-diff-file="src/a.ts"]')).not.toBeNull();
+
+    // An earlier turn is named by its number.
+    act(() =>
+      value.selections.set(selectionKey(target, { thread: "t1" }), {
+        kind: "turn",
+        turn: 1,
+        reveal: 0,
+      }),
+    );
+    await act(async () => undefined);
+    expect(trigger.getAttribute("aria-label")).toBe("Diff scope: Turn 1");
+    expect(calls).toContainEqual({
+      method: "git.diff",
+      params: { threadId: "t1", scope: "turn", turn: 1, ignoreWhitespace: false },
+    });
+    panel.unmount();
+  });
+
+  it("says when a thread has no completed turns", async () => {
+    const failed = checkpoint(1, { status: "error" });
+    const { value } = services(withCheckpoints(failed), {
+      "git.checkpoints": { checkpoints: [failed] },
+    });
+    value.selections.set(selectionKey(target, { thread: "t1" }), { kind: "turn", reveal: 0 });
+    const Panel = createDiffPanel(value);
+    const panel = mount(<Panel />);
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(panel.container.textContent).toContain("No completed turns yet.");
+    panel.unmount();
+  });
+
+  it("shows a turn's changed files under it and opens the diff panel on one", async () => {
+    const { value } = services(withCheckpoints(second), {
+      "git.checkpoints": { checkpoints: [checkpoint(1), second] },
+    });
+    const opened: string[] = [];
+    const Footer = createChangedFilesFooter(value, value.selections, (_target, threadId) =>
+      opened.push(threadId),
+    );
+    const footer = mount(
+      <Footer latest state="completed" target={target} thread={thread} turnId="turn-2" />,
+    );
+    await act(async () => undefined);
+    await act(async () => undefined);
+    const card = footer.container.querySelector('[aria-label="Changed files"]')!;
+    expect(card.textContent).toContain("2 changed files");
+    expect(card.querySelector('[aria-label="7 additions, 2 deletions"]')).not.toBeNull();
+    const file = [...card.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("b.ts"),
+    )!;
+    act(() => file.click());
+    expect(opened).toEqual(["t1"]);
+    expect(value.selections.get(selectionKey(target, { thread: "t1" }))).toEqual({
+      kind: "turn",
+      turn: 2,
+      filePath: "src/lib/b.ts",
+      reveal: 1,
+    });
+    footer.unmount();
+
+    // A turn that changed nothing, or one still running, has no card.
+    const none = mount(
+      <Footer latest state="completed" target={target} thread={thread} turnId="turn-1" />,
+    );
+    await act(async () => undefined);
+    expect(none.container.textContent).toBe("");
+    none.unmount();
+  });
+});
+
+describe("the diff panel across scopes", () => {
+  it("never shows a turn's diff under a git scope while that scope loads", async () => {
+    const second: TurnCheckpoint = {
+      threadId: "t1",
+      turnId: "turn-1",
+      turn: 1,
+      ref: "refs/jhin/checkpoints/t1/1",
+      status: "ready",
+      files: [],
+      fileCount: 1,
+      insertions: 1,
+      deletions: 0,
+      capturedAt: "2026-10-20T10:00:00.000Z",
+    };
+    let answer!: (diff: Diff) => void;
+    const turnPatch =
+      "diff --git a/turn.ts b/turn.ts\n--- a/turn.ts\n+++ b/turn.ts\n@@ -0,0 +1 @@\n+t\n";
+    const { value } = services(
+      { ...viewWith(status()), checkpoints: new Map([["t1", second]]) },
+      { "git.checkpoints": { checkpoints: [second] } },
+    );
+    const answers: Record<string, () => Promise<unknown>> = {
+      turn: async () => ({ ...diffOf(turnPatch), scope: "turn" }),
+      uncommitted: () => new Promise<Diff>((resolve) => (answer = resolve)),
+    };
+    const calls = value.threads.call;
+    value.threads.call = (async (to: unknown, method: string, params?: unknown) => {
+      if (method === "git.diff") return answers[(params as { scope: string }).scope]!();
+      return calls(to as never, method, params);
+    }) as typeof calls;
+    const key = selectionKey(target, { thread: "t1" });
+    value.selections.set(key, { kind: "turn", reveal: 0 });
+    const Panel = createDiffPanel(value);
+    const panel = mount(<Panel />);
+    for (let index = 0; index < 3; index++) await act(async () => undefined);
+    expect(panel.container.querySelector('[data-diff-file="turn.ts"]')).not.toBeNull();
+
+    act(() => value.selections.set(key, { kind: "uncommitted" }));
+    await act(async () => undefined);
+    expect(panel.container.querySelector('[data-diff-file="turn.ts"]')).toBeNull();
+    expect(
+      panel.container.querySelector('[aria-label="Loading uncommitted changes..."]'),
+    ).not.toBeNull();
+    await act(async () => answer(diffOf("")));
+    expect(panel.container.textContent).toContain("No net changes in this selection.");
+    panel.unmount();
+  });
+});
+
+function diffOf(patch: string): Diff {
+  return {
+    projectId: "app",
+    scope: "uncommitted",
+    baseRef: null,
+    headRef: null,
+    patch,
+    truncated: false,
+    files: [],
+    insertions: 0,
+    deletions: 0,
+  };
+}
