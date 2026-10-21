@@ -270,7 +270,8 @@ async function checkoutTarget(
 
 /**
  * The repository's pull requests (`gh pr list --search`), any state, most
- * recently updated first; `query` is GitHub's search, as T3 searches on the host.
+ * recently updated first; `query` is GitHub's search, as T3 searches on the host. Its
+ * qualifiers (`is:`, `author:`) pass through, as in T3: the user narrows their own repository.
  */
 async function listPullRequests(
   ghPath: string,

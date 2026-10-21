@@ -165,6 +165,24 @@ describe("a picked pull request or thread in the prompt", () => {
     ]);
   });
 
+  it("leaves a #number link to anything but that pull request as a plain link", () => {
+    for (const url of [
+      "https://example.com/phish",
+      "https://github.com/acme/app/pull/13",
+      "https://github.com/acme/app/issues/12",
+    ]) {
+      const kinds = splitPromptIntoSegments(`see [#12](${url})`).map((segment) =>
+        "kind" in segment ? segment.kind : segment.type,
+      );
+      expect(kinds, url).not.toContain("pull-request");
+    }
+    expect(
+      splitPromptIntoSegments("[#7](https://gitlab.com/a/b/-/merge_requests/7)").map((segment) =>
+        "kind" in segment ? segment.kind : segment.type,
+      ),
+    ).toEqual(["pull-request"]);
+  });
+
   it("is a link labelled with the thread's title to its jhin:// address", () => {
     const link = serializeComposerThreadLink(
       "  Fix [the] cache\n now ",

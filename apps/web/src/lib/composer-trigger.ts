@@ -72,7 +72,20 @@ export function serializeComposerThreadLink(title: string, address: string): str
 }
 
 const THREAD_ADDRESS_REGEX = /^jhin:\/\/[^/\s]+\/threads\/[^/\s?#]+$/;
-const PULL_REQUEST_LABEL_REGEX = /^#\d+$/;
+const PULL_REQUEST_LABEL_REGEX = /^#(\d+)$/;
+
+/**
+ * A `#n` link whose URL is that pull request (`…/pull/n`, `…/merge_requests/n`,
+ * `…/pullrequest/n`, `…/pulls/n`): another destination stays a plain link, so a
+ * chip never hides where it goes.
+ */
+function isPullRequestLink(label: string, url: string): boolean {
+  const number = PULL_REQUEST_LABEL_REGEX.exec(label)?.[1];
+  if (number === undefined || !/^https?:\/\//i.test(url)) return false;
+  return new RegExp(`/(?:pull|pulls|merge_requests|pullrequest)/${number}/?(?:[?#].*)?$`, "i").test(
+    url,
+  );
+}
 
 function clampCursor(text: string, cursor: number): number {
   if (!Number.isFinite(cursor)) return text.length;
@@ -221,7 +234,7 @@ function collectInlineTokens(text: string): InlineToken[] {
     const start = (match.index ?? 0) + prefix.length;
     const reference: ReferenceKind | undefined = THREAD_ADDRESS_REGEX.test(encoded)
       ? "thread"
-      : PULL_REQUEST_LABEL_REGEX.test(label) && /^https?:\/\//i.test(path)
+      : isPullRequestLink(label, path)
         ? "pull-request"
         : undefined;
     if (reference !== undefined) {

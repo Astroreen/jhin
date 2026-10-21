@@ -2097,9 +2097,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           }),
         };
       } catch (error) {
-        throw new SourceControlError("PULL_REQUEST_FAILED", (error as Error).message, {
-          projectId,
-        });
+        // A missing or signed-out CLI will not answer the next `#` either.
+        const unavailable = error instanceof ForgeUnavailable && error.kind !== "failed";
+        throw new SourceControlError(
+          unavailable ? "ACTION_UNAVAILABLE" : "PULL_REQUEST_FAILED",
+          (error as Error).message,
+          { projectId },
+        );
       }
     },
   });
