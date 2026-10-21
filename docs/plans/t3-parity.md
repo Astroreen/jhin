@@ -1607,14 +1607,16 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
 
 - **D963. A card with an unsent draft says so, and its X discards it, as
   T3's.** A thread that is not open and whose composer keeps text or
-  attachments on this device gets T3's draft surface (`bg-warning/4`), the
-  pen "Unsent draft" before its project icon, and, among the controls the
-  pointer reveals, an X "Discard draft" before Snooze and Settle. The chat
+  attachments on this device gets T3's draft surface (`bg-warning/4`) and
+  the pen "Unsent draft" (a slim row too); a card, as T3's, also gets an X
+  "Discard draft" among the controls the pointer reveals, before Snooze and
+  Settle. The chat
   plugin keeps the drafts and provides `chat.drafts@1` (`@jhin/client-api`):
   `hasThreadDraft(target, threadId)` and `subscribe`. `chat.draft.discard`
   takes a `threadId` instead of a `projectId` for a thread's draft (additive);
   as for a new thread, it offers T3's undo ("Discarded 1 draft"), which
   fails with "The draft has new content." once the composer has some again.
+  It refuses an open thread, whose composer holds its text itself.
   Without `chat.drafts`, cards show no draft.
 
 ## Not ported (out of scope)
