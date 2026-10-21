@@ -9,6 +9,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -1838,6 +1839,32 @@ export const sidebarPlugin = builtin(
         // the minute-old time's 2h. Commands see the same time.
         useEffect(() => clock.refresh(), [nodes]);
 
+        // One detector per drag, so its sticky side survives the renders a drag causes
+        // (T3 builds one per render; a re-render would forget the side). It is made at the
+        // drag's first collision, from what that render showed.
+        const latestDrag = useRef<{
+          drag: DragState | undefined;
+          items: readonly SidebarListItem[];
+          changesSomething: (state: DragState, id: string) => boolean;
+        }>({ drag: undefined, items: [], changesSomething: () => false });
+        const dragKey = drag?.key;
+        const collisionDetection = useMemo((): CollisionDetection => {
+          let detect: CollisionDetection | undefined;
+          return (args) => {
+            if (detect === undefined) {
+              const { drag: started, items: shown } = latestDrag.current;
+              detect =
+                started === undefined || started.key !== dragKey
+                  ? createSidebarCollisionDetection(() => true)
+                  : createSidebarCollisionDetection(
+                      (id) => latestDrag.current.changesSomething(started, id),
+                      { items: shown, activationY: started.activationY },
+                    );
+            }
+            return detect(args);
+          };
+        }, [dragKey]);
+
         if (query.trim() !== "") {
           return list.results.length > 0 ? (
             <ul
@@ -1970,20 +1997,7 @@ export const sidebarPlugin = builtin(
             }).kind !== "none"
           );
         };
-        // One detector per drag, so its sticky side survives the renders a drag causes
-        // (T3 builds one per render; a re-render would forget the side).
-        const dragKey = drag?.key;
-        const latestDrag = useRef({ drag, items, changesSomething });
         latestDrag.current = { drag, items, changesSomething };
-        const collisionDetection = useMemo(() => {
-          const { drag: started, items: shown } = latestDrag.current;
-          return started === undefined || started.key !== dragKey
-            ? createSidebarCollisionDetection(() => true)
-            : createSidebarCollisionDetection(
-                (id) => latestDrag.current.changesSomething(started, id),
-                { items: shown, activationY: started.activationY },
-              );
-        }, [dragKey]);
 
         const row = (entry: Entry) => (
           <SortableThreadRow
