@@ -184,7 +184,6 @@ function renderedToggleLabel(mode: "markdown" | "html", rendered: boolean): stri
 const errorText = (cause: unknown, fallback: string) =>
   cause instanceof Error ? cause.message : fallback;
 
-/** The attachment's object URL: its own for a picked file, the node's (kept for the page) otherwise. */
 /** The type a frame needs for its kind, when the stored one is another (else no copy is made). */
 function frameType(kind: string, stored: string | undefined): string | undefined {
   const needed = kind === "pdf" ? "application/pdf" : kind === "html" ? "text/html" : undefined;
@@ -193,6 +192,7 @@ function frameType(kind: string, stored: string | undefined): string | undefined
     : needed;
 }
 
+/** The attachment's object URL: its own for a picked file, the node's (kept for the page) otherwise. */
 function useSourceUrl(
   source: AttachmentPreviewSource,
   wanted: boolean,
@@ -208,6 +208,8 @@ function useSourceUrl(
   const [error, setError] = useState<string | null>(null);
   const { file, stored, loader } = source;
   useEffect(() => {
+    // A URL this effect revoked never shows again when it is wanted anew.
+    setUrl(null);
     if (!wanted) return;
     setError(null);
     if (file !== undefined) {
