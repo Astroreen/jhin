@@ -489,7 +489,11 @@ export default definePlugin({
         // Each plugin titles the permissions its commands need (security.md D961).
         // A throwing hook costs the titles, not the list (D961).
         const described = await context.hooks
-          .run(PERMISSIONS_DESCRIBE_HOOK, {}, () => entries)
+          .run<object, unknown>(PERMISSIONS_DESCRIBE_HOOK, {}, () => entries)
+          .then((output) => {
+            if (!Array.isArray(output)) throw new Error("a hook did not return the entries");
+            return output as PermissionEntry[];
+          })
           .catch((error: unknown) => {
             context.log.error("a permission description hook failed; listing without titles", {
               error: String(error),
