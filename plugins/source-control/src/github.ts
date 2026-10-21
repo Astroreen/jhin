@@ -271,8 +271,14 @@ async function checkoutTarget(
 /** A search query without qualifiers that would reach past the project's repository. */
 export function withoutScopeQualifiers(query: string): string {
   // Wherever it stands: inside parentheses, quotes or after NOT, a qualifier still applies.
+  const scope = /(?<![\p{L}\p{N}_-])-?(?:repo|org|user|owner):("[^"]*"?|\S*)/giu;
+  if (query.search(scope) === -1) return query.replace(/\s+/g, " ").trim();
+  // The operators and groups around a removed qualifier would dangle: such a query keeps
+  // only its plain words.
   return query
-    .replace(/(?<![\p{L}\p{N}_-])-?(?:repo|org|user|owner):("[^"]*"?|\S*)/giu, " ")
+    .replace(scope, " ")
+    .replace(/[()]/g, " ")
+    .replace(/(?<![\p{L}\p{N}_-])(?:AND|OR|NOT)(?![\p{L}\p{N}_-])/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

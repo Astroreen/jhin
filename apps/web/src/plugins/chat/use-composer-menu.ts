@@ -51,6 +51,19 @@ const COMMANDS_TTL_MS = 5 * 60 * 1000;
 /** A `#` list is read from the forge again after this; a new `#` within it reuses the last. */
 const PULL_REQUEST_LIST_TTL_MS = 60 * 1000;
 
+/** Keeps a `#` list, dropping those past their minute so the cache holds a minute's queries. */
+function rememberPrList(
+  cache: Map<string, { at: number; list: PullRequestList }>,
+  key: string,
+  list: PullRequestList,
+): void {
+  const now = Date.now();
+  for (const [old, entry] of cache) {
+    if (now - entry.at >= PULL_REQUEST_LIST_TTL_MS) cache.delete(old);
+  }
+  cache.set(key, { at: now, list });
+}
+
 interface Offered {
   readonly commands: readonly AgentSlashCommand[];
   readonly skills: readonly AgentSkill[];
@@ -166,7 +179,7 @@ export function useComposerMenu(options: {
         (found) => {
           if (!current) return;
           const list = { key: prListKey, status: "ready" as const, entries: found.pullRequests };
-          prListCache.current.set(prListKey, { at: Date.now(), list });
+          rememberPrList(prListCache.current, prListKey, list);
           setPrList(list);
         },
         (error: unknown) => {
@@ -174,8 +187,7 @@ export function useComposerMenu(options: {
           const status = PULL_REQUESTS_UNAVAILABLE.has(errorCode(error)) ? "unavailable" : "error";
           const list: PullRequestList = { key: prListKey, status, entries: [] };
           // A forge that cannot list will not on the next `#` either; a failure is tried again.
-          if (status === "unavailable")
-            prListCache.current.set(prListKey, { at: Date.now(), list });
+          if (status === "unavailable") rememberPrList(prListCache.current, prListKey, list);
           setPrList(list);
         },
       );
@@ -227,10 +239,7 @@ export function useComposerMenu(options: {
   }, [exactKey]);
   const exactReady = exactKey === undefined || exact?.key === exactKey;
 
-  const linkedKey =
-    prTrigger === undefined || threadId === undefined
-      ? undefined
-      : `${threadId}|${prTrigger.rangeStart}`;
+  const linkedKey = prTrigger === undefined || threadId === undefined ? undefined : threadId;
   const [linked, setLinked] = useState<{ key: string; entries: readonly PullRequest[] }>();
   useEffect(() => {
     if (linkedKey === undefined || threadId === undefined) return;
