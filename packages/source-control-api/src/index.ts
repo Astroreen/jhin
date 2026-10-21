@@ -102,6 +102,17 @@ export const PullRequest = z.object({
 });
 export type PullRequest = z.output<typeof PullRequest>;
 
+/** A pull request checked out for a thread (`git.pr.checkout`, D902). */
+export const PreparedPullRequest = z.object({
+  pullRequest: PullRequest,
+  branch: z.string(),
+  /** The worktree it is checked out in; `null` in the project's own checkout. */
+  worktreePath: z.string().nullable(),
+  /** False for a reused worktree whose branch could not be moved to the pull request's head. */
+  isOnPullRequestHead: z.boolean(),
+});
+export type PreparedPullRequest = z.output<typeof PreparedPullRequest>;
+
 /**
  * Where a repository's pull requests come from (D275): the forge of the
  * remote they go to, through its CLI or API; `available` is false with a
