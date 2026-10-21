@@ -662,7 +662,7 @@ export interface DiffScopeProvider {
   readonly id: string;
   /** Lower first; the builtin provider is 0. */
   readonly order?: number;
-  /** The options for a context, newest first; the same array until they change. */
+  /** The options for a context, newest first (compared by what they say, so a fresh array is fine). */
   options(context: DiffScopeContext): readonly DiffScopeOption[];
   /** `listener` fires when the options or their diffs change. */
   subscribe?(context: DiffScopeContext, listener: () => void): Disposable;

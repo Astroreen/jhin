@@ -93,6 +93,36 @@ export function useScopeEntries(
   );
 }
 
+/**
+ * Options compared by what they say, not by identity: a provider may build a
+ * fresh array on every call, and the snapshot must stay the same while they
+ * say the same.
+ */
+function sameOptions(left: readonly DiffScopeOption[], right: readonly DiffScopeOption[]) {
+  return (
+    left === right ||
+    (left.length === right.length &&
+      left.every((option, index) => {
+        const other = right[index]!;
+        return (
+          option.value === other.value &&
+          option.label === other.label &&
+          option.group === other.group &&
+          option.detail === other.detail &&
+          option.baseRefs === other.baseRefs
+        );
+      }))
+  );
+}
+
+/** The caches below keep the threads looked at most recently. */
+const MAX_CONTEXTS = 50;
+function remember<T>(map: Map<string, T>, key: string, value: T) {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size > MAX_CONTEXTS) map.delete(map.keys().next().value!);
+}
+
 const snapshots = new WeakMap<
   DiffScopes,
   Map<string, { inputs: readonly unknown[]; entries: readonly ScopeEntry[] }>
@@ -113,7 +143,15 @@ function entriesOf(
   if (
     cached !== undefined &&
     cached.inputs.length === inputs.length &&
-    cached.inputs.every((input, index) => input === inputs[index])
+    cached.inputs[0] === inputs[0] &&
+    cached.inputs.every(
+      (input, index) =>
+        index === 0 ||
+        sameOptions(
+          input as readonly DiffScopeOption[],
+          inputs[index] as readonly DiffScopeOption[],
+        ),
+    )
   ) {
     return cached.entries;
   }
@@ -121,7 +159,7 @@ function entriesOf(
     (inputs[index + 1] as readonly DiffScopeOption[]).map((option) => ({ provider, option })),
   );
   const value = entries.length === 0 ? EMPTY : entries;
-  byContext.set(contextKey, { inputs, entries: value });
+  remember(byContext, contextKey, { inputs, entries: value });
   return value;
 }
 
@@ -167,7 +205,7 @@ function entriesSubscriber(
         followed = new Map();
       };
     };
-    byContext.set(contextKey, subscribe);
+    remember(byContext, contextKey, subscribe);
   }
   return subscribe;
 }

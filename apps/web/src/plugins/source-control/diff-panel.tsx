@@ -183,7 +183,14 @@ function DiffPanelShell(props: { header?: React.ReactNode; children: React.React
   );
 }
 
-function DiffFilePathCopyButton({ filePath }: { filePath: string }) {
+function DiffFilePathCopyButton({
+  filePath,
+  onFailed,
+}: {
+  filePath: string;
+  /** The clipboard refused (an insecure page, a denied permission). */
+  onFailed(): void;
+}) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -196,7 +203,12 @@ function DiffFilePathCopyButton({ filePath }: { filePath: string }) {
         render={
           <Button
             aria-label="Copy file path"
-            onClick={() => void copyText(filePath).then(() => setCopied(true))}
+            onClick={() =>
+              void copyText(filePath).then(
+                () => setCopied(true),
+                () => onFailed(),
+              )
+            }
             size="icon-micro"
             variant="ghost-muted"
           />
@@ -1044,7 +1056,12 @@ export function createDiffPanel(services: SourceControlServices) {
                 }}
                 renderHeaderFilenameSuffix={(item) =>
                   item.type === "diff" ? (
-                    <DiffFilePathCopyButton filePath={resolveFileDiffPath(item.fileDiff)} />
+                    <DiffFilePathCopyButton
+                      filePath={resolveFileDiffPath(item.fileDiff)}
+                      onFailed={() =>
+                        services.toasts?.show({ type: "error", title: "Could not copy the path" })
+                      }
+                    />
                   ) : null
                 }
                 renderHeaderPrefix={(item) =>

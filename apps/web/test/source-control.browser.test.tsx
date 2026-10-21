@@ -452,14 +452,14 @@ describe("the diff panel", () => {
   it("offers a contributed scope in the menu, in its group", async () => {
     const { value, scopes } = services(viewWith(status()), { "git.diff": diff });
     const loads: unknown[] = [];
-    const options = [
-      { value: "latest", label: "Latest turn" },
-      { value: "turn:1", label: "Turn 1", group: "Turn", detail: "10:00" },
-    ];
     const turns: DiffScopeProvider = {
       id: "test.turns",
       order: 10,
-      options: () => options,
+      // A fresh array on every call: the panel compares what the options say.
+      options: () => [
+        { value: "latest", label: "Latest turn" },
+        { value: "turn:1", label: "Turn 1", group: "Turn", detail: "10:00" },
+      ],
       load: async (context, option) => {
         loads.push({ projectId: context.projectId, threadId: context.threadId, option });
         return {
