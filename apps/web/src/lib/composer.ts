@@ -181,8 +181,10 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
       if (at <= latest || (before?.prompt ?? "") === prompt) return false;
       const draft: ComposerDraft = { prompt, attachments: before?.attachments ?? [], at };
       const next = { ...drafts };
-      if (prompt === "" && draft.attachments.length === 0) delete next[key];
-      else next[key] = draft;
+      if (prompt === "" && draft.attachments.length === 0) {
+        delete next[key];
+        cleared.set(key, at);
+      } else next[key] = draft;
       drafts = next;
       changed.add(key);
       if (timer !== undefined) clearTimeout(timer);

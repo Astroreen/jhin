@@ -514,14 +514,16 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         at: z.number().int().nonnegative(),
       });
       const deviceSettingsFile = Path.join(home.root, "device-settings.json");
-      const readDeviceSettings = (): Record<string, z.output<typeof DeviceSection>> => {
+      /** What the file keeps; `undefined` when it is there but unreadable, so nothing overwrites it. */
+      const readDeviceSettings = (): Record<string, z.output<typeof DeviceSection>> | undefined => {
+        if (!Fs.existsSync(deviceSettingsFile)) return {};
         try {
           const parsed = z
             .record(z.string(), DeviceSection)
             .safeParse(JSON.parse(Fs.readFileSync(deviceSettingsFile, "utf8")));
-          return parsed.success ? parsed.data : {};
+          return parsed.success ? parsed.data : undefined;
         } catch {
-          return {};
+          return undefined;
         }
       };
       context.commands.register({
@@ -531,7 +533,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         input: z.object({}),
         output: z.object({ sections: z.record(z.string(), DeviceSection) }),
         permissions: ["host.device-settings"],
-        handler: () => ({ sections: readDeviceSettings() }),
+        handler: () => ({ sections: readDeviceSettings() ?? {} }),
       });
       context.commands.register({
         name: "host.device-settings.patch",
@@ -548,6 +550,15 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
             });
           }
           const kept = readDeviceSettings();
+          if (kept === undefined) {
+            // A damaged file is the owner's to look at: overwriting it would drop every section.
+            throw Object.assign(
+              new Error(`${deviceSettingsFile} cannot be read; fix or remove it`),
+              {
+                code: "DEVICE_SETTINGS_UNREADABLE",
+              },
+            );
+          }
           if (kept[section] === undefined && Object.keys(kept).length >= 200) {
             throw Object.assign(new Error("A node keeps at most 200 device settings sections"), {
               code: "DEVICE_SETTINGS_TOO_LARGE",
