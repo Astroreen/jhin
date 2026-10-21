@@ -129,6 +129,19 @@ export function useSlot(slot: string): readonly Contribution<never>[] {
   );
 }
 
+/** `useSlot` that lists nothing outside a `SlotsProvider` (a form rendered on its own). */
+export function useOptionalSlot(slot: string): readonly Contribution<never>[] {
+  const registry = React.useContext(SlotsContext);
+  return React.useSyncExternalStore(
+    (listener) => {
+      const subscription = registry?.subscribe(listener);
+      return () => subscription?.dispose();
+    },
+    () => registry?.list(slot) ?? NONE,
+  );
+}
+const NONE: readonly Contribution<never>[] = [];
+
 /** A plugin's broken component shows a note instead of taking the page down. */
 class ContributionBoundary extends React.Component<
   { id: string; onError: (id: string, error: unknown) => void; children: React.ReactNode },
@@ -160,10 +173,15 @@ class ContributionBoundary extends React.Component<
   }
 }
 
-/** Renders every visible contribution of `name`, each with `props`. */
-export function Slot<P extends object>(props: { name: string; props?: P }): React.ReactNode {
+/** Renders every visible contribution of `name` (only the first with `first`), each with `props`. */
+export function Slot<P extends object>(props: {
+  name: string;
+  props?: P;
+  first?: boolean;
+}): React.ReactNode {
   const registry = React.useContext(SlotsContext);
-  const contributions = useSlot(props.name);
+  const all = useSlot(props.name);
+  const contributions = props.first === true ? all.slice(0, 1) : all;
   return (
     <>
       {contributions.map((contribution) => {

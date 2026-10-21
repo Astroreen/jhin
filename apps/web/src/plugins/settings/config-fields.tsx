@@ -19,15 +19,18 @@ import {
   Textarea,
   cn,
 } from "@jhin/ui";
-import { isRedactedSecret } from "@jhin/client-api";
-import { ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
+import { configControlSlot, isRedactedSecret, type ConfigControlProps } from "@jhin/client-api";
+import { Slot, useOptionalSlot } from "@jhin/ui";
+import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import {
   equal,
   getAt,
   redact,
+  renameKey,
   restore,
+  isShown,
   Unparsed,
   type Field,
   type JsonSchema,
@@ -202,11 +205,19 @@ function LeafControl(props: {
           className={width}
           disabled={props.disabled}
           nativeInput
-          onChange={(event) => onChange(event.target.value === "" ? undefined : event.target.value)}
+          onChange={(event) =>
+            onChange(
+              event.target.value === "" && field.clearWhenEmpty === "omit"
+                ? undefined
+                : event.target.value,
+            )
+          }
           placeholder={
             field.secret && typeof value === "string" && value !== ""
               ? "Stored secret, enter a new value to replace"
-              : placeholder
+              : value === ""
+                ? "Empty"
+                : placeholder
           }
           size="sm"
           spellCheck={false}
@@ -350,13 +361,96 @@ function ListItems(props: {
   const value = getAt(context.value, path);
   const items = Array.isArray(value) ? value : [];
   const blank = (): unknown =>
-    item.control.kind === "switch"
-      ? false
-      : item.control.kind === "select"
-        ? item.control.options[0]?.value
-        : item.control.kind === "number"
-          ? new Unparsed("", "Enter a number")
-          : "";
+    item.control.kind === "group"
+      ? // Its required keys are reported until they are filled in (D479).
+        {}
+      : item.control.kind === "switch"
+        ? false
+        : item.control.kind === "select"
+          ? item.control.options[0]?.value
+          : item.control.kind === "number"
+            ? new Unparsed("", "Enter a number")
+            : "";
+  const move = (from: number, to: number) => {
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    context.set(path, next);
+  };
+  if (item.control.kind === "group") {
+    const fields = item.control.fields;
+    return (
+      <div className="mt-2 mb-2 min-w-0 space-y-2">
+        {items.map((entry, index) => {
+          const label = `${props.label} ${index + 1}`;
+          const itemPath = [...path, String(index)];
+          return (
+            // Items have no identity but their place (D479).
+            // oxlint-disable-next-line react/no-array-index-key
+            <div
+              aria-label={label}
+              className="rounded-lg border border-border/50"
+              key={index}
+              role="group"
+            >
+              <div className="flex items-center gap-1 border-b border-border/50 px-3 py-1.5 sm:px-4">
+                <span className="me-auto text-xs font-medium text-foreground/80">{label}</span>
+                <Button
+                  aria-label={`Move ${label} up`}
+                  disabled={index === 0}
+                  onClick={() => move(index, index - 1)}
+                  size="icon-xs"
+                  variant="ghost"
+                >
+                  <ArrowUpIcon />
+                </Button>
+                <Button
+                  aria-label={`Move ${label} down`}
+                  disabled={index === items.length - 1}
+                  onClick={() => move(index, index + 1)}
+                  size="icon-xs"
+                  variant="ghost"
+                >
+                  <ArrowDownIcon />
+                </Button>
+                <Button
+                  aria-label={`Remove ${label}`}
+                  onClick={() =>
+                    context.set(
+                      path,
+                      items.filter((_item, at) => at !== index),
+                    )
+                  }
+                  size="icon-xs"
+                  variant="ghost-destructive"
+                >
+                  <XIcon />
+                </Button>
+              </div>
+              {typeof entry === "object" && entry !== null && !Array.isArray(entry) ? (
+                <div className="[&>*+*]:border-t [&>*+*]:border-border/50">
+                  <Fields context={context} fields={fields} path={itemPath} />
+                </div>
+              ) : (
+                <div className="px-3 sm:px-4">
+                  <ItemControl
+                    context={context}
+                    field={{ ...item, control: { kind: "json" } }}
+                    label={label}
+                    path={itemPath}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <Button onClick={() => context.set(path, [...items, blank()])} size="xs" variant="outline">
+          <PlusIcon />
+          Add
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className="mt-2 mb-2 min-w-0 space-y-1.5">
       {items.map((_, index) => (
@@ -429,12 +523,17 @@ function MapEntries(props: {
     <div className="mt-2 mb-2 min-w-0 space-y-2">
       {entries.map(([key]) => (
         <div className="flex min-w-0 items-start gap-1.5" key={key}>
-          <span
-            className="mt-1 w-40 shrink-0 truncate rounded-md bg-muted/60 px-2 py-0.5 font-mono text-xs leading-5"
-            title={key}
-          >
-            {key}
-          </span>
+          <KeyInput
+            label={`Key ${key} of ${props.label}`}
+            onRename={(next) => {
+              const renamed = renameKey(Object.fromEntries(entries), key, next);
+              if (renamed === undefined) return false;
+              context.set(path, renamed);
+              return true;
+            }}
+            taken={(next) => next !== key && taken.has(next)}
+            value={key}
+          />
           <ItemControl
             context={context}
             field={valueField}
@@ -483,6 +582,67 @@ function MapEntries(props: {
   );
 }
 
+/** A record's key, renamed in place on Enter or when left; Escape gives it back (D480). */
+function KeyInput(props: {
+  value: string;
+  label: string;
+  taken(next: string): boolean;
+  /** Whether the entry took the new key. */
+  onRename(next: string): boolean;
+}) {
+  const [draft, setDraft] = useState<string | undefined>();
+  const id = useId();
+  const text = draft ?? props.value;
+  const problem =
+    text === ""
+      ? "A key cannot be empty"
+      : props.taken(text)
+        ? "That key is there already"
+        : undefined;
+  const commit = () => {
+    if (draft === undefined || draft === props.value) return setDraft(undefined);
+    if (problem === undefined && props.onRename(draft)) setDraft(undefined);
+  };
+  return (
+    <div className="w-40 shrink-0">
+      <Input
+        aria-label={props.label}
+        className="font-mono"
+        nativeInput
+        onBlur={commit}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commit();
+          if (event.key === "Escape") setDraft(undefined);
+        }}
+        size="sm"
+        spellCheck={false}
+        value={text}
+        {...(problem === undefined ? {} : { "aria-invalid": true, "aria-describedby": id })}
+      />
+      {problem === undefined ? null : (
+        <span className="mt-1 block text-xs text-destructive-foreground" id={id} role="alert">
+          {problem}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A control a plugin contributes for the field (D482). */
+function ContributedControl(props: ConfigControlProps & { name: string }) {
+  const { name, ...control } = props;
+  return <Slot first name={configControlSlot(name)} props={control} />;
+}
+
+/** Whether a plugin contributes the control a field asks for (D482). */
+function useContributed(field: Field): boolean {
+  const contributions = useOptionalSlot(
+    field.controlName === undefined ? "" : configControlSlot(field.controlName),
+  );
+  return field.controlName !== undefined && contributions.length > 0;
+}
+
 function FieldTitle({ field }: { field: Field }) {
   return (
     <>
@@ -507,6 +667,7 @@ function FieldRow({
   context: FieldsContext;
 }) {
   const id = useId();
+  const contributed = useContributed(field);
   const value = getAt(context.value, path);
   const set = value !== undefined;
   const reset = set ? (
@@ -567,6 +728,34 @@ function FieldRow({
     ...(reset === undefined ? {} : { resetAction: reset }),
   };
 
+  if (contributed && field.controlName !== undefined) {
+    return (
+      <SettingsRow
+        {...row}
+        control={
+          <ContributedControl
+            disabled={false}
+            field={{
+              key: field.key,
+              path,
+              title: field.title,
+              schema: field.schema,
+              hasDefault: field.hasDefault,
+              ...(field.hasDefault ? { default: field.default } : {}),
+              ...(field.example === undefined ? {} : { example: field.example }),
+              secret: field.secret,
+            }}
+            invalid={messages.length > 0}
+            label={field.title}
+            name={field.controlName}
+            onChange={(next) => context.set(path, next)}
+            value={value}
+            {...(describedBy === undefined ? {} : { describedBy })}
+          />
+        }
+      />
+    );
+  }
   switch (field.control.kind) {
     case "list":
       return (
@@ -668,15 +857,23 @@ export function Fields({
   const row = (field: Field) => (
     <FieldRow context={context} field={field} key={field.key} path={[...path, field.key]} />
   );
-  // An advanced field that is set or wrong is not hidden.
-  const folded = (field: Field) =>
-    field.advanced &&
+  // A field that is set or wrong is never hidden.
+  const quiet = (field: Field) =>
     getAt(context.value, [...path, field.key]) === undefined &&
     errorsAt(context, [...path, field.key], true).length === 0;
-  const advanced = fields.filter(folded);
+  const folded = (field: Field) => field.advanced && quiet(field);
+  // The sibling's value in effect for the edited file (D481).
+  const inEffect = (key: string) => {
+    const edited = getAt(context.value, [...path, key]);
+    const other = getAt(context.other.value, [...path, key]);
+    const value = context.other.layer === "project" ? (other ?? edited) : (edited ?? other);
+    return value ?? fields.find((field) => field.key === key)?.default;
+  };
+  const visible = fields.filter((field) => isShown(field, inEffect) || !quiet(field));
+  const advanced = visible.filter(folded);
   return (
     <>
-      {fields.filter((field) => !folded(field)).map(row)}
+      {visible.filter((field) => !folded(field)).map(row)}
       {advanced.length === 0 ? null : (
         <Advanced count={advanced.length}>{advanced.map(row)}</Advanced>
       )}

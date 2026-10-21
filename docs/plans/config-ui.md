@@ -165,8 +165,8 @@ rules of the form below), the decision says so.
   objects with keys the form renders (keybinding rules) is a list: each item
   a bordered group of its fields under "Title N", with "Move up", "Move down"
   and "Remove" (`Remove <title> N`), and "Add" at the end, which appends an
-  item holding the defaults of its required keys (an empty value where there
-  is none, which validation then reports). Required keys inside items are
+  empty item: keys with a default take it, and required keys without one are
+  reported at their fields until they are filled in. Required keys inside items are
   checked (D84) and errors show at the item's fields. An item that is no
   object, or items the form cannot render, keep the inline JSON field. T3
   has no generic editor for these; its lists (`Arguments`, D53) add and
@@ -306,8 +306,9 @@ context.config.define("acme.http", Config);
   key is unset, and "Reset to default" removes the key.
 - Prefer `z.enum([...])` or a union of `z.literal(...)` (with a `title`
   each) for choices, `z.boolean()` for switches, `.int()` and bounds for
-  numbers: the page renders and checks them. A union of objects, `unknown`
-  or an array of objects is edited as JSON in place.
+  numbers: the page renders and checks them. An array of objects is a list
+  of groups (D479); a union of objects or `unknown` is edited as JSON in
+  place.
 - `.meta({ advanced: true })` folds a field the user rarely needs;
   `.meta({ examples: ["…"] })` gives an empty field a placeholder;
   `.meta({ deprecated: true })` marks one on its way out.
@@ -317,6 +318,13 @@ context.config.define("acme.http", Config);
   still in the config file in clear.
 - Refinements (`.refine`) are checked by the node only: their message shows
   next to the field after a save.
+- `.meta({ clearWhenEmpty: "persist" })` keeps an emptied text field as `""`
+  instead of removing its key, where an empty value means something (D478).
+- `.meta({ when: { mode: "custom" } })` shows a field only while its sibling
+  `mode` is `"custom"` (an array lists several values, D481).
+- `.meta({ control: "color" })` asks for a control another plugin
+  contributes to the slot `settings.config.control.color` with
+  `ConfigControlProps`; without one the built-in control shows (D482).
 
 ## Deferred
 
@@ -327,15 +335,16 @@ context.config.define("acme.http", Config);
 - Redacting secrets in `host.config.get` (see `t3-parity.md`): the page
   hides them (D83), but they still reach the browser. A secret list item
   moved in the JSON view takes the stored value of its new position.
-- Arrays of objects (keybinding rules) as lists of groups: edited as JSON
-  today.
 - Comments inside a changed array: an array is written whole (D476), so a
   comment between its items is lost when any item changes.
-- Explicitly empty values: an emptied text or number field unsets its key;
-  an empty string is set through JSON.
-- Renaming a key of a record in place (remove it and add it again).
-- Custom field controls contributed by plugins (a color picker, a path
-  picker) and fields shown only when another field has a value.
+- An explicitly empty text value for a field without
+  `clearWhenEmpty: "persist"`: such a field's emptied input removes its key;
+  `""` is set through JSON (D478 follows T3, where the schema decides).
+- First-party contributed controls: the slot exists (D482), but no
+  first-party section asks for a control yet; T3's color and font pickers
+  come with the workstreams that port their settings.
+- Moving items of a list of groups by dragging: "Move up" and "Move down"
+  only (D479).
 
 ## Landing
 
@@ -384,3 +393,12 @@ A stack of PRs, each on the previous one. Public API, all additive:
    `apps/web/test/node-config.browser.test.tsx` (which file wins, the change
    a save sends) and Playwright "D477: edits the project file" in
    `e2e/tests/config.spec.ts`.
+2. The form (D478–D482): `ConfigControlProps` and `configControlSlot` in
+   `@jhin/client-api`; `Slot`'s `first` and `useOptionalSlot` in
+   `@jhin/ui`; `jhin.keybindings` rules have titles and keep an empty key
+   (`clearWhenEmpty: "persist"`). The proof:
+   `apps/web/test/config-form.test.ts` (the hints, `shown`, `renameKey`),
+   `apps/web/test/config-form-sync.browser.test.tsx` (empty values, a list
+   of groups with move, remove, add and required keys, renaming keys,
+   conditional fields following the file that wins, a contributed control)
+   and Playwright "D479: edits keybinding rules as a list of groups".

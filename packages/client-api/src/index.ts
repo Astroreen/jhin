@@ -119,11 +119,27 @@ export type UiConfig = z.output<typeof UiConfig>;
 export const KEYBINDINGS_CONFIG_SECTION = "jhin.keybindings";
 export const KeybindingRule = z.object({
   /** e.g. `mod+k`, `mod+shift+[`; `mod` is ⌘ on macOS and Ctrl elsewhere. */
-  key: z.string().max(64),
+  key: z
+    .string()
+    .max(64)
+    .meta({
+      title: "Key",
+      description: "mod is ⌘ on macOS and Ctrl elsewhere; empty unbinds the command.",
+      examples: ["mod+k"],
+      // An empty key means "unbound", not "unset" (D478).
+      clearWhenEmpty: "persist",
+    }),
   /** A client command name. */
-  command: z.string().min(1),
+  command: z
+    .string()
+    .min(1)
+    .meta({ title: "Command", examples: ["palette.open"] }),
   /** A condition over context keys: `!composerFocus && turnRunning`. */
-  when: z.string().max(256).optional(),
+  when: z
+    .string()
+    .max(256)
+    .optional()
+    .meta({ title: "When", examples: ["!composerFocus && turnRunning"] }),
 });
 export type KeybindingRule = z.output<typeof KeybindingRule>;
 export const KeybindingsConfig = z
@@ -531,3 +547,37 @@ export interface AgentInfo {
   /** Its turns take messages while they run (a steer); absent from older nodes. */
   readonly steering?: boolean;
 }
+
+/**
+ * What a control contributed for config fields gets (D482): a field whose
+ * schema says `.meta({ control: "<name>" })` renders the first visible
+ * contribution of the slot `settings.config.control.<name>` with these props.
+ */
+export interface ConfigControlProps {
+  /** The field's key, and its path inside the section. */
+  readonly field: {
+    readonly key: string;
+    readonly path: readonly string[];
+    readonly title: string;
+    /** The field's JSON Schema; for a nullable field, its other branch. */
+    readonly schema: Readonly<Record<string, unknown>>;
+    readonly hasDefault: boolean;
+    readonly default?: unknown;
+    readonly example?: string;
+    /** `writeOnly`: never show the value in clear (D83). */
+    readonly secret: boolean;
+  };
+  /** The value in the edited file; `undefined` while the key is unset. */
+  readonly value: unknown;
+  /** Sets the value; `undefined` removes the key, so it takes its default. */
+  onChange(next: unknown): void;
+  /** The accessible name of the control. */
+  readonly label: string;
+  readonly invalid: boolean;
+  /** The id of the element that says what is wrong, while something is. */
+  readonly describedBy?: string;
+  readonly disabled: boolean;
+}
+
+/** The slot of the config field control named `name` (D482). */
+export const configControlSlot = (name: string): string => `settings.config.control.${name}`;

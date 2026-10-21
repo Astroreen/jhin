@@ -204,3 +204,54 @@ test("D477: edits the project file, which wins over the node file", async ({ pag
   await page.screenshot({ path: shot, fullPage: true });
   await info.attach("config-project-file", { path: shot, contentType: "image/png" });
 });
+
+test("D479: edits keybinding rules as a list of groups", async ({ page }, info) => {
+  node = await startNode({ setup: writeDemoPlugin });
+  const file = Path.join(node.home, "config.jsonc");
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  await page.getByRole("combobox", { name: "Config section" }).click();
+  await page.getByRole("option", { name: /^Keybindings/ }).click();
+
+  const section = page.getByRole("region", { name: "Keybindings" });
+  await section.getByRole("button", { name: "Add" }).click();
+  await section.getByRole("button", { name: "Add" }).click();
+  const first = section.getByRole("group", { name: "Rules 1" });
+  // A required key is reported until it is filled in, and blocks the save.
+  await expect(first.getByRole("textbox", { name: "Command" })).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await first.getByRole("textbox", { name: "Command" }).fill("palette.open");
+  // An empty key unbinds: it is kept as "" (D478).
+  await first.getByRole("textbox", { name: "Key" }).fill("x");
+  await first.getByRole("textbox", { name: "Key" }).fill("");
+  const second = section.getByRole("group", { name: "Rules 2" });
+  await second.getByRole("textbox", { name: "Key" }).fill("mod+shift+p");
+  await second.getByRole("textbox", { name: "Command" }).fill("settings.open");
+  await section.getByRole("button", { name: "Move Rules 2 up" }).click();
+  const shot = info.outputPath("config-list-of-groups.png");
+  await page.screenshot({ path: shot, fullPage: true });
+  await info.attach("config-list-of-groups", { path: shot, contentType: "image/png" });
+
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByRole("list", { name: "Outcome" })).toContainText("applied");
+  expect(
+    await node.client().call("host.config.get", { section: "jhin.keybindings" }),
+  ).toMatchObject({
+    layers: {
+      node: {
+        rules: [
+          { key: "mod+shift+p", command: "settings.open" },
+          { key: "", command: "palette.open" },
+        ],
+      },
+    },
+  });
+  // The demo section's comments in the same file are untouched.
+  expect(Fs.readFileSync(file, "utf8")).toContain("// Turns the demo on.");
+});
