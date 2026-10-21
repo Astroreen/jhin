@@ -60,6 +60,7 @@ import {
   summarizeWork,
   turnBlocks,
   workEntryLabel,
+  type ExtensionItem,
   type MessageItem,
   type PlanItem,
   type Timeline,
@@ -689,6 +690,8 @@ function TurnView(props: {
   projectPath?: string;
   onSavePlan?: SavePlan;
   footer?: ReactNode;
+  /** An event of another plugin in the turn (the `chat.turn.item` slot). */
+  extension?: ((event: ExtensionItem["event"]) => ReactNode) | undefined;
 }) {
   const { turn, format } = props;
   const now = useContext(NowContext);
@@ -705,7 +708,11 @@ function TurnView(props: {
     folds && !unfolded
       ? blocks.filter(
           (block, index) =>
-            index >= finalIndex || block.kind === "proposed-plan" || block.kind === "steer",
+            index >= finalIndex ||
+            block.kind === "proposed-plan" ||
+            block.kind === "steer" ||
+            // What a plugin put into the turn (a rendered page) is part of the answer.
+            block.kind === "extension",
         )
       : blocks;
   const duration =
@@ -766,6 +773,13 @@ function TurnView(props: {
             return <WorkGroup entries={block.entries} key={`work-${index}`} live={running} />;
           }
           if (block.kind === "plan") return <PlanCard item={block.item} key={`plan-${index}`} />;
+          if (block.kind === "extension") {
+            return (
+              <Fragment key={`extension-${block.item.event.sequence}`}>
+                {props.extension?.(block.item.event)}
+              </Fragment>
+            );
+          }
           if (block.kind === "steer") {
             return (
               <UserMessage
@@ -867,6 +881,8 @@ export function TimelineView(props: {
   titleOf?(threadId: string): string | undefined;
   /** What goes under a turn's answer (the `chat.turn.footer` slot). */
   footer?: ((turn: TimelineTurn, latest: boolean) => ReactNode) | undefined;
+  /** Events of other plugins in a turn (the `chat.turn.item` slot). */
+  extension?: ((turn: TimelineTurn, event: ExtensionItem["event"]) => ReactNode) | undefined;
 }) {
   const { turns, forkedFrom } = props.timeline;
   const now = useNow();
@@ -909,6 +925,11 @@ export function TimelineView(props: {
               {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
               {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
               footer={props.footer?.(turn, index === turns.length - 1)}
+              extension={
+                props.extension === undefined
+                  ? undefined
+                  : (event) => props.extension?.(turn, event)
+              }
               {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
             />
             {forkedFrom?.turnId === turn.turnId ? (
