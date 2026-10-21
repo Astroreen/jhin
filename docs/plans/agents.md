@@ -277,6 +277,83 @@ types and the schemas of the `agents.*` commands) is
   asks can be followed in logs ([just following orders](../lore/just-following-orders.md)):
   an approval says who gave it and with which context.
 
+Decisions are recorded here as they are taken. The contract (addresses,
+the message, the inbox, events and the schemas of `agents.send`,
+`agents.ask` and `agents.inbox.*`) is `packages/agent-api/src/messages.ts`.
+
+- **D621. A message** is `{messageId, kind, from, to, body, traceId, sentAt,
+  inReplyTo?, generation?}` (`AgentMessage`); `kind` is `message`, `ask` or
+  `answer`. The first node that handles it chooses `messageId` (or takes the
+  caller's, so a retry is idempotent) and keeps it on every hop; `traceId` is
+  the request's (RPC, MCP and `mesh.call` already carry one), a new one only
+  for an in-process caller without it. The text a recipient's turn gets
+  starts with a header naming the sender, the trace and how to reply
+  (`messageText`); the structured message goes beside it (D623).
+- **D622. Parties and who may send as whom.** Three kinds of address take
+  part: an agent (`jhin://<nodeId>/agents/<id>`), a node's **owner**
+  (`jhin://<nodeId>/owner`) and a thread that is no generation
+  (`jhin://<nodeId>/threads/<threadId>`, a Threads-mode agent). `from`
+  defaults to the caller: a call bound to a thread (an agent credential, D340)
+  is that thread's agent when the thread is a generation (`generationOf`),
+  else the thread; any other caller is this node's owner. A caller bound to a
+  thread can send only as it, and a mesh caller (`node:<X>`) only as a party
+  on node X, whatever its grants (`SENDER_MISMATCH`, naming who it is).
+  In-process callers and other callers holding `*` (the owner's token) may
+  name any `from`: A5 and A7 send for the lead.
+- **D623. Delivery reuses W1's queue.** On the recipient's node a message to
+  an agent goes to its current generation with `threads.queue.add` (its
+  `messageId` is the queued message's id): it starts a turn on a free thread,
+  else it waits in the queue. An agent without a generation is rotated first
+  (reason `message`), as D606 foresaw; a stopped one refuses
+  (`AGENT_STOPPED`, D612), and a runtime, having no generations, refuses
+  (`AGENT_IS_RUNTIME`). A message to a thread address goes to that thread the
+  same way. The queued message and its turn's `agent.turn.started` carry it
+  as `origin` (`MessageOrigin`: id, kind, sender, trace, reply), so the thread
+  shows it as from its sender, with a link back. A message for another node
+  is sent there with `mesh.call` to the same command, with the resolved
+  `from`, the `messageId` and the trace.
+- **D624. An ask is answered in a turn.** `agents.ask` delivers like
+  `agents.send` (kind `ask`), then waits for the turn its message started to
+  end: the answer is that turn's last assistant message, and a failed,
+  interrupted or silent turn is `NO_ANSWER`. The current generation is the
+  live agent, so it answers in its own thread and remembers it; the call has
+  no timeout of its own (an agent's MCP call has its client's).
+- **D625. The library of minds.** With `generation` naming an earlier
+  generation, the ask goes to that dormant generation in a **side turn**: its
+  thread is forked at its last ended turn (`threads.fork`) into a thread
+  marked with the agent (`generationOf`, so Threads mode leaves it out, D745)
+  but recorded as no generation, and the question runs there. Neither the
+  asked generation nor the current one changes. The fork resumes from the
+  generation's turns (the runtime gets them as history, D102). Naming the
+  current generation is the same as naming none.
+- **D626. The owner's inbox.** A message or ask to an owner address starts no
+  turn: it becomes an `InboxItem` on the `agents/inbox` stream of that node,
+  open until the owner answers it with `agents.inbox.answer`. The answer goes
+  back to the sender as an `answer` message (`inReplyTo` the ask), through
+  D623, so it wakes the asker's generation. `agents.ask` to the owner returns
+  at once, `pending`; the agent's turn goes on or ends, and the answer
+  arrives as its next message. The client shows the open items in
+  Civilization mode's inbox (`civilization.sidebar.inbox`) with a
+  notification, never in Threads mode (D741).
+- **D627. Every message is recorded where it is delivered,** as
+  `agents.message.delivered` on the node's `agents/messages` stream, and an
+  ask's answer as `agents.message.answered`, both with their `traceId` and
+  sender. A7 counts ceremony from this stream; the transcripts need not be
+  parsed.
+- **D628. Permissions.** `agents.send` and `agents.ask` need
+  `agents.message`; reading `agents/messages` needs `agents.read`; the inbox
+  (`agents.inbox.list`, `agents.inbox.answer`, the `agents/inbox` stream)
+  needs `agents.inbox`. Agents get `agents.read` and `agents.message` through
+  their node's MCP server (`AGENT_PERMISSIONS`), never `agents.inbox`: an
+  agent cannot answer for the owner. On the recipient's node a mesh caller
+  holds what both the original caller and its member grants hold (D416): the
+  sending node forwards with its caller's grants, so a member without
+  `agents.message` cannot message its agents.
+- **D629. Agents reach messaging as MCP tools of their node**
+  (`agents_send`, `agents_ask`): W9's server already exposes every command
+  the agent credential permits, so the tools appear once D628 grants them,
+  and `jhinToolsInstructions` names them.
+
 ### A3. Missions and slices (D641–D660)
 
 - A project gets an **intent**: one paragraph on what it is for.
@@ -661,6 +738,13 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
 - An `agent.directory@1` service for plugins that read agents in process;
   the `agents.*` commands serve them for now.
 - Archiving or settling earlier generations automatically on rotate (D606).
+- A2: asks to an agent that outlive the caller's call. An ask waits for its
+  answer inside the call (D624); an agent that cannot wait asks with
+  `agents.send` and gets the reply as a message.
+- A2: a side turn that forks the runtime's own session (Claude Code's
+  `forkSession`) instead of handing the fork its parent's turns as history
+  (D625).
+- A2: dismissing an inbox item without answering it (D626).
 - A3: the mission view in Civilization mode lands in its own PR once A8's
   slots are on `main` (D741).
 - A3: deleting missions and slices (D651 drops them), and what happens to
@@ -735,6 +819,11 @@ Each workstream lists its PRs here as they merge.
   `threads.create` (D606); `agents.list` grows `kind`, `runtimeId`, `role`,
   and turns record `runtimeId` (D610). The Civilization-mode UI (D614) waits
   for A8's shell.
+- A2 #172: the messaging contract in `@jhin/agent-api` (`messages.ts`:
+  owner and thread addresses, `AgentMessage`, `MessageOrigin`, the
+  `agents/messages` and `agents/inbox` streams, the schemas of `agents.send`,
+  `agents.ask` and `agents.inbox.*`). D621–D629 recorded; the server side and
+  the inbox follow.
 - A3 #104: `@jhin/missions-api` (records, the `missions` stream's events and
   fold, intent chain, Markdown) and the `jhin.missions` plugin: `missions.*`
   and `slices.*` commands, the stream guarded by `missions.read`, agents

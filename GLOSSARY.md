@@ -144,6 +144,16 @@ Words about Jhin:
   the agent's inherited knowledge, not the old transcript.
 - **Inherited knowledge** — the Markdown files in `.jhin/agents/<id>/` of an
   agent's home project, which its generations read on start and keep current.
+- **Message** — what one party sends another with `agents.send`: an agent,
+  a node's **owner** (`jhin://<nodeId>/owner`) or a Threads-mode thread. It
+  carries its sender's address and a `traceId`. An **ask** (`agents.ask`)
+  is a message that waits for its **answer** (`docs/plans/agents.md#D621`).
+- **Inbox** — the messages and asks to a node's owner, open until the owner
+  answers them, shown in Civilization mode.
+- **Side turn** — a turn that answers an ask to an earlier generation in a
+  fork of its thread, leaving the generation and the agent's current one as
+  they were. The earlier generations an agent can be asked this way are its
+  **library of minds**.
 - **Agent runtime** — the capability that executes turns: an own agent loop
   or a wrapper over an existing agent. The distribution ships Claude Code
   (`jhin.agent-claude`), Codex (`jhin.agent-codex`), OpenCode
