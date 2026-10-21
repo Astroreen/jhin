@@ -197,8 +197,8 @@ export type AgentItem =
       readonly prompt: string;
       readonly model?: string;
     }
-  /** Since 1.4: an item of a subagent's own work; it is not nested further. */
-  | { readonly kind: "subagent.item"; readonly subagentId: string; readonly item: AgentItem }
+  /** Since 1.4: an item of a subagent's own work: its messages, reasoning and tool calls. */
+  | { readonly kind: "subagent.item"; readonly subagentId: string; readonly item: SubagentWorkItem }
   /** Since 1.4: a subagent ended. */
   | {
       readonly kind: "subagent.ended";
@@ -206,6 +206,20 @@ export type AgentItem =
       readonly status: "completed" | "failed" | "interrupted";
       readonly error?: string;
     };
+
+/** The items a subagent's thread shows (D877); a runtime's others stay in the turn. */
+export type SubagentWorkItem = Extract<
+  AgentItem,
+  {
+    readonly kind:
+      | "message.delta"
+      | "message.completed"
+      | "reasoning.delta"
+      | "reasoning.completed"
+      | "tool.started"
+      | "tool.completed";
+  }
+>;
 
 export interface AgentTurn {
   /** Ends when the turn completes; throws when it fails. */

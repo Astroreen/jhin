@@ -10,6 +10,7 @@ import * as Path from "node:path";
 
 import type {
   AgentItem,
+  SubagentWorkItem,
   AgentResponse,
   AgentTurn,
   InteractionMode,
@@ -392,6 +393,7 @@ export function claudeTurn(
     out.push({ kind: "tool.started", itemId: id, tool: toolCall(name, input) });
     // Its own work is shown as a child thread (orchestration.md D878).
     if (SUBAGENT_TOOLS.has(name)) {
+      subagentIds.add(id);
       const fields = (input ?? {}) as { description?: unknown; prompt?: unknown; model?: unknown };
       out.push({
         kind: "subagent.started",
@@ -405,8 +407,10 @@ export function claudeTurn(
 
   /** A subagent's own messages, as items of its thread (D878): whole messages, not streamed. */
   const subagentTools = new Map<string, string>();
+  /** The subagents this turn started; a subagent's own subagents are not among them. */
+  const subagentIds = new Set<string>();
   const projectSubagent = (subagentId: string, message: SDKMessage) => {
-    const items: AgentItem[] = [];
+    const items: SubagentWorkItem[] = [];
     if (message.type === "assistant") {
       message.message.content.forEach((block, index) => {
         if (block.type === "text" || block.type === "thinking") {
@@ -465,7 +469,10 @@ export function claudeTurn(
   const project = (message: SDKMessage) => {
     // A subagent's own messages go to its thread.
     if ("parent_tool_use_id" in message && message.parent_tool_use_id) {
-      projectSubagent(message.parent_tool_use_id, message);
+      // A nested subagent's messages name its own call, which this turn did not start: dropped.
+      if (subagentIds.has(message.parent_tool_use_id)) {
+        projectSubagent(message.parent_tool_use_id, message);
+      }
       return;
     }
     switch (message.type) {

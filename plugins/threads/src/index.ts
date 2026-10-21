@@ -77,6 +77,15 @@ const STATUS_TTL_MS = 30_000;
 /** The title a thread gets until its first message names it. */
 export const DEFAULT_THREAD_TITLE = "New thread";
 const MAX_TITLE_LENGTH = 60;
+/** What a subagent's thread shows of its items (D877). */
+const SUBAGENT_WORK: ReadonlySet<string> = new Set([
+  "message.delta",
+  "message.completed",
+  "reasoning.delta",
+  "reasoning.completed",
+  "tool.started",
+  "tool.completed",
+]);
 /** Per image sent as a data URL (D54; base64 adds a third). */
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 /** What `projects.write-file` writes at most: a plan, a note, never a dump. */
@@ -1363,7 +1372,6 @@ export default definePlugin({
             subagentOrigin: "provider",
           });
           const childTurn = Crypto.randomUUID();
-          subagents.set(item.subagentId, { threadId: child.id, turnId: childTurn, open: true });
           await setTurnStatus(child.id, childTurn, runtime.agentId, "running");
           await log.append(threadStream(child.id), [
             {
@@ -1375,6 +1383,8 @@ export default definePlugin({
               },
             },
           ]);
+          // Known once its turn is recorded: its items and its end have somewhere to go.
+          subagents.set(item.subagentId, { threadId: child.id, turnId: childTurn, open: true });
           await log.append(stream, [
             {
               type: ThreadEvents.subagentStarted,
@@ -1383,8 +1393,8 @@ export default definePlugin({
           ]);
         } else if (item.kind === "subagent.item") {
           const child = subagents.get(item.subagentId);
-          // A subagent's own subagents are not shown apart.
-          if (child === undefined || !child.open || item.item.kind.startsWith("subagent.")) return;
+          // Only its work items (D877): a runtime's others have no place in its thread.
+          if (child === undefined || !child.open || !SUBAGENT_WORK.has(item.item.kind)) return;
           await log.append(threadStream(child.threadId), [eventOf(child.turnId, item.item)]);
         } else {
           await endSubagent(item.subagentId, item.status, item.error);

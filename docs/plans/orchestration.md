@@ -419,7 +419,8 @@ user sees, which their Deferred lists left out.
   `subagentProjection.makeSubagentChildThread`) reach the threads plugin as
   three more items of `agent.runtime@1` (1.4; `agent.registry` 1.2):
   `subagent.started { subagentId, title, prompt, model? }`, `subagent.item
-  { subagentId, item }` and `subagent.ended { subagentId, status, error? }`.
+  { subagentId, item }` (its messages, reasoning and tool calls only,
+  `SubagentWorkItem`) and `subagent.ended { subagentId, status, error? }`.
   A runtime writes no other thread itself.
 - **D877. The threads plugin projects them into child threads.** A started
   subagent gets a thread in the parent's project (and worktree) with
