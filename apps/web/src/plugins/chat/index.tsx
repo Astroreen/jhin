@@ -7,6 +7,7 @@ import {
   NAVIGATION_CAPABILITY,
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
+  THREAD_TRANSCRIPT_SLOT,
   UNDO_CAPABILITY,
   targetKey,
   type Connections,
@@ -16,6 +17,7 @@ import {
   type Navigation,
   type NodeTarget,
   type ThreadsCatalog,
+  type ThreadTranscriptProps,
   type ThreadUndoService,
   VISITS_CAPABILITY,
   type ThreadVisits,
@@ -56,6 +58,7 @@ import {
   type ComposerHandle,
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
+import { ThreadTranscript } from "./transcript.tsx";
 import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
@@ -565,6 +568,17 @@ export const chatPlugin = builtin(
 
       context.subscriptions.add(
         slots.contribute("app.main", { id: "jhin.chat.view", component: Main }),
+      );
+      // A thread read without a composer, for views such as an agent's page (D614).
+      context.subscriptions.add(
+        slots.contribute(THREAD_TRANSCRIPT_SLOT, {
+          id: "jhin.chat.transcript",
+          component: (props: ThreadTranscriptProps) => (
+            <ChatContext.Provider value={services}>
+              <ThreadTranscript {...props} />
+            </ChatContext.Provider>
+          ),
+        }),
       );
       registerHistory(context, {
         threads,
