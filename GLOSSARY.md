@@ -59,6 +59,10 @@ Words about Jhin:
 - **Config section** — one plugin's part of the config (`jhin.http`),
   declared with a Zod schema; the settings page renders it as a form from
   that schema.
+- **Control slot** — `settings.config.control.<name>`: where a plugin
+  contributes the control a config field asks for with `.meta({ control })`.
+- **List of groups** — how the settings form shows an array of objects:
+  each item a group of its fields, moved, removed and added as a whole.
 - **Node** — one running Jhin server, identified by a stable `nodeId` and an
   Ed25519 key pair. T3 Code calls this an environment.
 - **Machine kind** — what a node runs on (`laptop`, `desktop`, `server`,

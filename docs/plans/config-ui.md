@@ -165,8 +165,10 @@ rules of the form below), the decision says so.
   objects with keys the form renders (keybinding rules) is a list: each item
   a bordered group of its fields under "Title N", with "Move up", "Move down"
   and "Remove" (`Remove <title> N`), and "Add" at the end, which appends an
-  empty item: keys with a default take it, and required keys without one are
-  reported at their fields until they are filled in. Required keys inside items are
+  empty item (`{}`): keys with a default take it when the section is read,
+  and required keys without one are reported at their fields until they are
+  filled in. (Amended in the PR that implements it: an earlier draft had Add
+  write the defaults into the item.) Required keys inside items are
   checked (D84) and errors show at the item's fields. An item that is no
   object, or items the form cannot render, keep the inline JSON field. T3
   has no generic editor for these; its lists (`Arguments`, D53) add and

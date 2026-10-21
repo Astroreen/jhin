@@ -84,6 +84,10 @@ The host itself adds `host.inspect`, `host.identity`, `host.commands.list`,
 `host.plugins.reload` and `host.plugins.rescan`.
 `@jhin/host-api`'s `sendConfigChange` sends a config change to a node of any
 age (`configEdits`, `configChange`; `config-ui.md` D475).
+A config field asks for a control a plugin contributes with
+`.meta({ control })`: the slot `settings.config.control.<name>`
+(`configControlSlot`, `ConfigControlProps` in `@jhin/client-api`; `Slot`'s
+`first` and `useOptionalSlot` in `@jhin/ui`; `config-ui.md` D482).
 
 ## Client plugins (`apps/web/src/plugins/`)
 

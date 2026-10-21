@@ -875,9 +875,9 @@ export default definePlugin({
       values: JSON.parse('{"__proto__": {"x": 1}}') as Record<string, unknown>,
     });
     // Refused or dropped, it never reaches the file.
-    expect(
-      unsafeValues.error !== undefined || !Fs.readFileSync(config, "utf8").includes("__proto__"),
-    ).toBe(true);
+    // Zod's record drops the key before the refinement sees it.
+    expect(unsafeValues.value).toMatchObject({ applied: true });
+    expect(Fs.readFileSync(config, "utf8")).not.toContain("__proto__");
     // "constructor" is an ordinary key of a record (D480): kept like any other.
     const plain = await host.execute("host.config.edit", {
       layer: "node",

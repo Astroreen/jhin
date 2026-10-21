@@ -132,12 +132,17 @@ export function useSlot(slot: string): readonly Contribution<never>[] {
 /** `useSlot` that lists nothing outside a `SlotsProvider` (a form rendered on its own). */
 export function useOptionalSlot(slot: string): readonly Contribution<never>[] {
   const registry = React.useContext(SlotsContext);
-  return React.useSyncExternalStore(
-    (listener) => {
+  // Stable per registry, so a render does not subscribe again; no slot, nothing to follow.
+  const subscribe = React.useCallback(
+    (listener: () => void) => {
+      if (slot === "") return () => undefined;
       const subscription = registry?.subscribe(listener);
       return () => subscription?.dispose();
     },
-    () => registry?.list(slot) ?? NONE,
+    [registry, slot],
+  );
+  return React.useSyncExternalStore(subscribe, () =>
+    slot === "" ? NONE : (registry?.list(slot) ?? NONE),
   );
 }
 const NONE: readonly Contribution<never>[] = [];

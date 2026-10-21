@@ -886,9 +886,12 @@ export function Fields({
     errorsAt(context, [...path, field.key], true).length === 0;
   const folded = (field: Field) => field.advanced && quiet(field);
   // The sibling's value in effect for the edited file (D481).
+  // Inside a list the other file's items are other items (arrays are written
+  // whole per file), so only the edited file counts there.
+  const inList = path.some((_part, at) => Array.isArray(getAt(context.value, path.slice(0, at))));
   const inEffect = (key: string) => {
     const edited = getAt(context.value, [...path, key]);
-    const other = getAt(context.other.value, [...path, key]);
+    const other = inList ? undefined : getAt(context.other.value, [...path, key]);
     const value = context.other.layer === "project" ? (other ?? edited) : (edited ?? other);
     return value ?? fields.find((field) => field.key === key)?.default;
   };
