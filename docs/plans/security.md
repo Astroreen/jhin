@@ -388,7 +388,8 @@ The reference is T3 Code at D53 (`eb7b35ac`):
   `secrets.request.closed {requestId, status}` (`saved`, `declined`,
   `cancelled`; a timeout closes as `cancelled`, as T3's card). A
   `clientRequestId` asked again while its request waits joins that wait,
-  and after it returns that answer again (its `secretRef` while unused).
+  and after it returns that answer again (the same one-use `secretRef`;
+  the answers are kept in memory, the last 200).
   Open requests are kept in `storage.kv` too, so a node that restarts closes
   the ones it left open as `cancelled`. It needs `threads.write`, which a
   thread's agent holds.
@@ -401,7 +402,9 @@ The reference is T3 Code at D53 (`eb7b35ac`):
   messages: `SECRET_REQUEST_NOT_FOUND` ("This secret request no longer
   exists."), `SECRET_REQUEST_ANSWERED` ("This secret request was already
   answered."): a request whose turn ended is closed, so it is answered
-  already. An input that fails validation
+  already. `SECRET_REQUEST_AGENT_STOPPED`, which the first W28 PR (#173)
+  listed, is withdrawn before any release or consumer used it. A value is
+  at most 16 KiB. An input that fails validation
   is reported without the value.
 - **D1030. A `secretRef` is one-use, bound and short-lived.**
   `secret-ref:<32 hex>`, random. It holds the value with the thread's
@@ -430,8 +433,9 @@ The reference is T3 Code at D53 (`eb7b35ac`):
   again." otherwise), so a typed value never reaches the page's errors.
 - **D1033. Proof: the value is looked for everywhere.** Tests answer a
   request and save a config secret with a recognisable value, then search
-  the thread's events, the node's log file, every kernel event, every RPC
-  and MCP response of the exchange, `host.config.get`, and the config
+  the thread's events, the node's log file, every kernel event, every
+  command response of the exchange (over RPC; an MCP tool returns the same
+  output), `host.config.get`, and the config
   files, and find it in none; only `store.json` holds it, sealed.
 
 ## PR plan

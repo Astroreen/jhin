@@ -99,9 +99,13 @@ export async function registerSecretRequests(
   for (const { key, value } of await kv.list(NAMESPACE, { prefix: "pending/" })) {
     const { threadId } = value as { threadId: string };
     const requestId = key.slice("pending/".length);
-    await appendClosed(threadId, { requestId, status: "cancelled" }).catch((error: unknown) =>
-      context.log.warn("could not close a secret request left open", { error: String(error) }),
-    );
+    try {
+      await appendClosed(threadId, { requestId, status: "cancelled" });
+    } catch (error) {
+      // Kept, so the next start tries again.
+      context.log.warn("could not close a secret request left open", { error: String(error) });
+      continue;
+    }
     await kv.delete(NAMESPACE, key);
   }
 

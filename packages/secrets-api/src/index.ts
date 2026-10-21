@@ -186,7 +186,7 @@ export const SecretRequestAnswerInput = z.object({
   threadId: z.string().min(1),
   requestId: z.string().min(1),
   answer: z.discriminatedUnion("type", [
-    z.object({ type: z.literal("save"), secret: z.string().trim().min(1) }),
+    z.object({ type: z.literal("save"), secret: z.string().trim().min(1).max(16_384) }),
     z.object({ type: z.literal("decline") }),
   ]),
 });

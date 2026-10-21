@@ -54,6 +54,9 @@ function useClosed(props: ChatTurnItemProps, services: SecretRequestServices, re
           const closed = next.payload as { requestId?: unknown; status?: unknown } | null;
           if (next.type === SecretsThreadEvents.requestClosed && closed?.requestId === requestId) {
             setStatus(closed.status as SecretRequestStatus);
+            // Closed for good: nothing more to follow.
+            subscription?.dispose();
+            subscription = undefined;
           }
         });
       })
