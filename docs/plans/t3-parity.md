@@ -1765,18 +1765,21 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
 
 - Applying Fast Mode and Ultracode to a live Claude Code session through
   `applyFlagSettings` (T3 does): a change of them starts it again (D298).
-- The editor's parts T3 has and this port left out (D303): the file icons
-  of the code-block language picker (D842; with the chips' file icons), a
-  keyboard way out of a code block other than moving the caret (D843; T3 has
-  none), the vertical spacing T3 gives headings (the composer's blocks have
-  none), visible marks at the caret,
-  citation and context-reference chips, chip popovers (file icons, a skill's
-  description and "View instructions"), T3's context record for a mentioned pull
-  request or thread (D851; its title, branches and "untrusted data" block),
-  listing pull requests on forges other than GitHub (D849), the
-  composer's literal mode for a question that comes with an answer to edit
-  (D853; needs `initialAnswer` on `UserQuestion` in `agent.runtime`), `aria-activedescendant` from the editor to the
-  menu.
+- The editor's parts T3 has and this port left out (D303):
+  - the file icons of the code-block language picker (D842; with the chips'
+    file icons);
+  - a keyboard way out of a code block other than moving the caret (D843;
+    T3 has none);
+  - the vertical spacing T3 gives headings (the composer's blocks have none);
+  - visible marks at the caret;
+  - citation and context-reference chips, and chip popovers (file icons, a
+    skill's description and "View instructions");
+  - T3's context record for a mentioned pull request or thread (D851; its
+    title, branches and "untrusted data" block);
+  - listing pull requests on forges other than GitHub (D849);
+  - the composer's literal mode for a question that comes with an answer to
+    edit (D853; needs `initialAnswer` on `UserQuestion` in `agent.runtime`);
+  - `aria-activedescendant` from the editor to the menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's preview of a file in the composer and in the
