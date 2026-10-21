@@ -245,7 +245,8 @@ specific to Claude: the runtime is a plugin on the public API.
   node (the user's own records, which Claude Code could reach through the
   user's token on disk anyway); `Invocation.threadId` says who acted, it does
   not fence it in. A workstream that adds commands meant for
-  agents (W10's delegated tasks) adds their permissions to this list.
+  agents (W10's delegated tasks) adds their permissions to this list; A3
+  added `missions.read` and `missions.write` (D652).
 - **D342. Identical blocks stay apart.** A message or reasoning item
   completes once per block, not once per text: what a block's
   `content_block_stop` completed waits, by its text, for that block's

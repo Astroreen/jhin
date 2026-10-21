@@ -84,6 +84,8 @@ export const AGENT_PERMISSIONS: readonly string[] = [
   "git.read",
   "git.write",
   "mesh.read",
+  "missions.read",
+  "missions.write",
 ];
 
 /** A permission that only reads: `threads.read`, `projects.browse`. */
