@@ -36,7 +36,7 @@ what is deferred, and how it landed. Plans are canon once implemented.
 | [`config-ui.md`](plans/config-ui.md)           | settings forms generated from config schemas                                              | implemented |
 | [`orchestration.md`](plans/orchestration.md)   | delegated tasks, thread launches, workflows (W10); scheduled tasks and webhooks (W11)     | in progress |
 | [`agents.md`](plans/agents.md)                 | Civilization mode: persistent agents, messaging, missions, teams, refocus, health (A1–A8) | in progress |
-| [`security.md`](plans/security.md)             | permissions and grants, device tokens, pairing, secrets in config, browser origins (W13)  | in progress |
+| [`security.md`](plans/security.md)             | permissions and grants, device tokens, pairing, secrets in config, browser origins (W13)  | implemented |
 | [`mesh-streams.md`](plans/mesh-streams.md)     | relays of members' streams, trimming event log streams (W17)                              | implemented |
 | [`t3-roadmap.md`](plans/t3-roadmap.md)         | the W1–W18 workstreams porting the rest of T3 Code                                        | in progress |
 

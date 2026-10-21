@@ -1,7 +1,8 @@
 # Security plan: pairing, remote access, scoped tokens, secrets
 
-Status: **in progress** (workstream W13 of `t3-roadmap.md`, decisions
-D410–D439).
+Status: **implemented** (workstream W13 of `t3-roadmap.md`, decisions
+D410–D426): PR 1 #48, PR 2 #52, PR 3 #57, PR 4a #65, PR 4b #72. What is
+left is under Deferred, `jhin pair` (D425) first.
 
 ## Goal
 
