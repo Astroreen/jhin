@@ -1182,7 +1182,9 @@ for, built from the same rewind.
   model it named (else the thread's) and modes, as one command: nothing can
   start in between, and the drop is the last step before the turn starts,
   so only a turn whose first event cannot be written leaves the turns
-  dropped without a new one. The timeline's "Retry" of a failed latest turn
+  dropped without a new one. A turn whose start recorded no message to
+  send again is refused (`TURN_NOT_FOUND`), as is one whose message is
+  empty (`MESSAGE_EMPTY`), before anything is dropped. The timeline's "Retry" of a failed latest turn
   runs it (it sent the message again before, leaving the failed turn
   above); a stopped turn keeps its "Run interrupted" divider without a
   retry, as before (T3's "Resume thread" is Deferred), and the latest final
