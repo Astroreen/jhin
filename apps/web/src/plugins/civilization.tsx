@@ -153,7 +153,14 @@ export const civilizationPlugin = builtin(
         }
       };
       context.subscriptions.add(connections.subscribe(update));
-      context.subscriptions.add(context.config.onDidChange(CIVILIZATION_SECTION, update));
+      context.subscriptions.add(
+        context.config.onDidChange(CIVILIZATION_SECTION, () => {
+          // A changed setting asks every open node afresh, given-up ones too.
+          asked.clear();
+          failures.clear();
+          update();
+        }),
+      );
       context.subscriptions.add({
         dispose: () => {
           disposed = true;

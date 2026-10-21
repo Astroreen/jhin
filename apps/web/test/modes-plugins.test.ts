@@ -178,10 +178,12 @@ describe("jhin.civilization (D747)", () => {
     expect(node.pending).toHaveLength(3);
     expect(ids()).toEqual(["threads"]);
 
-    // A new opening asks again.
+    // A new opening asks again, and so does a changed setting.
     node.setState("closed");
     node.setState("open");
     expect(node.pending).toHaveLength(4);
+    kernel.config.setLayer("node", { "jhin.civilization": { enabled: "auto" } });
+    expect(node.pending).toHaveLength(5);
     await kernel.stop();
   });
 
