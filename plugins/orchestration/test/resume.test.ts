@@ -61,6 +61,30 @@ describe("resuming a workflow (D872)", () => {
     expect(agents[2]).toMatchObject({ label: "c", status: "completed" });
     expect(agents[2]!.cached).toBeUndefined();
 
+    // A failed call is not journaled: a resume runs it, and every call after it, live.
+    const failing = await client.call<{ workflowId: string }>("workflows.run", {
+      script: run("f", "const a = await agent('/fail x')\nreturn [a, await agent('five')]"),
+      parentThreadId: parent.id,
+    });
+    await feed.workflow(failing.workflowId, (record) => record.status === "completed");
+    const again = await client.call<{ workflowId: string }>("workflows.run", {
+      script: run("f", "const a = await agent('/fail x')\nreturn [a, await agent('five')]"),
+      parentThreadId: parent.id,
+      resumeFromRunId: failing.workflowId,
+    });
+    const rerun = await feed.workflow(again.workflowId, (record) => record.status === "completed");
+    expect((rerun.agents as Agent[]).some((agent) => agent.cached === true)).toBe(false);
+
+    // Another thread's run is not this thread's to resume.
+    const other = await parentThread(client);
+    await expect(
+      client.call("workflows.run", {
+        script: run("r", "return 1"),
+        parentThreadId: other.id,
+        resumeFromRunId: first.workflowId,
+      }),
+    ).rejects.toMatchObject({ code: "WORKFLOW_NOT_FOUND" });
+
     // A run still going cannot be resumed.
     const held = await client.call<{ workflowId: string }>("workflows.run", {
       script: run("h", "return agent('/hold')"),

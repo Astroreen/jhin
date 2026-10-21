@@ -36,6 +36,14 @@ export interface WorkflowHost {
   agent(prompt: string, options: AgentOptions & { readonly index: number }): Promise<unknown>;
   log(message: string): void;
   phase(title: string): void;
+  /**
+   * The result an earlier run gave this call, when it is resumed (D872). Asked
+   * in call order, as each call gets its index, so the reused calls are a prefix.
+   */
+  cached?(
+    prompt: string,
+    options: AgentOptions & { readonly index: number },
+  ): { value: unknown } | undefined;
   /** The run's token target (output tokens), or null without one (D873). */
   readonly budget?: number | null;
   /** Output tokens the run's agents spent so far, counted as each agent ends. */
@@ -291,6 +299,8 @@ export async function runWorkflow(
     const index = started++;
     // Copied: the script's objects belong to its own context.
     const copied = JSON.parse(JSON.stringify(chosen)) as AgentOptions;
+    const hit = host.cached?.(prompt, { ...copied, index });
+    if (hit !== undefined) return hit.value;
     return slot(async () => {
       stopped();
       return host.agent(prompt, { ...copied, index });

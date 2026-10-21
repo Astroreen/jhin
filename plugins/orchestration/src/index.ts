@@ -1728,6 +1728,44 @@ export default definePlugin({
     }
     const runStates = new Map<string, RunState>();
 
+    /** The journal's answer for a call of a resumed run, decided in call order (D872). */
+    function cachedAgent(
+      workflow: Workflow,
+      prompt: string,
+      options: AgentOptions & { index: number },
+    ): { value: unknown } | undefined {
+      const state = runStates.get(workflow.workflowId);
+      if (state === undefined || state.live) return undefined;
+      const { index, ...given } = options;
+      const hit = state.prior.get(index);
+      if (hit === undefined || hit.key !== JSON.stringify([prompt, given])) {
+        // The first call that changed, and every one after it, runs live.
+        state.live = true;
+        return undefined;
+      }
+      void updateWorkflow(workflow.workflowId, (current) => ({
+        ...current,
+        agents: [
+          ...current.agents,
+          {
+            index,
+            ...(options.label === undefined ? {} : { label: options.label }),
+            ...((options.phase ?? current.currentPhase) === undefined
+              ? {}
+              : { phase: options.phase ?? current.currentPhase }),
+            ...(hit.taskId === undefined ? {} : { taskId: hit.taskId }),
+            ...(hit.childThreadId === undefined ? {} : { childThreadId: hit.childThreadId }),
+            status: "completed" as const,
+            cached: true,
+          },
+        ],
+      })).catch((error: unknown) =>
+        context.log.error("could not record a workflow's progress", { error: String(error) }),
+      );
+      record(workflow.workflowId, state, hit);
+      return { value: hit.result };
+    }
+
     async function workflowAgent(
       workflow: Workflow,
       prompt: string,
@@ -1738,32 +1776,6 @@ export default definePlugin({
       const state = runStates.get(workflow.workflowId);
       const { index, ...given } = options;
       const key = JSON.stringify([prompt, given]);
-      if (state !== undefined && !state.live) {
-        const hit = state.prior.get(index);
-        if (hit !== undefined && hit.key === key) {
-          await updateWorkflow(workflow.workflowId, (current) => ({
-            ...current,
-            agents: [
-              ...current.agents,
-              {
-                index,
-                ...(options.label === undefined ? {} : { label: options.label }),
-                ...((options.phase ?? current.currentPhase) === undefined
-                  ? {}
-                  : { phase: options.phase ?? current.currentPhase }),
-                ...(hit.taskId === undefined ? {} : { taskId: hit.taskId }),
-                ...(hit.childThreadId === undefined ? {} : { childThreadId: hit.childThreadId }),
-                status: "completed" as const,
-                cached: true,
-              },
-            ],
-          }));
-          record(workflow.workflowId, state, hit);
-          return hit.result;
-        }
-        // The first call that changed, and every one after it, runs live.
-        state.live = true;
-      }
       let result: unknown;
       try {
         result = await liveAgent(workflow, prompt, options, signal, traceId);
@@ -1949,6 +1961,7 @@ export default definePlugin({
           {
             agent: (prompt, options) =>
               workflowAgent(workflow, prompt, options, controller.signal, traceId),
+            cached: (prompt, options) => cachedAgent(workflow, prompt, options),
             budget: workflow.budget ?? null,
             spent: () => runStates.get(workflow.workflowId)?.spent ?? 0,
             load: (ref) => loadScript(runStates.get(workflow.workflowId)?.dir, ref),
