@@ -867,6 +867,17 @@ export default definePlugin({
       edits: [{ path: ["__proto__", "x"], value: 1 }],
     });
     expect(unsafe.error).toBeDefined();
+    // Not as a key of the whole values either.
+    const unsafeValues = await host.execute("host.config.edit", {
+      layer: "node",
+      section: "jhin.example",
+      edits: [{ path: ["x"], value: 1 }],
+      values: JSON.parse('{"__proto__": {"x": 1}}') as Record<string, unknown>,
+    });
+    // Refused or dropped, it never reaches the file.
+    expect(
+      unsafeValues.error !== undefined || !Fs.readFileSync(config, "utf8").includes("__proto__"),
+    ).toBe(true);
     // "constructor" is an ordinary key of a record (D480): kept like any other.
     const plain = await host.execute("host.config.edit", {
       layer: "node",

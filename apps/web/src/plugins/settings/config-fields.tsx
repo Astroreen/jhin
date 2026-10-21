@@ -22,7 +22,7 @@ import {
 import { configControlSlot, isRedactedSecret, type ConfigControlProps } from "@jhin/client-api";
 import { Slot, useOptionalSlot } from "@jhin/ui";
 import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 
 import {
   equal,
@@ -356,10 +356,18 @@ function ListItems(props: {
   context: FieldsContext;
 }) {
   const { field, path, context } = props;
+  // An identity per item, moved with it, so what an item's fields hold (a
+  // folded "Advanced", a key being renamed) stays with that item (D479).
+  const ids = useRef<number[]>([]);
+  const nextId = useRef(0);
   if (field.control.kind !== "list") return null;
   const item = field.control.item;
   const value = getAt(context.value, path);
   const items = Array.isArray(value) ? value : [];
+  // Changed elsewhere (the JSON view, a reset): identities start over.
+  if (ids.current.length !== items.length) {
+    ids.current = items.map(() => nextId.current++);
+  }
   const blank = (): unknown =>
     item.control.kind === "group"
       ? // Its required keys are reported until they are filled in (D479).
@@ -375,6 +383,10 @@ function ListItems(props: {
     const next = [...items];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
+    const order = [...ids.current];
+    const [id] = order.splice(from, 1);
+    order.splice(to, 0, id!);
+    ids.current = order;
     context.set(path, next);
   };
   if (item.control.kind === "group") {
@@ -385,12 +397,10 @@ function ListItems(props: {
           const label = `${props.label} ${index + 1}`;
           const itemPath = [...path, String(index)];
           return (
-            // Items have no identity but their place (D479).
-            // oxlint-disable-next-line react/no-array-index-key
             <div
               aria-label={label}
               className="rounded-lg border border-border/50"
-              key={index}
+              key={ids.current[index]}
               role="group"
             >
               <div className="flex items-center gap-1 border-b border-border/50 px-3 py-1.5 sm:px-4">
@@ -415,12 +425,13 @@ function ListItems(props: {
                 </Button>
                 <Button
                   aria-label={`Remove ${label}`}
-                  onClick={() =>
+                  onClick={() => {
+                    ids.current = ids.current.filter((_id, at) => at !== index);
                     context.set(
                       path,
                       items.filter((_item, at) => at !== index),
-                    )
-                  }
+                    );
+                  }}
                   size="icon-xs"
                   variant="ghost-destructive"
                 >
@@ -444,7 +455,14 @@ function ListItems(props: {
             </div>
           );
         })}
-        <Button onClick={() => context.set(path, [...items, blank()])} size="xs" variant="outline">
+        <Button
+          onClick={() => {
+            ids.current = [...ids.current, nextId.current++];
+            context.set(path, [...items, blank()]);
+          }}
+          size="xs"
+          variant="outline"
+        >
           <PlusIcon />
           Add
         </Button>
@@ -456,7 +474,7 @@ function ListItems(props: {
       {items.map((_, index) => (
         // Items have no identity but their place; the list re-renders whole on removal.
         // oxlint-disable-next-line react/no-array-index-key
-        <div className="flex min-w-0 items-start gap-1.5" key={index}>
+        <div className="flex min-w-0 items-start gap-1.5" key={ids.current[index]}>
           <ItemControl
             context={context}
             field={item}
@@ -603,13 +621,18 @@ function KeyInput(props: {
     if (draft === undefined || draft === props.value) return setDraft(undefined);
     if (problem === undefined && props.onRename(draft)) setDraft(undefined);
   };
+  // Leaving the field with a key that is refused gives the old key back (D480).
+  const leave = () => {
+    commit();
+    if (problem !== undefined) setDraft(undefined);
+  };
   return (
     <div className="w-40 shrink-0">
       <Input
         aria-label={props.label}
         className="font-mono"
         nativeInput
-        onBlur={commit}
+        onBlur={leave}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter") commit();
@@ -734,7 +757,7 @@ function FieldRow({
         {...row}
         control={
           <ContributedControl
-            disabled={false}
+            disabled={value === null}
             field={{
               key: field.key,
               path,

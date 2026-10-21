@@ -34,6 +34,9 @@ const Config = z
     label: z.string().default("demo"),
     level: z.enum(["low", "medium", "high"]).default("medium"),
     retries: z.number().int().min(0).max(10).default(3),
+    mode: z.enum(["auto", "custom"]).default("auto"),
+    instructions: z.string().optional().meta({ when: { mode: "custom" } }),
+    env: z.record(z.string(), z.string()).optional(),
   })
   .meta({ title: "Demo" });
 export default definePlugin({
@@ -254,4 +257,43 @@ test("D479: edits keybinding rules as a list of groups", async ({ page }, info) 
   });
   // The demo section's comments in the same file are untouched.
   expect(Fs.readFileSync(file, "utf8")).toContain("// Turns the demo on.");
+});
+
+test("D480, D481: renames a record key in place and shows a field for its sibling's value", async ({
+  page,
+}, info) => {
+  node = await startNode({ setup: writeDemoPlugin });
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  await page.getByRole("combobox", { name: "Config section" }).click();
+  await page.getByRole("option", { name: /^Demo/ }).click();
+  const section = page.getByRole("region", { name: "Demo" });
+
+  // D481: "Instructions" shows only while Mode is custom.
+  await expect(section.getByRole("textbox", { name: "Instructions" })).toHaveCount(0);
+  await section.getByRole("combobox", { name: "Mode" }).click();
+  await page.getByRole("option", { name: "custom" }).click();
+  await section.getByRole("textbox", { name: "Instructions" }).fill("be brief");
+
+  // D480: a key added, then renamed in place.
+  await section.getByRole("textbox", { name: "New key of Env" }).fill("TOKEN");
+  await section.getByRole("button", { name: "Add" }).click();
+  await section.getByRole("textbox", { name: "Env TOKEN" }).fill("x");
+  const key = section.getByRole("textbox", { name: "Key TOKEN of Env" });
+  await key.fill("API_TOKEN");
+  await key.press("Enter");
+  await expect(section.getByRole("textbox", { name: "Key API_TOKEN of Env" })).toBeVisible();
+  const shot = info.outputPath("config-rename-when.png");
+  await page.screenshot({ path: shot, fullPage: true });
+  await info.attach("config-rename-when", { path: shot, contentType: "image/png" });
+
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByRole("list", { name: "Outcome" })).toContainText("applied");
+  expect(await node.client().call("host.config.get", { section: "acme.demo" })).toMatchObject({
+    value: { mode: "custom", instructions: "be brief", env: { API_TOKEN: "x" } },
+  });
 });

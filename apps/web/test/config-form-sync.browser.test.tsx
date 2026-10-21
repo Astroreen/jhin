@@ -15,6 +15,7 @@ const Rule = z.object({
   key: z.string().meta({ title: "Key", clearWhenEmpty: "persist" }),
   command: z.string().min(1).meta({ title: "Command" }),
   when: z.string().optional().meta({ title: "When" }),
+  note: z.string().optional().meta({ title: "Note", advanced: true }),
 });
 const Section = z
   .object({
@@ -125,6 +126,39 @@ describe("the config form's W16 fields", () => {
     await expect.element(command).toHaveAttribute("aria-invalid", "true");
     await userEvent.fill(command, "palette.open");
     await expect.element(command).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("keeps an item's own state with the item when it moves (D479)", async () => {
+    mountForm({
+      rules: [
+        { key: "a", command: "one" },
+        { key: "b", command: "two" },
+      ],
+    });
+    const second = page.getByRole("group", { name: "Rules 2" });
+    await userEvent.click(second.getByRole("button", { name: "Advanced (1)" }));
+    await expect.element(second.getByRole("textbox", { name: "Note" })).toBeInTheDocument();
+    await userEvent.click(page.getByRole("button", { name: "Move Rules 2 up" }));
+    // The opened item is first now, and still open; the other one is still folded.
+    const first = page.getByRole("group", { name: "Rules 1" });
+    await expect.element(first.getByRole("textbox", { name: "Command" })).toHaveValue("two");
+    await expect.element(first.getByRole("textbox", { name: "Note" })).toBeInTheDocument();
+    expect(
+      page
+        .getByRole("group", { name: "Rules 2" })
+        .getByRole("textbox", { name: "Note" })
+        .elements(),
+    ).toHaveLength(0);
+  });
+
+  it("gives the old key back when a refused rename is left (D480)", async () => {
+    mountForm({ env: { A: "1", B: "2" } });
+    const key = page.getByRole("textbox", { name: "Key A of Environment" });
+    await userEvent.fill(key, "B");
+    await userEvent.click(page.getByRole("textbox", { name: "Label" }));
+    await expect
+      .element(page.getByRole("textbox", { name: "Key A of Environment" }))
+      .toHaveValue("A");
   });
 
   it("renames a record's key in place, refusing an empty or taken one (D480)", async () => {
