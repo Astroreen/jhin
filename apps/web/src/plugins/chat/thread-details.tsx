@@ -72,6 +72,12 @@ export function registerThreadDetails(
     // The thread the panel is open for: another thread starts with it closed,
     // in the same render.
     const [openFor, setOpenFor] = useState<string | undefined>();
+    // Leaving the thread closes it, so coming back finds it closed too.
+    const [shown, setShown] = useState(threadId);
+    if (shown !== threadId) {
+      setShown(threadId);
+      setOpenFor(undefined);
+    }
     const open = openFor !== undefined && openFor === threadId;
     const setOpen = (next: boolean) => setOpenFor(next ? threadId : undefined);
     const shortcut = useShortcutLabels(keybindings)("chat.thread-details.toggle");

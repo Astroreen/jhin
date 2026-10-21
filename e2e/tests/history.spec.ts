@@ -276,4 +276,13 @@ test("lists a thread's parent and forks in the thread details panel, and merges 
   await shoot(page, info, "lineage-parent");
   await related.getByRole("button", { name: /plan a picnic fork/ }).click();
   await expect(heading).toHaveText("plan a picnic fork");
+  // Leaving a thread closes its panel: back in it, the panel stays closed.
+  await toggle.click();
+  await expect(panel).toBeVisible();
+  // The parent row opens the parent.
+  await related.getByRole("button", { name: /^plan a picnic / }).click();
+  await expect(heading).toHaveText("plan a picnic");
+  await page.goBack();
+  await expect(heading).toHaveText("plan a picnic fork");
+  await expect(panel).toHaveCount(0);
 });

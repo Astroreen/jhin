@@ -234,10 +234,10 @@ export function createLineage(deps: {
                     <WithTooltip
                       className="flex shrink-0"
                       tip={
-                        !ran
-                          ? "Complete a run in this fork before merging it back"
-                          : missing
-                            ? "Merge this conversation back into its source"
+                        missing
+                          ? "This related thread is unavailable"
+                          : !ran
+                            ? "Complete a run in this fork before merging it back"
                             : `Merge this conversation back into ${title}`
                       }
                     >
@@ -246,7 +246,7 @@ export function createLineage(deps: {
                           missing ? "Merge back to source conversation" : `Merge back to ${title}`
                         }
                         className={SPLIT_SECONDARY}
-                        disabled={!ran || merging}
+                        disabled={!ran || merging || missing}
                         onClick={() => void merge()}
                         type="button"
                       >
