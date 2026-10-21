@@ -356,6 +356,26 @@ describe("jhin.threads: a thread's own working directory", () => {
     expect(seen).toEqual([project]);
   });
 
+  it("takes T3's workspace strategy: no new worktree without source control, an existing one as given", async () => {
+    const { client } = await node();
+    await expect(
+      client.call("threads.create", { workspace: { type: "worktree", baseRef: "main" } }),
+    ).rejects.toMatchObject({ code: "WORKSPACE_UNSUPPORTED" });
+    const worktree = directory();
+    const thread = await client.call<Thread>("threads.create", {
+      workspace: { type: "existing_worktree", worktreePath: worktree },
+    });
+    expect(thread.worktreePath).toBe(worktree);
+    const root = await client.call<Thread>("threads.create", { workspace: { type: "root" } });
+    expect(root.worktreePath).toBeUndefined();
+    await expect(
+      client.call("threads.create", {
+        worktreePath: worktree,
+        workspace: { type: "existing_worktree", worktreePath: worktree },
+      }),
+    ).rejects.toMatchObject({ code: "WORKSPACE_INVALID" });
+  });
+
   it("moves a running thread's next turn, not the one running", async () => {
     const seen: string[] = [];
     const agent: AgentRuntime = {

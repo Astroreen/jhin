@@ -3,10 +3,12 @@ import type {
   NodeCatalog,
   NodeConnection,
   NodeTarget,
+  ThreadCreateInput,
+  ThreadRecord,
   ThreadsCatalog,
 } from "@jhin/client-api";
 import type { RpcClient } from "@jhin/rpc";
-import { toDisposable } from "@jhin/sdk";
+import { toDisposable, type PluginContext } from "@jhin/sdk";
 import {
   SOURCE_CONTROL_STREAM,
   SourceControlEvents,
@@ -58,6 +60,12 @@ import {
   createSourceControlStore,
   type SourceControlView,
 } from "../src/plugins/source-control/store.ts";
+import {
+  createDraftWorkspaces,
+  draftKey,
+  previousWorktree,
+  registerWorkspaceHook,
+} from "../src/plugins/source-control/workspace.tsx";
 
 const status = (fields: Partial<ProjectStatus> = {}): ProjectStatus => ({
   projectId: "app",
@@ -91,6 +99,7 @@ describe("applySourceControlEvent", () => {
     threads: new Map(),
     links: new Map(),
     checkpoints: new Map(),
+    worktrees: new Map(),
   };
 
   it("applies statuses and thread branches, and their removal", () => {
@@ -126,6 +135,7 @@ describe("checkpoints in the view", () => {
     threads: new Map(),
     links: new Map(),
     checkpoints: new Map(),
+    worktrees: new Map(),
   };
   const checkpoint = (turn: number, fields: Partial<TurnCheckpoint> = {}): TurnCheckpoint => ({
     threadId: "t1",
@@ -600,8 +610,9 @@ describe("the diff panel's scopes", () => {
     });
     await git.load(context, "uncommitted", { ignoreWhitespace: false });
     expect(calls).toEqual([
-      ["git.diff", { projectId: "app", scope: "branch", ignoreWhitespace: true, base: "develop" }],
-      ["git.diff", { projectId: "app", scope: "uncommitted", ignoreWhitespace: false }],
+      // A thread's diff is read where it works: its worktree when it has one (D251).
+      ["git.diff", { threadId: "t1", scope: "branch", ignoreWhitespace: true, base: "develop" }],
+      ["git.diff", { threadId: "t1", scope: "uncommitted", ignoreWhitespace: false }],
     ]);
   });
 
@@ -720,6 +731,7 @@ describe("linked pull requests", () => {
       threads: new Map(),
       links: new Map(),
       checkpoints: new Map(),
+      worktrees: new Map(),
     };
     let view = applySourceControlEvent(empty, {
       type: "git.pr.linked",
@@ -789,5 +801,93 @@ describe("linked pull requests", () => {
     expect(readPullRequestInput("", remote)).toBe("Paste a pull request URL or enter 123 / #123.");
     expect(readPullRequestInput("nope", remote)).toBe("Use a pull request URL, 123, or #123.");
     expect(readPullRequestInput("12", null)).toBe("Use a pull request URL, 123, or #123.");
+  });
+});
+
+describe("worktrees in the client", () => {
+  const empty: SourceControlView = {
+    status: "ready",
+    projects: new Map(),
+    threads: new Map(),
+    links: new Map(),
+    checkpoints: new Map(),
+    worktrees: new Map(),
+  };
+
+  it("follows the worktrees threads work in", () => {
+    const changed = applySourceControlEvent(empty, {
+      type: SourceControlEvents.worktreeChanged,
+      payload: { ...status({ branch: "jhin/abcd1234" }), worktreePath: "/w/app/jhin-abcd1234" },
+    });
+    expect(changed.worktrees.get("/w/app/jhin-abcd1234")?.branch).toBe("jhin/abcd1234");
+    const removed = applySourceControlEvent(changed, {
+      type: SourceControlEvents.worktreeRemoved,
+      payload: { worktreePath: "/w/app/jhin-abcd1234" },
+    });
+    expect(removed.worktrees.size).toBe(0);
+  });
+
+  it("offers the project's latest worktree thread as the previous worktree", () => {
+    const thread = (id: string, fields: Partial<ThreadRecord>): ThreadRecord => ({
+      id,
+      projectId: "app",
+      title: id,
+      createdAt: "2026-10-20T10:00:00.000Z",
+      ...fields,
+    });
+    const threads = [
+      thread("old", { worktreePath: "/w/old", updatedAt: "2026-10-20T11:00:00.000Z" }),
+      thread("new", { worktreePath: "/w/new", updatedAt: "2026-10-20T12:00:00.000Z" }),
+      thread("gone", {
+        worktreePath: "/w/gone",
+        updatedAt: "2026-10-20T13:00:00.000Z",
+        archivedAt: "2026-10-20T13:00:00.000Z",
+      }),
+      thread("local", { updatedAt: "2026-10-20T14:00:00.000Z" }),
+      thread("other", { projectId: "else", worktreePath: "/w/else" }),
+    ];
+    expect(previousWorktree(threads, "app", (id) => (id === "new" ? "feature/new" : null))).toEqual(
+      { path: "/w/new", branch: "feature/new" },
+    );
+    expect(previousWorktree([], "app", () => null)).toBeUndefined();
+  });
+
+  it("creates a draft's thread in the workspace chosen for it, once", async () => {
+    const hooks: ((input: ThreadCreateInput) => ThreadCreateInput)[] = [];
+    const context = {
+      hooks: {
+        before: (_name: string, hook: (input: ThreadCreateInput) => ThreadCreateInput) => {
+          hooks.push(hook);
+          return toDisposable(() => undefined);
+        },
+      },
+    } as unknown as PluginContext;
+    const drafts = createDraftWorkspaces();
+    registerWorkspaceHook(context, drafts);
+    const target = { node: "ws://a/rpc" };
+    const input = { target, projectId: "app", params: { projectId: "app" } };
+    expect(hooks[0]!(input)).toBe(input);
+
+    drafts.set(draftKey(target, "app"), {
+      mode: "worktree",
+      baseRef: "main",
+      startFromOrigin: true,
+    });
+    expect(hooks[0]!(input).params).toEqual({
+      projectId: "app",
+      workspace: { type: "worktree", baseRef: "main", startFromOrigin: true },
+    });
+    // Used up: the next draft starts in the checkout again.
+    expect(drafts.get(draftKey(target, "app")).mode).toBe("local");
+
+    drafts.set(draftKey(target, "app"), {
+      mode: "previous",
+      startFromOrigin: false,
+      previous: { path: "/w/new", branch: null },
+    });
+    expect(hooks[0]!(input).params).toEqual({
+      projectId: "app",
+      workspace: { type: "existing_worktree", worktreePath: "/w/new" },
+    });
   });
 });

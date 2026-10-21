@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
+import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
   THREADS_STREAM,
   ThreadEvents,
+  ThreadHooks,
   type AgentRegistry,
   type AgentRuntime,
+  type TurnHookInput,
 } from "@jhin/agent-api";
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, createMemoryStreams, type LiveStreams } from "@jhin/rpc";
 import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import { definePlugin, z, type PluginContext } from "@jhin/sdk";
@@ -26,11 +30,13 @@ import {
   SOURCE_CONTROL_STREAM,
   SourceControlEvents,
   StatusSnapshot,
+  CreatedWorktree,
   ThreadBranch,
   ThreadPullRequest,
   pullRequestChains,
   type GitActionProgress,
   TurnCheckpoint,
+  Worktree,
   type PullRequestProvider,
   type SourceControl,
 } from "@jhin/source-control-api";
@@ -76,6 +82,14 @@ import type { Viewers } from "./github.ts";
 import { createLinks, type LinkTarget } from "./links.ts";
 import { createWatcher } from "./watcher.ts";
 import { followTurns } from "./turns.ts";
+import {
+  createWorktree,
+  isManagedWorktree,
+  listWorktrees,
+  recreateWorktree,
+  removeWorktree,
+  worktreesRoot,
+} from "./worktrees.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
 import { agentWriter } from "./writer.ts";
 
@@ -135,7 +149,8 @@ export const Config = z
         "Which forge a remote host is, for self-hosted ones whose name does not say (git.example.com: gitlab)",
       advanced: true,
     }),
-    checkpointStartTimeoutSeconds: z.number().min(0).max(3600).default(45).meta({
+    // Below the threads plugin's 60 s turn hook deadline, so the start never fails the turn (D244).
+    checkpointStartTimeoutSeconds: z.number().min(0).max(55).default(45).meta({
       title: "Checkpoint start timeout (seconds)",
       description:
         "How long a turn's start waits for its checkpoint before its agent starts anyway; that turn's changes then show as unknown. Keep it below the threads plugin's turn hook timeout",
@@ -145,6 +160,12 @@ export const Config = z
       .string()
       .default("git")
       .meta({ title: "git executable", description: "Path to git", advanced: true }),
+    worktreesDirectory: z.string().default("").meta({
+      title: "Worktrees directory",
+      description:
+        "Where new worktrees of threads are made, as <directory>/<repository>/<branch>; the node's worktrees folder (~/.jhin/worktrees) when empty",
+      advanced: true,
+    }),
     ghPath: z.string().default("gh").meta({
       title: "GitHub CLI executable",
       description: "Path to gh, the GitHub CLI",
@@ -201,9 +222,11 @@ interface CachedPullRequest {
   readonly at: number;
 }
 
-/** One project followed by the plugin. */
+/** One project followed by the plugin, or a worktree of one that a thread works in. */
 interface Repo {
   project: ProjectRef;
+  /** For a worktree: its path (`project.path` too); its status goes out as a `WorktreeStatus`. */
+  worktree: string | undefined;
   location: Repository | undefined;
   git: Git | undefined;
   status: ProjectStatus | undefined;
@@ -257,6 +280,7 @@ const isCommandMissing = (error: unknown) =>
 export function activateSourceControl(context: PluginContext): SourceControl {
   const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
   const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
+  const hostPaths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
   context.subscriptions.add(context.config.define(CONFIG_SECTION, Config));
   // D501: members relay the stream to their clients (D503).
   const mesh = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
@@ -304,6 +328,12 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   }
 
   const repos = new Map<string, Repo>();
+  /** The worktrees threads work in, by path (D251). */
+  const worktreeRepos = new Map<string, Repo>();
+  /** Every followed repository: the projects' and the worktrees'. */
+  const allRepos = () => [...repos.values(), ...worktreeRepos.values()];
+  /** Where each thread works: its project, and its worktree if it has one. */
+  const threadDirs = new Map<string, { projectId: string; worktreePath: string | undefined }>();
   const threads = new Map<string, ThreadBranch>();
   /** The last turn state seen per thread (`turnId:status`), so each change is handled once. */
   const lastTurns = new Map<string, string>();
@@ -329,7 +359,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   // --- Pull requests linked to threads (D267–D270) ------------------------------------
 
   /** The project's repository of a thread, once it is known. */
-  const repoOfThread = async (threadId: string): Promise<Repo | undefined> => {
+  const projectRepoOfThread = async (threadId: string): Promise<Repo | undefined> => {
     const projectId = await threadProject(threadId).catch(() => undefined);
     return projectId === undefined ? undefined : repos.get(projectId);
   };
@@ -337,7 +367,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const forgeOfLink = async (threadId: string, host: string): Promise<Forge | undefined> => {
     const kind = kindOfHost(host);
     if (kind === undefined) return undefined;
-    const repo = await repoOfThread(threadId);
+    const repo = await projectRepoOfThread(threadId);
     const cwd =
       repo?.location?.isRepo === true ? repo.location.root : (repo?.project.path ?? process.cwd());
     return makeForge(kind, cwd, undefined);
@@ -346,7 +376,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     kv,
     append,
     remoteOf: async (threadId) => {
-      const repo = await repoOfThread(threadId);
+      const repo = await projectRepoOfThread(threadId);
       return repo === undefined
         ? null
         : ((await statusOf(repo).catch(() => undefined))?.remoteUrl ?? null);
@@ -432,6 +462,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       try {
         const projects = (await context.commands.execute("projects.list", {})) as ProjectRef[];
         for (const project of projects) track(project);
+        // The worktrees threads already work in; later moves come through the index.
+        const listed = (await context.commands.execute("threads.list", {})) as Record<
+          string,
+          unknown
+        >[];
+        for (const thread of listed) {
+          if (typeof thread["id"] === "string") await noteDir(thread["id"], thread);
+        }
       } catch (error) {
         projectsLoaded = undefined;
         if (!isCommandMissing(error)) throw error;
@@ -453,34 +491,52 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     const known = repos.get(project.id);
     if (known !== undefined && known.project.path === project.path) return known;
     if (known !== undefined) untrack(known);
-    const repo: Repo = {
-      project: { id: project.id, path: project.path, scratch: project.scratch === true },
-      location: undefined,
-      git: undefined,
-      status: undefined,
-      ready: Promise.resolve(undefined as unknown as ProjectStatus),
-      chain: Promise.resolve(),
-      queued: undefined,
-      watcher: undefined,
-      settle: undefined,
-      firstChangeAt: undefined,
-      pullRequests: new Map(),
-      prChain: Promise.resolve(),
-      provider: null,
-      forge: undefined,
-      unavailableAt: undefined,
-      disposed: false,
-    };
+    const repo = newRepo(project, undefined);
     repos.set(project.id, repo);
+    start(repo);
+    return repo;
+  };
+
+  /** Follows a worktree a thread works in, as a repository of the thread's project. */
+  const trackWorktree = (projectId: string, path: string): Repo => {
+    const known = worktreeRepos.get(path);
+    if (known !== undefined) return known;
+    const repo = newRepo({ id: projectId, path }, path);
+    worktreeRepos.set(path, repo);
+    start(repo);
+    return repo;
+  };
+
+  const newRepo = (project: ProjectRef, worktree: string | undefined): Repo => ({
+    project: { id: project.id, path: project.path, scratch: project.scratch === true },
+    worktree,
+    location: undefined,
+    git: undefined,
+    status: undefined,
+    ready: Promise.resolve(undefined as unknown as ProjectStatus),
+    chain: Promise.resolve(),
+    queued: undefined,
+    watcher: undefined,
+    settle: undefined,
+    firstChangeAt: undefined,
+    pullRequests: new Map(),
+    prChain: Promise.resolve(),
+    provider: null,
+    forge: undefined,
+    unavailableAt: undefined,
+    disposed: false,
+  });
+
+  const start = (repo: Repo) => {
     repo.ready = refresh(repo);
     // A failed first read surfaces to whoever asks; nobody may be waiting now.
     repo.ready.catch((error: unknown) =>
       context.log.warn("reading a repository failed", {
-        projectId: project.id,
+        projectId: repo.project.id,
+        ...(repo.worktree === undefined ? {} : { worktreePath: repo.worktree }),
         error: String(error),
       }),
     );
-    return repo;
   };
 
   /** Stops following the repository on disk, a read already waiting for changes to settle included. */
@@ -495,7 +551,37 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const untrack = (repo: Repo) => {
     repo.disposed = true;
     stopWatching(repo);
-    if (repos.get(repo.project.id) === repo) repos.delete(repo.project.id);
+    if (repo.worktree !== undefined) {
+      if (worktreeRepos.get(repo.worktree) === repo) worktreeRepos.delete(repo.worktree);
+    } else if (repos.get(repo.project.id) === repo) repos.delete(repo.project.id);
+  };
+
+  /**
+   * Follows the worktrees threads work in and lets go of those no thread
+   * uses any more (`worktree.removed`).
+   */
+  const syncWorktrees = async () => {
+    const used = new Map<string, string>();
+    for (const dir of threadDirs.values()) {
+      if (dir.worktreePath !== undefined && !used.has(dir.worktreePath)) {
+        used.set(dir.worktreePath, dir.projectId);
+      }
+    }
+    // A copy: letting go of one changes the map.
+    for (const [path, repo] of Array.from(worktreeRepos)) {
+      if (used.get(path) === repo.project.id) continue;
+      untrack(repo);
+      await append(SourceControlEvents.worktreeRemoved, { worktreePath: path });
+    }
+    for (const [path, projectId] of used) trackWorktree(projectId, path);
+  };
+
+  /** The repository a thread works in: its worktree's, else its project's. */
+  const repoOfThread = async (threadId: string, projectId: string): Promise<Repo | undefined> => {
+    const worktree = threadDirs.get(threadId)?.worktreePath;
+    if (worktree !== undefined)
+      return worktreeRepos.get(worktree) ?? trackWorktree(projectId, worktree);
+    return repos.get(projectId) ?? (await repoOf(projectId).catch(() => undefined));
   };
 
   // --- Reading a repository ----------------------------------------------------------
@@ -643,7 +729,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (repo.disposed) return status;
     const previous = repo.status;
     repo.status = status;
-    if (!sameStatus(previous, status)) await append(SourceControlEvents.statusChanged, status);
+    if (sameStatus(previous, status)) return status;
+    if (repo.worktree === undefined) await append(SourceControlEvents.statusChanged, status);
+    else {
+      await append(SourceControlEvents.worktreeChanged, { ...status, worktreePath: repo.worktree });
+    }
     return status;
   };
 
@@ -713,7 +803,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const lookUpPullRequests = (repo: Repo, options: { force: boolean }): Promise<void> => {
     const next = repo.prChain.then(async () => {
       const status = repo.status;
+      // A worktree's pull requests are its project's: the project looks up every thread's branch.
       if (status === undefined || repo.disposed || repo.provider === null) return;
+      if (repo.worktree !== undefined) return;
       const location = repo.location;
       if (location?.isRepo !== true) return;
       const { pullRequestRefreshSeconds } = config();
@@ -825,7 +917,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
    * have seen a checkout yet, or be off.
    */
   const recordThread = async (threadId: string, projectId: string) => {
-    const repo = repos.get(projectId) ?? (await repoOf(projectId).catch(() => undefined));
+    const repo = await repoOfThread(threadId, projectId);
     if (repo === undefined) return;
     const status = await refresh(repo);
     await setThreadBranch(threadId, projectId, status.isRepo ? status.branch : null);
@@ -858,12 +950,17 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       }
       case ThreadEvents.threadCreated: {
         if (typeof payload?.projectId === "string") {
+          await noteDir(id, payload);
           await recordThread(id, payload.projectId);
         }
         return;
       }
       case ThreadEvents.threadUpdated: {
         const projectId = payload?.projectId;
+        // A thread moved into a worktree (or back) works on what is checked out there.
+        if (typeof projectId === "string" && (await noteDir(id, payload))) {
+          await recordThread(id, projectId);
+        }
         const lastTurn = payload?.lastTurn as { turnId?: string; status?: string } | undefined;
         if (typeof projectId !== "string" || lastTurn?.status === undefined) return;
         const key = `${lastTurn.turnId}:${lastTurn.status}`;
@@ -882,9 +979,24 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         return;
       }
       case ThreadEvents.threadDeleted:
+        threadDirs.delete(id);
+        await syncWorktrees();
         await removeThread(id);
         return;
     }
+  };
+
+  /** Records where a thread works; true when that changed. */
+  const noteDir = async (threadId: string, record: Record<string, unknown> | null) => {
+    const projectId = record?.["projectId"];
+    if (typeof projectId !== "string") return false;
+    const worktreePath =
+      typeof record?.["worktreePath"] === "string" ? (record["worktreePath"] as string) : undefined;
+    const known = threadDirs.get(threadId);
+    if (known?.projectId === projectId && known.worktreePath === worktreePath) return false;
+    threadDirs.set(threadId, { projectId, worktreePath });
+    await syncWorktrees();
+    return true;
   };
   context.subscriptions.add(
     log.subscribe(THREADS_STREAM, (event) => {
@@ -909,7 +1021,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     const seconds = config().pullRequestRefreshSeconds;
     if (seconds === 0) return;
     prTimer = setInterval(() => {
-      for (const repo of repos.values()) {
+      for (const repo of allRepos()) {
         if (repo.provider !== null) void lookUpPullRequests(repo, { force: false });
       }
       // One thread after another, and no new round while the last one still reads.
@@ -955,7 +1067,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     context.config.onDidChange(CONFIG_SECTION, () => {
       schedulePullRequests();
       scheduleWatch();
-      for (const repo of repos.values()) {
+      for (const repo of allRepos()) {
         if (config().watch) startWatching(repo);
         else stopWatching(repo);
       }
@@ -968,6 +1080,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       if (prTimer !== undefined) clearInterval(prTimer);
       if (watchTimer !== undefined) clearInterval(watchTimer);
       for (const repo of repos.values()) untrack(repo);
+      for (const repo of allRepos()) untrack(repo);
     },
   });
 
@@ -1002,7 +1115,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       return options.refresh === true ? statusNow(repo) : statusOf(repo);
     },
     diff: async (projectId, options = {}) => {
-      const repo = await repoOf(projectId);
+      const repo = await repoFor(projectId, options.threadId);
       const status = await statusOf(repo);
       const { git, root } = await gitOf(repo);
       const scope = options.scope ?? "uncommitted";
@@ -1025,14 +1138,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         deletions: totals.deletions,
       };
     },
-    branches: async (projectId) => {
-      const repo = await repoOf(projectId);
+    branches: async (projectId, options = {}) => {
+      const repo = await repoFor(projectId, options.threadId);
       const status = await statusOf(repo);
       const { git } = await gitOf(repo);
       return readBranches(git, status.defaultBranch);
     },
     checkout: async (projectId, branch, options = {}) => {
-      const repo = await repoOf(projectId);
       // A thread moves with the checkout only within its own project.
       if (options.threadId !== undefined) {
         const owner = await threadProject(options.threadId);
@@ -1044,6 +1156,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           );
         }
       }
+      // In the thread's worktree when it has one.
+      const repo = await repoFor(projectId, options.threadId);
       return exclusive(projectId, async () => {
         const { git } = await gitOf(repo);
         const remotes = (await git(["remote"])).stdout.split("\n").filter((line) => line !== "");
@@ -1061,7 +1175,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     },
     runAction: async (projectId, options) => {
       const input = GitActionOptions.parse(options);
-      const repo = await repoOf(projectId);
+      // A worktree thread's actions commit and push in its worktree (D251).
+      const repo = await repoFor(projectId, input.threadId);
       if (input.threadId !== undefined) {
         const owner = await threadProject(input.threadId);
         if (owner !== projectId) {
@@ -1161,7 +1276,210 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     },
     turnDiff: (threadId, turn, options = {}) => turns.diff(threadId, turn, options),
     checkpoints: (threadId) => turns.list(threadId),
+    // Worktrees are made, attached and removed one at a time per project.
+    createWorktree: (projectId, options) =>
+      exclusive(projectId, () => createWorktreeNow(projectId, options)),
+    removeWorktree: (projectId, path, options = {}) =>
+      exclusive(projectId, () => removeWorktreeNow(projectId, path, options)),
+    worktrees: async (projectId) => {
+      const repo = await repoOf(projectId);
+      const { git } = await gitOf(repo);
+      const root = worktreesRoot(config().worktreesDirectory, hostPaths.home);
+      const users = await worktreeUsers();
+      return Promise.all(
+        (await listWorktrees(git)).map(async (entry) => ({
+          path: entry.path,
+          branch: entry.branch,
+          main: entry.main,
+          managed: isManagedWorktree(root, entry.path),
+          threadIds: users.get(await realPath(entry.path)) ?? [],
+        })),
+      );
+    },
+    // One handoff of a thread at a time: a second finds it in its worktree (T3's "in progress").
+    handoff: (threadId, options = {}) =>
+      handoffLocked(threadId, () => handoffNow(threadId, options)),
   };
+
+  /** A folder by its real path: a link or an unnormalised path names the same folder. */
+  const realPath = (value: string) => Fs.realpath(value).catch(() => Path.resolve(value));
+
+  /** The threads working in each worktree, by real path, as the threads plugin has them now. */
+  async function worktreeUsers(): Promise<Map<string, string[]>> {
+    const listed = (await context.commands.execute("threads.list", {}).catch(() => [])) as {
+      id: string;
+      worktreePath?: string;
+    }[];
+    const users = new Map<string, string[]>();
+    for (const thread of listed) {
+      if (thread.worktreePath === undefined) continue;
+      const key = await realPath(thread.worktreePath);
+      users.set(key, [...(users.get(key) ?? []), thread.id]);
+    }
+    return users;
+  }
+
+  async function createWorktreeNow(
+    projectId: string,
+    options: Parameters<SourceControl["createWorktree"]>[1],
+  ) {
+    const repo = await repoOf(projectId);
+    const { git, root } = await gitOf(repo);
+    return createWorktree(git, {
+      repository: root,
+      root: worktreesRoot(config().worktreesDirectory, hostPaths.home),
+      baseRef: options.baseRef,
+      ...(options.branch === undefined ? {} : { branch: options.branch }),
+      ...(options.startFromOrigin === undefined
+        ? {}
+        : { startFromOrigin: options.startFromOrigin }),
+    });
+  }
+
+  async function removeWorktreeNow(
+    projectId: string,
+    path: string,
+    options: { force?: boolean; deleteBranch?: boolean },
+  ) {
+    const repo = await repoOf(projectId);
+    const { git } = await gitOf(repo);
+    const wanted = await realPath(path);
+    const listed = await listWorktrees(git);
+    let known: (typeof listed)[number] | undefined;
+    for (const entry of listed) if ((await realPath(entry.path)) === wanted) known = entry;
+    if (known === undefined) {
+      throw new SourceControlError(
+        "WORKTREE_INVALID",
+        `${path} is not a worktree of this project's repository`,
+        { path },
+      );
+    }
+    if (known.main) {
+      throw new SourceControlError(
+        "WORKTREE_INVALID",
+        "A repository's own checkout is no worktree to remove",
+        { path },
+      );
+    }
+    // Read from the threads plugin now, not from the index followed so far.
+    const users = (await worktreeUsers()).get(wanted) ?? [];
+    if (users.length > 0) {
+      throw new SourceControlError(
+        "WORKTREE_IN_USE",
+        `Threads still work in ${path}: ${users.join(", ")}`,
+        { path, threadIds: users },
+      );
+    }
+    await removeWorktree(git, known.path, options);
+    // A locked worktree survives a prune: still listed, it was not removed.
+    for (const entry of await listWorktrees(git)) {
+      if ((await realPath(entry.path)) === wanted) {
+        throw new SourceControlError(
+          "GIT_FAILED",
+          `git still lists ${path} as a worktree (is it locked?)`,
+          { path },
+        );
+      }
+    }
+    if (options.deleteBranch === true && known.branch !== null) {
+      await git(["branch", "-D", "--", known.branch], { ok: [0, 1] });
+    }
+    await refresh(repo);
+  }
+
+  const handoffs = new Map<string, Promise<unknown>>();
+  function handoffLocked<T>(threadId: string, task: () => Promise<T>): Promise<T> {
+    const result = (handoffs.get(threadId) ?? Promise.resolve()).then(task, task);
+    const settled = result.catch(() => undefined);
+    handoffs.set(threadId, settled);
+    void settled.then(() => {
+      if (handoffs.get(threadId) === settled) handoffs.delete(threadId);
+    });
+    return result;
+  }
+
+  async function handoffNow(
+    threadId: string,
+    options: Parameters<SourceControl["handoff"]>[1] = {},
+  ): Promise<CreatedWorktree> {
+    {
+      const { thread } = (await context.commands.execute("threads.get", { threadId }).catch(() => {
+        throw new SourceControlError("THREAD_NOT_FOUND", `No thread ${threadId} on this node`, {
+          threadId,
+        });
+      })) as {
+        thread: { projectId: string; worktreePath?: string; archivedAt?: string };
+      };
+      if (thread.worktreePath !== undefined) {
+        throw new SourceControlError(
+          "ALREADY_IN_WORKTREE",
+          `Thread '${threadId}' is already attached to worktree '${thread.worktreePath}'.`,
+          { threadId, worktreePath: thread.worktreePath },
+        );
+      }
+      if (thread.archivedAt !== undefined) {
+        throw new SourceControlError(
+          "THREAD_ARCHIVED",
+          "The thread is archived: unarchive it to continue",
+          {
+            threadId,
+          },
+        );
+      }
+      const repo = await repoOf(thread.projectId);
+      const status = await refresh(repo);
+      if (!status.isRepo) {
+        throw new SourceControlError(
+          "NOT_A_REPOSITORY",
+          `Project workspace '${repo.project.path}' is not a git repository.`,
+          { projectId: thread.projectId },
+        );
+      }
+      const baseRef = options.baseRef ?? status.branch;
+      if (baseRef === null) {
+        throw new SourceControlError(
+          "BRANCH_NOT_FOUND",
+          "Could not determine the current branch of the project workspace (detached HEAD?). Pass baseRef explicitly.",
+          { projectId: thread.projectId },
+        );
+      }
+      // Made and attached under the project's lock, so no removal lands in between.
+      return exclusive(thread.projectId, () => attach(thread.projectId, baseRef));
+    }
+
+    async function attach(projectId: string, baseRef: string): Promise<CreatedWorktree> {
+      const repo = await repoOf(projectId);
+      const created = await createWorktreeNow(projectId, {
+        baseRef,
+        ...(options.branch === undefined ? {} : { branch: options.branch }),
+        ...(options.startFromOrigin === undefined
+          ? {}
+          : { startFromOrigin: options.startFromOrigin }),
+      });
+      try {
+        await context.commands.execute("threads.update", {
+          threadId,
+          worktreePath: created.path,
+        });
+      } catch (error) {
+        // Not moved after all: the half-made worktree and its branch go again (T3's
+        // rollback); a failing clean-up never hides why the move failed.
+        await gitOf(repo)
+          .then(async ({ git }) => {
+            await removeWorktree(git, created.path, { force: true });
+            await git(["branch", "-D", "--", created.branch], { ok: [0, 1] });
+          })
+          .catch((cleanup: unknown) =>
+            context.log.warn("a handoff's worktree could not be removed again", {
+              threadId,
+              error: String(cleanup),
+            }),
+          );
+        throw error;
+      }
+      return created;
+    }
+  }
 
   /** Which forge a host is: a configured one, a GitHub host of `githubHosts`, else by its name. */
   function kindOfHost(host: string): ForgeKind | undefined {
@@ -1238,6 +1556,59 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return undefined;
   }
 
+  /** The repository a command acts on: the thread's (its worktree's) when named, else the project's. */
+  async function repoFor(projectId: string, threadId: string | undefined): Promise<Repo> {
+    if (threadId === undefined) return repoOf(projectId);
+    await repoOf(projectId);
+    return (await repoOfThread(threadId, projectId)) ?? repoOf(projectId);
+  }
+
+  // A managed worktree that went missing is made again from its branch before the
+  // agent starts, ahead of the checkpoint of the turn's start (T3's turn start).
+  context.subscriptions.add(
+    context.hooks.before<TurnHookInput>(
+      ThreadHooks.turnStart,
+      async (input) => {
+        const worktree = threadDirs.get(input.threadId)?.worktreePath;
+        if (worktree === undefined || worktree !== input.cwd) return input;
+        const missing = await Fs.stat(worktree).then(
+          () => false,
+          () => true,
+        );
+        // The stored path is a real path (D242): the root is compared as one too, so a
+        // linked home or worktrees directory still counts as this node's.
+        const root = await realPath(worktreesRoot(config().worktreesDirectory, hostPaths.home));
+        if (!missing || !isManagedWorktree(root, worktree)) return input;
+        try {
+          const repo = await repoOf(input.projectId);
+          const { git } = await gitOf(repo);
+          // Its branch as git still lists the gone worktree; the recorded one went to
+          // null once the folder could not be read.
+          const branch =
+            (await listWorktrees(git)).find(
+              (entry) => entry.path === worktree || Path.resolve(entry.path) === worktree,
+            )?.branch ?? threads.get(input.threadId)?.branch;
+          if (branch == null) throw new Error("its branch is unknown");
+          context.log.info("recreating a thread's missing worktree", {
+            threadId: input.threadId,
+            worktreePath: worktree,
+            branch,
+          });
+          await recreateWorktree(git, worktree, branch);
+        } catch (error) {
+          // The turn fails saying why, instead of starting nowhere.
+          throw new SourceControlError(
+            "WORKTREE_MISSING",
+            `The thread's worktree ${worktree} is gone and could not be made again: ${(error as Error).message}`,
+            { threadId: input.threadId, worktreePath: worktree },
+          );
+        }
+        return input;
+      },
+      { order: -10 },
+    ),
+  );
+
   // --- Commands ---------------------------------------------------------------------------
 
   const Target = z
@@ -1286,6 +1657,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         checkpoints: (await turns.latest()).filter(
           (checkpoint) => projectId === undefined || ids.has(checkpoint.threadId),
         ),
+        worktrees: await Promise.all(
+          [...worktreeRepos.values()]
+            .filter((repo) => projectId === undefined || repo.project.id === projectId)
+            .map(async (repo) => ({
+              ...(await listedStatus(repo, reread === true)),
+              worktreePath: repo.worktree!,
+            })),
+        ),
       };
     },
   });
@@ -1293,7 +1672,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   context.commands.register({
     name: "git.thread.status",
     description:
-      "A thread's branch, whether it is checked out, its pull request and its project's git status",
+      "A thread's branch, whether it is checked out, its pull request and the git status of where it works (its worktree, else its project)",
     input: z.object({ threadId: z.string().min(1), refresh: z.boolean().optional() }),
     output: z.object({
       thread: ThreadBranch.nullable(),
@@ -1304,13 +1683,16 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     permissions: ["git.read"],
     handler: async ({ threadId, refresh: reread }) => {
       const projectId = await threadProject(threadId);
-      const status = await service.status(projectId, { refresh: reread === true });
+      const project = await service.status(projectId, { refresh: reread === true });
+      const repo = await repoFor(projectId, threadId);
+      const status = repo.worktree === undefined ? project : await statusOf(repo);
       const thread = (await service.threadBranch(threadId)) ?? null;
       const branch = thread?.branch ?? null;
       return {
         thread,
         checkedOut: branch !== null && branch === status.branch,
-        pullRequest: branch === null ? null : (status.pullRequests[branch] ?? null),
+        // Pull requests are looked up by the project, for every thread's branch.
+        pullRequest: branch === null ? null : (project.pullRequests[branch] ?? null),
         status,
       };
     },
@@ -1358,6 +1740,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               : { ignoreWhitespace: input.ignoreWhitespace }),
           })
         : service.diff(await projectOf(input), {
+            ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
             ...(input.scope === undefined ? {} : { scope: input.scope }),
             ...(input.base === undefined ? {} : { base: input.base }),
             ...(input.ignoreWhitespace === undefined
@@ -1383,7 +1766,12 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     input: Target,
     output: z.object({ branches: z.array(Branch) }),
     permissions: ["git.read"],
-    handler: async (input) => ({ branches: await service.branches(await projectOf(input)) }),
+    handler: async (input) => ({
+      branches: await service.branches(
+        await projectOf(input),
+        input.threadId === undefined ? {} : { threadId: input.threadId },
+      ),
+    }),
   });
 
   context.commands.register({
@@ -1586,6 +1974,78 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     output: z.object({ checked: z.number().int(), woken: z.number().int() }),
     permissions: ["git.write"],
     handler: async ({ threadId }) => watcher.sweep(threadId),
+  });
+
+  const WorktreeOptions = {
+    branch: z.string().min(1).optional().meta({
+      description: "The new branch of the worktree (a temporary jhin/<hex> name when absent)",
+    }),
+    startFromOrigin: z.boolean().optional().meta({
+      description:
+        "Fetch the base from origin and start from origin/<baseRef> when it exists there",
+    }),
+  };
+
+  context.commands.register({
+    name: "git.worktree.create",
+    title: "Create a worktree",
+    description:
+      "Makes a new git worktree of a project's repository, on a new branch from `baseRef`, under the node's worktrees directory",
+    input: z.object({
+      projectId: z.string().min(1),
+      baseRef: z.string().min(1),
+      ...WorktreeOptions,
+    }),
+    output: CreatedWorktree,
+    permissions: ["git.write"],
+    handler: ({ projectId, ...options }) => service.createWorktree(projectId, options),
+  });
+
+  context.commands.register({
+    name: "git.worktree.remove",
+    title: "Remove a worktree",
+    description:
+      "Removes a worktree of a project's repository that no thread works in (`force`: with its changes; `deleteBranch`: its branch too); one listed but gone from disk is pruned",
+    input: z.object({
+      projectId: z.string().min(1),
+      path: z.string().min(1),
+      force: z.boolean().optional(),
+      deleteBranch: z.boolean().optional().meta({ description: "Delete its branch too" }),
+    }),
+    output: z.object({ removed: z.boolean() }),
+    permissions: ["git.write"],
+    handler: async ({ projectId, path, force, deleteBranch }) => {
+      await service.removeWorktree(projectId, path, {
+        ...(force === undefined ? {} : { force }),
+        ...(deleteBranch === undefined ? {} : { deleteBranch }),
+      });
+      return { removed: true };
+    },
+  });
+
+  context.commands.register({
+    name: "git.worktree.list",
+    description:
+      "The worktrees of a project's repository with their branches, whether this node made them and the threads working in each",
+    input: z.object({ projectId: z.string().min(1) }),
+    output: z.object({ worktrees: z.array(Worktree) }),
+    permissions: ["git.read"],
+    handler: async ({ projectId }) => ({ worktrees: await service.worktrees(projectId) }),
+  });
+
+  context.commands.register({
+    name: "git.worktree.handoff",
+    title: "Hand off thread to a git worktree",
+    description:
+      "Moves a thread into a new git worktree: creates the worktree branch (optionally from origin) from `baseRef` (the project's checked-out branch by default) and points the thread at it. A turn running now finishes where it started; the next one runs in the worktree. Fails if the thread is already attached to a worktree. The worktree is not removed automatically when the thread is deleted.",
+    input: z.object({
+      threadId: z.string().min(1),
+      baseRef: z.string().min(1).optional(),
+      ...WorktreeOptions,
+    }),
+    output: CreatedWorktree,
+    permissions: ["git.write", "threads.write"],
+    handler: ({ threadId, ...options }) => service.handoff(threadId, options),
   });
 
   context.commands.register({

@@ -341,6 +341,22 @@ const ModelOptionSelectionSchema = z.object({
   value: z.union([z.string().max(100), z.boolean()]),
 });
 
+/** T3's workspace strategy of a new thread (ThreadLaunchService, D252). */
+const Workspace = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("root"), branch: z.string().min(1).optional() }),
+  z.object({
+    type: z.literal("worktree"),
+    baseRef: z.string().min(1),
+    branch: z.string().min(1).optional(),
+    startFromOrigin: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal("existing_worktree"),
+    worktreePath: z.string().min(1),
+    branch: z.string().min(1).optional(),
+  }),
+]);
+
 const AgentSettings = {
   agentId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
@@ -1840,18 +1856,24 @@ export default definePlugin({
           description:
             "The thread's own working directory (a git worktree of the project); its turns run there",
         }),
+        workspace: Workspace.optional().meta({
+          description:
+            "Where the thread works (T3's workspace strategy): the project's checkout (root), a new worktree made from baseRef, or an existing worktree",
+        }),
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: async ({ projectId, title, threadId, worktreePath, ...rest }) => {
-        const settings =
-          worktreePath === undefined
-            ? rest
-            : { ...rest, worktreePath: await worktreeDirectory(worktreePath) };
+      handler: async ({ projectId, title, threadId, worktreePath, workspace, ...rest }) => {
+        if (worktreePath !== undefined && workspace !== undefined && workspace.type !== "root") {
+          throw new ThreadsError(
+            "WORKSPACE_INVALID",
+            "Name either a worktreePath or a workspace, not both",
+          );
+        }
         await getProject(projectId);
-        if (settings.parentThreadId !== undefined) {
+        if (rest.parentThreadId !== undefined) {
           // A child shares its parent's project (docs/plans/orchestration.md, D363).
-          const parent = await getThread(settings.parentThreadId);
+          const parent = await getThread(rest.parentThreadId);
           if (parent.projectId !== projectId) {
             throw new ThreadsError(
               "PARENT_PROJECT_MISMATCH",
@@ -1860,11 +1882,38 @@ export default definePlugin({
             );
           }
         }
+        /**
+         * Inside the creation's turn for its id: a thread created again under its id
+         * (D207) is returned as it is, with no second worktree; a worktree made for a
+         * thread that then fails to be created goes again.
+         */
+        const make = async (id: string) => {
+          if ((await kv.get(NAMESPACE, `thread/${id}`)) !== undefined) {
+            return createThread(id, projectId, title, rest);
+          }
+          let made: string | undefined;
+          try {
+            if (workspace?.type === "worktree") made = await newWorktree(projectId, workspace);
+            const directory =
+              made ??
+              (workspace?.type === "existing_worktree"
+                ? await existingWorktree(projectId, workspace)
+                : worktreePath);
+            const settings =
+              directory === undefined
+                ? rest
+                : { ...rest, worktreePath: await worktreeDirectory(directory) };
+            return await createThread(id, projectId, title, settings);
+          } catch (error) {
+            if (made !== undefined) await dropWorktree(projectId, made);
+            throw error;
+          }
+        };
         // Creations of one id run one at a time, so the second finds the first's thread.
         return creatingIn(projectId, () =>
           threadId === undefined
-            ? createThread(Crypto.randomUUID(), projectId, title, settings)
-            : queued(threadId, () => createThread(threadId, projectId, title, settings)),
+            ? make(Crypto.randomUUID())
+            : queued(threadId, () => make(threadId)),
         );
       },
     });
@@ -1886,6 +1935,95 @@ export default definePlugin({
         if (underWay.size === 0 && creations.get(projectId) === underWay) {
           creations.delete(projectId);
         }
+      }
+    }
+
+    /**
+     * An existing worktree a new thread works in: one the project's repository
+     * lists, on `branch` when it is named (D252). A node without source control
+     * takes the folder as given.
+     */
+    async function existingWorktree(
+      projectId: string,
+      workspace: { worktreePath: string; branch?: string | undefined },
+    ): Promise<string> {
+      const path = await worktreeDirectory(workspace.worktreePath);
+      let listed: { path: string; branch: string | null }[];
+      try {
+        listed = (
+          (await context.commands.execute("git.worktree.list", { projectId })) as {
+            worktrees: { path: string; branch: string | null }[];
+          }
+        ).worktrees;
+      } catch (error) {
+        if ((error as { code?: unknown }).code === "COMMAND_NOT_FOUND") return path;
+        throw error;
+      }
+      const real = async (value: string) =>
+        Fs.promises.realpath(value).catch(() => Path.resolve(value));
+      let entry: { path: string; branch: string | null } | undefined;
+      for (const item of listed) if ((await real(item.path)) === path) entry = item;
+      if (entry === undefined) {
+        throw new ThreadsError(
+          "WORKSPACE_INVALID",
+          `${workspace.worktreePath} is not a worktree of this project's repository`,
+          { projectId, path: workspace.worktreePath },
+        );
+      }
+      if (workspace.branch !== undefined && entry.branch !== workspace.branch) {
+        throw new ThreadsError(
+          "WORKSPACE_INVALID",
+          `The worktree ${workspace.worktreePath} is on ${entry.branch ?? "a detached HEAD"}, not ${workspace.branch}`,
+          { projectId, path: workspace.worktreePath, branch: workspace.branch },
+        );
+      }
+      return path;
+    }
+
+    /** Removes a worktree made for a thread that was not created after all, with its branch. */
+    async function dropWorktree(projectId: string, path: string) {
+      await context.commands
+        .execute("git.worktree.remove", { projectId, path, force: true, deleteBranch: true })
+        .catch((error: unknown) =>
+          context.log.warn("a new thread's worktree could not be removed again", {
+            projectId,
+            path,
+            error: String(error),
+          }),
+        );
+    }
+
+    /**
+     * Makes the worktree of a new thread through the source control plugin's
+     * `git.worktree.create` (D252); a node without one has no worktrees.
+     */
+    async function newWorktree(
+      projectId: string,
+      workspace: {
+        baseRef: string;
+        branch?: string | undefined;
+        startFromOrigin?: boolean | undefined;
+      },
+    ): Promise<string> {
+      try {
+        const created = (await context.commands.execute("git.worktree.create", {
+          projectId,
+          baseRef: workspace.baseRef,
+          ...(workspace.branch === undefined ? {} : { branch: workspace.branch }),
+          ...(workspace.startFromOrigin === undefined
+            ? {}
+            : { startFromOrigin: workspace.startFromOrigin }),
+        })) as { path: string };
+        return created.path;
+      } catch (error) {
+        if ((error as { code?: unknown }).code === "COMMAND_NOT_FOUND") {
+          throw new ThreadsError(
+            "WORKSPACE_UNSUPPORTED",
+            "This node makes no worktrees: it has no source control plugin",
+            { projectId },
+          );
+        }
+        throw error;
       }
     }
 

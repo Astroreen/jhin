@@ -14,6 +14,7 @@ import {
   type ThreadBranch,
   type ThreadPullRequest,
   type TurnCheckpoint,
+  type WorktreeStatus,
 } from "@jhin/source-control-api";
 
 /** What a client knows of one node's repositories and threads' branches. */
@@ -30,6 +31,8 @@ export interface SourceControlView {
   readonly links: ReadonlyMap<string, readonly ThreadPullRequest[]>;
   /** Each thread's latest checkpoint (D245); none from a node before 1.1. */
   readonly checkpoints: ReadonlyMap<string, TurnCheckpoint>;
+  /** The worktrees threads work in, by path (D251); none from a node before 1.1. */
+  readonly worktrees: ReadonlyMap<string, WorktreeStatus>;
 }
 
 const LOADING: SourceControlView = {
@@ -38,6 +41,7 @@ const LOADING: SourceControlView = {
   threads: new Map(),
   links: new Map(),
   checkpoints: new Map(),
+  worktrees: new Map(),
 };
 
 const withLinks = (
@@ -100,6 +104,16 @@ export function applySourceControlEvent(
       if (typeof threadId !== "string" || typeof key !== "string") return view;
       return withLinks(view, threadId, (list) => list.filter((item) => item.key !== key));
     }
+    case SourceControlEvents.worktreeChanged: {
+      const status = payload as unknown as WorktreeStatus;
+      if (typeof status?.worktreePath !== "string") return view;
+      return { ...view, worktrees: new Map(view.worktrees).set(status.worktreePath, status) };
+    }
+    case SourceControlEvents.worktreeRemoved: {
+      const worktrees = new Map(view.worktrees);
+      worktrees.delete(String(payload?.["worktreePath"]));
+      return { ...view, worktrees };
+    }
     case SourceControlEvents.checkpointChanged: {
       const checkpoint = payload as unknown as TurnCheckpoint;
       if (typeof checkpoint?.threadId !== "string") return view;
@@ -125,6 +139,7 @@ function viewOf(snapshot: StatusSnapshot): SourceControlView {
     checkpoints: new Map(
       (snapshot.checkpoints ?? []).map((checkpoint) => [checkpoint.threadId, checkpoint]),
     ),
+    worktrees: new Map((snapshot.worktrees ?? []).map((status) => [status.worktreePath, status])),
   };
 }
 

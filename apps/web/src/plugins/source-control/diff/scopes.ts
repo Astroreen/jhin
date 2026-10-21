@@ -54,7 +54,10 @@ export function gitScopeProvider(threads: ThreadsCatalog): DiffScopeProvider {
     options: () => GIT_OPTIONS,
     load: async (context, value, input) => {
       const diff = await threads.call<Diff>(context.target, "git.diff", {
-        projectId: context.projectId,
+        // A thread's diff is read where it works: its worktree when it has one (D251).
+        ...(context.threadId === undefined
+          ? { projectId: context.projectId }
+          : { threadId: context.threadId }),
         scope: value === "uncommitted" ? "uncommitted" : "branch",
         ignoreWhitespace: input.ignoreWhitespace,
         ...(input.base === undefined ? {} : { base: input.base }),
