@@ -46,7 +46,15 @@ export function createTabFeeds(connections: Connections): {
     // The stream keeps the latest list only: a new subscriber gets it at once.
     feed.stop = client.subscribe(
       previewTabsStream(feed.threadId),
-      { after: 0, onError: () => set(feed, NONE) },
+      {
+        after: 0,
+        // A refused subscription is disposed: the next listener or connection change asks again.
+        onError: () => {
+          feed.client = undefined;
+          feed.stop = undefined;
+          set(feed, NONE);
+        },
+      },
       (event) => {
         if (event.type !== PreviewEvents.tabs) return;
         const tabs = (event.payload as { tabs?: PreviewTab[] } | null)?.tabs;

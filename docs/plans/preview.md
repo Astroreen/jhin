@@ -217,7 +217,7 @@ CLI, and the web client through RPC.
   chat header's `jhin.preview.toggle` (lucide `PanelRight`, "Toggle right
   panel") and the commands `preview.toggle` (⌘/Ctrl+Shift+J), `preview.refresh`
   (⌘/Ctrl+R) and `preview.focus.url` (⌘/Ctrl+L), the last two only while the
-  panel has focus (`previewFocus`). The panel has T3's tab strip (the page's
+  panel has focus (the context key `previewFocus`, D61). The panel has T3's tab strip (the page's
   title, else its host, else "Browser"; "Close {title}"; "Add panel surface"),
   its chrome row (Back, Forward, Refresh, "Search or enter URL" with T3's
   address bar rules and DuckDuckGo for anything else, "Open in system

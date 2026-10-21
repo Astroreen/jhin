@@ -13,6 +13,8 @@ const PAGES: Record<string, string> = {
     <button onclick="document.title='Agent clicked'">Agent button</button>
     <a href="/second">Second</a>`,
   "/second": `<!doctype html><title>Second page</title><h1>Second</h1>`,
+  "/dialog": `<!doctype html><title>Dialog page</title><style>body{margin:0}</style>
+    <button style="width:100%;height:100vh" onclick="document.title = confirm('Leave this page?') ? 'Confirmed' : 'Kept'">Ask</button>`,
 };
 
 let node: RunningNode;
@@ -76,6 +78,24 @@ test("D403: the agent's tab shows in the right panel, and the user takes it over
   await expect(panel.locator("[data-preview-canvas]")).toBeVisible();
   await shot(page, info, "preview-agent");
 
+  // While another viewer holds the tab, this one only watches.
+  await node.client().call("preview.tab.control", {
+    threadId,
+    tabId: opened.tabId,
+    viewer: "another-viewer",
+    take: true,
+  });
+  await expect(panel.getByRole("status")).toHaveText("Another viewer has control");
+  await expect(panel.getByRole("button", { name: "Take control" })).toBeDisabled();
+  await shot(page, info, "preview-another-viewer");
+  await node.client().call("preview.tab.control", {
+    threadId,
+    tabId: opened.tabId,
+    viewer: "another-viewer",
+    take: false,
+  });
+  await expect(panel.getByRole("status")).toHaveText("Agent has control");
+
   // The user takes control: the agent may no longer act.
   await panel.getByRole("button", { name: "Take control" }).click();
   await expect(panel.getByRole("status")).toHaveText("You have control");
@@ -134,8 +154,23 @@ test("D403: the user opens a page from the address bar and sizes it like a devic
   await toolbar.getByRole("button", { name: "Close device toolbar" }).click();
   await expect(toolbar).toBeHidden();
 
+  // A page's dialog shows over it; the user answers it.
+  await address.fill(`${origin}/dialog`);
+  await address.press("Enter");
+  await expect(panel.getByRole("tab", { name: "Dialog page" })).toBeVisible();
+  const canvas = panel.locator("[data-preview-canvas]");
+  await expect(canvas).toHaveAttribute("data-painted", "true");
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const dialog = panel.getByRole("alertdialog");
+  await expect(dialog).toContainText("Leave this page?");
+  await shot(page, info, "preview-dialog");
+  await dialog.getByRole("button", { name: "Accept" }).click();
+  await expect(panel.getByRole("tab", { name: "Confirmed" })).toBeVisible();
+  await expect(dialog).toBeHidden();
+
   // The tab closes from its strip; the header toggle hides the panel.
-  await panel.getByRole("button", { name: "Close Second page" }).click();
+  await panel.getByRole("button", { name: "Close Confirmed" }).click();
   // Back to a new tab, which offers the page just visited.
   await expect(panel.getByRole("region", { name: "Recently used" })).toContainText("Second page");
   await page.getByRole("button", { name: "Toggle right panel" }).click();

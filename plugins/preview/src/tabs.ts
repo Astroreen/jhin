@@ -289,9 +289,12 @@ export function createTabs(options: TabsOptions) {
   };
   /** A page may retitle itself without navigating: actions look again when they end. */
   const refreshTitle = async (tab: Tab) => {
-    if (tab.closing || tab.loading || tab.navStatus.state !== "success") return;
+    const before = tab.navStatus;
+    if (tab.closing || tab.loading || before.state !== "success") return;
     const title = (await tab.page.title().catch(() => "")).slice(0, 512);
-    if (title !== tab.navStatus.title) await reportStatus(tab, { ...tab.navStatus, title });
+    // A navigation that began meanwhile owns the status now.
+    if (tab.navStatus !== before || tab.loading || tab.closing) return;
+    if (title !== before.title) await reportStatus(tab, { ...before, title });
   };
   const reportLoaded = async (tab: Tab) => {
     const url = tab.page.url();
@@ -1469,6 +1472,16 @@ export function createTabs(options: TabsOptions) {
             continue;
           }
           await tab.control.human(input.viewer, () => dispatch(tab, event));
+        }
+        // Pointer moves and wheels change no title: only clicks, keys and text are looked after.
+        if (
+          input.events.some(
+            (event) =>
+              event.type === "key" ||
+              event.type === "text" ||
+              (event.type === "mouse" && event.action === "up"),
+          )
+        ) {
           void refreshTitle(tab).catch(() => undefined);
         }
       });

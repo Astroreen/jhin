@@ -89,16 +89,27 @@ function readRecentUrls(): RecentUrl[] {
 
 function recordRecentUrl(url: string, title: string): void {
   if (!/^https?:/.test(url)) return;
-  const kept = readRecentUrls().filter((entry) => entry.url !== url);
+  const known = readRecentUrls();
+  // A visit without a title (opened, not loaded yet) keeps the title known before.
+  title ||= known.find((entry) => entry.url === url)?.title ?? "";
+  const kept = known.filter((entry) => entry.url !== url);
   const next = [{ url, title, visitedAt: Date.now() }, ...kept].slice(0, RECENT_URL_LIMIT);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    // A full or blocked storage only costs the history.
+  }
 }
 
 function forgetRecentUrl(url: string): void {
-  localStorage.setItem(
-    HISTORY_KEY,
-    JSON.stringify(readRecentUrls().filter((entry) => entry.url !== url)),
-  );
+  try {
+    localStorage.setItem(
+      HISTORY_KEY,
+      JSON.stringify(readRecentUrls().filter((entry) => entry.url !== url)),
+    );
+  } catch {
+    // A full or blocked storage only costs the history.
+  }
 }
 
 // --- Labels ---------------------------------------------------------------------------
@@ -787,7 +798,8 @@ function TabView(props: {
   const { viewer } = services;
   const ids = { threadId, tabId: tab.tabId };
   const youControl = tab.controller === viewer;
-  const [promptText, setPromptText] = useState("");
+  // Unset until the user edits the prompt: its default answers until then.
+  const [promptText, setPromptText] = useState<string | undefined>(undefined);
   const [deviceToolbar, setDeviceToolbar] = useState(tab.viewport.mode !== "fill");
   const [painted, setPainted] = useState(false);
   const fail = (title: string) => (error: unknown) => services.onError(title, error);
@@ -1011,7 +1023,7 @@ function TabView(props: {
                           viewer,
                           accept: true,
                           ...(tab.dialog?.type === "prompt"
-                            ? { promptText: promptText || tab.dialog.defaultValue }
+                            ? { promptText: promptText ?? tab.dialog.defaultValue }
                             : {}),
                         },
                         "Unable to change the browser tab",

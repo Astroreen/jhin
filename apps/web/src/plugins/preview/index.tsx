@@ -99,7 +99,9 @@ export const previewPanelPlugin = builtin(
       const viewer = `viewer-${crypto.randomUUID()}`;
 
       // The tab shown per thread, and its listeners.
-      const active = new Map<string, string>();
+      // Kept in the plugin's state, so a reload of the plugin keeps the tab shown per thread.
+      const active = context.state.get<Map<string, string>>("active") ?? new Map<string, string>();
+      context.state.set("active", active);
       const activeListeners = new Set<() => void>();
       const activeStore = {
         subscribe(listener: () => void): Disposable {
@@ -272,7 +274,10 @@ export const previewPanelPlugin = builtin(
         return null;
       }
       /** By thread: the tabs already known, so only new ones an agent shows bring the panel up. */
-      const revealed = new Map<string, Set<string>>();
+      const revealed =
+        context.state.get<Map<string, Set<string>>>("revealed") ?? new Map<string, Set<string>>();
+      // Survives a reload, so a tab already shown does not bring the panel up again.
+      context.state.set("revealed", revealed);
       const reveal = (key: string, threadId: string, tabs: readonly PreviewTab[]) => {
         const seen = revealed.get(key);
         if (seen === undefined) return;
