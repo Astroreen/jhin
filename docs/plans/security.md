@@ -299,6 +299,10 @@ and QR code.
   the node's own host) and has no token, so it can call nothing; a `Host`
   allowlist (`jhin.http.allowedHosts`: loopback names, the bound and
   advertised addresses) would refuse it outright.
+- The session cookie's `Secure` flag (D421) follows `x-forwarded-proto`
+  from any client; a client can only change its own cookie this way. Read
+  only from a trusted proxy once `http.server` tells the protocol it trusts,
+  next to the `Host` allowlist.
 - A secret whose real value starts with the marker and `#`
   (`••••••#note`) reads as an addressed marker and is refused on save
   (D417); such a value has to be changed to be saved.
