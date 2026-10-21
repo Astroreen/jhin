@@ -85,6 +85,8 @@ export function fakeGh(): {
   view(number: number, value: unknown): void;
   /** What `gh pr list --search` prints: the repository's pull requests. */
   list(value: unknown[]): void;
+  /** The checks `gh pr checks --required` names (it exits 8 while some are pending). */
+  required(names: string[]): void;
   /** Makes `gh pr create` print `stderr` and exit with `code`. */
   failCreate(code: number, stderr: string): void;
   /** The body file `gh pr create` was given for `head`. */
@@ -112,6 +114,11 @@ if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
   exit 0
 fi
 if [ "$1" = "api" ] && [ "$4" = "user" ]; then echo '{"login":"jhin-bot"}'; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "checks" ]; then
+  if [ -f "${dir}/required.json" ]; then cat "${dir}/required.json"; exit 8; fi
+  echo "no required checks reported on the 'feature' branch" >&2
+  exit 1
+fi
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   number="$(basename "$3")"
   for arg in "$@"; do last="$arg"; done
@@ -139,6 +146,11 @@ exit 1
   });
   return {
     dir,
+    required: (names) =>
+      Fs.writeFileSync(
+        Path.join(dir, "required.json"),
+        JSON.stringify(names.map((name) => ({ name }))),
+      ),
     pullRequest: (branch, value) =>
       Fs.writeFileSync(Path.join(dir, `pr-${branch}.json`), JSON.stringify(value)),
     fail(code, stderr) {

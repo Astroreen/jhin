@@ -743,6 +743,19 @@ with screenshots).
   `!terminalFocus`. The toolbar's controls offer themselves to the shortcuts
   while they are on screen (`DraftWorkspaces.offer`, a disposable).
 
+- **D908. Required checks are the gate of a watch's "passed" wake**, as T3's
+  `evaluatePullRequestWatch` has it: GitHub's required checks come from `gh
+  pr checks <url> --required --json name` (T3 asks GraphQL's `isRequired`;
+  `gh` exits 8 while some are pending and 1 when the branch requires none,
+  read as none), marking each watched check `required`. When some are
+  required, only they must finish without failing for "All N required
+  checks passed"; an advisory check still running no longer holds the wake
+  back. A required check that appears already finished after that wake
+  wakes the thread again (`PullRequestWatch.passedChecks`, additive with a
+  default), while without required checks a new passed check (a bot's) wakes
+  nobody. Failed checks wake as before, required or not. Other forges say
+  nothing of required checks: every check is the gate, as before.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1107,8 +1120,8 @@ with the node's token, and without one).
   branch picker belongs to), the dialog on forges other than GitHub (their
   reference forms and terminology), and a "Checkout pull request" offered
   while the node cannot write (T3's `canWriteSourceControl`).
-- Watching (D274): review thread comments on lines, required checks as the
-  gate, read fingerprints, rate limit pauses, a notification for a wake and
+- Watching (D274): review thread comments on lines, required checks of
+  forges other than GitHub (D908), read fingerprints, rate limit pauses, a notification for a wake and
   the sidebar's "Waiting" for a watched thread (W14 may take it).
 - T3's right panel of a thread's pull requests, its chat header rows, native
   stacks of a forge (and their "Dismiss from thread") and the instructions

@@ -9,6 +9,7 @@ import {
   startWatch,
   watchMessage,
 } from "../src/index.ts";
+import { githubForge } from "../src/github.ts";
 import { fakeGh, ghPullRequest, git, node, repository } from "./support.ts";
 
 const T0 = "2026-10-20T10:00:00Z";
@@ -49,7 +50,7 @@ describe("evaluating a watch", () => {
       watch,
       read({ headSha: "1234567fff", checks: [{ name: "test", status: "success" }] }),
     );
-    expect(fixed.changes).toEqual([{ kind: "checks-passed", count: 1 }]);
+    expect(fixed.changes).toEqual([{ kind: "checks-passed", count: 1, required: false }]);
     expect(
       watchMessage({
         number: 7,
@@ -66,6 +67,84 @@ describe("evaluating a watch", () => {
         "Look into each item and act on it as your task requires. Jhin keeps watching and wakes you on the next change, so end your turn when you are done. When you hand the work back to the user, call git_pr_unwatch first.",
       ].join("\n"),
     );
+  });
+
+  it("gates on the required checks when there are some, and wakes again for a new one (D908)", () => {
+    let watch: PullRequestWatch = startWatch(T0);
+    // An advisory check still running does not hold the required ones back.
+    const passed = evaluateWatch(
+      watch,
+      read({
+        checks: [
+          { name: "test", status: "success", required: true },
+          { name: "preview", status: "pending", required: false },
+        ],
+      }),
+    );
+    expect(passed.changes).toEqual([{ kind: "checks-passed", count: 1, required: true }]);
+    watch = passed.next;
+    expect(
+      watchMessage({
+        number: 7,
+        url: "https://x/7",
+        baseBranch: "main",
+        headSha: "abcdef1234",
+        report: passed,
+      }),
+    ).toContain("- All 1 required check passed on abcdef1.");
+    // Nothing new: no wake. A required job created and finished between two reads: a wake.
+    expect(
+      evaluateWatch(watch, read({ checks: [{ name: "test", status: "success", required: true }] }))
+        .changes,
+    ).toEqual([]);
+    const grew = evaluateWatch(
+      watch,
+      read({
+        checks: [
+          { name: "test", status: "success", required: true },
+          { name: "e2e", status: "success", required: true },
+        ],
+      }),
+    );
+    expect(grew.changes).toEqual([{ kind: "checks-passed", count: 2, required: true }]);
+    // Without required checks, a new passed check (a bot's) wakes nobody.
+    const plain = evaluateWatch(
+      startWatch(T0),
+      read({ checks: [{ name: "lint", status: "success" }] }),
+    ).next;
+    expect(
+      evaluateWatch(
+        plain,
+        read({
+          checks: [
+            { name: "lint", status: "success" },
+            { name: "bot", status: "success" },
+          ],
+        }),
+      ).changes,
+    ).toEqual([]);
+  });
+
+  it("reads which checks GitHub requires, and none when the branch requires none (D908)", async () => {
+    const gh = fakeGh();
+    gh.view(
+      7,
+      ghPullRequest({
+        headRefOid: "abcdef1234",
+        statusCheckRollup: [
+          { __typename: "CheckRun", name: "test", status: "COMPLETED", conclusion: "SUCCESS" },
+          { __typename: "CheckRun", name: "lint", status: "IN_PROGRESS", conclusion: "" },
+        ],
+      }),
+    );
+    const forge = githubForge(() => "gh", repository(), new Map());
+    const url = "https://github.com/acme/demo/pull/7";
+    expect((await forge.watch!(url)).checks.map((check) => check.required)).toEqual([false, false]);
+    gh.required(["test"]);
+    expect((await forge.watch!(url)).checks.map((check) => [check.name, check.required])).toEqual([
+      ["test", true],
+      ["lint", false],
+    ]);
   });
 
   it("tells others' comments after the watch began, once, and a conflict", () => {

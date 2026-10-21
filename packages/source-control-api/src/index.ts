@@ -192,6 +192,8 @@ export const PullRequestWatch = z.object({
   headSha: z.string().nullable(),
   failedChecks: z.array(z.string()),
   passed: z.boolean(),
+  /** The checks the last "passed" wake counted: a required one new since then wakes again (D908). */
+  passedChecks: z.array(z.string()).default([]),
   /** Comments up to this time were told; those at it, by id. */
   remarksThrough: z.string(),
   remarkIds: z.array(z.string()),

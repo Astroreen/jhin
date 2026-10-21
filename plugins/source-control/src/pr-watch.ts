@@ -21,6 +21,8 @@ interface WatchedCheck {
   readonly name: string;
   readonly status: CheckStatus;
   readonly url?: string;
+  /** Required by the base branch's protection, when the forge says (D908). */
+  readonly required?: boolean;
 }
 
 /** A comment or a review on the pull request. */
@@ -51,7 +53,7 @@ export interface WatchRead {
 
 type WatchChange =
   | { readonly kind: "checks-failed"; readonly failed: readonly WatchedCheck[] }
-  | { readonly kind: "checks-passed"; readonly count: number }
+  | { readonly kind: "checks-passed"; readonly count: number; readonly required: boolean }
   | { readonly kind: "remarks"; readonly remarks: readonly Remark[] }
   | { readonly kind: "conflicting" };
 
@@ -74,6 +76,7 @@ export function startWatch(now: string): PullRequestWatch {
     headSha: null,
     failedChecks: [],
     passed: false,
+    passedChecks: [],
     remarksThrough: now,
     remarkIds: [],
     conflicting: false,
@@ -89,14 +92,26 @@ export function evaluateWatch(watch: PullRequestWatch, read: WatchRead): WatchRe
   // An empty list keeps the last state: a forge can answer with one when its check read fails.
   let failedChecks = headMoved ? [] : watch.failedChecks;
   let passed = headMoved ? false : watch.passed;
+  let passedChecks = headMoved ? [] : watch.passedChecks;
   if (read.checks.length > 0) {
     const failed = read.checks.filter(isFailed);
     const fresh = failed.filter((check) => !failedChecks.includes(check.name));
     if (fresh.length > 0) changes.push({ kind: "checks-failed", failed: fresh });
     failedChecks = failed.map((check) => check.name);
-    const passedNow = read.checks.every((check) => check.status !== "pending" && !isFailed(check));
-    if (passedNow && !passed) changes.push({ kind: "checks-passed", count: read.checks.length });
+    // T3's gate (D908): the required checks when the base branch names some, else every check.
+    const required = read.checks.filter((check) => check.required === true);
+    const gate = required.length > 0 ? required : read.checks;
+    const passedNow = gate.every((check) => check.status !== "pending" && !isFailed(check));
+    const gateNames = gate.map((check) => check.name);
+    const told = passed && passedChecks.length === 0 ? gateNames : passedChecks;
+    // A required job created and finished between two reads is never seen pending. Without
+    // required checks any check counts, and bots keep adding passed ones: no wake for those.
+    const gateGrew = required.length > 0 && gateNames.some((name) => !told.includes(name));
+    if (passedNow && (!passed || gateGrew)) {
+      changes.push({ kind: "checks-passed", count: gate.length, required: required.length > 0 });
+    }
     passed = passedNow;
+    passedChecks = passedNow ? gateNames : [];
   }
 
   const own = new Set(
@@ -140,6 +155,7 @@ export function evaluateWatch(watch: PullRequestWatch, read: WatchRead): WatchRe
       headSha: read.headSha,
       failedChecks,
       passed,
+      passedChecks,
       remarksThrough,
       remarkIds,
       conflicting,
@@ -176,7 +192,9 @@ function changeLines(change: WatchChange, baseBranch: string, commit: string): s
         ),
       ];
     case "checks-passed":
-      return [`- All ${change.count} ${change.count === 1 ? "check" : "checks"} passed${commit}.`];
+      return [
+        `- All ${change.count} ${change.required ? "required " : ""}${change.count === 1 ? "check" : "checks"} passed${commit}.`,
+      ];
     case "remarks":
       return [
         `- ${change.remarks.length} new ${change.remarks.length === 1 ? "comment" : "comments"}:`,
