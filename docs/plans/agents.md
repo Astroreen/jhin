@@ -829,6 +829,12 @@ Each workstream lists its PRs here as they merge.
   `agents/messages` and `agents/inbox` streams, the schemas of `agents.send`,
   `agents.ask` and `agents.inbox.*`). D621–D629 recorded; the server side and
   the inbox follow.
+- A2 #177: `agents.send`, `agents.ask` (side turns for earlier
+  generations), `agents.inbox.list` and `agents.inbox.answer` in
+  `jhin.agents`, across nodes through `mesh.call`; `origin` on queued
+  messages and `agent.turn.started`, and forks of generations keep
+  `generationOf` (`jhin.threads`); `agents.read` and `agents.message` for
+  agents over MCP (D621–D629).
 - A3 #104: `@jhin/missions-api` (records, the `missions` stream's events and
   fold, intent chain, Markdown) and the `jhin.missions` plugin: `missions.*`
   and `slices.*` commands, the stream guarded by `missions.read`, agents
