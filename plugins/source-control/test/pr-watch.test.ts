@@ -206,7 +206,7 @@ describe("jhin.source-control: watching a pull request", () => {
           text.includes('- 1 new comment:\n  - reviewer: "Looks off"'),
       ),
     );
-    expect(gh.calls()).toContain("api user");
+    expect(gh.calls()).toContain("api --hostname github.com user");
     expect(await sc.client.call("git.pr.unwatch", { threadId: thread.id, url })).toMatchObject({
       watching: false,
       wasWatching: true,

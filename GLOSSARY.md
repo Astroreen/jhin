@@ -167,6 +167,10 @@ Words about Jhin:
 - **Linked pull request** — a pull request recorded on a thread (by hand, by
   an agent, or created by a git action), shown on its card; linked pull
   requests whose bases are each other's heads form a **stack**.
+- **Watch** — a thread following one of its linked pull requests: when its
+  checks finish, someone else comments (a **remark**) or its branch
+  conflicts, a message wakes the thread; it stops when the pull request
+  merges or closes, or is unwatched.
 - **Thread branch** — the branch a thread works on: the one checked out in
   its project when the thread was created or one of its turns started or
   ended, or the one it was switched to. The card shows it, and whether it is

@@ -1363,6 +1363,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         target(input),
         "agent",
       );
+      // Only a forge whose pull requests a watch can read is watched (GitHub here, D274).
+      const githubHosts = config().githubHosts.map((host) => host.toLowerCase());
+      if (!githubHosts.includes(pullRequest.host)) {
+        if (!alreadyLinked) await links.unlink(input.threadId, target(input));
+        throw new SourceControlError(
+          "ACTION_UNAVAILABLE",
+          `Watching pull requests on ${pullRequest.host} is not supported on this node yet.`,
+        );
+      }
       let result: Awaited<ReturnType<typeof watcher.watch>>;
       try {
         result = await watcher.watch(input.threadId, pullRequest);
@@ -1397,6 +1406,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   });
   context.commands.register({
     name: "git.pr.watch.check",
+    title: "Check watched pull requests",
     description:
       "Reads the watched pull requests (of one thread, or all) now instead of at the next sweep, and wakes the threads that have news",
     input: z.object({ threadId: z.string().min(1).optional() }),

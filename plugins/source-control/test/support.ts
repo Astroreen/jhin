@@ -109,7 +109,7 @@ if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
   echo "https://github.com/acme/demo/pull/42"
   exit 0
 fi
-if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"jhin-bot"}'; exit 0; fi
+if [ "$1" = "api" ] && [ "$4" = "user" ]; then echo '{"login":"jhin-bot"}'; exit 0; fi
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   number="$(basename "$3")"
   if [ -f "${dir}/view-$number.json" ]; then cat "${dir}/view-$number.json"; exit 0; fi

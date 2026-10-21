@@ -176,8 +176,13 @@ export function createWatcher(deps: WatcherDeps): Watcher {
             headSha: read.headSha,
             report,
           });
-    // The news is kept before the watch moves past it, so a failure loses nothing.
-    if (message !== undefined) await enqueue(threadId, message);
+    // The news is kept before the watch moves past it, so a failure loses nothing; a watch
+    // stopped during the read tells nothing.
+    if (message !== undefined) {
+      const stored = (await deps.links.list(threadId)).find((item) => item.key === link.key);
+      if (stored?.watch?.startedAt !== watch.startedAt) return false;
+      await enqueue(threadId, message);
+    }
     if (report.exhausted) await changeWatch(threadId, link, undefined);
     else if (JSON.stringify(report.next) !== JSON.stringify(watch)) {
       await changeWatch(threadId, link, report.next);
@@ -241,6 +246,14 @@ export function createWatcher(deps: WatcherDeps): Watcher {
               deps.warn("waking a thread failed", { threadId: id, error: String(error) }),
             );
           }
+        }
+        // News kept from before (a restart, a missed turn end) goes out too.
+        for (const entry of await deps.kv.list(NAMESPACE, { prefix: "wake/" })) {
+          const id = entry.key.slice("wake/".length);
+          if (threadId !== undefined && id !== threadId) continue;
+          await flush(id).catch((error: unknown) =>
+            deps.warn("waking a thread failed", { threadId: id, error: String(error) }),
+          );
         }
         return { checked, woken };
       });

@@ -295,6 +295,10 @@ interface RawRemark {
 const text = (value: unknown) => (typeof value === "string" ? value : undefined);
 const login = (actor: RawActor | null | undefined) => text(actor?.login) ?? null;
 
+/** The host of a pull request's URL. */
+const hostOf = (url: string) =>
+  /^https?:\/\/([^/:]+)/i.exec(url)?.[1]?.toLowerCase() ?? "github.com";
+
 /** How long the node's GitHub account is taken as known: a `gh auth switch` shows within it. */
 const VIEWER_TTL_MS = 10 * 60_000;
 
@@ -302,17 +306,24 @@ const VIEWER_TTL_MS = 10 * 60_000;
 export type Viewers = Map<string, { readonly at: number; readonly login: Promise<string | null> }>;
 
 /** The node's GitHub account (`gh api user`), asked again once its answer is old. */
-function viewerOf(viewers: Viewers, ghPath: string, cwd: string): Promise<string | null> {
-  const known = viewers.get(ghPath);
+function viewerOf(
+  viewers: Viewers,
+  ghPath: string,
+  cwd: string,
+  host: string,
+): Promise<string | null> {
+  // Per host: the node may be signed in to github.com and an Enterprise host as different people.
+  const key = `${ghPath}\u0000${host}`;
+  const known = viewers.get(key);
   if (known !== undefined && Date.now() - known.at < VIEWER_TTL_MS) return known.login;
-  const asked = ghJson(ghPath, cwd, ["api", "user"]).then(
+  const asked = ghJson(ghPath, cwd, ["api", "--hostname", host, "user"]).then(
     (answer) => text((answer as RawActor | null)?.login) ?? null,
     () => null,
   );
-  viewers.set(ghPath, { at: Date.now(), login: asked });
+  viewers.set(key, { at: Date.now(), login: asked });
   // A failed answer is asked again next time.
   void asked.then((value) => {
-    if (value === null && viewers.get(ghPath)?.login === asked) viewers.delete(ghPath);
+    if (value === null && viewers.get(key)?.login === asked) viewers.delete(key);
   });
   return asked;
 }
@@ -329,7 +340,7 @@ export async function readWatch(
 ): Promise<WatchRead> {
   const [answer, viewer] = await Promise.all([
     ghJson(ghPath, cwd, ["pr", "view", url, "--json", WATCH_FIELDS]),
-    viewerOf(viewers, ghPath, cwd),
+    viewerOf(viewers, ghPath, cwd, hostOf(url)),
   ]);
   const raw = (answer ?? {}) as Record<string, unknown>;
   const state = text(raw["state"])?.toLowerCase();
