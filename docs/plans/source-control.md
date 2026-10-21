@@ -747,8 +747,9 @@ with screenshots).
   `evaluatePullRequestWatch` has it: GitHub's required checks come from `gh
   pr checks <url> --required --json name` (T3 asks GraphQL's `isRequired`),
   read from its JSON whatever it exits with; no output and its "no required
-  checks" message mean the branch requires none, and any other failure
-  leaves the checks unmarked.
+  checks" message mean the branch requires none; any other failure leaves the
+  checks unmarked and the watch's "passed" state as it was (`requiredKnown`),
+  so a passing gate does not flip to every check and back into a second wake.
   When some are required, only they must finish without failing for "All N
   required checks passed"; an advisory check still running no longer holds
   the wake back. A required check that appears already finished after that

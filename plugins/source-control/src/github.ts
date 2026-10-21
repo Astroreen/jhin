@@ -525,6 +525,7 @@ async function readWatch(
     state: state === "merged" ? "merged" : state === "closed" ? "closed" : "open",
     headSha: text(raw["headRefOid"]) ?? null,
     baseBranch: text(raw["baseRefName"]) ?? "",
+    requiredKnown: required !== undefined,
     checks: rollup.map((check) => {
       const link = text(check.detailsUrl) ?? text(check.targetUrl);
       return {

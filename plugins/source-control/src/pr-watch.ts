@@ -44,6 +44,11 @@ export interface WatchRead {
   readonly headSha: string | null;
   readonly baseBranch: string;
   readonly checks: readonly WatchedCheck[];
+  /**
+   * False when the forge could not say this time which checks are required (D908): the
+   * "passed" state is left as it was rather than judged against a different gate.
+   */
+  readonly requiredKnown?: boolean;
   readonly mergeability: "mergeable" | "conflicting" | "unknown";
   readonly author: string | null;
   /** Who the node's forge account is: its own remarks never wake the thread. */
@@ -98,6 +103,8 @@ export function evaluateWatch(watch: PullRequestWatch, read: WatchRead): WatchRe
     const fresh = failed.filter((check) => !failedChecks.includes(check.name));
     if (fresh.length > 0) changes.push({ kind: "checks-failed", failed: fresh });
     failedChecks = failed.map((check) => check.name);
+  }
+  if (read.checks.length > 0 && read.requiredKnown !== false) {
     // T3's gate (D908): the required checks when the base branch names some, else every check.
     const required = read.checks.filter((check) => check.required === true);
     const gate = required.length > 0 ? required : read.checks;

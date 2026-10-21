@@ -1,4 +1,8 @@
-import type { PullRequestWatch, ThreadPullRequest } from "@jhin/source-control-api";
+import {
+  PullRequestWatch as PullRequestWatchSchema,
+  type ThreadPullRequest,
+} from "@jhin/source-control-api";
+import type { PullRequestWatch } from "@jhin/source-control-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -122,6 +126,54 @@ describe("evaluating a watch", () => {
           ],
         }),
       ).changes,
+    ).toEqual([]);
+  });
+
+  it("keeps the passed state through a read that cannot say what is required, and still tells failures (D908)", () => {
+    const required = { name: "test", status: "success" as const, required: true };
+    const advisory = { name: "preview", status: "pending" as const, required: false };
+    const passed = evaluateWatch(startWatch(T0), read({ checks: [required, advisory] })).next;
+    // gh could not say this time: no wake, and the next good read is no news either.
+    const unknown = evaluateWatch(
+      passed,
+      read({ requiredKnown: false, checks: [{ ...required, required: undefined }, advisory] }),
+    );
+    expect(unknown.changes).toEqual([]);
+    expect(evaluateWatch(unknown.next, read({ checks: [required, advisory] })).changes).toEqual([]);
+    // A failed check wakes, required or advisory, whether or not the read knew which is which.
+    expect(
+      evaluateWatch(
+        passed,
+        read({
+          requiredKnown: false,
+          checks: [required, { name: "preview", status: "failure" as const }],
+        }),
+      ).changes,
+    ).toEqual([{ kind: "checks-failed", failed: [{ name: "preview", status: "failure" }] }]);
+    expect(
+      evaluateWatch(
+        passed,
+        read({ checks: [{ ...required, status: "failure" as const }, advisory] }),
+      ).changes,
+    ).toEqual([
+      {
+        kind: "checks-failed",
+        failed: [{ name: "test", status: "failure", required: true }],
+      },
+    ]);
+  });
+
+  it("reads a watch saved before passedChecks as told about its current gate (D908)", () => {
+    const saved = PullRequestWatchSchema.parse({
+      ...startWatch(T0),
+      headSha: "abcdef1234",
+      passed: true,
+      passedChecks: undefined,
+    });
+    expect(saved.passedChecks).toEqual([]);
+    expect(
+      evaluateWatch(saved, read({ checks: [{ name: "test", status: "success", required: true }] }))
+        .changes,
     ).toEqual([]);
   });
 
