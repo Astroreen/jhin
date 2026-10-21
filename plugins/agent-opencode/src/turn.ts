@@ -25,6 +25,7 @@ import {
   type Clock,
   type PermissionRule,
   type SessionInfo,
+  type SessionMessage,
   type StreamEvent,
 } from "./client.ts";
 import {
@@ -75,6 +76,8 @@ const CLEAR_REJECTIONS = new Set([
 ]);
 
 const INTERRUPT_TIMEOUT_MS = 10_000;
+/** How far back a read-back looks for a turn's prompt: 50 messages a page (D887). */
+const MAX_HISTORY_PAGES = 20;
 /** How long OpenCode may take to answer a prompt (it queues it and answers at once). */
 const PROMPT_TIMEOUT_MS = 60_000;
 /** Tool output kept in the thread's log; longer output is cut. */
@@ -431,6 +434,8 @@ export function openCodeTurn(
       const tools = new Map<string, { name: string; input: unknown; started: boolean }>();
       const declined = new Set<string>();
       const texts = new Map<string, string>();
+      const completedTexts = new Set<string>();
+      const completedTools = new Set<string>();
       const steps: StepTokens[] = [];
       let cost = 0;
 
@@ -466,6 +471,9 @@ export function openCodeTurn(
               out.push({ kind: `${kind}.delta`, itemId, text: data["delta"] });
               return;
             }
+            // Read back after a reconnect (D887) as well as streamed: completed once.
+            if (completedTexts.has(itemId)) return;
+            completedTexts.add(itemId);
             const text =
               typeof data["text"] === "string" ? data["text"] : (texts.get(itemId) ?? "");
             texts.delete(itemId);
@@ -496,6 +504,8 @@ export function openCodeTurn(
             const id = String(data["id"]);
             const tool = tools.get(id);
             if (tool !== undefined && isSilentTool(tool.name)) return;
+            if (completedTools.has(id)) return;
+            completedTools.add(id);
             const failed = event.type === "session.tool.failed";
             const error = data["error"] as { type?: unknown; message?: unknown } | undefined;
             if (tool === undefined) tools.set(id, { name: "tool", input: {}, started: false });
@@ -760,6 +770,104 @@ export function openCodeTurn(
         // The server's own words when it exited; "lost" when only the stream went.
         finish?.(interrupted ? undefined : new Error(reason));
       });
+      // A stream opened again lost what OpenCode sent meanwhile: it is read back (D887).
+      /** The read-back under way: a second reconnect reads back after it. */
+      let reconciling: Promise<void> = Promise.resolve();
+      const stopReconnected = connection.onReconnected(() => {
+        reconciling = reconciling.then(reconcile).catch((error: unknown) => {
+          deps.log?.("could not read back the opencode turn", { error: String(error) });
+          markUnsettled();
+          finish?.(interrupted ? undefined : new Error(STREAM_LOST));
+        });
+      });
+      /**
+       * T3's backfill and reconcile: the turn's messages since its prompt are replayed as the
+       * events they would have sent (each item completes once), and a session no longer
+       * running ended while the stream was down, as its last `idle` message says.
+       */
+      const reconcile = async () => {
+        if (!sent || finish === undefined) return;
+        const promptId = turnPromptId(sessionId, request.turnId);
+        const read: SessionMessage[] = [];
+        let cursor: string | undefined;
+        let found = false;
+        let pages = 0;
+        do {
+          const page = await client.messages(sessionId, cursor);
+          for (const message of page.data) {
+            if (message.id === promptId) {
+              found = true;
+              break;
+            }
+            read.push(message);
+          }
+          cursor = page.data.length === 0 ? undefined : page.cursor?.next;
+        } while (!found && cursor !== undefined && ++pages < MAX_HISTORY_PAGES);
+        // Read after the history: a turn that ends in between is not judged on an old answer.
+        const active = await client.active();
+        if (!found) {
+          // Its prompt is not in the history read: nothing to judge the turn by. A session
+          // still running goes on; one that is not was lost with the stream.
+          if (sessionId in active) return;
+          throw new Error(STREAM_LOST);
+        }
+        const running = sessionId in active;
+        // A session still running may still be writing its newest message: its texts end on
+        // the stream, not from a half-written copy.
+        const writing = running
+          ? read.find((message) => message.type === "assistant")?.id
+          : undefined;
+        for (const message of read.toReversed()) {
+          if (message.type !== "assistant") continue;
+          const ordinals = { text: 0, reasoning: 0 };
+          for (const part of message.content ?? []) {
+            const type = part["type"];
+            if (type === "text" || type === "reasoning") {
+              const ordinal = ordinals[type]++;
+              if (message.id === writing) continue;
+              onEvent({
+                type: `session.${type}.ended`,
+                data: { assistantMessageID: message.id, ordinal, text: part["text"] },
+              });
+              continue;
+            }
+            if (type !== "tool" || typeof part["id"] !== "string") continue;
+            const state = (part["state"] ?? {}) as Record<string, unknown>;
+            if (!tools.has(part["id"])) {
+              onEvent({
+                type: "session.tool.input.started",
+                data: { id: part["id"], name: part["name"] },
+              });
+              onEvent({
+                type: "session.tool.called",
+                data: { id: part["id"], input: state["input"] },
+              });
+            }
+            if (state["status"] === "completed") {
+              onEvent({
+                type: "session.tool.success",
+                data: { id: part["id"], content: state["content"] },
+              });
+            } else if (state["status"] === "error") {
+              onEvent({
+                type: "session.tool.failed",
+                data: { id: part["id"], error: state["error"] },
+              });
+            }
+          }
+        }
+        if (running) return;
+        // Not running and no `idle` after the prompt: a restarted server writes none for the
+        // execution it lost (T3's reading), so the turn was stopped.
+        const idle = read.find((message) => message.type === "idle");
+        finish?.(
+          idle?.outcome === "succeeded" || interrupted
+            ? undefined
+            : idle?.outcome === "failed"
+              ? new Error("OpenCode ended the turn with an error while Jhin was reconnecting.")
+              : new Error("OpenCode stopped the turn."),
+        );
+      };
       // Before the prompt went out the turn just ends; while OpenCode has not answered it, the
       // stop waits for the answer (below), so a prompt taken meanwhile is stopped too.
       const promptAbort = new AbortController();
@@ -887,6 +995,7 @@ export function openCodeTurn(
         await stopping;
         stopListening();
         stopLost();
+        stopReconnected();
         stopRunning = undefined;
         finish = undefined;
         answer = undefined;

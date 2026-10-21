@@ -6,9 +6,10 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   DECLINED,
+  RECONNECT_FAILED,
   SESSION_GONE,
-  STILL_STOPPING,
   STREAM_LOST,
+  STILL_STOPPING,
   declinedNote,
   sessionRules,
 } from "../src/index.ts";
@@ -899,7 +900,7 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
     release();
   });
 
-  it("fails the turn when the event stream goes silent", async () => {
+  it("fails the turn when the event stream goes silent and does not open again", async () => {
     const silence = manualClock();
     const env = await connected(
       {
@@ -916,9 +917,15 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
     const prompted = env.fake.next("POST", "/prompt");
     const failed = failure(env.runtime.startTurn(request()));
     await prompted;
-    // Open, but 45 s without a byte (D330): the stream counts as lost.
+    // Open, but 45 s without a byte (D330): the stream counts as lost. Opened again five
+    // times, 2 s apart (D887), it is refused each time.
+    env.fake.refuseStreams(5);
     silence.fire(45_000);
-    expect((await failed).message).toBe(STREAM_LOST);
+    for (let attempt = 1; attempt < 5; attempt++) {
+      await silence.armed(2_000);
+      silence.fire(2_000);
+    }
+    expect((await failed).message).toBe(RECONNECT_FAILED);
     expect(env.sessions.records.get(THREAD)).toMatchObject({ id: "ses_1", unsettled: true });
   });
 
@@ -984,22 +991,201 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
     expect(env.sessions.records.get(THREAD)).toMatchObject({ id: "ses_1", unsettled: true });
   });
 
-  it("fails a turn whose event stream is lost, and lets the next one wait for the stop", async () => {
+  it("reads back a turn that ended while its event stream was down", async () => {
     let started!: () => void;
     const running = new Promise<void>((resolve) => (started = resolve));
     const { fake, runtime, sessions } = await setup({
       scripts: [
         (play) => {
           play.emit("session.execution.started", { sessionID: play.sessionId });
+          play.emit("session.text.delta", { ...ids(play), ordinal: 0, delta: "Hel" });
           started();
         },
-        answer("Back"),
       ],
     });
+    const done = drain(runtime.startTurn(request()));
+    await running;
+    // What OpenCode did while the stream was down: only its history has it.
+    fake.record("ses_1", {
+      id: "msg_old",
+      type: "assistant",
+      content: [{ type: "text", text: "Old" }],
+    });
+    fake.record("ses_1", { id: "msg_jhin_turn_ses_1:turn-1", type: "user" });
+    fake.record("ses_1", {
+      id: "msg_a1",
+      type: "assistant",
+      content: [
+        { type: "reasoning", text: "Thinking." },
+        { type: "text", text: "Hello" },
+        {
+          type: "tool",
+          id: "call_2",
+          name: "read",
+          state: { status: "error", input: { path: "x" }, error: { message: "no such file" } },
+        },
+        {
+          type: "tool",
+          id: "call_1",
+          name: "bash",
+          state: {
+            status: "completed",
+            input: { command: "ls" },
+            content: [{ type: "text", text: "README.md" }],
+          },
+        },
+      ],
+    });
+    fake.record("ses_1", { id: "msg_i1", type: "idle", outcome: "succeeded" });
+    fake.active.delete("ses_1");
+    fake.dropStreams();
+    const items = await done;
+    // Two messages a page: the history is read over two pages, back to the prompt.
+    expect(fake.calls("GET", "/message")).toHaveLength(2);
+    expect(items.filter((item) => item.kind !== "message.delta")).toEqual([
+      { kind: "reasoning.completed", itemId: "msg_a1:reasoning:0", text: "Thinking." },
+      { kind: "message.completed", itemId: "msg_a1:text:0", text: "Hello" },
+      {
+        kind: "tool.started",
+        itemId: "call_2",
+        tool: expect.objectContaining({ name: "read" }),
+      },
+      { kind: "tool.completed", itemId: "call_2", status: "failed", error: "no such file" },
+      {
+        kind: "tool.started",
+        itemId: "call_1",
+        tool: expect.objectContaining({ name: "bash", kind: "command" }),
+      },
+      { kind: "tool.completed", itemId: "call_1", status: "completed", output: "README.md" },
+    ]);
+    expect(sessions.records.get(THREAD)).toEqual({ id: "ses_1", turnId: "turn-1" });
+  });
+
+  it.each([
+    ["failed", "OpenCode ended the turn with an error while Jhin was reconnecting."],
+    [undefined, "OpenCode stopped the turn."],
+  ])("fails a turn that ended %s while its stream was down", async (outcome, message) => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const { fake, runtime } = await setup({
+      scripts: [
+        (play) => {
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          started();
+        },
+      ],
+    });
+    const failed = failure(runtime.startTurn(request()));
+    await running;
+    fake.record("ses_1", { id: "msg_jhin_turn_ses_1:turn-1", type: "user" });
+    if (outcome !== undefined) fake.record("ses_1", { id: "msg_i1", type: "idle", outcome });
+    fake.active.delete("ses_1");
+    fake.dropStreams();
+    expect((await failed).message).toBe(message);
+  });
+
+  it("fails as lost a turn whose prompt its history does not show", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const { fake, runtime } = await setup({
+      scripts: [
+        (play) => {
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          started();
+        },
+      ],
+    });
+    const failed = failure(runtime.startTurn(request()));
+    await running;
+    fake.record("ses_1", { id: "msg_i0", type: "idle", outcome: "succeeded" });
+    fake.active.delete("ses_1");
+    fake.dropStreams();
+    expect((await failed).message).toBe(STREAM_LOST);
+  });
+
+  it("fails a turn started while a lost stream does not open again", async () => {
+    const timers = manualClock();
+    const env = await connected({ scripts: [answer("First")] }, {}, timers.clock);
+    cleanups.push(env.cleanup);
+    await drain(env.runtime.startTurn(request()));
+    env.fake.refuseStreams(5);
+    const reconnecting = env.fake.next("GET", "/api/event");
+    env.fake.dropStreams();
+    // Started once the stream is being opened again: it waits for that, sending nothing.
+    await reconnecting;
+    const failed = failure(env.runtime.startTurn(request({ turnId: "turn-2" })));
+    for (let attempt = 1; attempt < 5; attempt++) {
+      await timers.armed(2_000);
+      timers.fire(2_000);
+    }
+    expect((await failed).message).toBe(RECONNECT_FAILED);
+    expect(env.fake.calls("POST", "/prompt")).toHaveLength(1);
+  });
+
+  it("goes on with a turn still running once its stream is open again", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    let reopened!: () => void;
+    const back = new Promise<void>((resolve) => (reopened = resolve));
+    const { fake, runtime } = await setup({
+      scripts: [
+        async (play) => {
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          started();
+          await back;
+          await answer("Still here")(play);
+        },
+      ],
+    });
+    const done = drain(runtime.startTurn(request()));
+    await running;
+    // Half written when read back: its text ends on the stream, whole.
+    fake.record("ses_1", { id: "msg_jhin_turn_ses_1:turn-1", type: "user" });
+    fake.record("ses_1", {
+      id: "msg_a1",
+      type: "assistant",
+      content: [{ type: "text", text: "Still" }],
+    });
+    fake.resetStreamOpened();
+    const read = fake.next("GET", "/message");
+    fake.dropStreams();
+    await fake.streamOpened();
+    await read;
+    reopened();
+    const items = await done;
+    expect(items.filter((item) => item.kind === "message.completed")).toEqual([
+      { kind: "message.completed", itemId: "msg_a1:text:0", text: "Still here" },
+    ]);
+  });
+
+  it("fails a turn whose event stream is lost, and lets the next one wait for the stop", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const timers = manualClock();
+    const env = await connected(
+      {
+        scripts: [
+          (play) => {
+            play.emit("session.execution.started", { sessionID: play.sessionId });
+            started();
+          },
+          answer("Back"),
+        ],
+      },
+      {},
+      timers.clock,
+    );
+    cleanups.push(env.cleanup);
+    const { fake, runtime, sessions } = env;
     const lost = failure(runtime.startTurn(request()));
     await running;
+    fake.refuseStreams(5);
     fake.dropStreams();
-    expect((await lost).message).toBe(STREAM_LOST);
+    for (let attempt = 1; attempt < 5; attempt++) {
+      await timers.armed(2_000);
+      timers.fire(2_000);
+    }
+    expect((await lost).message).toBe(RECONNECT_FAILED);
     // Recorded, so the check survives a reload of the plugin.
     expect(sessions.records.get(THREAD)).toEqual({
       id: "ses_1",

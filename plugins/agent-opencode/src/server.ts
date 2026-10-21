@@ -28,6 +28,10 @@ const VERSION_TIMEOUT_MS = 10_000;
 const INFO_TIMEOUT_MS = 5_000;
 const KILL_GRACE_MS = 1_000;
 const OUTPUT_LIMIT = 64 * 1024;
+/** A lost event stream is opened again this often, this far apart (T3's, D887). */
+const RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY_MS = 2_000;
+export const RECONNECT_FAILED = "The OpenCode event stream was lost and could not reconnect.";
 const LISTENING = /server listening on\s+(https?:\/\/[^\s]+)/i;
 
 /** The version `opencode --version` (or a bare `1.2.3`) printed. */
@@ -223,8 +227,13 @@ export interface Connection {
   readonly external: boolean;
   /** Calls `handler` for every event of the session; disposing stops it. */
   listen(sessionId: string, handler: (event: StreamEvent) => void): () => void;
-  /** Calls `handler` once the event stream is lost (it is opened again on the next use). */
+  /**
+   * Calls `handler` once the event stream is lost for good: the server exited, or the stream
+   * could not be opened again (it is opened again on the next use).
+   */
   onLost(handler: (reason: string) => void): () => void;
+  /** Calls `handler` each time a lost event stream is open again: events sent meanwhile are gone. */
+  onReconnected(handler: () => void): () => void;
 }
 
 /**
@@ -249,6 +258,9 @@ export function createServerOwner(options: {
     opening: Promise<void> | undefined;
     readonly listeners: Map<string, Set<(event: StreamEvent) => void>>;
     readonly lost: Set<(reason: string) => void>;
+    readonly reconnected: Set<() => void>;
+    /** Ends the wait between two reconnect attempts. */
+    cancelReconnect: () => void;
     exited: boolean;
     /** Turns and probes using this server now. */
     users: number;
@@ -270,6 +282,7 @@ export function createServerOwner(options: {
 
   const stop = (server: Running) => {
     server.stopped = true;
+    server.cancelReconnect();
     retired.delete(server);
     server.stream?.close();
     server.stream = undefined;
@@ -333,6 +346,8 @@ export function createServerOwner(options: {
       opening: undefined,
       listeners: new Map(),
       lost: new Set(),
+      reconnected: new Set(),
+      cancelReconnect: () => {},
       exited: false,
       users: 0,
       retired: false,
@@ -359,9 +374,64 @@ export function createServerOwner(options: {
   };
 
   /** Opens the event stream when none is open: it carries every session's events. */
-  const ensureStream = (server: Running): Promise<void> => {
-    if (server.stream !== undefined) return Promise.resolve();
-    server.opening ??= server.client
+  const ensureStream = async (server: Running): Promise<void> => {
+    if (server.stream !== undefined) return;
+    server.opening ??= openStream(server).finally(() => {
+      server.opening = undefined;
+    });
+    await server.opening;
+    // A reconnect under way when this began, which gave up: no stream to listen on.
+    if (server.stream === undefined && !server.stopped) {
+      throw new OpenCodeError(server.exited ? "The OpenCode server exited." : RECONNECT_FAILED);
+    }
+  };
+
+  /**
+   * Opens a lost stream again, up to RECONNECT_ATTEMPTS times RECONNECT_DELAY_MS apart (T3's
+   * reconnect, D887), then tells the turns; a stream that stays lost loses them.
+   */
+  const reconnect = (server: Running) => {
+    const timers = options.clock ?? realClock;
+    const attempt = async (left: number): Promise<void> => {
+      if (server.stopped || server.exited) throw new Error("The OpenCode server is gone.");
+      try {
+        await openStream(server);
+        // Stopped while it opened: the stream was closed at once.
+        if (server.stream === undefined) throw new Error("The OpenCode server is gone.");
+      } catch (error) {
+        if (left <= 1) throw error;
+        await new Promise<void>((resolve) => {
+          const cancel = timers.after(RECONNECT_DELAY_MS, resolve);
+          // A stop ends the wait: the next attempt sees the server gone.
+          server.cancelReconnect = () => {
+            cancel();
+            resolve();
+          };
+        });
+        server.cancelReconnect = () => {};
+        return attempt(left - 1);
+      }
+    };
+    server.opening = attempt(RECONNECT_ATTEMPTS)
+      .then(
+        () => {
+          for (const handler of Array.from(server.reconnected)) handler();
+        },
+        (error: unknown) => {
+          options.log?.("could not reconnect to the opencode event stream", {
+            error: String(error),
+          });
+          // A server that exited meanwhile already told its turns why.
+          if (!server.exited) lose(server, RECONNECT_FAILED);
+        },
+      )
+      .finally(() => {
+        server.opening = undefined;
+      });
+  };
+
+  const openStream = (server: Running): Promise<void> =>
+    server.client
       .subscribe((event) => {
         const sessionId =
           typeof event.data["sessionID"] === "string"
@@ -395,15 +465,12 @@ export function createServerOwner(options: {
           () => undefined,
           (error: unknown) => {
             options.log?.("the opencode event stream was lost", { error: String(error) });
-            if (server.stream === stream) lose(server, "The OpenCode event stream was lost.");
+            if (server.stream !== stream) return;
+            server.stream = undefined;
+            reconnect(server);
           },
         );
-      })
-      .finally(() => {
-        server.opening = undefined;
       });
-    return server.opening;
-  };
 
   /** Starts the idle time of a server nobody uses, as the setting says now (0: none). */
   const armIdle = () => {
@@ -542,6 +609,10 @@ export function createServerOwner(options: {
         }
         server.lost.add(handler);
         return () => server.lost.delete(handler);
+      },
+      onReconnected(handler) {
+        server.reconnected.add(handler);
+        return () => server.reconnected.delete(handler);
       },
     });
   }

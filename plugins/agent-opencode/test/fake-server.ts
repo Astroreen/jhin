@@ -80,6 +80,10 @@ export async function fakeOpenCode(
   const rejections: { status: number; body: unknown }[] = [];
   const steerRejections: { status: number; body: unknown }[] = [];
   const inboxCancels: number[] = [];
+  /** Event streams refused before one opens again. */
+  let refusedStreams = 0;
+  /** Each session's messages, oldest first, as `GET …/message` lists them (newest first). */
+  const messages = new Map<string, Record<string, unknown>[]>();
   const holds: Promise<void>[] = [];
   const streamClosed: (() => void)[] = [];
   let streamOpened: (() => void) | undefined;
@@ -170,6 +174,10 @@ export async function fakeOpenCode(
       });
     }
     if (method === "GET" && path === "/api/event") {
+      if (refusedStreams > 0) {
+        refusedStreams--;
+        return json(res, 503, { _tag: "Unavailable", message: "not now" });
+      }
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       res.write(": connected\n\n");
       streams.add(res);
@@ -264,6 +272,16 @@ export async function fakeOpenCode(
       return;
     }
     if (rest === "/synthetic") return json(res, 204);
+    if (method === "GET" && rest === "/message") {
+      // Two a page, newest first: the cursor is where the next page starts.
+      const listed = (messages.get(sessionId) ?? []).toReversed();
+      const start = Number(request.query.get("cursor") ?? 0);
+      const next = start + 2 < listed.length ? String(start + 2) : undefined;
+      return json(res, 200, {
+        data: listed.slice(start, start + 2),
+        cursor: next === undefined ? {} : { next },
+      });
+    }
     if (method === "DELETE" && /^\/inbox\/[^/]+$/.test(rest)) {
       const status = inboxCancels.shift() ?? 204;
       return status === 204 ? json(res, 204) : notFound(res, "NotFound", "no such inbox item");
@@ -293,6 +311,16 @@ export async function fakeOpenCode(
     },
     resetStreamOpened() {
       streamOpenedPromise = new Promise<void>((resolve) => (streamOpened = resolve));
+    },
+    /** Refuses the next `count` event streams (503). */
+    refuseStreams(count: number) {
+      refusedStreams += count;
+    },
+    /** Adds a message to a session's history. */
+    record(sessionId: string, message: Record<string, unknown>) {
+      const list = messages.get(sessionId) ?? [];
+      list.push(message);
+      messages.set(sessionId, list);
     },
     /** Ends every open event stream, as a server that lost them. */
     dropStreams() {
