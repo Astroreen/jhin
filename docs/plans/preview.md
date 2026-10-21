@@ -1,6 +1,6 @@
 # Preview plan
 
-Status: **in progress** (workstream W12 of `t3-roadmap.md`). This file
+Status: **implemented** (workstream W12 of `t3-roadmap.md`). This file
 records how Jhin ports T3 Code's browser preview, its devices and its
 rendered HTML pages: a browser on the node that the user and the agent drive
 together, simulators and emulators shown beside the chat, and self-contained
@@ -306,10 +306,19 @@ CLI, and the web client through RPC.
   simctl … <udid>` invocation pinned to it with a quick start. A thread's open
   devices are its sessions; the node's `devices` live stream holds the list
   and the sessions after every change, and a device's stream holds its
-  newest screen, taken while a client watches it. `jhin.device-panel` shows
-  T3's device list ("iOS Simulators", "Android Emulators", "Open" / "Start",
-  "Refresh devices", its empty states) and an open device's screen in the
-  right panel, with "Power off device".
+  newest screen, taken about twice a second while a client watches it
+  (`devices.read` to subscribe). Tools are found as T3 finds them, or named in
+  `jhin.devices` (`androidSdk`, `adb`, `emulator`, `xcrun`). A deleted
+  thread's devices leave its panel and keep running. `jhin.device-panel`
+  shows T3's device list ("iOS Simulators", "Android Emulators", "This node ·
+  {version} · Running|Stopped", "Open" / "Start", "Refresh devices", "Starting
+  {names}… This can take a minute.", its empty states and platform reasons)
+  and an open device's screen ("Connecting video…"), with "Power off device"
+  and "Close device panel". T3 shows a device as a surface of its right
+  panel; here the Device panel is its own `app.panel` (`jhin.device.panel`,
+  route `panel: devices`) with a chat header toggle ("Toggle device panel"),
+  because Jhin's right panel holds browser tabs only; a device an agent opens
+  for the thread brings the panel up (`jhin.device.reveal`).
 
 ### Proof
 
@@ -351,9 +360,12 @@ CLI, and the web client through RPC.
 - In a rendered page: T3's image viewer for a clicked image and passing the
   app's shortcuts through a focused frame.
 - Viewer ids bound to their caller or their frame subscription (D397).
-- Devices: T3's device hub and `agent-device`, video streams and input to a
-  device, device hosts over SSH, the setup wizard, the device tools panel
-  (appearance, text size, location, permissions, push) and DeviceActions.
+- Devices: T3's device hub and `agent-device` (taps and text through a
+  driver; `device.open` points at `adb` and `simctl` instead), video streams
+  and input to a device from the panel, device hosts over SSH, the setup
+  wizard, the device tools panel (appearance, text size, location,
+  permissions, push) and DeviceActions, physical iOS devices, and showing a
+  device as a surface of the right panel beside browser tabs.
 
 ## PR plan
 
@@ -412,3 +424,15 @@ Implements D405–D407.
 ### PR 4 — Devices
 
 Implements D408.
+
+- `@jhin/preview-api` gains `device.hosts@1`; `jhin.devices`
+  (`plugins/devices`) with `device.list`, `device.open`, `device.screenshot`
+  and `device.close` and the `devices` and `device/…` live streams;
+  `jhin.device-panel` in the web client.
+- **Done when:** tests against fake `adb`, `emulator` and `xcrun` list
+  simulators and emulators (AVDs not running too), refuse an ambiguous open,
+  boot an AVD into its serial for a thread with its quick start, take its
+  screen through the command and the stream, power it off, boot an iOS
+  simulator and give a platform's reason when its tools are missing;
+  Playwright sees the panel's list, the screen of a device an agent opened
+  and powers it off.
