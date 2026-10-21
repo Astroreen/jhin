@@ -1702,8 +1702,9 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   else settles as before. A drop of a pinned thread among the active ones
   writes its one `threads.arrange` (D449) through `client.undo@1` as kind
   `pin` on the thread's key, as `thread.unpin` does: "Unpinned 1 thread",
-  and undo pins it again at its old key. A drop that wakes or un-settles
-  offers nothing, as T3's.
+  and undo pins it again at its old key; it does not ask first, as T3's
+  drop does not (`thread.unpin` asks when the settings say so). A drop
+  that wakes or un-settles offers nothing, as T3's.
 
 ## Not ported (out of scope)
 
