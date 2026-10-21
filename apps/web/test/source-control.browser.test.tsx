@@ -507,6 +507,8 @@ describe("the diff panel", () => {
     // Icons Pierre's own set does not have: T3's additions.
     expect(iconOf("AGENTS.md")).toContain("#t3-file-icon-agents");
     expect(iconOf("Main.kt")).toContain("#t3-file-icon-kotlin");
+    // The tree's state is kept on the device: leave it closed for the tests after this one.
+    await userEvent.click(page.getByRole("button", { name: "Hide file tree" }));
     mounted.unmount();
   });
 
