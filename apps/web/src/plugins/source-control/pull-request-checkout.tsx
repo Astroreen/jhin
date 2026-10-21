@@ -98,26 +98,31 @@ export function PullRequestCheckoutDialog({
   const parsed = parsePullRequestReference(reference);
   const parsedDebounced = parsePullRequestReference(debounced);
 
+  // Answers are kept by reference while the dialog is open, even once the search moved on.
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
+  const asked = useRef(new Set<string>());
+
   useEffect(() => {
     if (!open || parsedDebounced === null || resolved.has(parsedDebounced)) return;
     // A failure is shown until the reference is edited; editing it asks again.
-    if (resolveError?.reference === parsedDebounced) return;
-    let current = true;
+    if (resolveError?.reference === parsedDebounced || asked.current.has(parsedDebounced)) return;
+    const reference = parsedDebounced;
+    asked.current.add(reference);
     void threads
-      .call<{ pullRequest: PullRequest }>(target, "git.pr.resolve", {
-        projectId,
-        reference: parsedDebounced,
-      })
+      .call<{ pullRequest: PullRequest }>(target, "git.pr.resolve", { projectId, reference })
       .then(({ pullRequest }) => {
-        if (current) setResolved((known) => new Map(known).set(parsedDebounced, pullRequest));
+        if (mounted.current) setResolved((known) => new Map(known).set(reference, pullRequest));
       })
       .catch((error: unknown) => {
-        if (current)
-          setResolveError({ reference: parsedDebounced, message: (error as Error).message });
-      });
-    return () => {
-      current = false;
-    };
+        if (mounted.current) setResolveError({ reference, message: (error as Error).message });
+      })
+      .finally(() => asked.current.delete(reference));
   }, [open, parsedDebounced, projectId, resolveError, resolved, target, threads]);
 
   const pullRequest = parsed === null ? undefined : resolved.get(parsed);
