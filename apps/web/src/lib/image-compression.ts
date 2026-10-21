@@ -1,6 +1,9 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/lib/imageCompression.ts,
 // packages/client-runtime/src/imageAttachmentSize.ts and packages/shared/src/imageDimensions.ts
 // at eb7b35ac. The draft-stash compression is left out.
+import { isHeicImageFile } from "./attachment-files.ts";
+
+export { isHeicImageFile };
 
 /**
  * Anthropic rejects an image over 2000px on a side once a request holds more than 20 images, and
@@ -18,8 +21,6 @@ const MAX_HEIC_DECODE_PIXELS = 64_000_000;
 const MAX_HEIC_METADATA_BYTES = 1024 * 1024;
 const QUALITY_STEPS = [0.92, 0.85, 0.78, 0.68] as const;
 const FALLBACK_SCALE_STEPS = [0.75, 0.55] as const;
-const HEIC_IMAGE_MIME_TYPE = /^image\/hei(?:c|f)$/i;
-const HEIC_IMAGE_EXTENSION = /\.(?:heic|heif)$/i;
 /**
  * Enough for every supported header. A JPEG's frame header can sit behind
  * several 64 KiB metadata segments (EXIF, an ICC profile, XMP), so allow a
@@ -207,17 +208,6 @@ function exifOrientationSwapsAxes(bytes: Uint8Array, start: number, end: number)
 }
 
 // --- HEIC -----------------------------------------------------------------
-
-/** Finder and some browsers omit the MIME type when dragging HEIC photos. */
-export function isHeicImageFile(file: Pick<File, "name" | "type">): boolean {
-  if (HEIC_IMAGE_MIME_TYPE.test(file.type)) {
-    return true;
-  }
-  return (
-    (file.type === "" || file.type.toLowerCase() === "application/octet-stream") &&
-    HEIC_IMAGE_EXTENSION.test(file.name)
-  );
-}
 
 interface HeicMetadataBox {
   payloadOffset: number;
