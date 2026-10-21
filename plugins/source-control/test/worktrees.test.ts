@@ -11,7 +11,20 @@ import type {
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseWorktreeList } from "../src/worktrees.ts";
+import { execFileSync } from "node:child_process";
+
+import type { AgentRuntime } from "@jhin/agent-api";
+
+import { createGit } from "../src/git.ts";
+import {
+  availableBranchName,
+  firstMessageOf,
+  isTemporaryBranch,
+  parseWorktreeList,
+  renameTemporaryBranch,
+  sanitizeBranchFragment,
+} from "../src/worktrees.ts";
+import { agentWriter, plainWriter } from "../src/writer.ts";
 import { git, node, repository, temp, write, type Node } from "./support.ts";
 
 interface Thread {
@@ -218,6 +231,32 @@ describe("jhin.source-control: worktrees", () => {
     await turn(sc, thread.id, "/write back.txt again");
     expect(Fs.readFileSync(Path.join(thread.worktreePath!, "back.txt"), "utf8")).toBe("again\n");
     expect(git(thread.worktreePath!, "branch", "--show-current").trim()).toBe("feature/again");
+  });
+
+  it("names a temporary branch from the thread's first message, beside a taken name", async () => {
+    const dir = repository();
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    // The fake agent echoes the writer's prompt: the message's JSON is its answer.
+    const message = '{"branch": "Fix the Login error"}';
+    const first = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await turn(sc, first.id, message);
+    await sc.until(branchOf(first.id, "jhin/fix-the-login-error"));
+    expect(git(first.worktreePath!, "branch", "--show-current").trim()).toBe(
+      "jhin/fix-the-login-error",
+    );
+
+    const second = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await turn(sc, second.id, message);
+    await sc.until(branchOf(second.id, "jhin/fix-the-login-error-1"));
+    // The folder keeps its temporary name, as in T3.
+    expect(Path.basename(second.worktreePath!)).toMatch(/^jhin-[0-9a-f]{8}$/);
   });
 
   it("lets go of a worktree no thread works in any more", async () => {
@@ -516,5 +555,87 @@ describe("worktree list", () => {
       { path: "/src/app", head: "abc", branch: "main", main: true },
       { path: "/w/app/x", head: "def", branch: null, main: false },
     ]);
+  });
+});
+
+describe("naming a temporary branch (D901)", () => {
+  it("sanitizes a branch fragment as T3 does", () => {
+    expect(sanitizeBranchFragment("  Fix the 'Login' error!  ")).toBe("fix-the-login-error");
+    expect(sanitizeBranchFragment("feat//Add  Search.")).toBe("feat/add-search");
+    expect(sanitizeBranchFragment("...")).toBe("update");
+    expect(sanitizeBranchFragment("a".repeat(70) + "-b")).toBe("a".repeat(64));
+  });
+
+  it("knows only its own temporary names", () => {
+    expect(isTemporaryBranch("jhin/0a1b2c3d")).toBe(true);
+    expect(isTemporaryBranch("jhin-0a1b2c3d")).toBe(true);
+    expect(isTemporaryBranch("jhin/fix-login")).toBe(false);
+    expect(isTemporaryBranch("feature/0a1b2c3d")).toBe(false);
+  });
+
+  it("takes the text of the thread's own first turn only", () => {
+    const started = (turnId: string, text: string) => ({
+      type: "agent.turn.started",
+      payload: { turnId, input: { text } },
+    });
+    const events = [started("t1", " Fix login "), started("t2", "More")];
+    expect(firstMessageOf(events, "t1")).toBe("Fix login");
+    // A later turn, and a fork whose first event is its parent's turn.
+    expect(firstMessageOf(events, "t2")).toBeUndefined();
+    // Attachments alone name nothing.
+    expect(firstMessageOf([started("t1", "  ")], "t1")).toBeUndefined();
+    expect(firstMessageOf([], "t1")).toBeUndefined();
+    // A rolled back first turn: the next one is the first that counts.
+    const rolledBack = [
+      started("t1", "Dropped"),
+      { type: "threads.thread.rolled-back", payload: { turnIds: ["t1"] } },
+      started("t2", "Fix login"),
+    ];
+    expect(firstMessageOf(rolledBack, "t2")).toBe("Fix login");
+  });
+
+  it("steps around branches that are in a name's way, part by part", () => {
+    expect(availableBranchName([], "jhin/feat/x")).toBe("jhin/feat/x");
+    // A branch where a folder is wanted, and a folder where a branch is wanted.
+    expect(availableBranchName(["jhin/feat"], "jhin/feat/x")).toBe("jhin/feat-1/x");
+    expect(availableBranchName(["jhin/fix/a"], "jhin/fix")).toBe("jhin/fix-1");
+    expect(availableBranchName(["jhin/fix", "jhin/fix-1"], "jhin/fix")).toBe("jhin/fix-2");
+  });
+
+  it("keeps a flat temporary name flat, and gives up after a hundred taken names", async () => {
+    const dir = repository();
+    const run = createGit("git", dir);
+    git(dir, "branch", "jhin-0a1b2c3d");
+    expect(await renameTemporaryBranch(run, "jhin-0a1b2c3d", "Fix login")).toBe("jhin-fix-login");
+    expect(git(dir, "branch", "--list", "jhin-fix-login").trim()).toBe("jhin-fix-login");
+
+    const head = git(dir, "rev-parse", "HEAD").trim();
+    const taken = ["", ...Array.from({ length: 100 }, (_, index) => `-${index + 1}`)];
+    execFileSync("git", ["update-ref", "--stdin"], {
+      cwd: dir,
+      input: taken.map((suffix) => `create refs/heads/jhin/full${suffix} ${head}\n`).join(""),
+    });
+    git(dir, "branch", "jhin/0a1b2c3d");
+    await expect(renameTemporaryBranch(run, "jhin/0a1b2c3d", "full")).rejects.toThrow(
+      "Could not find an available branch name for 'jhin/full'.",
+    );
+  });
+
+  it("names no branch without a model's answer", async () => {
+    const answering = (text: string): AgentRuntime => ({
+      agentId: "answer",
+      startTurn: () => ({
+        items: (async function* () {
+          yield { kind: "message.completed" as const, itemId: "m", text };
+        })(),
+        interrupt: () => undefined,
+      }),
+    });
+    const writer = (text: string) =>
+      agentWriter({ runtime: async () => answering(text), warn: () => undefined });
+    expect(await writer('{"branch": "fix-login"}').branchName({ message: "x" })).toBe("fix-login");
+    expect(await writer("no JSON here").branchName({ message: "x" })).toBeUndefined();
+    expect(await writer('{"branch": " "}').branchName({ message: "x" })).toBeUndefined();
+    expect(await plainWriter.branchName({ message: "x" })).toBeUndefined();
   });
 });

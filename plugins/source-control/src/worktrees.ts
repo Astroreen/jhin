@@ -1,11 +1,15 @@
 // Worktrees of a project, as T3 Code makes them (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/vcs/GitVcsDriverCore.ts (createWorktree, removeWorktree,
 // fetching a base branch from origin), apps/server/src/worktreesDirectory.ts
-// (where they live) and packages/shared/src/git.ts (temporary branch names).
+// (where they live), packages/shared/src/git.ts (temporary branch names,
+// sanitizeBranchFragment) and apps/server/src/orchestration-v2/ThreadLaunchService.ts
+// with GitVcsDriverCore.ts (renaming a temporary branch from the first message).
 import * as Crypto from "node:crypto";
 import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
 import * as Path from "node:path";
+
+import { ThreadEvents, visibleThreadEvents } from "@jhin/agent-api";
 
 import { SourceControlError, type Git } from "./git.ts";
 
@@ -60,6 +64,98 @@ async function temporaryBranch(git: Git): Promise<string> {
   return (await branchExists(git, BRANCH_PREFIX))
     ? `${BRANCH_PREFIX}-${hex}`
     : `${BRANCH_PREFIX}/${hex}`;
+}
+
+/** A branch this plugin named for a new worktree: `jhin/<8 hex>` or `jhin-<8 hex>`. */
+export const isTemporaryBranch = (branch: string) =>
+  new RegExp(`^${BRANCH_PREFIX}[-/][0-9a-f]{8}$`).test(branch.trim().toLowerCase());
+
+/**
+ * The text of a thread's first message when `turnId` is the thread's own first
+ * turn that a rollback did not drop: a fork's first turn follows its parent's,
+ * and a message of attachments alone names nothing.
+ */
+export function firstMessageOf(
+  events: readonly { readonly type: string; readonly payload: unknown }[],
+  turnId: string,
+): string | undefined {
+  const visible = visibleThreadEvents(events as Parameters<typeof visibleThreadEvents>[0]);
+  const first = visible.find((event) => event.type === ThreadEvents.turnStarted)?.payload as
+    | { turnId?: string; input?: { text?: string } }
+    | undefined;
+  const text = first?.input?.text?.trim();
+  return first?.turnId === turnId && text ? text : undefined;
+}
+
+/** T3's `sanitizeBranchFragment`: lowercase, `[a-z0-9/_-]`, at most 64 characters. */
+export function sanitizeBranchFragment(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/['"`]/g, "")
+    .replace(/^[./\s_-]+|[./\s_-]+$/g, "");
+  const fragment = normalized
+    .replace(/[^a-z0-9/_-]+/g, "-")
+    .replace(/\/+/g, "/")
+    .replace(/-+/g, "-")
+    .replace(/^[./_-]+|[./_-]+$/g, "")
+    .slice(0, 64)
+    .replace(/[./_-]+$/g, "");
+  return fragment.length > 0 ? fragment : "update";
+}
+
+/**
+ * A branch name no existing branch is in the way of, part by part as T3's
+ * `resolveAutoFeatureBranchName` walks it: a part that is a branch, or a last
+ * part that is a branch or a folder of branches, takes `-1` to `-100`.
+ */
+export function availableBranchName(existing: readonly string[], wanted: string): string {
+  const taken = new Set(existing);
+  const parts = wanted.split("/");
+  let resolved = "";
+  for (const [index, part] of parts.entries()) {
+    const base = resolved === "" ? part : `${resolved}/${part}`;
+    const last = index === parts.length - 1;
+    const clashes = (candidate: string) =>
+      taken.has(candidate) || (last && existing.some((name) => name.startsWith(`${candidate}/`)));
+    let candidate = base;
+    for (let suffix = 1; clashes(candidate); suffix += 1) {
+      if (suffix > 100) {
+        throw new SourceControlError(
+          "BRANCH_INVALID",
+          `Could not find an available branch name for '${wanted}'.`,
+          { branch: wanted },
+        );
+      }
+      candidate = `${base}-${suffix}`;
+    }
+    resolved = candidate;
+  }
+  return resolved;
+}
+
+/**
+ * Renames a temporary branch to `jhin/<fragment>` (`jhin-<fragment>` when the
+ * temporary one was flat), clear of the branches there are; returns the new name.
+ */
+export async function renameTemporaryBranch(
+  git: Git,
+  oldBranch: string,
+  fragment: string,
+): Promise<string> {
+  const separator = oldBranch.charAt(BRANCH_PREFIX.length);
+  const wanted = `${BRANCH_PREFIX}${separator}${sanitizeBranchFragment(fragment)}`;
+  const existing = (await git(["for-each-ref", "--format=%(refname:short)", "refs/heads/"])).stdout
+    .split("\n")
+    .filter((name) => name !== "" && name !== oldBranch);
+  const target = availableBranchName(existing, wanted);
+  if (!(await validBranch(git, target))) {
+    throw new SourceControlError("BRANCH_INVALID", `${target} is not a valid branch name`, {
+      branch: target,
+    });
+  }
+  await git(["branch", "-m", "--", oldBranch, target]);
+  return target;
 }
 
 async function validBranch(git: Git, name: string): Promise<boolean> {

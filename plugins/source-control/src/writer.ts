@@ -1,6 +1,6 @@
 // The prompts follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // packages/provider-core/src/server/textGenerationPrompts.ts (buildCommitMessagePrompt,
-// buildPrContentPrompt).
+// buildPrContentPrompt, buildBranchNamePrompt).
 import { randomUUID } from "node:crypto";
 import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
@@ -38,6 +38,8 @@ export interface Writer {
     branch?: string;
   }>;
   pullRequest(input: PullRequestInput): Promise<{ title: string; body: string }>;
+  /** A branch fragment for the work a thread's first message asks for, if a model gave one. */
+  branchName(input: { readonly message: string }): Promise<string | undefined>;
 }
 
 const section = (text: string, max: number) =>
@@ -102,6 +104,22 @@ function pullRequestPrompt(input: PullRequestInput): string {
   ].join("\n");
 }
 
+/** T3's branch name prompt in its default ("static") naming mode: the fragment alone. */
+function branchNamePrompt(input: { readonly message: string }): string {
+  return [
+    "You generate concise git branch names.",
+    "Return a JSON object with key: branch.",
+    "Rules:",
+    "- Branch should describe the requested work from the user message.",
+    "- Return a valid Git branch name without spaces.",
+    "- Keep it short and specific (2-6 words), in lowercase with hyphen-separated words.",
+    "- Return only the descriptive branch fragment, without a prefix or namespace. The application adds the configured prefix.",
+    "",
+    "User message:",
+    section(input.message, 8_000),
+  ].join("\n");
+}
+
 /** The first JSON object in an answer, fenced or not. */
 export function parseJsonObject(text: string): Record<string, unknown> | undefined {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1];
@@ -152,6 +170,10 @@ export const plainWriter: Writer = {
     const title = subjects.length === 1 ? subjects[0]! : input.head;
     const summary = (subjects.length === 0 ? [title] : subjects).map((line) => `- ${line}`);
     return { title, body: ["## Summary", ...summary, "", "## Testing", "- Not run"].join("\n") };
+  },
+  // T3 keeps the temporary branch when no model names one.
+  async branchName() {
+    return undefined;
   },
 };
 
@@ -267,6 +289,10 @@ export function agentWriter(options: {
       const title = text(parsed?.["title"]);
       if (title === undefined || title.trim() === "") return plainWriter.pullRequest(input);
       return { title, body: text(parsed?.["body"]) ?? "" };
+    },
+    async branchName(input) {
+      const branch = text((await answer(branchNamePrompt(input)))?.["branch"])?.trim();
+      return branch === undefined || branch === "" ? undefined : branch;
     },
   };
 }

@@ -545,6 +545,32 @@ with screenshots).
   recreating missing worktree"); if that fails the turn fails with
   `WORKTREE_MISSING` and git's reason.
 
+#### Worktree leftovers (W21, D901–D920)
+
+- **D901. A new worktree's temporary branch is named from its thread's first
+  message**, as T3's `ThreadLaunchService` does: when the first turn of a
+  thread starts in its worktree and that worktree is on a temporary
+  `jhin/<8 hex>` (or `jhin-<8 hex>`) branch, the plugin asks the writer
+  (D266, its agent and `writerTimeoutSeconds`) with T3's branch name prompt in
+  its default naming mode, sanitizes the answer as T3's
+  `sanitizeBranchFragment` does and runs `git branch -m` to `jhin/<fragment>`
+  (`jhin-<fragment>` after a flat temporary name). A part of that name that an
+  existing branch is in the way of (the name itself, a branch where a folder
+  is wanted, a folder where a branch is wanted) takes `-1` to `-100`, walked
+  part by part as T3's `resolveAutoFeatureBranchName` does. The first turn is
+  the first one a rollback left, so a dropped first turn hands the naming to
+  the next. It runs beside the turn and never holds it up or fails
+  it; a writer without an answer keeps the temporary branch (T3 has no
+  fallback either), and so does a fork's first turn or a branch the user
+  named (one that looks temporary, `jhin/deadbeef`, is still renamed: T3's
+  `isTemporaryWorktreeBranch` matches it too), or a branch switched or
+  renamed while the writer ran. Every thread in that worktree records the new branch (D113); the
+  folder keeps its temporary name, as in T3. A plugin stopped while its writer
+  runs renames nothing. There is no switch to turn it off: T3 renames on
+  every launch too, and the off switch comes with its naming settings
+  (Deferred). Two threads that share a fresh worktree and start at once both
+  try; the second rename fails and is only logged.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -879,8 +905,10 @@ with the node's token, and without one).
   error strings T3 shows for a disconnected environment or a provider without
   rollback.
 - Worktrees, from W3 (D240): T3's setup scripts and their progress card
-  ("Setting up worktree…", "Work locally", cancelling a setup), naming a
-  temporary `jhin/<hex>` branch from the first message, the cleanup rules
+  ("Setting up worktree…", "Work locally", cancelling a setup), the
+  attachments of a first message in its branch name prompt (D901), T3's
+  branch naming settings (semantic, a custom prefix, custom instructions,
+  and with them a way to turn the rename off), the cleanup rules
   (keep when, after days, on merge, on delete without asking), submodules,
   one worktree per model of a multi-model send, the `composer.workspace`
   shortcut, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
