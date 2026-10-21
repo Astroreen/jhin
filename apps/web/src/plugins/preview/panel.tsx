@@ -563,6 +563,8 @@ function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalS
         // A failure (a reconnecting socket, a node without the command) waits longer each time.
         () => {
           if (!live) return;
+          // A node that does not answer offers no servers that may be gone.
+          setServers((current) => (current.length === 0 ? current : []));
           failures += 1;
           timer = setTimeout(scan, Math.min(LOCAL_SERVERS_SCAN_MS * 2 ** failures, 60_000));
         },
