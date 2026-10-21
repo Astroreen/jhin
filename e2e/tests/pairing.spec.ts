@@ -137,3 +137,52 @@ test("pairs from the connect form with a pairing code", async ({ browser }) => {
   );
   await context.close();
 });
+
+test("trades the token an older client saved for its own node for a session", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  await context.addInitScript(
+    ([rpc, token]) =>
+      localStorage.setItem("jhin.nodes", JSON.stringify([{ url: rpc, token, label: "mine" }])),
+    [node.rpc, node.token],
+  );
+  // A second page of the origin hears the saves: the migration, then the
+  // session entry that replaces the token.
+  const listener = await context.newPage();
+  await listener.goto(`${node.ui}client/plugins`);
+  const twoSaves = listener.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let heard = 0;
+        new BroadcastChannel("jhin.connections").addEventListener("message", () => {
+          if (++heard === 2) resolve();
+        });
+      }),
+  );
+  const page = await context.newPage();
+  await page.goto(node.ui);
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+  await twoSaves;
+  // The upgraded page reaches its node by the session cookie; the token is gone.
+  expect(await readableStorage(page)).not.toContain(node.token);
+  await context.close();
+});
+
+test("revokes the other clients after asking", async ({ page }) => {
+  for (const label of ["Spare one", "Spare two"]) {
+    await node.client().call("auth.tokens.issue", { label, permissions: ["threads.read"] });
+  }
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await openAuthorizedClients(page);
+  const list = page.getByRole("list", { name: /^Authorized clients of / });
+  await expect(list.getByText("Spare one")).toBeVisible();
+
+  await page.getByRole("button", { name: "Revoke others" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Revoke other clients?" });
+  await expect(confirm).toContainText("Other paired clients will need a new pairing link");
+  await confirm.getByRole("button", { name: "Revoke others" }).click();
+  await expect(list.getByText("Spare one")).toHaveCount(0);
+  await expect(list.getByText("Spare two")).toHaveCount(0);
+  await expect(list.getByText("This device")).toBeVisible();
+});

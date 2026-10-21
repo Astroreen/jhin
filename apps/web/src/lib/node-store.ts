@@ -19,8 +19,17 @@ function request<T>(run: (store: IDBObjectStore) => IDBRequest<T>, mode: IDBTran
     );
     opening.addEventListener("success", () => {
       const database = opening.result;
-      const transaction = database.transaction(STORE, mode);
-      const pending = run(transaction.objectStore(STORE));
+      let transaction: IDBTransaction;
+      let pending: IDBRequest<T>;
+      // A throw here (a missing store, a bad key) rejects instead of hanging.
+      try {
+        transaction = database.transaction(STORE, mode);
+        pending = run(transaction.objectStore(STORE));
+      } catch (error) {
+        database.close();
+        reject(error);
+        return;
+      }
       transaction.addEventListener("complete", () => {
         database.close();
         resolve(pending.result);

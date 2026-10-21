@@ -165,7 +165,14 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                   Limit what the paired client can do.
                 </p>
                 {permissions === undefined ? (
-                  <Spinner size="sm" tone="muted" />
+                  error === undefined ? (
+                    <Spinner size="sm" tone="muted" />
+                  ) : (
+                    // The node did not say what it grants: no spinner forever.
+                    <p className="text-sm text-muted-foreground">
+                      The permissions could not be read from this node.
+                    </p>
+                  )
                 ) : (
                   <div className="grid max-h-56 grid-cols-2 gap-1.5 overflow-y-auto">
                     {permissions.map((permission) => (

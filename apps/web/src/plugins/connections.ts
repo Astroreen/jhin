@@ -226,13 +226,20 @@ export const connectionsPlugin = builtin(
             if (session !== true || looksLikePairingCode(credential)) await openSession(credential);
             if (!disposed) keep({ url: own, session: true, label: location.host });
           }
-        } else if (
-          !nodes.has(own) &&
+        } else {
+          const saved = nodes.get(own)?.saved;
+          if (saved !== undefined && "session" in saved) return;
           // Unasked for, a node that cannot be reached is just not added.
-          (await currentSession().catch(() => undefined)) === true &&
-          !disposed
-        ) {
-          keep({ url: own, session: true, label: location.host });
+          const session = await currentSession().catch(() => undefined);
+          if (disposed || session === undefined) return;
+          if (saved !== undefined && "token" in saved) {
+            // Saved by a version before D421 with its token: traded for the
+            // session cookie, and the readable token leaves this device.
+            if (session !== true) await openSession(saved.token);
+            if (!disposed) keep({ url: own, session: true, label: saved.label });
+          } else if (session === true) {
+            keep({ url: own, session: true, label: location.host });
+          }
         }
       };
       changed();
