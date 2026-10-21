@@ -241,7 +241,9 @@ describe("jhin.agent-claude: live sessions", () => {
   });
 
   it("ends an idle Claude Code after the configured minutes", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // The idle deadline is reckoned with Date.now(): faked too, so real milliseconds that
+    // pass while the turn settles never bring it forward.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const { claude, turn, calls } = node([answering("one"), answering("two")], {
       sessionIdleMinutes: 5,
     });
