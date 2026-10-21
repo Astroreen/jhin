@@ -20,7 +20,7 @@ import {
   copyText,
 } from "@jhin/ui";
 import { CopyIcon, PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
 import { QRCodeSvg } from "../../lib/qr-code-svg.tsx";
@@ -64,20 +64,26 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
   const [created, setCreated] = useState<CreatedLink | undefined>();
 
   useEffect(() => {
+    // An answer after the dialog closed (or switched node) changes nothing.
+    let alive = true;
     const { client } = props.node;
     client.call<{ permissions: { permission: string }[] }>("auth.permissions.list").then(
       ({ permissions: listed }) => {
+        if (!alive) return;
         const all = listed.map((entry) => entry.permission);
         setPermissions(all);
         setChosen(new Set(all));
       },
-      (failure: unknown) => setError((failure as Error).message),
+      (failure: unknown) => alive && setError((failure as Error).message),
     );
     // The node's own address, next to the one this device reaches it at.
     client.call<{ url: string }>("http.info").then(
-      ({ url }) => setBases((current) => [...new Set([...current, url])]),
+      ({ url }) => alive && setBases((current) => [...new Set([...current, url])]),
       () => undefined,
     );
+    return () => {
+      alive = false;
+    };
   }, [props.node]);
 
   const everything = permissions !== undefined && chosen.size === permissions.length;
@@ -236,24 +242,33 @@ function NodeClients({ node }: { node: NodeConnection }) {
   const [links, setLinks] = useState<readonly PairingLink[]>([]);
   const [error, setError] = useState<string | undefined>();
   const [creating, setCreating] = useState(false);
+  // Answers that come after this node's section is gone change nothing.
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
   const load = useCallback(() => {
     Promise.all([
       node.client.call<{ clients: Client[] }>("auth.clients.list"),
       node.client.call<{ links: PairingLink[] }>("auth.pairing.list"),
     ]).then(
       ([listed, open]) => {
+        if (!mounted.current) return;
         setClients(listed.clients);
         setLinks(open.links);
         setError(undefined);
       },
-      (failure: unknown) => setError((failure as Error).message),
+      (failure: unknown) => mounted.current && setError((failure as Error).message),
     );
   }, [node]);
   useEffect(load, [load]);
   const run = (method: string, input: unknown) =>
     node.client
       .call(method, input)
-      .then(load, (failure: unknown) => setError((failure as Error).message));
+      .then(load, (failure: unknown) => mounted.current && setError((failure as Error).message));
 
   return (
     <SettingsSection

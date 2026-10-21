@@ -229,7 +229,10 @@ export const connectionsPlugin = builtin(
             }
             for (const saved of stored.values()) if (!nodes.has(saved.url)) open(saved);
             changed();
-          });
+          })
+          .catch((error: unknown) =>
+            context.log.error("following another tab's nodes failed", { error: String(error) }),
+          );
       });
 
       context.services.provide(CONNECTIONS_CAPABILITY, connections);

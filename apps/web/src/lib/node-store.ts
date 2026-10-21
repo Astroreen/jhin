@@ -65,13 +65,19 @@ export function createNodeStore(storage: Storage = localStorage): NodeStore {
         } catch {
           // An unreadable entry moves as nothing rather than blocking the client.
         }
-        const current = await request((store) => store.get(KEY), "readonly");
-        // Nodes saved here already win; the old list only adds what is missing.
-        const merged = [
-          ...(Array.isArray(current) ? current : []),
-          ...(Array.isArray(parsed) ? parsed : []),
-        ];
-        await save(merged);
+        const legacyNodes = Array.isArray(parsed) ? parsed : [];
+        // Read and write in one transaction, so another tab's save cannot fall
+        // in between. Nodes saved here already win; the old list only adds.
+        await request((store) => {
+          const reading = store.get(KEY);
+          reading.addEventListener("success", () => {
+            const current: unknown = reading.result;
+            store.put([...(Array.isArray(current) ? current : []), ...legacyNodes], KEY);
+          });
+          return reading;
+        }, "readwrite");
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel, not a window
+        channel?.postMessage("saved");
         storage.removeItem(LEGACY_STORAGE_KEY);
       }
       return (await request((store) => store.get(KEY), "readonly")) ?? [];
