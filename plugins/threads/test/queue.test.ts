@@ -666,6 +666,19 @@ describe("jhin.threads: steering (D204, D205)", () => {
     expect(lastQueue(events)?.held).toMatchObject({ reason: "interrupted" });
   });
 
+  it("keeps two steers sent during one restart in the order sent (D803)", async () => {
+    const { client, thread, events, watched } = await plainHolding();
+    const [one, two] = await Promise.all([
+      client.call<{ outcome: string }>("threads.steer", { threadId: thread.id, text: "one" }),
+      client.call<{ outcome: string }>("threads.steer", { threadId: thread.id, text: "two" }),
+    ]);
+    expect(one.outcome).toBe("started");
+    expect(two.outcome).toBe("queued");
+    await untilCount(watched, ThreadEvents.turnCompleted, 2);
+    expect(started(events)).toEqual(["/hold", "one", "two"]);
+    expect(count(events, ThreadEvents.turnInterrupted)).toBe(1);
+  });
+
   it("restarts with a queued message promoted to a steer (D803)", async () => {
     const { client, thread, events, watched } = await plainHolding();
     const { messageId } = await client.call<{ messageId: string }>("threads.queue.add", {

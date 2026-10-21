@@ -1533,24 +1533,31 @@ Reference: T3 Code at `eb7b35ac` (D53).
 - **D803. T3's restart dispatch for agents that cannot steer**
   (`CommandPolicy.ts` `decideSteeringExecution`: `interrupt_restart` when a
   provider cannot steer actively). `threads.steer` and `threads.queue.steer`
-  no longer refuse an agent without `steering` (`STEER_UNSUPPORTED` stays a
-  known code, no longer sent): the message goes first in the thread's queue,
-  the running turn stops (as Stop does: bounded, and given up on for an
-  agent that ignores it), and once its end is recorded the message starts
-  the next turn at once. A turn stopped or ended while the message was
-  being queued is not taken for a restart: the message waits first, as for
-  any turn that ended before it took a steer. A turn that fails instead of
-  stopping holds the queue as any failure does, with the message first. That stop holds no queue (D202), and the message
-  starts past a hold already there, which stays for the rest; so what was
-  queued follows the restarted turn. `threads.steer` answers `started` with
-  the new turn's id (`queued` if it could not start yet); `threads.queue.steer`
-  answers the new turn's id. A turn that ends or is being stopped meanwhile
-  is treated as before (the message is queued first). T3 restarts the run
-  as a new attempt of the same run; Jhin records the stopped turn and a new
-  turn with the message, so the timeline shows the stop. The client offers
-  steering for every running turn, as T3's composer does for a provider that
-  steers either way, and the "Queued instead" notice says only that the
-  turn ended first.
+  no longer refuse an agent without `steering`; `STEER_UNSUPPORTED` stays a
+  known code but is no longer sent. Instead:
+  - The message goes first in the thread's queue, and the running turn is
+    stopped as Stop stops it (bounded, and given up on for an agent that
+    ignores it). That stop holds no queue (D202).
+  - Once the stop's end is recorded, the message starts the next turn at
+    once, past a hold already on the queue, which stays for the rest. What
+    was queued follows the restarted turn.
+  - A steer sent while a restart is under way waits right after its message,
+    in the order sent. A Stop pressed meanwhile is a stop like any other: the
+    queue is held, with the message first.
+  - A turn that stopped or ended before the restart began, or that fails
+    instead of stopping, leaves the message first in the queue, as for a
+    steer that came too late.
+  - `threads.steer` answers `started` with the new turn's id, or `queued`.
+    `threads.queue.steer` answers the new turn's id, or the stopped turn's
+    id while the message still waits (its `turnId` is required).
+  - The client offers steering for every running turn, as T3's composer does
+    for a provider that steers either way. The "Queued instead" notice says
+    only that the turn ended first.
+
+  T3 restarts the run as a new attempt of the same run. Jhin records the
+  stopped turn and a new turn with the message, so the timeline shows the
+  stop.
+
 - **D804. Steering a turn that waits for an approval or an answer stays as
   it is, which is T3's behaviour.** T3 steers a run while one of its
   requests is pending (`dispatchSteerIntoRun` checks only that the run is

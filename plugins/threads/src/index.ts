@@ -3343,26 +3343,27 @@ export default definePlugin({
       message: Outgoing | "queued",
     ): Promise<"restarted" | false> {
       await current.started;
-      const running = () =>
-        !current.ending && !current.interrupted && active.get(threadId) === current;
-      if (!running()) return false;
+      // A restart under way: this message follows its message, in the order sent.
+      const after = current.restartWith;
+      if (after === undefined && (current.ending || current.interrupted)) return false;
+      if (active.get(threadId) !== current) return false;
+      // Claimed before the queue is written, so a steer meanwhile goes after it.
+      if (after === undefined) current.restartWith = messageId;
       await changeQueue(threadId, async (queue) => {
-        const first =
+        const item =
           message === "queued"
-            ? queue.messages.find((item) => item.id === messageId)
+            ? queue.messages.find((entry) => entry.id === messageId)
             : { id: messageId, ...message, createdAt: now() };
-        if (first === undefined) throw notQueued(threadId, messageId);
-        await writeQueue(threadId, {
-          ...queue,
-          messages: [first, ...queue.messages.filter((item) => item.id !== messageId)],
-        });
+        if (item === undefined) throw notQueued(threadId, messageId);
+        const rest = queue.messages.filter((entry) => entry.id !== messageId);
+        const at = after === undefined ? 0 : rest.findIndex((entry) => entry.id === after) + 1;
+        await writeQueue(threadId, { ...queue, messages: rest.toSpliced(at, 0, item) });
       });
-      // Stopped or ended while the queue was written: the message waits first, as
-      // for any turn that ends before it took a steer.
-      if (!running()) return false;
-      current.restartWith = messageId;
       // A promoted message is no longer kept from starting as a turn of its own.
       steering.delete(`${threadId}:${messageId}`);
+      // Queued behind the restart's message, or a Stop came while the queue was
+      // written (`restartWith` cleared): it waits, as a steer that came too late.
+      if (after !== undefined || current.restartWith !== messageId) return false;
       // A user's Stop: bounded, and given up on for an agent that ignores it.
       await stopTurn(threadId);
       return "restarted";
@@ -4370,6 +4371,8 @@ export default definePlugin({
       handler: async ({ threadId }) => {
         const current = active.get(threadId);
         if (current === undefined) return { interrupted: false };
+        // The user's Stop: a restart under way (D803) holds the queue as any stop does.
+        current.restartWith = undefined;
         current.interrupted = true;
         current.turn?.interrupt();
         return { interrupted: true };
