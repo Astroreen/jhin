@@ -41,7 +41,7 @@ import {
 } from "./composer.tsx";
 import { ChatHeader } from "./header.tsx";
 import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
-import { useAgents, useChat } from "./services.ts";
+import { useChat } from "./services.ts";
 import { ThreadFindBar, useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
@@ -189,14 +189,9 @@ export function ThreadView(props: {
 
   // Follow-ups typed while a turn runs wait in the thread's queue on its node
   // (D201) and go out one by one as turns end, whoever is watching.
-  const agents = useAgents(target);
-  // A steer goes into the running turn, so that turn's agent decides. Until
-  // the agents are known the setting is trusted: an agent that cannot steer
-  // gets the message queued (STEER_UNSUPPORTED, send.ts).
-  const canSteer =
-    running &&
-    (agents === undefined ||
-      agents.find((agent) => agent.agentId === lastTurn?.agentId)?.steering === true);
+  // Every running turn takes a steer: into the turn, or, for an agent that cannot
+  // steer, as the turn that replaces it (T3's restart dispatch, D803).
+  const canSteer = running;
   // A first message the connection dropped: offered again until the thread shows it.
   const unconfirmed = useUnconfirmed(
     chat.unconfirmed,
@@ -218,15 +213,15 @@ export function ThreadView(props: {
       setError(outcome.message);
       return false;
     }
-    // Asked to steer, but it waits in the queue (the agent takes no steering,
-    // or the turn ended first): say so rather than let it look steered.
+    // Asked to steer, but it waits in the queue (the turn ended first): say so
+    // rather than let it look steered.
     const askedToSteer =
       running && dispatchMode(settings.followUpBehavior, alternate, true) === "steer";
     if (outcome.kind === "queued" && askedToSteer) {
       chat.toasts?.show({
         type: "info",
         title: "Queued instead",
-        description: "The turn ended first, or its agent takes no steering: it goes next.",
+        description: "The turn ended first: it goes next.",
       });
     }
     return true;
