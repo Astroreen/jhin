@@ -288,10 +288,20 @@ and from listed origins.
 
 ### PR 4 — Pairing
 
-Implements D419–D425. **Done when:** Playwright pairs a second browser
-context with a node by its pairing URL, the page's token is not readable by
-scripts, revoking the client disconnects it, and `jhin pair` prints the link
-and QR code.
+Implements D419–D425, in two layers:
+
+- **PR 4a — the node** (D419–D421): pairing codes and commands, `POST
+  /auth/pair`, the `/auth/session` cookie and the transport accepting it.
+  **Done when:** tests over real HTTP and WebSocket exchange a code for a
+  scoped token, refuse it a second time, open a session cookie only from the
+  node's own page and accept it on the socket only from there.
+- **PR 4b — the web client** (D422–D424): the pairing link, tokens out of
+  `localStorage`, the Authorized clients settings and the QR code. **Done
+  when:** Playwright pairs a second browser context with a node by its
+  pairing URL, the page's token is not readable by scripts, and revoking the
+  client disconnects it.
+
+`jhin pair` (D425) is in Deferred.
 
 ## Deferred
 

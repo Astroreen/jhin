@@ -635,8 +635,9 @@ describe("pairing (security.md D419–D422)", () => {
       );
       expect(refused.status).toBe(403);
     }
-    // Only failures count, per route. 41 wrong codes cross 20 a minute even when
-    // they straddle a minute boundary (as /mesh/join's test does).
+    // Only failures count, per route. The limit is per clock minute, so these
+    // tests rely on a margin: 41 wrong codes cross 20 a minute even when they
+    // straddle a minute boundary (as /mesh/join's test does).
     const statuses: number[] = [];
     for (let attempt = 0; attempt < 41; attempt++) {
       statuses.push((await post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" })).status);
