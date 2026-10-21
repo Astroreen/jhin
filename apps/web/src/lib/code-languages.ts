@@ -76,7 +76,7 @@ export function codeLanguageEntry(language: string): CodeBlockLanguage | null {
   const lower = language.toLowerCase();
   // Own keys only: a fence named `constructor` must not find Object's.
   const alias = Object.hasOwn(LANGUAGE_ALIASES, lower) ? LANGUAGE_ALIASES[lower] : undefined;
-  const id = language === "text" ? "" : (alias ?? language);
+  const id = lower === "text" ? "" : (alias ?? language);
   return CODE_BLOCK_LANGUAGES.find((entry) => entry.id === id.toLowerCase()) ?? null;
 }
 

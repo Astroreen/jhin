@@ -27,5 +27,6 @@ describe("highlightTokens (D841)", () => {
       expect(languageOf(id), id).toBeDefined();
     }
     expect(codeLanguageEntry("py")?.label).toBe("Python");
+    expect(codeLanguageEntry("Text")?.label).toBe("Plain text");
   });
 });
