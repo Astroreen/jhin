@@ -3437,8 +3437,8 @@ export const sidebarPlugin = builtin(
               if (hasCommand("thread.settle"))
                 await context.commands.execute("thread.settle", refOf(entry));
               else await settle(entry);
-              // A pinned thread is neither settled nor snoozed: unpinning is all this drop does to it.
             } else if (plan.kind === "move-active" && plan.unpin && undo !== undefined) {
+              // A pinned thread is neither settled nor snoozed: unpinning is all this drop does to it.
               const orderKey = entry.thread.pinOrderKey;
               await undo.run({
                 kind: "pin",
