@@ -552,13 +552,57 @@ describe("the diff panel", () => {
     expect(opens()).toHaveLength(1);
 
     await userEvent.click(title, { button: "right" });
-    await expect.element(page.getByRole("menuitem", { name: "Open", exact: true })).toBeVisible();
+    await expect
+      .element(page.getByRole("menuitem", { name: "Open containing folder" }))
+      .toBeVisible();
     await userEvent.click(page.getByRole("menuitem", { name: "Open with" }));
     await userEvent.click(page.getByRole("menuitem", { name: "Zed" }));
     expect(opens().at(-1)?.params).toEqual({ projectId: "app", path: "app.ts", editor: "zed" });
     // The editor chosen last is the one a name opens in next.
     expect(localStorage.getItem("jhin.lastEditor")).toBe("zed");
     localStorage.removeItem("jhin.lastEditor");
+  });
+
+  it("says why a file did not open, retries a failed editor list, and folds a name that opens nowhere", async () => {
+    localStorage.removeItem("jhin.lastEditor");
+    let lists = 0;
+    const { value, shown, calls } = services(viewWith(status()), {
+      "git.diff": diff,
+      "editors.list": () => {
+        lists++;
+        if (lists === 1) throw new Error("not connected yet");
+        return { editors: [{ id: "zed", label: "Zed" }] };
+      },
+      "editors.open": () => {
+        throw new Error("Could not start zed: spawn EACCES");
+      },
+    });
+    const editors = createEditors(value.threads, value.toasts);
+    const Panel = createDiffPanel({ ...value, editors });
+    const mounted = mount(<Panel />);
+    const title = page.getByText("src/app.ts", { exact: true });
+    await expect.element(title).toBeVisible();
+    // The first list failed: the name folds its file instead of opening it.
+    await userEvent.click(title);
+    await expect.element(page.getByRole("button", { name: "Collapse src/app.ts" })).toBeVisible();
+    expect(calls.filter((call) => call.method === "editors.open")).toHaveLength(0);
+    mounted.unmount();
+
+    // A view that follows the node again reads the list again.
+    mount(<Panel />);
+    await expect.element(page.getByText("src/app.ts", { exact: true })).toBeVisible();
+    expect(lists).toBe(2);
+    await userEvent.click(page.getByText("src/app.ts", { exact: true }));
+    // The refused call settles, then its toast is shown.
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(shown[0]).toEqual({
+      type: "error",
+      title: "Could not open in Zed",
+      description: "src/app.ts: Could not start zed: spawn EACCES",
+    });
+    // An editor that failed to open is not remembered as the preferred one.
+    expect(localStorage.getItem("jhin.lastEditor")).toBeNull();
   });
 
   it("says so when the project is no repository or has no changes", async () => {

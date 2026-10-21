@@ -5,9 +5,13 @@ import * as ChildProcess from "node:child_process";
 import { EDITORS, HOST_EDITORS_CAPABILITY, type EditorErrorCode } from "@jhin/host-api";
 import { definePlugin, z } from "@jhin/sdk";
 
+import * as Path from "node:path";
+
 import {
+  cmdArgs,
   editorArgs,
   fileManagerCommand,
+  needsCmd,
   findEditorCommand,
   nodeHost,
   resolveInProject,
@@ -39,7 +43,8 @@ export function launchDetached(launch: Launch): Promise<void> {
       detached: true,
       stdio: "ignore",
       env,
-      shell: process.platform === "win32" && /\.(cmd|bat)$/i.test(launch.command),
+      // `.cmd`/`.bat` launchers only start through cmd.exe; their arguments arrive quoted (cmdArgs).
+      shell: needsCmd(process.platform, launch.command),
     });
     child.once("error", reject);
     child.once("spawn", () => {
@@ -50,6 +55,7 @@ export function launchDetached(launch: Launch): Promise<void> {
 }
 
 const EditorInfo = z.object({ id: z.string(), label: z.string() });
+const Projects = z.array(z.object({ id: z.string(), path: z.string() }));
 
 /** The editors, by T3's order, that the host can start; the file manager last. */
 export function availableEditors(host: Host) {
@@ -96,11 +102,13 @@ export function createEditorsPlugin(
         output: z.object({ editor: z.string(), path: z.string() }),
         permissions: ["editor.open"],
         handler: async (input) => {
-          const projects = (await context.commands.execute("projects.list", {})) as {
-            id: string;
-            path: string;
-          }[];
-          const project = projects.find((candidate) => candidate.id === input.projectId);
+          // No capability describes projects: they are read with `projects.list`, as
+          // source control reads them (D111); without a projects plugin there are none.
+          const listed = await context.commands.execute("projects.list", {}).catch(() => []);
+          const projects = Projects.safeParse(listed);
+          const project = (projects.success ? projects.data : []).find(
+            (candidate) => candidate.id === input.projectId,
+          );
           if (project === undefined) {
             throw new EditorError(
               "PROJECT_NOT_FOUND",
@@ -118,7 +126,9 @@ export function createEditorsPlugin(
           let launch: Launch | undefined;
           if (editor?.id === "file-manager") {
             const command = fileManagerCommand(host);
-            if (command !== undefined) launch = { command, args: [path] };
+            // The containing folder, never the file: a file manager runs whatever a file is
+            // (a script, a `.desktop` entry), and the project's files are not all the user's.
+            if (command !== undefined) launch = { command, args: [Path.dirname(path)] };
           } else if (editor !== undefined) {
             const found = findEditorCommand(editor, host);
             if (found !== undefined) {
@@ -134,6 +144,16 @@ export function createEditorsPlugin(
                 ],
               };
             }
+          }
+          if (launch !== undefined && needsCmd(host.platform, launch.command)) {
+            const quoted = cmdArgs(launch.args);
+            if (quoted === undefined) {
+              throw new EditorError(
+                "PATH_UNSAFE",
+                `${input.path} holds characters a Windows launcher cannot pass safely`,
+              );
+            }
+            launch = { command: launch.command, args: quoted };
           }
           if (launch === undefined) {
             throw new EditorError(

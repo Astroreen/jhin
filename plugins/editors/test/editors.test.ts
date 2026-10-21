@@ -8,6 +8,7 @@ import { createTestKernel, testManifest } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
+  cmdArgs,
   editorArgs,
   fileManagerCommand,
   findEditorCommand,
@@ -95,7 +96,35 @@ describe("finding and starting editors as T3 does", () => {
     expect(fileManagerCommand(fakeHost("darwin", {}, []))).toBe("open");
   });
 
-  it("keeps paths inside the project's folder", () => {
+  it("quotes a Windows launcher's arguments and refuses what cmd.exe would run", () => {
+    expect(cmdArgs(["--goto", "C:\\p\\a b.ts:3"])).toEqual(['"--goto"', '"C:\\p\\a b.ts:3"']);
+    for (const hostile of [
+      "a&calc.ts",
+      "x&&evil.ts",
+      'q"uote.ts',
+      "%PATH%.ts",
+      "a|b.ts",
+      "a^b.ts",
+    ]) {
+      expect(cmdArgs([`C:\\p\\${hostile}`])).toBeUndefined();
+    }
+  });
+
+  it("keeps paths inside the project's folder, following links", () => {
+    const root = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-project-"));
+    const outside = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-outside-"));
+    try {
+      Fs.writeFileSync(Path.join(outside, "secret"), "x");
+      Fs.symlinkSync(outside, Path.join(root, "link"));
+      Fs.mkdirSync(Path.join(root, "src"));
+      Fs.symlinkSync(Path.join(root, "src"), Path.join(root, "alias"));
+      expect(resolveInProject(root, "link/secret")).toBeUndefined();
+      expect(resolveInProject(root, "alias/a.ts")).toBe(Path.join(root, "alias/a.ts"));
+    } finally {
+      Fs.rmSync(root, { recursive: true, force: true });
+      Fs.rmSync(outside, { recursive: true, force: true });
+    }
+    expect(resolveInProject("/p", "..foo/x.ts")).toBe("/p/..foo/x.ts");
     expect(resolveInProject("/p", "src/a.ts")).toBe("/p/src/a.ts");
     expect(resolveInProject("/p", "./src/../b.ts")).toBe("/p/b.ts");
     expect(resolveInProject("/p", "../etc/passwd")).toBeUndefined();
@@ -125,15 +154,19 @@ describe("the editors plugin", () => {
     }),
   };
 
-  async function start(files: readonly string[], env: NodeJS.ProcessEnv = { PATH: "/opt/bin" }) {
+  async function start(
+    files: readonly string[],
+    env: NodeJS.ProcessEnv = { PATH: "/opt/bin" },
+    options: { platform?: NodeJS.Platform; projects?: boolean } = {},
+  ) {
     const launches: Launch[] = [];
     const kernel = await createTestKernel({
       plugins: [
-        projects,
+        ...(options.projects === false ? [] : [projects]),
         {
           manifest,
           definition: createEditorsPlugin({
-            host: fakeHost("linux", env, files),
+            host: fakeHost(options.platform ?? "linux", env, files),
             launch: async (launch) => {
               if (launch.command === "zed") throw new Error("spawn EACCES");
               launches.push(launch);
@@ -188,6 +221,53 @@ describe("the editors plugin", () => {
       code: "EDITOR_NOT_FOUND",
     });
     await expect(open({ editor: "zed" })).rejects.toMatchObject({ code: "LAUNCH_FAILED" });
+    await kernel.stop();
+  });
+
+  it("opens the containing folder with the file manager, never the file itself", async () => {
+    const { kernel, launches } = await start(["/usr/bin/xdg-open"], {
+      PATH: "/usr/bin",
+      DISPLAY: ":0",
+    });
+    await kernel.commands.execute("editors.open", {
+      projectId: "app",
+      path: "bin/run.desktop",
+      editor: "file-manager",
+    });
+    expect(launches).toEqual([{ command: "xdg-open", args: ["/work/app/bin"] }]);
+    await kernel.stop();
+  });
+
+  it("quotes a Windows .cmd launcher's arguments and refuses a hostile name", async () => {
+    const { kernel, launches } = await start(
+      ["C:\\bin\\code.cmd"],
+      { PATH: "C:\\bin", PATHEXT: ".EXE;.cmd" },
+      { platform: "win32" },
+    );
+    await kernel.commands.execute("editors.open", {
+      projectId: "app",
+      path: "src/a b.ts",
+      line: 2,
+      editor: "vscode",
+    });
+    expect(launches).toEqual([
+      { command: "C:\\bin\\code.cmd", args: ['"--goto"', '"/work/app/src/a b.ts:2"'] },
+    ]);
+    await expect(
+      kernel.commands.execute("editors.open", {
+        projectId: "app",
+        path: "a&calc.ts",
+        editor: "vscode",
+      }),
+    ).rejects.toMatchObject({ code: "PATH_UNSAFE" });
+    await kernel.stop();
+  });
+
+  it("finds no project when the node has no projects plugin", async () => {
+    const { kernel } = await start(["/opt/bin/code"], { PATH: "/opt/bin" }, { projects: false });
+    await expect(
+      kernel.commands.execute("editors.open", { projectId: "app", path: "a.ts", editor: "vscode" }),
+    ).rejects.toMatchObject({ code: "PROJECT_NOT_FOUND" });
     await kernel.stop();
   });
 

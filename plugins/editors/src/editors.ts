@@ -46,24 +46,33 @@ export const nodeHost: Host = {
   },
 };
 
-/** A command on `PATH` (with Windows' extensions), or an absolute path, that can run. */
-function isCommandAvailable(command: string, host: Host): boolean {
-  const pathModule = host.platform === "win32" ? Path.win32 : Path.posix;
-  const extensions =
-    host.platform === "win32"
-      ? ["", ...(host.env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD").split(";")]
-      : [""];
+/**
+ * Where a command on `PATH` (with Windows' extensions), or an absolute path,
+ * can run from: its name as given, except on Windows, where the file found
+ * (`code.cmd`) says how it has to be started.
+ */
+function resolveCommand(command: string, host: Host): string | undefined {
+  const windows = host.platform === "win32";
+  const pathModule = windows ? Path.win32 : Path.posix;
+  const extensions = windows
+    ? ["", ...(host.env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD").split(";")]
+    : [""];
+  const found = (candidate: string) => (windows ? candidate : command);
   if (pathModule.isAbsolute(command)) {
-    return extensions.some((extension) => host.isExecutable(command + extension));
+    for (const extension of extensions) {
+      if (host.isExecutable(command + extension)) return found(command + extension);
+    }
+    return undefined;
   }
   const path = host.env["PATH"] ?? host.env["Path"] ?? "";
   for (const directory of path.split(pathModule.delimiter)) {
     if (directory === "") continue;
     for (const extension of extensions) {
-      if (host.isExecutable(pathModule.join(directory, command + extension))) return true;
+      const candidate = pathModule.join(directory, command + extension);
+      if (host.isExecutable(candidate)) return found(candidate);
     }
   }
-  return false;
+  return undefined;
 }
 
 const INSTALL_NAMES: Readonly<Record<string, readonly string[]>> = {
@@ -97,7 +106,8 @@ export function findEditorCommand(
   const preferBundle = platform === "darwin" && editor.id === "zed";
   if (!preferBundle) {
     for (const command of editor.commands) {
-      if (isCommandAvailable(command, host)) return { command, baseArgs };
+      const resolved = resolveCommand(command, host);
+      if (resolved !== undefined) return { command: resolved, baseArgs };
     }
   }
   const path = platform === "win32" ? Path.win32 : Path.posix;
@@ -191,9 +201,10 @@ export function findEditorCommand(
   }
   if (preferBundle) candidates.push(...editor.commands);
   for (const candidate of candidates) {
-    if (isCommandAvailable(candidate, host)) {
+    const resolved = resolveCommand(candidate, host);
+    if (resolved !== undefined) {
       return {
-        command: candidate,
+        command: resolved,
         baseArgs:
           editor.id === "kiro" && (platform === "darwin" || platform === "win32") ? [] : baseArgs,
       };
@@ -213,7 +224,7 @@ export function fileManagerCommand(host: Host = nodeHost): string | undefined {
       const graphical = [host.env["DISPLAY"], host.env["WAYLAND_DISPLAY"]].some(
         (value) => value !== undefined && value.trim().length > 0,
       );
-      return graphical && isCommandAvailable("xdg-open", host) ? "xdg-open" : undefined;
+      return graphical && resolveCommand("xdg-open", host) !== undefined ? "xdg-open" : undefined;
     }
   }
 }
@@ -243,7 +254,8 @@ export function editorArgs(editor: EditorDefinition, target: Target): string[] {
 
 /**
  * A project-relative path inside the project's folder, as an absolute path;
- * none for an absolute path, `..` that leaves the folder, or an empty one.
+ * none for an absolute path, `..` that leaves the folder, an empty one, or a
+ * symbolic link (on the way or at the end) that leads out of the folder.
  */
 export function resolveInProject(projectPath: string, relative: string): string | undefined {
   if (relative.trim() === "" || Path.isAbsolute(relative) || /^[a-zA-Z]:/.test(relative)) {
@@ -251,7 +263,46 @@ export function resolveInProject(projectPath: string, relative: string): string 
   }
   const root = Path.resolve(projectPath);
   const resolved = Path.resolve(root, relative.replaceAll("\\", "/"));
-  const inside = Path.relative(root, resolved);
-  if (inside === "" || inside.startsWith("..") || Path.isAbsolute(inside)) return undefined;
+  if (!isInside(root, resolved)) return undefined;
+  // Links are followed: what opens is where they lead. A file that does not exist (yet) is
+  // checked as written.
+  const realRoot = realpathOr(root);
+  const real = realpathOr(resolved);
+  if (real !== resolved && !isInside(realRoot, real)) return undefined;
   return resolved;
 }
+
+function isInside(root: string, path: string): boolean {
+  const inside = Path.relative(root, path);
+  return (
+    inside !== "" &&
+    inside !== ".." &&
+    !inside.startsWith(`..${Path.sep}`) &&
+    !Path.isAbsolute(inside)
+  );
+}
+
+function realpathOr(path: string): string {
+  try {
+    return Fs.realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+/** Characters `cmd.exe` reads as syntax even inside quotes: a path holding one is refused. */
+const CMD_UNSAFE = /["%&|^<>!\r\n]/;
+
+/**
+ * Arguments for a `.cmd`/`.bat` launcher, which Windows starts through
+ * `cmd.exe` (Node quotes nothing for it): each one quoted, none holding
+ * characters `cmd.exe` would read as commands. None when one is unsafe.
+ */
+export function cmdArgs(args: readonly string[]): string[] | undefined {
+  if (args.some((arg) => CMD_UNSAFE.test(arg))) return undefined;
+  return args.map((arg) => `"${arg}"`);
+}
+
+/** A launcher Windows only starts through `cmd.exe`. */
+export const needsCmd = (platform: NodeJS.Platform, command: string) =>
+  platform === "win32" && /\.(cmd|bat)$/i.test(command);

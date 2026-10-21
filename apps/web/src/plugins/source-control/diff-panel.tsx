@@ -367,12 +367,16 @@ export function createDiffPanel(services: SourceControlServices) {
         workspaceRoot: props.projectPath,
         repositoryRoot: status?.root,
       });
-    /** T3's primary action on a file's name: the preferred editor opens it. */
+    /**
+     * T3's primary action on a file's name: the preferred editor opens it.
+     * False when nothing can (no editor, a file outside the project, D287).
+     */
     const openDiffFile = (filePath: string) => {
       const path = workspacePath(filePath);
       const editor = preferredEditor(editors);
-      if (path === null || editor === undefined) return;
+      if (path === null || editor === undefined) return false;
       void services.editors.open(target, projectId, path, editor);
+      return true;
     };
     const resolvedTheme = useResolvedTheme();
     const settings = useSection(services.context, DIFF_SECTION, DiffSettings);
@@ -783,16 +787,16 @@ export function createDiffPanel(services: SourceControlServices) {
                   (node): node is HTMLElement =>
                     node instanceof HTMLElement && node.hasAttribute("data-title"),
                 );
-                const filePath = title?.textContent;
-                if (filePath) {
-                  openDiffFile(filePath);
-                  return;
-                }
+                // A name that opens nowhere folds its file, as the rest of the header does.
+                const filePath = title?.textContent?.trim();
+                if (filePath && openDiffFile(filePath)) return;
                 const fileHeader = composedPath.find(
                   (node): node is HTMLElement =>
                     node instanceof HTMLElement && node.hasAttribute("data-diffs-header"),
                 );
-                const headerFilePath = fileHeader?.querySelector("[data-title]")?.textContent;
+                const headerFilePath = fileHeader
+                  ?.querySelector("[data-title]")
+                  ?.textContent?.trim();
                 if (!headerFilePath) return;
                 const file = renderableFileEntries.find(
                   (candidate) => resolveFileDiffPath(candidate.fileDiff) === headerFilePath,

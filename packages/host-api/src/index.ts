@@ -177,6 +177,8 @@ export type EditorErrorCode =
   | "PROJECT_NOT_FOUND"
   | "PATH_OUTSIDE_PROJECT"
   | "EDITOR_NOT_FOUND"
+  /** A Windows `.cmd` launcher cannot take the path safely (`"`, `%`, `&`, …). */
+  | "PATH_UNSAFE"
   | "LAUNCH_FAILED";
 
 export * from "./config-change.ts";

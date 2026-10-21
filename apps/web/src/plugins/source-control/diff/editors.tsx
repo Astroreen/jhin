@@ -83,26 +83,43 @@ const NO_EDITORS: readonly EditorInfo[] = [];
 
 /** The editors of each node (`editors.list`), read once per target; none where the plugin is absent. */
 export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefined) {
+  /** Each node's answer; a failed read is not kept, so the next view asks again. */
   const lists = new Map<string, readonly EditorInfo[]>();
   const loading = new Set<string>();
   const listeners = new Set<() => void>();
+  const changed = () => {
+    for (const listener of Array.from(listeners)) listener();
+  };
   const load = (target: NodeTarget) => {
     const key = targetKey(target);
-    if (lists.has(key) || loading.has(key)) return;
+    if (loading.has(key)) return;
     loading.add(key);
     void threads
       .call<{ editors?: EditorInfo[] } | undefined>(target, "editors.list", {})
-      .then((answer) => answer?.editors ?? NO_EDITORS)
-      .catch(() => NO_EDITORS)
-      .then((editors) => {
+      .then(
+        (answer) => lists.set(key, answer?.editors ?? NO_EDITORS),
+        () => lists.delete(key),
+      )
+      .finally(() => {
         loading.delete(key);
-        lists.set(key, editors);
-        for (const listener of Array.from(listeners)) listener();
+        changed();
       });
   };
-  const subscribe = (listener: () => void) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+  const subscribers = new Map<string, (listener: () => void) => () => void>();
+  /** A view that starts following a node reads its editors again (one installed meanwhile shows). */
+  const subscriberFor = (target: NodeTarget) => {
+    const key = targetKey(target);
+    let subscribe = subscribers.get(key);
+    if (subscribe === undefined) {
+      const fixed = { ...target };
+      subscribe = (listener) => {
+        listeners.add(listener);
+        load(fixed);
+        return () => listeners.delete(listener);
+      };
+      subscribers.set(key, subscribe);
+    }
+    return subscribe;
   };
   const open = async (
     target: NodeTarget,
@@ -110,28 +127,26 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
     path: string,
     editor: EditorInfo,
   ): Promise<void> => {
-    if (editor.id !== "file-manager") rememberEditor(editor.id);
     try {
       await threads.call(target, "editors.open", { projectId, path, editor: editor.id });
-    } catch {
+      // Remembered once it opened: an editor that fails is not the one the next click uses.
+      if (editor.id !== "file-manager") rememberEditor(editor.id);
+    } catch (error) {
       toasts?.show({
         type: "error",
         title:
           editor.id === "file-manager"
-            ? "Could not open file"
+            ? "Could not open the folder"
             : `Could not open in ${editor.label}`,
-        description: path,
+        description: `${path}: ${(error as Error).message}`,
       });
     }
   };
   return {
-    /** The node's editors, loaded on first use. */
+    /** The node's editors, read when a view starts following the node. */
     useEditors(target: NodeTarget): readonly EditorInfo[] {
       const key = targetKey(target);
-      return useSyncExternalStore(subscribe, () => {
-        load(target);
-        return lists.get(key) ?? NO_EDITORS;
-      });
+      return useSyncExternalStore(subscriberFor(target), () => lists.get(key) ?? NO_EDITORS);
     },
     open,
   };
@@ -139,7 +154,11 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
 
 export type Editors = ReturnType<typeof createEditors>;
 
-/** T3's file context menu: "Open" with the file manager, "Open with" every editor found. */
+/**
+ * T3's file context menu: the file manager (on the containing folder, so no
+ * file of the project is run by its default application) and "Open with"
+ * every editor found.
+ */
 export function FileContextMenuPopup(props: {
   editors: readonly EditorInfo[];
   onOpen(editor: EditorInfo): void;
@@ -149,7 +168,7 @@ export function FileContextMenuPopup(props: {
   return (
     <ContextMenuPopup>
       {fileManager === undefined ? null : (
-        <MenuItem onClick={() => props.onOpen(fileManager)}>Open</MenuItem>
+        <MenuItem onClick={() => props.onOpen(fileManager)}>Open containing folder</MenuItem>
       )}
       {others.length === 0 ? null : (
         <MenuSub>
