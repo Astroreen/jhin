@@ -56,6 +56,7 @@ import {
   userQuestions,
   type TaskList,
 } from "./mapping.ts";
+import { planSkillDispatch } from "./commands.ts";
 import { applyUltrathinkPrefix, compileClaudeSelection } from "./models.ts";
 
 export type { QueryFunction } from "./session.ts";
@@ -96,6 +97,8 @@ export interface ClaudeTurnDependencies {
   readonly defaultModel: string;
   /** The context window of a model when Claude Code has not reported one yet. */
   readonly contextWindow?: (model: string) => number | undefined;
+  /** The skills a `$name` in the message can invoke (D301). */
+  readonly skills?: () => Promise<ReadonlySet<string>>;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
   /** The node's MCP server for a Claude Code started for the thread (D340); none when unset. */
   readonly mcp?: {
@@ -172,7 +175,11 @@ async function userMessage(
   text: string,
   attachments: readonly RuntimeAttachment[] = [],
   skipped: (attachment: RuntimeAttachment) => void = () => {},
+  skills: ReadonlySet<string> = new Set(),
 ): Promise<SDKUserMessage> {
+  // A `$skill` goes last, as `/skill`, in a block of its own (D301).
+  const dispatch = planSkillDispatch(text, skills);
+  if (dispatch !== undefined) text = dispatch.leadingText ?? "";
   const images: {
     type: "image";
     source: { type: "base64"; media_type: "image/png"; data: string };
@@ -211,6 +218,11 @@ async function userMessage(
       if (candidate.length <= MAX_INPUT_CHARS) body = candidate;
     }
   }
+  const blocks = [
+    ...images,
+    ...(body === "" && dispatch !== undefined ? [] : [{ type: "text" as const, text: body }]),
+    ...(dispatch === undefined ? [] : [{ type: "text" as const, text: dispatch.commandText }]),
+  ];
   return {
     type: "user",
     // Fresh for every message: Claude Code marks the frames answering it with this uuid,
@@ -218,7 +230,7 @@ async function userMessage(
     uuid: randomUUID(),
     message: {
       role: "user",
-      content: images.length === 0 ? body : [...images, { type: "text", text: body }],
+      content: blocks.length === 1 && blocks[0]!.type === "text" ? blocks[0]!.text : blocks,
     },
     parent_tool_use_id: null,
   };
@@ -636,11 +648,15 @@ export function claudeTurn(
       options: options(resume),
       ...(deps.mcp === undefined ? {} : { attach: deps.mcp.attach }),
       ...(deps.settings.inheritEnv === undefined ? {} : { inherit: deps.settings.inheritEnv }),
-      message: await userMessage(text, request.input.attachments, (attachment) =>
-        deps.log?.("claude takes no such attachment, skipped", {
-          name: attachment.name,
-          mimeType: attachment.mimeType,
-        }),
+      message: await userMessage(
+        text,
+        request.input.attachments,
+        (attachment) =>
+          deps.log?.("claude takes no such attachment, skipped", {
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+          }),
+        skills,
       ),
     });
     current = lease;
@@ -702,7 +718,13 @@ export function claudeTurn(
     void lease.interrupt().catch(() => lease.release(false));
   };
 
+  /** The skills a `$name` may invoke, read once per turn. */
+  let skills: ReadonlySet<string> = new Set();
   const run = async () => {
+    // Only a message that may name one reads them (a currency sign: `$deploy`).
+    if (/\p{Sc}/u.test(request.input.text)) {
+      skills = (await deps.skills?.().catch(() => undefined)) ?? new Set();
+    }
     const record = await deps.sessions.get(request.threadId);
     // The session holds a turn the thread no longer shows (a rollback dropped it): it
     // cannot forget it, so the thread starts a new one with its transcript (D222).

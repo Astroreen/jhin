@@ -282,6 +282,20 @@ export default definePlugin({
       runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
       interactionModes: ["default", "plan"],
       steering: true,
+      // A command and a skill, so the composer's menus have something to offer.
+      commands: async ({ cwd }) => ({
+        commands: [
+          { name: "review", description: "Review the changes", input: { hint: "<path>" } },
+        ],
+        skills: [
+          {
+            name: "deploy",
+            description: "Deploy the app",
+            path: `${cwd}/.claude/skills/deploy/SKILL.md`,
+            scope: "project",
+          },
+        ],
+      }),
       startTurn: fakeTurn,
     };
     context.services.provide(AGENT_RUNTIME_CAPABILITY, runtime);

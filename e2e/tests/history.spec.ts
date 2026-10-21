@@ -54,7 +54,7 @@ test("edits a sent message from here: the chat rewinds and the message returns t
   // The message and everything after it are gone; its text waits in the composer.
   await expect(log.getByRole("article", { name: "You" })).toHaveText(["first question"]);
   await expect(log.getByRole("article", { name: "Agent" })).toHaveText(["Echo: first question"]);
-  await expect(message).toHaveValue("second question");
+  await expect(message).toHaveText("second question");
 
   await message.fill("second question, edited");
   await message.press("Enter");
@@ -82,7 +82,7 @@ test("cancelling Edit from here leaves the chat and the composer as they were", 
     .getByRole("button", { name: "Cancel" })
     .click();
   await expect(log.getByRole("article", { name: "You" })).toHaveText(["keep me"]);
-  await expect(message).toHaveValue("a draft");
+  await expect(message).toHaveText("a draft");
 });
 
 test("retries a failed turn in its place, and regenerates the latest response", async ({

@@ -50,11 +50,11 @@ test("queues follow-ups on the node, keeps them past a reload and edits, reorder
 
   // Edit in the composer, then save.
   await rows(page).nth(0).getByRole("button", { name: "Edit queued message" }).click();
-  await expect(message).toHaveValue("first follow-up");
+  await expect(message).toHaveText("first follow-up");
   await message.fill("first, edited");
   await page.getByRole("button", { name: "Save queued message" }).click();
   await expect(rows(page).nth(0)).toContainText("first, edited");
-  await expect(message).toHaveValue("");
+  await expect(message).toHaveText("");
 
   await rows(page).nth(2).getByRole("button", { name: "Remove queued message" }).click();
   await expect(queued(page)).toHaveAccessibleName("2 queued messages");
@@ -112,10 +112,10 @@ test("holds the queue after a stop until it is resumed, and steers with the othe
   await message.fill("half typed");
   await message.press("End");
   await message.press("Alt+ArrowUp");
-  await expect(message).toHaveValue("half typed");
+  await expect(message).toHaveText("half typed");
   await message.fill("");
   await message.press("Alt+ArrowUp");
-  await expect(message).toHaveValue("shortcut follow-up");
+  await expect(message).toHaveText("shortcut follow-up");
   await rows(page).getByRole("button", { name: "Cancel editing queued message" }).click();
   await message.press("ControlOrMeta+Shift+Enter");
   await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText(

@@ -15,6 +15,14 @@ catalog:
   "@pierre/trees": 1.0.0-beta.6
   "@playwright/test": 1.61.1
   "@tailwindcss/vite": 4.3.3
+  "@tiptap/core": 3.32.0
+  "@tiptap/extension-blockquote": 3.32.0
+  "@tiptap/extension-code": 3.32.0
+  "@tiptap/extension-code-block": 3.32.0
+  "@tiptap/extension-list": 3.32.0
+  "@tiptap/pm": 3.32.0
+  "@tiptap/react": 3.32.0
+  "@tiptap/starter-kit": 3.32.0
   "@types/node": 24.19.2
   "@types/react": 19.3.0
   "@types/react-dom": 19.3.0
