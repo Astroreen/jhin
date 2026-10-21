@@ -2,7 +2,7 @@ import { AGENT_PERMISSIONS, type McpGrant, type McpServer } from "@jhin/mcp-api"
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { CODEX_AGENT_ID, Config, createCodexRuntime } from "../src/index.ts";
-import { fakeCodex, stopAll } from "./support.ts";
+import { fakeCodex, stopAll, type Scenario } from "./support.ts";
 
 const runtimes: { dispose(): void }[] = [];
 afterEach(async () => {
@@ -35,8 +35,8 @@ function mcpServer() {
   return { server, issued, revoked, nextRevoke };
 }
 
-function setup(config: Record<string, unknown> = {}) {
-  const fake = fakeCodex({});
+function setup(config: Record<string, unknown> = {}, scenario: Scenario = {}) {
+  const fake = fakeCodex(scenario);
   const mcp = mcpServer();
   const records = new Map<string, string>();
   const settings = { ...fake.config, ...config };
@@ -51,6 +51,7 @@ function setup(config: Record<string, unknown> = {}) {
   });
   runtimes.push(codex);
   const run = async (turnId: string) => {
+    let failed: unknown;
     const turn = codex.startTurn({
       threadId: "thread-1",
       turnId,
@@ -60,7 +61,12 @@ function setup(config: Record<string, unknown> = {}) {
       model: "gpt-6-astra",
       instructions: "Be brief.",
     });
-    for await (const _ of turn.items) void _;
+    try {
+      for await (const _ of turn.items) void _;
+    } catch (error) {
+      failed = error;
+    }
+    return failed;
   };
   return { fake, mcp, codex, settings, run };
 }
@@ -111,6 +117,23 @@ describe("jhin.agent-codex: the node's MCP server", () => {
     expect(fake.received("thread/resume")[0]?.params).toMatchObject({
       config: { mcp_servers: jhinServer("token-2") },
     });
+  });
+
+  it("revokes the credential of an app-server that exits", async () => {
+    const { mcp, run } = setup({}, { turns: [[{ exit: 3 }]] });
+    const revoked = mcp.nextRevoke();
+    expect(await run("turn-1")).toBeInstanceOf(Error);
+    await revoked;
+    expect(mcp.revoked).toEqual(["token-1"]);
+  });
+
+  it("starts no app-server when the credential cannot be issued", async () => {
+    const { fake, mcp, run } = setup();
+    mcp.server.issue = () => {
+      throw new Error("no credentials today");
+    };
+    expect(await run("turn-1")).toMatchObject({ message: "no credentials today" });
+    expect(fake.log().filter((entry) => entry["started"] !== undefined)).toEqual([]);
   });
 
   it("starts a new app-server without it once the config turns it off", async () => {

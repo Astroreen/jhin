@@ -677,9 +677,11 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   Codex asks while it goes on working: shown as the message's text today.
 - Subagent threads (`collabAgentToolCall`, `subAgentActivity`) and their
   transcripts; background terminals Codex keeps after a turn.
-- MCP elicitations, app access requests and MCP apps; approving the node's
-  read-only tools without asking, as Claude's are (D340): Codex decides on
-  its MCP tools itself.
+- MCP elicitations, app access requests and MCP apps.
+- Holding Codex's calls to the node's tools (D889) to the thread's runtime
+  mode, as Claude's writing tools are (D340): Codex calls MCP tools without
+  Jhin's approval, with all of D341's permissions, as T3's Codex calls its
+  own; until then the config's `mcp: false` keeps them away from Codex.
 - Usage limits and rate-limit windows (`account/rateLimits/*`) and T3's
   usage-limit wording with the reset time.
 - ChatGPT sign-in from Jhin, several Codex accounts per node and shadow

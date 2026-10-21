@@ -152,11 +152,8 @@ export function createSessions(options: {
     launchOptions: LaunchOptions,
     mcp: (() => McpAttachment) | undefined,
   ): Live => {
-    const connection = launch({
-      ...launchOptions,
-      ...(options.log === undefined ? {} : { log: options.log }),
-    });
-    // The credential belongs to this process: issued with it, revoked when it ends.
+    // The credential belongs to this process: issued just before it, revoked when it ends.
+    // Issued first, so a grant that fails starts no process.
     const attachment = mcp?.();
     let revoked = false;
     const revoke = () => {
@@ -164,6 +161,16 @@ export function createSessions(options: {
       revoked = true;
       attachment?.dispose();
     };
+    let connection: AppServerConnection;
+    try {
+      connection = launch({
+        ...launchOptions,
+        ...(options.log === undefined ? {} : { log: options.log }),
+      });
+    } catch (error) {
+      revoke();
+      throw error;
+    }
     const live: Live = {
       threadId,
       key,

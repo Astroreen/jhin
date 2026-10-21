@@ -38,7 +38,7 @@ import {
 } from "./mapping.ts";
 import { jhinToolsInstructions } from "@jhin/mcp-api";
 import { CodexEnded, CodexRpcError, CodexSpawnError, codexEnvironment } from "./rpc.ts";
-import { SessionTakenOver, type Lease, type Sessions } from "./session.ts";
+import { SessionTakenOver, type Lease, type McpAttachment, type Sessions } from "./session.ts";
 
 /** The turn ended while it still waited on Codex (a stop's grace ran out). */
 class TurnEnded extends Error {}
@@ -74,10 +74,7 @@ export interface CodexTurnDependencies {
   /** The turn's model; a promise while it is still being asked for (`status()`). */
   readonly model: string | Promise<string>;
   /** Gives a new app-server the node's MCP server (D889); absent when it gets none. */
-  readonly mcp?: (threadId: string) => {
-    readonly servers: Record<string, unknown>;
-    dispose(): void;
-  };
+  readonly mcp?: (threadId: string) => McpAttachment;
   /** What a turn can choose for `model`, as `model/list` described it (D881). */
   readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** Sent in `initialize`. */
