@@ -1226,13 +1226,6 @@ export function Composer(props: ComposerProps) {
     | undefined
   >();
 
-  useEffect(() => {
-    // A queued message being edited is not the thread's draft.
-    if (editing === undefined) {
-      drafts.set(props.draftKey, { prompt, attachments: draftAttachments(attachments) });
-    }
-  }, [drafts, props.draftKey, prompt, attachments, editing]);
-
   /** Whether the user is in the composer: another device's text never replaces what is typed. */
   const typingHere = useRef(false);
   // Another device's text for this draft (D486): read from the node when the
@@ -1367,6 +1360,8 @@ export function Composer(props: ComposerProps) {
   };
   /** Puts text into the prompt (Add to chat): at the caret while the editor has focus, else at the end. */
   const insert = (text: string) => {
+    // A prefilled answer is taken as typed: Add to chat leaves it alone, as T3's does.
+    if (literalAnswer) return;
     const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
     const before = prompt.slice(0, at);
     const gap = before.length > 0 && !/\s$/.test(before) ? "\n\n" : "";
@@ -1633,7 +1628,35 @@ export function Composer(props: ComposerProps) {
     if (!multi && questionIndex < questions.length - 1) setPicked(questionIndex);
   };
   const currentQuestion = questions[questionIndex];
-  const custom = prompt.trim();
+  /**
+   * A question with a prefilled answer is edited as literal text (T3's `isLiteralPendingAnswer`,
+   * D1001): no chips, no styling, and the answer goes back exactly as typed.
+   */
+  const literalAnswer =
+    currentQuestion?.initialAnswer !== undefined && currentQuestion.allowCustomAnswer !== false;
+  /** The draft a prefilled answer put aside: T3 keeps the two apart, so it comes back after. */
+  const asideDraft = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!literalAnswer || currentQuestion?.initialAnswer === undefined) return;
+    if (asideDraft.current === undefined) asideDraft.current = prompt;
+    setPrompt(currentQuestion.initialAnswer);
+    setCursor(currentQuestion.initialAnswer.length);
+    // Seeded once per question shown, never again while it is edited.
+  }, [question?.requestId, currentQuestion?.id]);
+  useEffect(() => {
+    // A queued message being edited is not the thread's draft, nor is a prefilled answer.
+    if (editing === undefined && asideDraft.current === undefined) {
+      drafts.set(props.draftKey, { prompt, attachments: draftAttachments(attachments) });
+    }
+  }, [drafts, props.draftKey, prompt, attachments, editing]);
+  useEffect(() => {
+    if (question !== undefined || asideDraft.current === undefined) return;
+    const draft = asideDraft.current;
+    asideDraft.current = undefined;
+    setPrompt(draft);
+    setCursor(draft.length);
+  }, [question]);
+  const custom = literalAnswer ? prompt : prompt.trim();
   /** A question's answer with the typed one: added to a multi-select's options, else instead. */
   const withCustom = (item: UserQuestion): readonly string[] => {
     const chosen = answers[item.id] ?? [];
@@ -1935,6 +1958,7 @@ export function Composer(props: ComposerProps) {
                           onSubmit={() => void send()}
                           placeholder={placeholder}
                           readOnly={busy && question === undefined}
+                          literalText={literalAnswer}
                           richText={settings.composerRichTextEnabled}
                           sendShortcut={
                             settings.sendShortcut === "mod-enter" ? "mod-enter" : "enter"

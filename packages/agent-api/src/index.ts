@@ -138,6 +138,11 @@ export interface UserQuestion {
   readonly multiSelect?: boolean;
   /** Whether a free-text answer is accepted besides the options (default true). */
   readonly allowCustomAnswer?: boolean;
+  /**
+   * Since 1.5: a prefilled answer for the user to edit (T3's `initialAnswer`, an editor
+   * prompt). The answer goes back exactly as edited, white space and all (t3-parity.md D1001).
+   */
+  readonly initialAnswer?: string;
 }
 
 /** Something the agent needs from the user before it can go on. */
@@ -368,7 +373,7 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */

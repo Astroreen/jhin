@@ -1737,6 +1737,24 @@ T3 Code `eb7b35ac` as D290 says.
 To keep the entry chunk under D440's budget, a message's attachments (images
 too) render from a chunk of their own, so they appear once it loaded.
 
+### Composer chips (W27, `t3-roadmap.md`)
+
+What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
+
+- **D1001. A question can come with an answer to edit** (owner's decision):
+  `UserQuestion` in `agent.runtime` takes an optional `initialAnswer`
+  (`agent.runtime` 1.5, additive: a runtime that never sets it asks as
+  before), as T3's `UserInputQuestion.initialAnswer`, which its Pi runtime
+  sets for an editor prompt. While such a question shows, and it takes a
+  typed answer, the composer holds the prefilled answer in D853's literal
+  mode, as T3's `isLiteralPendingAnswer`: no chips, no styling, no menus,
+  "Add to chat" leaves it alone, and the answer goes back exactly as edited,
+  white space too (an empty one cannot be sent). T3 keeps the answer apart
+  from the prompt; here the composer puts its draft aside while the answer
+  shows and brings it back once the question is answered or gone, and the
+  answer is never saved as the thread's draft. The fake agent's `/edit` asks
+  one.
+
 ### Sidebar leftovers (W26)
 
 W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
@@ -1803,8 +1821,6 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   - T3's context record for a mentioned pull request or thread (D851; its
     title, branches and "untrusted data" block);
   - listing pull requests on forges other than GitHub (D849);
-  - the composer's literal mode for a question that comes with an answer to
-    edit (D853; needs `initialAnswer` on `UserQuestion` in `agent.runtime`);
   - `aria-activedescendant` from the editor to the menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
