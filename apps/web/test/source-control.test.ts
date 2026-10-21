@@ -917,11 +917,20 @@ describe("the diff panel's scopes", () => {
       deletions: 2,
       baseRef: "develop",
       headRef: "feature",
+      loadFile: expect.any(Function),
     });
+    const branch = await git.load(context, "branch", { ignoreWhitespace: false });
+    // A file whole is read from the same comparison, at the base the diff resolved (D921).
+    await branch.loadFile!({ path: "b.ts", previousPath: "a.ts" });
     await git.load(context, "uncommitted", { ignoreWhitespace: false });
     expect(calls).toEqual([
       // A thread's diff is read where it works: its worktree when it has one (D251).
       ["git.diff", { threadId: "t1", scope: "branch", ignoreWhitespace: true, base: "develop" }],
+      ["git.diff", { threadId: "t1", scope: "branch", ignoreWhitespace: false }],
+      [
+        "git.diff.file",
+        { threadId: "t1", scope: "branch", base: "develop", path: "b.ts", previousPath: "a.ts" },
+      ],
       ["git.diff", { threadId: "t1", scope: "uncommitted", ignoreWhitespace: false }],
     ]);
   });

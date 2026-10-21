@@ -51,7 +51,7 @@ import {
   TextWrapIcon,
 } from "lucide-react";
 import { z } from "@jhin/sdk";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useCatalog, useCommands, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
@@ -70,6 +70,7 @@ import {
   resolveDiffPathForWorkspace,
 } from "./diff/editors.tsx";
 import { StyledDiffCodeView } from "./diff/code-view.tsx";
+import { diffFileContentsLoader } from "./diff/file-contents.ts";
 import { diffFileTreeEntries } from "./diff/file-tree-logic.ts";
 import { DiffFileTree } from "./diff/file-tree.tsx";
 import {
@@ -528,6 +529,19 @@ export function createDiffPanel(services: SourceControlServices) {
     const collapseScopeKey = `${key}:${reviewSectionId}`;
     const codeViewMountKey = `${collapseScopeKey}:${codeViewRevision}`;
     const result = state.what === what ? state.result : undefined;
+    // Pierre asks for a file's two sides to expand its unchanged lines (D921). The view
+    // keeps one loader for its lifetime, so this one reads the diff shown when it is asked.
+    const shownFiles = useRef<{ loadFile: DiffScopeResult["loadFile"]; key: string }>(undefined);
+    useLayoutEffect(() => {
+      shownFiles.current = { loadFile: result?.loadFile, key: state.key };
+    });
+    const [loadDiffFiles] = useState(() => (fileDiff: FileDiffMetadata) => {
+      const shown = shownFiles.current;
+      if (shown?.loadFile === undefined) {
+        return Promise.reject(new Error("Diff file contents are unavailable for this selection."));
+      }
+      return diffFileContentsLoader(shown.loadFile, shown.key)(fileDiff);
+    });
     const error = state.what === what ? state.error : undefined;
     const loading = state.key !== loadKey && result === undefined && error === undefined;
     const renderablePatch = getRenderablePatch(result?.patch, `diff-panel:${resolvedTheme}`, {
@@ -1036,6 +1050,7 @@ export function createDiffPanel(services: SourceControlServices) {
                       preferredHighlighter: PREFERRED_HIGHLIGHTER,
                       themeType: resolvedTheme,
                       stickyHeaders: true,
+                      ...(result?.loadFile === undefined ? {} : { loadDiffFiles }),
                       // The gutter's "+" (or a dragged range) opens a comment, one at a time.
                       enableGutterUtility: canComment && draft === null,
                       enableLineSelection: canComment && draft === null,

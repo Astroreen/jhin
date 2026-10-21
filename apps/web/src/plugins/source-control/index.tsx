@@ -66,7 +66,7 @@ import { createSourceControlStore } from "./store.ts";
 export const sourceControlPlugin = builtin(
   "jhin.source-control",
   {
-    provides: { [DIFF_SCOPES_CAPABILITY]: "1.0.0" },
+    provides: { [DIFF_SCOPES_CAPABILITY]: "1.1.0" },
     requires: {
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",

@@ -4,6 +4,7 @@ import { targetKey, type NodeTarget } from "@jhin/client-api";
 import { toDisposable, type Disposable } from "@jhin/sdk";
 import type {
   Diff,
+  DiffFileContents,
   DiffScopeContext,
   DiffScopeOption,
   DiffScopeProvider,
@@ -137,6 +138,13 @@ export function turnScopeProvider(
         deletions: diff.deletions,
         baseRef: null,
         headRef: null,
+        loadFile: (file) =>
+          threads.call<DiffFileContents>(context.target as NodeTarget, "git.diff.file", {
+            threadId: context.threadId,
+            scope: "turn",
+            turn,
+            ...file,
+          }),
       };
     },
   };

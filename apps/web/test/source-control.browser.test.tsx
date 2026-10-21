@@ -421,6 +421,50 @@ describe("the diff panel", () => {
     mounted.unmount();
   });
 
+  it("expands the unchanged lines above a hunk with the file's two sides (D921)", async () => {
+    const later = [
+      "diff --git a/src/app.ts b/src/app.ts",
+      "--- a/src/app.ts",
+      "+++ b/src/app.ts",
+      "@@ -3,2 +3,2 @@",
+      " const one = 1;",
+      "-const two = 2;",
+      "+const two = 3;",
+      "",
+    ].join("\n");
+    const head = "// app\nconst zero = 0;\nconst one = 1;\n";
+    const { value, calls } = services(
+      viewWith(status()),
+      {
+        "git.diff": { ...diff, patch: later },
+        "git.diff.file": {
+          oldContents: `${head}const two = 2;\n`,
+          newContents: `${head}const two = 3;\n`,
+        },
+      },
+      deviceConfig({ filesCollapsed: false }),
+    );
+    // A click may focus the test's window, and the panel reads the diff again on focus (T3
+    // does) while the click lands; this test is about the click, so the panel never hears it.
+    const quiet = (event: Event) => event.stopImmediatePropagation();
+    window.addEventListener("focus", quiet);
+    const Panel = createDiffPanel(value);
+    const mounted = mount(<Panel />);
+    try {
+      await userEvent.click(page.getByText("2 unmodified lines").first());
+      await expect.element(page.getByText("const zero = 0;")).toBeVisible();
+      expect(calls.filter((call) => call.method === "git.diff.file")).toEqual([
+        {
+          method: "git.diff.file",
+          params: { threadId: "t1", scope: "branch", base: "main", path: "src/app.ts" },
+        },
+      ]);
+    } finally {
+      mounted.unmount();
+      window.removeEventListener("focus", quiet);
+    }
+  });
+
   it("switches to the split view and writes the layout on the device", async () => {
     const config = deviceConfig({ filesCollapsed: false });
     const { value } = services(viewWith(status()), { "git.diff": diff }, config);

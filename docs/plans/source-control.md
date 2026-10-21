@@ -354,6 +354,40 @@ pull request and diff on the card, a file written on disk showing on it, the
 diff panel's files and branch scope, switching branches from the toolbar,
 with screenshots).
 
+### Diff panel leftovers (W22 of `t3-roadmap.md`, D921–D940)
+
+- **D921. Expanding the unchanged lines between hunks**, as T3 does
+  (`lib/diffFileContents.ts`): Pierre's `loadDiffFiles` receives a file's
+  old and new contents and turns its separators into "expand" rows. The
+  server command `git.diff.file` (`git.read`) takes the target and scope of
+  `git.diff` (`projectId` or `threadId`, `scope`, `base`, `turn`,
+  `fromTurn`) and one file of its patch (`path`, `previousPath`), and
+  returns `{ oldContents, newContents }`, as T3's
+  `review.getDiffFileContents`: the old side is the file at `HEAD`
+  (`uncommitted`) or at the merge base with the base (`branch`), the new side
+  the working tree's file. Unlike T3, a turn's diff expands too, both sides
+  read from its two checkpoints. What it may read: unlike T3, which reads any
+  file of the workspace, only a file the scope's diff lists, with the old
+  path the diff gives it, so `git.read` reaches no more of the node than
+  `git.diff` shows (no `.git/`, no ignored or unchanged file); and what the
+  diff says the file is decides the empty side (none old for an added or
+  untracked file, none new for a deleted one), not the caller. Anything else
+  is refused with `DIFF_FILE_UNAVAILABLE` ("Diff file '…' is not part of
+  this diff."), as are a side above 1 MB, a binary side, and a working tree
+  path that leads out of the repository through a linked folder, with T3's
+  messages ("Diff file '…' exceeds the 1 MB expansion limit.", "Cannot
+  expand binary file '…'.", "Diff file '…' resolves outside the review
+  workspace."). A listed link reads as the path it holds, as git diffs it,
+  never as the file it leads to. The
+  service method is `SourceControl.diffFile` (`source-control.git@1.2`). A
+  diff scope offers this through an optional `loadFile` of its
+  `DiffScopeResult` (`source-control.diff-scopes@1.1`); both builtin
+  providers set it. A scope without it shows no expand rows, as T3's turn
+  diffs. The working tree is read when a file is expanded, not with the
+  patch, as in T3: a file edited in between expands from its new contents
+  until the next read of the diff (on a status change, focus or "Refresh
+  diff") brings a patch that matches them.
+
 ### Checkpoints, reverting and worktrees (W3, `t3-roadmap.md`)
 
 - **D240. Reference: T3 Code `eb7b35ac` (D53)**: `apps/server/src/vcs/GitVcsDriver.ts`
@@ -1000,8 +1034,8 @@ with the node's token, and without one).
 - What W5 leaves of T3's diff panel: its in-app file preview (at D53 a click
   on a file's name opens T3's file panel; Jhin has none, so it opens the
   editor, D286), loading the patches of a truncated diff file by file
-  (`useReviewFilePatches`), expanding the unchanged lines between hunks
-  (Pierre's `loadDiffFiles` with the file's contents), find in the diff,
+  (`useReviewFilePatches`), refusing to expand a file whose working tree
+  copy no longer matches the patch shown (D921), find in the diff,
   T3's own file icons in the tree, "Reveal in file manager", opening a
   remote node's file in a local editor (T3's remote editor URLs), and the
   pop-out (non-inline) panel mode.
