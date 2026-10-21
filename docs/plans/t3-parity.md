@@ -1704,7 +1704,7 @@ T3 Code `eb7b35ac` as D290 says.
   `jhin.chat`). Off, the prompt shows as typed: no marks, blocks or markdown
   input rules, as T3's `PLAIN_TEXT_EXTENSIONS`; file and skill chips stay.
   The prompt is the same markdown string either way, and changing the
-  setting builds the editor again with the other extensions, as T3 keys it.
+  setting builds the editor again in place with the other extensions.
 - **D853. Literal text in the editor,** as T3's `literalText`: one line per
   paragraph, no chips, no styling, no wrapping of a selection, and a paste
   that goes in exactly as copied. Nothing in the composer turns it on yet:

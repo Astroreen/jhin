@@ -1995,16 +1995,6 @@ const EDITOR_CLASS_NAME = [
 ].join(" ");
 
 export function PromptEditor(props: PromptEditorProps) {
-  // Extensions are creation-time, so changing text mode remounts the editor.
-  return (
-    <PromptEditorInner
-      key={props.literalText === true ? "literal" : props.richText === false ? "plain" : "rich"}
-      {...props}
-    />
-  );
-}
-
-function PromptEditorInner(props: PromptEditorProps) {
   const { value, placeholder, disabled = false, readOnly = false, className, handleRef } = props;
   const literalText = props.literalText === true;
   const richText = !literalText && props.richText !== false;
@@ -2226,7 +2216,9 @@ function PromptEditorInner(props: PromptEditorProps) {
       onFocus: () => latest.current.onFocus?.(),
       onBlur: () => latest.current.onBlur?.(),
     },
-    [],
+    // Extensions are creation-time: a change of text mode builds the editor again, in place,
+    // so the component and the parent's handle stay.
+    [richText, literalText],
   );
 
   useEffect(() => {
