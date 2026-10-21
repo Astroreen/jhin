@@ -268,12 +268,6 @@ async function checkoutTarget(
   };
 }
 
-/**
- * The repository's pull requests (`gh pr list --search`), any state, most
- * recently updated first; `query` is GitHub's search, as T3 searches on the host. Its
- * qualifiers (`is:`, `author:`) pass through, as in T3, but not those that name a scope
- * (`repo:`, `org:`, `user:`): GitHub would add their repositories to the project's.
- */
 /** A search query without qualifiers that would reach past the project's repository. */
 export function withoutScopeQualifiers(query: string): string {
   return query
@@ -283,6 +277,12 @@ export function withoutScopeQualifiers(query: string): string {
     .trim();
 }
 
+/**
+ * The repository's pull requests (`gh pr list --search`), any state, most
+ * recently updated first; `query` is GitHub's search, as T3 searches on the host. Its
+ * qualifiers (`is:`, `author:`) pass through, as in T3, but not those that name a scope
+ * (`repo:`, `org:`, `user:`): GitHub would add their repositories to the project's.
+ */
 async function listPullRequests(
   ghPath: string,
   cwd: string,
