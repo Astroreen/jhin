@@ -112,6 +112,21 @@ describe("local server discovery (D950)", () => {
     expect(servers.map((server) => server.port)).toEqual([5173]);
   });
 
+  it("reads /proc when lsof fails without output", async () => {
+    const tcp = ["header", "0: 00000000:1F90 00000000:0000 0A 0 0 0 0 0 777"].join("\n");
+    const { host } = fakeHost({
+      platform: "linux",
+      programs: { lsof: "" },
+      exitCodes: { lsof: 1 },
+      files: { "/proc/net/tcp": tcp, "/proc/4242/comm": "node\n" },
+      dirs: { "/proc": ["4242"], "/proc/4242/fd": ["3"] },
+      links: { "/proc/4242/fd/3": "socket:[777]" },
+      probes: { "http://localhost:8080": html },
+    });
+    const servers = await createLocalServerScanner(host).scan(new Map([[4242, TERMINAL]]));
+    expect(servers.map((server) => server.port)).toEqual([8080]);
+  });
+
   it("excludes HTTP errors, non-navigation responses and non-documents; follows to HTTPS", async () => {
     const lsof = ["p1", "cvite", "n*:3000", "n*:3001", "n*:3002", "n*:3003", "n*:3004", ""].join(
       "\n",

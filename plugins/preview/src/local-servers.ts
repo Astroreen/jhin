@@ -365,7 +365,11 @@ export function createLocalServerScanner(host: ScanHost) {
           })
           .then(
             // lsof exits 1 after any warning (an unreadable mount) with its output whole (T3).
-            (result) => parseLsofOutput(result.stdout, terminals),
+            // A failed run that printed nothing (no permission, a broken lsof) tells nothing: /proc then.
+            (result) =>
+              result.exitCode !== 0 && result.stdout.trim() === ""
+                ? null
+                : parseLsofOutput(result.stdout, terminals),
             (error: unknown) => {
               if ((error as { code?: unknown }).code === "ENOENT") lsofMissing = true;
               return null;
