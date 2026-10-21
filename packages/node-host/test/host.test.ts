@@ -455,6 +455,43 @@ export default definePlugin({
     });
   });
 
+  it("says which sections a config file change touched (D483)", async () => {
+    const home = tempDir("home");
+    const file = Path.join(home, "config.jsonc");
+    Fs.writeFileSync(file, "{ not json");
+    host = new HostProcess({ home, cwd: tempDir("cwd"), distribution: [EXAMPLE], watch: true });
+    await host.ready();
+    const next = () =>
+      host!.next(
+        (message) =>
+          message.type === "event" && (message["event"] as any).type === "host.config.changed",
+      );
+
+    // Refused at start, then fixed: a change from the empty layer in effect.
+    let changed = next();
+    Fs.writeFileSync(file, '{ "jhin.example": { "greeting": "Hi", "extra": 1 } }');
+    expect((await changed)["event"]).toMatchObject({
+      payload: { layer: "node", sections: ["jhin.example"] },
+    });
+
+    // Keys that only moved are no change; the next event is the real one.
+    changed = next();
+    const applied = host.next(
+      (message) =>
+        message.type === "event" && (message["event"] as any).type === "kernel.config.changed",
+    );
+    Fs.writeFileSync(file, '{ "jhin.example": { "extra": 1, "greeting": "Hi" } }');
+    // Applied on its own before the next write, so it is not folded into it.
+    await applied;
+    Fs.writeFileSync(
+      file,
+      '{ "jhin.example": { "extra": 1, "greeting": "Hi" }, "jhin.host": { "machine": "laptop" } }',
+    );
+    expect((await changed)["event"]).toMatchObject({
+      payload: { layer: "node", sections: ["jhin.host"] },
+    });
+  });
+
   it("applies node config file changes while watching", async () => {
     const home = tempDir("home");
     Fs.mkdirSync(home, { recursive: true });

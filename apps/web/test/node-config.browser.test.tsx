@@ -11,6 +11,7 @@ import { Fields, SectionJson, type FieldsContext } from "../src/plugins/settings
 import {
   errorsOf,
   readBack,
+  rebase,
   useLoadedSection,
   type Loaded,
 } from "../src/plugins/settings/node-config.tsx";
@@ -54,6 +55,40 @@ describe("the node config editor", () => {
     expect(editor.loaded?.section).toBe("b");
     expect(editor.loaded?.value).toEqual({ from: "b" });
     act(() => root.unmount());
+  });
+});
+
+describe("a section changed on the node while it is shown (D484)", () => {
+  const shown: Loaded = {
+    section: "a",
+    layer: "node",
+    read: { layers: { node: { x: 1, nested: { a: 1, b: 2 } } } },
+    original: { x: 1, nested: { a: 1, b: 2 } },
+    value: { x: 1, nested: { a: 1, b: 2 } },
+  };
+  const changed = { layers: { node: { x: 5, nested: { a: 1, b: 2 }, y: true } } };
+
+  it("shows the new file when nothing was edited", () => {
+    expect(rebase(shown, changed)).toMatchObject({
+      original: changed.layers.node,
+      value: changed.layers.node,
+      rebased: false,
+    });
+  });
+
+  it("says nothing for the echo of its own save", () => {
+    const typed = { ...shown, value: { x: 2, nested: { a: 1, b: 2 } } };
+    expect(rebase(typed, shown.read)).toMatchObject({ value: typed.value, rebased: false });
+  });
+
+  it("keeps the edits on top of the new file", () => {
+    const edited = { ...shown, value: { nested: { a: 1, b: 3 } } };
+    // x was removed here, b changed; the node changed x and added y.
+    expect(rebase(edited, changed)).toMatchObject({
+      original: changed.layers.node,
+      value: { nested: { a: 1, b: 3 }, y: true },
+      rebased: true,
+    });
   });
 });
 

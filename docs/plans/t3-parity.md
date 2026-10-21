@@ -1538,10 +1538,9 @@ and as events arrive).
   keeps). The card's branch, diff and pull request are `source-control.md`'s
   D117 and its terminal indicator `terminal.md`'s D148, all in the
   `sidebar.thread.indicators` slot.
-- Pushing a node's config changes to its clients: a change of
-  `jhin.host.machine` made by hand in the file, from another client, or with
-  the mesh scope picker from another node's page reaches a client when its
-  connection opens again or the page reloads (D132).
+- Pushing a mesh member's config changes to a client of another node: done
+  for connections in `config-ui.md` D483–D484; a member's `host/config` is
+  not followed through the mesh yet (`config-ui.md#deferred`).
 - Visits and drafts are per device; syncing them, and device settings, across
   devices.
 - Scoped tokens. Done in `security.md` (D410–D416): device tokens carry

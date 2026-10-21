@@ -15,6 +15,8 @@ import {
   type NodeMemberActionProps,
   type NodeMachines,
   type ThreadsCatalog,
+  NODE_CONFIG_CHANGED,
+  type NodeConfigChanged,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
@@ -77,6 +79,15 @@ export const machinesPlugin = builtin(
       };
       context.services.provide(MACHINES_CAPABILITY, service);
 
+      // The section changed on the node, whoever changed it (D484).
+      context.subscriptions.add(
+        context.events.on(NODE_CONFIG_CHANGED, (payload) => {
+          const changed = payload as NodeConfigChanged;
+          // A reopened connection is asked again by the store itself (D132).
+          if (changed.all !== true && changed.sections.includes(HOST_CONFIG_SECTION))
+            machines.refresh({ node: changed.connection });
+        }),
+      );
       // The node config page saved the section by hand: its nodes may show another icon now.
       context.subscriptions.add(
         context.events.on("settings.node-config.saved", (payload) => {

@@ -661,3 +661,25 @@ export interface ConfigControlProps {
 
 /** The slot of the config field control named `name` (D482). */
 export const configControlSlot = (name: string): string => `settings.config.control.${name}`;
+
+/**
+ * The client event a config change of a connected node becomes
+ * (`docs/plans/config-ui.md` D484), emitted by `jhin.node-config-feed`.
+ */
+export const NODE_CONFIG_CHANGED = "node.config.changed";
+
+/** What `node.config.changed` says: which sections of which file of which connection changed. */
+export interface NodeConfigChanged {
+  readonly connection: string;
+  readonly layer: "node" | "project";
+  readonly sections: readonly string[];
+  /**
+   * The connection opened again: what changed while it was away is unknown,
+   * so every section of both files counts as changed (`sections` is empty).
+   */
+  readonly all?: true;
+}
+
+/** Whether `changed` covers `section` of connection `connection`. */
+export const coversSection = (changed: NodeConfigChanged, connection: string, section: string) =>
+  changed.connection === connection && (changed.all === true || changed.sections.includes(section));

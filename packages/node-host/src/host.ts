@@ -39,6 +39,8 @@ import {
   type Logger,
 } from "@jhin/sdk";
 import { applyEdits, modify } from "jsonc-parser";
+import { createMemoryStreams, LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
+import type { Json } from "@jhin/storage-api";
 
 import {
   discoverPlugins,
@@ -92,6 +94,37 @@ const HOST_PLUGIN = "jhin.host";
 /** How far ahead of this node's clock a config change time may be (D50). */
 const MAX_CONFIG_SKEW_MS = 60 * 60 * 1000;
 const HOST_LOCATION = "host://jhin.host";
+const HOST_STREAMS_PLUGIN = "jhin.host-streams";
+const HOST_STREAMS_LOCATION = "host://jhin.host-streams";
+/** Emitted when a config file is applied with sections that changed (D483). */
+const HOST_CONFIG_CHANGED = "host.config.changed";
+/** The live stream clients follow for config changes (D483). */
+const HOST_CONFIG_STREAM = "host/config";
+
+/**
+ * `jhin.host-streams`: the host's live streams (D483). A plugin of its own,
+ * so it can use `rpc.streams@1`, which a transport provides after the host.
+ */
+const hostStreamsPlugin = definePlugin({
+  activate(context) {
+    const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
+    if (live === undefined) {
+      context.log.info("no rpc.streams@1: clients hear of config changes when they read again");
+      return;
+    }
+    const streams = createMemoryStreams({ log: context.log });
+    // Nothing is kept: a client subscribes for what comes next and reads the state itself.
+    context.subscriptions.add(
+      live.serve(HOST_CONFIG_STREAM, streams, { permissions: ["host.config.read"] }),
+    );
+    context.subscriptions.add(
+      context.events.on(HOST_CONFIG_CHANGED, (payload) => {
+        streams.append(HOST_CONFIG_STREAM, HOST_CONFIG_CHANGED, payload as Json);
+        streams.clear(HOST_CONFIG_STREAM);
+      }),
+    );
+  },
+});
 const RECENT_EVENTS = 100;
 /** The key an edit may not name: assigned, it would reach `Object.prototype`. */
 const UNSAFE_KEY = "__proto__";
@@ -139,10 +172,37 @@ function commentsOf(file: string, section: string): ConfigComment[] {
   }
 }
 
+/** JSON with object keys sorted: a file whose keys only moved has not changed. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) =>
+    typeof item === "object" && item !== null && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item).toSorted(([a], [b]) => a.localeCompare(b)))
+      : item,
+  );
+}
+
+/** Each layer's file as last applied, to tell which sections a change touched (D483). */
+const applied = new WeakMap<Kernel, Map<string, Record<string, unknown>>>();
+
 function applyLayer(kernel: Kernel, layer: string, file: string, log: Logger): void {
   const values = readLayer(file, log);
-  if (values === undefined) kernel.events.emit("host.config.rejected", { layer, file });
-  else kernel.config.setLayer(layer, values);
+  let layers = applied.get(kernel);
+  if (layers === undefined) applied.set(kernel, (layers = new Map()));
+  if (values === undefined) {
+    // Refused from the start: an empty layer is in effect, and the fix is a change of it.
+    if (!layers.has(layer)) layers.set(layer, {});
+    kernel.events.emit("host.config.rejected", { layer, file });
+    return;
+  }
+  const previous = layers.get(layer);
+  layers.set(layer, values);
+  kernel.config.setLayer(layer, values);
+  if (previous === undefined) return;
+  // The sections whose part of this file changed: what clients read again (D483).
+  const sections = [...new Set([...Object.keys(previous), ...Object.keys(values)])]
+    .filter((section) => canonical(previous[section]) !== canonical(values[section]))
+    .toSorted();
+  if (sections.length > 0) kernel.events.emit(HOST_CONFIG_CHANGED, { layer, sections });
 }
 
 function writeAtomically(file: string, text: string): void {
@@ -455,7 +515,9 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     load: (source, manifest, generation) =>
       source.location === HOST_LOCATION
         ? Promise.resolve({ default: hostPlugin })
-        : fileLoader.load(source, manifest, generation),
+        : source.location === HOST_STREAMS_LOCATION
+          ? Promise.resolve({ default: hostStreamsPlugin })
+          : fileLoader.load(source, manifest, generation),
   };
   kernel = createKernel({ side: "server", loader, logger: log });
   kernel.events.onAny((event) => {
@@ -482,7 +544,19 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       entry: "host",
     },
   };
-  await kernel.start([hostSource, ...discovery.plugins]);
+  const hostStreamsSource: PluginSource = {
+    location: HOST_STREAMS_LOCATION,
+    manifest: {
+      id: HOST_STREAMS_PLUGIN,
+      version: "0.0.0",
+      apiVersion: PLUGIN_API_VERSION,
+      side: "server",
+      provides: {},
+      optional: { [LIVE_STREAMS_CAPABILITY]: "^1" },
+      entry: "host-streams",
+    },
+  };
+  await kernel.start([hostSource, hostStreamsSource, ...discovery.plugins]);
 
   const notifyPlugin = (id: string, files: readonly string[]) => {
     for (const listener of Array.from(pluginListeners)) {
@@ -511,7 +585,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     const previous = discovery.plugins;
     const next = discoverPlugins(layers);
     const found = next.plugins;
-    const update = await kernel.update([hostSource, ...found]);
+    const update = await kernel.update([hostSource, hostStreamsSource, ...found]);
     // Only what the kernel applied becomes the discovery the watchers follow.
     discovery = next;
     rewatch();

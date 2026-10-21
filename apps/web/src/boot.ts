@@ -11,6 +11,7 @@ import { keybindingsPlugin } from "./plugins/keybindings.ts";
 import { machinesPlugin } from "./plugins/machines.tsx";
 import { meshPlugin } from "./plugins/mesh.ts";
 import { navigationPlugin } from "./plugins/navigation.ts";
+import { nodeConfigFeedPlugin } from "./plugins/node-config-feed.ts";
 import { notificationsPlugin } from "./plugins/notifications.tsx";
 import { schedulerPlugin } from "./plugins/scheduler/index.tsx";
 import { settingsPlugin } from "./plugins/settings/index.tsx";
@@ -99,6 +100,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     uiHostPlugin,
     keybindingsPlugin,
     connectionsPlugin,
+    nodeConfigFeedPlugin,
     navigationPlugin,
     meshPlugin,
     threadsStorePlugin,

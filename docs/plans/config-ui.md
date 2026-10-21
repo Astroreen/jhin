@@ -211,7 +211,10 @@ rules of the form below), the decision says so.
   serves those as the live stream `host/config` (permission
   `host.config.read`); it keeps nothing, so a client subscribes for what
   comes next and reads the current state itself.
-- **D484. Clients follow it.** `client.machines@1` asks a connection's
+- **D484. Clients follow it.** The builtin client plugin
+  `jhin.node-config-feed` follows `host/config` on every connection and
+  emits the client event `node.config.changed` (`{ connection, layer,
+  sections }`). `client.machines@1` asks a connection's
   `host.identity` again when `jhin.host` changed there (D132 asked only on
   reconnect and after this page saved). The node config page reads the
   shown section again when it changed: an editor without changes shows the
@@ -345,6 +348,9 @@ context.config.define("acme.http", Config);
 - First-party contributed controls: the slot exists (D482), but no
   first-party section asks for a control yet; T3's color and font pickers
   come with the workstreams that port their settings.
+- Following a mesh member's `host/config`: a client hears of config
+  changes of its connections only (D484); a member's change shows after its
+  next read. W17's relayed live streams could carry it.
 - Moving items of a list of groups by dragging: "Move up" and "Move down"
   only (D479).
 
@@ -404,3 +410,12 @@ A stack of PRs, each on the previous one. Public API, all additive:
    of groups with move, remove, add and required keys, renaming keys,
    conditional fields following the file that wins, a contributed control)
    and Playwright "D479: edits keybinding rules as a list of groups".
+3. Pushing config changes (D483, D484): the kernel event and live stream
+   `host/config` (`host.config.changed`) served by `jhin.host-streams`; the
+   client event `node.config.changed` from `jhin.node-config-feed`. The
+   proof: `apps/jhin/test/config-push.test.ts` (sections of which file, no
+   event for a write that changes nothing), `apps/web/test/node-config-feed.test.ts`,
+   `apps/web/test/machines.browser.test.tsx` (asking again on
+   `node.config.changed`), `apps/web/test/node-config.browser.test.tsx`
+   (`rebase`) and Playwright "D483, D484: a change made elsewhere reaches the
+   open page".
