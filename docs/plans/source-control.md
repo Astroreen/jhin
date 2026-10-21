@@ -247,9 +247,16 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   chosen base is kept with the thread's selection and passed to `git.diff`
   as `base`; switching to "Uncommitted" and back keeps it.
 - **D285. Comments on lines go to the chat, as T3's review comments do.**
-  (This wording supersedes the first one, which planned a `chat.composer@1`
-  capability with T3's context chips and a timeline card; those are
-  Deferred.)
+  Revised when built (#111). The first wording planned a client capability
+  `chat.composer@1` (`contexts`, `add`, `remove`, `subscribe` per composer),
+  T3's context chip per comment in the composer, the comments shown inline in
+  the diff with "Delete comment", and the timeline's review comment card.
+  Building that meant a second composer API next to W15's
+  `chat.composer.insert` and W6's rich composer (#81), both landing at the
+  same time; the comment instead goes in as the text T3 itself sends a
+  provider without inline context, through the command that exists. The
+  chips, the inline comments and the card are Deferred until the composer
+  offers contexts. As built:
   Pierre's gutter "+" (or a line range dragged in the gutter) opens T3's
   `DiffCommentAnnotation` under the range, one at a time: "Add a comment…",
   "⌘/Ctrl Enter to send", "Cancel", "Comment"; Escape cancels. "Comment"

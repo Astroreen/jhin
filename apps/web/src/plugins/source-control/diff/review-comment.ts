@@ -2,7 +2,7 @@
 // (a comment on lines of a diff: its rows, range label and patch) and
 // packages/shared/src/composerContextLegacySend.ts (renderReviewComment: the `<review_comment>` block).
 // Unlike T3, a `<review_comment` or `</review_comment` inside the comment or its lines is
-// neutralized (neutralizeClosingTag), so the text can neither end the block nor fake another.
+// neutralized (neutralizeReviewCommentTags), so the text can neither end the block nor fake another.
 import type {
   AnnotationSide,
   FileDiffMetadata,
@@ -306,7 +306,7 @@ export function buildDiffReviewComment(input: {
 }
 
 /** Neither an opening nor a closing tag inside the text can start or end a block. */
-function neutralizeClosingTag(value: string): string {
+function neutralizeReviewCommentTags(value: string): string {
   return value.replace(/<(\/?)(review_comment)/gi, (_tag, slash: string, name: string) =>
     slash === "" ? `<\u200b${name}` : `<\\/${name}`,
   );
@@ -340,8 +340,8 @@ export function serializeReviewComment(comment: ReviewComment): string {
   );
   const fence = "`".repeat(Math.max(3, longestRun + 1));
   // A tag inside the comment or the lines would end the block early or fake another one.
-  const text = neutralizeClosingTag(comment.text);
-  const diff = neutralizeClosingTag(comment.diff);
+  const text = neutralizeReviewCommentTags(comment.text);
+  const diff = neutralizeReviewCommentTags(comment.diff);
   const body = diff ? `${text}\n\n${fence}diff\n${diff}\n${fence}` : text;
   return `<review_comment ${attributes}>\n${body}\n</review_comment>`;
 }
