@@ -261,15 +261,17 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   fails), only from a commit on `main`; stable versions are plain `x.y.z`,
   since a suffixed one would be a GitHub prerelease the stable feed never
   offers. A manual "nightly" publishes the prerelease
-  `v<version>-nightly.<date>.<run>`. A manual "dry-run" (the default), and
+  `v<version>-nightly.<date>.<run>`, also only from `main`. A manual "dry-run" (the default), and
   every pull request that changes packaging, builds without a feed and keeps
   the installers as workflow artifacts. The last job creates the GitHub
   release with T3's generated notes and uploads the installers, their
   blockmaps and the feed files; a re-run uploads into the release that
-  already exists, so "Re-run failed jobs" finishes a run one platform broke,
-  while a new run of an already released version fails instead of replacing
-  its files. Pull request runs get no signing secrets, and packaging gives
-  them to electron-builder only, never to the install's scripts.
+  already exists as this run's draft (marked with the run's id, published
+  once every file is up), so "Re-run failed jobs" finishes a run one platform
+  broke, while any other run of an already released version fails instead of
+  replacing its files. Only publishing runs, which build from `main`, get the
+  signing secrets; a dry run is unsigned, and packaging gives the secrets to
+  electron-builder only, never to the install's scripts.
 
 ## Deferred
 

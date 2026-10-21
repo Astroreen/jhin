@@ -12,9 +12,11 @@
 # Each platform signs only when all its secrets are set (scripts/desktop-release.ts,
 # SIGNING_SECRETS). A stable release fails on macOS and Windows without them,
 # unless "allow_unsigned" is chosen: an unsigned macOS app cannot update itself.
-# Pull requests never see the signing secrets. A failed run is finished with
-# "Re-run failed jobs": a re-run uploads into the release its first attempt
-# created, while a new run fails on a version that is already released.
+# Only runs that publish get the signing secrets, and they build from main
+# only; a dry run (also from a branch) is unsigned. A failed run is finished
+# with "Re-run failed jobs": the release stays a draft marked with the run's id
+# until every file is up, so a re-run finishes it, while any other run fails on
+# a version that already has a release.
 
 name: Release desktop
 
@@ -79,8 +81,9 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          if [[ "$CHANNEL" == "stable" ]] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "A stable release must be built from a commit on main; $GITHUB_SHA is not." >&2
+          # Whatever publishes (and so gets the signing secrets) is built from main only.
+          if [[ "$CHANNEL" != "dry-run" ]] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "A $CHANNEL release must be built from a commit on main; $GITHUB_SHA is not." >&2
             exit 1
           fi
           node --input-type=module -e '
@@ -120,19 +123,19 @@ jobs:
           REPOSITORY: ${{ needs.meta.outputs.channel != 'dry-run' && github.repository || '' }}
           REQUIRE_SIGNING: ${{ needs.meta.outputs.channel == 'stable' && !inputs.allow_unsigned }}
           # macOS: a Developer ID Application certificate and an App Store Connect API key.
-          CSC_LINK: ${{ github.event_name != 'pull_request' && matrix.platform == 'mac' && secrets.CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && matrix.platform == 'mac' && secrets.CSC_KEY_PASSWORD || '' }}
-          APPLE_API_KEY_TEXT: ${{ github.event_name != 'pull_request' && matrix.platform == 'mac' && secrets.APPLE_API_KEY || '' }}
-          APPLE_API_KEY_ID: ${{ github.event_name != 'pull_request' && matrix.platform == 'mac' && secrets.APPLE_API_KEY_ID || '' }}
-          APPLE_API_ISSUER: ${{ github.event_name != 'pull_request' && matrix.platform == 'mac' && secrets.APPLE_API_ISSUER || '' }}
+          CSC_LINK: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'mac' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'mac' && secrets.CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY_TEXT: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'mac' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_ID: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'mac' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'mac' && secrets.APPLE_API_ISSUER || '' }}
           # Windows: Azure Trusted Signing.
-          AZURE_TENANT_ID: ${{ github.event_name != 'pull_request' && matrix.platform == 'win' && secrets.AZURE_TENANT_ID || '' }}
-          AZURE_CLIENT_ID: ${{ github.event_name != 'pull_request' && matrix.platform == 'win' && secrets.AZURE_CLIENT_ID || '' }}
-          AZURE_CLIENT_SECRET: ${{ github.event_name != 'pull_request' && matrix.platform == 'win' && secrets.AZURE_CLIENT_SECRET || '' }}
-          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ github.event_name != 'pull_request' && matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_ENDPOINT || '' }}
-          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ github.event_name != 'pull_request' && matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME || '' }}
-          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ github.event_name != 'pull_request' && matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME || '' }}
-          AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ github.event_name != 'pull_request' && matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME || '' }}
+          AZURE_TENANT_ID: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'win' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'win' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'win' && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_ENDPOINT || '' }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME || '' }}
+          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME || '' }}
+          AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'win' && secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME || '' }}
         run: |
           set -euo pipefail
           # electron-builder's notarization reads the API key from a file.
@@ -181,16 +184,19 @@ jobs:
           PRERELEASE: ${{ needs.meta.outputs.prerelease }}
         run: |
           set -euo pipefail
-          # A re-run of this run uploads into the release its first attempt
-          # created; any other run never replaces a published release.
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            if [[ "$GITHUB_RUN_ATTEMPT" == "1" ]]; then
-              echo "Release $TAG already exists; bump apps/desktop/package.json to release again." >&2
-              exit 1
-            fi
-            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber release/*
-            exit 0
+          # The release is a draft until every file is up, marked with this run's id:
+          # a re-run finishes its own draft, and nothing replaces a published release.
+          marker="<!-- release-desktop run $GITHUB_RUN_ID -->"
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name == \"$TAG\") | [.draft, (.body // \"\" | contains(\"$marker\"))] | @tsv")"
+          if [[ -z "$existing" ]]; then
+            flags=(--repo "$GITHUB_REPOSITORY" --title "Jhin $TAG" --generate-notes --notes "$marker")
+            flags+=(--target "$GITHUB_SHA" --draft)
+            if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease --latest=false); fi
+            gh release create "$TAG" "${flags[@]}"
+          elif [[ "$existing" != $'true\ttrue' ]]; then
+            echo "Release $TAG exists and is not this run's draft; bump apps/desktop/package.json." >&2
+            exit 1
           fi
-          flags=(--repo "$GITHUB_REPOSITORY" --title "Jhin $TAG" --generate-notes --target "$GITHUB_SHA")
-          if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease --latest=false); fi
-          gh release create "$TAG" "${flags[@]}" release/*
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber release/*
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
