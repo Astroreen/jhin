@@ -27,7 +27,8 @@ message, forks and merging them back, searching thread contents, the
 find in a thread with its highlights (`plugins/chat/thread-find.tsx`), the
 thread details panel and its Lineage section (`plugins/chat/thread-details-panel.tsx`,
 `lineage.tsx`, `packages/ui/src/components/thread-details-section.tsx`), the
-scheduled tasks settings page), the
+scheduled tasks settings page, the subagent, workflow and created-thread rows
+of delegated work in `plugins/orchestration`), the
 threads plugin's merge-back handoff and search snippets
 (`plugins/threads/src/history.ts`), source control (`plugins/source-control`:
 reading git status and diffs, pull requests and their checks through the

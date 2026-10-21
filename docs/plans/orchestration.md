@@ -243,10 +243,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 
 ### Deferred
 
-- The thread UI of delegated work: T3's subagent rows in the parent's chat,
-  hiding child threads (`relationshipToParent: "subagent"`) from the
-  sidebar's list, the workflow progress tree and its Stop button. The
-  records and the `orchestration` stream carry what they need.
+- The workflow progress tree of T3's thread details panel and its Stop
+  button. The subagent rows and hidden child threads are W20's D864, D865.
 - Steering a task's completion into the parent's running turn (W1); today
   it waits for the turn's end.
 - Per-turn model options for a child (T3's `target.options`, a workflow
@@ -298,6 +296,75 @@ when the result was read first; a restart that reconciles a task; a launch
 with and without a message, the scratch and workspace errors; capabilities;
 a workflow with `parallel`, `pipeline`, `schema` and a stopped run; the
 whole set reachable as MCP tools.
+
+## W20. Delegated work in the UI
+
+Round 2 of `t3-roadmap.md` (D861–D880): the parts of W10 and W11 a T3 Code
+user sees, which their Deferred lists left out.
+
+### Decisions
+
+- **D861. T3 Code nightly `eb7b35ac` (D53) is the reference** for the UI of
+  delegated work: `apps/web/src/components/chat/V2LifecycleRow.tsx` (the
+  subagent row and the created-thread row), `WorkflowOpeningBlock.tsx`,
+  `AgentElapsed.tsx` and `filterSidebarV2VisibleThreads` of
+  `components/Sidebar.logic.ts`. Wording, status labels and the elapsed
+  format are T3's.
+- **D862. Delegated work leaves a mark in the calling thread.** Like a
+  rendered page (D407), the mark is an event of the calling thread's own
+  stream, in the turn it runs (`turnId`; none when no turn runs), so it
+  travels with the thread to every client and mesh member:
+  `orchestration.task.delegated` `{ taskId, childThreadId, title, agentId,
+  model? }` for a task of `tasks.delegate` (a workflow's agents get none),
+  `orchestration.workflow.started` `{ workflowId, name, description, phases,
+  script }` for `workflows.run`, and `orchestration.thread.launched`
+  `{ threadId, title }` for `orchestration.launch` from a thread. The turn is
+  read when the mark is written; a mark that cannot be written is logged and
+  the work goes on. The event types live in `@jhin/agent-api`, for the
+  plugin and its clients alike.
+- **D863. `orchestration.thread { threadId? }`** reads a thread's tasks and
+  workflows as the records the `orchestration` stream carries, with the
+  stream's `head` to follow them from; unlike `tasks.status` and
+  `workflows.status` it acknowledges no result, so a client showing them
+  takes no wake-up message from the agent. A workflow's agents carry their
+  `childThreadId` once their task exists.
+- **D864. The chat shows the marks** through `chat.turn.item`
+  (`jhin.orchestration-view`, contributions `jhin.orchestration.subagent`,
+  `jhin.orchestration.workflow`, `jhin.orchestration.launched`). A task is
+  T3's subagent row: a status dot, its title, its result once settled (not
+  T3's generic "Child task ended with status …"), the status (`Running`,
+  `Waiting`, `Completed`, `Failed`, `Stopped`), the elapsed time, and the
+  button "Open <title>" to its thread. A workflow is T3's opening block:
+  "Workflow started", its name and description, "N agents · 1 working · 2
+  done", each phase with its settled count and member rows (as a task's,
+  by label), then the script, folded while long. A launch is "Created thread
+  · <title>" with "Open chat". The rows follow the records live:
+  `orchestration.thread`, then the `orchestration` stream after its head,
+  starting over with backoff when either fails; a thread on a mesh member
+  reads them again whenever the member's threads change. A row with no record
+  of its task says "Status unavailable" and claims no live state.
+- **D865. The sidebar hides subagent threads** (`relationshipToParent:
+  "subagent"`), and they raise no notification, as in T3; their parent's
+  rows open them.
+  `client.threads@1`'s `ThreadRecord` lists `parentThreadId` and
+  `relationshipToParent`.
+
+### Deferred
+
+- T3's grouping of a turn's subagents into one "N subagents" row, the hover
+  card of a subagent (model, result, progress), and the bar that replaces the
+  composer in a Claude subagent's thread ("Runs on its own", "Open parent").
+- A subagent thread that waits for the user (an approval or an answer) is
+  reached only through its row in the parent's chat, as in T3: the sidebar
+  hides it and it raises no notification. Without its row (a thread from
+  before D862, or a mark that could not be written) it is reachable only by
+  its id. A workflow's agents never wait (D373). Surfacing waiting subagents
+  in the parent's sidebar card would close this.
+- Live rows in a fork: the marks it copied from its source show "Status
+  unavailable", because the records belong to the source thread; following
+  them through `forkedFrom` would make them live.
+- Following a mesh member's `orchestration` stream itself: its rows are read
+  again on each change of its threads, not per record.
 
 ## W11. Scheduled tasks and webhooks
 

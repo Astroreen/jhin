@@ -21,7 +21,6 @@ import { builtin } from "../../lib/builtin.ts";
 import { TASK_ACTIONS_SLOT, taskActions } from "./actions.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import type { SchedulerServices } from "./page.tsx";
-import { createSchedulerStore } from "./store.ts";
 
 /**
  * Scheduled tasks in the web client (docs/plans/orchestration.md, D389): the
@@ -52,25 +51,30 @@ export const schedulerPlugin = builtin(
           slots.contribute(TASK_ACTIONS_SLOT, { id: `jhin.scheduler.${id}`, order, component }),
         );
       }
-      const services: SchedulerServices = {
-        store: context.subscriptions.add(createSchedulerStore(connections, context.log)),
+      const shared: Omit<SchedulerServices, "store"> = {
         connections,
         threads: context.services.get<ThreadsCatalog>(THREADS_CAPABILITY),
         toasts: context.services.get<Toasts>(UI_TOASTS_CAPABILITY),
         dialogs: context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY),
       };
-      // A chunk of its own, loaded when the section first opens, as the other settings sections (D440).
+      // A chunk of its own with its store, loaded when the section first opens, as the other
+      // settings sections (D440).
       const Section = lazyChunk(
         () =>
           import("./page.tsx").then(
-            ({ SchedulerProvider, ScheduledTasksSection }) =>
-              function Section() {
+            ({ SchedulerProvider, ScheduledTasksSection, createSchedulerStore }) => {
+              const services: SchedulerServices = {
+                ...shared,
+                store: context.subscriptions.add(createSchedulerStore(connections, context.log)),
+              };
+              return function Section() {
                 return (
                   <SchedulerProvider services={services}>
                     <ScheduledTasksSection />
                   </SchedulerProvider>
                 );
-              },
+              };
+            },
           ),
         {
           loading: () => null,

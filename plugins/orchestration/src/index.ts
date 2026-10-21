@@ -12,6 +12,9 @@ import {
   AGENT_REGISTRY_CAPABILITY,
   DEFAULT_RUNTIME_MODE,
   INTERACTION_MODES,
+  ORCHESTRATION_STREAM,
+  OrchestrationEvents,
+  OrchestrationThreadEvents,
   RUNTIME_MODES,
   THREADS_STREAM,
   ThreadEvents,
@@ -33,15 +36,6 @@ import { parseWorkflow, runWorkflow, WorkflowError, type AgentOptions } from "./
 
 const NAMESPACE = "jhin.orchestration";
 const CONFIG_SECTION = "jhin.orchestration";
-/** The plugin's stream: one event per change of a task or workflow record. */
-export const ORCHESTRATION_STREAM = "orchestration";
-export const OrchestrationEvents = {
-  /** The task's record after a change. */
-  taskUpdated: "orchestration.task.updated",
-  /** The workflow's record after a change. */
-  workflowUpdated: "orchestration.workflow.updated",
-} as const;
-
 const MAX_TASK_LENGTH = 120_000;
 const MAX_TITLE_LENGTH = 512;
 const CHILD_TITLE_LENGTH = 72;
@@ -169,6 +163,8 @@ const WorkflowStatus = z.enum(["running", "completed", "failed", "stopped"]);
 const WorkflowAgent = z.object({
   index: z.number(),
   taskId: z.string().optional(),
+  /** The task's thread, once it exists (D863). */
+  childThreadId: z.string().optional(),
   label: z.string().optional(),
   phase: z.string().optional(),
   status: z.union([TaskStatus, z.literal("starting")]),
@@ -426,6 +422,29 @@ export default definePlugin({
         OrchestrationEvents.workflowUpdated,
       );
       return saved;
+    }
+
+    /**
+     * Leaves a mark of delegated work in the thread's stream, in the turn it
+     * runs (D862). The work goes on without it: a mark that cannot be written
+     * is only logged.
+     */
+    async function mark(threadId: string, type: string, payload: Record<string, Json>) {
+      try {
+        // Read now: the turn that started the work may have ended since the caller's read.
+        const { thread } = await getThread(threadId);
+        const turn = thread.lastTurn;
+        const turnId = turn === undefined || ENDED_TURN.has(turn.status) ? undefined : turn.turnId;
+        await log.append(threadStream(threadId), [
+          { type, payload: { ...payload, ...(turnId === undefined ? {} : { turnId }) } },
+        ]);
+      } catch (error) {
+        context.log.warn("could not mark delegated work in its thread", {
+          threadId,
+          type,
+          error: String(error),
+        });
+      }
     }
 
     async function getThread(threadId: string, invocation?: Invocation) {
@@ -996,6 +1015,16 @@ export default definePlugin({
         createdAt,
         updatedAt: createdAt,
       });
+      // A workflow's agents show in its own block, not one by one.
+      if (request.workflowId === undefined) {
+        await mark(parent.id, OrchestrationThreadEvents.taskDelegated, {
+          taskId: task.taskId,
+          childThreadId: child.id,
+          title,
+          agentId: agent.agentId,
+          ...(model === undefined ? {} : { model }),
+        });
+      }
       let turnId: string;
       try {
         ({ turnId } = await run<{ turnId: string }>(
@@ -1447,6 +1476,12 @@ export default definePlugin({
             invocation,
           ));
         }
+        if (caller !== undefined) {
+          await mark(caller.id, OrchestrationThreadEvents.threadLaunched, {
+            threadId: created.id,
+            title: created.title,
+          });
+        }
         return {
           threadId: created.id,
           projectId: created.projectId,
@@ -1589,7 +1624,11 @@ export default definePlugin({
           error instanceof Error ? error.message : String(error),
         );
       }
-      await setAgent({ taskId: task.taskId, status: task.status });
+      await setAgent({
+        taskId: task.taskId,
+        childThreadId: task.childThreadId,
+        status: task.status,
+      });
       if (signal.aborted) await cancelTask(task, "The workflow was stopped");
       await waitFor(task.taskId, { waiting: "any", signal });
       // Nobody answers inside a workflow: an agent that asks the user stops there.
@@ -1802,6 +1841,13 @@ export default definePlugin({
           createdAt,
           updatedAt: createdAt,
         });
+        await mark(parent.id, OrchestrationThreadEvents.workflowStarted, {
+          workflowId: workflow.workflowId,
+          name: workflow.name,
+          description: workflow.description,
+          phases: workflow.phases as unknown as Json,
+          script,
+        });
         void startWorkflow(workflow, parsed.body, args, invocation.traceId).catch(
           (error: unknown) =>
             context.log.error("a workflow could not be recorded", {
@@ -1868,6 +1914,30 @@ export default definePlugin({
           .filter((workflow) => threadId === undefined || workflow.parentThreadId === threadId)
           .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
           .map(viewWorkflow);
+      },
+    });
+
+    context.commands.register({
+      name: "orchestration.thread",
+      description:
+        "The delegated tasks and workflows of a thread as records of the orchestration stream, with the stream's head to follow them from. Unlike tasks_status and workflows_status, reading acknowledges no result.",
+      input: z.object({ threadId: z.string().min(1).optional() }),
+      output: z.object({ tasks: z.array(Task), workflows: z.array(Workflow), head: z.number() }),
+      permissions: ["threads.read"],
+      handler: async ({ threadId: named }, invocation) => {
+        const threadId = requireThread(callerThread(named, invocation), "orchestration.thread");
+        // A thread that does not exist is no thread without delegated work.
+        await getThread(threadId, invocation);
+        // The head first: whatever changes after it comes on the stream, and a record read twice
+        // is the same record.
+        const head = await log.head(ORCHESTRATION_STREAM);
+        return {
+          tasks: [...tasks.values()].filter((task) => task.parentThreadId === threadId),
+          workflows: [...workflows.values()].filter(
+            (workflow) => workflow.parentThreadId === threadId,
+          ),
+          head,
+        };
       },
     });
 

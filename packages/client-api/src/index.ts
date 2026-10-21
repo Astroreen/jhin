@@ -230,6 +230,10 @@ export interface ThreadRecord {
    * node older than that, or for a thread never visited.
    */
   readonly lastVisitedAt?: string;
+  /** The thread that delegated this one (orchestration.md D363). */
+  readonly parentThreadId?: string;
+  /** Why it has a parent: a delegated task's thread is a `subagent` (D865). */
+  readonly relationshipToParent?: "subagent";
   /** The thread and turn it was forked at. */
   readonly forkedFrom?: { readonly threadId: string; readonly turnId: string };
   /** A fork merged back, delivered to the agent with the next message. */
