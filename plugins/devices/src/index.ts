@@ -66,10 +66,21 @@ export default definePlugin({
     const host = createLocalHost(() => context.config.get<Config>(CONFIG_SECTION));
     const now = () => new Date().toISOString();
 
+    // Kept in the plugin's state, so a reload keeps each thread's open devices (rule 5).
     let devices: DeviceSummary[] = [];
     let detail: string | undefined;
-    let sessions: DeviceSession[] = [];
+    let sessions: DeviceSession[] = context.state.get<DeviceSession[]>("sessions") ?? [];
     let booting: DeviceState["booting"] = [];
+    const keepSessions = (next: DeviceSession[]) => {
+      sessions = next;
+      context.state.set("sessions", next);
+    };
+    /** Boots in flight, so two opens of one stopped device start it once. */
+    const boots = new Map<string, Promise<DeviceSummary>>();
+    /** A device by id, or a running emulator by its AVD name. */
+    const byId = (list: readonly DeviceSummary[], id: string) =>
+      list.find((device) => device.id === id) ??
+      list.find((device) => device.platform === "android" && device.booted && device.name === id);
     const lifetime = { disposed: false };
 
     const state = (): DeviceState => ({
@@ -117,24 +128,34 @@ export default definePlugin({
 
     // --- A device's screen while somebody watches ------------------------------------------
     const watchers = new Map<string, number>();
+    /** One capture loop per device at most. */
+    const loops = new Map<string, Promise<void>>();
+    // Neither simctl nor adb tells when a screen changes, so a watched device's screen is
+    // taken again after each one (no two at once), until nobody watches it.
     const capture = async (deviceId: string) => {
       const stream = `${DEVICE_STREAM_PREFIX}${LOCAL_DEVICE_HOST_ID}/${encodeURIComponent(deviceId)}`;
       while (!lifetime.disposed && (watchers.get(deviceId) ?? 0) > 0) {
-        const device = devices.find((each) => each.id === deviceId);
-        if (device === undefined || !device.booted) break;
-        try {
-          const png = await host.screenshot(device);
-          streams.clear(stream);
-          streams.append(stream, DeviceEvents.screen, {
-            data: png.toString("base64"),
-            ...pngSize(png),
-          });
-        } catch (error) {
-          context.log.warn("device screen not taken", { deviceId, error: String(error) });
-          break;
+        const device = byId(devices, deviceId);
+        if (device !== undefined && device.booted) {
+          try {
+            const png = await host.screenshot(device);
+            streams.clear(stream);
+            streams.append(stream, DeviceEvents.screen, {
+              data: png.toString("base64"),
+              ...pngSize(png),
+            });
+          } catch (error) {
+            // A failed screenshot (the device restarting) is tried again with the next one.
+            context.log.debug("device screen not taken", { deviceId, error: String(error) });
+          }
         }
         await new Promise((resolve) => setTimeout(resolve, SCREEN_EVERY_MS));
       }
+    };
+    const startCapture = (deviceId: string) => {
+      if (loops.has(deviceId)) return;
+      const loop = capture(deviceId).finally(() => loops.delete(deviceId));
+      loops.set(deviceId, loop);
     };
 
     if (live === undefined) {
@@ -150,7 +171,7 @@ export default definePlugin({
           const deviceId = decodeURIComponent(stream.split("/")[2] ?? "");
           const before = watchers.get(deviceId) ?? 0;
           watchers.set(deviceId, before + 1);
-          if (before === 0) void capture(deviceId);
+          if (before === 0) startCapture(deviceId);
           let watching = true;
           return toDisposable(() => {
             subscription.dispose();
@@ -174,7 +195,7 @@ export default definePlugin({
           if (event.type !== ThreadEvents.threadDeleted) return;
           const threadId = (event.payload as { id?: unknown } | null)?.id;
           if (typeof threadId !== "string") return;
-          sessions = sessions.filter((session) => session.threadId !== threadId);
+          keepSessions(sessions.filter((session) => session.threadId !== threadId));
           publish();
         }),
       );
@@ -218,7 +239,7 @@ export default definePlugin({
         const listed = await refresh();
         let device: DeviceSummary | undefined;
         if (input.deviceId !== undefined) {
-          device = listed.find((each) => each.id === input.deviceId);
+          device = byId(listed, input.deviceId);
           if (device === undefined) {
             throw new DeviceError(
               "DEVICE_NOT_FOUND",
@@ -262,15 +283,19 @@ export default definePlugin({
           };
           booting = [...booting, starting];
           publish();
+          const stopped = device;
+          const boot = boots.get(stopped.id) ?? host.boot(stopped);
+          boots.set(stopped.id, boot);
           try {
-            device = await host.boot(device);
+            device = await boot;
           } finally {
+            boots.delete(stopped.id);
             booting = booting.filter((each) => each !== starting);
           }
           await refresh();
         }
         const opened = device;
-        sessions = [
+        keepSessions([
           ...sessions.filter(
             (session) => !(session.threadId === input.threadId && session.deviceId === opened.id),
           ),
@@ -281,7 +306,7 @@ export default definePlugin({
             platform: opened.platform,
             openedAt: now(),
           },
-        ];
+        ]);
         publish();
         const control = host.control(opened);
         return {
@@ -328,7 +353,7 @@ export default definePlugin({
             session.threadId === input.threadId &&
             (input.deviceId === undefined || session.deviceId === input.deviceId),
         );
-        sessions = sessions.filter((session) => !closing.includes(session));
+        keepSessions(sessions.filter((session) => !closing.includes(session)));
         publish();
         if (input.shutdown === true) {
           const ids =

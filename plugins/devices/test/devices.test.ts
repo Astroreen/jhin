@@ -220,4 +220,32 @@ describe("jhin.devices", () => {
       reason: "Android platform tools (adb) were not found in the Android SDK.",
     });
   });
+  it("finds a running emulator by its AVD name", async () => {
+    const tools = fakeTools();
+    Fs.writeFileSync(Path.join(tools.dir, "running"), "emulator-5554 Pixel_7_API_34\n");
+    const { client } = await node({ adb: tools.adb, emulator: tools.emulator, xcrun: tools.xcrun });
+    const opened = await client.call<{ device: { id: string } }>("device.open", {
+      threadId: "t3",
+      deviceId: "Pixel_7_API_34",
+    });
+    expect(opened.device.id).toBe("emulator-5554");
+  });
+
+  it("reports an emulator that does not start as a failed boot", async () => {
+    const tools = fakeTools();
+    const failing = Path.join(tools.dir, "failing-emulator");
+    Fs.writeFileSync(
+      failing,
+      `#!/bin/sh\ncase "$1" in -list-avds) echo Pixel_7_API_34;; *) exit 1;; esac\n`,
+      { mode: 0o755 },
+    );
+    const { client } = await node({ adb: tools.adb, emulator: failing, xcrun: tools.xcrun });
+    const failed = await rejection(
+      client.call("device.open", { threadId: "t4", deviceId: "Pixel_7_API_34" }),
+    );
+    expect(failed.code).toBe("DEVICE_BOOT_FAILED");
+    expect(failed.message).toBe(
+      "Device Pixel_7_API_34 failed to boot: The simulator or emulator could not start. Check its configuration on the environment server.",
+    );
+  });
 });

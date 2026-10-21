@@ -286,11 +286,15 @@ export function createLocalHost(paths: () => ToolPaths) {
         detached: true,
         stdio: "ignore",
       });
+      // A file that cannot run is reported here, not thrown at the node.
+      const spawn = { failed: false };
+      child.once("error", () => {
+        spawn.failed = true;
+      });
       child.unref();
       const deadline = Date.now() + BOOT_TIMEOUT_MS;
       // The emulator reports nothing when it is ready: adb is asked until it says so.
-      while (Date.now() < deadline) {
-        if (child.exitCode !== null) break;
+      while (Date.now() < deadline && !spawn.failed && child.exitCode === null) {
         const running = await androidDevices(found).catch(() => []);
         const started = running.find((each) => each.booted && each.name === device.id);
         if (started !== undefined) {
@@ -307,10 +311,13 @@ export function createLocalHost(paths: () => ToolPaths) {
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
+      const stopped = spawn.failed || child.exitCode !== null;
+      // One that is still starting after the deadline would come up unreported: it is stopped.
+      if (!stopped) child.kill();
       throw new DeviceError(
         "DEVICE_BOOT_FAILED",
         `Device ${device.id} failed to boot: ${
-          child.exitCode !== null
+          stopped
             ? "The simulator or emulator could not start. Check its configuration on the environment server."
             : "The device did not become ready in time."
         }`,
