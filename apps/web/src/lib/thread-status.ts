@@ -3,16 +3,16 @@ import type { Disposable } from "@jhin/sdk";
 
 const STORAGE_KEY = "jhin.visits";
 
-/**
- * The visits of this device (`client.visits@1`), so finished turns can show as
- * unread. Kept in `storage`; a change made in another tab is taken in.
- */
 /** The nodes visits are shared through (D485): a thread's record, and its node's commands. */
 export interface VisitNodes {
   record(target: NodeTarget, threadId: string): ThreadRecord | undefined;
   call(target: NodeTarget, method: string, params: unknown): Promise<unknown>;
 }
 
+/**
+ * The visits of this device (`client.visits@1`), shared through `nodes` (D485), so finished turns can show as
+ * unread. Kept in `storage`; a change made in another tab is taken in.
+ */
 export function createVisits(
   storage: Storage = localStorage,
   nodes?: VisitNodes,
