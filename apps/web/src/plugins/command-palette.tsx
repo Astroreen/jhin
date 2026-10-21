@@ -5,12 +5,15 @@ import {
   KEYBINDINGS_CAPABILITY,
   MACHINES_CAPABILITY,
   MESH_CAPABILITY,
+  MODES_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
   targetKey,
   type Connections,
   type Keybindings,
   type MeshMembership,
+  type Mode,
+  type Modes,
   type Navigation,
   type NodeMachines,
   type NodeTarget,
@@ -47,6 +50,7 @@ import {
   ChevronRightIcon,
   FolderPlusIcon,
   HashIcon,
+  LayersIcon,
   LockIcon,
   MessageSquareDashedIcon,
   MessageSquareIcon,
@@ -131,6 +135,7 @@ const COMMAND_ICONS: Record<string, LucideIcon> = {
   "sidebar.thread.next": ArrowDownIcon,
   "sidebar.thread.previous": ArrowUpIcon,
   "ui.appearance.cycle": MonitorIcon,
+  "ui.mode.next": LayersIcon,
   "ui.sidebar.toggle": PanelLeftIcon,
 };
 
@@ -166,6 +171,7 @@ export const commandPalettePlugin = builtin(
       [KEYBINDINGS_CAPABILITY]: "^1",
       [UI_TOASTS_CAPABILITY]: "^1",
       [MACHINES_CAPABILITY]: "^1",
+      [MODES_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -181,6 +187,7 @@ export const commandPalettePlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const machines = context.services.tryGet<NodeMachines>(MACHINES_CAPABILITY);
+      const modes = context.services.tryGet<Modes>(MODES_CAPABILITY);
       const open = createOpenState();
 
       /** Every node this client reaches: connections and the reachable members of their meshes. */
@@ -288,7 +295,40 @@ export const commandPalettePlugin = builtin(
           .toSorted((a, b) => (b.searchRecency ?? 0) - (a.searchRecency ?? 0));
       };
 
+      /** One entry per mode, only while there are several (D746). */
+      const modeSubmenu = (): PaletteItem[] => {
+        const list = modes?.list() ?? [];
+        if (list.length < 2) return [];
+        const current = modes?.current();
+        return [
+          {
+            value: "submenu:mode",
+            title: "Switch mode...",
+            icon: <LayersIcon className={ITEM_ICON_CLASS} />,
+            searchTerms: ["Switch mode", "mode", ...list.map((mode) => mode.title)],
+            groups: [
+              {
+                value: "modes",
+                label: "Modes",
+                items: list.map((mode: Mode) => {
+                  const Icon = (mode.icon ?? LayersIcon) as LucideIcon;
+                  return {
+                    value: `mode:${mode.id}`,
+                    title: mode.title,
+                    ...(mode === current ? { description: "Current mode" } : {}),
+                    icon: <Icon className={ITEM_ICON_CLASS} />,
+                    searchTerms: [mode.title, mode.description ?? ""],
+                    run: () => context.commands.execute("ui.mode.switch", { mode: mode.id }),
+                  } satisfies PaletteItem;
+                }),
+              },
+            ],
+          },
+        ];
+      };
+
       const submenus = (): PaletteItem[] => [
+        ...modeSubmenu(),
         {
           value: "submenu:new-thread-in",
           title: "New thread in...",
@@ -381,6 +421,7 @@ export const commandPalettePlugin = builtin(
             ...connections.list().map((node) => mesh.subscribe(node.id, follow)),
             ...targets().map(({ target }) => threads.subscribe(target, bump)),
             navigation.subscribe(bump),
+            ...(modes === undefined ? [] : [modes.subscribe(bump)]),
             ...(keybindings === undefined ? [] : [keybindings.subscribe(bump)]),
             context.events.on("kernel.plugin.activated", bump),
             context.events.on("kernel.plugin.deactivated", bump),

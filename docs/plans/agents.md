@@ -360,6 +360,51 @@ What `docs/README.md` does by hand, as a plugin for any project:
   threads marked as an agent's generation unless asked to include them. If
   A1 has not landed the mark yet, agree on the field with A1.
 
+- **D742. `client.modes@1` and the route.** A mode is `{id, title,
+  description?, order?, icon?, sidebarSlot, mainSlot}`, registered with
+  `modes.register` (a disposable). `list` sorts by `order`, then id; the
+  first is the default. The route carries the mode as `mode` (`m=` in the
+  fragment); a route without one, or with a mode that is gone, is the default
+  mode's. `ui-host` renders the active mode's two slots in place of
+  `app.sidebar` and `app.main`.
+- **D743. Threads mode is `app.sidebar` and `app.main`.** The plugin
+  `jhin.modes` registers it (`threads`, order 0) with today's slots, so every
+  slot and contribution id stays as it was; without `client.modes@1` the
+  layout falls back to the same slots.
+- **D744. Each mode remembers its last place.** Every route change is kept
+  as its mode's place, in kernel-scoped state; `ui.mode.switch {mode}`
+  opens a mode there (or at the node alone the first time). The default mode
+  writes no `m`, so links made before modes still open where they did.
+- **D745. Generations are left out of Threads mode's lists.** The threads
+  plugin keeps `generationOf` (D606) on the record and takes it on
+  `threads.create`; `threads.list` and `threads.catalog` leave such threads
+  out unless `includeGenerations: true` (default `false`, so old clients see
+  what they saw). `threads.get` and `projects.delete` stay unfiltered. The
+  client's `threads-store` drops a thread from the catalog when an index
+  event carries the mark.
+- **D746. Switching exists only with two modes or more.** The switcher (a
+  `Modes` group at the foot of the left column), the palette's "Switch
+  mode..." submenu and `ui.mode.next` (default `mod+alt+m`, outside the
+  terminal) appear only then; `ui.mode.switch` is always registered. A node
+  without the agents plugins looks as it did.
+- **D747. Civilization mode is offered by `jhin.civilization`.** Its section
+  `enabled`: `auto` (default) offers the mode once an open connection's node
+  has `agents.catalog`, asked once per opening; `on` always; `off` never.
+- **D748. Settings and connecting are the app's, in every mode.** In
+  Civilization mode the `settings` and `connect` panels, and a client with
+  no node, render `app.main`; the route keeps its mode, so Back returns to
+  the shell.
+- **D749. The Civilization sidebar is slots.** A Lead entry, then one
+  section per workstream, each its own slot with an empty state naming who
+  fills it: `civilization.sidebar.projects` (A3), `.inbox` (A2), `.missions`
+  (A3), `.teams` (A5), `.agents` (A1), `.health` (A7); the footer has
+  Settings, `civilization.sidebar.footer` and the palette.
+- **D750. The Civilization main area is two slots.** Without a panel it
+  shows `civilization.lead`, the conversation with the lead; with one it
+  shows `civilization.views`, whose contributions render the panel they own
+  (an agent page, a mission). Each says "No lead yet" or "Nothing here" until
+  filled.
+
 ## Deferred
 
 - Pods (groups inside a team).
@@ -375,6 +420,12 @@ What `docs/README.md` does by hand, as a plugin for any project:
 - An `agent.directory@1` service for plugins that read agents in process;
   the `agents.*` commands serve them for now.
 - Archiving or settling earlier generations automatically on rotate (D606).
+- Mode places that survive a page reload (D744 keeps them for the page's
+  life); a mode per window or per node.
+- Offering Civilization mode for a mesh member reached through another node
+  (D747 asks only the client's open connections).
+- A Threads-mode view of an agent's generations for debugging, through
+  `includeGenerations` (D745).
 
 ## Landing
 

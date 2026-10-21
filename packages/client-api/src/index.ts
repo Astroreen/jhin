@@ -9,6 +9,7 @@ export const MESH_CAPABILITY = "client.mesh";
 export const THREADS_CAPABILITY = "client.threads";
 export const SETTINGS_CAPABILITY = "client.settings";
 export const MACHINES_CAPABILITY = "client.machines";
+export const MODES_CAPABILITY = "client.modes";
 
 // The machine kinds a node reports, for client plugins (they import this package, not the host's).
 export {
@@ -83,12 +84,63 @@ export interface Route {
   readonly panel?: string;
   /** A part of the panel, e.g. a settings section. */
   readonly section?: string;
+  /**
+   * The mode (D742): absent means the default mode, Threads, so every route
+   * written before modes existed stays where it was.
+   */
+  readonly mode?: string;
 }
 
 /** `client.navigation@1`: where the user is; kept in the URL. */
 export interface Navigation {
   current(): Route;
   navigate(route: Route): void;
+  subscribe(listener: () => void): Disposable;
+}
+
+/** The id of Threads mode, T3 Code's way of working (D741, D743). */
+export const THREADS_MODE = "threads";
+
+/** What a mode's icon gets: a component of the client's UI kit (React). */
+export interface ModeIconProps {
+  readonly className?: string;
+}
+
+/**
+ * A way of working with its own layout (D741, D742): the page shows the
+ * active mode's sidebar and main area slots; `app.overlay`, `app.panel` and
+ * `app.global` are the page's and stay in every mode.
+ */
+export interface Mode {
+  /** Public API, like a slot id; it is the route's `mode`. */
+  readonly id: string;
+  readonly title: string;
+  readonly description?: string;
+  /** Lower comes first in the switcher; ties sort by id. The first is the default mode. */
+  readonly order?: number;
+  /** A React component; the switcher shows the title alone without it. */
+  readonly icon?: (props: ModeIconProps) => unknown;
+  /** The slot rendered in the left column, e.g. `app.sidebar`. */
+  readonly sidebarSlot: string;
+  /** The slot rendered in the main area, e.g. `app.main`. */
+  readonly mainSlot: string;
+}
+
+/**
+ * `client.modes@1` (D742): the modes of the client and which one is active.
+ * The active mode is the route's; each mode remembers the last place it
+ * showed, and switching back returns there.
+ */
+export interface Modes {
+  /** Adds a mode until the disposable is disposed; ids are unique. */
+  register(mode: Mode): Disposable;
+  /** Every mode, in switcher order: the same array until it changes. */
+  list(): readonly Mode[];
+  /** The route's mode; the default mode when the route names none or an unknown one. */
+  current(): Mode | undefined;
+  /** Switches to a mode, at the last place it showed. */
+  open(id: string): void;
+  /** Fires when the list or the active mode changes. */
   subscribe(listener: () => void): Disposable;
 }
 
@@ -210,6 +262,12 @@ export interface ThreadRecord {
   readonly autoSettleDisabledAt?: string;
   /** When the user last sent it a message. */
   readonly lastMessageAt?: string;
+  /**
+   * The id of the agent whose generation this thread is (A1's `GenerationOf`,
+   * D606, the D741 mark). Such threads are Civilization mode's: Threads
+   * mode's catalogs leave them out (D745).
+   */
+  readonly generationOf?: string;
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   INTERACTION_MODES,
   RUNTIME_MODES,
   THREADS_STREAM,
+  GenerationOf,
   applicableModelOptions,
   ThreadEvents,
   ThreadHooks,
@@ -205,6 +206,8 @@ const Thread = z.object({
   lastMessageAt: z.string().optional(),
   /** Set while the thread never settles by itself (T3's per-thread "Auto-settle behavior"). */
   autoSettleDisabledAt: z.string().optional(),
+  /** The agent whose generation this thread is (D606, D741): set once at creation, never changed. */
+  generationOf: GenerationOf.optional(),
 });
 type Thread = z.infer<typeof Thread>;
 
@@ -1791,16 +1794,28 @@ export default definePlugin({
     });
 
     // --- Threads ---------------------------------------------------------------
+    /**
+     * Agents' generations are Civilization mode's, so Threads mode's lists
+     * leave them out unless asked (D741, D745); `threads.get` is unfiltered.
+     */
+    const IncludeGenerations = z.boolean().default(false).meta({
+      description: "Also list threads that are an agent's generation (D745)",
+    });
     context.commands.register({
       name: "threads.list",
       description:
         "Threads on this node, oldest first, optionally of one project; archived ones included",
-      input: z.object({ projectId: z.string().optional() }),
+      input: z.object({
+        projectId: z.string().optional(),
+        includeGenerations: IncludeGenerations,
+      }),
       output: z.array(Thread),
       permissions: ["threads.read"],
-      handler: async ({ projectId }) =>
+      handler: async ({ projectId, includeGenerations }) =>
         (await listThreads()).filter(
-          (thread) => projectId === undefined || thread.projectId === projectId,
+          (thread) =>
+            (projectId === undefined || thread.projectId === projectId) &&
+            (includeGenerations || thread.generationOf === undefined),
         ),
     });
 
@@ -1808,10 +1823,10 @@ export default definePlugin({
       name: "threads.catalog",
       description:
         "Every project and thread of this node, and the head of the `threads` index they reflect: follow the index after `head` to keep them current",
-      input: z.object({}),
+      input: z.object({ includeGenerations: IncludeGenerations }),
       output: z.object({ head: z.number(), projects: z.array(Project), threads: z.array(Thread) }),
       permissions: ["threads.read"],
-      handler: async () => {
+      handler: async ({ includeGenerations }) => {
         // The head first: a change made while the lists are read is then also
         // delivered after it (applying a record again is harmless).
         const head = await log.head(THREADS_STREAM);
@@ -1821,7 +1836,10 @@ export default definePlugin({
             (a, b) =>
               Number(b.scratch) - Number(a.scratch) || a.createdAt.localeCompare(b.createdAt),
           );
-        return { head, projects, threads: await listThreads() };
+        const threads = (await listThreads()).filter(
+          (thread) => includeGenerations || thread.generationOf === undefined,
+        );
+        return { head, projects, threads };
       },
     });
 
@@ -1836,6 +1854,10 @@ export default definePlugin({
         ...AgentSettings,
         parentThreadId: z.string().min(1).optional(),
         relationshipToParent: z.enum(["subagent"]).optional(),
+        generationOf: GenerationOf.optional().meta({
+          description:
+            "The agent whose generation the thread is (D606); thread lists and catalogs leave it out unless asked",
+        }),
         worktreePath: z.string().min(1).optional().meta({
           description:
             "The thread's own working directory (a git worktree of the project); its turns run there",

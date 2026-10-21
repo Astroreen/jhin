@@ -102,6 +102,35 @@ describe("thread and project records (D207, D208)", () => {
     expect(catalog.projects.find((item) => item.id === project.id)?.name).toBe("P");
   });
 
+  it("leaves an agent's generations out of lists and catalogs unless asked (D741, D745)", async () => {
+    const { client } = await node();
+    const plain = await client.call<ThreadRecord>("threads.create", { title: "Plain" });
+    const generation = await client.call<ThreadRecord & { generationOf?: string }>(
+      "threads.create",
+      { title: "Lead #1", generationOf: "lead" },
+    );
+    expect(generation.generationOf).toBe("lead");
+    const ids = (threads: ThreadRecord[]) => threads.map((item) => item.id);
+
+    expect(ids(await client.call<ThreadRecord[]>("threads.list", {}))).toEqual([plain.id]);
+    expect(
+      ids(await client.call<ThreadRecord[]>("threads.list", { includeGenerations: true })),
+    ).toEqual([plain.id, generation.id]);
+    const catalog = await client.call<{ threads: ThreadRecord[] }>("threads.catalog", {});
+    expect(ids(catalog.threads)).toEqual([plain.id]);
+    const all = await client.call<{ threads: ThreadRecord[] }>("threads.catalog", {
+      includeGenerations: true,
+    });
+    expect(ids(all.threads)).toEqual([plain.id, generation.id]);
+    expect(
+      (
+        await client.call<{ thread: { generationOf?: string } }>("threads.get", {
+          threadId: generation.id,
+        })
+      ).thread.generationOf,
+    ).toBe("lead");
+  });
+
   it("removes a project and announces it in one write", async () => {
     const { client, storage, data } = await node();
     const project = await client.call<{ id: string }>("projects.create", { path: data });

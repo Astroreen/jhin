@@ -87,6 +87,24 @@ describe("applyIndexEvent", () => {
       catalog,
     );
   });
+
+  it("leaves an agent's generation out, and drops a thread that becomes one (D745)", () => {
+    const generation = {
+      ...thread("g1", "scratch", "2026-10-18T13:00:00.000Z"),
+      generationOf: "lead",
+    };
+    const created = applyIndexEvent(catalog, {
+      type: ThreadEvents.threadCreated,
+      payload: generation,
+    });
+    expect(created.threads.map((item) => item.id)).toEqual(["t1"]);
+
+    const marked = applyIndexEvent(catalog, {
+      type: ThreadEvents.threadUpdated,
+      payload: { ...catalog.threads[0]!, generationOf: "lead" },
+    });
+    expect(marked.threads).toEqual([]);
+  });
 });
 
 /** A node's RPC client: answers from `answers`, records `threads` subscriptions. */

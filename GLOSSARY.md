@@ -77,6 +77,14 @@ Words about Jhin:
   through any node.
 - **Client** — the web UI (and later Electron and mobile packagings of it).
   It can connect to several nodes at once.
+- **Mode** — one way of working in the client, with its own sidebar and
+  main area (`client.modes@1`); the route names it and a switcher shows when
+  there is more than one (`docs/plans/agents.md#D741`).
+- **Threads mode** — the default mode, T3 Code's layout: many projects, and
+  the owner watches, interrupts and steers every turn.
+- **Civilization mode** — the mode for long projects run by agent teams: the
+  owner steers through the lead, missions and intent and watches health;
+  agents' generations are observed there, not driven.
 - **Project** — a working directory, usually a git repository, on a specific
   node. Every node has a built-in **scratch project** for chats without a
   project.

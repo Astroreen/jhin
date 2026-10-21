@@ -1,9 +1,12 @@
 // The layout follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/AppSidebarLayout.tsx.
 import {
+  MODES_CAPABILITY,
   SETTINGS_CAPABILITY,
   UI_CONFIG_SECTION,
   UiConfig,
   type DeviceSettings,
+  type Mode,
+  type Modes,
 } from "@jhin/client-api";
 import { definePlugin, z, type PluginContext } from "@jhin/sdk";
 import {
@@ -28,7 +31,13 @@ import {
   createToasts,
   useSidebar,
 } from "@jhin/ui";
-import { useEffect, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ComponentType,
+} from "react";
 import { createRoot } from "react-dom/client";
 
 import { builtin } from "../lib/builtin.ts";
@@ -119,13 +128,109 @@ function SidebarControl({ keybindings }: { keybindings: Keybindings | undefined 
   );
 }
 
-function Layout({
+const noModes = { list: [] as readonly Mode[], current: undefined as Mode | undefined };
+
+/** The modes and the active one; none without `client.modes@1`. */
+function useModes(modes: Modes | undefined) {
+  const list = useSyncExternalStore(
+    (listener) => {
+      const subscription = modes?.subscribe(listener);
+      return () => subscription?.dispose();
+    },
+    () => modes?.list() ?? noModes.list,
+  );
+  const current = useSyncExternalStore(
+    (listener) => {
+      const subscription = modes?.subscribe(listener);
+      return () => subscription?.dispose();
+    },
+    () => modes?.current() ?? noModes.current,
+  );
+  return { list, current };
+}
+
+/**
+ * The mode switcher (D746): one button per mode at the foot of the left
+ * column, hidden while there is a single mode, so a client without other
+ * modes looks as it did before modes.
+ */
+function ModeSwitcher({
   context,
   keybindings,
+  list,
+  current,
 }: {
   context: PluginContext;
   keybindings: Keybindings | undefined;
+  list: readonly Mode[];
+  current: Mode | undefined;
 }) {
+  const label = useShortcutLabels(keybindings)("ui.mode.next");
+  if (list.length < 2) return null;
+  return (
+    <div
+      aria-label="Modes"
+      className="flex shrink-0 items-center gap-1 border-t border-sidebar-border p-2"
+      data-mode-switcher=""
+      role="group"
+    >
+      {list.map((mode) => {
+        const Icon = mode.icon as ComponentType<{ className?: string }> | undefined;
+        const active = mode === current;
+        return (
+          <Tooltip key={mode.id}>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-pressed={active}
+                  className={cn(
+                    "inline-flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium outline-hidden ring-ring focus-visible:ring-2",
+                    active
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+                  )}
+                  data-mode={mode.id}
+                  onClick={() =>
+                    void context.commands
+                      .execute("ui.mode.switch", { mode: mode.id })
+                      .catch((error: unknown) =>
+                        context.log.error("switching mode failed", {
+                          mode: mode.id,
+                          error: String(error),
+                        }),
+                      )
+                  }
+                  type="button"
+                />
+              }
+            >
+              {Icon === undefined ? null : <Icon className="size-3.5 shrink-0" />}
+              <span className="truncate">{mode.title}</span>
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {mode.description ?? mode.title}
+              {active || label === undefined ? "" : ` (next mode: ${label})`}
+            </TooltipPopup>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
+function Layout({
+  context,
+  keybindings,
+  modes,
+}: {
+  context: PluginContext;
+  keybindings: Keybindings | undefined;
+  modes: Modes | undefined;
+}) {
+  const { list, current } = useModes(modes);
+  // Without modes (or before one registers), the page is Threads mode's slots (D743).
+  const sidebarSlot = current?.sidebarSlot ?? "app.sidebar";
+  const mainSlot = current?.mainSlot ?? "app.main";
   const appearance = useConfig<Appearance>(context, APPEARANCE_SECTION);
   const [sidebarWidth, setSidebarWidth] = useState(initialSidebarWidth);
   const [viewport, setViewport] = useState(() => window.innerWidth);
@@ -169,7 +274,8 @@ function Layout({
         role="navigation"
         side="left"
       >
-        <Slot name="app.sidebar" />
+        <Slot key={sidebarSlot} name={sidebarSlot} />
+        <ModeSwitcher context={context} current={current} keybindings={keybindings} list={list} />
         <SidebarRail
           onDoubleClick={() => {
             localStorage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
@@ -177,10 +283,13 @@ function Layout({
           }}
         />
       </Sidebar>
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+      <SidebarInset
+        className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
+        data-mode={current?.id}
+      >
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <Slot name="app.main" />
+            <Slot key={mainSlot} name={mainSlot} />
             <Slot name="app.overlay" />
           </div>
           <Slot name="app.panel" />
@@ -195,8 +304,9 @@ function Layout({
 /**
  * The UI host: owns the page and its top-level slots. Everything visible is a
  * contribution of some plugin:
- * - `app.sidebar`  the left column (resizable, collapsible)
- * - `app.main`     the main view
+ * - `app.sidebar`  the left column (resizable, collapsible) in Threads mode
+ * - `app.main`     the main view in Threads mode
+ * Other modes (`client.modes@1`, D742) bring their own two slots instead.
  * - `app.overlay`  panels over the main view
  * - `app.panel`    a panel docked right of the main view
  * - `app.global`   overlays of the whole page (palettes, dialogs)
@@ -210,7 +320,7 @@ export const uiHostPlugin = builtin(
       [UI_DIALOGS_CAPABILITY]: "1.0.0",
     },
     requires: { [SETTINGS_CAPABILITY]: "^1" },
-    optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
+    optional: { [KEYBINDINGS_CAPABILITY]: "^1", [MODES_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
@@ -232,6 +342,7 @@ export const uiHostPlugin = builtin(
       context.config.onDidChange<UiConfig>(UI_CONFIG_SECTION, (rules) => registry.setRules(rules));
       const settings = context.services.get<DeviceSettings>(SETTINGS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
+      const clientModes = context.services.tryGet<Modes>(MODES_CAPABILITY);
 
       context.commands.register({
         name: "ui.sidebar.toggle",
@@ -289,7 +400,7 @@ export const uiHostPlugin = builtin(
       root.render(
         <SlotsProvider registry={registry}>
           <ToastProvider>
-            <Layout context={context} keybindings={keybindings} />
+            <Layout context={context} keybindings={keybindings} modes={clientModes} />
             <DialogHost dialogs={dialogs} />
           </ToastProvider>
         </SlotsProvider>,
