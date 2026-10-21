@@ -56,7 +56,7 @@ function basename(path: string): string {
 }
 
 /** T3's SkillChipIcon: lucide's box, a little bolder. */
-export function SkillChipIcon() {
+function SkillChipIcon() {
   return <BoxIcon aria-hidden strokeWidth={1.85} />;
 }
 
