@@ -129,6 +129,18 @@ export function GeneralSection() {
           resetAction={reset("showSkillsInSlashMenu", "skills in slash menu")}
           title="Show skills in slash menu"
         />
+        <SettingsRow
+          control={
+            <Switch
+              aria-label="Rich text composer"
+              checked={chat.composerRichTextEnabled}
+              onCheckedChange={(composerRichTextEnabled) => set({ composerRichTextEnabled })}
+            />
+          }
+          description="Show formatted Markdown as you type."
+          resetAction={reset("composerRichTextEnabled", "rich text composer")}
+          title="Rich text composer"
+        />
         <DiffRows />
         {/* Rows other plugins add to Behavior, e.g. the desktop app's quit shortcut (D947). */}
         <Slot name="settings.general.behavior" props={{}} />

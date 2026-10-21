@@ -476,3 +476,37 @@ exit 1
     await own.stop();
   }
 });
+
+test("shows the prompt as plain text with T3's Rich text composer setting off", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const toggle = page.getByRole("switch", { name: "Rich text composer" });
+  await expect(toggle).toBeChecked();
+  await toggle.click();
+  await expect(toggle).not.toBeChecked();
+  try {
+    await page.goto(`${node.ui}#token=${node.token}`);
+    await page.getByRole("button", { name: "Start a thread" }).click();
+    const message = page.getByRole("textbox", { name: "Message" });
+    await expect(message).toHaveAttribute("data-composer-rich-text", "false");
+    await message.click();
+    await message.pressSequentially("# Plan");
+    await message.press("Shift+Enter");
+    await message.pressSequentially("- [ ] read **the** code");
+    await expect(message).toHaveText("# Plan- [ ] read **the** code");
+    await expect(message.getByRole("heading")).toHaveCount(0);
+    await expect(message.getByRole("checkbox")).toHaveCount(0);
+    await expect(message.locator("strong")).toHaveCount(0);
+    const shot = info.outputPath("plain-text.png");
+    await page.screenshot({ path: shot });
+    await info.attach("plain text composer", { path: shot, contentType: "image/png" });
+  } finally {
+    // The node is shared with the other specs: put the default back even on a failure.
+    await page.goto(`${node.ui}#token=${node.token}`);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("switch", { name: "Rich text composer" }).click();
+    await expect(page.getByRole("switch", { name: "Rich text composer" })).toBeChecked();
+  }
+});

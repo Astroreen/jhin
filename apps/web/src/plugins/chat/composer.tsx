@@ -1880,6 +1880,7 @@ export function Composer(props: ComposerProps) {
                           onSubmit={() => void send()}
                           placeholder={placeholder}
                           readOnly={busy && question === undefined}
+                          richText={settings.composerRichTextEnabled}
                           sendShortcut={
                             settings.sendShortcut === "mod-enter" ? "mod-enter" : "enter"
                           }

@@ -33,6 +33,8 @@ function mount(
   options: {
     sendShortcut?: "enter" | "mod-enter";
     onKeyDown?: (event: KeyboardEvent) => boolean;
+    richText?: boolean;
+    literalText?: boolean;
   } = {},
 ): Mounted {
   const handleRef = createRef<PromptEditorHandle>();
@@ -66,6 +68,8 @@ function mount(
         disabled={disabled}
         placeholder="Ask anything"
         sendShortcut={options.sendShortcut ?? "enter"}
+        richText={options.richText}
+        literalText={options.literalText}
         handleRef={handleRef}
       />
     );
@@ -559,5 +563,68 @@ describe("headings, rules and task lists in the prompt", () => {
     await userEvent.keyboard("* [[ ] t");
     await editor.reported("- [ ] t");
     expect(editor.editable().querySelectorAll("input[type=checkbox]")).toHaveLength(1);
+  });
+});
+
+/** Pastes `text` as the clipboard's plain text through the editor's own paste handler. */
+function paste(editor: Mounted, text: string): void {
+  const view = (editor.editable() as HTMLElement & { editor: Editor }).editor.view;
+  const clipboardData = new DataTransfer();
+  clipboardData.setData("text/plain", text);
+  const event = new ClipboardEvent("paste", { clipboardData, cancelable: true });
+  view.someProp("handlePaste", (handle) => handle(view, event, view.state.doc.slice(0, 0)));
+}
+
+describe("plain and literal text (T3's Rich text composer setting and literal answers)", () => {
+  it("shows markdown as typed without rich text, and keeps the chips", async () => {
+    const prompt = "**bold** `code`\n- one\n> quote\n# Title\n---\nread [a.ts](src/a.ts) now";
+    const editor = mount(prompt, { richText: false });
+    const root = editor.editable();
+    expect(root.getAttribute("data-composer-rich-text")).toBe("false");
+    expect(root.querySelector("strong, code, ul, blockquote, h1, hr, pre")).toBeNull();
+    expect(root.querySelector("[data-mention='src/a.ts']")?.textContent).toBe("a.ts");
+    editor.handle.setValue(editor.value());
+    expect(editor.value()).toBe(prompt);
+  });
+
+  it("applies no markdown input rules and continues no list without rich text", async () => {
+    const editor = mount("- one", { richText: false });
+    editor.handle.focus();
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}# **b** ");
+    await editor.reported("- one\n# **b** ");
+    const root = editor.editable();
+    expect(root.querySelector("strong, ul, li, h1")).toBeNull();
+    expect(editor.submits).toEqual([]);
+  });
+
+  it("pastes markdown as text with chips without rich text", async () => {
+    const editor = mount("", { richText: false });
+    editor.handle.focus();
+    paste(editor, "- **x** [b.ts](src/b.ts)");
+    await editor.reported("- **x** [b.ts](src/b.ts) ");
+    const root = editor.editable();
+    expect(root.querySelector("strong, ul")).toBeNull();
+    expect(root.querySelector("[data-mention='src/b.ts']")).not.toBeNull();
+  });
+
+  it("takes literal text character for character: no chips, no styling, no surround", async () => {
+    const prompt = "read [a.ts](src/a.ts) **now**\n- $skill";
+    const editor = mount(prompt, { literalText: true, richText: true });
+    const root = editor.editable();
+    expect(root.getAttribute("data-composer-rich-text")).toBe("false");
+    expect(root.querySelector("[data-mention], [data-skill], strong, ul")).toBeNull();
+    expect(root.textContent).toBe("read [a.ts](src/a.ts) **now**- $skill");
+
+    const tiptap = (root as HTMLElement & { editor: Editor }).editor;
+    const view = tiptap.view;
+    tiptap.commands.setTextSelection({ from: 1, to: 5 });
+    expect(
+      view.someProp("handleTextInput", (handle) => handle(view, 1, 5, "(", () => view.state.tr)),
+    ).toBeFalsy();
+
+    tiptap.commands.setTextSelection(tiptap.state.doc.content.size - 1);
+    paste(editor, " [c.ts](src/c.ts)");
+    await editor.reported(`${prompt} [c.ts](src/c.ts)`);
+    expect(root.querySelector("[data-mention]")).toBeNull();
   });
 });
