@@ -7,6 +7,7 @@ function fakeLauncher(fail: (executablePath: string | undefined) => string | und
   const launched: (string | undefined)[] = [];
   const browser = {
     on: () => undefined,
+    close: async () => undefined,
     newContext: async () => ({ newPage: async () => ({}) }),
   };
   const launcher = async () => ({
@@ -42,8 +43,14 @@ describe("which browser a tab starts (D951)", () => {
     const { launched, launcher } = fakeLauncher((path) =>
       path === undefined ? MISSING : undefined,
     );
-    await new Chromium({ headlessShell: shell, launcher }).newPage(true);
-    expect(launched).toEqual([undefined, await shell.executable()]);
+    const chromium = new Chromium({ headlessShell: shell, launcher });
+    await chromium.newPage(true);
+    const path = await shell.executable();
+    expect(launched).toEqual([undefined, path]);
+    // A browser started again goes straight to the shell.
+    await chromium.close();
+    await chromium.newPage(true);
+    expect(launched).toEqual([undefined, path, path]);
   });
 
   it("keeps Playwright's browser when it is there", async () => {

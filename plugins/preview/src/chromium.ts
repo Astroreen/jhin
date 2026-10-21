@@ -74,6 +74,8 @@ export async function presentAsChrome(cdp: CDPSession): Promise<void> {
 export class Chromium {
   readonly #options: ChromiumOptions;
   #browser: Promise<Browser> | undefined;
+  /** Playwright had no browser here: later starts go straight to the shell (D951). */
+  #playwrightMissing = false;
   #shared: Promise<BrowserContext> | undefined;
 
   constructor(options: ChromiumOptions = {}) {
@@ -101,6 +103,11 @@ export class Chromium {
       try {
         let browser: Browser;
         try {
+          if (this.#playwrightMissing && configured === undefined) {
+            throw new Error(
+              "Executable doesn't exist (Playwright's browser, found missing before)",
+            );
+          }
           browser = await launch(configured);
         } catch (cause) {
           const message = cause instanceof Error ? cause.message : String(cause);
@@ -114,6 +121,7 @@ export class Chromium {
           ) {
             throw cause;
           }
+          this.#playwrightMissing = true;
           let executable: string;
           try {
             executable = await shell.executable();

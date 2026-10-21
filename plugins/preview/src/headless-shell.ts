@@ -344,13 +344,12 @@ export function createHeadlessShell(options: HeadlessShellOptions) {
         progress.unpacking = false;
         const started = install(release);
         installing = started;
-        // A failed install is started again by the next request.
-        started.then(
-          () => undefined,
-          () => {
-            if (installing === started) installing = undefined;
-          },
-        );
+        // Settled, it is done: the next request looks at the disk again, and a failed
+        // or removed install starts anew.
+        const settle = () => {
+          if (installing === started) installing = undefined;
+        };
+        started.then(settle, settle);
       }
       const current = installing;
       let timer: ReturnType<typeof setTimeout> | undefined;
