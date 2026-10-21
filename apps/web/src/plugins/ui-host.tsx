@@ -1,9 +1,11 @@
 // The layout follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/AppSidebarLayout.tsx.
 import {
+  MODES_CAPABILITY,
   SETTINGS_CAPABILITY,
   UI_CONFIG_SECTION,
   UiConfig,
   type DeviceSettings,
+  type Modes,
 } from "@jhin/client-api";
 import { definePlugin, z, type PluginContext } from "@jhin/sdk";
 import {
@@ -33,6 +35,7 @@ import { createRoot } from "react-dom/client";
 
 import { builtin } from "../lib/builtin.ts";
 import { useConfig, useShortcutLabels } from "../lib/hooks.ts";
+import { useModes } from "../lib/use-modes.ts";
 import { APPEARANCE_SECTION, Appearance } from "../lib/settings.ts";
 import { KEYBINDINGS_CAPABILITY, type Keybindings } from "./keybindings.ts";
 
@@ -122,10 +125,16 @@ function SidebarControl({ keybindings }: { keybindings: Keybindings | undefined 
 function Layout({
   context,
   keybindings,
+  modes,
 }: {
   context: PluginContext;
   keybindings: Keybindings | undefined;
+  modes: Modes | undefined;
 }) {
+  const { current } = useModes(modes);
+  // Without modes (or before one registers), the page is Threads mode's slots (D743).
+  const sidebarSlot = current?.sidebarSlot ?? "app.sidebar";
+  const mainSlot = current?.mainSlot ?? "app.main";
   const appearance = useConfig<Appearance>(context, APPEARANCE_SECTION);
   const [sidebarWidth, setSidebarWidth] = useState(initialSidebarWidth);
   const [viewport, setViewport] = useState(() => window.innerWidth);
@@ -169,7 +178,9 @@ function Layout({
         role="navigation"
         side="left"
       >
-        <Slot name="app.sidebar" />
+        <Slot key={sidebarSlot} name={sidebarSlot} />
+        {/* The mode switcher's place (D746), filled by `jhin.mode-switcher`. */}
+        <Slot name="app.sidebar.modes" />
         <SidebarRail
           onDoubleClick={() => {
             localStorage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
@@ -177,10 +188,13 @@ function Layout({
           }}
         />
       </Sidebar>
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+      <SidebarInset
+        className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
+        data-mode={current?.id}
+      >
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <Slot name="app.main" />
+            <Slot key={mainSlot} name={mainSlot} />
             <Slot name="app.overlay" />
           </div>
           <Slot name="app.panel" />
@@ -195,8 +209,9 @@ function Layout({
 /**
  * The UI host: owns the page and its top-level slots. Everything visible is a
  * contribution of some plugin:
- * - `app.sidebar`  the left column (resizable, collapsible)
- * - `app.main`     the main view
+ * - `app.sidebar`  the left column (resizable, collapsible) in Threads mode
+ * - `app.main`     the main view in Threads mode
+ * Other modes (`client.modes@1`, D742) bring their own two slots instead.
  * - `app.overlay`  panels over the main view
  * - `app.panel`    a panel docked right of the main view
  * - `app.global`   overlays of the whole page (palettes, dialogs)
@@ -210,7 +225,7 @@ export const uiHostPlugin = builtin(
       [UI_DIALOGS_CAPABILITY]: "1.0.0",
     },
     requires: { [SETTINGS_CAPABILITY]: "^1" },
-    optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
+    optional: { [KEYBINDINGS_CAPABILITY]: "^1", [MODES_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
@@ -232,6 +247,7 @@ export const uiHostPlugin = builtin(
       context.config.onDidChange<UiConfig>(UI_CONFIG_SECTION, (rules) => registry.setRules(rules));
       const settings = context.services.get<DeviceSettings>(SETTINGS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
+      const clientModes = context.services.tryGet<Modes>(MODES_CAPABILITY);
 
       context.commands.register({
         name: "ui.sidebar.toggle",
@@ -289,7 +305,7 @@ export const uiHostPlugin = builtin(
       root.render(
         <SlotsProvider registry={registry}>
           <ToastProvider>
-            <Layout context={context} keybindings={keybindings} />
+            <Layout context={context} keybindings={keybindings} modes={clientModes} />
             <DialogHost dialogs={dialogs} />
           </ToastProvider>
         </SlotsProvider>,

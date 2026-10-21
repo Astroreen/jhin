@@ -52,6 +52,10 @@ export function applyIndexEvent(
     case ThreadEvents.threadCreated:
     case ThreadEvents.threadUpdated: {
       const thread = payload as unknown as ThreadRecord;
+      // An agent's generation is Civilization mode's, not a thread of the list (D745).
+      if (thread.generationOf !== undefined) {
+        return { ...catalog, threads: catalog.threads.filter((item) => item.id !== id) };
+      }
       return {
         ...catalog,
         threads: sortThreads([...catalog.threads.filter((item) => item.id !== id), thread]),

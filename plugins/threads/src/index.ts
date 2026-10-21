@@ -2092,27 +2092,39 @@ export default definePlugin({
     });
 
     // --- Threads ---------------------------------------------------------------
+    /**
+     * Agents' generations are Civilization mode's, so Threads mode's lists
+     * leave them out unless asked (D741, D745); `threads.get` is unfiltered.
+     */
+    const IncludeGenerations = z.boolean().default(false).meta({
+      description: "Also list threads that are an agent's generation (D745)",
+    });
     context.commands.register({
       name: "threads.list",
       description:
-        "Threads on this node, oldest first, optionally of one project; archived ones included",
-      input: z.object({ projectId: z.string().optional() }),
+        "Threads on this node, oldest first, optionally of one project; archived ones included, agents' generations only with `includeGenerations` (D745)",
+      input: z.object({
+        projectId: z.string().optional(),
+        includeGenerations: IncludeGenerations,
+      }),
       output: z.array(Thread),
       permissions: ["threads.read"],
-      handler: async ({ projectId }) =>
+      handler: async ({ projectId, includeGenerations }) =>
         (await listThreads()).filter(
-          (thread) => projectId === undefined || thread.projectId === projectId,
+          (thread) =>
+            (projectId === undefined || thread.projectId === projectId) &&
+            (includeGenerations || thread.generationOf === undefined),
         ),
     });
 
     context.commands.register({
       name: "threads.catalog",
       description:
-        "Every project and thread of this node, and the head of the `threads` index they reflect: follow the index after `head` to keep them current",
-      input: z.object({}),
+        "Every project and thread of this node (agents' generations only with `includeGenerations`, D745), and the head of the `threads` index they reflect: follow the index after `head` to keep them current",
+      input: z.object({ includeGenerations: IncludeGenerations }),
       output: z.object({ head: z.number(), projects: z.array(Project), threads: z.array(Thread) }),
       permissions: ["threads.read"],
-      handler: async () => {
+      handler: async ({ includeGenerations }) => {
         // The head first: a change made while the lists are read is then also
         // delivered after it (applying a record again is harmless).
         const head = await log.head(THREADS_STREAM);
@@ -2122,7 +2134,10 @@ export default definePlugin({
             (a, b) =>
               Number(b.scratch) - Number(a.scratch) || a.createdAt.localeCompare(b.createdAt),
           );
-        return { head, projects, threads: await listThreads() };
+        const threads = (await listThreads()).filter(
+          (thread) => includeGenerations || thread.generationOf === undefined,
+        );
+        return { head, projects, threads };
       },
     });
 

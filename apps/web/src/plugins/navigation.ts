@@ -17,9 +17,10 @@ const KEYS = {
   project: "j",
   panel: "p",
   section: "s",
+  mode: "m",
 } as const satisfies Record<keyof Route, string>;
 
-/** The route lives in the fragment: `#n=<node>&r=<remote>&t=<thread>&j=<project>&p=<panel>&s=<section>`. */
+/** The route lives in the fragment: `#n=<node>&r=<remote>&t=<thread>&j=<project>&p=<panel>&s=<section>&m=<mode>`. */
 export function readRoute(hash: string): Route {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const route: Record<string, string> = {};

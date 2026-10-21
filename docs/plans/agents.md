@@ -577,6 +577,75 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
   threads marked as an agent's generation unless asked to include them. If
   A1 has not landed the mark yet, agree on the field with A1.
 
+- **D742. `client.modes@1` and the route.** A mode is `{id, title,
+  description?, order?, icon?, sidebarSlot, mainSlot}`, registered with
+  `modes.register` (a disposable). `list` sorts by `order`, then id; the
+  first is the default. The route carries the mode as `mode` (`m=` in the
+  fragment); a route without one, or with a mode that is gone, is the default
+  mode's. `ui-host` renders the active mode's two slots in place of
+  `app.sidebar` and `app.main`; `app.panel`, `app.overlay` and `app.global`
+  are the page's and stay in every mode (a thread's terminal or browser
+  panel stays open beside the Lead view). Switching unmounts the other
+  mode's sidebar and main area: what they store (a thread's composer draft)
+  comes back, local view state such as scroll positions does not.
+- **D743. Threads mode is `app.sidebar` and `app.main`.** The plugin
+  `jhin.modes` registers it (`threads`, order 0) with today's slots, so every
+  slot and contribution id stays as it was; without `client.modes@1` the
+  layout falls back to the same slots.
+- **D744. Each mode remembers its last place** for the life of the page.
+  Every route change is kept as its mode's place, in kernel-scoped state; `ui.mode.switch {mode}`
+  opens a mode there, on the node the page is on: a place on another node,
+  or none yet, opens the mode at the node alone. Pressing the active mode
+  leaves an app page for its place. A shown mode that goes away (its node
+  closes, its config turns it off) sends the page to the default mode's own place, so it
+  does not take the page back when it returns; a link naming a mode not
+  registered yet still opens it once it is. An app page
+  (D748) is never kept as a place, so switching back leaves Settings. The
+  default mode writes no `m`, so links made before modes still open where
+  they did.
+- **D745. Generations are left out of Threads mode's lists.** The threads
+  plugin keeps `generationOf` (D606) on the record and takes it on
+  `threads.create`; `threads.list` and `threads.catalog` leave such threads
+  out unless `includeGenerations: true`. This narrows the default answer of
+  two public commands: a caller that needs every thread (a plugin, the CLI,
+  an MCP client) must pass the flag, as `source-control` does for the
+  worktrees in use. Old clients lose nothing they had, since only
+  `agents.rotate` (D606) creates marked threads. `threads.get` and
+  `projects.delete` stay unfiltered. The client's `threads-store` drops a
+  thread from the catalog when an index event carries the mark.
+- **D746. Switching exists only with two modes or more.** The switcher (a
+  `Modes` group at the foot of the left column, the contribution
+  `jhin.modes.switcher` of `jhin.mode-switcher` to the slot
+  `app.sidebar.modes`), the palette's "Switch
+  mode..." submenu and `ui.mode.next` (default `mod+alt+m`, outside the
+  terminal) appear only then; `ui.mode.switch` is always registered. A node
+  without the agents plugins looks as it did.
+- **D747. Civilization mode is offered by `jhin.civilization`.** Its section
+  `enabled`: `auto` (default) offers the mode once an open connection's node
+  has a defined agent (`agents.catalog` lists one), asked once per opening
+  (an unknown answer is asked again on the next change of the connections,
+  at most three times; a missing command or `PERMISSION_DENIED` means none);
+  `on` always; `off` never. The offer is the client's, not a node's: one
+  node with agents offers the mode for every node. The agents plugin ships with every node, so
+  having the command is not enough: a node without agents looks as before.
+- **D748. Settings and connecting are the app's, in every mode.** In
+  Civilization mode the `settings` and `connect` panels, and a client with
+  no node, render `app.main`; the route keeps its mode, so Back returns to
+  the shell.
+- **D749. The Civilization sidebar is slots.** A Lead entry, then one
+  section per workstream, each its own slot with an empty state naming who
+  fills it: `civilization.sidebar.projects` (A3), `.inbox` (A2), `.missions`
+  (A3), `.teams` (A5), `.agents` (A1), `.health` (A7); the footer is the
+  slot `civilization.sidebar.footer`, where the plugin contributes Settings
+  (`jhin.civilization.settings`) and the palette (`jhin.civilization.palette`).
+- **D750. The Civilization main area is two slots.** Without a panel it
+  shows `civilization.lead`, the conversation with the lead; with one it
+  shows `civilization.views`, whose contributions render the panel they own
+  (an agent page, a mission). Each says "No lead yet" or "Nothing here" until
+  filled. The shell's
+  components are a chunk of their own, loaded once the mode shows, as are
+  the switcher's buttons once there are two modes (D440).
+
 ## Deferred
 
 - Pods (groups inside a team).
@@ -632,6 +701,27 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
   brief (D671); `lore.brief` reads local files, so it ends.
 - A4: reference-style links (`[x][ref]`) and HTML links as routes; events
   when pages change (pages are re-read when their mtime changes).
+- A8: mode places that survive a page reload (D744 keeps them for the page's
+  life); a mode per window or per node.
+- A8: offering Civilization mode for a mesh member reached through another node
+  (D747 asks only the client's open connections), and as soon as the first
+  agent is defined (D747 asks again only when the connection reopens).
+- A8: a Threads-mode view of an agent's generations for debugging, through
+  `includeGenerations` (D745).
+- A8: one footer for both modes' sidebars: Civilization contributes its own
+  Settings and palette buttons (D749) beside the Threads sidebar's, which
+  `sidebar` still renders itself.
+- A8: asking a node for its agents again when what was missing arrives (an
+  `agents` event, the agents plugin activating) rather than on the next
+  change of the connections: today an unknown answer on a connection that
+  stays open is asked again only when some connection changes (D747), and a
+  node still activating its plugins answers `COMMAND_NOT_FOUND`, taken as
+  none until it reopens.
+- A8: Civilization mode per node: the route's node without agents opens the
+  shell with its empty states today (D747); the views A1 and A3 contribute
+  choose their node.
+- A8: leaving generations out of `threads.search` as well: D745 filters the lists
+  and catalogs only, so a search can still find a generation's text.
 
 ## Landing
 

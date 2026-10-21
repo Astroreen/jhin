@@ -11,6 +11,7 @@ describe("routes in the fragment", () => {
       project: "p1",
       panel: "settings",
       section: "keybindings",
+      mode: "civilization",
     };
     expect(readRoute(`#${writeRoute(route)}`)).toEqual(route);
   });

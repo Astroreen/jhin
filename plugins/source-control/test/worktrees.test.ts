@@ -502,6 +502,20 @@ describe("jhin.source-control: reverting to a turn", () => {
       }),
     ).rejects.toThrow("File restore requires an isolated worktree.");
     await sc.client.call("threads.delete", { threadId: other.id });
+    // An agent's generation shares it too, though thread lists leave it out (D745).
+    const generation = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      generationOf: "lead",
+      workspace: { type: "existing_worktree", worktreePath: thread.worktreePath! },
+    });
+    await expect(
+      sc.client.call("threads.rollback", {
+        threadId: thread.id,
+        beforeTurnId: first,
+        restoreFiles: true,
+      }),
+    ).rejects.toThrow("File restore requires an isolated worktree.");
+    await sc.client.call("threads.delete", { threadId: generation.id });
 
     git(dir, "update-ref", "-d", `refs/jhin/checkpoints/${thread.id}/0`);
     await expect(
