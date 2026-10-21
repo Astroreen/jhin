@@ -1336,7 +1336,10 @@ export default definePlugin({
        * The turn's subagents as child threads (D877): each gets a thread with
        * one turn holding its own items, ended with it or with this turn.
        */
-      const subagents = new Map<string, { threadId: string; turnId: string; open: boolean }>();
+      const subagents = new Map<
+        string,
+        { threadId: string; turnId: string; open: boolean; endRecorded?: boolean }
+      >();
       const endSubagent = async (
         subagentId: string,
         status: "completed" | "failed" | "interrupted",
@@ -1350,12 +1353,16 @@ export default definePlugin({
             : status === "failed"
               ? ThreadEvents.turnFailed
               : ThreadEvents.turnInterrupted;
-        await log.append(threadStream(child.threadId), [
-          {
-            type,
-            payload: { turnId: child.turnId, ...(error === undefined ? {} : { error }) },
-          },
-        ]);
+        // Its end is written once; a retry only records the status again.
+        if (child.endRecorded !== true) {
+          await log.append(threadStream(child.threadId), [
+            {
+              type,
+              payload: { turnId: child.turnId, ...(error === undefined ? {} : { error }) },
+            },
+          ]);
+          child.endRecorded = true;
+        }
         await setTurnStatus(child.threadId, child.turnId, runtime.agentId, status);
         // Closed once its end is recorded: a failed write leaves it to the turn's end to close.
         child.open = false;
