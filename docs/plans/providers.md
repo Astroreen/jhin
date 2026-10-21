@@ -848,6 +848,8 @@ OpenCode 2 behaviour.
 - Subagent transcripts: a `subagent` call shows its result only.
 - Writing the thread's title to its OpenCode session.
 - Deleting a deleted thread's OpenCode session.
+- Logging (or failing on) an attached image whose data URL is not
+  `data:<mime>;base64,…`: it is skipped without a word.
 - Choosing what of the node's environment `opencode serve` inherits, as
   Claude's `inheritEnv` (D346) does: today it gets the whole environment.
 - A size bound on the transcript handed to a new session (D327), as for
