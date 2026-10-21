@@ -36,6 +36,17 @@ import { MessageCopyButton } from "./timeline.tsx";
 
 const At = { node: z.string(), remote: z.string().optional() };
 
+/**
+ * Whether a fork can be merged back: its latest turn ended, however it ended (the
+ * node takes the fork's last ended turn of its own, D226). After a rollback in the
+ * fork the record may name a copied turn; the node then refuses with T3's "Complete
+ * a run in this fork".
+ */
+export function forkRan(thread: ThreadRecord): boolean {
+  const status = thread.lastTurn?.status;
+  return status !== undefined && status !== "running" && status !== "waiting";
+}
+
 const targetOf = (input: { node: string; remote?: string | undefined }): NodeTarget => ({
   node: input.node,
   ...(input.remote === undefined ? {} : { remote: input.remote }),
@@ -284,9 +295,7 @@ export function registerHistory(
     const parent = catalog?.threads.find(
       (candidate) => candidate.id === thread.forkedFrom!.threadId,
     );
-    // Whether the fork ran a turn. After a rollback in the fork the record may name a
-    // copied turn; the node then refuses with T3's "Complete a run in this fork".
-    const ran = thread.lastTurn !== undefined && thread.lastTurn.status !== "running";
+    const ran = forkRan(thread);
     const label =
       parent === undefined ? "Merge back to source conversation" : `Merge back to ${parent.title}`;
     const tooltip = !ran

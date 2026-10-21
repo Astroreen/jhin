@@ -42,8 +42,8 @@ export function registerThreadDetails(
   },
 ) {
   const { threads, navigation, slots, keybindings } = services;
-  /** The toggle on screen, for the command. */
-  let toggle: (() => void) | undefined;
+  /** The toggles on screen, newest last: the command works the newest (one, in Jhin's one thread view). */
+  const toggles: (() => void)[] = [];
 
   context.commands.register({
     name: "chat.thread-details.toggle",
@@ -51,10 +51,12 @@ export function registerThreadDetails(
     description:
       "Opens or closes the open thread's details panel (its lineage and what plugins add)",
     input: z.object({}),
-    output: z.object({}),
+    /** `toggled`: false when no thread is open, so there was no panel to toggle. */
+    output: z.object({ toggled: z.boolean() }),
     handler: () => {
+      const toggle = toggles.at(-1);
       toggle?.();
-      return {};
+      return { toggled: toggle !== undefined };
     },
   });
   if (keybindings !== undefined) {
@@ -74,9 +76,9 @@ export function registerThreadDetails(
     useEffect(() => {
       if (threadId === undefined) return;
       const own = () => setOpen((current) => !current);
-      toggle = own;
+      toggles.push(own);
       return () => {
-        if (toggle === own) toggle = undefined;
+        toggles.splice(toggles.indexOf(own), 1);
       };
     }, [threadId]);
     if (thread === undefined) return null;
@@ -146,17 +148,9 @@ export function registerThreadDetails(
       import("./lineage.tsx").then((module) =>
         module.createLineage({ threads, navigation, commands: context.commands }),
       ),
-    {
-      loading: () => null,
-      failed: (_props, retry) => (
-        <p className="px-4 py-3 text-sm text-muted-foreground">
-          Lineage did not load.{" "}
-          <button className="underline" onClick={retry} type="button">
-            Retry
-          </button>
-        </p>
-      ),
-    },
+    // A failed load shows nothing, as a thread without lineage does; opening the
+    // panel again loads it again.
+    { loading: () => null, failed: () => null },
   );
   context.subscriptions.add(
     slots.contribute<ChatThreadDetailsProps>("chat.thread.details", {

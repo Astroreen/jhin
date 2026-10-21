@@ -22,6 +22,7 @@ import {
 import { useState, type ComponentType, type ReactNode } from "react";
 
 import { useCatalog } from "../../lib/hooks.ts";
+import { forkRan } from "./history.tsx";
 
 const LINEAGE_INITIAL_COUNT = 6;
 const LINEAGE_PAGE_COUNT = 12;
@@ -90,7 +91,7 @@ export function lineageRows(thread: ThreadRecord, threads: readonly ThreadRecord
 }
 
 /** The section's list, paged as T3 pages it ("Show 12 more"). */
-function LineageRowList(props: {
+export function LineageRowList(props: {
   rows: readonly LineageRow[];
   children: (row: LineageRow) => ReactNode;
 }) {
@@ -118,6 +119,36 @@ function LineageRowList(props: {
   );
 }
 
+/** A row's status, T3's label; a failure in red. */
+function Status(props: { label: string; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 text-2xs",
+        props.label === "Failed" ? "text-destructive" : "text-muted-foreground",
+        props.className,
+      )}
+    >
+      {props.label}
+    </span>
+  );
+}
+
+/**
+ * A button with its tooltip, which shows while the button is disabled too: the
+ * tooltip sits on a wrapper, since a disabled button gets no pointer events.
+ */
+function WithTooltip(props: { tip: string; className: string; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger delay={200} render={<span className={props.className} />}>
+        {props.children}
+      </TooltipTrigger>
+      <TooltipPopup side="left">{props.tip}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 /** The Lineage section (`jhin.chat.lineage`), bound to what it reads and runs. */
 export function createLineage(deps: {
   readonly threads: ThreadsCatalog;
@@ -128,15 +159,16 @@ export function createLineage(deps: {
   return function Lineage({ target, thread }: ChatThreadDetailsProps) {
     const catalog = useCatalog(deps.threads, target);
     const [merging, setMerging] = useState(false);
-    const rows = lineageRows(thread, catalog?.threads ?? []);
+    // Until the node's threads are known, a parent cannot be told missing.
+    if (catalog?.status !== "ready") return null;
+    const rows = lineageRows(thread, catalog.threads);
     if (rows.length === 0) return null;
     const at = {
       node: target.node,
       ...(target.remote === undefined ? {} : { remote: target.remote }),
     };
     const open = (threadId: string) => deps.navigation.navigate({ ...target, thread: threadId });
-    // Whether the fork ran a turn: the node refuses a merge-back before (D224).
-    const ran = thread.lastTurn !== undefined && thread.lastTurn.status !== "running";
+    const ran = forkRan(thread);
     const merge = async () => {
       if (merging) return;
       setMerging(true);
@@ -159,93 +191,76 @@ export function createLineage(deps: {
             // The parent row shows the fork's status, as T3's edge does.
             const status = lineageStatusLabel(parent ? thread : row.thread);
             const Icon = parent ? CornerLeftUpIcon : GitForkIcon;
-            const content = (
-              <>
-                <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-left text-sm font-medium leading-4 text-foreground/85">
-                    {title}
-                  </span>
-                </span>
-                {parent ? null : (
-                  <>
-                    <ArrowRightIcon className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                    <span
-                      className={cn(
-                        "shrink-0 text-2xs",
-                        status === "Failed" ? "text-destructive" : "text-muted-foreground",
-                      )}
-                    >
-                      {status}
-                    </span>
-                  </>
-                )}
-              </>
-            );
-            const hint = missing
-              ? "This related thread is unavailable"
-              : `Open ${relationship.toLowerCase()} in this chat`;
-            const link = (className: string, label?: string) => (
-              <Tooltip>
-                <TooltipTrigger
-                  delay={200}
-                  render={
-                    <button
-                      {...(label === undefined ? {} : { "aria-label": label })}
-                      className={className}
-                      disabled={missing}
-                      onClick={() => open(row.threadId)}
-                      type="button"
-                    />
-                  }
+            const link = (className: string, wrapper: string, label?: string) => (
+              <WithTooltip
+                className={wrapper}
+                tip={
+                  missing
+                    ? "This related thread is unavailable"
+                    : `Open ${relationship.toLowerCase()} in this chat`
+                }
+              >
+                <button
+                  {...(label === undefined ? {} : { "aria-label": label })}
+                  className={className}
+                  disabled={missing}
+                  onClick={() => open(row.threadId)}
+                  type="button"
                 >
-                  {content}
-                </TooltipTrigger>
-                <TooltipPopup side="left">{hint}</TooltipPopup>
-              </Tooltip>
+                  <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-left text-sm font-medium leading-4 text-foreground/85">
+                      {title}
+                    </span>
+                  </span>
+                  {parent ? null : (
+                    <>
+                      <ArrowRightIcon className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                      <Status label={status} />
+                    </>
+                  )}
+                </button>
+              </WithTooltip>
             );
             return (
               <li className="group relative flex h-8 items-center rounded-lg" key={row.threadId}>
                 {parent ? (
                   <div className={SPLIT_GROUP}>
-                    {link(SPLIT_PRIMARY, `${title} ${status}`)}
+                    {link(SPLIT_PRIMARY, "flex min-w-0 flex-1", `${title} ${status}`)}
                     <span aria-hidden="true" className={SPLIT_SEPARATOR} />
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            aria-label={
-                              missing
-                                ? "Merge back to source conversation"
-                                : `Merge back to ${title}`
-                            }
-                            className={SPLIT_SECONDARY}
-                            disabled={!ran || merging}
-                            onClick={() => void merge()}
-                            type="button"
-                          />
+                    <WithTooltip
+                      className="flex shrink-0"
+                      tip={
+                        !ran
+                          ? "Complete a run in this fork before merging it back"
+                          : missing
+                            ? "Merge this conversation back into its source"
+                            : `Merge this conversation back into ${title}`
+                      }
+                    >
+                      <button
+                        aria-label={
+                          missing ? "Merge back to source conversation" : `Merge back to ${title}`
                         }
+                        className={SPLIT_SECONDARY}
+                        disabled={!ran || merging}
+                        onClick={() => void merge()}
+                        type="button"
                       >
                         {merging ? (
                           <LoaderCircleIcon className="size-3 animate-spin" />
                         ) : (
                           <GitMergeIcon className="size-3" />
                         )}
-                      </TooltipTrigger>
-                      <TooltipPopup side="left">
-                        {!ran
-                          ? "Complete a run in this fork before merging it back"
-                          : missing
-                            ? "Merge this conversation back into its source"
-                            : `Merge this conversation back into ${title}`}
-                      </TooltipPopup>
-                    </Tooltip>
-                    <span className="shrink-0 border border-transparent ps-1 pe-2.5 text-2xs font-medium text-muted-foreground">
-                      {status}
-                    </span>
+                      </button>
+                    </WithTooltip>
+                    <Status
+                      className="border border-transparent ps-1 pe-2.5 font-medium"
+                      label={status}
+                    />
                   </div>
                 ) : (
-                  link(ROW)
+                  link(ROW, "flex w-full min-w-0")
                 )}
               </li>
             );
