@@ -1,8 +1,7 @@
 // Session handling follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/terminal/Manager.ts — default size, scrollback, shell, the
-// environment kept from the node, the kill grace and polling for the program
-// a terminal runs. T3's history files, restart-on-attach and Windows process
-// table are not ported.
+// environment kept from the node, the kill grace, polling for the program a
+// terminal runs, history kept across restarts and the limit on exited sessions.
 import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as Path from "node:path";
@@ -20,8 +19,12 @@ import {
   type TerminalSummary,
 } from "@jhin/terminal-api";
 
+import { realDelay, type Delay } from "./delay.ts";
+import { envKey, shellEnv, type EnvFilter } from "./env.ts";
+import type { HistoryStore } from "./history.ts";
 import type { PtyProcess, PtySpawner } from "./pty.ts";
 import { subprocessOf, type ProcessTable } from "./processes.ts";
+import { lineBreaks, planTrim, type HistoryLimits } from "./scrollback.ts";
 
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 30;
@@ -33,8 +36,10 @@ const MAX_SCROLLBACK_BYTES = 8 * 1024 * 1024;
 const MAX_CHUNK_LENGTH = 64 * 1024;
 const POLL_INTERVAL_MS = 1000;
 const MAX_POLL_INTERVAL_MS = 60_000;
-/** The node's own ports would confuse dev servers started in a terminal. */
-const ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECTRON_RUN_AS_NODE"]);
+/** Sessions without a process kept at most (T3's `maxRetainedInactiveSessions`, D465). */
+const MAX_EXITED_SESSIONS = 128;
+/** A change that is only a size reaches the `terminals` stream at most this often (D469). */
+const RESIZE_PUBLISH_MS = 100;
 
 export class TerminalError extends Error {
   readonly code: TerminalErrorCode;
@@ -51,10 +56,22 @@ export interface SessionOptions {
   readonly streams: MemoryStreams;
   /** Resolves with node-pty, or rejects with why it cannot load. */
   readonly pty: () => Promise<PtySpawner>;
-  /** The process table, to tell when a program runs in a terminal; none on Windows. */
+  /** The process table, to tell when a program runs in a terminal (`ps`, or PowerShell on Windows). */
   readonly processTable?: () => Promise<ProcessTable>;
-  readonly config: () => { shell?: string | undefined; scrollback: number };
+  readonly config: () => {
+    shell?: string | undefined;
+    scrollback: number;
+    env?: EnvFilter | undefined;
+  };
   readonly log: Logger;
+  /** Where output is kept across restarts (D464); nothing is kept without it. */
+  readonly history?: HistoryStore;
+  /** The environment shells start from; the node's unless a test picks one. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  /** How many sessions without a process are kept (128, T3's). */
+  readonly maxExited?: number;
+  /** Timers (the coalesced `terminals` list); real ones unless a test drives them. */
+  readonly delay?: Delay;
   /** Reads the working directory; `fs.promises.stat` unless a test controls it. */
   readonly stat?: (path: string) => Promise<Fs.Stats>;
   /** This run's id (`TerminalSummary.instance`); a random one unless a test picks it. */
@@ -76,14 +93,17 @@ interface Session {
   starting: Promise<void> | undefined;
   /** Closed: its stream ended, what the process still prints goes nowhere. */
   closed: boolean;
+  /** Set once closing starts: a second close waits for it (D460). */
+  closing: Promise<void> | undefined;
+  /** The terminal's own variables as `envKey` gives them, for the next open to compare. */
+  envKey: string;
   /** This node always names its run (`instance`), which 1.1 allows a provider to leave out. */
   summary: TerminalSummary & { instance: string };
   /** Output not sent yet: what arrived within this tick. */
   pending: string;
   flush: ReturnType<typeof setImmediate> | undefined;
   /** What the stream keeps of the current process's output. */
-  keptLines: number;
-  keptBytes: number;
+  kept: { lineBreaks: number; bytes: number; endsWithNewline: boolean };
   /** Resolves when the current process exited. */
   exited: Promise<void>;
   stop: (() => void)[];
@@ -93,21 +113,20 @@ const key = (threadId: string, terminalId: string) => `${threadId}\u0000${termin
 /** Refused once the plugin is going: nothing is left to stop a process started now. */
 const stopping = () =>
   new TerminalError("TERMINAL_UNAVAILABLE", "Terminals are stopping with their plugin");
-const lines = (data: string) => data.split("\n").length - 1;
+const notRunning = (threadId: string, terminalId: string, error?: unknown) =>
+  new TerminalError(
+    "TERMINAL_NOT_RUNNING",
+    `Terminal ${terminalId} in thread ${threadId} is not running`,
+    {
+      threadId,
+      terminalId,
+      ...(error === undefined ? {} : { error: String(error) }),
+    },
+  );
 
 function defaultShell(): string {
   if (process.platform === "win32") return process.env["COMSPEC"] ?? "powershell.exe";
   return process.env["SHELL"] ?? "/bin/sh";
-}
-
-function shellEnv(): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [name, value] of Object.entries(process.env)) {
-    if (value !== undefined && !ENV_BLOCKLIST.has(name)) env[name] = value;
-  }
-  env["TERM"] = "xterm-256color";
-  env["COLORTERM"] = "truecolor";
-  return env;
 }
 
 /** The node's terminals: one PTY process per session, its output in the session's live stream. */
@@ -118,7 +137,10 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   const { streams, log } = options;
   const now = options.now ?? (() => new Date().toISOString());
   const sessions = new Map<string, Session>();
+  /** Closes still stopping their process: deactivation waits for them too. */
+  const closing = new Set<Promise<void>>();
   let disposed = false;
+  let resizePublish: (() => void) | undefined;
   let spawner: Promise<PtySpawner> | undefined;
   let poll: ReturnType<typeof setTimeout> | undefined;
   let pollFailures = 0;
@@ -128,10 +150,20 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
 
   /** Every session after a change; the stream keeps only the latest list. */
   const publish = () => {
+    resizePublish?.();
+    resizePublish = undefined;
     streams.clear(TERMINALS_STREAM);
     streams.append(TERMINALS_STREAM, TerminalEvents.sessions, {
       terminals: [...sessions.values()].map((session) => session.summary),
     });
+  };
+  /** A change that is only a size: published once the window ends, or with the next change. */
+  const publishSizes = () => {
+    if (resizePublish !== undefined || disposed) return;
+    resizePublish = (options.delay ?? realDelay)(() => {
+      resizePublish = undefined;
+      publish();
+    }, RESIZE_PUBLISH_MS);
   };
   const update = (session: Session, change: Partial<Omit<TerminalSummary, "instance">>) => {
     session.summary = { ...session.summary, ...change, updatedAt: now() };
@@ -151,11 +183,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   const running = (threadId: string, terminalId: string): Session & { process: PtyProcess } => {
     const session = find(threadId, terminalId);
     if (session.process === undefined || session.summary.status !== "running") {
-      throw new TerminalError(
-        "TERMINAL_NOT_RUNNING",
-        `Terminal ${terminalId} in thread ${threadId} is not running`,
-        { threadId, terminalId },
-      );
+      throw notRunning(threadId, terminalId);
     }
     return session as Session & { process: PtyProcess };
   };
@@ -172,28 +200,57 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     return spawner;
   };
 
+  const limits = (): HistoryLimits => ({
+    lines: options.config().scrollback,
+    bytes: MAX_SCROLLBACK_BYTES,
+  });
+  /** The output the stream keeps, oldest first. */
+  const historyOf = (session: Session) =>
+    streams
+      .events(session.stream)
+      .filter((event) => event.type === TerminalEvents.output)
+      .map((event) => (event.payload as { data: string }).data)
+      .join("");
+  /** Writes the kept output to the session's history file soon (D464). */
+  const persist = (session: Session) => {
+    if (session.closed) return;
+    // Read when the write runs; a session closed by then leaves its file to the close.
+    options.history?.write(session.threadId, session.terminalId, () =>
+      session.closed ? undefined : historyOf(session),
+    );
+  };
+
   /**
    * Forgets the oldest output until what is kept fits the scrollback: whole
-   * events, never the newest one nor the `terminal.started` that opens the
-   * stream. Bytes are counted as UTF-8, as they leave the node.
+   * events, then the oldest one left cut after a line break or at a code
+   * point (D460); never the `terminal.started` that opens the stream, nor
+   * events of other kinds. Bytes are counted as UTF-8, as they leave the node.
    */
   const trim = (session: Session) => {
-    const limit = options.config().scrollback;
-    if (session.keptLines <= limit && session.keptBytes <= MAX_SCROLLBACK_BYTES) return;
-    // One pass: pick the oldest output events to forget, then forget them at
-    // once. Other events (`terminal.started`, any kind added later) stay where
-    // they are and are passed over, so trimming never stops at them.
-    const kept = streams.events(session.stream);
-    const forget = new Set<number>();
-    for (const event of kept.slice(0, -1)) {
-      if (session.keptLines <= limit && session.keptBytes <= MAX_SCROLLBACK_BYTES) break;
-      if (event.type !== TerminalEvents.output) continue;
-      const data = (event.payload as { data: string }).data;
-      session.keptLines -= lines(data);
-      session.keptBytes -= Buffer.byteLength(data);
-      forget.add(event.sequence);
+    const { lines, bytes } = limits();
+    const { kept } = session;
+    const keptLines = kept.lineBreaks + (kept.endsWithNewline || kept.bytes === 0 ? 0 : 1);
+    if (keptLines <= lines && kept.bytes <= bytes) return;
+    // One look at the stream: pick what to forget, then forget it at once.
+    // Other events (`terminal.started`, any kind added later) stay where they are.
+    const outputs = streams
+      .events(session.stream)
+      .filter((event) => event.type === TerminalEvents.output)
+      .map((event) => ({
+        sequence: event.sequence,
+        data: (event.payload as { data: string }).data,
+      }));
+    const plan = planTrim(outputs, kept, { lines, bytes });
+    if (plan.forget.size > 0) streams.remove(session.stream, plan.forget);
+    if (plan.cut !== undefined) {
+      streams.update(session.stream, plan.cut.sequence, { data: plan.cut.data });
     }
-    if (forget.size > 0) streams.remove(session.stream, forget);
+  };
+  /** Adds output to the stream's count. */
+  const count = (session: Session, data: string) => {
+    session.kept.lineBreaks += lineBreaks(data);
+    session.kept.bytes += Buffer.byteLength(data);
+    session.kept.endsWithNewline = data.endsWith("\n");
   };
   const flushOutput = (session: Session) => {
     if (session.flush !== undefined) clearImmediate(session.flush);
@@ -202,13 +259,31 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     if (data.length === 0) return;
     session.pending = "";
     streams.append(session.stream, TerminalEvents.output, { data });
-    session.keptLines += lines(data);
-    session.keptBytes += Buffer.byteLength(data);
+    count(session, data);
     trim(session);
+    persist(session);
   };
 
-  async function start(session: Session, size: { cols: number; rows: number }): Promise<void> {
+  async function start(
+    session: Session,
+    size: { cols: number; rows: number },
+    launch: { env: Readonly<Record<string, string>> | undefined; fresh: boolean },
+  ): Promise<void> {
     const pty = await loadPty();
+    // A session the node did not have may have history from an earlier run (D464).
+    const restored =
+      launch.fresh && options.history !== undefined
+        ? await options.history
+            .read(session.threadId, session.terminalId, limits())
+            .catch((error: unknown) => {
+              log.warn("terminal history not read", {
+                threadId: session.threadId,
+                terminalId: session.terminalId,
+                error: String(error),
+              });
+              return "";
+            })
+        : "";
     if (disposed) throw stopping();
     // Closed while node-pty loaded: no process for it, and the open fails.
     if (session.closed) {
@@ -218,10 +293,17 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         { threadId: session.threadId, terminalId: session.terminalId },
       );
     }
-    const shell = options.config().shell ?? defaultShell();
+    const config = options.config();
+    const shell = config.shell ?? defaultShell();
+    const env = shellEnv({
+      base: options.env ?? process.env,
+      platform: process.platform,
+      filter: config.env,
+      extra: launch.env,
+    });
     let child: PtyProcess;
     try {
-      child = pty.spawn({ shell, args: [], cwd: session.cwd, ...size, env: shellEnv() });
+      child = pty.spawn({ shell, args: [], cwd: session.cwd, ...size, env });
     } catch (error) {
       throw new TerminalError(
         "TERMINAL_UNAVAILABLE",
@@ -230,9 +312,9 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       );
     }
     session.process = child;
+    session.envKey = envKey(launch.env);
     session.pending = "";
-    session.keptLines = 0;
-    session.keptBytes = 0;
+    session.kept = { lineBreaks: 0, bytes: 0, endsWithNewline: false };
     update(session, {
       cwd: session.cwd,
       status: "running",
@@ -247,6 +329,11 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     // Output before this belongs to an earlier process.
     streams.clear(session.stream);
     streams.append(session.stream, TerminalEvents.started, { terminal: session.summary });
+    if (restored.length > 0) {
+      streams.append(session.stream, TerminalEvents.output, { data: restored });
+      count(session, restored);
+    }
+    persist(session);
     let exited!: () => void;
     session.exited = new Promise((resolve) => (exited = resolve));
     session.stop = [
@@ -276,6 +363,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
           signal: exit.signal,
         });
         publish();
+        evictExited();
       }),
     ];
     publish();
@@ -307,18 +395,79 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     }
   }
 
-  async function closeSession(session: Session): Promise<void> {
-    sessions.delete(key(session.threadId, session.terminalId));
-    publish();
-    // The stream ends now, before the process is gone: a session opened again
-    // under these ids meanwhile starts its stream afresh and keeps it.
-    session.closed = true;
-    flushOutput(session);
-    streams.append(session.stream, TerminalEvents.closed, {});
-    streams.delete(session.stream);
-    // A process on its way is stopped once it is there.
-    await session.starting?.catch(() => undefined);
-    await stopProcess(session);
+  /**
+   * Ends a session: its stream at once, its process after. Once only: a
+   * second close of the same session gets the first one's promise (D460).
+   * `keepHistory` when the plugin stops, so the next run shows it (D464).
+   */
+  function closeSession(session: Session, keepHistory = false): Promise<void> {
+    session.closing ??= (async () => {
+      const id = key(session.threadId, session.terminalId);
+      if (sessions.get(id) === session) sessions.delete(id);
+      publish();
+      // The stream ends now, before the process is gone: a session opened again
+      // under these ids meanwhile starts its stream afresh and keeps it.
+      flushOutput(session);
+      // What the next run shows: taken now, the stream is about to go.
+      // A session still starting has not shown its history yet: its file stays as it is.
+      if (keepHistory && options.history !== undefined && session.starting === undefined) {
+        const kept = historyOf(session);
+        options.history.write(session.threadId, session.terminalId, () => kept);
+      }
+      session.closed = true;
+      streams.append(session.stream, TerminalEvents.closed, {});
+      streams.delete(session.stream);
+      // Started now, before anything waits: a session opened again under these
+      // ids meanwhile writes its own history only after this delete.
+      const forgetting = keepHistory
+        ? undefined
+        : options.history?.delete(session.threadId, session.terminalId);
+      // A process on its way is stopped once it is there.
+      await session.starting?.catch(() => undefined);
+      await stopProcess(session);
+      await forgetting;
+    })();
+    const done = session.closing;
+    closing.add(done);
+    void done.finally(() => closing.delete(done));
+    return done;
+  }
+
+  /** Closes the sessions without a process updated longest ago, past the limit (D465). */
+  function evictExited() {
+    const limit = options.maxExited ?? MAX_EXITED_SESSIONS;
+    const exited = [...sessions.values()].filter(
+      (session) => session.process === undefined && session.starting === undefined,
+    );
+    if (exited.length <= limit) return;
+    exited.sort(
+      (left, right) =>
+        left.summary.updatedAt.localeCompare(right.summary.updatedAt) ||
+        left.threadId.localeCompare(right.threadId) ||
+        left.terminalId.localeCompare(right.terminalId),
+    );
+    for (const session of exited.slice(0, exited.length - limit)) {
+      // Eviction bounds memory only: its history stays, as T3 keeps the file.
+      void closeSession(session, true).catch((error: unknown) =>
+        log.warn("exited terminal not closed", {
+          threadId: session.threadId,
+          terminalId: session.terminalId,
+          error: String(error),
+        }),
+      );
+    }
+  }
+
+  /** Resizes a running process; a PTY already gone answers `TERMINAL_NOT_RUNNING` (D460). */
+  function resizeProcess(session: Session & { process: PtyProcess }, cols: number, rows: number) {
+    try {
+      session.process.resize(cols, rows);
+    } catch (error) {
+      // node-pty's "ioctl failed" for a PTY that died before its exit was reported.
+      throw notRunning(session.threadId, session.terminalId, error);
+    }
+    update(session, { cols, rows });
+    publishSizes();
   }
 
   // --- What a terminal runs ------------------------------------------------
@@ -393,14 +542,27 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       if (disposed) throw stopping();
       const id = key(input.threadId, input.terminalId);
       const existing = sessions.get(id);
-      /** A running shell stays where it started: another folder is refused, not ignored. */
+      const wantedEnv = envKey(input.env);
+      /**
+       * A running shell stays where and how it started: another folder or
+       * environment is refused, not ignored.
+       */
       const sameFolder = (session: Session) => {
-        if (session.realCwd === realCwd) return;
-        throw new TerminalError(
-          "TERMINAL_CWD_MISMATCH",
-          `Terminal ${input.terminalId} in thread ${input.threadId} runs in ${session.summary.cwd}, not ${input.cwd}`,
-          { threadId: input.threadId, terminalId: input.terminalId, cwd: session.summary.cwd },
-        );
+        if (session.realCwd !== realCwd) {
+          throw new TerminalError(
+            "TERMINAL_CWD_MISMATCH",
+            `Terminal ${input.terminalId} in thread ${input.threadId} runs in ${session.summary.cwd}, not ${input.cwd}`,
+            { threadId: input.threadId, terminalId: input.terminalId, cwd: session.summary.cwd },
+          );
+        }
+        // The variables are never told back: they may be secrets.
+        if (session.envKey !== wantedEnv) {
+          throw new TerminalError(
+            "TERMINAL_ENV_MISMATCH",
+            `Terminal ${input.terminalId} in thread ${input.threadId} runs with another environment`,
+            { threadId: input.threadId, terminalId: input.terminalId },
+          );
+        }
       };
       if (existing?.starting !== undefined) {
         // Opened twice at once: one process, both get it.
@@ -413,9 +575,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         const cols = input.cols ?? existing.summary.cols;
         const rows = input.rows ?? existing.summary.rows;
         if (cols !== existing.summary.cols || rows !== existing.summary.rows) {
-          existing.process.resize(cols, rows);
-          update(existing, { cols, rows });
-          publish();
+          resizeProcess(existing as Session & { process: PtyProcess }, cols, rows);
         }
         return existing.summary;
       }
@@ -433,6 +593,8 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         process: undefined,
         starting: undefined,
         closed: false,
+        closing: undefined,
+        envKey: "",
         summary: {
           threadId: input.threadId,
           terminalId: input.terminalId,
@@ -450,15 +612,14 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         },
         pending: "",
         flush: undefined,
-        keptLines: 0,
-        keptBytes: 0,
+        kept: { lineBreaks: 0, bytes: 0, endsWithNewline: false },
         exited: Promise.resolve(),
         stop: [],
       };
       session.cwd = input.cwd;
       session.realCwd = realCwd;
       sessions.set(id, session);
-      session.starting = start(session, size);
+      session.starting = start(session, size, { env: input.env, fresh: existing === undefined });
       try {
         await session.starting;
       } catch (error) {
@@ -475,14 +636,18 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       return session.summary;
     },
     write(input) {
-      running(input.threadId, input.terminalId).process.write(input.data);
+      const session = running(input.threadId, input.terminalId);
+      try {
+        session.process.write(input.data);
+      } catch (error) {
+        // The PTY died before node-pty reported its exit (EBADF).
+        throw notRunning(input.threadId, input.terminalId, error);
+      }
     },
     resize(input) {
       const session = running(input.threadId, input.terminalId);
       if (session.summary.cols === input.cols && session.summary.rows === input.rows) return;
-      session.process.resize(input.cols, input.rows);
-      update(session, { cols: input.cols, rows: input.rows });
-      publish();
+      resizeProcess(session, input.cols, input.rows);
     },
     async close(input: CloseTerminalInput) {
       const matching = [...sessions.values()].filter(
@@ -490,7 +655,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
           session.threadId === input.threadId &&
           (input.terminalId === undefined || session.terminalId === input.terminalId),
       );
-      await Promise.all(matching.map(closeSession));
+      await Promise.all(matching.map((session) => closeSession(session)));
       return matching.length;
     },
     list(threadId) {
@@ -516,7 +681,14 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       disposed = true;
       if (poll !== undefined) clearTimeout(poll);
       poll = undefined;
-      await Promise.all([...sessions.values()].map(closeSession));
+      // Their history stays for the next run (D464); closes already running are waited for.
+      await Promise.all([
+        ...[...sessions.values()].map((session) => closeSession(session, true)),
+        ...closing,
+      ]);
+      resizePublish?.();
+      resizePublish = undefined;
+      await options.history?.flush();
     },
   };
 }

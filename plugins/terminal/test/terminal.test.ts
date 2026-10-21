@@ -363,6 +363,37 @@ describe("jhin.terminal", () => {
     expect(terminals.map((item) => item.threadId)).toEqual(["kept"]);
   });
 
+  it("closes the terminals of an archived thread (D466)", async () => {
+    const { client, cwd, storage } = await node();
+    await client.call("terminals.open", { threadId: "archived", terminalId: "term-1", cwd });
+    await client.call("terminals.open", { threadId: "kept", terminalId: "term-1", cwd });
+    const stream = watch(client, terminalStream("archived", "term-1"));
+    await stream.untilType(TerminalEvents.started);
+    await storage.storage.log.append(THREADS_STREAM, [
+      // An update without archivedAt (a new title) leaves the terminals alone.
+      { type: ThreadEvents.threadUpdated, payload: { id: "kept", title: "Renamed" } },
+      {
+        type: ThreadEvents.threadUpdated,
+        payload: { id: "archived", title: "Done", archivedAt: "2026-10-20T00:00:00.000Z" },
+      },
+    ]);
+    await stream.untilType(TerminalEvents.closed);
+    const { terminals } = await client.call<{ terminals: TerminalSummary[] }>("terminals.list", {});
+    expect(terminals.map((item) => item.threadId)).toEqual(["kept"]);
+
+    // Opened again while archived: a later update of the archived thread (a
+    // new title) leaves it running; only the change to archived closes.
+    await client.call("terminals.open", { threadId: "archived", terminalId: "term-1", cwd });
+    await storage.storage.log.append(THREADS_STREAM, [
+      {
+        type: ThreadEvents.threadUpdated,
+        payload: { id: "archived", title: "Renamed", archivedAt: "2026-10-20T00:00:00.000Z" },
+      },
+    ]);
+    const after = await client.call<{ terminals: TerminalSummary[] }>("terminals.list", {});
+    expect(after.terminals.map((item) => item.threadId).sort()).toEqual(["archived", "kept"]);
+  });
+
   it("runs without live streams; output is then read with terminals.get", async () => {
     const { client, cwd } = await node({ streams: false });
     const opened = await client.call<TerminalSummary>("terminals.open", {
@@ -703,21 +734,23 @@ describe("terminal sessions", () => {
     expect(kept.map((event) => event.type)).toContain("terminal.title");
     // Output after the other event was trimmed too: the middle run is gone.
     expect(sessions.get("t", "term-1")?.history).not.toMatch(/\n450\r\n/);
-    // And exactly what fits stays: the newest output events whose lines add up
-    // to the limit (100), never fewer; the newest alone when it is longer.
-    const lineCount = (data: string) => data.split("\n").length - 1;
+    // And exactly the limit stays (D460): 100 lines as T3 counts them (an
+    // unterminated last line is one), the oldest event kept cut after a line
+    // break, the ones after it whole.
+    const history = sessions.get("t", "term-1")!.history;
+    const breaks = history.split("\n").length - 1;
+    expect(breaks + (history.endsWith("\n") ? 0 : 1)).toBe(100);
     const keptOutput = kept.filter((event) => event.type === TerminalEvents.output);
-    const fitting = [outputs.at(-1)!];
-    let total = lineCount(outputs.at(-1)!.data);
-    for (const output of outputs.slice(0, -1).toReversed()) {
-      if (total + lineCount(output.data) > 100) break;
-      total += lineCount(output.data);
-      fitting.unshift(output);
+    const [oldest, ...rest] = keptOutput;
+    const original = outputs.find((output) => output.sequence === oldest!.sequence)!.data;
+    const cut = (oldest!.payload as { data: string }).data;
+    expect(original.endsWith(cut)).toBe(true);
+    expect(cut === original || original.at(-cut.length - 1) === "\n").toBe(true);
+    for (const event of rest) {
+      const whole = outputs.find((output) => output.sequence === event.sequence)!.data;
+      expect((event.payload as { data: string }).data).toBe(whole);
     }
-    expect(keptOutput.map((event) => event.sequence)).toEqual(
-      fitting.map((output) => output.sequence),
-    );
-    expect(fitting.length).toBeGreaterThan(1);
+    expect(keptOutput.length).toBeGreaterThan(1);
     expect(sessions.get("t", "term-1")?.history).toContain("tail-13");
     expect(sessions.get("t", "term-1")?.history).toContain("\n1095");
     await sessions.dispose();

@@ -41,6 +41,8 @@ export type TerminalErrorCode =
   | "TERMINAL_CWD_INVALID"
   /** The session runs in another folder: `cwd` counts only when a shell starts (1.1). */
   | "TERMINAL_CWD_MISMATCH"
+  /** The session runs with another `env`: it counts only when a shell starts (1.2). */
+  | "TERMINAL_ENV_MISMATCH"
   /** The node cannot start terminals: its PTY module did not load, or the shell did not start. */
   | "TERMINAL_UNAVAILABLE";
 
@@ -55,6 +57,21 @@ export const TerminalThreadId = StreamPart;
 export const TerminalId = StreamPart;
 export const TerminalCols = z.number().int().min(1).max(1000);
 export const TerminalRows = z.number().int().min(1).max(500);
+
+/**
+ * Variables a terminal's shell gets over the node's environment (T3's limits):
+ * at most 128, named like a shell variable, values up to 8 KiB.
+ */
+export const TerminalEnv = z
+  .record(
+    z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "a shell variable name")
+      .max(128),
+    z.string().max(8192),
+  )
+  .refine((env) => Object.keys(env).length <= 128, "at most 128 variables");
+export type TerminalEnv = z.infer<typeof TerminalEnv>;
 
 export const TerminalStatus = z.enum(["running", "exited"]);
 export type TerminalStatus = z.infer<typeof TerminalStatus>;
@@ -102,6 +119,12 @@ export const OpenTerminalInput = z.object({
   cwd: z.string().min(1).max(4096),
   cols: TerminalCols.optional(),
   rows: TerminalRows.optional(),
+  /**
+   * Set over the node's environment when a shell starts (1.2). Like `cwd`, it
+   * counts only then: a running session started with another `env` refuses
+   * the open with `TERMINAL_ENV_MISMATCH`. Never reported back.
+   */
+  env: TerminalEnv.optional(),
 });
 export type OpenTerminalInput = z.infer<typeof OpenTerminalInput>;
 
@@ -135,7 +158,8 @@ export interface TerminalSessions {
    * Starts a shell in `cwd`, or returns the session already running under
    * these ids (resized to `cols` × `rows` when given). A session whose
    * process exited starts a new process. Since 1.1 it rejects with
-   * `TERMINAL_CWD_MISMATCH` when the running session is in another `cwd`.
+   * `TERMINAL_CWD_MISMATCH` when the running session is in another `cwd`,
+   * since 1.2 with `TERMINAL_ENV_MISMATCH` when it started with another `env`.
    */
   open(input: OpenTerminalInput): Promise<TerminalSummary>;
   write(input: WriteTerminalInput): void;

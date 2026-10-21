@@ -1,4 +1,7 @@
+import * as Path from "node:path";
+
 import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, createMemoryStreams, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
@@ -16,7 +19,8 @@ import {
   WriteTerminalInput,
 } from "@jhin/terminal-api";
 
-import { readProcessTable } from "./processes.ts";
+import { createHistoryFiles } from "./history.ts";
+import { createProcessTableReader } from "./processes.ts";
 import { loadNodePty } from "./pty.ts";
 import { TerminalError, createSessions } from "./sessions.ts";
 
@@ -39,6 +43,38 @@ const Config = z
       title: "Scrollback lines",
       description: "How much of a terminal's output the node keeps for clients that open it later.",
     }),
+    history: z.boolean().default(true).meta({
+      title: "Keep history across restarts",
+      description:
+        "Writes each terminal's output to the node's data folder (owner-only, unencrypted) so it shows again after a restart. Read when the plugin starts.",
+    }),
+    env: z
+      .object({
+        strip: z
+          .array(z.string().min(1))
+          .optional()
+          .meta({
+            title: "Variables to strip",
+            description:
+              "Names of the node's environment variables a terminal does not get; NAME_* matches a prefix.",
+            examples: [["ANTHROPIC_API_KEY", "AWS_*"]],
+          }),
+        keep: z
+          .array(z.string().min(1))
+          .optional()
+          .meta({
+            title: "Variables to keep",
+            description:
+              "When set, the only variables of the node's environment a terminal gets; NAME_* matches a prefix.",
+            examples: [["PATH", "HOME", "LANG", "LC_*"]],
+          }),
+      })
+      .optional()
+      .meta({
+        title: "Environment",
+        description:
+          "Narrows the node's environment that terminals get (JHIN_*, VITE_* and the node's ports are always left out). Read when a shell starts.",
+      }),
   })
   .meta({
     title: "Terminal",
@@ -51,13 +87,20 @@ export default definePlugin({
     context.config.define(CONFIG_SECTION, Config);
     const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
+    const paths = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY);
     const streams = createMemoryStreams({ log: context.log });
+    // Output kept across node restarts (D464), where the node has a data folder.
+    const history =
+      paths === undefined || !context.config.get<Config>(CONFIG_SECTION).history
+        ? undefined
+        : createHistoryFiles(Path.join(paths.dataDir(context.plugin.id), "history"), context.log);
     const sessions = createSessions({
       streams,
       pty: loadNodePty,
-      ...(process.platform === "win32" ? {} : { processTable: readProcessTable }),
+      processTable: createProcessTableReader(),
       config: () => context.config.get<Config>(CONFIG_SECTION),
       log: context.log,
+      ...(history === undefined ? {} : { history }),
     });
     context.services.provide(TERMINAL_SESSIONS_CAPABILITY, sessions);
     // Sessions end with the plugin: their processes are stopped before it is gone.
@@ -74,19 +117,36 @@ export default definePlugin({
       context.subscriptions.add(live.serve(TERMINAL_STREAM_PREFIX, streams, read));
     }
 
-    // A deleted thread takes its terminals with it.
+    // A deleted or archived thread takes its terminals with it (D143, D466).
     if (log !== undefined) {
+      /** Threads seen archived: their later updates (a title) leave terminals alone. */
+      const archived = new Set<string>();
       context.subscriptions.add(
         log.subscribe(THREADS_STREAM, (event) => {
-          if (event.type !== ThreadEvents.threadDeleted) return;
-          const threadId = (event.payload as { id?: unknown } | null)?.id;
+          const record = event.payload as { id?: unknown; archivedAt?: unknown } | null;
+          const threadId = record?.id;
           if (typeof threadId !== "string") return;
-          void sessions.close({ threadId }).catch((error: unknown) =>
-            context.log.warn("terminals of a deleted thread not closed", {
-              threadId,
-              error: String(error),
-            }),
-          );
+          if (event.type === ThreadEvents.threadUpdated) {
+            if (typeof record?.archivedAt !== "string") {
+              archived.delete(threadId);
+              return;
+            }
+            // Closed on the change to archived only.
+            if (archived.has(threadId)) return;
+            archived.add(threadId);
+          } else if (event.type === ThreadEvents.threadDeleted) {
+            archived.delete(threadId);
+          } else return;
+          void sessions
+            .close({ threadId })
+            // Files of terminals not open since the node started go too.
+            .then(() => history?.deleteThread(threadId))
+            .catch((error: unknown) =>
+              context.log.warn("terminals of a thread not closed", {
+                threadId,
+                error: String(error),
+              }),
+            );
         }),
       );
     }
