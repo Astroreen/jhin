@@ -287,6 +287,15 @@ export function createTabs(options: TabsOptions) {
     }
     changed(tab);
   };
+  /** A page may retitle itself without navigating: actions look again when they end. */
+  const refreshTitle = async (tab: Tab) => {
+    const before = tab.navStatus;
+    if (tab.closing || tab.loading || before.state !== "success") return;
+    const title = (await tab.page.title().catch(() => "")).slice(0, 512);
+    // A navigation that began meanwhile owns the status now.
+    if (tab.navStatus !== before || tab.loading || tab.closing) return;
+    if (title !== before.title) await reportStatus(tab, { ...before, title });
+  };
   const reportLoaded = async (tab: Tab) => {
     const url = tab.page.url();
     if (url === "about:blank" || url.startsWith("chrome-error://")) return;
@@ -455,8 +464,8 @@ export function createTabs(options: TabsOptions) {
     // Popups become tabs and keep `window.opener`, so sign-in popups can report back.
     page.on("popup", (popup) => void adoptPopup(tab, popup));
     // Playwright cannot reload a crashed page, so it leaves the tab list.
-    page.on("close", () => void dropTab(tab));
-    page.on("crash", () => void dropTab(tab));
+    page.on("close", () => void dropTab(tab, "page closed"));
+    page.on("crash", () => void dropTab(tab, "page crashed"));
     tabs.set(tabKey(tab.threadId, tab.tabId), tab);
     tab.viewers = viewerCounts.get(tabKey(tab.threadId, tab.tabId)) ?? 0;
     changed(tab);
@@ -525,11 +534,12 @@ export function createTabs(options: TabsOptions) {
     }
   }
 
-  async function dropTab(tab: Tab) {
+  async function dropTab(tab: Tab, reason = "closed") {
     const key = tabKey(tab.threadId, tab.tabId);
     if (tabs.get(key) !== tab || tab.closing) return;
     tab.closing = true;
     tabs.delete(key);
+    log.info("preview tab closed", { threadId: tab.threadId, tabId: tab.tabId, reason });
     await tab.control.close();
     await stopScreencast(tab);
     const recording = tab.recording;
@@ -776,6 +786,7 @@ export function createTabs(options: TabsOptions) {
         };
         try {
           const result = await run(tab);
+          void refreshTitle(tab).catch(() => undefined);
           settle({ status: "succeeded" });
           return result;
         } catch (error) {
@@ -1042,7 +1053,7 @@ export function createTabs(options: TabsOptions) {
     const idle = [...tabs.values()].filter(
       (tab) => tab.control.agentId !== null && tab.viewers === 0 && tab.usedAt < cutoff,
     );
-    await Promise.all(idle.map((tab) => dropTab(tab)));
+    await Promise.all(idle.map((tab) => dropTab(tab, "idle")));
   }
   const sweeper = setInterval(() => void sweepIdle(), SWEEP_EVERY_MS);
   sweeper.unref();
@@ -1461,6 +1472,17 @@ export function createTabs(options: TabsOptions) {
             continue;
           }
           await tab.control.human(input.viewer, () => dispatch(tab, event));
+        }
+        // Pointer moves and wheels change no title: only clicks, keys and text are looked after.
+        if (
+          input.events.some(
+            (event) =>
+              event.type === "key" ||
+              event.type === "text" ||
+              (event.type === "mouse" && event.action === "up"),
+          )
+        ) {
+          void refreshTitle(tab).catch(() => undefined);
         }
       });
     },

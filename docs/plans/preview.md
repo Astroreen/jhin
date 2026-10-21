@@ -217,7 +217,7 @@ CLI, and the web client through RPC.
   chat header's `jhin.preview.toggle` (lucide `PanelRight`, "Toggle right
   panel") and the commands `preview.toggle` (⌘/Ctrl+Shift+J), `preview.refresh`
   (⌘/Ctrl+R) and `preview.focus.url` (⌘/Ctrl+L), the last two only while the
-  panel has focus (`previewFocus`). The panel has T3's tab strip (the page's
+  panel has focus (the context key `previewFocus`, D61). The panel has T3's tab strip (the page's
   title, else its host, else "Browser"; "Close {title}"; "Add panel surface"),
   its chrome row (Back, Forward, Refresh, "Search or enter URL" with T3's
   address bar rules and DuckDuckGo for anything else, "Open in system
@@ -352,6 +352,20 @@ Implements D390–D402 (the server side), D409 for the browser.
 ### PR 2 — The right panel
 
 Implements D403, D404.
+
+- `jhin.preview-panel` (`apps/web/src/plugins/preview/`): the `app.panel`
+  contribution with T3's tab strip, chrome row, more menu, device toolbar,
+  control strip, empty state, "This site can’t be reached" and dialogs; the
+  canvas surface with mouse, wheel and key input; the header toggle;
+  `preview.toggle`, `preview.refresh`, `preview.focus.url`; a tab an agent
+  opens to show brings up its thread's panel. The node refreshes a tab's
+  title after each action and each input of a viewer, since a page may
+  retitle itself without navigating.
+- **Done when:** Playwright against `jhin serve --ui` sees an agent's tab come
+  up in the panel, the agent's click land, the user take control, click and
+  type into the page and hand control back; and the user open a page from
+  the address bar, size it as an iPhone 12 Pro and close the tab; a unit test
+  sees a tab retitled by its page.
 
 ### PR 3 — Rendered HTML
 
