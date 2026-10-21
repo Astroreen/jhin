@@ -625,7 +625,8 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
   has a defined agent (`agents.catalog` lists one), asked once per opening
   (an unknown answer is asked again on the next change of the connections,
   at most three times; a missing command or `PERMISSION_DENIED` means none);
-  `on` always; `off` never. The agents plugin ships with every node, so
+  `on` always; `off` never. The offer is the client's, not a node's: one
+  node with agents offers the mode for every node. The agents plugin ships with every node, so
   having the command is not enough: a node without agents looks as before.
 - **D748. Settings and connecting are the app's, in every mode.** In
   Civilization mode the `settings` and `connect` panels, and a client with
@@ -716,6 +717,9 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
   stays open is asked again only when some connection changes (D747), and a
   node still activating its plugins answers `COMMAND_NOT_FOUND`, taken as
   none until it reopens.
+- A8: Civilization mode per node: the route's node without agents opens the
+  shell with its empty states today (D747); the views A1 and A3 contribute
+  choose their node.
 - A8: leaving generations out of `threads.search` as well: D745 filters the lists
   and catalogs only, so a search can still find a generation's text.
 
