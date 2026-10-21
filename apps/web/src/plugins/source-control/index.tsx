@@ -205,7 +205,11 @@ export const sourceControlPlugin = builtin(
           );
           const editor = preferredEditor(editors);
           if (editor === undefined) throw new Error("No editor is installed on this node");
-          await services.editors.open(target, project.id, relative, editor, {
+          // Its failure goes to the caller (the terminal writes it), not to a toast.
+          await threads.call(target, "editors.open", {
+            projectId: project.id,
+            path: relative,
+            editor: editor.id,
             ...(line === undefined ? {} : { line }),
             ...(column === undefined ? {} : { column }),
           });

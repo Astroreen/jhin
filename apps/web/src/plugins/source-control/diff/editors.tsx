@@ -168,7 +168,7 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
     projectId: string,
     path: string,
     editor: EditorInfo,
-    options: { reveal?: boolean; line?: number; column?: number } = {},
+    options: { reveal?: boolean } = {},
   ): Promise<void> => {
     const reveal = options.reveal === true;
     try {
@@ -177,8 +177,6 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
         path,
         editor: editor.id,
         ...(reveal ? { reveal: true } : {}),
-        ...(options.line === undefined ? {} : { line: options.line }),
-        ...(options.column === undefined ? {} : { column: options.column }),
       });
       // Remembered once it opened: an editor that fails is not the one the next click uses.
       if (editor.id !== "file-manager") rememberEditor(editor.id);

@@ -23,7 +23,7 @@ Icons (CC0) symbols with those notes), find in the diff (T3's patch of
 turn's changed files card, the
 workspace selector, the worktree icon and clean-up, the "Checkout pull request"
 dialog, the forges' icons, the terminal drawer, its
-links, selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
+links (with the targets of path links, T3's `fileLinks.ts`), selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, its tiptap
 prompt editor, menus, attachments and model options, editing from a
