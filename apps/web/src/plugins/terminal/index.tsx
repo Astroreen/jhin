@@ -50,8 +50,17 @@ import {
   type ThreadTerminalUiState,
 } from "../../lib/terminal-state.ts";
 import { formatTerminalContext, type TerminalContextSelection } from "./context.ts";
-import { TerminalDrawer } from "./drawer.tsx";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createNodeTerminals } from "./sessions.ts";
+
+// The drawer and its terminals are a chunk of their own, loaded when a terminal first shows (D440).
+const TerminalDrawer = lazyChunk(
+  () => import("./drawer.tsx").then((module) => module.TerminalDrawer),
+  {
+    loading: () => null,
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load the terminal.</ChunkFailed>,
+  },
+);
 
 /** The route's panel while a thread's terminals show right of the chat (D474). */
 const TERMINAL_PANEL = "terminal";
