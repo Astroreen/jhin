@@ -443,5 +443,8 @@ describe("a pull request search's query (D849)", () => {
   it("keeps GitHub's qualifiers but drops those that reach other repositories", () => {
     expect(withoutScopeQualifiers("  cache is:open author:me ")).toBe("cache is:open author:me");
     expect(withoutScopeQualifiers("repo:other/app fix org:acme -user:x Owner:y")).toBe("fix");
+    for (const query of ["(repo:o/r)", '"repo:o/r"', "NOT(user:x)", 'org:"a b"']) {
+      expect(withoutScopeQualifiers(query), query).not.toMatch(/(?:repo|org|user):/i);
+    }
   });
 });

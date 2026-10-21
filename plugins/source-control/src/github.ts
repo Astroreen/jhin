@@ -270,10 +270,10 @@ async function checkoutTarget(
 
 /** A search query without qualifiers that would reach past the project's repository. */
 export function withoutScopeQualifiers(query: string): string {
+  // Wherever it stands: inside parentheses, quotes or after NOT, a qualifier still applies.
   return query
-    .split(/\s+/)
-    .filter((word) => !/^-?(?:repo|org|user|owner):/i.test(word))
-    .join(" ")
+    .replace(/(?<![\p{L}\p{N}_-])-?(?:repo|org|user|owner):("[^"]*"?|\S*)/giu, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
