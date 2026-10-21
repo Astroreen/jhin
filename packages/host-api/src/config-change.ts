@@ -123,6 +123,14 @@ export async function sendConfigChange(
   change: ConfigChange,
 ): Promise<ConfigChangeResult> {
   const at = change.at === undefined ? {} : { at: change.at };
+  // Nothing to write: no call, so the section's write time does not move (D50).
+  if (
+    (change.edits?.length ?? 0) === 0 &&
+    Object.keys(change.values).length === 0 &&
+    (change.unset?.length ?? 0) === 0
+  ) {
+    return { applied: true, at: change.at ?? Date.now() };
+  }
   const target = { layer: change.layer, section: change.section };
   if (change.edits !== undefined) {
     try {

@@ -867,6 +867,13 @@ export default definePlugin({
       edits: [{ path: ["__proto__", "x"], value: 1 }],
     });
     expect(unsafe.error).toBeDefined();
+    // "constructor" is an ordinary key of a record (D480): kept like any other.
+    const plain = await host.execute("host.config.edit", {
+      layer: "node",
+      section: "jhin.example",
+      edits: [{ path: ["env", "constructor"], value: "x" }],
+    });
+    expect(plain.value).toMatchObject({ applied: true });
   });
 
   it("reports what the node is, with the owner's machine kind over the detected one", async () => {

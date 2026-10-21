@@ -93,8 +93,8 @@ const HOST_PLUGIN = "jhin.host";
 const MAX_CONFIG_SKEW_MS = 60 * 60 * 1000;
 const HOST_LOCATION = "host://jhin.host";
 const RECENT_EVENTS = 100;
-/** Keys a config file may not set: they would reach `Object.prototype`. */
-const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+/** The key an edit may not name: assigned, it would reach `Object.prototype`. */
+const UNSAFE_KEY = "__proto__";
 
 const Machine = z.enum(MACHINE_KINDS);
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
@@ -302,7 +302,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           /** Applied in order; an edit without `value` removes its key (D476). */
           edits: z.array(
             z.object({
-              path: z.array(z.string().refine((key) => !UNSAFE_KEYS.has(key))).min(1),
+              path: z.array(z.string().refine((key) => key !== UNSAFE_KEY)).min(1),
               value: z.unknown().optional(),
             }),
           ),

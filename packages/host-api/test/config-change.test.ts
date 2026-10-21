@@ -150,6 +150,13 @@ describe("sendConfigChange (D475)", () => {
     });
   });
 
+  it("sends nothing for an empty change", async () => {
+    const { call, calls } = node("edit");
+    const none = configChange("node", "jhin.example", { a: 1 }, { a: 1 });
+    expect(await sendConfigChange(call, { ...none, at: 7 })).toEqual({ applied: true, at: 7 });
+    expect(calls).toEqual([]);
+  });
+
   it("passes other failures on", async () => {
     const failing: ConfigCall = async () => {
       throw Object.assign(new Error("gone"), { code: "NODE_UNREACHABLE" });
