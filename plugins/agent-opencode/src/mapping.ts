@@ -1,10 +1,12 @@
 // Derived from T3 Code (https://github.com/pingdotgg/t3code),
 // packages/provider-opencode/src/server/v2/adapter.ts (sessionRules, agentPaths, formQuestions,
 // formAnswer, declinedNote, turnTokenUsage, the prompt ids), adapter.ts
-// (openCodePermissionRequestKind) and toolItems.ts (openCodeToolProjectionKind) at eb7b35ac,
+// (openCodePermissionRequestKind), toolItems.ts (openCodeToolProjectionKind) and status.ts
+// (openCode2ModelCapabilities, inferDefaultVariant, titleCaseSlug) at eb7b35ac,
 // rewritten without Effect for Jhin's agent.runtime@1.
 import type {
   InteractionMode,
+  ModelOptionDescriptor,
   PlanStep,
   RuntimeMode,
   ToolCall,
@@ -89,10 +91,59 @@ export function parseModel(model: string): ModelRef | undefined {
 export const malformedModel = (model: string) =>
   `OpenCode model '${model}' must use provider/model format`;
 
+/** `xhigh-thinking` → `Xhigh Thinking`, as T3 labels a variant. */
+function titleCaseSlug(value: string): string {
+  return value
+    .split(/[-_/]+/)
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+/** The variant a provider's model uses when nobody chose one (T3's inferDefaultVariant). */
+function defaultVariant(providerID: string, variants: readonly string[]): string | undefined {
+  if (variants.length === 1) return variants[0];
+  if (providerID === "anthropic" || providerID.startsWith("google")) {
+    return variants.includes("high") ? "high" : undefined;
+  }
+  if (providerID === "openai" || providerID === "opencode") {
+    return variants.includes("medium") ? "medium" : variants.includes("high") ? "high" : undefined;
+  }
+  return undefined;
+}
+
+/** A "Reasoning" select of the model's variants, none without any (D882). */
+export function variantOptions(model: {
+  readonly providerID: string;
+  readonly variants?: readonly { readonly id: string }[];
+}): ModelOptionDescriptor[] {
+  const variants = (model.variants ?? [])
+    .map((variant) => variant?.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (variants.length === 0) return [];
+  const fallback = defaultVariant(model.providerID, variants);
+  return [
+    {
+      id: "variant",
+      label: "Reasoning",
+      type: "select",
+      options: variants.map((id) => ({
+        id,
+        label: titleCaseSlug(id),
+        ...(id === fallback ? { isDefault: true } : {}),
+      })),
+    },
+  ];
+}
+
 export const sameModel = (left: ModelRef, right: ModelRef | undefined) =>
   left.providerID === right?.providerID &&
   left.id === right?.id &&
   (left.variant ?? "default") === (right?.variant ?? "default");
+
+/** A steer's client id: unique per turn, so a repeat is answered with the one OpenCode has. */
+export const steerPromptId = (sessionId: string, turnId: string, index: number) =>
+  `msg_jhin_steer_${sessionId}:${turnId}:${index}`;
 
 /**
  * OpenCode takes a client id (it must start with `msg_`) and answers a repeat of one with the

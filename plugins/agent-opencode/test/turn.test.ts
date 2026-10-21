@@ -246,6 +246,179 @@ describe("jhin.agent-opencode: a turn", () => {
     expect(items.at(-1)).toMatchObject({ kind: "usage", usage: { contextWindow: 272_000 } });
   });
 
+  it("lists a model's variants and sends the one a turn chose", async () => {
+    const { fake, runtime } = await setup({
+      models: [
+        {
+          providerID: "anthropic",
+          id: "claude-sonnet-5-5",
+          name: "Claude Sonnet 5.5",
+          variants: [{ id: "low" }, { id: "high" }, { id: "max-thinking" }],
+        },
+        { providerID: "openai", id: "gpt-6", name: "GPT-6" },
+      ],
+      scripts: [answer("one"), answer("two"), answer("three")],
+    });
+    await runtime.status!();
+    expect(runtime.models).toEqual([
+      {
+        id: "anthropic/claude-sonnet-5-5",
+        name: "Claude Sonnet 5.5",
+        description: "anthropic",
+        options: [
+          {
+            id: "variant",
+            label: "Reasoning",
+            type: "select",
+            options: [
+              { id: "low", label: "Low" },
+              { id: "high", label: "High", isDefault: true },
+              { id: "max-thinking", label: "Max Thinking" },
+            ],
+          },
+        ],
+      },
+      { id: "openai/gpt-6", name: "GPT-6", description: "openai" },
+    ]);
+
+    const variant = (value: string) => ({ modelOptions: [{ id: "variant", value }] });
+    await drain(runtime.startTurn(request(variant("max-thinking"))));
+    expect(fake.calls("POST", "/api/session")[0]!.body?.["model"]).toEqual({
+      providerID: "anthropic",
+      id: "claude-sonnet-5-5",
+      variant: "max-thinking",
+    });
+    // Another variant switches the session's model.
+    await drain(runtime.startTurn(request({ turnId: "turn-2", ...variant("low") })));
+    expect(fake.calls("POST", "/model").map((call) => call.body?.["model"])).toEqual([
+      { providerID: "anthropic", id: "claude-sonnet-5-5", variant: "low" },
+    ]);
+    // A variant the model lacks is dropped: OpenCode's default variant again.
+    await drain(runtime.startTurn(request({ turnId: "turn-3", ...variant("xhigh") })));
+    expect(fake.calls("POST", "/model").map((call) => call.body?.["model"])).toEqual([
+      { providerID: "anthropic", id: "claude-sonnet-5-5", variant: "low" },
+      { providerID: "anthropic", id: "claude-sonnet-5-5" },
+    ]);
+  });
+
+  it("steers a message into the running turn, which waits for its answer", async () => {
+    const { fake, runtime } = await setup({
+      scripts: [
+        async (play) => {
+          const steered = play.next("POST", "/prompt");
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          const steer = await steered;
+          // The execution ends before the steer is delivered: the turn goes on.
+          play.emit("session.execution.succeeded", { sessionID: play.sessionId });
+          play.emit("session.inbox.delivered", {
+            sessionID: play.sessionId,
+            inboxID: steer.body!["id"],
+          });
+          // The execution that answers it asks first: the turn is still listening.
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          tool(play, "call_1", "shell", { command: "ls" });
+          play.emit("permission.asked", {
+            id: "per_1",
+            sessionID: play.sessionId,
+            action: "shell",
+            resources: ["ls"],
+            save: [],
+            source: { type: "tool", messageID: "msg_a1", id: "call_1" },
+          });
+          await play.next("POST", "/permission/per_1/reply");
+          await answer("Steered")(play);
+        },
+      ],
+    });
+    const turn = runtime.startTurn(request({ runtimeMode: "approval-required" }));
+    // Sent before OpenCode took the prompt: it goes out once it did.
+    turn.steer!({ text: "  also this  " });
+    const items = await drain(turn, () => ({ kind: "approval", decision: "accept" }));
+    expect(items.find((item) => item.kind === "message.completed")).toMatchObject({
+      text: "Steered",
+    });
+    expect(fake.calls("POST", "/prompt")[1]!.body).toEqual({
+      id: "msg_jhin_steer_ses_1:turn-1:1",
+      text: "also this",
+      delivery: "steer",
+    });
+    expect(() => turn.steer!({ text: "late" })).toThrow(
+      "The OpenCode turn takes no more messages.",
+    );
+  });
+
+  it("ends a held turn whose steer OpenCode refused", async () => {
+    const { fake, runtime } = await setup({
+      scripts: [
+        async (play) => {
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          play.emit("session.execution.succeeded", { sessionID: play.sessionId });
+        },
+        answer("Next"),
+      ],
+    });
+    fake.rejectSteer(400, "InvalidRequestError", "no");
+    const turn = runtime.startTurn(request());
+    turn.steer!({ text: "more" });
+    expect(await drain(turn)).toEqual([]);
+    // A clear refusal is not taken back later.
+    await drain(runtime.startTurn(request({ turnId: "turn-2" })));
+    expect(fake.calls("DELETE", "/inbox/msg_jhin_steer_ses_1%3Aturn-1%3A1")).toHaveLength(0);
+  });
+
+  it("ends a turn whose undelivered steer OpenCode cancelled", async () => {
+    const { runtime } = await setup({
+      scripts: [
+        async (play) => {
+          const steered = play.next("POST", "/prompt");
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          const steer = await steered;
+          play.emit("session.execution.succeeded", { sessionID: play.sessionId });
+          play.emit("session.inbox.cancelled", {
+            sessionID: play.sessionId,
+            inboxID: steer.body!["id"],
+          });
+        },
+      ],
+    });
+    const turn = runtime.startTurn(request());
+    turn.steer!({ text: "more" });
+    expect(await drain(turn)).toEqual([]);
+  });
+
+  it("takes back the steers a stopped turn left before the next prompt", async () => {
+    let stopTurn = () => {};
+    const { fake, runtime } = await setup({
+      scripts: [
+        async (play) => {
+          const steered = play.next("POST", "/prompt");
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          await steered;
+          stopTurn();
+        },
+        answer("Next"),
+        answer("Again"),
+      ],
+    });
+    // Gone by the time it is taken back: done, not asked for again.
+    fake.inboxGone();
+    const turn = runtime.startTurn(request());
+    stopTurn = () => turn.interrupt();
+    turn.steer!({ text: "never delivered" });
+    await drain(turn);
+    expect(() => turn.steer!({ text: "late" })).toThrow();
+    await drain(runtime.startTurn(request({ turnId: "turn-2" })));
+    const cancelled = fake.calls("DELETE", "/inbox/msg_jhin_steer_ses_1%3Aturn-1%3A1");
+    expect(cancelled).toHaveLength(1);
+    await drain(runtime.startTurn(request({ turnId: "turn-3" })));
+    expect(fake.received.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    // Taken back before the next prompt went out.
+    const order = fake.received.map((call) => `${call.method} ${call.path}`);
+    expect(order.indexOf(`DELETE ${cancelled[0]!.path}`)).toBeLessThan(
+      order.lastIndexOf("POST /api/session/ses_1/prompt"),
+    );
+  });
+
   it("fails the turn and forgets a session OpenCode no longer has", async () => {
     const { runtime, sessions } = await setup({}, { [THREAD]: "ses_gone" });
     expect((await failure(runtime.startTurn(request()))).message).toBe(SESSION_GONE);

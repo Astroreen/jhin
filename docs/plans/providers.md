@@ -839,11 +839,38 @@ OpenCode 2 behaviour.
   starts it, so the spawn, the password and the URL line are tested too. CI
   never runs the real CLI.
 
+- **D882. An OpenCode turn takes its model's variant (W24).** A model of
+  `GET /api/model` with `variants` is listed with T3's "Reasoning" select
+  (`variant`, `openCode2ModelCapabilities`): one choice per variant, labelled
+  in title case, the default T3 infers for the provider (the only variant;
+  `high` for `anthropic` and `google*`; `medium`, else `high`, for `openai`
+  and `opencode`). A turn's `variant` that the model offers (D297) goes into
+  the session's model reference, on a new session or through the model
+  switch when it changed; no choice sends none, so OpenCode's default
+  applies. A model the last probe did not list takes no variant.
+
+- **D883. An OpenCode turn takes steered messages (W24).** The runtime
+  declares `steering`. As T3's `steerTurn` does, a steer is a prompt with
+  `delivery: "steer"` and a client id of its own
+  (`msg_jhin_steer_<session>:<turn>:<n>`), its attachments named as a
+  turn's are; one steered before OpenCode took the turn's prompt goes out
+  once it did. An execution that ends while a steer is undelivered does not
+  end the turn: OpenCode runs another execution for it, which the turn owns
+  too, and its end ends the turn; the turn ends at once when the steer is
+  cancelled (`session.inbox.cancelled`) or its prompt refused. A stopped
+  turn's undelivered steers, and one whose prompt failed in a way OpenCode
+  may still have taken it, are taken back
+  (`DELETE /api/session/<id>/inbox/<inbox>`) before the next turn's prompt,
+  so they do not reach the model first; one OpenCode no longer has (404) is
+  done. A turn that ended or is ending refuses a steer, which then becomes a
+  turn of its own; a steer OpenCode refuses, and those queued for a prompt
+  it never took, are only logged, as Codex's are.
+
 ### Not ported
 
 - OpenCode 1.x (T3's `adapter.ts` over `@opencode-ai/sdk`): a CLI older than
   2.0 is reported as unsupported.
-- T3's per-thread MCP server inside OpenCode, steering, fork and rollback,
+- T3's per-thread MCP server inside OpenCode, fork and rollback,
   subagent child sessions and background wakes, reconnecting and reconciling
   a lost event stream, OpenCode Go usage limits, text generation, skills and
   `$skill` mentions, the version advisory and self-update.
@@ -853,9 +880,7 @@ OpenCode 2 behaviour.
 - OpenCode 1.x.
 - A lost event stream reconnects and reconciles the running turn from
   `message.list` (T3 does); today the turn fails.
-- Per-turn model options (OpenCode's variants, T3's "Reasoning" select).
-- Steering a running turn (`delivery: "steer"`), fork and rollback of a
-  session.
+- Fork and rollback of a session.
 - Subagent transcripts: a `subagent` call shows its result only.
 - Writing the thread's title to its OpenCode session.
 - Deleting a deleted thread's OpenCode session.

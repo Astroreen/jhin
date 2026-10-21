@@ -33,6 +33,8 @@ export interface ModelInfo {
   readonly providerID: string;
   readonly name?: string;
   readonly limit?: { readonly context?: number; readonly input?: number };
+  /** The model's variants, e.g. reasoning efforts (D882). */
+  readonly variants?: readonly { readonly id: string }[];
 }
 
 export interface SessionInfo {
@@ -232,11 +234,18 @@ export function createClient(options: ClientOptions) {
       request<void>("POST", `/api/session/${enc(sessionId)}/model`, { body: { model } }),
     active: async () =>
       unwrap(await request<{ data: Record<string, unknown> }>("GET", "/api/session/active")),
-    prompt: (sessionId: string, body: { id: string; text: string }, signal?: AbortSignal) =>
+    prompt: (
+      sessionId: string,
+      body: { id: string; text: string; delivery?: "steer" },
+      signal?: AbortSignal,
+    ) =>
       request<unknown>("POST", `/api/session/${enc(sessionId)}/prompt`, {
         body,
         ...(signal === undefined ? {} : { signal }),
       }),
+    /** Takes back a prompt OpenCode has not delivered yet (a steer). */
+    cancelInbox: (sessionId: string, inboxId: string) =>
+      request<void>("DELETE", `/api/session/${enc(sessionId)}/inbox/${enc(inboxId)}`),
     command: (sessionId: string, body: { name: string; text: string }, signal?: AbortSignal) =>
       request<void>("POST", `/api/session/${enc(sessionId)}/command`, {
         body,
