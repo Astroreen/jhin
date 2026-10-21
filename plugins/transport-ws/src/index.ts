@@ -40,9 +40,16 @@ const Config = z
         z
           .string()
           .refine(
-            (value) => URL.canParse(value) && new URL(value).origin === value.replace(/\/$/, ""),
+            (value) =>
+              URL.canParse(value) &&
+              /^https?:$/.test(new URL(value).protocol) &&
+              ["", "/"].includes(new URL(value).pathname) &&
+              new URL(value).search === "" &&
+              new URL(value).hash === "",
             "must be an origin: scheme, host and port, e.g. https://jhin.example.com",
-          ),
+          )
+          // Kept as an origin is compared: `https://Jhin.example.com/` is `https://jhin.example.com`.
+          .transform((value) => new URL(value).origin),
       )
       .default([])
       .meta({
@@ -63,6 +70,16 @@ const Config = z
  * a TLS proxy the page is `https` while the node speaks `http`. Other pages only
  * while no origin is listed, or when listed, compared by scheme, host and port.
  */
+/**
+ * Whether `requested` (a `Host` value: `name`, `name:port`, `[::1]:port`)
+ * is the origin's host. Read with the origin's scheme, so a default port
+ * written out (`node:443` for https) or left off is the same host.
+ */
+function sameHost(origin: URL, requested: string): boolean {
+  const target = `${origin.protocol}//${requested}`;
+  return URL.canParse(target) && new URL(target).host === origin.host;
+}
+
 export function originAllowed(
   origin: string | undefined,
   requestedHost: string | undefined,
@@ -71,14 +88,9 @@ export function originAllowed(
   if (origin === undefined) return true;
   const parsed = URL.canParse(origin) ? new URL(origin) : undefined;
   if (parsed === undefined) return false;
-  // `URL` drops a scheme's default port; a forwarded host may still name it.
-  const asked = requestedHost?.replace(
-    parsed.protocol === "https:" ? /:443$/ : parsed.protocol === "http:" ? /:80$/ : /$^/,
-    "",
-  );
-  if (asked !== undefined && parsed.host === asked) return true;
+  if (requestedHost !== undefined && sameHost(parsed, requestedHost)) return true;
   if (allowed.length === 0) return true;
-  return allowed.some((entry) => new URL(entry).origin === parsed.origin);
+  return allowed.some((entry) => URL.canParse(entry) && new URL(entry).origin === parsed.origin);
 }
 
 function tokenFrom(header: string | string[] | undefined): string | undefined {

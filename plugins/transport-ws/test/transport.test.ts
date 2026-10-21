@@ -60,7 +60,7 @@ afterEach(async () => {
 });
 
 async function startNode(
-  options: { tokenFile?: string; allowedOrigins?: string[] } = {},
+  options: { tokenFile?: string; allowedOrigins?: string[]; trustProxy?: string[] } = {},
 ): Promise<Node> {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-transport-"));
   if (options.tokenFile !== undefined) {
@@ -89,7 +89,10 @@ async function startNode(
     ],
     config: {
       node: {
-        "jhin.http": { port: 0 },
+        "jhin.http": {
+          port: 0,
+          ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
+        },
         ...(options.allowedOrigins === undefined
           ? {}
           : { "jhin.transport-ws": { allowedOrigins: options.allowedOrigins } }),
@@ -421,6 +424,31 @@ describe("Origin allowlist (security.md D418)", () => {
     expect(await openFrom(node, undefined)).toBe("open");
   });
 
+  it("knows the node's own page behind a trusted proxy by X-Forwarded-Host", async () => {
+    const node = await startNode({
+      allowedOrigins: ["https://client.example"],
+      trustProxy: ["127.0.0.0/8", "::1"],
+    });
+    // As the proxy forwards it: its own Host, and the one the browser asked for.
+    const behindProxy = (origin: string) =>
+      new Promise<number | "open">((resolve, reject) => {
+        const socket = new WebSocket(node.url, ["jhin.v1", `jhin.token.${node.token}`], {
+          origin,
+          headers: { "x-forwarded-host": "jhin.example" },
+        });
+        socket.once("open", () => {
+          socket.close();
+          resolve("open");
+        });
+        socket.once("unexpected-response", (_request, response) =>
+          resolve(response.statusCode ?? 0),
+        );
+        socket.once("error", reject);
+      });
+    expect(await behindProxy("https://jhin.example")).toBe("open");
+    expect(await behindProxy("https://elsewhere.example")).toBe(403);
+  });
+
   it("compares listed origins by scheme, host and port, and the node's own by host and port", () => {
     const listed = ["https://client.example"];
     expect(originAllowed("https://client.example", "node:7777", listed)).toBe(true);
@@ -429,9 +457,13 @@ describe("Origin allowlist (security.md D418)", () => {
     expect(originAllowed("http://node:7777", "node:7777", listed)).toBe(true);
     // The node's own page behind a TLS proxy: https, though the node speaks http.
     expect(originAllowed("https://node:7777", "node:7777", listed)).toBe(true);
-    // A forwarded host naming the scheme's default port is the same host.
+    // A default port written out or left off is the same host; another port is not.
     expect(originAllowed("https://node.example", "node.example:443", listed)).toBe(true);
+    expect(originAllowed("https://node.example", "node.example", listed)).toBe(true);
     expect(originAllowed("http://node.example", "node.example:443", listed)).toBe(false);
+    // IPv6 hosts compare as hosts too.
+    expect(originAllowed("http://[::1]:7777", "[::1]:7777", listed)).toBe(true);
+    expect(originAllowed("http://[::1]:7777", "[::1]:7778", listed)).toBe(false);
     expect(originAllowed("not an origin", "node:7777", [])).toBe(false);
     // `null` (a sandboxed frame, a file: page) is refused even while nothing is listed.
     expect(originAllowed("null", "node:7777", [])).toBe(false);

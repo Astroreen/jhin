@@ -42,7 +42,9 @@ export function trustList(entries: readonly string[]): Net.BlockList {
   return list;
 }
 
-export function trusted(list: Net.BlockList, address: string): boolean {
+export function trusted(list: Net.BlockList, peer: string): boolean {
+  // `::ffff:127.0.0.1` is the IPv4 peer `127.0.0.1` on a dual-stack listener.
+  const address = normalise(peer);
   const family = Net.isIP(address);
   if (family === 0) return false;
   return list.check(address, family === 4 ? "ipv4" : "ipv6");

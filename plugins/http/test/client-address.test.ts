@@ -6,12 +6,19 @@ import { definePlugin } from "@jhin/sdk";
 import { createTestKernel, testManifest, type TestKernel } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { clientAddress, trustList } from "../src/client-address.ts";
+import { clientAddress, trustList, trusted } from "../src/client-address.ts";
 import http from "../src/index.ts";
 
 const manifest = JSON.parse(
   Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).jhin;
+
+describe("trusted", () => {
+  it("reads an IPv4-mapped peer as its IPv4 address, as a dual-stack listener reports it", () => {
+    expect(trusted(trustList(["127.0.0.0/8"]), "::ffff:127.0.0.1")).toBe(true);
+    expect(trusted(trustList(["127.0.0.0/8"]), "::ffff:10.0.0.1")).toBe(false);
+  });
+});
 
 describe("clientAddress", () => {
   const xff = (peer: string, header: string | undefined, trust: string[]) =>
