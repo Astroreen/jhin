@@ -300,6 +300,12 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   unsigned and publish nothing, so the first nightly (and the first run with
   the signing secrets) is what proves notarization, Azure Trusted Signing,
   `--require-signing` and the publish job.
+- Packaging checks what it installed as `pnpm pack:smoke` does: print the
+  third-party packages the lockfile cannot pin, and fail on a version the
+  workspace lockfile does not have.
+- A pull request dry run also when the app's sources change (the desktop
+  plugin, `packages/desktop-api`, the web client), or a scheduled dry run on
+  `main`: today its path filter covers the packaging files only.
 - A test of `scripts/package-desktop.ts`'s orchestration with a fake spawn:
   its pure parts are unit tested and the pull request dry run runs it whole
   on all three systems.
