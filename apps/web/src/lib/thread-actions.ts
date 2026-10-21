@@ -73,6 +73,7 @@ export async function startThread(
       readonly model?: string;
       readonly runtimeMode?: string;
       readonly interactionMode?: string;
+      readonly modelOptions?: readonly { readonly id: string; readonly value: string | boolean }[];
     };
   },
   /** The new thread's id; chosen here by default, so asking again makes no second thread. */

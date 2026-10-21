@@ -26,6 +26,7 @@ interface Thread {
   agentId?: string;
   model?: string;
   runtimeMode?: string;
+  updatedAt?: string;
   lastTurn?: { turnId: string; status: string };
 }
 
@@ -349,6 +350,158 @@ describe("jhin.threads: agents", () => {
     await expect(
       client.call("threads.send", { threadId: thread.id, text: "x", agentId: "acme.none" }),
     ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+  });
+
+  it("runs a turn with the model's options, keeps them for the thread and drops what the model does not declare", async () => {
+    seen.length = 0;
+    const optioned: AgentRuntime = {
+      ...claude,
+      models: [
+        {
+          id: "opus",
+          name: "Opus",
+          options: [
+            {
+              type: "select",
+              id: "effort",
+              label: "Reasoning",
+              options: [
+                { id: "low", label: "Low" },
+                { id: "high", label: "High", isDefault: true },
+              ],
+            },
+            { type: "boolean", id: "fastMode", label: "Fast Mode" },
+          ],
+        },
+        { id: "sonnet", name: "Sonnet" },
+      ],
+    };
+    const { client } = await node({ plugins: [registering(optioned)] });
+    const agents =
+      await client.call<{ agentId: string; models: { options?: unknown[] }[] }[]>("agents.list");
+    expect(
+      agents.find((agent) => agent.agentId === "acme.claude")?.models[0]?.options,
+    ).toHaveLength(2);
+    const thread = await client.call<Thread>("threads.create", { agentId: "acme.claude" });
+    const { events, until } = watch(client, thread.id);
+
+    await client.call("threads.send", {
+      threadId: thread.id,
+      text: "hi",
+      model: "opus",
+      modelOptions: [
+        { id: "effort", value: "low" },
+        { id: "fastMode", value: true },
+        { id: "effort", value: "high" },
+        { id: "contextWindow", value: "1m" },
+        { id: "fastMode", value: "yes" },
+      ],
+    });
+    await until("agent.turn.completed");
+    // The next turn keeps them; another model drops them.
+    await client.call("threads.send", { threadId: thread.id, text: "again" });
+    await until("agent.turn.completed", 1);
+    await client.call("threads.send", { threadId: thread.id, text: "other", model: "sonnet" });
+    await until("agent.turn.completed", 2);
+
+    const chosen = [
+      { id: "effort", value: "low" },
+      { id: "fastMode", value: true },
+    ];
+    expect(seen.map((request) => request.modelOptions)).toEqual([chosen, chosen, undefined]);
+    expect(events.find((event) => event.type === "agent.turn.started")?.payload).toMatchObject({
+      modelOptions: chosen,
+    });
+    const { thread: after } = await client.call<{ thread: Thread & { modelOptions?: unknown } }>(
+      "threads.get",
+      { threadId: thread.id },
+    );
+    expect(after.model).toBe("sonnet");
+    expect(after.modelOptions).toBeUndefined();
+
+    // Chosen ahead of a turn, as the composer does; a change of model drops them.
+    const updated = await client.call<Thread & { modelOptions?: unknown }>("threads.update", {
+      threadId: thread.id,
+      model: "opus",
+      modelOptions: [{ id: "effort", value: "high" }],
+    });
+    expect(updated.modelOptions).toEqual([{ id: "effort", value: "high" }]);
+    const same = await client.call<Thread & { updatedAt?: string }>("threads.update", {
+      threadId: thread.id,
+      modelOptions: [{ id: "effort", value: "high" }],
+    });
+    expect(same.updatedAt).toBe(updated.updatedAt);
+    const switched = await client.call<Thread & { modelOptions?: unknown }>("threads.update", {
+      threadId: thread.id,
+      model: "sonnet",
+    });
+    expect(switched.modelOptions).toBeUndefined();
+
+    // Undeclared ids and values are dropped on update too; naming the model the
+    // thread already runs (its default) keeps the options.
+    const filtered = await client.call<Thread & { modelOptions?: unknown }>("threads.update", {
+      threadId: thread.id,
+      model: "opus",
+      modelOptions: [
+        { id: "effort", value: "max" },
+        { id: "fastMode", value: true },
+        { id: "contextWindow", value: "1m" },
+      ],
+    });
+    expect(filtered.modelOptions).toEqual([{ id: "fastMode", value: true }]);
+    const fresh = await client.call<Thread & { modelOptions?: unknown }>("threads.create", {
+      agentId: "acme.claude",
+    });
+    await client.call("threads.update", {
+      threadId: fresh.id,
+      modelOptions: [{ id: "effort", value: "low" }],
+    });
+    const named = await client.call<Thread & { modelOptions?: unknown }>("threads.update", {
+      threadId: fresh.id,
+      model: "opus",
+    });
+    expect(named.modelOptions).toEqual([{ id: "effort", value: "low" }]);
+    // threads.send agrees: naming the default model sends the thread's options.
+    seen.length = 0;
+    const { until: untilFresh } = watch(client, fresh.id);
+    await client.call("threads.update", {
+      threadId: fresh.id,
+      modelOptions: [{ id: "effort", value: "low" }],
+    });
+    const reset = await client.call<Thread & { model?: string }>("threads.get", {
+      threadId: fresh.id,
+    });
+    expect(reset).toBeDefined();
+    await client.call("threads.send", { threadId: fresh.id, text: "go", model: "opus" });
+    await untilFresh("agent.turn.completed");
+    expect(seen.at(-1)?.modelOptions).toEqual([{ id: "effort", value: "low" }]);
+  });
+
+  it("keeps options for a model its runtime does not list yet, and lets the runtime filter them", async () => {
+    seen.length = 0;
+    const unlisted: AgentRuntime = {
+      agentId: "acme.unlisted",
+      startTurn(request) {
+        seen.push(request);
+        return fakeTurn(request);
+      },
+    };
+    const { client } = await node({ plugins: [registering(unlisted)] });
+    const thread = await client.call<Thread>("threads.create", { agentId: "acme.unlisted" });
+    const { until } = watch(client, thread.id);
+    await client.call("threads.send", {
+      threadId: thread.id,
+      text: "hi",
+      model: "new-model",
+      modelOptions: [{ id: "effort", value: "high" }],
+    });
+    await until("agent.turn.completed");
+    expect(seen[0]?.modelOptions).toEqual([{ id: "effort", value: "high" }]);
+    const { thread: after } = await client.call<{ thread: Thread & { modelOptions?: unknown } }>(
+      "threads.get",
+      { threadId: thread.id },
+    );
+    expect(after.modelOptions).toEqual([{ id: "effort", value: "high" }]);
   });
 
   it("does not carry a model over to another agent chosen with a message", async () => {

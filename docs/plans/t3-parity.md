@@ -523,18 +523,27 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   model has it, Ultrathink) and Fast Mode on Opus 5.5; the context window
   options of T3's older 4.6 profiles (200k, 1M) for models Claude Code
   reports with those ids. They apply as T3 applies them: the effort through
-  the effort map (Ultracode runs `xhigh` with `ultracode` set, Ultrathink adds
-  "Ultrathink:" before the message instead of an effort), Fast Mode as Claude
-  Code's `fastMode` setting, a context window as the model id's suffix
-  (`[1m]`). The node config's `effort` stays the default when a turn chooses
-  none. A live session (`providers.md` D98) whose options change is started
-  again; applying them live is W9's (`applyFlagSettings`).
+  the effort map (Ultracode runs `xhigh` with `ultracode` set), Fast Mode as
+  Claude Code's `fastMode` setting (`false` when not chosen, as T3 sends it),
+  a context window as the model id's suffix (`[1m]`). Ultrathink is
+  `promptInjectedValues`: as in T3, picking it writes "Ultrathink:" before the
+  prompt and the effort chosen before stays; a runtime that gets
+  `effort: ultrathink` (another client) writes the prefix itself and sends no
+  effort. An effort the model does not offer, the config's included, is not
+  sent. The node config's `effort` stays the default when a turn chooses
+  none. On a live session (`providers.md` D98) a new effort is applied live
+  (`applyFlagSettings`, `providers.md` D349) and the model through `setModel`;
+  other settings (Fast Mode, Ultracode, thinking) start it again (Deferred:
+  applying Fast Mode and Ultracode live, as T3 does).
 - **D299. T3's traits menu.** One button after the model picker, labelled
   with the chosen values ("High · Fast"), opens a menu with a section per
   select option (radio items, "Default" on the model's default) and On/Off
   for each boolean. A prompt that contains "ultrathink" locks the effort with
   T3's note. The choice is kept per thread like the model, and remembered per
-  model on the device for new threads, as T3's sticky options.
+  model on the device: a new thread's composer starts a model without chosen
+  options with them, as T3's sticky options. `threads.update` keeps only the
+  options its model declares, as `threads.send` does; naming the model a
+  thread already runs (its agent's default) keeps them.
 
 #### Commands, skills and mentions
 
@@ -623,6 +632,18 @@ after a failure or a later turn, Claude's earlier `:plan` messages read as
 plans); Playwright `e2e/tests/composer.spec.ts` (the card, "Plan ready",
 saving to the project, "Refine", "Implement" in build mode, "Implement in a
 new thread" titled after the plan), with screenshots.
+
+The proof of D297–D299: `plugins/threads/test/features.test.ts` (options
+listed with their model, kept for the thread's next turns, dropped for another
+model, unknown ids, values and duplicates dropped, `threads.update` keeping an
+unchanged list without a change); `plugins/agent-claude/test/models.test.ts`
+(T3's profiles by id and alias, the effort map, Ultracode, Ultrathink, fast
+mode, the config's effort as the fallback, context windows by option and by
+suffix, Haiku 4.5's thinking) and `turn.test.ts` (what reaches Claude Code's
+query); `apps/web/test/model-options.test.ts` (current values, T3's trigger
+labels, Ultrathink in the prompt and out of it, options remembered per model);
+Playwright `e2e/tests/composer.spec.ts` (choosing High and Fast Mode, the
+turn running with them, Ultrathink written into the prompt), with screenshots.
 
 ### Node machine icons
 

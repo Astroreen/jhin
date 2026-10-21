@@ -30,6 +30,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/approve <command>" asks for approval before running it;
  * - "/ask" asks a question and answers with the choice;
  * - "/plan" publishes a three-step plan and completes it;
+ * - "/options" answers with the model options the turn runs with;
  * - in plan mode, anything else is answered with a proposed plan titled after it;
  * - "/write <file> <text>" writes the text to a file of its working directory;
  * - anything else is answered "Echo: <text>", one word per delta.
@@ -186,6 +187,13 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
       yield* say("Plan done");
       return;
     }
+    if (text.replace(/^Ultrathink:\s*/, "").startsWith("/options")) {
+      const chosen = (request.modelOptions ?? []).map(({ id, value }) => `${id}=${String(value)}`);
+      // T3 writes Ultrathink into the prompt; the agent sees it there.
+      if (text.startsWith("Ultrathink:")) chosen.push("prompt=Ultrathink");
+      yield* say(`Options: ${chosen.length === 0 ? "none" : chosen.join(" ")}`);
+      return;
+    }
     if (request.interactionMode === "plan") {
       yield* say("Here is my plan.");
       yield {
@@ -232,7 +240,29 @@ export default definePlugin({
     const runtime: AgentRuntime = {
       agentId: FAKE_AGENT_ID,
       name: "Fake agent",
-      models: [{ id: "echo", name: "Echo", description: "Repeats what it is told" }],
+      models: [
+        {
+          id: "echo",
+          name: "Echo",
+          description: "Repeats what it is told",
+          options: [
+            {
+              type: "select",
+              id: "effort",
+              label: "Reasoning",
+              options: [
+                { id: "low", label: "Low" },
+                { id: "medium", label: "Medium", isDefault: true },
+                { id: "high", label: "High" },
+                { id: "ultrathink", label: "Ultrathink" },
+              ],
+              promptInjectedValues: ["ultrathink"],
+            },
+            { type: "boolean", id: "fastMode", label: "Fast Mode" },
+          ],
+        },
+        { id: "plain", name: "Plain", description: "Echo without options" },
+      ],
       defaultModel: "echo",
       runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
       interactionModes: ["default", "plan"],

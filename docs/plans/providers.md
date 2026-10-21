@@ -341,8 +341,6 @@ Done since: steering a running turn (`t3-parity.md` D204–D206).
   taken for that turn's unmarked answer. W9 left both: the Claude Code the
   distribution ships with its pinned SDK marks every frame, and telling the
   race apart needs a frame Claude Code does not send.
-- Per-turn model options in the composer (effort, fast mode): only the
-  config's `effort` applies.
 - Choosing a thread agent's permissions per thread or in config: D341 is one
   list for every Claude Code.
 - Slash commands and skills from Claude Code's initialization in the

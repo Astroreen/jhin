@@ -387,8 +387,17 @@ describe("jhin.agent-claude: status", () => {
       available: true,
       message: "Signed in as ada@example.com",
     });
+    // With the options T3's manifest gives the model (D298).
     expect(claude.models).toEqual([
-      { id: "claude-opus-5-5", name: "Opus 5.5", description: "Complex work" },
+      {
+        id: "claude-opus-5-5",
+        name: "Opus 5.5",
+        description: "Complex work",
+        options: [
+          expect.objectContaining({ id: "effort", label: "Reasoning", type: "select" }),
+          { id: "fastMode", label: "Fast Mode", type: "boolean" },
+        ],
+      },
     ]);
     expect(claude.defaultModel).toBe("claude-opus-5-5");
     expect(probe.closed()).toBe(1);
