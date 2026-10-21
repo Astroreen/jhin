@@ -256,6 +256,40 @@ types and the schemas of the `agents.*` commands) is
   roster of agents per project (title, role, status) and an agent page with
   its generations, read-only (no composer), and stop and resume. Nothing of it
   goes into the Threads sidebar or header. It contributes to A8's shell.
+  The client plugin is `jhin.agents-view`
+  (`apps/web/src/plugins/agents/`): the roster is `jhin.agents.roster` in
+  `civilization.sidebar.agents`, the page `jhin.agents.page` in
+  `civilization.views`, both a chunk of their own (D440). A generation's
+  conversation comes from the new slot **`thread.transcript`**
+  (`THREAD_TRANSCRIPT_SLOT`, `ThreadTranscriptProps { target, threadId }` in
+  `@jhin/client-api`), which the chat plugin fills with
+  `jhin.chat.transcript`: its timeline without composer, header, requests or
+  message actions. A3's mission view reads generations through the same
+  slot.
+- **D615. An agent's page is a route.** Panel `agent`, mode
+  `civilization`, the agent in `section`: `<agentId>` shows the current
+  generation, `<agentId>/<n>` generation `n`. The route never carries
+  `thread`, so nothing that follows Threads mode's open thread (its panels,
+  visits) takes a generation for one. The client command
+  `civilization.agent.open { node, agentId, generation? }` opens it, and the
+  roster's rows run it, so the palette, the CLI and MCP reach it as well
+  (AGENTS.md rule 6).
+- **D616. The client's status of an agent** follows D608 without a second
+  source: `stopped` from the record's `stoppedAt`; `unavailable` from the
+  record (no `projectId`) or from `agents.get`, which knows whether the
+  runtime is on the node; `working`, `waiting` and `idle` from the current
+  generation's thread as the `threads` index reports it after its head,
+  `agents.get`'s answer standing until that thread changes. The client reads
+  `agents.catalog`, then `agents.get` for each agent and again whenever the
+  `agents` stream defines or updates it (a stop, a resume and a new
+  generation are each followed by `agents.agent.updated`, D609).
+- **D617. The roster is grouped by home project**, in the order of the
+  node's catalog of projects (the scratch project first), with agents whose
+  home project is not on the node last; with several open nodes each node's
+  agents are under its label. A row shows the title, the role and a status
+  dot, and its accessible name is `<title>, <status>`. Stop and resume are
+  the page's buttons (`agents.stop`, `agents.resume`) and a failure shows as
+  a toast; there is no composer anywhere in it.
 
 ### A2. Messaging between agents, and the owner (D621–D640)
 
@@ -797,6 +831,16 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
   of the message names the sender and the trace.
 - A2: a count of open inbox items on the mode switcher or the page title
   (D630 notifies once per item).
+- A1: starting a generation (`agents.rotate`), defining, editing or
+  removing an agent from Civilization mode's views. Defining and editing go
+  through the settings page (D604); the commands do the rest.
+- A1: agents of a mesh member reached through another node (`remote` in
+  the route): the roster follows the client's open connections only (D617),
+  as D747 does.
+- A1: starting the agents feed of a node over again with backoff when its
+  stream breaks; today the roster shows the error with a Retry button.
+- A1: a generation's own status in the page's list of generations
+  (`agents.generations` has it); the list marks the current one only.
 - A3: the Projects section (`civilization.sidebar.projects`) with a
   project's intent of its own; the Missions section groups by project and a
   mission shows its project's intent (D654, D656).

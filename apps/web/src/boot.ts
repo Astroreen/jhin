@@ -4,6 +4,7 @@ import { definePlugin, type LogFields, type Logger } from "@jhin/sdk";
 
 import { builtin, type BuiltinPlugin } from "./lib/builtin.ts";
 import { chatPlugin } from "./plugins/chat/index.tsx";
+import { agentsViewPlugin } from "./plugins/agents/index.tsx";
 import { civilizationPlugin } from "./plugins/civilization.tsx";
 import { inboxPlugin } from "./plugins/inbox/index.tsx";
 import { missionsViewPlugin } from "./plugins/missions/index.tsx";
@@ -182,6 +183,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     civilizationPlugin,
     inboxPlugin,
     missionsViewPlugin,
+    agentsViewPlugin,
   ];
 }
 
