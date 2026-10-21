@@ -255,8 +255,8 @@ CLI, and the web client through RPC.
   later (DNS rebinding) reaches nothing local; WebRTC is removed. Loading and
   settling (fonts, two frames) share one 20 s deadline. It returns T3's
   result: a PNG screenshot up to 4000 pixels tall, `contentHeight`,
-  `capturedHeight`, at most 20 console messages (500 characters each, and how
-  many more were omitted) and `missingImages`. The browser starts for a page
+  `capturedHeight`, at most 20 console messages (500 characters each) and,
+  past them, one note saying how many more were omitted, and `missingImages`. The browser starts for a page
   and closes after the last one. As in T3, any image file of the node a page
   names by its absolute path is inlined (its bytes must be an image), and with
   `html.render` it travels with the thread: the commands are for the node's
@@ -266,10 +266,12 @@ CLI, and the web client through RPC.
   (missing images fail it), is measured at T3's nine widths (its `heights`)
   (in the dark theme, as T3 measures; a page whose layout differs between
   themes may fit a light reader's frame less well) and appended to the
-  thread's stream as `preview.html.rendered {renderId,
-  title, height, heights?, html}`; the thread must exist. It names no turn:
-  the timeline shows it in the thread's latest turn, the one the agent is
-  running. It returns T3's `htmlRender` reference and its message to the
+  thread's stream as `preview.html.rendered {renderId, turnId?,
+  title, height, heights?, html}`; the thread must exist. It names the turn
+  running when the command began (read from the thread's recent events), so
+  it stays in that turn even if another starts while it is measured; without
+  one, the timeline shows it in the latest turn. Measuring takes at most
+  three rounds of 20 s. It returns T3's `htmlRender` reference and its message to the
   agent. The page lives in the thread's event log, so it travels with the
   thread through the mesh (D26) and needs no attachment store; for the same
   reason a stored page is at most 4 MiB with its images (T3 allows 25 MiB in
@@ -342,6 +344,10 @@ CLI, and the web client through RPC.
 - T3's outline of a rendered page's boxes for the loading skeleton.
 - Rendered pages in an attachment store (W6's blobs) instead of the
   thread's event log, and with it T3's 25 MiB pages.
+- A content security policy for rendered pages in the reader's client: as
+  in T3, a page's scripts may load from any host (a CDN chart library) and so
+  also reach the reader's own network; only the client's origin is shut out
+  (`sandbox` without `allow-same-origin`).
 - In a rendered page: T3's image viewer for a clicked image and passing the
   app's shortcuts through a focused frame.
 - Viewer ids bound to their caller or their frame subscription (D397).

@@ -94,6 +94,14 @@ describe("jhin.html-render", () => {
     expect(isImageBytes(Buffer.from("<?xml version='1.0'?><svg xmlns='x'/>"))).toBe(true);
   });
 
+  it("refuses an image over 10 MiB", async () => {
+    const huge = Path.join(dir, "huge.png");
+    Fs.writeFileSync(huge, Buffer.concat([PNG, Buffer.alloc(10 * 1024 * 1024)]));
+    await expect(inlineLocalImages(`<img src="${huge}">`)).rejects.toThrow(
+      "each local image must be at most 10.0 MiB",
+    );
+  });
+
   it("counts loopback and private addresses as private", () => {
     for (const address of [
       "127.0.0.1",
@@ -167,6 +175,13 @@ describe("jhin.html-render", () => {
     await node.log.append(stream, [
       { type: "threads.thread.created", payload: { id: "thread-1" } },
     ]);
+    // A turn runs: the page belongs to it.
+    await node.log.append(stream, [
+      {
+        type: "agent.turn.started",
+        payload: { turnId: "u1", agentId: "fake", input: { text: "x" } },
+      },
+    ]);
     const result = await node.client.call<{
       htmlRender: { renderId: string; heights?: unknown[] };
     }>("html.render", {
@@ -186,6 +201,7 @@ describe("jhin.html-render", () => {
       height: 2000,
     });
     expect(payload.html).toContain('<style id="jhin-theme">');
+    expect(payload.turnId).toBe("u1");
 
     const missing = await rejection(
       node.client.call("html.render", {

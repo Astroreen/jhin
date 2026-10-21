@@ -3,7 +3,7 @@
 // preview and publish).
 import * as Crypto from "node:crypto";
 
-import { threadStream } from "@jhin/agent-api";
+import { ThreadEvents, threadStream } from "@jhin/agent-api";
 import {
   HTML_PAGE_RULES,
   HTML_RENDER_COLUMN_WIDTH,
@@ -28,6 +28,25 @@ import { inlineLocalImages, missingImagesError } from "./inline.ts";
 import { createRenderer } from "./render.ts";
 
 const CONFIG_SECTION = "jhin.html-render";
+
+/** The turn of a thread still running at the end of its recent events, if any. */
+function runningTurn(events: readonly { type: string; payload: unknown }[]): string | undefined {
+  const ended = new Set<string>();
+  for (const event of events.toReversed()) {
+    const turnId = (event.payload as { turnId?: unknown } | null)?.turnId;
+    if (typeof turnId !== "string") continue;
+    if (
+      event.type === ThreadEvents.turnCompleted ||
+      event.type === ThreadEvents.turnInterrupted ||
+      event.type === ThreadEvents.turnFailed
+    ) {
+      ended.add(turnId);
+    } else if (event.type === ThreadEvents.turnStarted) {
+      return ended.has(turnId) ? undefined : turnId;
+    }
+  }
+  return undefined;
+}
 const MIB = 1024 * 1024;
 /** The largest page html.render stores in a thread. */
 const MAX_RENDERED_BYTES = 4 * MIB;
@@ -98,12 +117,15 @@ export default definePlugin({
       permissions: ["threads.write"],
       handler: async (input) => {
         const stream = threadStream(input.threadId);
-        if ((await log.head(stream)) === 0) {
+        const head = await log.head(stream);
+        if (head === 0) {
           throw new HtmlRenderError(
             "HTML_RENDER_FAILED",
             `Thread ${input.threadId} was not found.`,
           );
         }
+        // The turn running now owns the page, even if another starts while it is measured.
+        const turnId = runningTurn(await log.read(stream, { after: Math.max(0, head - 500) }));
         const { html, missing } = await inlineLocalImages(injectHtmlRenderBootstrap(input.html));
         if (missing.length > 0) throw missingImagesError(missing);
         // The page lives in the thread's event log and travels with it to every client and
@@ -139,7 +161,10 @@ export default definePlugin({
         // In the thread's stream, so the page travels with the thread (D406); the latest turn
         // shows it (D407).
         await log.append(stream, [
-          { type: HtmlRenderEvents.rendered, payload: { ...reference, html } },
+          {
+            type: HtmlRenderEvents.rendered,
+            payload: { ...reference, ...(turnId === undefined ? {} : { turnId }), html },
+          },
         ]);
         return {
           htmlRender: reference,
