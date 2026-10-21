@@ -1642,6 +1642,20 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   `sidebar.selection.snooze`'s `until` becomes optional: without it, the
   command asks first and does nothing when cancelled.
 
+- **D963. A card with an unsent draft says so, and its X discards it, as
+  T3's.** A thread that is not open and whose composer keeps text or
+  attachments on this device gets T3's draft surface (`bg-warning/4`) and
+  the pen "Unsent draft" (a slim row too); a card, as T3's, also gets an X
+  "Discard draft" among the controls the pointer reveals, before Snooze and
+  Settle. The chat
+  plugin keeps the drafts and provides `chat.drafts@1` (`@jhin/client-api`):
+  `hasThreadDraft(target, threadId)` and `subscribe`. `chat.draft.discard`
+  takes a `threadId` instead of a `projectId` for a thread's draft (additive);
+  as for a new thread, it offers T3's undo ("Discarded 1 draft"), which
+  fails with "The draft has new content." once the composer has some again.
+  It refuses an open thread, whose composer holds its text itself.
+  Without `chat.drafts`, cards show no draft.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -1698,9 +1712,7 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   regeneration yet); dragging a selection into the
   chat as context; the undo of an unpin or a settle done by dragging (a
   drop writes through `threads.arrange`, not the commands that offer an
-  undo, D450); T3's X on a thread's card that clears its unsent composer
-  text (the sidebar does not know a thread's draft, which the chat plugin
-  keeps). The card's branch, diff and pull request are `source-control.md`'s
+  undo, D450). The card's branch, diff and pull request are `source-control.md`'s
   D117 and its terminal indicator `terminal.md`'s D148, all in the
   `sidebar.thread.indicators` slot.
 - Pushing a mesh member's config changes to a client of another node: done

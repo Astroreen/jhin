@@ -1,6 +1,7 @@
 // Empty states follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/NoActiveThreadState.tsx
 // and NoProjectsHero.tsx.
 import {
+  CHAT_DRAFTS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   MESH_CAPABILITY,
@@ -8,7 +9,6 @@ import {
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
   UNDO_CAPABILITY,
-  targetKey,
   type Connections,
   type DeviceSettings,
   type Keybindings,
@@ -19,6 +19,7 @@ import {
   type ThreadUndoService,
   VISITS_CAPABILITY,
   type ThreadVisits,
+  type ChatDrafts,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
@@ -41,7 +42,13 @@ import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
-import { createDrafts, nodeDraftKey, type ComposerDraft } from "../../lib/composer.ts";
+import {
+  createDrafts,
+  newThreadDraftKey,
+  nodeDraftKey,
+  threadDraftKey,
+  type ComposerDraft,
+} from "../../lib/composer.ts";
 import { createModelOptionsMemory } from "../../lib/model-options.ts";
 import { createAttachmentUrls } from "../../lib/uploads.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
@@ -252,6 +259,7 @@ function NoActiveThread() {
 export const chatPlugin = builtin(
   "jhin.chat",
   {
+    provides: { [CHAT_DRAFTS_CAPABILITY]: "1.0.0" },
     requires: {
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
@@ -430,6 +438,18 @@ export const chatPlugin = builtin(
         );
       }
 
+      // Which threads keep an unsent draft, for their cards (t3-parity.md D963).
+      context.services.provide<ChatDrafts>(CHAT_DRAFTS_CAPABILITY, {
+        hasThreadDraft: (target, threadId) => {
+          // Blank text alone is no draft (T3's composerDraftHasUserContent).
+          const draft = services.drafts.get(threadDraftKey(target, threadId));
+          return (
+            draft !== undefined && (draft.prompt.trim() !== "" || draft.attachments.length > 0)
+          );
+        },
+        subscribe: (listener) => services.drafts.subscribe(listener),
+      });
+
       // --- Commands -------------------------------------------------------------
       // T3's "Discard draft" (D451): a new thread's draft card goes, with an undo.
       const undo = context.services.tryGet<ThreadUndoService>(UNDO_CAPABILITY);
@@ -437,21 +457,39 @@ export const chatPlugin = builtin(
         name: "chat.draft.discard",
         title: "Discard draft",
         description:
-          "Discards the draft of a new thread in a project (its text and images), leaving it if open; the sidebar offers to undo it",
-        input: z.object({
-          node: z.string(),
-          remote: z.string().optional(),
-          projectId: z.string(),
-        }),
+          "Discards the draft of a new thread in a project, or of a thread's composer with `threadId` (its text and images), leaving a new thread's draft if open; the sidebar offers to undo it",
+        input: z
+          .object({
+            node: z.string(),
+            remote: z.string().optional(),
+            projectId: z.string().optional(),
+            threadId: z.string().optional(),
+          })
+          .refine((value) => (value.projectId === undefined) !== (value.threadId === undefined), {
+            message: "Give a projectId or a threadId",
+          }),
         output: z.object({ discarded: z.boolean() }),
         handler: async (input) => {
           const target: NodeTarget = {
             node: input.node,
             ...(input.remote === undefined ? {} : { remote: input.remote }),
           };
-          const key = `${targetKey(target)}|draft|${input.projectId}`;
-          const draftRoute = { ...target, project: input.projectId };
+          // A thread's composer draft (T3's X on its card, t3-parity.md D963).
+          const threadId = input.threadId;
+          const { projectId } = input;
+          const key =
+            threadId !== undefined
+              ? threadDraftKey(target, threadId)
+              : projectId !== undefined
+                ? newThreadDraftKey(target, projectId)
+                : undefined;
+          if (key === undefined) throw new Error("Give a projectId or a threadId");
+          const draftRoute = {
+            ...target,
+            ...(input.projectId === undefined ? {} : { project: input.projectId }),
+          };
           const isOpen = () => {
+            if (threadId !== undefined) return false;
             const route = navigation.current();
             return (
               route.thread === undefined &&
@@ -462,6 +500,10 @@ export const chatPlugin = builtin(
           };
           let kept: ComposerDraft | undefined;
           const perform = async () => {
+            // An open thread's composer holds its text itself and would write it back.
+            if (threadId !== undefined && composer.current?.draftKey === key) {
+              throw new Error("The thread is open: clear its composer there.");
+            }
             kept = services.drafts.get(key);
             const open = isOpen();
             if (kept === undefined && !open) return false;
@@ -472,10 +514,18 @@ export const chatPlugin = builtin(
             return true;
           };
           const revert = async () => {
-            if (services.drafts.get(key) !== undefined)
+            const open = composer.current?.draftKey === key ? composer.current : undefined;
+            const current = open === undefined ? services.drafts.get(key) : open.draft();
+            if (
+              current !== undefined &&
+              (current.prompt.trim() !== "" || current.attachments.length > 0)
+            )
               throw new Error("The draft has new content.");
-            if (kept !== undefined) services.drafts.set(key, kept);
-            navigation.navigate(draftRoute);
+            if (kept === undefined) return;
+            // Opened meanwhile: its composer holds the text, so it takes it back itself.
+            if (open !== undefined) open.restore(kept);
+            else services.drafts.set(key, kept);
+            if (threadId === undefined && open === undefined) navigation.navigate(draftRoute);
           };
           const discarded =
             undo === undefined

@@ -101,6 +101,21 @@ describe("drafts", () => {
     expect(createDrafts(memoryStorage({ "jhin.drafts.v1": "{nope" })).get("t1")).toBeUndefined();
   });
 
+  it("tells its subscribers of a change until they unsubscribe (D963)", () => {
+    const drafts = createDrafts(memoryStorage());
+    let calls = 0;
+    const subscription = drafts.subscribe(() => calls++);
+    drafts.set("t1", { prompt: "typed", attachments: [] });
+    drafts.set("t1", { prompt: "", attachments: [] });
+    // Emptying a draft nobody kept changes nothing and says nothing.
+    drafts.set("t2", { prompt: "", attachments: [] });
+    expect(calls).toBe(2);
+    subscription.dispose();
+    drafts.set("t1", { prompt: "again", attachments: [] });
+    expect(calls).toBe(2);
+    drafts.dispose();
+  });
+
   it("merges the drafts of two tabs instead of one overwriting the other", () => {
     const storage = memoryStorage();
     const a = createDrafts(storage);

@@ -120,6 +120,10 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
     for (const key of changed) if (drafts[key] === undefined) delete next[key];
     return next;
   };
+  const listeners = new Set<() => void>();
+  const changedNow = () => {
+    for (const listener of Array.from(listeners)) listener();
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const flush = () => {
     if (timer !== undefined) clearTimeout(timer);
@@ -144,7 +148,9 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
     }
   };
   const onStorage = (event: StorageEvent) => {
-    if (event.key === DRAFTS_STORAGE_KEY) drafts = merged();
+    if (event.key !== DRAFTS_STORAGE_KEY) return;
+    drafts = merged();
+    changedNow();
   };
   if (typeof window !== "undefined") {
     window.addEventListener("beforeunload", flush);
@@ -169,6 +175,12 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
       changed.add(key);
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(flush, 300);
+      changedNow();
+    },
+    /** Called after any draft changes, here, in another tab or from another device (D963). */
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return { dispose: () => void listeners.delete(listener) };
     },
     /**
      * Takes another device's text for `key` when it is later than this one's
@@ -190,6 +202,7 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(flush, 300);
       for (const follower of Array.from(followers.get(key) ?? [])) follower(draft);
+      changedNow();
       return true;
     },
     /** Follows `key` for texts taken from other devices. */

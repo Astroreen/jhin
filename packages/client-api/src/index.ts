@@ -295,6 +295,16 @@ export interface ThreadUndoService {
   invalidate(kind: string, key: string): void;
 }
 
+/** `chat.drafts@1`: which threads keep unsent composer text on this device (t3-parity.md D963). */
+export const CHAT_DRAFTS_CAPABILITY = "chat.drafts";
+
+export interface ChatDrafts {
+  /** True while the thread's composer keeps text or attachments not sent yet. */
+  hasThreadDraft(target: NodeTarget, threadId: string): boolean;
+  /** Called after any draft changes, in this tab or another. */
+  subscribe(listener: () => void): Disposable;
+}
+
 /** `client.visits@1`: when the user last looked at each thread, on this device. */
 export const VISITS_CAPABILITY = "client.visits";
 
