@@ -429,6 +429,16 @@ export interface ChatHeaderActionProps {
 }
 
 /**
+ * What the `chat.thread.details` slot gives each section of the thread
+ * details panel (T3 Code's ThreadDetailsCard, D802): the open thread.
+ */
+export interface ChatThreadDetailsProps {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  readonly project?: ProjectRecord;
+}
+
+/**
  * What the `chat.message.actions` slot gives each contribution: a message of
  * the timeline whose hover row it renders in (T3 Code's copy, "Edit from
  * here" and "Fork from this response" buttons). `assistant` is a turn's final

@@ -1486,7 +1486,8 @@ Reference: T3 Code at `eb7b35ac` (D53).
   goes only to a free thread (`threads.send`, never queued), so pressing
   again never sends it twice. The
   client command `chat.thread.resume` ("Resume thread") does the same for
-  the open thread. T3 also resumes a turn that failed on a usage limit; Jhin
+  the open thread and answers `{ resumed }`, false when there was nothing to
+  resume or text is typed. T3 also resumes a turn that failed on a usage limit; Jhin
   has no usage-limit failures yet (Deferred).
 - **D801. Find in a thread**, T3's `chat.find` (`ThreadFindBar.tsx`,
   `threadFindHighlights.ts`). The client command `chat.find` ("Find in
@@ -1567,6 +1568,44 @@ Reference: T3 Code at `eb7b35ac` (D53).
   Jhin's (D209), sends nothing while an approval is open, and its typed text
   answers an open question. So a steer from the queue banner or a command
   reaches the agent after the approval or answer, as in T3.
+- **D802. The thread details panel and its Lineage section**, T3's
+  `ThreadDetailsCard.tsx`, `ThreadDetailsSection.tsx` and
+  `ThreadRelationshipsControl.tsx` (`ThreadRelationshipsPanel`). The chat
+  header gets T3's "Toggle thread details panel" (`SquareMenuIcon`, tooltip
+  "Toggle thread details (⇧⌘B)"; contribution `jhin.chat.thread-details` in
+  `chat.header.actions`), and the client command
+  `chat.thread-details.toggle` (answers `{ toggled }`, false with no thread
+  open) with T3's `mod+shift+b` (`threadPanel.toggle`,
+  `when: "!terminalFocus"`) opens and closes it. The panel is T3's popover
+  presentation of the card (`dropdown-glass`, rounded, scrolling), labelled
+  "Thread details"; T3's inline presentation beside a wide chat is
+  Deferred. Its sections are the new slot `chat.thread.details` (props
+  `ChatThreadDetailsProps`: target, thread, project), each a
+  `ThreadDetailsSection` from `@jhin/ui` (T3's heading row with its
+  actions), so other plugins add theirs (T3's Workspace, Version Control
+  and Automations sections belong to W20, W21 and W26). With no section to
+  show, the card says "No details for this thread".
+  The chat plugin contributes the **Lineage** section
+  (`jhin.chat.lineage`, heading "Lineage"), shown when the thread has a
+  parent or forks on its node: a list "Related threads" with the parent
+  first ("Parent thread", `CornerLeftUpIcon`), then the forks newest first
+  ("Fork", `GitForkIcon`), six at first and "Show N more" twelve at a time,
+  as T3 orders and pages them. A row opens its thread ("Open fork in this
+  chat"; a parent that is gone is disabled, "This related thread is
+  unavailable") and ends with the status of the fork's latest turn, T3's
+  labels: Running, Waiting, Done, Stopped, Failed, Idle with no turn. In a
+  fork the parent row is T3's split control: the parent, "Merge back to
+  <title>" (`thread.merge-back`, enabled as the header's button is since W2: once
+  the fork has a turn that is not running, as the node takes its last ended
+  turn, D226; T3's tooltips show on the unavailable buttons too) and the
+  fork's status. The
+  section shows once the node's threads are known, so a parent is never
+  taken for missing while they load. Its rows are a chunk of their own,
+  loaded with the panel (D440). The header's merge-back button
+  (W2) stays, since the panel is a popover; like the panel's, it is now
+  unavailable ("This related thread is unavailable") once the node's
+  threads are known and the parent is not among them. Subagent and transfer rows are
+  W20's.
 
 ### Composer leftovers (W23, `t3-roadmap.md`)
 
@@ -1698,10 +1737,8 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   text, so a runtime replaying history, as Claude's transcript does for a new
   session, sees only the user's text), a search index on disk (the node reads
   each thread's texts once per run and one thread after another on the first
-  search, D227), searching again while a query stays typed (T3 asks again
-  after 30 s; here the next change of the query or of the nodes does) and
-  T3's Lineage panel listing a
-  thread's forks.
+  search, D227) and searching again while a query stays typed (T3 asks again
+  after 30 s; here the next change of the query or of the nodes does).
 - Sidebar (T3's layout, D70, D75–D79): T3's "Keep threads with a PR"
   (`sidebarAutoSettleKeepPullRequests`) and its rule that an open pull
   request linked to a thread keeps it from settling by inactivity: the
@@ -1724,6 +1761,9 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
 
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
   offers: Jhin has no usage-limit failures to tell apart yet.
+- The thread details panel (D802): T3's inline presentation, a card beside
+  the chat when it is wide enough (here it is always the popover), and the
+  heights T3 measures to drop rows on a short window.
 - Find in a thread (D801): matches inside a finished turn's folded work,
   which T3 finds and opens the fold for; here they are found once the fold
   is open.
