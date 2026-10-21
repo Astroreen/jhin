@@ -204,7 +204,7 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite): Forge {
 
 // --- Azure DevOps (az) --------------------------------------------------------------------------
 
-const AZURE_SIGNED_OUT = /az login|az devops login|TF400813|not authorized|please run/i;
+const AZURE_SIGNED_OUT = /az login|az devops login|TF400813/i;
 const branchOfRef = (ref: string | undefined) => (ref ?? "").replace(/^refs\/heads\//, "");
 
 function azureRequest(raw: Record<string, unknown>): ForgePullRequest | undefined {
@@ -435,7 +435,13 @@ export function bitbucketForge(site: ForgeSite, env: NodeJS.ProcessEnv = process
         `Bitbucket could not be reached: ${(error as Error).message}`,
       );
     }
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 403) {
+      throw new ForgeUnavailable(
+        "failed",
+        "Bitbucket refused this node's token access to the repository (403)",
+      );
+    }
+    if (response.status === 401) {
       throw new ForgeUnavailable(
         "signed-out",
         "Bitbucket refused this node's token: check JHIN_BITBUCKET_ACCESS_TOKEN (or JHIN_BITBUCKET_EMAIL and JHIN_BITBUCKET_API_TOKEN)",

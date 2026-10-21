@@ -711,7 +711,9 @@ with the node's token, and without one).
   tokens kept as the node's secrets instead of its environment, creating a
   GitLab merge request or an Azure DevOps pull request from a fork, checks of
   Forgejo and Bitbucket that fail to read showing as none rather than as an
-  error, and T3's checkout of a pull request into
+  error, Forgejo's search for a branch's pull request among
+  the 50 most recently updated only, and GitLab's matching of a fork's merge
+  request by its owner (a same-named branch of another fork can match), and T3's checkout of a pull request into
   a thread ("Checkout pull request").
 - Watching (D274): review thread comments on lines, required checks as the
   gate, read fingerprints, rate limit pauses, a notification for a wake and

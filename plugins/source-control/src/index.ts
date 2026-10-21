@@ -1082,7 +1082,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   function kindOfHost(host: string): ForgeKind | undefined {
     // As D275 orders them: configured hosts, then GitHub hosts, then what the name says.
     const { forgeHosts, githubHosts } = config();
-    const name = host.toLowerCase();
+    const name = host.toLowerCase().replace(/:\d+$/, "");
     const configured = Object.entries(forgeHosts).find(([key]) => key.toLowerCase() === name)?.[1];
     if (configured !== undefined) return configured;
     if (githubHosts.map((item) => item.toLowerCase()).includes(name)) return "github";
