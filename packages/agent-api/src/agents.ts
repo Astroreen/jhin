@@ -50,16 +50,29 @@ export const AgentId = z
 export const agentAddress = (nodeId: string, agentId: string): string =>
   `jhin://${nodeId}/agents/${agentId}`;
 
+/**
+ * The id part of an agent address: a defined agent's id or a runtime's (which
+ * may have dots, `jhin.agent-claude`), never `.` or `..`.
+ */
+const ADDRESS_AGENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
 /** The node and agent of an address, or `undefined` when it is not an agent's. */
 export function parseAgentAddress(
   address: string,
 ): { readonly nodeId: string; readonly agentId: string } | undefined {
   const match = /^jhin:\/\/([^/]+)\/agents\/([^/?#]+)$/.exec(address);
-  return match === null ? undefined : { nodeId: match[1]!, agentId: match[2]! };
+  if (match === null || !ADDRESS_AGENT.test(match[2]!)) return undefined;
+  return { nodeId: match[1]!, agentId: match[2]! };
 }
 
-/** Where an agent's inherited knowledge lives, relative to its home project (D607). */
-export const agentKnowledgeDir = (agentId: string): string => `.jhin/agents/${agentId}`;
+/**
+ * Where a defined agent's inherited knowledge lives, relative to its home
+ * project (D607). Throws for anything that is not an `AgentId`, so no id
+ * leaves the folder.
+ */
+export function agentKnowledgeDir(agentId: string): string {
+  return `.jhin/agents/${AgentId.parse(agentId)}`;
+}
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
 /** What defines an agent (D604): config, so it is layered and the settings page edits it. */
@@ -138,9 +151,13 @@ export const AGENT_STATUSES = ["idle", "working", "waiting", "stopped", "unavail
 export const AgentStatus = z.enum(AGENT_STATUSES);
 export type AgentStatus = z.output<typeof AgentStatus>;
 
+/** Where a thread's latest turn is (the thread record's `lastTurn.status`, D57). */
+export const TURN_STATUSES = ["running", "waiting", "completed", "interrupted", "failed"] as const;
+export type TurnStatus = (typeof TURN_STATUSES)[number];
+
 /** The status a generation's thread gives its agent, from the thread's latest turn. */
 export function agentStatusOf(
-  lastTurn: { readonly status: string } | undefined,
+  lastTurn: { readonly status: TurnStatus } | undefined,
 ): "idle" | "working" | "waiting" {
   if (lastTurn?.status === "running") return "working";
   if (lastTurn?.status === "waiting") return "waiting";
@@ -235,15 +252,23 @@ export const AgentCommands = {
     output: AgentRecord,
   },
   "agents.update": {
-    input: AgentDefinition.partial().extend({
-      agentId: AgentId,
-      /** Fields to clear, so they take their default again. */
-      unset: z.array(z.enum(AGENT_OPTIONAL_FIELDS)).optional(),
-    }),
+    input: AgentDefinition.partial()
+      .extend({
+        agentId: AgentRef.shape.agentId,
+        /** Fields to clear, so they take their default again; never one the update sets. */
+        unset: z.array(z.enum(AGENT_OPTIONAL_FIELDS)).optional(),
+      })
+      .refine(
+        (input) =>
+          (input.unset ?? []).every(
+            (field) => (input as Record<string, unknown>)[field] === undefined,
+          ),
+        { message: "a field cannot be both set and unset", path: ["unset"] },
+      ),
     output: AgentRecord,
   },
   "agents.remove": {
-    input: z.object({ agentId: AgentId }),
+    input: AgentRef,
     output: z.object({ removed: z.boolean() }),
   },
   "agents.rotate": {

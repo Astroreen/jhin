@@ -159,8 +159,9 @@ types and the schemas of the `agents.*` commands) is
   node among defined agents and runtimes: an id a runtime has is refused
   (`AGENT_ID_TAKEN`), since that runtime is already the implicit agent of
   the id. The address is `jhin://<nodeId>/agents/<id>`; `mesh.resolve`
-  already resolves it to its node, and every `agents.*` command that takes an
-  `agentId` also takes this node's address of it (another node's address is
+  already resolves it to its node, and every `agents.*` command on an existing
+  agent takes its `agentId` or this node's address of it (`agents.define`
+  takes a new `AgentId`) (another node's address is
   `AGENT_ELSEWHERE` with its `nodeId`, for `mesh.call`). `AgentRuntime` gets
   two optional fields: `runtimeId` (the runtime a defined agent's turns run
   on, absent for a runtime) and `role`.
@@ -210,7 +211,7 @@ types and the schemas of the `agents.*` commands) is
   carries definitions and generations, never status, so no second copy of a
   thread's state goes stale.
 - **D609. Commands and events.** `agents.get`, `agents.define`,
-  `agents.update` (with `unset`), `agents.remove`, `agents.rotate`,
+  `agents.update` (with `unset`, never for a field it also sets), `agents.remove`, `agents.rotate`,
   `agents.generations`, `agents.stop`, `agents.resume`, and
   `agents.catalog` (the defined agents and the head of the `agents` stream,
   as `threads.catalog` does for threads). Events of the `agents` stream:
