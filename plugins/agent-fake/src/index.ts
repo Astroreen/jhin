@@ -88,7 +88,7 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
 
   async function* items$(): AsyncGenerator<AgentItem> {
     if (text.startsWith("/fail")) throw new Error("fake agent: asked to fail");
-    if (text.startsWith("/subagent")) {
+    if (/^\/subagent(\s|$)/.test(text)) {
       const task = text.slice("/subagent".length).trim() || "something";
       const subagentId = nextId();
       yield { kind: "subagent.started", subagentId, title: task, prompt: task };
