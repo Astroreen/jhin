@@ -231,10 +231,11 @@ block of 20 after D980 and writes it here.
   that waits for an approval, foreground subagents moved to the background
   before a steer; find in a thread (`mod+f`), "Resume thread" for a stopped
   turn, the Lineage panel of forks. Also clears the stale entries of
-  `t3-parity.md` Deferred. Done (`t3-parity.md` D800–D805): "Resume thread"
+  `t3-parity.md` Deferred. Done (`t3-parity.md` D800–D806): "Resume thread"
   (#121), find in a thread (#124), the thread details panel with its
   Lineage section (#126), Claude's subagents moved to the background before
-  a steer (#129), the restart dispatch and steering a waiting turn (#133);
+  a steer (#129), the restart dispatch and steering a waiting turn (#133), the queue's
+  commands answering whether they did anything (#144);
   what is left is in `t3-parity.md` Deferred.
 - **W20:** subagent rows and child threads hidden from the sidebar, the
   workflow progress tree with its Stop button, a task's completion steered
