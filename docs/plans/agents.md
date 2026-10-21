@@ -172,7 +172,14 @@ types and the schemas of the `agents.*` commands) is
   `project` is a project's id or its path, the scratch project when unset.
   `agents.define`, `agents.update` and `agents.remove` write the layer through
   `host.config.patch` (the node layer unless `define` names `project`),
-  touching only the agent's own key; a file edited by hand counts the same.
+  touching only the agent's own entry in that file. `update` writes the
+  changed keys into the highest file that defines the agent and clears an
+  `unset` field from every file that sets it; `remove` empties the files
+  highest first, so a write that fails leaves a valid definition, and its
+  error names the files already done (`removedFrom`; `updatedIn` for an
+  update, which writes several files the same way). A file edited by hand
+  counts the same; a hand edit that breaks the section keeps the agents as
+  they were until it is fixed.
   The plugin compares each change of the section with what it last recorded
   and appends the events, so the `agents` stream follows the files.
 - **D605. What a generation is told.** `TurnRequest` gets an optional
@@ -188,20 +195,26 @@ types and the schemas of the `agents.*` commands) is
   A2) and titled `<title> #<n>`. Its thread record carries
   **`generationOf: <agentId>`** (`GenerationOf`), set once by `threads.create`
   (an optional input) and never changed. This is the D741 mark, agreed with
-  A8: A8's PR adds the field and the input to the threads plugin, and the
-  filter (`threads.list` and `threads.catalog` leave such threads out unless
-  `includeGenerations: true`; Threads mode's store drops them from the
-  index). The generation's number is not on the thread: the list of
+  A8: A1 owns the field (`GenerationOf` in `agent-api`, the `Thread`
+  schema of the threads plugin, the `threads.create` input and the client's
+  `ThreadRecord`), and A8 owns the filter (`threads.list` and
+  `threads.catalog` leave such threads out unless `includeGenerations: true`,
+  and Threads mode's store drops them from the index). The generation's number is not on the thread: the list of
   generations (number, thread, start, reason) is kept in `storage.kv`
-  (`jhin.agents`, `agent/<id>`), one source for it. `agents.generations`
+  (`jhin.agents`, `agent/<id>`), one source for it. A generation is recorded
+  before its thread is made, under the thread id it chooses (W1's idempotent
+  `threads.create`): a failed creation takes the record back, and a current
+  generation whose thread a crash kept from being made gets it on the next
+  start. `agents.generations`
   reads the threads with `threads.get`, which is unfiltered. Rotating leaves
   the previous generation as it is, readable, not archived and not stopped;
   only new work goes to the current one.
 - **D607. Inherited knowledge** is the folder `.jhin/agents/<id>/` in the
   home project, created when a generation starts. The `*.md` files directly in
   it, by name, go in front of the first message of every generation (as D102
-  hands over a transcript), up to 64 000 characters; files past that are
-  named, not inlined. The transcript of earlier generations is not. The agent
+  hands over a transcript), the whole text with its headings up to 64 000
+  characters; files past that are named, not inlined, and one whose size
+  alone is past it is not read. The transcript of earlier generations is not. The agent
   writes the files with its own tools, as the instructions ask.
 - **D608. Status** is `working` or `waiting` while the current generation's
   latest turn runs or asks the owner, `stopped` (D612), `unavailable` when its
@@ -222,8 +235,9 @@ types and the schemas of the `agents.*` commands) is
 - **D610. `agents.list` stays and grows.** It lists runtimes and defined
   agents, with the additive fields `kind` (`runtime` or `defined`),
   `runtimeId` and `role`. A node's default agent is never a defined agent,
-  unless `jhin.threads.defaultAgent` names one. `agent.turn.started` and the
-  thread's `lastTurn` record `runtimeId` for a defined agent's turn. A runtime
+  unless `jhin.threads.defaultAgent` names one. `agent.turn.started` records
+  `runtimeId` for a defined agent's turn (the thread's `lastTurn` keeps
+  `agentId` only). A runtime
   that tells turns apart by agent (Claude's D102) compares
   `runtimeId ?? agentId`, so a generation's own earlier turns are never
   handed to it as another agent's.
@@ -232,8 +246,9 @@ types and the schemas of the `agents.*` commands) is
   the next generation, since inheritance belongs to the address.
 - **D612. Stop and resume.** `agents.stop` interrupts the current
   generation's running turn and marks the agent stopped (`stoppedAt`):
-  `agents.rotate` and A2's messages are refused with `AGENT_STOPPED` until
-  `agents.resume`. A whole team stops through its agents (A5).
+  `agents.rotate`, A2's messages and any turn of the agent (its runtime
+  refuses to start one, so `threads.send` fails with `AGENT_STOPPED`) are
+  refused until `agents.resume`. A whole team stops through its agents (A5).
 - **D613. Skills are names in A1.** The definition lists them and the
   instructions name them; installing or limiting a runtime's skills per agent
   is deferred.

@@ -226,6 +226,8 @@ export interface ThreadRecord {
   readonly autoSettleDisabledAt?: string;
   /** When the user last sent it a message. */
   readonly lastMessageAt?: string;
+  /** The defined agent this thread is a generation of (D606); Threads mode leaves it out (D741). */
+  readonly generationOf?: string;
 }
 
 /**

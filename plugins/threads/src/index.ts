@@ -12,6 +12,7 @@ import {
   AGENT_REGISTRY_CAPABILITY,
   AGENT_RUNTIME_CAPABILITY,
   APPROVAL_DECISIONS,
+  GenerationOf,
   INTERACTION_MODES,
   RUNTIME_MODES,
   THREADS_STREAM,
@@ -205,6 +206,8 @@ const Thread = z.object({
   lastMessageAt: z.string().optional(),
   /** Set while the thread never settles by itself (T3's per-thread "Auto-settle behavior"). */
   autoSettleDisabledAt: z.string().optional(),
+  /** The defined agent this thread is a generation of; set at creation, never changed (D606, D741). */
+  generationOf: GenerationOf.optional(),
 });
 type Thread = z.infer<typeof Thread>;
 
@@ -520,6 +523,11 @@ const AgentInfo = z.object({
   default: z.boolean(),
   /** Its turns take messages while they run (D204). */
   steering: z.boolean(),
+  /** A runtime, or a defined agent running on one (D601, D610). */
+  kind: z.enum(["runtime", "defined"]),
+  /** The runtime its turns run on: its own id for a runtime. */
+  runtimeId: z.string(),
+  role: z.string().optional(),
 });
 
 class ThreadsError extends Error {
@@ -744,8 +752,10 @@ export default definePlugin({
       const configured = context.config.get<Config>(CONFIG_SECTION).defaultAgent;
       const chosen = all.find((runtime) => runtime.agentId === configured);
       if (chosen !== undefined) return chosen;
-      for (const runtime of all) if ((await statusOf(runtime)).available) return runtime;
-      return all[0];
+      // A defined agent is the default only when the config names it (D610).
+      const plain = all.filter((runtime) => runtime.runtimeId === undefined);
+      for (const runtime of plain) if ((await statusOf(runtime)).available) return runtime;
+      return plain[0];
     };
 
     // --- Records ---------------------------------------------------------------
@@ -1174,6 +1184,8 @@ export default definePlugin({
                 payload: {
                   turnId,
                   agentId: runtime.agentId,
+                  // A defined agent's turns name the runtime they ran on too (D601).
+                  ...(runtime.runtimeId === undefined ? {} : { runtimeId: runtime.runtimeId }),
                   input: input as unknown as Json,
                   ...(settings as unknown as Record<string, Json>),
                   ...(messageId === undefined ? {} : { messageId }),
@@ -1769,7 +1781,8 @@ export default definePlugin({
     // --- Agents ----------------------------------------------------------------
     context.commands.register({
       name: "agents.list",
-      description: "Agent runtimes on this node with their models, modes and whether they can run",
+      description:
+        "Agents on this node: its runtimes and its defined agents, with their models, modes and whether they can run",
       input: z.object({}),
       output: z.array(AgentInfo),
       permissions: ["threads.read"],
@@ -1800,6 +1813,9 @@ export default definePlugin({
               ...(status.version === undefined ? {} : { version: status.version }),
               default: runtime === fallback,
               steering: runtime.steering === true,
+              kind: runtime.runtimeId === undefined ? ("runtime" as const) : ("defined" as const),
+              runtimeId: runtime.runtimeId ?? runtime.agentId,
+              ...(runtime.role === undefined ? {} : { role: runtime.role }),
             };
           }),
         );
@@ -1852,6 +1868,9 @@ export default definePlugin({
         ...AgentSettings,
         parentThreadId: z.string().min(1).optional(),
         relationshipToParent: z.enum(["subagent"]).optional(),
+        generationOf: GenerationOf.optional().meta({
+          description: "The defined agent whose generation the thread is (D606); set once, here",
+        }),
         worktreePath: z.string().min(1).optional().meta({
           description:
             "The thread's own working directory (a git worktree of the project); its turns run there",
