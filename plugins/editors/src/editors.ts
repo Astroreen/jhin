@@ -9,6 +9,8 @@ import type { EditorDefinition } from "@jhin/host-api";
 export interface Launch {
   readonly command: string;
   readonly args: readonly string[];
+  /** The arguments reach the program as written (a `cmd.exe /s /c` line, quoted here). */
+  readonly verbatim?: boolean;
 }
 
 /** A file and, optionally, where in it. */
@@ -266,9 +268,7 @@ export function resolveInProject(projectPath: string, relative: string): string 
   if (!isInside(root, resolved)) return undefined;
   // Links are followed: what opens is where they lead. A file that does not exist (yet) is
   // checked as written.
-  const realRoot = realpathOr(root);
-  const real = realpathOr(resolved);
-  if (real !== resolved && !isInside(realRoot, real)) return undefined;
+  if (!isInside(realpathOr(root), realpathOr(resolved))) return undefined;
   return resolved;
 }
 
@@ -282,11 +282,39 @@ function isInside(root: string, path: string): boolean {
   );
 }
 
-function realpathOr(path: string): string {
+/**
+ * Where a path leads: its deepest existing ancestor resolved, with the rest
+ * appended, so a link that dangles or a file not written yet is judged by
+ * where its existing part leads.
+ */
+function realpathOr(path: string, depth = 0): string {
+  let existing = path;
+  const rest: string[] = [];
+  for (;;) {
+    try {
+      return Path.join(Fs.realpathSync(existing), ...rest);
+    } catch {
+      // A link whose target is missing still leads somewhere: follow it.
+      const link = readlinkOr(existing);
+      if (link !== undefined && depth < 40) {
+        return Path.join(
+          realpathOr(Path.resolve(Path.dirname(existing), link), depth + 1),
+          ...rest,
+        );
+      }
+      const parent = Path.dirname(existing);
+      if (parent === existing) return path;
+      rest.unshift(Path.basename(existing));
+      existing = parent;
+    }
+  }
+}
+
+function readlinkOr(path: string): string | undefined {
   try {
-    return Fs.realpathSync(path);
+    return Fs.readlinkSync(path);
   } catch {
-    return path;
+    return undefined;
   }
 }
 
@@ -294,13 +322,17 @@ function realpathOr(path: string): string {
 const CMD_UNSAFE = /["%&|^<>!\r\n]/;
 
 /**
- * Arguments for a `.cmd`/`.bat` launcher, which Windows starts through
- * `cmd.exe` (Node quotes nothing for it): each one quoted, none holding
- * characters `cmd.exe` would read as commands. None when one is unsafe.
+ * How to start a `.cmd`/`.bat` launcher, which only runs through `cmd.exe`:
+ * `cmd.exe /d /s /c ""<launcher>" "<arg>" …"` with every part quoted and the
+ * line passed as written, so neither a space in `C:\\Program Files` nor a
+ * file's name is read as syntax. None when a part holds a character `cmd.exe`
+ * reads even inside quotes.
  */
-export function cmdArgs(args: readonly string[]): string[] | undefined {
-  if (args.some((arg) => CMD_UNSAFE.test(arg))) return undefined;
-  return args.map((arg) => `"${arg}"`);
+export function cmdLaunch(command: string, args: readonly string[]): Launch | undefined {
+  const parts = [command, ...args];
+  if (parts.some((part) => CMD_UNSAFE.test(part))) return undefined;
+  const line = parts.map((part) => `"${part}"`).join(" ");
+  return { command: "cmd.exe", args: ["/d", "/s", "/c", `"${line}"`], verbatim: true };
 }
 
 /** A launcher Windows only starts through `cmd.exe`. */

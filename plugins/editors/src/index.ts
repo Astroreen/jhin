@@ -8,7 +8,7 @@ import { definePlugin, z } from "@jhin/sdk";
 import * as Path from "node:path";
 
 import {
-  cmdArgs,
+  cmdLaunch,
   editorArgs,
   fileManagerCommand,
   needsCmd,
@@ -43,8 +43,8 @@ export function launchDetached(launch: Launch): Promise<void> {
       detached: true,
       stdio: "ignore",
       env,
-      // `.cmd`/`.bat` launchers only start through cmd.exe; their arguments arrive quoted (cmdArgs).
-      shell: needsCmd(process.platform, launch.command),
+      // A `.cmd`/`.bat` launcher comes as a quoted `cmd.exe` line (cmdLaunch); Node adds no quotes.
+      windowsVerbatimArguments: launch.verbatim === true,
     });
     child.once("error", reject);
     child.once("spawn", () => {
@@ -104,7 +104,12 @@ export function createEditorsPlugin(
         handler: async (input) => {
           // No capability describes projects: they are read with `projects.list`, as
           // source control reads them (D111); without a projects plugin there are none.
-          const listed = await context.commands.execute("projects.list", {}).catch(() => []);
+          const listed = await context.commands
+            .execute("projects.list", {})
+            .catch((error: unknown) => {
+              if ((error as { code?: unknown }).code === "COMMAND_NOT_FOUND") return [];
+              throw error;
+            });
           const projects = Projects.safeParse(listed);
           const project = (projects.success ? projects.data : []).find(
             (candidate) => candidate.id === input.projectId,
@@ -146,14 +151,14 @@ export function createEditorsPlugin(
             }
           }
           if (launch !== undefined && needsCmd(host.platform, launch.command)) {
-            const quoted = cmdArgs(launch.args);
-            if (quoted === undefined) {
+            const throughCmd = cmdLaunch(launch.command, launch.args);
+            if (throughCmd === undefined) {
               throw new EditorError(
                 "PATH_UNSAFE",
                 `${input.path} holds characters a Windows launcher cannot pass safely`,
               );
             }
-            launch = { command: launch.command, args: quoted };
+            launch = throughCmd;
           }
           if (launch === undefined) {
             throw new EditorError(

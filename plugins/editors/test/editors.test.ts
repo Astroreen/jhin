@@ -8,7 +8,7 @@ import { createTestKernel, testManifest } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
-  cmdArgs,
+  cmdLaunch,
   editorArgs,
   fileManagerCommand,
   findEditorCommand,
@@ -96,8 +96,22 @@ describe("finding and starting editors as T3 does", () => {
     expect(fileManagerCommand(fakeHost("darwin", {}, []))).toBe("open");
   });
 
-  it("quotes a Windows launcher's arguments and refuses what cmd.exe would run", () => {
-    expect(cmdArgs(["--goto", "C:\\p\\a b.ts:3"])).toEqual(['"--goto"', '"C:\\p\\a b.ts:3"']);
+  it("starts a Windows launcher as one quoted cmd.exe line, and refuses what cmd.exe would run", () => {
+    expect(
+      cmdLaunch("C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd", [
+        "--goto",
+        "C:\\p\\a b.ts:3",
+      ]),
+    ).toEqual({
+      command: "cmd.exe",
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        '""C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd" "--goto" "C:\\p\\a b.ts:3""',
+      ],
+      verbatim: true,
+    });
     for (const hostile of [
       "a&calc.ts",
       "x&&evil.ts",
@@ -106,8 +120,9 @@ describe("finding and starting editors as T3 does", () => {
       "a|b.ts",
       "a^b.ts",
     ]) {
-      expect(cmdArgs([`C:\\p\\${hostile}`])).toBeUndefined();
+      expect(cmdLaunch("C:\\bin\\code.cmd", [`C:\\p\\${hostile}`])).toBeUndefined();
     }
+    expect(cmdLaunch("C:\\Users\\A&B\\code.cmd", ["a.ts"])).toBeUndefined();
   });
 
   it("keeps paths inside the project's folder, following links", () => {
@@ -120,6 +135,10 @@ describe("finding and starting editors as T3 does", () => {
       Fs.symlinkSync(Path.join(root, "src"), Path.join(root, "alias"));
       expect(resolveInProject(root, "link/secret")).toBeUndefined();
       expect(resolveInProject(root, "alias/a.ts")).toBe(Path.join(root, "alias/a.ts"));
+      // A link that dangles is judged by where it points.
+      Fs.symlinkSync(Path.join(outside, "missing"), Path.join(root, "dangling"));
+      expect(resolveInProject(root, "dangling")).toBeUndefined();
+      expect(resolveInProject(root, "link/new/file.ts")).toBeUndefined();
     } finally {
       Fs.rmSync(root, { recursive: true, force: true });
       Fs.rmSync(outside, { recursive: true, force: true });
@@ -251,7 +270,11 @@ describe("the editors plugin", () => {
       editor: "vscode",
     });
     expect(launches).toEqual([
-      { command: "C:\\bin\\code.cmd", args: ['"--goto"', '"/work/app/src/a b.ts:2"'] },
+      {
+        command: "cmd.exe",
+        args: ["/d", "/s", "/c", '""C:\\bin\\code.cmd" "--goto" "/work/app/src/a b.ts:2""'],
+        verbatim: true,
+      },
     ]);
     await expect(
       kernel.commands.execute("editors.open", {
@@ -260,6 +283,41 @@ describe("the editors plugin", () => {
         editor: "vscode",
       }),
     ).rejects.toMatchObject({ code: "PATH_UNSAFE" });
+    await kernel.stop();
+  });
+
+  it("reports a failing projects plugin as it failed, not as a missing project", async () => {
+    const failing = {
+      manifest: testManifest("test.failing-projects"),
+      definition: definePlugin({
+        activate(context) {
+          context.commands.register({
+            name: "projects.list",
+            description: "Projects",
+            input: z.object({}),
+            output: z.array(z.object({ id: z.string(), path: z.string() })),
+            handler: () => {
+              throw new Error("storage is gone");
+            },
+          });
+        },
+      }),
+    };
+    const kernel = await createTestKernel({
+      plugins: [
+        failing,
+        {
+          manifest,
+          definition: createEditorsPlugin({
+            host: fakeHost("linux", { PATH: "/opt/bin" }, ["/opt/bin/code"]),
+            launch: async () => undefined,
+          }),
+        },
+      ],
+    });
+    await expect(
+      kernel.commands.execute("editors.open", { projectId: "app", path: "a.ts", editor: "vscode" }),
+    ).rejects.toThrow("storage is gone");
     await kernel.stop();
   });
 

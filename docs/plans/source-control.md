@@ -272,9 +272,11 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   `editor`; paths outside the project are refused with `PATH_OUTSIDE_PROJECT`,
   an editor not found with `EDITOR_NOT_FOUND`, a start that fails with
   `LAUNCH_FAILED`). The project is found with `projects.list`, as source
-  control finds it (D111); a symbolic link that leads out of the project is
-  outside it too. On Windows a `.cmd`/`.bat` launcher (VS Code's, Cursor's)
-  starts through `cmd.exe`: its arguments are quoted, and a path holding a
+  control finds it (D111; a failing projects plugin is reported as it failed);
+  a symbolic link that leads out of the project, dangling or not, is outside
+  it too. On Windows a `.cmd`/`.bat` launcher (VS Code's, Cursor's)
+  starts as one `cmd.exe /d /s /c` line with the launcher and every argument
+  quoted (a launcher under `C:\Program Files` included), and a path holding a
   character `cmd.exe` reads as syntax (`"`, `%`, `&`, `|`, `^`, `<`, `>`, `!`)
   is refused with `PATH_UNSAFE`. The file manager opens the file's folder,
   never the file, so no file of a project runs through its default
