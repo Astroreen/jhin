@@ -189,6 +189,55 @@ describe("jhin.agent-codex: a turn", () => {
     });
   });
 
+  it("shows the errors Codex retries until the model answers again", async () => {
+    const fake = fakeCodex({
+      turns: [
+        [
+          {
+            notify: "error",
+            params: {
+              threadId: "$thread",
+              turnId: "$turn",
+              willRetry: true,
+              error: { message: "Reconnecting... 1/5", additionalDetails: "stream closed" },
+            },
+          },
+          {
+            notify: "error",
+            params: {
+              threadId: "$thread",
+              turnId: "$turn",
+              willRetry: true,
+              error: { message: "Reconnecting... 2/5", additionalDetails: "stream closed" },
+            },
+          },
+          {
+            notify: "item/agentMessage/delta",
+            params: { threadId: "$thread", turnId: "$turn", itemId: "m1", delta: "Back." },
+          },
+          message("m1", "Back."),
+          { complete: "completed" },
+        ],
+      ],
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    const events = await completed;
+    expect(payloads(events, "agent.item.completed")).toEqual([
+      expect.objectContaining({
+        itemId: "turn-1:retry",
+        kind: "tool",
+        status: "completed",
+        output:
+          "Attempt 1/5: Reconnecting... 1/5 stream closed\n" +
+          "Attempt 2/5: Reconnecting... 2/5 stream closed\n",
+      }),
+      expect.objectContaining({ itemId: "m1", kind: "message", text: "Back." }),
+    ]);
+  });
+
   it("fails the turn with Codex's error", async () => {
     const fake = fakeCodex({
       turns: [
@@ -222,6 +271,17 @@ describe("jhin.agent-codex: a turn", () => {
     const events = await failed;
     expect(payloads(events, "agent.turn.failed")[0]).toMatchObject({
       error: expect.stringContaining("The model is overloaded."),
+    });
+    // The retry Codex gave up on shows as a failed "Provider retry".
+    expect(payloads(events, "agent.item.started")[0]).toMatchObject({
+      itemId: "turn-1:retry",
+      tool: { name: "retry", title: "Provider retry", detail: "Reconnecting... 1/5" },
+    });
+    expect(payloads(events, "agent.item.completed")[0]).toMatchObject({
+      itemId: "turn-1:retry",
+      status: "failed",
+      output: "Attempt 1/5: Reconnecting... 1/5\n",
+      error: "The model is overloaded.",
     });
     // Codex ended the turn itself: its app-server stays for the next one.
     expect(await client.call("codex.sessions.list", {})).toEqual([

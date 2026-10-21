@@ -633,6 +633,16 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   `codexSkillMentionText`). The mention pattern is shared: `agent-api`
   exports it as `SKILL_MENTION_PATTERN`, which the Claude plugin uses too.
 
+- **D886. Errors Codex retries show while it retries (W24).** An `error`
+  with `willRetry` opens one tool item per turn, "Provider retry" (T3's
+  retry item), whose detail is the first error and whose output gains a
+  line per attempt, `Attempt 2/5: …` when the message names one (T3's
+  `parseCodexRetryProgress`), with Codex's details after the message. New
+  output from the model (a delta or a started item) completes it, as T3's
+  "Provider recovered" does; a turn that fails fails it with the turn's
+  error, and a stop fails it with "Stopped while retrying.". The item is
+  generic: T3's dedicated retry row is not ported.
+
 ### Deferred
 
 - Goals (`/goal`) and `/feedback` in the composer; reverting, forking and
@@ -643,9 +653,8 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   transcripts; background terminals Codex keeps after a turn.
 - MCP elicitations, app access requests and MCP apps; attaching the node's
   own MCP server to Codex (as for Claude, W9).
-- Usage limits and rate-limit windows (`account/rateLimits/*`), T3's
-  usage-limit wording with the reset time, and retry progress items for
-  errors Codex retries.
+- Usage limits and rate-limit windows (`account/rateLimits/*`) and T3's
+  usage-limit wording with the reset time.
 - ChatGPT sign-in from Jhin, several Codex accounts per node and shadow
   homes; signing in is `codex login` on the node.
 - Models a newer Codex would list (T3's `updateRequiredModels`) and custom

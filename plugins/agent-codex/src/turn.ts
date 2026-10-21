@@ -27,6 +27,7 @@ import {
   toolOutcome,
   codexSkillMentionText,
   compileModelOptions,
+  retryProgress,
   isCompact,
   turnStartParams,
   userInputAnswers,
@@ -298,11 +299,47 @@ export function codexTurn(
     }
   };
 
+  // --- Retries -------------------------------------------------------------------------
+  /** The item showing the errors Codex is retrying, while it retries (D886). */
+  let retrying: string | undefined;
+  /** Each retried error, one line per attempt. */
+  let retries = "";
+  const retried = (message: string) => {
+    if (retrying === undefined) {
+      retrying = `${turnId ?? request.turnId}:retry`;
+      out.push({
+        kind: "tool.started",
+        itemId: retrying,
+        tool: { name: "retry", kind: "other", title: "Provider retry", detail: message },
+      });
+    }
+    const progress = retryProgress(message);
+    const line = `${progress === undefined ? "" : `Attempt ${progress}: `}${message}\n`;
+    retries += line;
+    out.push({ kind: "tool.output", itemId: retrying, text: line });
+  };
+  /** New output from the model, or the turn's end: the retry is over. */
+  const settleRetry = (error?: string) => {
+    if (retrying === undefined) return;
+    out.push({
+      kind: "tool.completed",
+      itemId: retrying,
+      output: retries,
+      ...(error === undefined ? { status: "completed" } : { status: "failed", error }),
+    });
+    retrying = undefined;
+    retries = "";
+  };
+
   const notification = (method: string, params: Record<string, unknown>) => {
     // Codex's payloads are read field by field (D310): a delta without the id of its item
     // has nothing to belong to and is dropped.
     const carriesItem = method === "item/started" || method === "item/completed";
     if (method.startsWith("item/") && !carriesItem && typeof params["itemId"] !== "string") return;
+    // Only output of the model ends a retry: a local item may complete while Codex retries.
+    if (method.endsWith("Delta") || method.endsWith("/delta") || method === "item/started") {
+      settleRetry();
+    }
     switch (method) {
       case "item/agentMessage/delta":
         delta("message", String(params["itemId"]), String(params["delta"] ?? ""));
@@ -354,8 +391,15 @@ export function codexTurn(
         return;
       }
       case "error": {
-        if (params["willRetry"] === true) return;
         const error = isRecord(params["error"]) ? params["error"] : {};
+        if (params["willRetry"] === true) {
+          const details =
+            typeof error["additionalDetails"] === "string" ? error["additionalDetails"].trim() : "";
+          const message = typeof error["message"] === "string" ? error["message"] : "";
+          // The message carries the attempt ("Reconnecting... 2/5"), the details the cause.
+          retried(details.length > 0 ? `${message} ${details}`.trim() : message);
+          return;
+        }
         const details =
           typeof error["additionalDetails"] === "string" ? error["additionalDetails"].trim() : "";
         lastError =
@@ -373,11 +417,18 @@ export function codexTurn(
         // Codex ended the turn, whatever its status: the app-server stays for the next.
         // A turn Codex failed stays failed, also when a stop came after; a stop hides
         // only the interruption itself.
-        if (status === "completed" || (interrupted && status !== "failed")) {
+        if (status === "completed") {
+          settleRetry();
           return finish({ ended: true });
         }
-        if (status === "interrupted")
+        if (interrupted && status !== "failed") {
+          settleRetry("Stopped while retrying.");
+          return finish({ ended: true });
+        }
+        if (status === "interrupted") {
+          settleRetry("Stopped while retrying.");
           return finish({ ended: true, error: new Error("Codex stopped the turn.") });
+        }
         failedByCodex = true;
         const message =
           (typeof error?.["message"] === "string" && error["message"].length > 0
@@ -385,6 +436,7 @@ export function codexTurn(
             : undefined) ??
           lastError ??
           "Codex failed the turn.";
+        settleRetry(message);
         return finish({ ended: true, error: new Error(message) });
       }
       default:

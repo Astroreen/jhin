@@ -340,6 +340,15 @@ export function listedSkills(response: unknown, cwd: string): AgentSkill[] {
   });
 }
 
+/** `2/5` of a retried error's message (T3's parseCodexRetryProgress), if it names one. */
+export function retryProgress(message: string): string | undefined {
+  const match = /\b(\d+)\s*\/\s*(\d+)\b/u.exec(message);
+  if (match === null) return undefined;
+  const attempt = Number.parseInt(match[1]!, 10);
+  const maxAttempts = Number.parseInt(match[2]!, 10);
+  return attempt < 1 || maxAttempts < 1 ? undefined : `${attempt}/${maxAttempts}`;
+}
+
 /** T3's COMPACT_SLASH_COMMAND, which Codex runs as `thread/compact/start` (D884). */
 export const COMPACT_COMMAND: AgentSlashCommand = {
   name: "compact",
