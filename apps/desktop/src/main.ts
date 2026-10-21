@@ -270,9 +270,14 @@ async function main(): Promise<void> {
   // T3's pasteAsText: the page armed its composer first, then asks for the paste (D946).
   handle(DESKTOP_CHANNELS.pasteAsText, none, () => {
     if (mainWindow === undefined || mainWindow.isDestroyed()) return;
-    // The window's own page when no window has focus (a window system without one).
-    const target = webContents.getFocusedWebContents() ?? mainWindow.webContents;
-    if (BrowserWindow.fromWebContents(target) === mainWindow) target.paste();
+    // The focused page of the window, else its own page (no focus, or the
+    // developer tools have it); `handle` answers the main window's page only.
+    const focused = webContents.getFocusedWebContents();
+    const target =
+      focused !== null && BrowserWindow.fromWebContents(focused) === mainWindow
+        ? focused
+        : mainWindow.webContents;
+    target.paste();
   });
   on(DESKTOP_CHANNELS.setMenuContributions, z.array(DesktopMenuContribution).max(200), (items) => {
     const previous = menuContributions;

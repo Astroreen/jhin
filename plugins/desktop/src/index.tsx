@@ -225,7 +225,6 @@ export default definePlugin({
     };
     context.services.provide(DESKTOP_SHELL_CAPABILITY, shell);
 
-    // Every update action is a command (D520), so the palette, keybindings and other plugins reach it.
     // T3's Paste as Text from the Edit menu (D946): the composer is armed first,
     // so the paste that follows stays inline however large it is.
     context.commands.register({
@@ -236,6 +235,7 @@ export default definePlugin({
       input: z.object({}),
       output: z.object({}),
       handler: async () => {
+        // A public command (rule 8), present when the chat plugin runs.
         if (context.commands.list().some((info) => info.name === "chat.composer.paste-as-text")) {
           await context.commands.execute("chat.composer.paste-as-text", {});
         }
@@ -243,6 +243,7 @@ export default definePlugin({
         return {};
       },
     });
+    // Every update action is a command (D520), so the palette, keybindings and other plugins reach it.
     context.commands.register({
       name: "desktop.update.state",
       description: "The desktop app's update state",
