@@ -33,6 +33,7 @@
         "@jhin/plugin-agent-codex",
         "@jhin/plugin-agent-fake",
         "@jhin/plugin-orchestration",
+        "@jhin/plugin-agent-opencode",
         "@jhin/plugin-mcp-server",
         "@jhin/plugin-web-ui",
         "@jhin/plugin-mesh",

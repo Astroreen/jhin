@@ -36,7 +36,10 @@ the agent credentials of the MCP server plugin (`plugins/mcp-server`), the
 Codex agent runtime (`plugins/agent-codex`: the app-server protocol and
 handshake, runtime and interaction modes, approval, question, plan, tool and
 usage mapping, the status probe and its messages, the model names and
-preferred defaults), the terminal plugin (`plugins/terminal`:
+preferred defaults), the OpenCode agent runtime (`plugins/agent-opencode`:
+starting and reaching an OpenCode 2 server, its version probe, session
+rules, permission, form and tool mapping, usage and interrupts), the
+terminal plugin (`plugins/terminal`:
 loading node-pty, the shell's environment, sizes, scrollback and its
 history files, the limit on exited sessions and finding the program a
 terminal runs), orchestration (`plugins/orchestration`: the
