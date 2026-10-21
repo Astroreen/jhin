@@ -16,13 +16,10 @@ import type { TimestampFormat } from "../../lib/format.ts";
 import type { DiffSelections } from "./diff/scopes.ts";
 import type { SourceControlStore, SourceControlView } from "./store.ts";
 
-/** The route's panel while the diff panel is open. */
-export const DIFF_PANEL = "diff";
-
-/** What the source control components use, handed over by the plugin. */
 /** The route's panel name of the diff panel. */
 export const DIFF_PANEL = "diff";
 
+/** What the source control components use, handed over by the plugin. */
 export interface SourceControlServices {
   readonly context: PluginContext;
   readonly store: SourceControlStore;
