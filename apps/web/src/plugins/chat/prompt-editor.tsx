@@ -1484,7 +1484,8 @@ export function PromptEditor(props: PromptEditorProps) {
   const snapshot = useRef({ value, cursor: value.length });
   const applying = useRef(false);
   const editorRef = useRef<Editor | null>(null);
-  const mounted = useRef(false);
+  /** The editor whose view is mounted: only it may be touched (another may still be mounting). */
+  const mountedEditor = useRef<Editor | null>(null);
   const [empty, setEmpty] = useState(value.length === 0);
 
   const report = (editor: Editor) => {
@@ -1621,7 +1622,7 @@ export function PromptEditor(props: PromptEditorProps) {
       },
       onMount: ({ editor: created }) => {
         editorRef.current = created;
-        mounted.current = true;
+        mountedEditor.current = created;
         // A restored draft goes on where it ends.
         applying.current = true;
         try {
@@ -1631,6 +1632,10 @@ export function PromptEditor(props: PromptEditorProps) {
         } finally {
           applying.current = false;
         }
+      },
+      // A destroyed editor has no view: nothing may touch it until the next one mounts.
+      onDestroy: () => {
+        mountedEditor.current = null;
       },
       onUpdate: ({ editor: updated }) => report(updated),
       onSelectionUpdate: ({ editor: updated }) => report(updated),
@@ -1645,13 +1650,13 @@ export function PromptEditor(props: PromptEditorProps) {
   }, [editor]);
 
   useLayoutEffect(() => {
-    if (!editor || !mounted.current) return;
+    if (!editor || mountedEditor.current !== editor) return;
     editor.view.setProps({ attributes });
     if (editor.isEditable !== editable) editor.setEditable(editable, false);
   });
 
   useLayoutEffect(() => {
-    if (!editor || value === snapshot.current.value) return;
+    if (!editor || mountedEditor.current !== editor || value === snapshot.current.value) return;
     apply(editor, value, value.length, false);
   }, [editor, value]);
 
@@ -1659,18 +1664,18 @@ export function PromptEditor(props: PromptEditorProps) {
     handleRef,
     (): PromptEditorHandle => ({
       focus: () => {
-        if (editor) editor.view.focus();
+        if (editor && mountedEditor.current === editor) editor.view.focus();
       },
       cursor: () => (editor ? caretInMarkdown(editor.state) : snapshot.current.cursor),
       replaceRange: (start, end, text) => {
-        if (!editor) return;
+        if (!editor || mountedEditor.current !== editor) return;
         const current = serializeEditorDoc(editor.state.doc).value;
         const from = Math.max(0, Math.min(current.length, start));
         const to = Math.max(from, Math.min(current.length, end));
         apply(editor, current.slice(0, from) + text + current.slice(to), from + text.length, true);
       },
       setValue: (next) => {
-        if (editor) apply(editor, next, next.length, true);
+        if (editor && mountedEditor.current === editor) apply(editor, next, next.length, true);
       },
       caretOnFirstLine: () => caretOnVisualEdge(editor, "start"),
       caretOnLastLine: () => caretOnVisualEdge(editor, "end"),

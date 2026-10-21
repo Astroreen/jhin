@@ -134,8 +134,9 @@ test("D472–D474: the selection menu adds to the chat, and the terminals move t
   await info.attach("terminal-context-menu", { path: menuShot, contentType: "image/png" });
   await page.getByRole("menuitem", { name: "Add to chat" }).click();
   const message = page.getByRole("textbox", { name: "Message" });
-  await expect(message).toHaveValue(/@terminal-1:1-\d+/);
-  await expect(message).toHaveValue(/<terminal_context>[\s\S]*menu-42[\s\S]*<\/terminal_context>/);
+  // The reference shows as the editor's mention chip; it is sent as its text.
+  await expect(message.locator('[data-mention^="terminal-1:1-"]')).toHaveText(/terminal-1:1-\d+/);
+  await expect(message).toHaveText(/<terminal_context>[\s\S]*menu-42[\s\S]*<\/terminal_context>/);
 
   // The header's toggle shows the thread's terminals right of the chat.
   await page.getByRole("button", { name: "Toggle terminal panel" }).click();
