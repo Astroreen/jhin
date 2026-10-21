@@ -394,3 +394,12 @@ What `docs/README.md` does by hand, as a plugin for any project:
 ## Landing
 
 Each workstream lists its PRs here as they merge.
+
+- A1 #90: the contract in `@jhin/agent-api` (`agents.ts`: definitions,
+  records, generations, `GenerationOf`, events, the `agents.*` schemas;
+  `agent.runtime@1.3` adds `runtimeId`, `role` and `TurnRequest.instructions`).
+  D602–D614 recorded.
+- A1 #93: the `jhin.agents` plugin (D602–D613); `generationOf` on threads and
+  `threads.create` (D606); `agents.list` grows `kind`, `runtimeId`, `role`,
+  and turns record `runtimeId` (D610). The Civilization-mode UI (D614) waits
+  for A8's shell.
