@@ -188,8 +188,12 @@ export const sourceControlPlugin = builtin(
             ...(input.remote === undefined ? {} : { remote: input.remote }),
           };
           const catalog = threads.catalog(target);
-          const projectId = catalog.threads.find((thread) => thread.id === threadId)?.projectId;
-          const project = catalog.projects.find((item) => item.id === projectId);
+          const thread = catalog.threads.find((item) => item.id === threadId);
+          const project = catalog.projects.find((item) => item.id === thread?.projectId);
+          // `editors.open` opens a project folder's files only (terminal.md#deferred).
+          if (thread?.worktreePath !== undefined && pathInside(thread.worktreePath, path)) {
+            throw new Error(`${path} is in the thread's worktree, whose files do not open yet`);
+          }
           const relative = project === undefined ? undefined : pathInside(project.path, path);
           if (project === undefined || relative === undefined) {
             throw new Error(`${path} is not a file of the thread's project`);

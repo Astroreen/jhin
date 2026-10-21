@@ -229,7 +229,7 @@ export interface FilePathPosition {
 
 const POSITION_SUFFIX_CAPTURE_PATTERN = /:(\d+)(?::(\d+))?$/;
 
-export function splitFilePathPosition(path: string): FilePathPosition {
+function splitFilePathPosition(path: string): FilePathPosition {
   const match = path.match(POSITION_SUFFIX_CAPTURE_PATTERN);
   if (!match?.[1]) return { path };
   const line = Number.parseInt(match[1], 10);

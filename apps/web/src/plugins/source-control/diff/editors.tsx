@@ -61,7 +61,8 @@ export function pathInside(root: string, path: string): string | undefined {
   const windows = /^[A-Za-z]:[\\/]/.test(root) || root.startsWith("\\\\");
   const segments = (value: string) => {
     const out: string[] = [];
-    for (const part of value.replaceAll("\\", "/").split("/")) {
+    // A backslash separates on Windows only: on POSIX it may be part of a name.
+    for (const part of (windows ? value.replaceAll("\\", "/") : value).split("/")) {
       if (part === "" || part === ".") continue;
       if (part === "..") out.pop();
       else out.push(part);
