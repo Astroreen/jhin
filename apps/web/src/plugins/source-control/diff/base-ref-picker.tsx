@@ -36,12 +36,20 @@ export function BaseRefPicker(props: {
   const { headRef, baseRef, selected } = props;
   const [query, setQuery] = useState("");
   const [branches, setBranches] = useState<readonly Branch[] | undefined>();
+  const [failed, setFailed] = useState<string | undefined>();
   const load = () => {
     void props.threads
       .call<{ branches: Branch[] }>(props.target, "git.branches", { projectId: props.projectId })
       .then(
-        (answer) => setBranches(answer.branches),
-        () => setBranches([]),
+        (answer) => {
+          setFailed(undefined);
+          setBranches(answer.branches);
+        },
+        // Said as it is, not as "No matching refs.": the next opening reads them again.
+        (error: unknown) => {
+          setFailed((error as Error).message);
+          setBranches([]);
+        },
       );
   };
   const refs = branches ?? [];
@@ -115,6 +123,11 @@ export function BaseRefPicker(props: {
               <span className="text-right">Remote</span>
             </div>
           </div>
+          {failed === undefined ? null : (
+            <p className="px-3 py-2 text-2xs text-error/80" role="alert">
+              {`Could not read refs: ${failed}`}
+            </p>
+          )}
           <ComboboxEmpty>No matching refs.</ComboboxEmpty>
           <ComboboxList className="max-h-64 min-w-0 overflow-x-hidden">
             <ComboboxItem

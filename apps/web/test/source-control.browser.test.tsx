@@ -431,6 +431,55 @@ describe("the diff panel", () => {
     mounted.unmount();
   });
 
+  it("says why the base ref picker has no refs when git.branches fails", async () => {
+    const { value } = services(viewWith(status()), {
+      "git.diff": diff,
+      "git.branches": () => {
+        throw new Error("git is busy");
+      },
+    });
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    await userEvent.click(
+      page.getByRole("combobox", { name: "Change comparison target. Currently main" }),
+    );
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent("Could not read refs: git is busy");
+  });
+
+  it("folds a renamed file from its header", async () => {
+    const renamed = [
+      "diff --git a/src/old.ts b/src/new.ts",
+      "similarity index 80%",
+      "rename from src/old.ts",
+      "rename to src/new.ts",
+      "--- a/src/old.ts",
+      "+++ b/src/new.ts",
+      "@@ -1,2 +1,2 @@",
+      " const one = 1;",
+      "-const two = 2;",
+      "+const two = 3;",
+      "",
+    ].join("\n");
+    const { value } = services(viewWith(status()), {
+      "git.diff": { ...diff, patch: renamed },
+    });
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    await expect.element(page.getByRole("button", { name: "Expand src/new.ts" })).toBeVisible();
+    // Neither the chevron nor the name: the counts in the header (Pierre's shadow DOM).
+    const header = [...document.querySelectorAll("diffs-container")]
+      .flatMap((host) => [...(host.shadowRoot?.querySelectorAll("[data-diffs-header]") ?? [])])
+      .find(
+        (element) => element.querySelector("[data-title]")?.textContent?.trim() === "src/new.ts",
+      );
+    const metadata = header?.querySelector("[data-metadata]") as HTMLElement | null | undefined;
+    expect(metadata).toBeTruthy();
+    act(() => metadata!.click());
+    await expect.element(page.getByRole("button", { name: "Collapse src/new.ts" })).toBeVisible();
+  });
+
   it("compares with the base chosen in T3's picker", async () => {
     const branches: Branch[] = [
       { name: "feature/toolbar", current: true, isDefault: false, isRemote: false, upstream: null },
