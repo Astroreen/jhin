@@ -68,14 +68,16 @@ export function registerThreadDetails(
   }
 
   function ThreadDetailsToggle({ target, thread, project }: ChatHeaderActionProps) {
-    const [open, setOpen] = useState(false);
-    const shortcut = useShortcutLabels(keybindings)("chat.thread-details.toggle");
     const threadId = thread?.id;
-    // Another thread starts with the panel closed.
-    useEffect(() => setOpen(false), [threadId]);
+    // The thread the panel is open for: another thread starts with it closed,
+    // in the same render.
+    const [openFor, setOpenFor] = useState<string | undefined>();
+    const open = openFor !== undefined && openFor === threadId;
+    const setOpen = (next: boolean) => setOpenFor(next ? threadId : undefined);
+    const shortcut = useShortcutLabels(keybindings)("chat.thread-details.toggle");
     useEffect(() => {
       if (threadId === undefined) return;
-      const own = () => setOpen((current) => !current);
+      const own = () => setOpenFor((current) => (current === threadId ? undefined : threadId));
       toggles.push(own);
       return () => {
         toggles.splice(toggles.indexOf(own), 1);
@@ -150,7 +152,8 @@ export function registerThreadDetails(
       ),
     // A failed load shows nothing, as a thread without lineage does; opening the
     // panel again loads it again.
-    { loading: () => null, failed: () => null },
+    // While it loads, a row's room: the panel does not say it has nothing meanwhile.
+    { loading: () => <div aria-busy="true" className="h-12" />, failed: () => null },
   );
   context.subscriptions.add(
     slots.contribute<ChatThreadDetailsProps>("chat.thread.details", {

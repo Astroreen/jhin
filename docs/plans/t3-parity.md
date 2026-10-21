@@ -1597,6 +1597,9 @@ Reference: T3 Code at `eb7b35ac` (D53).
   <title>" (`thread.merge-back`, enabled once the fork's latest turn ended,
   however it ended, as the node takes its last ended turn, D226; T3's
   tooltips show on the disabled buttons too) and the fork's status. The
+  header's merge-back button (W2) shares that rule (`forkRan`), so it is now
+  disabled while the fork's turn waits for an answer too, as that turn has
+  not ended. The
   section shows once the node's threads are known, so a parent is never
   taken for missing while they load. Its rows are a chunk of their own,
   loaded with the panel (D440). The header's merge-back button
