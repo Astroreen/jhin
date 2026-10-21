@@ -286,7 +286,7 @@ export function DelegationLineage({ target, thread, services, view }: Props) {
   const tasks = [...view.tasks.values()]
     .filter((task) => task.workflowId === undefined)
     .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));
-  // The subagents the agent ran itself (D880): threads, not tasks.
+  // The subagents the agent ran itself (D879): threads, not tasks.
   const providerSubagents = (catalog?.threads ?? [])
     .filter((item) => item.parentThreadId === thread.id && item.subagentOrigin === "provider")
     .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));

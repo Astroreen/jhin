@@ -76,7 +76,6 @@ function Elapsed(props: { status: RowStatus; startedAt?: string; endedAt?: strin
 const ROW_CLASS =
   "group/subagent flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left";
 
-/** One delegated agent: T3's subagent row, opening its thread. */
 /** What a row tells of an agent's run besides its status: its times and its result. */
 export interface RowRun {
   readonly startedAt?: string;
@@ -94,6 +93,7 @@ export const runOfTask = (task: TaskRecord | undefined): RowRun | undefined =>
         ...(task.summary === undefined ? {} : { summary: task.summary }),
       };
 
+/** One delegated agent: T3's subagent row, opening its thread. */
 export function SubagentRow(props: {
   readonly title: string;
   readonly status: RowStatus;

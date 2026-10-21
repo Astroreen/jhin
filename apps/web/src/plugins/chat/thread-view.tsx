@@ -33,7 +33,7 @@ import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
 import { proposedPlanTitle } from "../../lib/proposed-plan.ts";
 import { actionablePlan, openRequests } from "../../lib/timeline.ts";
-import { lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import {
   Composer,
   type ComposerHandleApi,
@@ -51,7 +51,11 @@ import { AttachmentLoaderContext, TimelineView } from "./timeline.tsx";
 /** T3's ProviderSubagentBar, a chunk of its own: few threads show it (D440, D880). */
 const SubagentBar = lazyChunk(
   () => import("./subagent-bar.tsx").then((module) => module.SubagentBar),
-  { loading: () => null, failed: () => null },
+  {
+    loading: () => null,
+    // Never a thread without a way on: the bar can be loaded again.
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load this bar.</ChunkFailed>,
+  },
 );
 /** T3's find bar, a chunk of its own (D440): the find itself stays with the view. */
 const ThreadFindBar = lazyChunk(
