@@ -114,6 +114,9 @@ test("holds the queue after a stop until it is resumed, and steers with the othe
   await message.press("Alt+ArrowUp");
   await expect(message).toHaveText("half typed");
   await message.fill("");
+  // The cleared composer is rendered (the caret at its start) before Alt+↑.
+  await expect(message).toHaveText("");
+  await expect(page.getByRole("button", { name: "Stop generation" })).toBeVisible();
   await message.press("Alt+ArrowUp");
   await expect(message).toHaveText("shortcut follow-up");
   await rows(page).getByRole("button", { name: "Cancel editing queued message" }).click();
