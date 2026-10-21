@@ -2,8 +2,8 @@ import type { NodeTarget, Route } from "@jhin/client-api";
 import type { MissionStatus, SliceStatus, SliceThread } from "@jhin/missions-api";
 
 /** The route panels the mission view owns in `civilization.views` (D653). */
-export const MISSION_PANEL = "mission";
-export const SLICE_PANEL = "slice";
+const MISSION_PANEL = "mission";
+const SLICE_PANEL = "slice";
 
 /** Where the mission view is: a mission, a slice, or a thread working on a slice. */
 export type MissionPlace =

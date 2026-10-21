@@ -31,7 +31,7 @@ const UNAVAILABLE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSIO
 const MAX_RETRY_MS = 30_000;
 
 /** The fold of a `missions.catalog` answer: the same state its events would have built. */
-export function stateOf(catalog: {
+function stateOf(catalog: {
   readonly intents: readonly ProjectIntent[];
   readonly missions: readonly Mission[];
   readonly slices: readonly Slice[];
