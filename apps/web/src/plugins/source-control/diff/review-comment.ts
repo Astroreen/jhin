@@ -344,15 +344,22 @@ export function serializeReviewComment(comment: ReviewComment): string {
   return `<review_comment ${attributes}>\n${body}\n</review_comment>`;
 }
 
-/** Where a draft opens: under the selection's last line, also for a range dragged upwards. */
-export function annotationAnchor(range: SelectedLineRange): {
-  side: AnnotationSide;
-  lineNumber: number;
-} {
-  const backwards = range.start > range.end;
-  const side = backwards ? range.side : (range.endSide ?? range.side);
+/**
+ * Where a draft opens: under the selection's last row, also for a range
+ * dragged upwards or across sides. Rows are compared, not line numbers: the
+ * two ends' numbers may belong to the old and the new file.
+ */
+export function annotationAnchor(
+  fileDiff: FileDiffMetadata,
+  range: SelectedLineRange,
+): { side: AnnotationSide; lineNumber: number } {
+  const endSide = range.endSide ?? range.side;
+  const startRow = findDiffReviewLineIndex(fileDiff, range.start, range.side, !fileDiff.isPartial);
+  const endRow = findDiffReviewLineIndex(fileDiff, range.end, endSide, !fileDiff.isPartial);
+  const startIsLast = startRow > endRow;
+  const side = startIsLast ? range.side : endSide;
   return {
     side: side === "deletions" ? "deletions" : "additions",
-    lineNumber: backwards ? range.start : range.end,
+    lineNumber: startIsLast ? range.start : range.end,
   };
 }

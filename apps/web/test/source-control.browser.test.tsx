@@ -813,6 +813,106 @@ describe("the diff panel", () => {
     expect(visiblePlusButtons()).toHaveLength(1);
   });
 
+  it("sends with ⌘/Ctrl Enter, cancels with Escape, and says why a comment did not go", async () => {
+    const answers: (() => unknown)[] = [
+      () => ({ inserted: false }),
+      () => {
+        throw new Error("composer is busy");
+      },
+    ];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": () => answers.shift()!(),
+      },
+    );
+    const { value, shown } = services(viewWith(status()), { "git.diff": diff }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    const open = async () => {
+      await expect.element(line).toBeVisible();
+      await userEvent.hover(line);
+      await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+      return page.getByRole("textbox", { name: "Comment on lines +2" });
+    };
+
+    // Escape cancels.
+    let box = await open();
+    await userEvent.fill(box, "never mind");
+    await userEvent.keyboard("{Escape}");
+    await expect.element(box).not.toBeInTheDocument();
+
+    // ⌘/Ctrl Enter sends; no message box on screen.
+    box = await open();
+    await userEvent.fill(box, "first");
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(shown[0]).toEqual({ type: "info", title: "No message box to add the comment to" });
+
+    // The composer refuses.
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(shown[1]).toEqual({
+      type: "error",
+      title: "Could not add the comment to the chat",
+      description: "composer is busy",
+    });
+  });
+
+  it("says so when the lines commented on left the diff after a refresh", async () => {
+    let answer: Diff = diff;
+    const inserted: string[] = [];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": (input) => {
+          inserted.push((input as { text: string }).text);
+          return { inserted: true };
+        },
+      },
+    );
+    const { value, shown } = services(viewWith(status()), { "git.diff": () => answer }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await userEvent.fill(box, "Why three?");
+    // The file is still changed, but only its first line now.
+    answer = {
+      ...diff,
+      patch: [
+        "diff --git a/src/app.ts b/src/app.ts",
+        "--- a/src/app.ts",
+        "+++ b/src/app.ts",
+        "@@ -1 +1 @@",
+        "-const one = 1;",
+        "+const one = 0;",
+        "",
+      ].join("\n"),
+    };
+    act(() => window.dispatchEvent(new Event("focus")));
+    await expect.element(page.getByText("const one = 0;")).toBeVisible();
+    // The draft closes and says why, rather than sending lines that are no longer there.
+    await expect.element(box).not.toBeInTheDocument();
+    expect(inserted).toEqual([]);
+    expect(shown).toEqual([
+      {
+        type: "info",
+        title: "These lines are no longer in the diff",
+        description: "Comment on them again where they are now.",
+      },
+    ]);
+    // And a new comment can start.
+    await userEvent.hover(page.getByText("const one = 0;"));
+    expect(visiblePlusButtons()).toHaveLength(1);
+  });
+
   it("holds a comment on its way: no Cancel, and a scope change hears nothing of it", async () => {
     let answer!: (value: { inserted: boolean }) => void;
     const inserted: string[] = [];

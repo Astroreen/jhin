@@ -565,7 +565,7 @@ export function createDiffPanel(services: SourceControlServices) {
             ? [
                 {
                   // Under the selection's last line, whichever way it was dragged.
-                  ...annotationAnchor(draft.range),
+                  ...annotationAnchor(fileDiff, draft.range),
                   metadata: { rangeLabel: draft.rangeLabel },
                 },
               ]
@@ -602,9 +602,34 @@ export function createDiffPanel(services: SourceControlServices) {
     );
     const draftStale =
       draft !== null && (draft.what !== what || !diffFileKeys.includes(draft.fileKey));
+    // A refresh that keeps the file but drops the lines: the draft has nowhere to show.
+    const draftFile =
+      draft === null || draftStale
+        ? undefined
+        : renderableFileEntries.find((file) => file.fileKey === draft.fileKey)?.fileDiff;
+    const draftLost =
+      draft !== null &&
+      draftFile !== undefined &&
+      buildDiffReviewComment({
+        sectionId: draft.sectionId,
+        sectionTitle: draft.sectionTitle,
+        filePath: draft.filePath,
+        fileDiff: draftFile,
+        range: draft.range,
+        text: "",
+      }) === null;
     useEffect(() => {
       if (draftStale) closeDraft();
     }, [draftStale]);
+    useEffect(() => {
+      if (!draftLost) return;
+      services.toasts?.show({
+        type: "info",
+        title: "These lines are no longer in the diff",
+        description: "Comment on them again where they are now.",
+      });
+      closeDraft();
+    }, [draftLost]);
     /** Opens a comment under the lines chosen in the gutter. */
     const beginComment = (
       range: SelectedLineRange | null,
@@ -642,11 +667,15 @@ export function createDiffPanel(services: SourceControlServices) {
         closeDraft();
         return;
       }
+      // The file's diff as it is now: a refresh may have changed its lines since the draft opened.
+      const fileDiff =
+        renderableFileEntries.find((file) => file.fileKey === draft.fileKey)?.fileDiff ??
+        draft.fileDiff;
       const comment = buildDiffReviewComment({
         sectionId: draft.sectionId,
         sectionTitle: draft.sectionTitle,
         filePath: draft.filePath,
-        fileDiff: draft.fileDiff,
+        fileDiff,
         range: draft.range,
         text,
       });

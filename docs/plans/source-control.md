@@ -262,7 +262,10 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   `composerContextLegacySend.ts`). The section is the scope (`Changes`,
   `Turn 2`, …). Without that command (no chat plugin) lines offer no "+";
   with no message box on screen the panel says "No message box to add the
-  comment to".
+  comment to". A refresh that drops the lines closes the draft with "These
+  lines are no longer in the diff". The panel depends on the command's name,
+  since W15 offers no capability for the composer; when a `chat.composer@1`
+  capability comes, the panel moves to it.
 - **D286. Opening a file in an editor**: the server plugin `jhin.editors`
   (`plugins/editors`, in the distribution) provides `host.editors@1`, whose
   contract (T3's `EDITORS` list, `EditorInfo`, the error codes) is in

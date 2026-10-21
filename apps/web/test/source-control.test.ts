@@ -747,16 +747,44 @@ describe("a comment on lines, as T3 sends it", () => {
     expect(commentOn(fileDiff, { start: 5, side: "additions", end: 5 })).toBeNull();
   });
 
-  it("opens a draft under the selection's last line, however it was dragged", () => {
-    expect(annotationAnchor({ start: 2, side: "additions", end: 5, endSide: "deletions" })).toEqual(
-      { side: "deletions", lineNumber: 5 },
+  it("opens a draft under the selection's last row, however and across whatever sides it was dragged", () => {
+    const parsed = getRenderablePatch(
+      [
+        "diff --git a/d.ts b/d.ts",
+        "--- a/d.ts",
+        "+++ b/d.ts",
+        "@@ -1,5 +1,3 @@",
+        " a",
+        " b",
+        "-c",
+        "-d",
+        "-e",
+        "+C",
+        "",
+      ].join("\n"),
+      "test",
     );
-    expect(annotationAnchor({ start: 5, side: "additions", end: 2, endSide: "deletions" })).toEqual(
-      { side: "additions", lineNumber: 5 },
-    );
-    expect(annotationAnchor({ start: 3, side: "deletions", end: 3 })).toEqual({
-      side: "deletions",
+    const fileDiff = parsed?.kind === "files" ? parsed.files[0]! : undefined;
+    // Rows: a, b, -c (old 3), -d (old 4), -e (old 5), +C (new 3).
+    const anchor = (range: SelectedLineRange) => annotationAnchor(fileDiff!, range);
+    // Down from old line 5 to new line 3: the numbers fall, the rows rise; the last row is +C.
+    expect(anchor({ start: 5, side: "deletions", end: 3, endSide: "additions" })).toEqual({
+      side: "additions",
       lineNumber: 3,
+    });
+    // Up from +C to -c: the last row is where the drag started.
+    expect(anchor({ start: 3, side: "additions", end: 3, endSide: "deletions" })).toEqual({
+      side: "additions",
+      lineNumber: 3,
+    });
+    // Up on one side.
+    expect(anchor({ start: 5, side: "deletions", end: 3, endSide: "deletions" })).toEqual({
+      side: "deletions",
+      lineNumber: 5,
+    });
+    expect(anchor({ start: 2, side: "additions", end: 2 })).toEqual({
+      side: "additions",
+      lineNumber: 2,
     });
   });
 
