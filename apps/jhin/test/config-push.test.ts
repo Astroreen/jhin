@@ -39,3 +39,33 @@ describe("pushing a node's config changes to its clients (D483)", () => {
     });
   });
 });
+
+describe("device settings kept for the owner's devices (D487)", () => {
+  it("keeps the later change of a section and tells the node's clients", async () => {
+    const node = await serve("d", makeHome("d"), running);
+    expect(await node.client.call("host.device-settings.get", {})).toEqual({ sections: {} });
+    const changed = untilStream(node, "host/device-settings", (events) => events.length > 0);
+    expect(
+      await node.client.call("host.device-settings.patch", {
+        section: "jhin.chat",
+        values: { sendShortcut: "mod-enter" },
+        at: 10,
+      }),
+    ).toEqual({ applied: true });
+    expect((await changed)[0]).toMatchObject({
+      type: "host.device-settings.changed",
+      payload: { section: "jhin.chat", values: { sendShortcut: "mod-enter" }, at: 10 },
+    });
+    // Older than what is kept: ignored.
+    expect(
+      await node.client.call("host.device-settings.patch", {
+        section: "jhin.chat",
+        values: {},
+        at: 5,
+      }),
+    ).toEqual({ applied: false });
+    expect(await node.client.call("host.device-settings.get", {})).toEqual({
+      sections: { "jhin.chat": { values: { sendShortcut: "mod-enter" }, at: 10 } },
+    });
+  });
+});

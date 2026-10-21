@@ -12,6 +12,8 @@ import {
   DiffSettings,
   useSection,
   type Appearance,
+  SYNC_SECTION,
+  SyncSettings,
 } from "../../lib/settings.ts";
 import { SettingResetButton, SettingsRow, SettingsSection } from "../../lib/settings-layout.tsx";
 import { useSettingsServices } from "./index.tsx";
@@ -169,7 +171,40 @@ export function GeneralSection() {
           title="Unpin"
         />
       </SettingsSection>
+      <SyncRows />
     </>
+  );
+}
+
+/** What this device shares with the owner's other devices through its nodes (D487, D488). */
+function SyncRows() {
+  const { context, settings } = useSettingsServices();
+  const sync = useSection(context, SYNC_SECTION, SyncSettings);
+  return (
+    <SettingsSection title="Sync">
+      <SettingsRow
+        control={
+          <Switch
+            aria-label="Sync settings across devices"
+            checked={sync.settings}
+            onCheckedChange={(checked) => settings.patch(SYNC_SECTION, { settings: checked })}
+          />
+        }
+        description="Keep these settings the same on every device connected to the same nodes."
+        title="Sync settings across devices"
+      />
+      <SettingsRow
+        control={
+          <Switch
+            aria-label="Sync drafts across devices"
+            checked={sync.drafts}
+            onCheckedChange={(checked) => settings.patch(SYNC_SECTION, { drafts: checked })}
+          />
+        }
+        description="Keep a thread's unsent message on its node, so another device can finish it. Pasted images stay on this device."
+        title="Sync drafts across devices"
+      />
+    </SettingsSection>
   );
 }
 

@@ -41,12 +41,19 @@ import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
-import { createDrafts, type ComposerDraft } from "../../lib/composer.ts";
+import { createDrafts, nodeDraftKey, type ComposerDraft } from "../../lib/composer.ts";
 import { createModelOptionsMemory } from "../../lib/model-options.ts";
 import { createAttachmentUrls } from "../../lib/uploads.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
-import { CHAT_SECTION, ChatSettings } from "../../lib/settings.ts";
+import { followDrafts } from "./drafts-sync.ts";
+import {
+  CHAT_SECTION,
+  ChatSettings,
+  readSection,
+  SYNC_SECTION,
+  SyncSettings,
+} from "../../lib/settings.ts";
 import {
   ChatContext,
   createAgentsCache,
@@ -276,6 +283,20 @@ export const chatPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
       const composer: ComposerHandle = { current: undefined };
+      // Shared through each thread's node unless this device turned it off (D486, D488).
+      const syncDrafts = () => readSection(context, SYNC_SECTION, SyncSettings).drafts;
+      const drafts = context.subscriptions.add(
+        createDrafts(localStorage, {
+          send(key, prompt, at) {
+            const node = nodeDraftKey(key);
+            if (node === undefined || !syncDrafts()) return;
+            void threads
+              .call(node.target, "threads.draft.set", { key: node.key, prompt, at })
+              .catch(() => undefined);
+          },
+        }),
+      );
+      context.subscriptions.add(followDrafts(connections, drafts, syncDrafts));
       const attachmentUrls = createAttachmentUrls();
       context.subscriptions.add({ dispose: () => attachmentUrls.dispose() });
       const services: ChatServices = {
@@ -290,7 +311,7 @@ export const chatPlugin = builtin(
         dialogs,
         keybindings,
         visits,
-        drafts: context.subscriptions.add(createDrafts()),
+        drafts,
         agents: createAgentsCache(threads),
         lastSelection: createLastSelection(),
         modelOptions: createModelOptionsMemory(),

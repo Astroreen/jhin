@@ -578,6 +578,17 @@ export interface DeviceSettings {
   patch(section: string, values: Readonly<Record<string, unknown>>): void;
   /** Forgets everything this device set in a section. */
   reset(section: string): void;
+  /** 1.1: the sections this device sets something in, or changed. */
+  sections?(): readonly string[];
+  /** 1.1: when a section last changed here or was taken from another device (ms). */
+  changedAt?(section: string): number | undefined;
+  /**
+   * 1.1: sets a whole section as another device left it at `at` (D487); it
+   * tells `onDidChange` listeners with `remote: true`.
+   */
+  apply?(section: string, values: Readonly<Record<string, unknown>>, at: number): void;
+  /** 1.1: fires after a section changed, on this device or from another one. */
+  onDidChange?(listener: (change: { section: string; remote: boolean }) => void): Disposable;
 }
 
 /**

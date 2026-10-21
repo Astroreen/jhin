@@ -1669,9 +1669,9 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
 - Pushing a mesh member's config changes to a client of another node: done
   for connections in `config-ui.md` D483–D484; a member's `host/config` is
   not followed through the mesh yet (`config-ui.md#deferred`).
-- Drafts are per device; syncing them, and device settings, across devices
-  (`config-ui.md` D486–D488). Visits are shared through the thread's node
-  since `config-ui.md` D485.
+- Visits, drafts and device settings across devices: done in `config-ui.md`
+  D485–D488, except what its Deferred list keeps (mesh members, pasted
+  images).
 
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
   offers: Jhin has no usage-limit failures to tell apart yet.

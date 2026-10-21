@@ -6,6 +6,7 @@ import { builtin, type BuiltinPlugin } from "./lib/builtin.ts";
 import { chatPlugin } from "./plugins/chat/index.tsx";
 import { commandPalettePlugin } from "./plugins/command-palette.tsx";
 import { connectionsPlugin } from "./plugins/connections.ts";
+import { deviceSyncPlugin } from "./plugins/device-sync.ts";
 import { inspectorPlugin } from "./plugins/inspector.tsx";
 import { keybindingsPlugin } from "./plugins/keybindings.ts";
 import { machinesPlugin } from "./plugins/machines.tsx";
@@ -29,6 +30,19 @@ import { threadActionsPlugin } from "./plugins/thread-actions.tsx";
 /** The client's config layers: the node's (served with the page), then this device's. */
 const CONFIG_LAYERS = ["distribution", "node", "device"] as const;
 const DEVICE_STORAGE_KEY = "jhin.settings";
+/** When each section of this device's layer last changed (D487). */
+const DEVICE_TIMES_KEY = "jhin.settings.at";
+
+function loadDeviceTimes(): Record<string, number> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(DEVICE_TIMES_KEY) ?? "{}");
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, number>)
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 /** This device's layer, as kept in the browser; unreadable storage is an empty layer. */
 function loadDeviceLayer(): Record<string, Record<string, unknown>> {
@@ -49,18 +63,36 @@ function loadDeviceLayer(): Record<string, Record<string, unknown>> {
 function clientHostPlugin(kernel: () => Kernel): BuiltinPlugin {
   return builtin(
     "jhin.client-host",
-    { provides: { [SETTINGS_CAPABILITY]: "1.0.0" } },
+    { provides: { [SETTINGS_CAPABILITY]: "1.1.0" } },
     definePlugin({
       activate(context) {
         let layer = loadDeviceLayer();
-        const write = (next: Record<string, Record<string, unknown>>) => {
+        let times = loadDeviceTimes();
+        const listeners = new Set<(change: { section: string; remote: boolean }) => void>();
+        const tell = (section: string, remote: boolean) => {
+          for (const listener of Array.from(listeners)) {
+            try {
+              listener({ section, remote });
+            } catch (error) {
+              context.log.warn("device settings listener failed", { error: String(error) });
+            }
+          }
+        };
+        const write = (
+          next: Record<string, Record<string, unknown>>,
+          section?: string,
+          change?: { at: number; remote: boolean },
+        ) => {
           layer = next;
+          if (section !== undefined) times = { ...times, [section]: change?.at ?? Date.now() };
           try {
             localStorage.setItem(DEVICE_STORAGE_KEY, JSON.stringify(layer));
+            localStorage.setItem(DEVICE_TIMES_KEY, JSON.stringify(times));
           } catch (error) {
             context.log.warn("device settings not kept", { error: String(error) });
           }
           kernel().config.setLayer("device", layer);
+          if (section !== undefined) tell(section, change?.remote ?? false);
         };
         const settings: DeviceSettings = {
           values: (section) => layer[section] ?? {},
@@ -71,15 +103,30 @@ function clientHostPlugin(kernel: () => Kernel): BuiltinPlugin {
               else next[key] = value;
             }
             const { [section]: _previous, ...rest } = layer;
-            write(Object.keys(next).length === 0 ? rest : { ...rest, [section]: next });
+            write(Object.keys(next).length === 0 ? rest : { ...rest, [section]: next }, section);
           },
           reset(section) {
             const { [section]: _previous, ...rest } = layer;
-            write(rest);
+            write(rest, section);
+          },
+          sections: () => [...new Set([...Object.keys(layer), ...Object.keys(times)])],
+          changedAt: (section) => times[section],
+          apply(section, values, at) {
+            const { [section]: _previous, ...rest } = layer;
+            write(
+              Object.keys(values).length === 0 ? rest : { ...rest, [section]: { ...values } },
+              section,
+              { at, remote: true },
+            );
+          },
+          onDidChange(listener) {
+            listeners.add(listener);
+            return { dispose: () => listeners.delete(listener) };
           },
         };
         // Another tab changed this device's settings.
         const onStorage = (event: StorageEvent) => {
+          if (event.key === DEVICE_TIMES_KEY) times = loadDeviceTimes();
           if (event.key !== DEVICE_STORAGE_KEY) return;
           layer = loadDeviceLayer();
           kernel().config.setLayer("device", layer);
@@ -102,6 +149,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     keybindingsPlugin,
     connectionsPlugin,
     nodeConfigFeedPlugin,
+    deviceSyncPlugin,
     navigationPlugin,
     meshPlugin,
     threadsStorePlugin,

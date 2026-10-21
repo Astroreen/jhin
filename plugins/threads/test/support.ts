@@ -2,7 +2,7 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import type { RpcClient } from "@jhin/rpc";
+import { createLiveStreams, type RpcClient } from "@jhin/rpc";
 import type { EventLog, Json, KeyValueStore, StoredEvent } from "@jhin/storage-api";
 import {
   connectInMemory,
@@ -34,6 +34,8 @@ export async function node(
     storage?: ReturnType<typeof memoryStoragePlugin>;
     data?: string;
     config?: Record<string, unknown>;
+    /** Serve live streams (`rpc.streams@1`), as a transport would. */
+    liveStreams?: boolean;
   } = {},
 ) {
   const data = options.data ?? Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-threads-"));
@@ -53,11 +55,16 @@ export async function node(
   else if (options.agent !== false)
     plugins.push({ manifest: manifest("agent-fake"), definition: agent });
   plugins.push(...(options.plugins ?? []));
+  const live = options.liveStreams === true ? createLiveStreams() : undefined;
+  if (live !== undefined) plugins.push(mockCapability("rpc.streams", live, "1.2.0"));
   const kernel = await createTestKernel({
     plugins,
     ...(options.config === undefined ? {} : { config: { node: options.config } }),
   });
-  const { client } = connectInMemory(kernel, { log: storage.storage.log });
+  const { client } = connectInMemory(kernel, {
+    log: storage.storage.log,
+    ...(live === undefined ? {} : { streams: live }),
+  });
   let stopped = false;
   const stop = async () => {
     if (stopped) return;

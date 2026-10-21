@@ -36,6 +36,20 @@ export const ChatSettings = z.object({
 });
 export type ChatSettings = z.output<typeof ChatSettings>;
 
+/**
+ * What this device shares with the owner's other devices through its nodes
+ * (docs/plans/config-ui.md D488); defined by the device sync plugin and never
+ * shared itself.
+ */
+export const SYNC_SECTION = "jhin.sync";
+export const SyncSettings = z.object({
+  /** This device's settings follow the other devices', and they follow it. */
+  settings: z.boolean().default(true),
+  /** Composer drafts follow their thread to every device. */
+  drafts: z.boolean().default(true),
+});
+export type SyncSettings = z.output<typeof SyncSettings>;
+
 /** A section's value, or its schema's defaults when nobody defined it (its plugin is absent). */
 export function readSection<S extends z.ZodType>(
   context: PluginContext,

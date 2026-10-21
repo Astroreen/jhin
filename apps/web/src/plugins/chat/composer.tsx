@@ -72,6 +72,7 @@ import {
 
 import {
   appendToDraft,
+  nodeDraftKey,
   stepPromptHistory,
   type ComposerDraft,
   type PromptHistoryEntry,
@@ -97,7 +98,14 @@ import {
   traitsTriggerLabel,
   withOptionValue,
 } from "../../lib/model-options.ts";
-import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
+import {
+  CHAT_SECTION,
+  ChatSettings,
+  readSection,
+  SYNC_SECTION,
+  SyncSettings,
+  useSection,
+} from "../../lib/settings.ts";
 import { isMacPlatform, currentPlatform } from "../../lib/keybindings.ts";
 import type { RequestItem, ThreadQueue } from "../../lib/timeline.ts";
 import { ComposerBanner } from "./banner.tsx";
@@ -1169,6 +1177,30 @@ export function Composer(props: ComposerProps) {
     }
   }, [drafts, props.draftKey, prompt, attachments, editing]);
 
+  /** Whether the user is in the composer: another device's text never replaces what is typed. */
+  const typingHere = useRef(false);
+  // Another device's text for this draft (D486): read from the node when the
+  // composer opens, and taken while the composer is not in use.
+  useEffect(() => {
+    const key = props.draftKey;
+    const stop = drafts.follow(key, (draft) => {
+      if (!typingHere.current && editing === undefined) setPrompt(draft.prompt);
+    });
+    const node = nodeDraftKey(key);
+    if (node !== undefined && readSection(chat.context, SYNC_SECTION, SyncSettings).drafts) {
+      void chat.threads
+        .call<{ prompt: string; at: number } | null>(node.target, "threads.draft.get", {
+          key: node.key,
+        })
+        .then((kept) => {
+          if (kept !== null) drafts.take(key, kept.prompt, kept.at);
+        })
+        // An older node keeps no drafts: this device's stays.
+        .catch(() => undefined);
+    }
+    return stop;
+  }, [drafts, props.draftKey, editing]);
+
   const queued = props.queue?.messages ?? [];
   /** The queue as the latest render had it, for checks after an await. */
   const queuedNow = useRef(queued);
@@ -1701,7 +1733,16 @@ export function Composer(props: ComposerProps) {
   const mode = RUNTIME_MODES[runtimeMode] ?? RUNTIME_MODES["full-access"]!;
 
   return (
-    <div className="relative z-10">
+    <div
+      className="relative z-10"
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          typingHere.current = false;
+      }}
+      onFocusCapture={() => {
+        typingHere.current = true;
+      }}
+    >
       <ComposerSurface.Shell>
         {menu.trigger !== null && approval === undefined && question === undefined ? (
           <ComposerBanner.Attachment>
