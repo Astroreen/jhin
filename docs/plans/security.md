@@ -530,7 +530,8 @@ Implements D419–D425, in two layers:
 - Secret requests (W28): T3's "Waiting for an answer in the original
   thread" for a card inherited by a fork, its redirect of typing near a card
   away from the composer, and its metrics of requests and consumed refs are
-  not ported. Answering a card of a mesh member's thread goes through
+  not ported. The card is a lazy chunk (D440) that renders nothing if it
+  fails to load: the agent's call then times out. Answering a card of a mesh member's thread goes through
   `threads.call`'s relay and is not covered by a test.
 - A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
   target against that node's own stored value; a target with none refuses
