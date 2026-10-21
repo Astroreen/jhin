@@ -1671,7 +1671,7 @@ T3 Code `eb7b35ac` as D290 says.
   (`#` and a word at a word's start) and its composer menu "Pull requests":
   the project's 99 latest pull requests in any state, a typed number found
   even when it is not among them (`git.pr.resolve`), the thread's linked
-  ones first, T3's ranking (`composerPullRequestMatches.ts`,
+  ones first while a number or nothing is typed (words rank by T3's search alone), T3's ranking (`composerPullRequestMatches.ts`,
   `pullRequestList.logic.ts`), a state icon per row and T3's wording for
   loading, no match and no forge. Words typed after `#` are searched on the
   host after 180 ms. The list is the new command `git.pr.search`
