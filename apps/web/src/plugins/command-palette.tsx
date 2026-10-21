@@ -72,6 +72,7 @@ import { useMachineKind } from "../lib/machines.ts";
 import { filterSearchGroups, type SearchGroup } from "../lib/palette-search.ts";
 import { SearchMatchExcerpt } from "../lib/thread-search-match.tsx";
 import {
+  contentQuery,
   createContentSearch,
   searchingContents,
   type ContentMatch,
@@ -244,7 +245,8 @@ export const commandPalettePlugin = builtin(
       ): PaletteItem[] => {
         const current = navigation.current();
         // Only matches of the query typed now: a previous query's snippets would rank stale.
-        const fresh = content !== undefined && content.query === query.trim() ? content : undefined;
+        const fresh =
+          content !== undefined && content.query === contentQuery(query) ? content : undefined;
         const matchOf = (target: NodeTarget, threadId: string) =>
           fresh?.matches.find(
             (match) => match.threadId === threadId && targetKey(match.target) === targetKey(target),

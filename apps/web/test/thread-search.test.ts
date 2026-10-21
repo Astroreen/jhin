@@ -187,6 +187,15 @@ describe("searching thread contents on every node (D228)", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("asks a node for at most 200 characters", () => {
+    vi.useFakeTimers();
+    const { threads, calls } = nodes();
+    const search = createContentSearch(threads);
+    search.request(`${"a".repeat(199)} tail`, [a]);
+    vi.advanceTimersByTime(200);
+    expect(calls[0]!.query).toBe("a".repeat(199));
+  });
+
   it("marks every occurrence of the query, ignoring ASCII case", () => {
     expect(highlightParts("Lisbon and lisbon", "LISBON")).toEqual([
       { text: "Lisbon", highlighted: true },

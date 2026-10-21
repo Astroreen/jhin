@@ -30,6 +30,11 @@ export interface ContentSearchState {
 
 /** T3 searches messages from two characters on. */
 const MIN_CONTENT_QUERY = 2;
+/** What `threads.search` takes at most (D227). */
+const MAX_CONTENT_QUERY = 200;
+
+/** The query a view asks the nodes for: trimmed, and a longer one cut to what they take. */
+export const contentQuery = (raw: string) => raw.trim().slice(0, MAX_CONTENT_QUERY).trimEnd();
 const DEBOUNCE_MS = 200;
 /** A node that has not answered by then counts as finding nothing, so the view stops waiting. */
 const NODE_DEADLINE_MS = 10_000;
@@ -109,7 +114,7 @@ export function createContentSearch(
     get: () => state,
     /** Searches `query` on `targets`; the same request again does nothing. */
     request(raw: string, targets: readonly NodeTarget[]) {
-      const query = raw.trim();
+      const query = contentQuery(raw);
       const key = `${query}\n${targets.map(targetKey).join("\n")}`;
       // The same request again asks nothing, unless a node failed it: then it is asked again.
       if (key === asked && !(state.failed > 0 && !state.pending)) return;
@@ -149,7 +154,7 @@ export function createContentSearch(
  * went out, so "No threads found" never shows for a render in between.
  */
 export function searchingContents(state: ContentSearchState, query: string): boolean {
-  const trimmed = query.trim();
+  const trimmed = contentQuery(query);
   if (trimmed.length < MIN_CONTENT_QUERY) return false;
   return state.query !== trimmed || state.pending;
 }
@@ -157,7 +162,7 @@ export function searchingContents(state: ContentSearchState, query: string): boo
 /** What a search's empty result says (T3's "No threads found"), and why it may be incomplete. */
 export function emptySearchLabel(state: ContentSearchState, query: string): string {
   if (searchingContents(state, query)) return "Searching thread messages…";
-  return state.failed > 0 && state.query === query.trim()
+  return state.failed > 0 && state.query === contentQuery(query)
     ? "No threads found. Some nodes could not search their messages."
     : "No threads found";
 }

@@ -181,7 +181,12 @@ import {
 import { snoozePresets, snoozeWakeLabel } from "../lib/snooze.ts";
 import { threadActions } from "../lib/thread-actions.ts";
 import { SearchMatchExcerpt } from "../lib/thread-search-match.tsx";
-import { createContentSearch, emptySearchLabel, type ContentMatch } from "../lib/thread-search.ts";
+import {
+  contentQuery,
+  createContentSearch,
+  emptySearchLabel,
+  type ContentMatch,
+} from "../lib/thread-search.ts";
 import type { OrderAssignment } from "../lib/thread-order.ts";
 
 type Entry = SidebarThread<NodeWithCatalog>;
@@ -575,7 +580,7 @@ export const sidebarPlugin = builtin(
         const titledKeys = new Set(titled.map((entry) => entry.key));
         const listed = new Map(all.map((entry) => [entry.key, entry]));
         const byContent =
-          state.content.query === state.query.trim()
+          state.content.query === contentQuery(state.query)
             ? state.content.matches.flatMap((match): SearchEntry[] => {
                 const entry = listed.get(threadKey(match.target, match.threadId));
                 return entry === undefined || titledKeys.has(entry.key)
