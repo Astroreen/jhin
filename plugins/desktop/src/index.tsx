@@ -19,6 +19,7 @@ import { definePlugin, toDisposable, z, type Disposable } from "@jhin/sdk";
 import {
   Button,
   Popover,
+  PopoverCreateHandle,
   PopoverPopup,
   PopoverTrigger,
   Select,
@@ -445,6 +446,8 @@ export default definePlugin({
         void work.finally(() => setPending(false));
       };
       const showNotes = shouldShowUpdateReleaseNotes(showDetails, state);
+      const [notesHandle] = useState(() => PopoverCreateHandle());
+      const notesTrigger = "desktop-update-release-notes";
       const button = (
         <button
           aria-disabled={inert || undefined}
@@ -463,7 +466,14 @@ export default definePlugin({
                 ),
             disabled && !showDetails && "opacity-60",
           )}
+          id={showNotes ? notesTrigger : undefined}
           onClick={run}
+          // T3: a keyboard focus opens the notes too, since hover is not the only way in.
+          onFocus={(event) => {
+            if (showNotes && event.currentTarget.matches(":focus-visible")) {
+              notesHandle.open(notesTrigger);
+            }
+          }}
           type="button"
         />
       );
@@ -473,11 +483,18 @@ export default definePlugin({
         return (
           <SidebarMenuItem className="shrink-0">
             <Popover
+              handle={notesHandle}
               onOpenChange={(_open, details) => {
                 if (details.reason === "trigger-press") details.cancel();
               }}
             >
-              <PopoverTrigger closeDelay={150} openOnHover render={button}>
+              <PopoverTrigger
+                closeDelay={150}
+                handle={notesHandle}
+                id={notesTrigger}
+                openOnHover
+                render={button}
+              >
                 {icon}
               </PopoverTrigger>
               <PopoverPopup

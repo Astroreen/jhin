@@ -24,7 +24,6 @@ export const DesktopUpdateStatus = z.enum([
 ]);
 export type DesktopUpdateStatus = z.output<typeof DesktopUpdateStatus>;
 
-/** T3 Code's update state, without its release notes and CPU architectures (Deferred). */
 /** One release's notes for the update control (T3's `DesktopUpdateReleaseNote`, D948). */
 export const DesktopUpdateReleaseNote = z.object({
   version: z.string(),
@@ -35,6 +34,7 @@ export const DesktopUpdateReleaseNote = z.object({
 });
 export type DesktopUpdateReleaseNote = z.output<typeof DesktopUpdateReleaseNote>;
 
+/** T3 Code's update state, without its CPU architectures (Deferred). */
 export const DesktopUpdateState = z.object({
   enabled: z.boolean(),
   status: DesktopUpdateStatus,
