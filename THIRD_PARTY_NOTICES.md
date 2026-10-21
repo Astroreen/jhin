@@ -41,10 +41,14 @@ loading node-pty, the shell's environment, sizes, scrollback and its
 history files, the limit on exited sessions and finding the program a
 terminal runs), orchestration (`plugins/orchestration`: the
 contracts, rules and messages of delegated tasks, thread launches and their
-capabilities, and the script contract of workflows) and scheduled tasks
+capabilities, and the script contract of workflows), scheduled tasks
 (`packages/scheduler-api`, `plugins/scheduler`: triggers and their next runs,
 run bookkeeping, webhook tokens, signatures, prompt placeholders, rate limits
-and the delivery log). Files derived from T3 Code say so in a header comment.
+and the delivery log) and the browser preview (`plugins/preview` and
+`@jhin/preview-api`: the server browser's tabs, their control by agents and
+viewers, page operations, snapshots, recordings, viewport presets, URL
+normalisation and the tools' wording). Files derived from T3 Code say so in a
+header comment.
 
 ```
 MIT License

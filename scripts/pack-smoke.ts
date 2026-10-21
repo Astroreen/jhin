@@ -322,6 +322,16 @@ async function main(): Promise<void> {
     }
     process.stdout.write(`terminal running, pid ${terminal.pid}\n`);
 
+    // The preview plugin loads playwright-core only for its first tab; its commands answer now.
+    step("jhin preview.list");
+    const previews = JSON.parse(
+      run(bin, ["preview.list", "--input", JSON.stringify({ threadId: "smoke" }), ...at], tmp),
+    ) as { tabs?: unknown[] };
+    if (!Array.isArray(previews.tabs)) {
+      throw new Error(`no preview tabs listed: ${JSON.stringify(previews)}`);
+    }
+    process.stdout.write(`preview tabs: ${previews.tabs.length}\n`);
+
     step("jhin serve --ui");
     const { child, output, rpc, ui, exited } = await serve(bin, dir);
     try {
