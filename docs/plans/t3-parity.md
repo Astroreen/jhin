@@ -1544,6 +1544,19 @@ T3 Code `eb7b35ac` as D290 says.
   keyboard way out is to move the caret below the block. Outside code blocks
   Tab keeps its list nesting (D303) and otherwise leaves the editor.
 
+### Sidebar leftovers (W26)
+
+W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
+
+- **D962. The selection menu's "Custom…" snooze, as T3's.** The "Snooze
+  (N)" submenu ends with a separator and "Custom…", which asks in the same
+  "Custom snooze" dialog as a single thread and snoozes every selected
+  thread until the time chosen. The dialog is `jhin.thread-actions`', and
+  asking is a command of its own, `thread.snooze.choose` (output `{ until? }`,
+  nothing when cancelled), so the sidebar asks through it.
+  `sidebar.selection.snooze`'s `until` becomes optional: without it, the
+  command asks first and does nothing when cancelled.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -1597,7 +1610,7 @@ T3 Code `eb7b35ac` as D290 says.
   W4's); per-project overrides of the settle settings (T3 resolves them per
   project; a Jhin node has one project config layer, D19);
   the selection menu's "Regenerate titles (N)" (no title
-  regeneration yet) and its "Custom…" snooze; dragging a selection into the
+  regeneration yet); dragging a selection into the
   chat as context; the undo of an unpin or a settle done by dragging (a
   drop writes through `threads.arrange`, not the commands that offer an
   undo, D450); T3's X on a thread's card that clears its unsent composer

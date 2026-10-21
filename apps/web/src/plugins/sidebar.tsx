@@ -664,15 +664,22 @@ export const sidebarPlugin = builtin(
         name: "sidebar.selection.snooze",
         title: "Snooze selected threads",
         description:
-          'Snoozes every thread selected in the sidebar until `until` (T3\'s "Snooze (N)")',
-        input: z.object({ until: z.iso.datetime({ offset: true }) }),
+          'Snoozes every thread selected in the sidebar until `until`, or a time asked for in the custom snooze dialog (T3\'s "Snooze (N)")',
+        input: z.object({ until: z.iso.datetime({ offset: true }).optional() }),
         output: z.object({}),
-        handler: ({ until }) =>
-          forSelected(
+        handler: async (input) => {
+          // "Custom…" asks once for every selected thread (t3-parity.md D962).
+          const until =
+            input.until ??
+            ((await context.commands.execute("thread.snooze.choose", {})) as { until?: string })
+              .until;
+          if (until === undefined) return {};
+          return forSelected(
             () => true,
             (entry) => context.commands.execute("thread.snooze", { ...refOf(entry), until }),
             (count) => `Failed to snooze ${count} thread${count === 1 ? "" : "s"}`,
-          ),
+          );
+        },
       });
       context.commands.register({
         name: "sidebar.selection.mark-unread",
@@ -782,6 +789,8 @@ export const sidebarPlugin = builtin(
                       {preset.label} ({preset.whenLabel})
                     </MenuItem>
                   ))}
+                  <MenuSeparator />
+                  <MenuItem onClick={() => run("sidebar.selection.snooze", {})}>Custom…</MenuItem>
                 </MenuSubPopup>
               </MenuSub>
             ) : null,

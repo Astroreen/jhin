@@ -488,6 +488,19 @@ export const threadActionsPlugin = builtin(
           );
         },
       );
+      // T3's "Custom snooze" dialog on its own, for whoever snoozes (t3-parity.md D962).
+      context.commands.register({
+        name: "thread.snooze.choose",
+        title: "Choose a snooze time",
+        description:
+          "Asks for a wake time in the custom snooze dialog; answers nothing when it is cancelled",
+        input: z.object({}),
+        output: z.object({ until: z.iso.datetime({ offset: true }).optional() }),
+        handler: async () => {
+          const until = await customSnooze.request();
+          return until === undefined ? {} : { until };
+        },
+      });
       register(
         "thread.unsnooze",
         "Wake thread",
