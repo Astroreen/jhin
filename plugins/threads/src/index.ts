@@ -3357,6 +3357,8 @@ export default definePlugin({
         }
         if (!turns.includes(target)) throw turnNotFound(threadId, target);
         const payload = startedWith(events, target);
+        // A turn whose start was never recorded has no message to run again.
+        if (payload.input === undefined) throw turnNotFound(threadId, target);
         // A turn whose message cannot be sent again is refused before anything is dropped.
         assertMessage(payload.input?.text ?? "", payload.input?.attachments);
         let dropped: string[] = [];
@@ -3559,6 +3561,29 @@ export default definePlugin({
           );
         }
         const parentId = fork.forkedFrom.threadId;
+        // The parent already got the fork up to this turn: merging it again would say it twice.
+        const { events: parentEvents } = await visibleTurns(parentId).catch(() => ({
+          events: [] as StoredEvent[],
+        }));
+        const delivered = parentEvents
+          .filter(
+            (event) =>
+              event.type === ThreadEvents.turnStarted &&
+              (event.payload as { inheritedAt?: unknown }).inheritedAt === undefined,
+          )
+          .map(
+            (event) =>
+              (event.payload as { handoff?: { threadId?: unknown; turnId?: unknown } }).handoff,
+          )
+          .filter((handoff) => handoff?.threadId === threadId)
+          .map((handoff) => own.indexOf(String(handoff?.turnId)));
+        if (delivered.some((index) => index >= own.indexOf(target))) {
+          throw new ThreadsError(
+            "NOTHING_TO_MERGE",
+            "The source thread already has this fork up to that turn",
+            { threadId, turnId: target },
+          );
+        }
         return updateThread(parentId, (parent) => {
           // An archived parent takes no message, so a mark there would never be delivered.
           if (parent.archivedAt !== undefined) throw archivedError(parentId);

@@ -732,6 +732,19 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     expect(await pendingOf(client, parent.id)).toBeUndefined();
   });
 
+  it("refuses merging again what the parent already got, until the fork goes on", async () => {
+    const { client, parent, fork } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    await turn(client, parent.id, "go on");
+    await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
+      code: "NOTHING_TO_MERGE",
+    });
+    const more = await turn(client, fork.id, "and more");
+    expect(await client.call<Fork>("threads.merge-back", { threadId: fork.id })).toMatchObject({
+      pendingMergeBack: { turnId: more },
+    });
+  });
+
   it("merges again into a regenerated turn, leaving no mark", async () => {
     const { client, parent, fork, requests } = await forked();
     await client.call("threads.merge-back", { threadId: fork.id });

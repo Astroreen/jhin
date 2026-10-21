@@ -158,6 +158,10 @@ export type Drafts = ReturnType<typeof createDrafts>;
 export const threadDraftKey = (target: NodeTarget, threadId: string) =>
   `${targetKey(target)}|thread|${threadId}`;
 
+/** Where the composer of a new thread in a project keeps its draft. */
+export const newThreadDraftKey = (target: NodeTarget, projectId: string) =>
+  `${targetKey(target)}|draft|${projectId}`;
+
 /** A draft with a sent message put back after it: its text after the draft's (a blank line between), its images after the draft's. */
 export function appendToDraft(
   draft: ComposerDraft | undefined,

@@ -1230,7 +1230,8 @@ for, built from the same rewind.
   rollback, "Edit from here") gives the mark back, and regenerating it
   merges into the new turn again. Refused for a
   thread that is not a fork (`THREAD_NOT_FORK`), a parent that is gone
-  (`THREAD_NOT_FOUND`), an archived parent (`THREAD_ARCHIVED`: it takes no
+  (`THREAD_NOT_FOUND`), a fork turn the parent already got (`NOTHING_TO_MERGE`: its handoff
+  would say it twice), an archived parent (`THREAD_ARCHIVED`: it takes no
   message to deliver the merge with) or a fork with no ended turn of its own
   (`TURN_NOT_FOUND`). The fork's header gets T3's `GitMergeIcon` button
   "Merge back to <parent>" ("Merge this conversation back into <parent>";
@@ -1336,6 +1337,8 @@ and as events arrive).
   from before D222, lets the next turn resume a session that still holds
   the dropped turns, D222; and the Claude Code session a new one replaces is
   left on disk),
+  a budget for a merge-back's handoff (each line is cut at 240 characters,
+  but a long fork gives many lines; T3's summary text is unbounded too),
   a merge-back's handoff in an agent's history (it reaches the agent as the
   text of the turn that delivers it, and the stored event keeps the user's
   text, so a runtime replaying history, as Claude's transcript does for a new
