@@ -31,14 +31,17 @@ const aborted = () =>
 function start(...scripts: Script[]) {
   const scripted = scriptedQuery(...scripts);
   const logged: string[] = [];
+  /** What each log line carried, in order. */
+  const details: { message: string; data?: Record<string, unknown> }[] = [];
   /** Waiters for a message to be logged. */
   const waiting: { message: string; resolve: () => void }[] = [];
   const claude = createClaudeRuntime({
     query: scripted.query,
     sessions: memorySessions(),
     config: () => Config.parse({}),
-    log: (message) => {
+    log: (message, data) => {
       logged.push(message);
+      details.push({ message, ...(data === undefined ? {} : { data }) });
       for (const waiter of waiting) if (waiter.message === message) waiter.resolve();
     },
   });
@@ -56,7 +59,7 @@ function start(...scripts: Script[]) {
     model: "claude-haiku-5-5",
     runtimeMode: "full-access",
   });
-  return { claude, turn, logged, whenLogged, ...scripted };
+  return { claude, turn, logged, details, whenLogged, ...scripted };
 }
 
 /** Every item of a turn; `onItem` runs as each one comes. */
@@ -277,7 +280,7 @@ describe("jhin.agent-claude: steering (D206)", () => {
 
     it("logs a steer whose turn ended while Claude Code moved the subagents", async () => {
       let answer!: (moved: boolean) => void;
-      const { turn, state, whenLogged } = start(async function* (player) {
+      const { turn, state, whenLogged, details } = start(async function* (player) {
         const first = player.call.prompt[0]!.uuid;
         yield marked([first], init());
         yield marked([first], toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" }));
@@ -297,6 +300,12 @@ describe("jhin.agent-claude: steering (D206)", () => {
       expect(answers(items)).toEqual(["working"]);
       answer(true);
       await whenLogged("claude code ended the turn before it took a steer");
+      // The turn read its result during the move, not the lease ending under it.
+      expect(details.find((line) => line.message.includes("before it took a steer"))?.data).toEqual(
+        {
+          at: "result",
+        },
+      );
     });
 
     it("asks once per tool call: a second steer waits on the same answer", async () => {
