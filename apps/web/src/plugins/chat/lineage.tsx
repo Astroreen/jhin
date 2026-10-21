@@ -33,7 +33,7 @@ const HOVER_SURFACE =
 const ROW_CONTENT = "gap-2.5 px-2.5 text-left";
 const CONTROL = `h-8 min-w-0 rounded-lg border-transparent ${ROW_CONTENT} text-[13px] font-medium text-foreground/80`;
 const CONTROL_BASE =
-  "relative inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border outline-none transition-[box-shadow,scale] [&:active]:scale-[0.97] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 disabled:pointer-events-none disabled:opacity-64";
+  "relative inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border outline-none transition-[box-shadow,scale] [&:active]:scale-[0.97] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 disabled:pointer-events-none disabled:opacity-64 aria-disabled:cursor-default aria-disabled:opacity-64";
 const ROW = `${CONTROL_BASE} ${CONTROL} w-full justify-start bg-transparent shadow-none ${HOVER_SURFACE}`;
 const SPLIT_GROUP = `flex w-full items-center rounded-lg ${HOVER_SURFACE}`;
 const SPLIT_PRIMARY = `${CONTROL_BASE} ${CONTROL} flex-1 justify-start rounded-e-none bg-transparent shadow-none ${HOVER_SURFACE}`;
@@ -135,13 +135,34 @@ function Status(props: { label: string; className?: string }) {
 }
 
 /**
- * A button with its tooltip, which shows while the button is disabled too: the
- * tooltip sits on a wrapper, since a disabled button gets no pointer events.
+ * A row's button with its tooltip. Unavailable, it stays focusable and hoverable
+ * (`aria-disabled`, its click ignored), so its tooltip says why to the pointer and
+ * the keyboard alike.
  */
-function WithTooltip(props: { tip: string; className: string; children: ReactNode }) {
+function TipButton(props: {
+  tip: string;
+  className: string;
+  unavailable: boolean;
+  label?: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
   return (
     <Tooltip>
-      <TooltipTrigger delay={200} render={<span className={props.className} />}>
+      <TooltipTrigger
+        delay={200}
+        render={
+          <button
+            {...(props.label === undefined ? {} : { "aria-label": props.label })}
+            aria-disabled={props.unavailable || undefined}
+            className={props.className}
+            onClick={() => {
+              if (!props.unavailable) props.onClick();
+            }}
+            type="button"
+          />
+        }
+      >
         {props.children}
       </TooltipTrigger>
       <TooltipPopup side="left">{props.tip}</TooltipPopup>
@@ -191,48 +212,48 @@ export function createLineage(deps: {
             // The parent row shows the fork's status, as T3's edge does.
             const status = lineageStatusLabel(parent ? thread : row.thread);
             const Icon = parent ? CornerLeftUpIcon : GitForkIcon;
-            const link = (className: string, wrapper: string, label?: string) => (
-              <WithTooltip
-                className={wrapper}
+            const link = (className: string, label?: string) => (
+              <TipButton
+                className={className}
+                {...(label === undefined ? {} : { label })}
+                onClick={() => open(row.threadId)}
                 tip={
                   missing
                     ? "This related thread is unavailable"
                     : `Open ${relationship.toLowerCase()} in this chat`
                 }
+                unavailable={missing}
               >
-                <button
-                  {...(label === undefined ? {} : { "aria-label": label })}
-                  className={className}
-                  disabled={missing}
-                  onClick={() => open(row.threadId)}
-                  type="button"
-                >
-                  <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-left text-sm font-medium leading-4 text-foreground/85">
-                      {title}
-                    </span>
+                <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-left text-sm font-medium leading-4 text-foreground/85">
+                    {title}
                   </span>
-                  {parent ? null : (
-                    <>
-                      <ArrowRightIcon
-                        aria-hidden
-                        className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                      />
-                      <Status label={status} />
-                    </>
-                  )}
-                </button>
-              </WithTooltip>
+                </span>
+                {parent ? null : (
+                  <>
+                    <ArrowRightIcon
+                      aria-hidden
+                      className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                    />
+                    <Status label={status} />
+                  </>
+                )}
+              </TipButton>
             );
             return (
               <li className="group relative flex h-8 items-center rounded-lg" key={row.threadId}>
                 {parent ? (
                   <div className={SPLIT_GROUP}>
-                    {link(SPLIT_PRIMARY, "flex min-w-0 flex-1", `${title} ${status}`)}
+                    {link(SPLIT_PRIMARY, `${title} ${status}`)}
                     <span aria-hidden="true" className={SPLIT_SEPARATOR} />
-                    <WithTooltip
-                      className="flex shrink-0"
+                    <TipButton
+                      className={SPLIT_SECONDARY}
+                      label={
+                        missing ? "Merge back to source conversation" : `Merge back to ${title}`
+                      }
+                      onClick={() => void merge()}
+                      unavailable={!ran || merging || missing}
                       tip={
                         missing
                           ? "This related thread is unavailable"
@@ -241,29 +262,19 @@ export function createLineage(deps: {
                             : `Merge this conversation back into ${title}`
                       }
                     >
-                      <button
-                        aria-label={
-                          missing ? "Merge back to source conversation" : `Merge back to ${title}`
-                        }
-                        className={SPLIT_SECONDARY}
-                        disabled={!ran || merging || missing}
-                        onClick={() => void merge()}
-                        type="button"
-                      >
-                        {merging ? (
-                          <LoaderCircleIcon className="size-3 animate-spin" />
-                        ) : (
-                          <GitMergeIcon className="size-3" />
-                        )}
-                      </button>
-                    </WithTooltip>
+                      {merging ? (
+                        <LoaderCircleIcon className="size-3 animate-spin" />
+                      ) : (
+                        <GitMergeIcon className="size-3" />
+                      )}
+                    </TipButton>
                     <Status
                       className="border border-transparent ps-1 pe-2.5 font-medium"
                       label={status}
                     />
                   </div>
                 ) : (
-                  link(ROW, "flex w-full min-w-0")
+                  link(ROW)
                 )}
               </li>
             );

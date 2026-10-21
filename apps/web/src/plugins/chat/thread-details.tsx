@@ -90,7 +90,8 @@ export function registerThreadDetails(
       const own = () => setOpenFor((current) => (current === threadId ? undefined : threadId));
       toggles.push(own);
       return () => {
-        toggles.splice(toggles.indexOf(own), 1);
+        const at = toggles.indexOf(own);
+        if (at !== -1) toggles.splice(at, 1);
       };
     }, [threadId]);
     if (thread === undefined) return null;
@@ -160,11 +161,13 @@ export function registerThreadDetails(
       import("./lineage.tsx").then((module) =>
         module.createLineage({ threads, navigation, commands: context.commands }),
       ),
-    // A failed load shows nothing, as a thread without lineage does; opening the
-    // panel again loads it again.
-    // Loaded ahead, once the header's toggle shows (below), so opening the panel
-    // rarely waits for it.
-    { loading: () => null, failed: () => null },
+    {
+      // Loaded ahead, once the header's toggle shows (below): opening the panel
+      // rarely waits for it.
+      loading: () => null,
+      // Shows nothing, as a thread without lineage does; the panel opened again loads it again.
+      failed: () => null,
+    },
   );
   context.subscriptions.add(
     slots.contribute<ChatThreadDetailsProps>("chat.thread.details", {

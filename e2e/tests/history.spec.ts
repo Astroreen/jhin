@@ -253,8 +253,8 @@ test("lists a thread's parent and forks in the thread details panel, and merges 
   await expect(related.getByRole("listitem")).toHaveText([/plan a picnic.*Idle/]);
   const merge = panel.getByRole("button", { name: "Merge back to plan a picnic" });
   await expect(merge).toBeDisabled();
-  // A disabled button still says why, from its wrapper.
-  await merge.locator("..").hover();
+  // An unavailable button still says why (aria-disabled, so it keeps its pointer and focus).
+  await merge.hover();
   await expect(page.getByText("Complete a run in this fork before merging it back")).toBeVisible();
   await page.keyboard.press("Escape");
 
