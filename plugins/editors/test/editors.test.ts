@@ -257,6 +257,59 @@ describe("the editors plugin", () => {
     await kernel.stop();
   });
 
+  it("reveals a file selected in Finder and File Explorer, its folder on Linux (D922)", async () => {
+    const reveal = { projectId: "app", path: "bin/run.sh", editor: "file-manager", reveal: true };
+    const mac = await start([], { PATH: "/usr/bin" }, { platform: "darwin" });
+    expect(await mac.kernel.commands.execute("editors.list", {})).toMatchObject({
+      revealKind: "finder",
+    });
+    await mac.kernel.commands.execute("editors.open", reveal);
+    expect(mac.launches).toEqual([{ command: "open", args: ["-R", "/work/app/bin/run.sh"] }]);
+    await mac.kernel.stop();
+
+    const windows = await start([], { PATH: "C:\\bin" }, { platform: "win32" });
+    expect(await windows.kernel.commands.execute("editors.list", {})).toMatchObject({
+      revealKind: "file-explorer",
+    });
+    await windows.kernel.commands.execute("editors.open", reveal);
+    expect(windows.launches).toEqual([
+      // Backslashes, or Explorer selects nothing.
+      { command: "explorer", args: ['/select,"\\work\\app\\bin\\run.sh"'], verbatim: true },
+    ]);
+    // Spaces and a comma stay inside the quotes Explorer reads the path from.
+    await windows.kernel.commands.execute("editors.open", { ...reveal, path: "my dir/a,b c.ts" });
+    expect(windows.launches.at(-1)).toEqual({
+      command: "explorer",
+      args: ['/select,"\\work\\app\\my dir\\a,b c.ts"'],
+      verbatim: true,
+    });
+    // A `"` would close Explorer's quotes and pass the rest as its switches.
+    await expect(
+      windows.kernel.commands.execute("editors.open", { ...reveal, path: 'a" /root,C:\\.ts' }),
+    ).rejects.toMatchObject({ code: "PATH_UNSAFE" });
+    await windows.kernel.stop();
+
+    const linux = await start(["/usr/bin/xdg-open"], { PATH: "/usr/bin", DISPLAY: ":0" });
+    expect(await linux.kernel.commands.execute("editors.list", {})).toMatchObject({
+      revealKind: "files",
+    });
+    await linux.kernel.commands.execute("editors.open", reveal);
+    expect(linux.launches).toEqual([{ command: "xdg-open", args: ["/work/app/bin"] }]);
+    // An editor opens; only the file manager reveals.
+    await expect(
+      linux.kernel.commands.execute("editors.open", { ...reveal, editor: "vscode" }),
+    ).rejects.toMatchObject({
+      code: "COMMAND_INPUT_INVALID",
+      details: { issues: [{ path: "", message: "Only the file manager reveals a file" }] },
+    });
+    await linux.kernel.stop();
+
+    // No file manager (no graphical session): nothing to reveal with.
+    const headless = await start(["/usr/bin/xdg-open"], { PATH: "/usr/bin" });
+    expect(await headless.kernel.commands.execute("editors.list", {})).toEqual({ editors: [] });
+    await headless.kernel.stop();
+  });
+
   it("quotes a Windows .cmd launcher's arguments and refuses a hostile name", async () => {
     const { kernel, launches } = await start(
       ["C:\\bin\\code.cmd"],

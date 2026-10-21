@@ -300,7 +300,7 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   `--line N file`), detached. Reads need `editor.list`, opening `editor.open`.
   In the diff panel, clicking a file's name opens it in the preferred editor
   (the last one chosen on this device, else the first found, as T3's
-  `usePreferredEditor`); its context menu offers "Open containing folder" (the file manager)
+  `usePreferredEditor`); its context menu offers "Open containing folder" (the file manager; "Reveal in …" since D922)
   and "Open with" with every editor found. A failure is a toast: "Could not
   open in VS Code" with the path and the node's reason; an editor is
   remembered as preferred only once it opened. A name that opens nowhere
@@ -387,6 +387,22 @@ with screenshots).
   patch, as in T3: a file edited in between expands from its new contents
   until the next read of the diff (on a status change, focus or "Refresh
   diff") brings a patch that matches them.
+
+- **D922. "Reveal in file manager"**, as T3's file context menu
+  (`fileContextMenu.ts`, `externalLauncher.ts`'s reveal launch). The file
+  manager item of a diff file's context menu reads T3's "Reveal in Finder"
+  (macOS), "Reveal in File Explorer" (Windows) or "Reveal in Files" (Linux),
+  from the node's kind, and replaces "Open containing folder". `editors.list`
+  says which kind the node's file manager is (`revealKind`: `finder`,
+  `file-explorer`, `files`; none without a file manager), and `editors.open`
+  takes `reveal` with the file manager: macOS runs `open -R <file>`, Windows
+  `explorer /select,"<file>"` as one verbatim argument (a path holding a `"`,
+  which no Windows file name does, is refused with `PATH_UNSAFE`), and Linux,
+  where file managers have no portable "select this file" flag, opens the
+  containing folder, as T3 does. Neither runs the file. A node from before
+  D922 says no kind: its menu keeps "Open containing folder". A failure is
+  T3's toast "Unable to reveal file" with the path and the node's reason. T3's
+  WSL reveal through Windows File Explorer is Deferred.
 
 ### Checkpoints, reverting and worktrees (W3, `t3-roadmap.md`)
 
@@ -1057,11 +1073,11 @@ with the node's token, and without one).
 - What W5 leaves of T3's diff panel: its in-app file preview (at D53 a click
   on a file's name opens T3's file panel; Jhin has none, so it opens the
   editor, D286), loading the patches of a truncated diff file by file
-  (`useReviewFilePatches`), refusing to expand a file whose working tree
-  copy no longer matches the patch shown (D921), find in the diff,
-  T3's own file icons in the tree, "Reveal in file manager", opening a
-  remote node's file in a local editor (T3's remote editor URLs), and the
-  pop-out (non-inline) panel mode.
+  (`useReviewFilePatches`), refusing to expand a file whose working tree copy
+  no longer matches the patch shown (D921), find in the diff, T3's own file
+  icons in the tree, revealing a file of a WSL node in Windows File Explorer
+  (D922), opening a remote node's file in a local editor (T3's remote editor
+  URLs), and the pop-out (non-inline) panel mode.
 - Settling a thread on a merged pull request (T3's sidebar) and the
   terminal indicator (the terminal plugin contributes it to
   `sidebar.thread.indicators`). The branch-mismatch warning is done

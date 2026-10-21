@@ -1,8 +1,9 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/diffFileActions.ts
 // (resolving a diff's path in the workspace), editorPreferences.ts (the preferred editor) and
-// fileContextMenu.ts ("Open", "Open with", the failure toasts).
+// fileContextMenu.ts ("Reveal in …", "Open with", the failure toasts) and
+// components/preview/fileExplorerLabel.ts (the reveal wording).
 import { targetKey, type NodeTarget, type ThreadsCatalog } from "@jhin/client-api";
-import type { EditorInfo } from "@jhin/host-api";
+import type { EditorInfo, FileManagerRevealKind } from "@jhin/host-api";
 import {
   ContextMenuPopup,
   MenuItem,
@@ -81,10 +82,22 @@ function rememberEditor(id: string) {
 
 const NO_EDITORS: readonly EditorInfo[] = [];
 
+/** T3's wording of the file manager's item, by what the node's file manager is (D922). */
+function revealInFileExplorerLabelForKind(kind: FileManagerRevealKind): string {
+  if (kind === "finder") return "Reveal in Finder";
+  if (kind === "file-explorer") return "Reveal in File Explorer";
+  return "Reveal in Files";
+}
+
+interface EditorsList {
+  readonly editors: readonly EditorInfo[];
+  readonly revealKind?: FileManagerRevealKind;
+}
+
 /** The editors of each node (`editors.list`), read once per target; none where the plugin is absent. */
 export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefined) {
   /** Each node's answer; a failed read is not kept, so the next view asks again. */
-  const lists = new Map<string, readonly EditorInfo[]>();
+  const lists = new Map<string, EditorsList>();
   const loading = new Set<string>();
   const listeners = new Set<() => void>();
   const changed = () => {
@@ -95,9 +108,13 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
     if (loading.has(key)) return;
     loading.add(key);
     void threads
-      .call<{ editors?: EditorInfo[] } | undefined>(target, "editors.list", {})
+      .call<Partial<EditorsList> | undefined>(target, "editors.list", {})
       .then(
-        (answer) => lists.set(key, answer?.editors ?? NO_EDITORS),
+        (answer) =>
+          lists.set(key, {
+            editors: answer?.editors ?? NO_EDITORS,
+            ...(answer?.revealKind === undefined ? {} : { revealKind: answer.revealKind }),
+          }),
         () => lists.delete(key),
       )
       .finally(() => {
@@ -126,16 +143,24 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
     projectId: string,
     path: string,
     editor: EditorInfo,
+    options: { reveal?: boolean } = {},
   ): Promise<void> => {
+    const reveal = options.reveal === true;
     try {
-      await threads.call(target, "editors.open", { projectId, path, editor: editor.id });
+      await threads.call(target, "editors.open", {
+        projectId,
+        path,
+        editor: editor.id,
+        ...(reveal ? { reveal: true } : {}),
+      });
       // Remembered once it opened: an editor that fails is not the one the next click uses.
       if (editor.id !== "file-manager") rememberEditor(editor.id);
     } catch (error) {
       toasts?.show({
         type: "error",
-        title:
-          editor.id === "file-manager"
+        title: reveal
+          ? "Unable to reveal file"
+          : editor.id === "file-manager"
             ? "Could not open the folder"
             : `Could not open in ${editor.label}`,
         description: `${path}: ${(error as Error).message}`,
@@ -146,7 +171,15 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
     /** The node's editors, read when a view starts following the node. */
     useEditors(target: NodeTarget): readonly EditorInfo[] {
       const key = targetKey(target);
-      return useSyncExternalStore(subscriberFor(target), () => lists.get(key) ?? NO_EDITORS);
+      return useSyncExternalStore(
+        subscriberFor(target),
+        () => lists.get(key)?.editors ?? NO_EDITORS,
+      );
+    },
+    /** What the node's file manager is, for its "Reveal in …" item. */
+    useRevealKind(target: NodeTarget): FileManagerRevealKind | undefined {
+      const key = targetKey(target);
+      return useSyncExternalStore(subscriberFor(target), () => lists.get(key)?.revealKind);
     },
     open,
   };
@@ -155,20 +188,26 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
 export type Editors = ReturnType<typeof createEditors>;
 
 /**
- * T3's file context menu: the file manager (on the containing folder, so no
- * file of the project is run by its default application) and "Open with"
- * every editor found.
+ * T3's file context menu: "Reveal in …" with the file manager (the file shown,
+ * never run by its default application, D922) and "Open with" every editor found.
  */
 export function FileContextMenuPopup(props: {
   editors: readonly EditorInfo[];
+  revealKind: FileManagerRevealKind | undefined;
   onOpen(editor: EditorInfo): void;
+  onReveal(fileManager: EditorInfo): void;
 }) {
   const fileManager = props.editors.find((editor) => editor.id === "file-manager");
   const others = props.editors.filter((editor) => editor.id !== "file-manager");
   return (
     <ContextMenuPopup>
-      {fileManager === undefined ? null : (
+      {fileManager === undefined ? null : props.revealKind === undefined ? (
+        // A node from before D922 says no kind and cannot reveal: its folder opens.
         <MenuItem onClick={() => props.onOpen(fileManager)}>Open containing folder</MenuItem>
+      ) : (
+        <MenuItem onClick={() => props.onReveal(fileManager)}>
+          {revealInFileExplorerLabelForKind(props.revealKind)}
+        </MenuItem>
       )}
       {others.length === 0 ? null : (
         <MenuSub>

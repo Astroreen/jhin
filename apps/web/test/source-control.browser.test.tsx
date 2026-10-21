@@ -713,6 +713,7 @@ describe("the diff panel", () => {
             { id: "zed", label: "Zed" },
             { id: "file-manager", label: "File Manager" },
           ],
+          revealKind: "finder",
         },
         "editors.open": (params: { editor: string; path: string }) => params,
       },
@@ -732,10 +733,18 @@ describe("the diff panel", () => {
     await userEvent.click(page.getByText("docs/notes.md", { exact: true }));
     expect(opens()).toHaveLength(1);
 
+    // T3's "Reveal in …", worded by the node's file manager (D922).
     await userEvent.click(title, { button: "right" });
-    await expect
-      .element(page.getByRole("menuitem", { name: "Open containing folder" }))
-      .toBeVisible();
+    await userEvent.click(page.getByRole("menuitem", { name: "Reveal in Finder" }));
+    expect(opens().at(-1)?.params).toEqual({
+      projectId: "app",
+      path: "app.ts",
+      editor: "file-manager",
+      reveal: true,
+    });
+    // Revealing never makes the file manager the preferred editor.
+    expect(localStorage.getItem("jhin.lastEditor")).toBe("vscode");
+    await userEvent.click(title, { button: "right" });
     await userEvent.click(page.getByRole("menuitem", { name: "Open with" }));
     await userEvent.click(page.getByRole("menuitem", { name: "Zed" }));
     expect(opens().at(-1)?.params).toEqual({ projectId: "app", path: "app.ts", editor: "zed" });
@@ -752,7 +761,13 @@ describe("the diff panel", () => {
       "editors.list": () => {
         lists++;
         if (lists === 1) throw new Error("not connected yet");
-        return { editors: [{ id: "zed", label: "Zed" }] };
+        // A node from before D922: no reveal kind.
+        return {
+          editors: [
+            { id: "zed", label: "Zed" },
+            { id: "file-manager", label: "File Manager" },
+          ],
+        };
       },
       "editors.open": () => {
         throw new Error("Could not start zed: spawn EACCES");
@@ -784,6 +799,25 @@ describe("the diff panel", () => {
     });
     // An editor that failed to open is not remembered as the preferred one.
     expect(localStorage.getItem("jhin.lastEditor")).toBeNull();
+    // A failed reveal says so in T3's words (D922).
+    await editors.open(
+      { node: "a" },
+      "app",
+      "app.ts",
+      { id: "file-manager", label: "File Manager" },
+      { reveal: true },
+    );
+    expect(shown.at(-1)).toEqual({
+      type: "error",
+      title: "Unable to reveal file",
+      description: "app.ts: Could not start zed: spawn EACCES",
+    });
+    // Without a reveal kind the node cannot reveal: its menu opens the folder, as before.
+    await userEvent.click(page.getByText("src/app.ts", { exact: true }), { button: "right" });
+    await expect
+      .element(page.getByRole("menuitem", { name: "Open containing folder" }))
+      .toBeVisible();
+    expect(page.getByRole("menuitem", { name: /^Reveal in/ }).query()).toBeNull();
   });
 
   it("sends a comment on lines into the composer, as T3 sends a review comment", async () => {

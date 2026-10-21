@@ -11,6 +11,8 @@ import {
   cmdLaunch,
   editorArgs,
   fileManagerCommand,
+  fileManagerRevealKind,
+  revealLaunch,
   needsCmd,
   findEditorCommand,
   nodeHost,
@@ -91,25 +93,42 @@ export function createEditorsPlugin(
         name: "editors.list",
         description: "The editors installed on this node that can open a project's files",
         input: z.object({}),
-        output: z.object({ editors: z.array(EditorInfo) }),
+        output: z.object({
+          editors: z.array(EditorInfo),
+          revealKind: z.enum(["finder", "file-explorer", "files"]).optional().meta({
+            description:
+              'What the file manager is, for T3\'s "Reveal in …" wording; none without one',
+          }),
+        }),
         permissions: ["editor.list"],
-        handler: () => ({ editors: availableEditors(host) }),
+        handler: () => {
+          const revealKind = fileManagerRevealKind(host);
+          return { editors: availableEditors(host), ...(revealKind ? { revealKind } : {}) };
+        },
       });
 
       context.commands.register({
         name: "editors.open",
         description:
           "Opens a file of a project in an editor installed on this node (or with the file manager), optionally at a line",
-        input: z.object({
-          projectId: z.string().min(1),
-          path: z
-            .string()
-            .min(1)
-            .meta({ description: "The file, relative to the project's folder" }),
-          line: z.number().int().positive().optional(),
-          column: z.number().int().positive().optional(),
-          editor: z.string().min(1).meta({ description: "An id from editors.list" }),
-        }),
+        input: z
+          .object({
+            projectId: z.string().min(1),
+            path: z
+              .string()
+              .min(1)
+              .meta({ description: "The file, relative to the project's folder" }),
+            line: z.number().int().positive().optional(),
+            column: z.number().int().positive().optional(),
+            editor: z.string().min(1).meta({ description: "An id from editors.list" }),
+            reveal: z.boolean().optional().meta({
+              description:
+                "With the file manager: show the file selected (Finder, File Explorer), or its folder where that is not possible",
+            }),
+          })
+          .refine((input) => input.reveal !== true || input.editor === "file-manager", {
+            message: "Only the file manager reveals a file",
+          }),
         output: z.object({ editor: z.string(), path: z.string() }),
         permissions: ["editor.open"],
         handler: async (input) => {
@@ -142,9 +161,22 @@ export function createEditorsPlugin(
           let launch: Launch | undefined;
           if (editor?.id === "file-manager") {
             const command = fileManagerCommand(host);
-            // The containing folder, never the file: a file manager runs whatever a file is
-            // (a script, a `.desktop` entry), and the project's files are not all the user's.
-            if (command !== undefined) launch = { command, args: [Path.dirname(path)] };
+            // The containing folder, or the file shown selected (D922), never the file opened:
+            // a file manager runs whatever a file is (a script, a `.desktop` entry), and the
+            // project's files are not all the user's.
+            if (command !== undefined) {
+              if (input.reveal !== true) {
+                launch = { command, args: [Path.dirname(path)] };
+              } else {
+                launch = revealLaunch(command, path, host);
+                if (launch === undefined) {
+                  throw new EditorError(
+                    "PATH_UNSAFE",
+                    `${input.path} holds a character File Explorer cannot take`,
+                  );
+                }
+              }
+            }
           } else if (editor !== undefined) {
             const found = findEditorCommand(editor, host);
             if (found !== undefined) {
@@ -185,7 +217,13 @@ export function createEditorsPlugin(
               `Could not start ${launch.command}: ${(error as Error).message}`,
             );
           }
-          context.log.info("opened in editor", { editor: input.editor, path });
+          context.log.info(
+            input.reveal === true ? "revealed in file manager" : "opened in editor",
+            {
+              editor: input.editor,
+              path,
+            },
+          );
           return { editor: input.editor, path };
         },
       });
