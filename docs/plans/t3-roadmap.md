@@ -287,7 +287,8 @@ free block of 20 after D1000 and writes it here.
   quit-hold shortcut, WSL and SSH backends, the CLI shim.
   Landed so far: packaging, signing and the release workflow (D941–D945,
   #123); Paste as Text (D946, #145); the quit hold (D947, #151); nightly release notes in the update control (D948, #159); local servers in
-  the preview's empty state (D949–D950, #162). The rest stays in the Deferred lists of
+  the preview's empty state (D949–D950, #162);
+  `chrome-headless-shell` on first use (D951). The rest stays in the Deferred lists of
   `desktop.md` and `preview.md`.
 - **W26:** `jhin pair` with a terminal QR code, pairing links for a
   `jhin client` page, device metadata and live updates in the authorized

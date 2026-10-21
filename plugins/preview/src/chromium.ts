@@ -12,6 +12,11 @@ const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
 export interface ChromiumOptions {
   /** A Chromium to run instead of the one Playwright installs. */
   readonly executablePath?: (() => string | undefined) | undefined;
+  /**
+   * T3's pinned headless shell, installed on first use when neither a path is
+   * set nor Playwright has a browser here (D951).
+   */
+  readonly headlessShell?: { executable(): Promise<string> } | undefined;
 }
 
 const NO_BROWSER_MESSAGE =
@@ -74,9 +79,9 @@ export class Chromium {
   #launch(): Promise<Browser> {
     this.#browser ??= (async () => {
       const { chromium } = await import("playwright-core");
-      const executablePath = this.#options.executablePath?.();
-      try {
-        const browser = await chromium.launch({
+      const configured = this.#options.executablePath?.();
+      const launch = (executablePath: string | undefined) =>
+        chromium.launch({
           ...(executablePath === undefined ? {} : { executablePath }),
           args: [
             "--disable-gpu",
@@ -86,17 +91,41 @@ export class Chromium {
           ignoreDefaultArgs: ["--enable-automation"],
           headless: true,
         });
+      const missing = (message: string) =>
+        /Executable doesn't exist|Failed to launch|ENOENT/i.test(message);
+      try {
+        let browser: Browser;
+        try {
+          browser = await launch(configured);
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          const shell = this.#options.headlessShell;
+          // No browser of Playwright's here: T3's pinned shell, installed now (D951).
+          if (configured !== undefined || shell === undefined || !missing(message)) throw cause;
+          let executable: string;
+          try {
+            executable = await shell.executable();
+          } catch (installing) {
+            throw new PreviewError(
+              "PREVIEW_UNAVAILABLE",
+              installing instanceof Error ? installing.message : String(installing),
+            );
+          }
+          browser = await launch(executable);
+        }
         browser.on("disconnected", () => {
           this.#browser = undefined;
           this.#shared = undefined;
         });
         return browser;
       } catch (cause) {
+        if (cause instanceof PreviewError) throw cause;
         const message = cause instanceof Error ? cause.message : String(cause);
-        const missing = /Executable doesn't exist|Failed to launch|ENOENT/i.test(message);
         throw new PreviewError(
           "PREVIEW_UNAVAILABLE",
-          missing ? NO_BROWSER_MESSAGE : `The browser did not start: ${message.split("\n")[0]}`,
+          missing(message)
+            ? NO_BROWSER_MESSAGE
+            : `The browser did not start: ${message.split("\n")[0]}`,
         );
       }
     })();

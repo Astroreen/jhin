@@ -39,11 +39,13 @@
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*",
     "@jhin/terminal-api": "workspace:*",
-    "playwright-core": "catalog:"
+    "playwright-core": "catalog:",
+    "yauzl": "catalog:"
   },
   "devDependencies": {
     "@jhin/testing": "workspace:*",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "@types/yauzl": "catalog:"
   },
   "jhin": {
     "id": "jhin.preview",
