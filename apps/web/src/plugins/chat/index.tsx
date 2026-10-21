@@ -354,7 +354,6 @@ export const chatPlugin = builtin(
       }
 
       // --- Commands -------------------------------------------------------------
-      /** A failure reaches whoever ran the command (the palette shows it, a shortcut logs it). */
       // T3's "Discard draft" (D451): a new thread's draft card goes, with an undo.
       const undo = context.services.tryGet<ThreadUndoService>(UNDO_CAPABILITY);
       context.commands.register({
@@ -408,6 +407,7 @@ export const chatPlugin = builtin(
                   kind: "discard",
                   key,
                   action: "Discarded",
+                  noun: "draft",
                   failureTitle: "Failed to restore draft",
                   perform,
                   revert,
@@ -416,6 +416,7 @@ export const chatPlugin = builtin(
         },
       });
 
+      /** A failure reaches whoever ran the command (the palette shows it, a shortcut logs it). */
       const register = (
         name: string,
         title: string,

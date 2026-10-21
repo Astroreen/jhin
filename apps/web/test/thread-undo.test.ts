@@ -14,6 +14,7 @@ function store() {
     const claim = undo.begin(kind, thread);
     undo.show({
       action,
+      noun: "thread",
       claim,
       failureTitle: `Failed to undo ${kind}`,
       undo: async () => {
@@ -34,7 +35,9 @@ describe("undoing thread actions (D450)", () => {
     expect(undoNoticeText(undo.notice()!)).toBe("Unpinned 2 threads");
     act("settle", "c", "Settled");
     expect(undoNoticeText(undo.notice()!)).toBe("Settled 1 thread");
-    expect(undoNoticeText({ action: "Discarded", count: 2 })).toBe("Discarded 2 drafts");
+    expect(undoNoticeText({ action: "Discarded", noun: "draft", count: 2 })).toBe(
+      "Discarded 2 drafts",
+    );
   });
 
   it("undoes the whole group once, and the run before it next", async () => {
@@ -46,7 +49,7 @@ describe("undoing thread actions (D450)", () => {
     await Promise.resolve();
     expect(undone.toSorted()).toEqual(["settle b", "settle c"]);
     // The earlier action is offered now; a second undo of the settles restores nothing twice.
-    expect(undo.notice()).toEqual({ action: "Unpinned", count: 1 });
+    expect(undo.notice()).toEqual({ action: "Unpinned", noun: "thread", count: 1 });
     expect(undo.undoLatest()).toBe(true);
     await Promise.resolve();
     expect(undone).toContain("pin a");
@@ -61,7 +64,7 @@ describe("undoing thread actions (D450)", () => {
     vi.advanceTimersByTime(UNDO_NOTICE_MS - 1);
     act("pin", "b", "Unpinned");
     vi.advanceTimersByTime(UNDO_NOTICE_MS - 1);
-    expect(undo.notice()).toEqual({ action: "Unpinned", count: 2 });
+    expect(undo.notice()).toEqual({ action: "Unpinned", noun: "thread", count: 2 });
     vi.advanceTimersByTime(1);
     expect(undo.notice()).toBeUndefined();
     expect(undo.undoLatest()).toBe(false);
@@ -79,7 +82,13 @@ describe("undoing thread actions (D450)", () => {
     const { undo } = store();
     const first = undo.begin("pin", "a");
     undo.begin("pin", "a");
-    undo.show({ action: "Unpinned", claim: first, failureTitle: "x", undo: async () => {} });
+    undo.show({
+      action: "Unpinned",
+      noun: "thread",
+      claim: first,
+      failureTitle: "x",
+      undo: async () => {},
+    });
     expect(undo.notice()).toBeUndefined();
   });
 
@@ -90,6 +99,7 @@ describe("undoing thread actions (D450)", () => {
     const claim = undo.begin("pin", "a");
     undo.show({
       action: "Unpinned",
+      noun: "thread",
       claim,
       failureTitle: "Failed to undo unpin",
       undo: () => Promise.reject(new Error("node gone")),

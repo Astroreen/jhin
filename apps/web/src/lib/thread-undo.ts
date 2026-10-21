@@ -1,8 +1,8 @@
 // Undoing a thread action follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/hooks/showThreadUndoNotice.ts and apps/web/src/hooks/threadUndo.ts.
 
-/** What the notice says was done (T3's actions). */
-export type UndoAction = "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Discarded";
+/** What the notice says was done: T3's "Settled", "Snoozed", "Unpinned", "Archived", "Discarded". */
+export type UndoAction = string;
 
 /** How long a notice offers its undo (T3's 5 seconds). */
 export const UNDO_NOTICE_MS = 5_000;
@@ -10,6 +10,8 @@ export const UNDO_NOTICE_MS = 5_000;
 /** The notice shown: the latest action and how many of it in a row. */
 export interface UndoNotice {
   readonly action: UndoAction;
+  /** What it was done to, singular: "thread", "draft". */
+  readonly noun: string;
   readonly count: number;
 }
 
@@ -21,17 +23,15 @@ export interface UndoClaim {
 
 interface Entry {
   readonly action: UndoAction;
+  readonly noun: string;
   readonly claim: UndoClaim;
   readonly undo: () => Promise<void>;
   readonly failureTitle: string;
-  readonly commit?: (() => void) | undefined;
 }
 
 /** "Unpinned 1 thread", "Discarded 2 drafts". */
 export const undoNoticeText = (notice: UndoNotice) =>
-  `${notice.action} ${notice.count} ${notice.action === "Discarded" ? "draft" : "thread"}${
-    notice.count === 1 ? "" : "s"
-  }`;
+  `${notice.action} ${notice.count} ${notice.noun}${notice.count === 1 ? "" : "s"}`;
 
 /**
  * The undo of thread actions, one store per client: `begin` claims an
@@ -56,9 +56,7 @@ export function createThreadUndo(options: {
   };
 
   const refresh = () => {
-    const stale = live.filter(({ claim }) => !claim.isCurrent());
-    live = live.filter((entry) => !stale.includes(entry));
-    for (const entry of stale) entry.commit?.();
+    live = live.filter(({ claim }) => claim.isCurrent());
     const latest = live.at(-1);
     group = [];
     if (latest === undefined) {
@@ -70,7 +68,7 @@ export function createThreadUndo(options: {
         if (entry.action !== latest.action) break;
         group.push(entry);
       }
-      notice = { action: latest.action, count: group.length };
+      notice = { action: latest.action, noun: latest.noun, count: group.length };
     }
     notify();
   };
@@ -106,10 +104,7 @@ export function createThreadUndo(options: {
       expiry = setTimeout(() => {
         const expired = live;
         live = [];
-        for (const { claim, commit } of expired) {
-          claim.finish();
-          commit?.();
-        }
+        for (const { claim } of expired) claim.finish();
         refresh();
       }, options.timeoutMs ?? UNDO_NOTICE_MS);
     },

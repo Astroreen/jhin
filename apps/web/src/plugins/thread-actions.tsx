@@ -151,12 +151,23 @@ export const threadActionsPlugin = builtin(
       });
       context.subscriptions.add({ dispose: () => undo.dispose() });
       const undoService: ThreadUndoService = {
-        async run({ kind, key, action, failureTitle, perform, revert }) {
+        async run({ kind, key, action, noun, failureTitle, perform, revert, voids = [] }) {
           const claim = undo.begin(kind, key);
-          const done = await perform();
-          if (done && claim.isCurrent()) {
-            undo.show({ action, claim, failureTitle, undo: async () => void (await revert()) });
-          } else claim.finish();
+          let done = false;
+          try {
+            done = await perform();
+          } finally {
+            if (done && claim.isCurrent()) {
+              for (const other of voids) undo.invalidate(other, key);
+              undo.show({
+                action,
+                noun,
+                claim,
+                failureTitle,
+                undo: async () => void (await revert()),
+              });
+            } else claim.finish();
+          }
           return done;
         },
         invalidate: (kind, key) => undo.invalidate(kind, key),
@@ -327,8 +338,18 @@ export const threadActionsPlugin = builtin(
         failureTitle: string,
         perform: () => Promise<boolean>,
         revert: () => Promise<unknown>,
+        voids: readonly string[] = [],
       ): Promise<boolean> =>
-        undoService.run({ kind, key: undoKey(input), action, failureTitle, perform, revert });
+        undoService.run({
+          kind,
+          key: undoKey(input),
+          action,
+          noun: "thread",
+          failureTitle,
+          perform,
+          revert,
+          voids,
+        });
       const arrangeThread = (
         input: z.infer<typeof ThreadRef>,
         change: ThreadArrangement,
@@ -355,9 +376,6 @@ export const threadActionsPlugin = builtin(
         ThreadRef,
         (input) => {
           const { target, thread } = threadOf(input);
-          // Settling unpins and wakes: their own undos are void, this one restores both.
-          undo.invalidate("pin", undoKey(input));
-          undo.invalidate("snooze", undoKey(input));
           const wake = thread.snoozedUntil;
           return undoable(
             input,
@@ -388,6 +406,8 @@ export const threadActionsPlugin = builtin(
               if (wake !== undefined && Date.parse(wake) > Date.now())
                 await threads.call(target, "threads.snooze", { threadId: thread.id, until: wake });
             },
+            // Settling unpins and wakes: once it did, their own undos are void; this one restores both.
+            ["pin", "snooze"],
           );
         },
       );

@@ -933,7 +933,9 @@ refused); `e2e/tests/sidebar.spec.ts` (the drag test, twice).
   slot `sidebar.notices` (`SIDEBAR_NOTICES_SLOT`), and the undo itself is
   the capability `client.undo@1` (`UNDO_CAPABILITY`, `ThreadUndoService`
   in `@jhin/client-api`), provided by `jhin.thread-actions`, so another
-  plugin's action can offer its undo the same way. T3 offers no undo for
+  plugin's action can offer its undo the same way: it names what was done
+  and to what (`action`, `noun`) and which undos its success voids
+  (`voids`). T3 offers no undo for
   pinning, and neither does this: "undo of a pin" is the undo of an unpin.
 - **D451. Discarding a draft from its card.** The card of a new thread's
   draft gets T3's "Discard draft" button (an X shown while the pointer

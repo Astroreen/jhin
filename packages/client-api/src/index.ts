@@ -233,16 +233,22 @@ export interface ThreadUndoService {
   /**
    * Runs `perform` (true when it did something) and, if it did, offers
    * `revert`. `kind` and `key` name what it claims: a later run of the same
-   * kind on the same key voids the earlier one's undo.
+   * kind on the same key voids the earlier one's undo. Once it succeeded, the
+   * undos of `voids` (kinds on the same key) are void: settling a thread
+   * takes back its unpin and its snooze.
    */
   run(options: {
     readonly kind: string;
     readonly key: string;
-    readonly action: "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Discarded";
+    /** What was done, as the notice says it: "Unpinned", "Discarded". */
+    readonly action: string;
+    /** What it was done to, singular, as the notice counts it: "thread", "draft". */
+    readonly noun: string;
     /** The toast title when the undo fails, e.g. "Failed to undo unpin". */
     readonly failureTitle: string;
     readonly perform: () => Promise<boolean>;
     readonly revert: () => Promise<unknown>;
+    readonly voids?: readonly string[];
   }): Promise<boolean>;
   /** Voids the undo of `kind` on `key`: an action undid it another way. */
   invalidate(kind: string, key: string): void;

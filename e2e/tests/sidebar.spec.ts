@@ -481,4 +481,15 @@ test("D451: discard a new thread's draft from its card, and undo it", async ({ p
   await notice.getByRole("button", { name: "Ctrl+Z to undo" }).click();
   await expect(draft).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveText("half a thought");
+
+  // A draft written again meanwhile is not overwritten by an undo (T3's words).
+  await draft.hover();
+  await draft.getByRole("button", { name: "Discard draft" }).click();
+  await expect(notice).toBeVisible();
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  await page.getByRole("textbox", { name: "Message" }).fill("a new thought");
+  await notice.getByRole("button", { name: "Ctrl+Z to undo" }).click();
+  await expect(page.getByText("Failed to restore draft")).toBeVisible();
+  await expect(page.getByText("The draft has new content.")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveText("a new thought");
 });
