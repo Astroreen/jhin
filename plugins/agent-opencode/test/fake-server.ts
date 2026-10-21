@@ -15,6 +15,7 @@ export interface FakeModel {
   readonly id: string;
   readonly name?: string;
   readonly limit?: { context?: number; input?: number };
+  readonly variants?: { id: string }[];
 }
 
 interface FakeSession {

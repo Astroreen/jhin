@@ -246,6 +246,61 @@ describe("jhin.agent-opencode: a turn", () => {
     expect(items.at(-1)).toMatchObject({ kind: "usage", usage: { contextWindow: 272_000 } });
   });
 
+  it("lists a model's variants and sends the one a turn chose", async () => {
+    const { fake, runtime } = await setup({
+      models: [
+        {
+          providerID: "anthropic",
+          id: "claude-sonnet-5-5",
+          name: "Claude Sonnet 5.5",
+          variants: [{ id: "low" }, { id: "high" }, { id: "max-thinking" }],
+        },
+        { providerID: "openai", id: "gpt-6", name: "GPT-6" },
+      ],
+      scripts: [answer("one"), answer("two"), answer("three")],
+    });
+    await runtime.status!();
+    expect(runtime.models).toEqual([
+      {
+        id: "anthropic/claude-sonnet-5-5",
+        name: "Claude Sonnet 5.5",
+        description: "anthropic",
+        options: [
+          {
+            id: "variant",
+            label: "Reasoning",
+            type: "select",
+            options: [
+              { id: "low", label: "Low" },
+              { id: "high", label: "High", isDefault: true },
+              { id: "max-thinking", label: "Max Thinking" },
+            ],
+          },
+        ],
+      },
+      { id: "openai/gpt-6", name: "GPT-6", description: "openai" },
+    ]);
+
+    const variant = (value: string) => ({ modelOptions: [{ id: "variant", value }] });
+    await drain(runtime.startTurn(request(variant("max-thinking"))));
+    expect(fake.calls("POST", "/api/session")[0]!.body?.["model"]).toEqual({
+      providerID: "anthropic",
+      id: "claude-sonnet-5-5",
+      variant: "max-thinking",
+    });
+    // Another variant switches the session's model.
+    await drain(runtime.startTurn(request({ turnId: "turn-2", ...variant("low") })));
+    expect(fake.calls("POST", "/model").map((call) => call.body?.["model"])).toEqual([
+      { providerID: "anthropic", id: "claude-sonnet-5-5", variant: "low" },
+    ]);
+    // A variant the model lacks is dropped: OpenCode's default variant again.
+    await drain(runtime.startTurn(request({ turnId: "turn-3", ...variant("xhigh") })));
+    expect(fake.calls("POST", "/model").map((call) => call.body?.["model"])).toEqual([
+      { providerID: "anthropic", id: "claude-sonnet-5-5", variant: "low" },
+      { providerID: "anthropic", id: "claude-sonnet-5-5" },
+    ]);
+  });
+
   it("fails the turn and forgets a session OpenCode no longer has", async () => {
     const { runtime, sessions } = await setup({}, { [THREAD]: "ses_gone" });
     expect((await failure(runtime.startTurn(request()))).message).toBe(SESSION_GONE);

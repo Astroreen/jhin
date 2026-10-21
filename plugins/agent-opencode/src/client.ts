@@ -33,6 +33,8 @@ export interface ModelInfo {
   readonly providerID: string;
   readonly name?: string;
   readonly limit?: { readonly context?: number; readonly input?: number };
+  /** The model's variants, e.g. reasoning efforts (D882). */
+  readonly variants?: readonly { readonly id: string }[];
 }
 
 export interface SessionInfo {

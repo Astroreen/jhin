@@ -839,6 +839,16 @@ OpenCode 2 behaviour.
   starts it, so the spawn, the password and the URL line are tested too. CI
   never runs the real CLI.
 
+- **D882. An OpenCode turn takes its model's variant (W24).** A model of
+  `GET /api/model` with `variants` is listed with T3's "Reasoning" select
+  (`variant`, `openCode2ModelCapabilities`): one choice per variant, labelled
+  in title case, the default T3 infers for the provider (the only variant;
+  `high` for `anthropic` and `google*`; `medium`, else `high`, for `openai`
+  and `opencode`). A turn's `variant` that the model offers (D297) goes into
+  the session's model reference, on a new session or through the model
+  switch when it changed; no choice sends none, so OpenCode's default
+  applies. A model the last probe did not list takes no variant.
+
 ### Not ported
 
 - OpenCode 1.x (T3's `adapter.ts` over `@opencode-ai/sdk`): a CLI older than
@@ -853,7 +863,6 @@ OpenCode 2 behaviour.
 - OpenCode 1.x.
 - A lost event stream reconnects and reconciles the running turn from
   `message.list` (T3 does); today the turn fails.
-- Per-turn model options (OpenCode's variants, T3's "Reasoning" select).
 - Steering a running turn (`delivery: "steer"`), fork and rollback of a
   session.
 - Subagent transcripts: a `subagent` call shows its result only.

@@ -5,8 +5,19 @@
 import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
 
-import type { AgentItem, AgentResponse, AgentTurn, TurnRequest } from "@jhin/agent-api";
-import { DEFAULT_RUNTIME_MODE, ThreadEvents, historyTranscript } from "@jhin/agent-api";
+import type {
+  AgentItem,
+  AgentResponse,
+  AgentTurn,
+  ModelOptionDescriptor,
+  TurnRequest,
+} from "@jhin/agent-api";
+import {
+  DEFAULT_RUNTIME_MODE,
+  ThreadEvents,
+  applicableModelOptions,
+  historyTranscript,
+} from "@jhin/agent-api";
 
 import {
   OpenCodeError,
@@ -94,6 +105,8 @@ export interface OpenCodeTurnDependencies {
   readonly sessions: SessionStore;
   /** The model of a turn that names none: the config's, else OpenCode's (D335). */
   readonly defaultModel: (connection: Connection, directory: string) => Promise<string>;
+  /** What a turn can choose for `model` (D882): its variants. */
+  readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** The model's context window, read from OpenCode's model list when not known yet. */
   readonly contextWindow: (
     connection: Connection,
@@ -259,8 +272,12 @@ export function openCodeTurn(
       const { client } = connection;
       const directory = request.cwd;
       const model = request.model ?? (await deps.defaultModel(connection, directory));
-      const ref = parseModel(model);
-      if (ref === undefined) throw new Error(malformedModel(model));
+      const parsed = parseModel(model);
+      if (parsed === undefined) throw new Error(malformedModel(model));
+      const variant = applicableModelOptions(deps.modelOptions?.(model), request.modelOptions).find(
+        (selection) => selection.id === "variant",
+      )?.value;
+      const ref = typeof variant === "string" ? { ...parsed, variant } : parsed;
       const wanted = agentFor(interactionMode);
 
       // The agents' own path rules: the plan agent may write its plan file (D328).

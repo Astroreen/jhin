@@ -5,6 +5,7 @@ import * as Path from "node:path";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
+  type ModelOptionDescriptor,
   THREADS_STREAM,
   ThreadEvents,
   type AgentModel,
@@ -28,6 +29,7 @@ import {
   type ModelInfo,
   type OpenCodeClient,
 } from "./client.ts";
+import { variantOptions } from "./mapping.ts";
 import {
   createServerOwner,
   isSupportedVersion,
@@ -190,11 +192,15 @@ export function createOpenCodeRuntime(options: {
         const own = await client.defaultModel(directory).catch(() => null);
         const listed = models
           .filter((model) => (model.name ?? "").trim().length > 0)
-          .map((model) => ({
-            id: slug(model),
-            name: model.name!.trim(),
-            description: model.providerID,
-          }))
+          .map((model) => {
+            const options = variantOptions(model);
+            return {
+              id: slug(model),
+              name: model.name!.trim(),
+              description: model.providerID,
+              ...(options.length === 0 ? {} : { options }),
+            };
+          })
           .toSorted((a, b) => a.name.localeCompare(b.name));
         if (listed.length === 0) {
           return {
@@ -222,6 +228,9 @@ export function createOpenCodeRuntime(options: {
   };
 
   const models = () => probed?.probe.models ?? [];
+  /** What a turn can choose for `model`, as the last probe listed it (D882). */
+  const modelOptions = (model: string): readonly ModelOptionDescriptor[] | undefined =>
+    models().find((listed) => listed.id === model)?.options;
   const configuredDefault = () =>
     // A field cleared on the settings page may be saved as "": unset.
     (options.config().defaultModel?.trim() || undefined) ??
@@ -292,6 +301,7 @@ export function createOpenCodeRuntime(options: {
           remember(await connection.client.models(directory));
           return windows.get(model);
         },
+        modelOptions: (model) => modelOptions(model),
         attachmentsDir,
         ...(options.clock === undefined ? {} : { clock: options.clock }),
         ...(options.log === undefined ? {} : { log: options.log }),
