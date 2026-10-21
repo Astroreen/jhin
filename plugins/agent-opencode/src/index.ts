@@ -47,7 +47,7 @@ import {
 } from "./turn.ts";
 
 export { OpenCodeError, createClient, type StreamEvent } from "./client.ts";
-export { createServerOwner, parseVersion, serverEnvironment } from "./server.ts";
+export { RECONNECT_FAILED, createServerOwner, parseVersion, serverEnvironment } from "./server.ts";
 export {
   OPENCODE_AGENT_ID,
   SESSION_GONE,

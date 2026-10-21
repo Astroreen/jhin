@@ -116,15 +116,25 @@ export async function failure(turn: AgentTurn): Promise<Error> {
 /** A clock whose timers run only when the test fires them. */
 export function manualClock() {
   const timers = new Set<{ ms: number; run: () => void }>();
+  const armedWaiters: { ms: number; resolve: () => void }[] = [];
   const clock: Clock = {
     after(ms, run) {
       const timer = { ms, run };
       timers.add(timer);
+      for (const waiter of armedWaiters.filter((entry) => entry.ms === ms)) {
+        armedWaiters.splice(armedWaiters.indexOf(waiter), 1);
+        waiter.resolve();
+      }
       return () => timers.delete(timer);
     },
   };
   return {
     clock,
+    /** Resolves once a timer of `ms` is pending. */
+    armed(ms: number) {
+      if ([...timers].some((timer) => timer.ms === ms)) return Promise.resolve();
+      return new Promise<void>((resolve) => armedWaiters.push({ ms, resolve }));
+    },
     /** Runs every pending timer of `ms`. */
     fire(ms: number) {
       for (const timer of [...timers].filter((entry) => entry.ms === ms)) {

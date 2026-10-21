@@ -900,20 +900,37 @@ OpenCode 2 behaviour.
   turn of its own; a steer OpenCode refuses, and those queued for a prompt
   it never took, are only logged, as Codex's are.
 
+- **D887. A lost event stream is opened again and the turn read back
+  (W24).** A stream that broke or went silent (D330) is opened again up to
+  five times, 2 s apart (T3's `RECONNECT_ATTEMPTS` and `RECONNECT_DELAY`);
+  a server that exited is not waited for. Once it is open, each running turn
+  reads back what it missed (T3's `backfill` and `reconcile`): the session's
+  messages newest first, back to the turn's own prompt, are replayed as the
+  events they would have been (a text, reasoning or tool completes once,
+  streamed or read back), and a session that `GET /api/session/active` no
+  longer lists ended while the stream was down: completed when its last
+  `idle` message says `succeeded`, failed with "OpenCode ended the turn
+  with an error while Jhin was reconnecting." for `failed`, else as
+  stopped. A turn still running goes on with the stream's events. A stream
+  that does not open again fails its turns with "The OpenCode event stream
+  was lost and could not reconnect." (T3's wording), the session marked
+  unsettled as before; one that cannot be read back fails as lost.
+  `Connection` gains `onReconnected`.
+
 ### Not ported
 
 - OpenCode 1.x (T3's `adapter.ts` over `@opencode-ai/sdk`): a CLI older than
   2.0 is reported as unsupported.
 - T3's per-thread MCP server inside OpenCode, fork and rollback,
-  subagent child sessions and background wakes, reconnecting and reconciling
-  a lost event stream, OpenCode Go usage limits, text generation, skills and
+  subagent child sessions and background wakes, OpenCode Go usage limits, text generation, skills and
   `$skill` mentions, the version advisory and self-update.
 
 ### Deferred
 
 - OpenCode 1.x.
-- A lost event stream reconnects and reconciles the running turn from
-  `message.list` (T3 does); today the turn fails.
+- After a reconnect (D887), the permissions and forms a session asked for
+  while the stream was down are not listed again (T3 lists them), and a
+  subagent session's turn is not read back first.
 - Fork and rollback of a session.
 - Subagent transcripts: a `subagent` call shows its result only.
 - Writing the thread's title to its OpenCode session.

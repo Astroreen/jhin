@@ -45,6 +45,16 @@ export interface SessionInfo {
   readonly location?: { readonly directory?: string };
 }
 
+/** A message of a session as `GET /api/session/:id/message` lists it; fields read one by one. */
+export interface SessionMessage {
+  readonly id: string;
+  readonly type: string;
+  /** An `idle` message's: how the execution before it ended. */
+  readonly outcome?: string;
+  /** An `assistant` message's parts: text, reasoning and tools. */
+  readonly content?: readonly Record<string, unknown>[];
+}
+
 /** One frame of `GET /api/event`. */
 export interface StreamEvent {
   readonly type: string;
@@ -232,6 +242,13 @@ export function createClient(options: ClientOptions) {
       request<void>("POST", `/api/session/${enc(sessionId)}/agent`, { body: { agent } }),
     switchModel: (sessionId: string, model: ModelRef) =>
       request<void>("POST", `/api/session/${enc(sessionId)}/model`, { body: { model } }),
+    /** One page of a session's messages, newest first (`cursor` asks for the next). */
+    messages: (sessionId: string, cursor?: string) =>
+      request<{ data: SessionMessage[]; cursor?: { next?: string } }>(
+        "GET",
+        `/api/session/${enc(sessionId)}/message`,
+        { query: cursor === undefined ? { order: "desc", limit: "50" } : { cursor, limit: "50" } },
+      ),
     active: async () =>
       unwrap(await request<{ data: Record<string, unknown> }>("GET", "/api/session/active")),
     prompt: (
