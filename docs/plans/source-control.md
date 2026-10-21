@@ -659,7 +659,8 @@ marks the badge's list, with a screenshot).
   so a same-named branch of someone's fork is never the branch's (GitHub
   reads `isCrossRepository` and `headRepositoryOwner`, ten at most). A pull
   request is opened from a fork as `owner:branch` (GitHub, Forgejo) or with
-  the fork as its source repository (Bitbucket).
+  the fork as its source repository (Bitbucket). GitLab and Azure DevOps refuse a pull
+  request from a fork (Deferred) rather than open one from the wrong project.
 - **D278. GitLab, Azure DevOps and Forgejo through their CLIs**, as T3 calls
   them: `glab mr list --source-branch … --all --output json`, `glab api
   --hostname <host> projects/<path>/merge_requests[/<iid>]` (created with
@@ -667,7 +668,9 @@ marks the badge's list, with a screenshot).
   pipeline as its one check; `az repos pr list|show|create --detect true`
   (completed is merged, abandoned closed; no checks, as in T3); `tea api
   /repos/<owner>/<repo>/pulls…` and the head commit's statuses as checks, a
-  `WIP` title as a draft, tea's error body read even though it exits 0. Paths
+  `WIP` title as a draft, tea's error body read even though it exits 0. `glab` and `az` are told the repository
+  pull requests go to (`--repo`, `--organization --project --repository`), so
+  they never pick another from the folder. Paths
   `glabPath`, `azPath`, `teaPath`; T3's messages for a missing or signed-out
   tool ("GitLab CLI (glab) is not installed on this node", "… run `glab auth
   login` on this node", `az devops login`, `tea login add`).
@@ -706,7 +709,9 @@ with the node's token, and without one).
 - Forges (D275–D279): watching a pull request on forges other than GitHub,
   Bitbucket Server and Data Center, forges' icons and names in the client,
   tokens kept as the node's secrets instead of its environment, creating a
-  GitLab merge request from a fork, and T3's checkout of a pull request into
+  GitLab merge request or an Azure DevOps pull request from a fork, checks of
+  Forgejo and Bitbucket that fail to read showing as none rather than as an
+  error, and T3's checkout of a pull request into
   a thread ("Checkout pull request").
 - Watching (D274): review thread comments on lines, required checks as the
   gate, read fingerprints, rate limit pauses, a notification for a wake and

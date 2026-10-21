@@ -570,7 +570,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     const baseUrl = base === undefined ? undefined : await remoteUrlOf(git, base);
     const host = baseUrl === undefined ? undefined : remoteHost(baseUrl);
     const kind = host === undefined ? undefined : kindOfHost(host);
-    repo.forge = kind === undefined || baseUrl === undefined ? undefined : { kind, url: baseUrl };
+    const forge = kind === undefined || baseUrl === undefined ? undefined : { kind, url: baseUrl };
+    // Another forge or remote: what was read of the old one says nothing of the new.
+    if (forge?.kind !== repo.forge?.kind || forge?.url !== repo.forge?.url)
+      repo.pullRequests.clear();
+    repo.forge = forge;
     if (kind === undefined) repo.provider = null;
     else if (repo.provider?.kind !== kind) repo.provider = { kind, available: true };
     const status: ProjectStatus = {
@@ -1076,9 +1080,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
 
   /** Which forge a host is: a configured one, a GitHub host of `githubHosts`, else by its name. */
   function kindOfHost(host: string): ForgeKind | undefined {
+    // As D275 orders them: configured hosts, then GitHub hosts, then what the name says.
     const { forgeHosts, githubHosts } = config();
-    const github = githubHosts.map((item) => item.toLowerCase()).includes(host.toLowerCase());
-    return forgeKindOf(host, forgeHosts) ?? (github ? "github" : undefined);
+    const name = host.toLowerCase();
+    const configured = Object.entries(forgeHosts).find(([key]) => key.toLowerCase() === name)?.[1];
+    if (configured !== undefined) return configured;
+    if (githubHosts.map((item) => item.toLowerCase()).includes(name)) return "github";
+    return forgeKindOf(host);
   }
 
   /** A forge's driver working in `cwd`; `remoteUrl` names the repository pull requests go to. */
@@ -1089,11 +1097,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   ): Forge | undefined {
     const tool = (key: "ghPath" | "glabPath" | "azPath" | "teaPath") => () => config()[key];
     if (kind === "github") return githubForge(tool("ghPath"), cwd, viewers);
-    if (kind === "azure-devops")
-      return azureForge(tool("azPath"), { cwd, host: "", repository: "" });
     const site =
       remoteUrl === undefined ? { cwd, host: "", repository: "" } : siteOf(cwd, remoteUrl);
     if (site === undefined) return undefined;
+    if (kind === "azure-devops") return azureForge(tool("azPath"), site);
     if (kind === "gitlab") return gitlabForge(tool("glabPath"), site);
     if (kind === "bitbucket") return bitbucketForge(site);
     return forgejoForge(tool("teaPath"), site);

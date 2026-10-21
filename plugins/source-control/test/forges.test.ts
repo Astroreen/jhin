@@ -132,7 +132,7 @@ describe("jhin.source-control: GitLab through glab", () => {
 
   it("reads a branch's merge request with its pipeline, and creates one", async () => {
     const glab = fakeCli("glab");
-    glab.answer("mr list --source-branch feature", [
+    glab.answer("mr list --repo https://gitlab.com/acme/demo --source-branch feature", [
       mr({ iid: 9, source_project_id: 2, updated_at: "2026-10-21T00:00:00Z" }),
       mr(),
     ]);
@@ -149,7 +149,7 @@ describe("jhin.source-control: GitLab through glab", () => {
       checks: { state: "failing", failed: 1, total: 1 },
     });
 
-    glab.answer("mr list --source-branch topic", []);
+    glab.answer("mr list --repo https://gitlab.com/acme/demo --source-branch topic", []);
     glab.answer(
       "api --hostname gitlab.com --method POST projects/acme%2Fdemo/merge_requests",
       mr({
@@ -206,20 +206,23 @@ describe("jhin.source-control: GitLab through glab", () => {
 describe("jhin.source-control: Azure DevOps through az", () => {
   it("reads a branch's pull request", async () => {
     const az = fakeCli("az");
-    az.answer("repos pr list --detect true --source-branch feature", [
-      {
-        pullRequestId: 12,
-        title: "Add a",
-        status: "completed",
-        isDraft: false,
-        sourceRefName: "refs/heads/feature",
-        targetRefName: "refs/heads/main",
-        creationDate: "2026-10-19T10:00:00Z",
-        closedDate: "2026-10-20T10:00:00Z",
-        repository: { webUrl: "https://dev.azure.com/acme/web/_git/demo" },
-        forkSource: null,
-      },
-    ]);
+    az.answer(
+      "repos pr list --organization https://dev.azure.com/acme --project web --repository demo --source-branch feature",
+      [
+        {
+          pullRequestId: 12,
+          title: "Add a",
+          status: "completed",
+          isDraft: false,
+          sourceRefName: "refs/heads/feature",
+          targetRefName: "refs/heads/main",
+          creationDate: "2026-10-19T10:00:00Z",
+          closedDate: "2026-10-20T10:00:00Z",
+          repository: { webUrl: "https://dev.azure.com/acme/web/_git/demo" },
+          forkSource: null,
+        },
+      ],
+    );
     const sc = await node();
     const projectId = await sc.project(repositoryAt("https://dev.azure.com/acme/web/_git/demo"));
     expect(only(await sc.status(projectId, true)).pullRequests["feature"]).toMatchObject({
@@ -228,6 +231,55 @@ describe("jhin.source-control: Azure DevOps through az", () => {
       state: "merged",
       mergedAt: "2026-10-20T10:00:00Z",
       checks: { state: null },
+    });
+  });
+});
+
+describe("jhin.source-control: creating on Azure DevOps, and refusing forks where unsupported", () => {
+  it("creates an Azure DevOps pull request in the remote's repository", async () => {
+    const az = fakeCli("az");
+    const where = "--organization https://dev.azure.com/acme --project web --repository demo";
+    az.answer(`repos pr list ${where} --source-branch feature`, []);
+    az.answer(`repos pr create ${where} --source-branch feature --target-branch main`, {
+      pullRequestId: 13,
+      title: "Add a",
+      status: "active",
+      sourceRefName: "refs/heads/feature",
+      targetRefName: "refs/heads/main",
+      creationDate: "2026-10-21T10:00:00Z",
+      repository: { webUrl: "https://dev.azure.com/acme/web/_git/demo" },
+      forkSource: null,
+    });
+    const dir = repositoryAt("https://dev.azure.com/acme/web/_git/demo");
+    write(dir, "a.txt", "a\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const result = await sc.client.call<GitActionResult>("git.action.run", {
+      projectId,
+      action: "commit_push_pr",
+      commitMessage: "Add a",
+    });
+    expect(result.toast.title).toBe("Created PR #13");
+    expect(az.calls()).toContainEqual(
+      expect.stringContaining(
+        `repos pr create ${where} --source-branch feature --target-branch main --title Add a --description ## Summary`,
+      ),
+    );
+  });
+
+  it("refuses a GitLab merge request from a fork instead of opening one from the wrong project", async () => {
+    const glab = fakeCli("glab");
+    glab.answer("mr list --repo https://gitlab.com/acme/demo --source-branch feature", []);
+    const dir = repositoryAt("git@gitlab.com:me/demo.git");
+    git(dir, "remote", "add", "upstream", "git@gitlab.com:acme/demo.git");
+    write(dir, "a.txt", "a\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    await expect(
+      sc.client.call("git.action.run", { projectId, action: "commit_push_pr", commitMessage: "A" }),
+    ).rejects.toMatchObject({
+      code: "PULL_REQUEST_FAILED",
+      message: "Opening a GitLab merge request from a fork is not supported on this node yet",
     });
   });
 });

@@ -40,7 +40,7 @@ export interface ForgeSite {
 const newest = (found: readonly ForgePullRequest[], head: HeadContext): PullRequest | null =>
   found
     .filter((item) => matchesHead(item, head))
-    .toSorted((a, b) => ((a.pr.updatedAt ?? "") < (b.pr.updatedAt ?? "") ? 1 : -1))[0]?.pr ?? null;
+    .toSorted((a, b) => (b.pr.updatedAt ?? "").localeCompare(a.pr.updatedAt ?? ""))[0]?.pr ?? null;
 
 const reference = (url: string) => {
   const parsed = parsePullRequestUrl(url);
@@ -145,6 +145,8 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite): Forge {
       const raw = await glab([
         "mr",
         "list",
+        // The repository pull requests go to, not whichever glab would pick from the folder.
+        ...(site.repository === "" ? [] : ["--repo", `https://${site.host}/${site.repository}`]),
         "--source-branch",
         head.branch,
         "--all",
@@ -166,6 +168,12 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite): Forge {
       return read(host, repository, number);
     },
     create: async ({ base, head, title, bodyFile }) => {
+      if (head.owner !== undefined) {
+        throw new ForgeUnavailable(
+          "failed",
+          "Opening a GitLab merge request from a fork is not supported on this node yet",
+        );
+      }
       const raw = await glab([
         "api",
         "--hostname",
@@ -226,7 +234,21 @@ function azureRequest(raw: Record<string, unknown>): ForgePullRequest | undefine
   };
 }
 
+/**
+ * Which Azure DevOps repository: the one `site` names (`org/project/_git/repo`
+ * on dev.azure.com, `project/_git/repo` on `<org>.visualstudio.com`), else
+ * the folder's (`--detect`).
+ */
+function azureWhere(site: ForgeSite): string[] {
+  const match = /^(?:([^/]+)\/)?([^/]+)\/_git\/([^/]+)$/.exec(site.repository);
+  if (match === null) return ["--detect", "true"];
+  const organization =
+    site.host === "dev.azure.com" ? `https://dev.azure.com/${match[1]}` : `https://${site.host}`;
+  return ["--organization", organization, "--project", match[2]!, "--repository", match[3]!];
+}
+
 export function azureForge(azPath: () => string, site: ForgeSite): Forge {
+  const where = azureWhere(site);
   const az = async (args: readonly string[]) =>
     json(
       await runCli(azPath(), [...args, "--only-show-errors", "--output", "json"], {
@@ -253,8 +275,7 @@ export function azureForge(azPath: () => string, site: ForgeSite): Forge {
         "repos",
         "pr",
         "list",
-        "--detect",
-        "true",
+        ...where,
         "--source-branch",
         head.branch,
         "--status",
@@ -281,14 +302,19 @@ export function azureForge(azPath: () => string, site: ForgeSite): Forge {
         "answered",
       );
     },
-    create: async ({ base, head, title, bodyFile }) =>
-      one(
+    create: async ({ base, head, title, bodyFile }) => {
+      if (head.owner !== undefined) {
+        throw new ForgeUnavailable(
+          "failed",
+          "Opening an Azure DevOps pull request from a fork is not supported on this node yet",
+        );
+      }
+      return one(
         await az([
           "repos",
           "pr",
           "create",
-          "--detect",
-          "true",
+          ...where,
           "--source-branch",
           head.branch,
           "--target-branch",
@@ -299,7 +325,8 @@ export function azureForge(azPath: () => string, site: ForgeSite): Forge {
           await Fs.readFile(bodyFile, "utf8"),
         ]),
         "created",
-      ),
+      );
+    },
     templatePaths: [
       ".azuredevops/pull_request_template.md",
       ".vsts/pull_request_template.md",
@@ -449,7 +476,7 @@ export function bitbucketForge(site: ForgeSite, env: NodeJS.ProcessEnv = process
     terminology: PULL_REQUEST,
     find: async (head) => {
       const query = encodeURIComponent(
-        `source.branch.name="${head.branch.replaceAll('"', '\\"')}"`,
+        `source.branch.name="${head.branch.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`,
       );
       const answer = await call(
         `${repo(site.repository)}/pullrequests?q=${query}&state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&sort=-updated_on&pagelen=10`,
@@ -457,11 +484,9 @@ export function bitbucketForge(site: ForgeSite, env: NodeJS.ProcessEnv = process
       const values = Array.isArray(answer["values"])
         ? (answer["values"] as Record<string, unknown>[])
         : [];
-      const found = values
+      const first = values
         .map((value) => bitbucketRequest(value, []))
-        .filter((item) => item !== undefined)
-        .filter((item) => matchesHead(item, head));
-      const first = found[0];
+        .find((item) => item !== undefined && matchesHead(item, head));
       if (first === undefined) return null;
       return (
         await full(
