@@ -173,6 +173,25 @@ const sortable = (value: string | undefined) => {
 };
 
 /**
+ * A thread at work (T3's isThreadWorking): its turn runs and asks nothing of
+ * the user. One waiting for an answer needs the user, so it stays active.
+ */
+const isWorking = (thread: ThreadRecord): boolean => thread.lastTurn?.status === "running";
+
+/**
+ * When a thread came back to the inbox from the Working section: its turn
+ * ended or asks for something (T3's createInboxReturnTracker, read from the
+ * record instead of remembered).
+ */
+const returnedAt = (thread: ThreadRecord): string | undefined =>
+  thread.lastTurn !== undefined && thread.lastTurn.status !== "running"
+    ? thread.lastTurn.at
+    : undefined;
+
+const later = (a: string | undefined, b: string | undefined) =>
+  a === undefined ? b : b === undefined ? a : sortable(a) >= sortable(b) ? a : b;
+
+/**
  * The threads of every shown node in one list, without a section per node or
  * project, split as T3 splits them: the pinned ones on top in their order,
  * then the active ones (newest first by when they were created or came back
@@ -182,11 +201,17 @@ const sortable = (value: string | undefined) => {
  */
 export function sidebarThreads<Node extends CatalogNode>(
   nodes: readonly Node[],
-  options: { readonly nowMs: number; readonly scope?: string | undefined },
+  options: {
+    readonly nowMs: number;
+    readonly scope?: string | undefined;
+    /** T3's Working section (beta, a device setting): threads at work leave the inbox for it. */
+    readonly working?: boolean | undefined;
+  },
 ): Record<ThreadSection, SidebarThread<Node>[]> {
   const lists: Record<ThreadSection, SidebarThread<Node>[]> = {
     pinned: [],
     active: [],
+    working: [],
     snoozed: [],
     settled: [],
   };
@@ -200,7 +225,9 @@ export function sidebarThreads<Node extends CatalogNode>(
       ) {
         continue;
       }
-      const section = threadSection(thread, options.nowMs);
+      let section = threadSection(thread, options.nowMs);
+      if (section === "active" && options.working === true && isWorking(thread))
+        section = "working";
       const at = section === "settled" ? settledAt(thread, options.nowMs) : undefined;
       lists[section].push({
         key: threadKey(node.target, thread.id),
@@ -221,9 +248,20 @@ export function sidebarThreads<Node extends CatalogNode>(
     active: sortActive(lists.active, (entry) => ({
       key: entry.key,
       createdAt: entry.thread.createdAt,
-      unsettledAt: entry.thread.unsettledAt,
-      orderKey: entry.thread.activeOrderKey,
+      // With the Working section, a thread back from it is on top (T3's sortInboxThreadsByReturn).
+      unsettledAt:
+        options.working === true
+          ? later(entry.thread.unsettledAt, returnedAt(entry.thread))
+          : entry.thread.unsettledAt,
+      // With the Working section the inbox is ordered by time, not by hand (T3's activeTimeOrdered).
+      orderKey: options.working === true ? undefined : entry.thread.activeOrderKey,
     })),
+    // Newest sent first (T3's sortWorkingThreadsBySend).
+    working: lists.working.toSorted(
+      (a, b) =>
+        sortable(later(b.thread.createdAt, b.thread.lastMessageAt)) -
+          sortable(later(a.thread.createdAt, a.thread.lastMessageAt)) || byKey(a, b),
+    ),
     snoozed: lists.snoozed.toSorted(
       (a, b) => sortable(a.thread.snoozedUntil) - sortable(b.thread.snoozedUntil) || byKey(a, b),
     ),

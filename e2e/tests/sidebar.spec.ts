@@ -493,3 +493,37 @@ test("D451: discard a new thread's draft from its card, and undo it", async ({ p
   await expect(page.getByText("The draft has new content.")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveText("a new thought");
 });
+
+test("D452: the Working section folds threads at work until they need you", async ({
+  page,
+}, info) => {
+  const x = await start({ mode: "ui" });
+  await addThread(x, "quiet one");
+  await addThread(x, "/hold busy one");
+  await page.goto(`${x.ui}#token=${x.token}`);
+  // Off by default: the running thread is a card among the others.
+  await expect(cardTitles(page)).toHaveText(["/hold busy one", "quiet one"]);
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Working section" }).click();
+  await page.getByRole("button", { name: "Back" }).click();
+
+  const header = page.getByRole("button", { name: "Working (1)" });
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await expect(cardTitles(page)).toHaveText(["quiet one"]);
+  await header.click();
+  await expect(page.getByRole("button", { name: "Working", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(cardTitles(page)).toHaveText(["quiet one", "/hold busy one"]);
+  const shot = info.outputPath("working-section.png");
+  await page.screenshot({ path: shot });
+  await info.attach("working-section", { path: shot, contentType: "image/png" });
+
+  // Its turn ends: back on top of the inbox, the section gone.
+  await threadRow(page, "/hold busy one").click();
+  await page.getByRole("button", { name: "Stop generation" }).click();
+  await expect(page.getByRole("button", { name: /^Working/ })).toHaveCount(0);
+  await expect(cardTitles(page)).toHaveText(["/hold busy one", "quiet one"]);
+});

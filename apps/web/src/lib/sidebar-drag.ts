@@ -17,6 +17,7 @@ export type SidebarListMarker =
   | "pinned-header"
   | "pinned-divider"
   | "active-placeholder"
+  | "working-header"
   | "snoozed-header"
   | "settled-header"
   | "settled-placeholder";
@@ -34,6 +35,8 @@ export const itemId = (item: SidebarListItem) =>
 export function sidebarListItems(sections: {
   readonly pinned: readonly string[];
   readonly active: readonly string[];
+  /** Shown rows only, as for the shelves; `undefined` while the section has none. */
+  readonly working?: readonly string[] | undefined;
   /** Shown rows only: a collapsed shelf has none, or the open thread. */
   readonly snoozed: readonly string[] | undefined;
   readonly settled: readonly string[];
@@ -47,6 +50,9 @@ export function sidebarListItems(sections: {
     { kind: "marker", marker: "active-placeholder" },
     ...rows(sections.active, "active"),
   ];
+  if (sections.working !== undefined) {
+    items.push({ kind: "marker", marker: "working-header" }, ...rows(sections.working, "working"));
+  }
   if (sections.snoozed !== undefined) {
     items.push({ kind: "marker", marker: "snoozed-header" }, ...rows(sections.snoozed, "snoozed"));
   }
@@ -64,6 +70,7 @@ function sectionAt(items: readonly SidebarListItem[], index: number): ThreadSect
     const item = items[i]!;
     if (item.kind !== "marker") continue;
     if (item.marker === "pinned-divider") section = "active";
+    else if (item.marker === "working-header") section = "working";
     else if (item.marker === "snoozed-header") section = "snoozed";
     else if (item.marker === "settled-header") section = "settled";
   }
@@ -89,14 +96,20 @@ export function resolveDropTarget(
   const moved = items.filter((_, index) => index !== from);
   moved.splice(over, 0, items[from]);
   const section = sectionAt(moved, over);
-  if (section === "snoozed") return null;
+  // Nothing drops into the Working section (T3): only a running turn puts a thread there.
+  if (section === "snoozed" || section === "working") return null;
   const pinnedOrder: string[] = [];
   const activeOrder: string[] = [];
   let current: ThreadSection = "pinned";
   for (const item of moved) {
     if (item.kind === "marker") {
       if (item.marker === "pinned-divider") current = "active";
-      else if (item.marker === "snoozed-header" || item.marker === "settled-header") break;
+      else if (
+        item.marker === "working-header" ||
+        item.marker === "snoozed-header" ||
+        item.marker === "settled-header"
+      )
+        break;
     } else if (current === "pinned") pinnedOrder.push(item.key);
     else activeOrder.push(item.key);
   }
@@ -147,6 +160,8 @@ export function planDrop(input: {
   readonly activeOrder: readonly string[];
   readonly pinnedKeysById: ReadonlyMap<string, string | undefined>;
   readonly activeKeysById: ReadonlyMap<string, string | undefined>;
+  /** The inbox is ordered by time (the Working section is on): no place among it to keep. */
+  readonly activeTimeOrdered?: boolean | undefined;
 }): DropPlan {
   const { key, from, target } = input;
   const same = (a: readonly string[], b: readonly string[]) =>
@@ -155,14 +170,21 @@ export function planDrop(input: {
     case "settled":
       return from === "settled" ? { kind: "none" } : { kind: "settle" };
     case "active": {
-      if (from === "active" && same(target.activeOrder, input.activeOrder)) return { kind: "none" };
+      if (
+        from === "active" &&
+        (input.activeTimeOrdered === true || same(target.activeOrder, input.activeOrder))
+      )
+        return { kind: "none" };
       return {
         kind: "move-active",
-        assignments: planReorder({
-          orderedIds: target.activeOrder,
-          keysById: input.activeKeysById,
-          movedId: key,
-        }),
+        assignments:
+          input.activeTimeOrdered === true
+            ? []
+            : planReorder({
+                orderedIds: target.activeOrder,
+                keysById: input.activeKeysById,
+                movedId: key,
+              }),
         unpin: from === "pinned",
         unsettle: from === "settled",
         unsnooze: from === "snoozed",
@@ -227,7 +249,7 @@ export function createSidebarCollisionDetection(
       if (pointer.x >= boundary.left && pointer.x <= boundary.right) {
         if (pointer.y < previousY && pointer.y <= boundary.bottom) boundarySection = "pinned";
         else if (pointer.y > previousY && pointer.y >= boundary.top) boundarySection = "active";
-        const nextHeader = (["snoozed-header", "settled-header"] as const)
+        const nextHeader = (["working-header", "snoozed-header", "settled-header"] as const)
           .map((marker) =>
             args.droppableContainers.find((container) => container.id === markerId(marker)),
           )

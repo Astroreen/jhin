@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   dropVerb,
+  itemId,
   markerId,
   planDrop,
   resolveDropTarget,
@@ -194,5 +195,75 @@ describe("collision detection around the pinned boundary (D448)", () => {
   it("leaves the row in place when the nearest drop would do nothing", () => {
     const detect = createSidebarCollisionDetection((id) => id !== "a1", { items });
     expect(at(detect, 76)).toEqual(["a2"]);
+  });
+});
+
+describe("the Working section in a drag (D452)", () => {
+  const items = sidebarListItems({
+    pinned: ["p1"],
+    active: ["a1"],
+    working: ["w1"],
+    snoozed: undefined,
+    settled: ["s1"],
+  });
+
+  it("puts its rows between the inbox and the shelves", () => {
+    expect(items.map(itemId)).toEqual([
+      markerId("pinned-header"),
+      "p1",
+      markerId("pinned-divider"),
+      markerId("active-placeholder"),
+      "a1",
+      markerId("working-header"),
+      "w1",
+      markerId("settled-header"),
+      markerId("settled-placeholder"),
+      "s1",
+    ]);
+  });
+
+  it("takes no drop into it, but one onto the last inbox row still lands in the inbox", () => {
+    expect(resolveDropTarget(items, "p1", "w1")).toBeNull();
+    expect(resolveDropTarget(items, "p1", "a1")?.section).toBe("active");
+    // The active order stops at the Working header: w1 is not in it.
+    expect(resolveDropTarget(items, "s1", "a1")?.activeOrder).toEqual(["s1", "a1"]);
+  });
+
+  it("keeps no hand-made order in a time-ordered inbox", () => {
+    const keys = new Map<string, string | undefined>();
+    const plan = (from: "active" | "settled", key: string) =>
+      planDrop({
+        key,
+        from,
+        target: resolveDropTarget(items, key, "a1")!,
+        pinnedOrder: ["p1"],
+        activeOrder: ["a1"],
+        pinnedKeysById: keys,
+        activeKeysById: keys,
+        activeTimeOrdered: true,
+      });
+    expect(plan("settled", "s1")).toMatchObject({
+      kind: "move-active",
+      assignments: [],
+      unsettle: true,
+    });
+    const active = sidebarListItems({
+      pinned: [],
+      active: ["a1", "a2"],
+      snoozed: undefined,
+      settled: [],
+    });
+    expect(
+      planDrop({
+        key: "a2",
+        from: "active",
+        target: resolveDropTarget(active, "a2", "a1")!,
+        pinnedOrder: [],
+        activeOrder: ["a1", "a2"],
+        pinnedKeysById: keys,
+        activeKeysById: keys,
+        activeTimeOrdered: true,
+      }),
+    ).toEqual({ kind: "none" });
   });
 });
