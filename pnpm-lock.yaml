@@ -664,6 +664,9 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@jhin/secrets-api':
+        specifier: workspace:*
+        version: link:../secrets-api
 
   packages/sdk:
     dependencies:
@@ -1204,6 +1207,9 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@jhin/secrets-api':
+        specifier: workspace:*
+        version: link:../../packages/secrets-api
       '@jhin/storage-api':
         specifier: workspace:*
         version: link:../../packages/storage-api

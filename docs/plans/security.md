@@ -1,7 +1,8 @@
 # Security plan: pairing, remote access, scoped tokens, secrets
 
 Status: **implemented** (workstream W13 of `t3-roadmap.md`, decisions
-D410–D426): PR 1 #48, PR 2 #52, PR 3 #57, PR 4a #65, PR 4b #72. What is
+D410–D426): PR 1 #48, PR 2 #52, PR 3 #57, PR 4a #65, PR 4b #72. The
+secret store and `secretRef`s (W28, D1021–D1034): #173, #178, #179. What is
 left is under Deferred, `jhin pair` (D425) first.
 
 ## Goal
@@ -514,6 +515,20 @@ Implements D419–D425, in two layers:
 - A paired device's metadata (T3's device type, OS, browser, IP) in the
   list of authorized clients; Jhin keeps a label only.
 
+- The secret store (W28): Windows keeps the store's key in the key file
+  (no Credential Manager yet, D1024); an existing store cannot move its key
+  between the keychain and the file, and an unreadable one has no reset
+  command: it has to be moved aside by hand (D1023).
+- Config secrets that are numbers or booleans stay in clear (D1025); a
+  reference removed from a file by hand stays in the store (only changes
+  through the host delete them, D1026).
+- A plugin that reads a config secret only while it activates, before
+  `jhin.secrets` is active, sees it absent until `config.onChange` (D1025).
+- Secret requests (W28): T3's "Waiting for an answer in the original
+  thread" for a card inherited by a fork, its redirect of typing near a card
+  away from the composer, and its metrics of requests and consumed refs are
+  not ported. Answering a card of a mesh member's thread goes through
+  `threads.call`'s relay and is not covered by a test.
 - A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
   target against that node's own stored value; a target with none refuses
   the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.

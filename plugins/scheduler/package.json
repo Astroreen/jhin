@@ -37,6 +37,7 @@
     "@jhin/rpc": "workspace:*",
     "@jhin/scheduler-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
+    "@jhin/secrets-api": "workspace:*",
     "@jhin/storage-api": "workspace:*"
   },
   "devDependencies": {
@@ -63,7 +64,8 @@
     },
     "optional": {
       "http.server": "^1",
-      "rpc.streams": "^1.1"
+      "rpc.streams": "^1.1",
+      "secrets.store": "^1"
     },
     "entry": "src/index.ts"
   }

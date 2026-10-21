@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
-    "@jhin/sdk": "workspace:*"
+    "@jhin/sdk": "workspace:*",
+    "@jhin/secrets-api": "workspace:*"
   }
 }
