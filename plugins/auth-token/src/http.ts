@@ -114,17 +114,21 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
   /**
    * False (and answered with 429) once a client failed too often this
    * minute. An admitted attempt counts at once, as a failure until it
-   * succeeds (`succeeded` takes it back), so parallel requests cannot all
+   * succeeds (`succeeded` takes it back from the bucket it counted in), so parallel requests cannot all
    * pass before the first failure is counted.
    */
-  const admit = (route: string, request: IncomingMessage, response: ServerResponse): boolean => {
+  const admit = (
+    route: string,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): string | undefined => {
     const key = bucket(route, request);
     const minute = key.slice(key.lastIndexOf(":"));
     for (const old of attempts.keys()) if (!old.endsWith(minute)) attempts.delete(old);
     const count = attempts.get(key) ?? 0;
     if (count < ATTEMPTS_PER_MINUTE) {
       attempts.set(key, count + 1);
-      return true;
+      return key;
     }
     send(
       response,
@@ -136,11 +140,10 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       // Only the pairing endpoint answers other origins (D420).
       { ...(route === "pair" ? CORS : {}), "retry-after": "60" },
     );
-    return false;
+    return undefined;
   };
-  /** A pairing or sign-in that worked: its attempt is no failure. */
-  const succeeded = (route: string, request: IncomingMessage) => {
-    const key = bucket(route, request);
+  /** A pairing or sign-in that worked: its attempt, in the bucket it counted in, is no failure. */
+  const succeeded = (key: string) => {
     const count = attempts.get(key) ?? 0;
     if (count > 0) attempts.set(key, count - 1);
   };
@@ -166,7 +169,8 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
   );
   store.add(
     http.route("POST", "/auth/pair", async (request, response) => {
-      if (!admit("pair", request, response)) return;
+      const counted = admit("pair", request, response);
+      if (counted === undefined) return;
       const body = await readJson(request).catch((error: unknown) => error);
       if (body instanceof BodyTooLarge) {
         send(
@@ -200,7 +204,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         );
         return;
       }
-      succeeded("pair", request);
+      succeeded(counted);
       send(response, 200, issued, CORS);
     }),
   );
@@ -215,7 +219,8 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         });
         return;
       }
-      if (!admit("session", request, response)) return;
+      const counted = admit("session", request, response);
+      if (counted === undefined) return;
       const body = await readJson(request).catch((error: unknown) => error);
       if (body instanceof BodyTooLarge) {
         send(
@@ -255,7 +260,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       }
       // The token goes into the cookie only: the page never sees it.
       const { token, ...visible } = issued;
-      succeeded("session", request);
+      succeeded(counted);
       send(
         response,
         200,

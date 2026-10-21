@@ -11,6 +11,8 @@ export const PAIRING_CODE_LENGTH = 12;
 interface PairingLink {
   readonly id: string;
   readonly label?: string;
+  /** Who created it (a principal id); a code ends with its creator's token. */
+  readonly creator?: string;
   readonly permissions: readonly string[];
   readonly createdAt: number;
   readonly expiresAt: number;
@@ -38,6 +40,7 @@ function newCode(): string {
 export interface PairingStore {
   create(input: {
     label?: string;
+    creator?: string;
     permissions: readonly string[];
     now: number;
     expiresAt: number;
@@ -45,6 +48,8 @@ export interface PairingStore {
   /** Open codes at `now`, oldest first. */
   list(now: number): PairingLink[];
   revoke(id: string): boolean;
+  /** Ends every open code `creator` made. */
+  revokeBy(creator: string): void;
   /**
    * Runs `use` with the link a code opens and uses the code up only when
    * `use` returns: a failure leaves it valid. Undefined for a wrong, used or
@@ -59,11 +64,12 @@ export function createPairingStore(): PairingStore {
   const open = (now: number) => (entries = entries.filter((entry) => entry.expiresAt > now));
   const view = ({ codeHash: _code, ...link }: Entry): PairingLink => link;
   return {
-    create({ label, permissions, now, expiresAt }) {
+    create({ label, creator, permissions, now, expiresAt }) {
       const code = newCode();
       const entry: Entry = {
         id: Crypto.randomBytes(9).toString("base64url"),
         ...(label === undefined ? {} : { label }),
+        ...(creator === undefined ? {} : { creator }),
         permissions: [...permissions],
         createdAt: now,
         expiresAt,
@@ -73,6 +79,9 @@ export function createPairingStore(): PairingStore {
       return { link: view(entry), code };
     },
     list: (now) => open(now).map(view),
+    revokeBy(creator) {
+      entries = entries.filter((entry) => entry.creator !== creator);
+    },
     revoke(id) {
       const before = entries.length;
       entries = entries.filter((entry) => entry.id !== id);

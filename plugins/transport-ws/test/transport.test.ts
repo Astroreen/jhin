@@ -642,13 +642,6 @@ describe("pairing (security.md D419–D422)", () => {
       statuses.push((await post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" })).status);
     }
     expect(statuses).toContain(429);
-    // Parallel attempts are counted as they come in, not once each has failed.
-    const parallel = await Promise.all(
-      Array.from({ length: 30 }, () =>
-        post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" }).then((r) => r.status),
-      ),
-    );
-    expect(parallel.filter((status) => status === 401).length).toBeLessThanOrEqual(20);
     expect(statuses.every((status) => status === 401 || status === 429)).toBe(true);
     // The session bucket is untouched.
     expect((await post(`${httpUrl(node)}/auth/session`, { credential: "x" })).status).toBe(401);
@@ -669,6 +662,31 @@ describe("pairing (security.md D419–D422)", () => {
       clients: { id: string; method: string }[];
     };
     expect(listed.clients.find((client) => client.id === opened.id)?.method).toBe("issued");
+  });
+
+  it("counts parallel attempts as they come in, not once each has failed", async () => {
+    const node = await startNode();
+    const parallel = await Promise.all(
+      Array.from({ length: 50 }, () =>
+        post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" }).then((r) => r.status),
+      ),
+    );
+    // Counted only once failed, all 50 would pass and fail with 401. Counted on
+    // arrival, at most 20 a minute pass: even split by a minute boundary, 10 get 429.
+    expect(parallel.filter((status) => status === 429).length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("ends the open codes of a token when it is revoked", async () => {
+    const node = await startNode();
+    const admin = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "admin",
+      permissions: ["auth.*", "app.*"],
+    })) as { id: string; token: string };
+    const device = connect(node.url, admin.token);
+    const { code } = await device.call<{ code: string }>("auth.pairing.create", {});
+    device.close();
+    await node.kernel.commands.execute("auth.clients.revoke", { id: admin.id });
+    expect((await post(`${httpUrl(node)}/auth/pair`, { code })).status).toBe(401);
   });
 
   it("keeps open codes through a reload of the token plugin", async () => {

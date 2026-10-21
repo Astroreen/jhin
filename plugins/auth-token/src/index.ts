@@ -130,7 +130,8 @@ export default definePlugin({
         token = newToken();
         writeToken(file, token);
         context.log.warn("access token rotated", { file });
-        // Page sessions opened with the old owner token end with it.
+        // Codes and page sessions made with the old owner token end with it.
+        pairing.revokeBy(OWNER_PRINCIPAL_ID);
         revoke(
           clients
             .list()
@@ -164,6 +165,8 @@ export default definePlugin({
       const gone = clients.remove([...doomed]);
       for (const record of gone) {
         context.log.warn("device token revoked", { client: record.id, label: record.label });
+        // Codes it made end with it: they carry its grants.
+        pairing.revokeBy(clientPrincipalId(record.id));
         // Transports drop its open connections at once (security.md D414).
         context.events.emit(AuthEvents.clientRevoked, { principal: clientPrincipalId(record.id) });
       }
@@ -298,6 +301,7 @@ export default definePlugin({
         const now = Date.now();
         const { link, code } = pairing.create({
           ...(label === undefined ? {} : { label }),
+          ...(invocation.caller === undefined ? {} : { creator: invocation.caller.id }),
           permissions: granted,
           now,
           expiresAt: now + (ttlMinutes ?? DEFAULT_PAIRING_MINUTES) * 60_000,
