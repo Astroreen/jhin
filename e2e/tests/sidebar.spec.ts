@@ -619,3 +619,32 @@ test("D454: a selection's Delete asks once, and Mark unread marks them all", asy
     (await x.client().call<{ title: string }[]>("threads.list", {})).map((t) => t.title),
   ).toEqual(["keep"]);
 });
+
+test("D455: sweep Settle over several cards", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["one", "two", "three", "four"]) await addThread(x, title);
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["four", "three", "two", "one"]);
+
+  // Press Settle on "four", drag down over the cards to "two", release.
+  await threadRow(page, "four").hover();
+  const settle = await box(threadRow(page, "four").getByRole("button", { name: "Settle thread" }));
+  const target = await box(threadRow(page, "two"));
+  await page.mouse.move(settle.x + settle.width / 2, settle.y + settle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(settle.x + settle.width / 2, target.y + target.height / 2, { steps: 12 });
+  // While sweeping, each row says what the release does.
+  for (const title of ["four", "three", "two"])
+    await expect(threadRow(page, title).getByRole("status")).toHaveText("Settle");
+  await expect(threadRow(page, "one").getByRole("status")).toHaveCount(0);
+  const shot = info.outputPath("sweep.png");
+  await page.screenshot({ path: shot });
+  await info.attach("sweep", { path: shot, contentType: "image/png" });
+  await page.mouse.up();
+
+  await expect(page.getByRole("button", { name: "Settled (3)" })).toBeVisible();
+  await expect(cardTitles(page)).toHaveText(["one"]);
+  await expect(page.getByRole("status").filter({ hasText: "to undo" })).toHaveText(
+    "Settled 3 threads, Ctrl+Z to undo",
+  );
+});

@@ -206,8 +206,10 @@ const SNOOZED_EXPANDED_STORAGE_KEY = "jhin.sidebar.snoozed-expanded";
 const WORKING_EXPANDED_STORAGE_KEY = "jhin.sidebar.working-expanded";
 /** How long the jump modifiers are held before the rows show their numbers (T3's). */
 const JUMP_HINT_DELAY_MS = 200;
+/** How far a sweep or a drag moves before it is one (T3's SIDEBAR_DRAG_DISTANCE). */
+const SWEEP_DISTANCE = 6;
 /** A row drags once the pointer moved this far (T3's SIDEBAR_DRAG_DISTANCE); one object, as useSensor memoizes on it. */
-const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } };
+const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: SWEEP_DISTANCE } };
 const PROJECT_SCOPE_STORAGE_KEY = "jhin.sidebar.project-scope";
 
 /**
@@ -1074,6 +1076,122 @@ export const sidebarPlugin = builtin(
         );
       }
 
+      // T3's sweep (D455): pressing a row's Settle, Un-settle or Wake button and dragging over the
+      // rows of its section does the same to each of them on release.
+      type SweepAction = "settle" | "unsettle" | "unsnooze";
+      const SWEEP_VERB: Record<SweepAction, DropVerb> = {
+        settle: "settle",
+        unsettle: "unsettle",
+        unsnooze: "wake",
+      };
+      const SWEEP_COMMAND: Record<SweepAction, string> = {
+        settle: "thread.settle",
+        unsettle: "thread.unsettle",
+        unsnooze: "thread.unsnooze",
+      };
+      const sweep = createValue<
+        | {
+            readonly action: SweepAction;
+            readonly section: ThreadSection;
+            readonly origin: string;
+            readonly startY: number;
+            /** Past the drag distance: a sweep, not a click. */
+            readonly active: boolean;
+            readonly keys: readonly string[];
+          }
+        | undefined
+      >(undefined);
+      /** The button's click after a sweep that ended on it does nothing more. */
+      let sweptClick = false;
+      const onSweepMove = (event: PointerEvent) => {
+        const current = sweep.get();
+        if (current === undefined) return;
+        if (!current.active && Math.abs(event.clientY - current.startY) <= SWEEP_DISTANCE) return;
+        const over = document
+          .elementFromPoint(event.clientX, event.clientY)
+          ?.closest("[data-thread-item]")
+          ?.getAttribute("data-thread-item");
+        const rows = orderedThreads()
+          .filter((entry) => entry.section === current.section)
+          .map((entry) => entry.key);
+        const from = rows.indexOf(current.origin);
+        const to = over == null ? -1 : rows.indexOf(over);
+        const keys =
+          from === -1 || to === -1
+            ? current.keys
+            : rows.slice(Math.min(from, to), Math.max(from, to) + 1);
+        sweep.set({ ...current, active: true, keys });
+      };
+      const endSweep = () => {
+        window.removeEventListener("pointermove", onSweepMove);
+        window.removeEventListener("pointerup", onSweepUp);
+        window.removeEventListener("pointercancel", cancelSweep);
+      };
+      const cancelSweep = () => {
+        endSweep();
+        sweep.set(undefined);
+      };
+      const onSweepUp = () => {
+        const done = sweep.get();
+        cancelSweep();
+        if (done === undefined || !done.active) return;
+        // The click that may follow this release on the button; none comes when it ended elsewhere.
+        sweptClick = true;
+        setTimeout(() => {
+          sweptClick = false;
+        }, 0);
+        const every = everyThread();
+        void (async () => {
+          for (const key of done.keys) {
+            const entry = every.get(key);
+            if (entry === undefined) continue;
+            await context.commands
+              .execute(SWEEP_COMMAND[done.action], {
+                ...entry.node.target,
+                threadId: entry.thread.id,
+              })
+              .catch((error: unknown) =>
+                toasts?.show({
+                  type: "error",
+                  title: "Could not do that",
+                  description: (error as Error).message,
+                }),
+              );
+          }
+        })();
+      };
+      context.subscriptions.add({ dispose: cancelSweep });
+      /** A row's Settle, Un-settle or Wake button: a click on its row, or the start of a sweep. */
+      const sweepable = (entry: Entry, action: SweepAction, perform: () => void) => ({
+        onClick: (event: { preventDefault(): void; stopPropagation(): void }) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (sweptClick) {
+            sweptClick = false;
+            return;
+          }
+          perform();
+        },
+        onDoubleClick: (event: { stopPropagation(): void }) => event.stopPropagation(),
+        onPointerDown: (event: { stopPropagation(): void; clientY: number; button: number }) => {
+          event.stopPropagation();
+          if (event.button !== 0) return;
+          sweptClick = false;
+          cancelSweep();
+          sweep.set({
+            action,
+            section: entry.section,
+            origin: entry.key,
+            startY: event.clientY,
+            active: false,
+            keys: [entry.key],
+          });
+          window.addEventListener("pointermove", onSweepMove);
+          window.addEventListener("pointerup", onSweepUp);
+          window.addEventListener("pointercancel", cancelSweep);
+        },
+      });
+
       /** Keeps a click on a row's button from opening, renaming or dragging the row. */
       const inRow = (action: () => void) => ({
         onClick: (event: { preventDefault(): void; stopPropagation(): void }) => {
@@ -1181,6 +1299,12 @@ export const sidebarPlugin = builtin(
         const woke = isWoke(thread, lastVisit, now);
         const top = sidebarTopStatus(status, unread, woke);
         const isSelected = useExternal(selection, () => selection.get().keys.includes(entry.key));
+        const swept = useExternal(sweep, () => {
+          const current = sweep.get();
+          return current?.active === true && current.keys.includes(entry.key)
+            ? current.action
+            : undefined;
+        });
         // Threads that went away meanwhile do not count.
         const selectionSize = useExternal(selection, () => (isSelected ? selected().length : 0));
         const recede = shouldRecede({ status, unread, active, woke }) && !isSelected;
@@ -1293,7 +1417,7 @@ export const sidebarPlugin = builtin(
           settled && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
           active || dragging
             ? "bg-sidebar-row-active text-sidebar-foreground"
-            : isSelected
+            : isSelected || swept !== undefined
               ? "bg-sidebar-row-selected text-sidebar-foreground"
               : recede
                 ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
@@ -1305,11 +1429,16 @@ export const sidebarPlugin = builtin(
           variant === "slim" && "flex h-9 items-center gap-2.5 px-2.5",
         );
 
-        /** What dropping the dragged row would do, in place of its time (T3's dragDestination). */
+        /** What dropping the dragged row, or a sweep over it, would do, in place of its time. */
+        const shownVerb = dragging
+          ? props.verb
+          : swept === undefined
+            ? undefined
+            : SWEEP_VERB[swept];
         const destination =
-          dragging && props.verb !== null && props.verb !== undefined
+          shownVerb !== null && shownVerb !== undefined
             ? (() => {
-                const { label: verbLabel, icon: Icon } = DROP_VERB[props.verb];
+                const { label: verbLabel, icon: Icon } = DROP_VERB[shownVerb];
                 return (
                   <span
                     className="pointer-events-none ml-auto inline-flex h-5 shrink-0 items-center gap-1 rounded-sm border border-primary/40 bg-primary/10 px-1.5 text-2xs font-medium text-primary"
@@ -1382,7 +1511,12 @@ export const sidebarPlugin = builtin(
           );
 
         /** A slim row's action at its right end, shown while the pointer rests on the row. */
-        const slimAction = (labelText: string, icon: ReactNode, action: () => void) => (
+        const slimAction = (
+          labelText: string,
+          icon: ReactNode,
+          action: () => void,
+          sweepAction: SweepAction,
+        ) => (
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1393,7 +1527,7 @@ export const sidebarPlugin = builtin(
                     woke && "group-any-hover/sidebar-row:static",
                   )}
                   type="button"
-                  {...inRow(action)}
+                  {...sweepable(entry, sweepAction, action)}
                 />
               }
             >
@@ -1420,7 +1554,7 @@ export const sidebarPlugin = builtin(
               </span>
               {title}
               {pin}
-              {dragging ? (
+              {dragging || swept !== undefined ? (
                 destination
               ) : (
                 <span className="relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1">
@@ -1450,12 +1584,14 @@ export const sidebarPlugin = builtin(
                         "Wake thread now",
                         <AlarmClockOffIcon className="mb-px size-3" />,
                         () => run("thread.unsnooze", ref),
+                        "unsnooze",
                       )
                     : settled
                       ? slimAction(
                           "Un-settle thread",
                           <Undo2Icon className="mb-px size-3.5" />,
                           () => run("thread.unsettle", ref),
+                          "unsettle",
                         )
                       : null}
                   {hosts ? (
@@ -1490,7 +1626,7 @@ export const sidebarPlugin = builtin(
                     </span>
                   )}
                   {pin}
-                  {dragging ? (
+                  {dragging || swept !== undefined ? (
                     destination
                   ) : (
                     <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
@@ -1534,7 +1670,7 @@ export const sidebarPlugin = builtin(
                                 aria-label="Settle thread"
                                 className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                                 type="button"
-                                {...inRow(() => run("thread.settle", ref))}
+                                {...sweepable(entry, "settle", () => run("thread.settle", ref))}
                               />
                             }
                           >

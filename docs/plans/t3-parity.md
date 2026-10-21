@@ -1094,6 +1094,22 @@ the shelf with one grouped notice, a plain click back to the thread's own
 menu; "Mark unread (2)", and "Delete (2)" asking once and deleting both on
 the node), with a screenshot.
 
+- **D455. T3's sweep.** Pressing a row's "Settle thread" (a card),
+  "Un-settle thread" (a settled row) or "Wake thread now" (a snoozed row)
+  button and moving the pointer more than 6 px up or down sweeps the rows
+  of that section between the button's row and the one under the pointer:
+  they take the selected background and, in place of their time, the badge a
+  drop would show ("Settle", "Un-settle", "Wake"). Releasing runs the
+  button's command (`thread.settle`, `thread.unsettle`, `thread.unsnooze`)
+  for each swept thread in the list's order, so the undo notice groups them
+  ("Settled 3 threads"); a press that does not move is the button's click.
+  Leaving the section's rows keeps the last range. T3 runs only the actions
+  the thread's node supports; every Jhin node has these.
+
+The proof of D455: `e2e/tests/sidebar.spec.ts` ("D455": Settle pressed on
+the first card and swept over three, the badges while sweeping, the three on
+the shelf and one grouped notice after release), with a screenshot.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -1513,8 +1529,7 @@ and as events arrive).
   threads plugin does not know a thread's pull request (linking them is
   W4's); per-project overrides of the settle settings (T3 resolves them per
   project; a Jhin node has one project config layer, D19);
-  T3's sweep over several rows from a row's Settle, Un-settle or Wake
-  button; the selection menu's "Regenerate titles (N)" (no title
+  the selection menu's "Regenerate titles (N)" (no title
   regeneration yet) and its "Custom…" snooze; dragging a selection into the
   chat as context; the undo of an unpin or a settle done by dragging (a
   drop writes through `threads.arrange`, not the commands that offer an
