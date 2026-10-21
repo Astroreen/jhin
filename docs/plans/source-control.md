@@ -589,7 +589,8 @@ with screenshots).
   logs a warning. `local` checks the head branch out in the project's
   checkout (a fork whose head is named like its base as `<owner>/<head>`),
   created or fast-forwarded to the head and tracking it; git failures answer
-  T3's "The pull request could not be checked out with git.". Where T3
+  T3's "The pull request could not be checked out with git." followed by
+  git's own reason. Where T3
   resets the branch hard, Jhin refuses a checkout with changes ("Commit or
   stash the changes in the project's checkout before checking a pull request
   out in it.") and a branch with commits the head does not have ("Branch

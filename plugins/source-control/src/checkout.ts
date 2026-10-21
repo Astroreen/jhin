@@ -218,7 +218,7 @@ export async function checkoutLocal(
     warn("could not check the pull request out", { error: (error as Error).message });
     throw new SourceControlError(
       "GIT_FAILED",
-      "The pull request could not be checked out with git.",
+      `The pull request could not be checked out with git. ${(error as Error).message}`,
       { number: pr.number },
     );
   }
