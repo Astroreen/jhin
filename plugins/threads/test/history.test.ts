@@ -693,6 +693,16 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     expect(await pendingOf(client, parent.id)).toBeUndefined();
   });
 
+  it("gives no mark to a fork whose copied turn delivered a merge to its parent", async () => {
+    const { client, parent, fork } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    await turn(client, parent.id, "go on");
+    const second = await client.call<Fork>("threads.fork", { threadId: parent.id });
+    // Dropping the copied turn that carried the parent's merge gives this fork nothing.
+    await client.call("threads.rollback", { threadId: second.id });
+    expect(await pendingOf(client, second.id)).toBeUndefined();
+  });
+
   it("merges again into a regenerated turn, leaving no mark", async () => {
     const { client, parent, fork, requests } = await forked();
     await client.call("threads.merge-back", { threadId: fork.id });

@@ -2943,7 +2943,10 @@ export default definePlugin({
           const merged = events
             .filter(
               (event) =>
-                event.type === ThreadEvents.turnStarted && droppedIds.has(String(turnIdOf(event))),
+                event.type === ThreadEvents.turnStarted &&
+                droppedIds.has(String(turnIdOf(event))) &&
+                // A turn copied into a fork delivered its merge to the parent, not here.
+                (event.payload as { inheritedAt?: unknown }).inheritedAt === undefined,
             )
             .map(
               (event) =>
@@ -3051,6 +3054,8 @@ export default definePlugin({
         interactionMode?: InteractionMode;
         /** A fork merged into the turn (D226). */
         handoff?: { kind?: string; threadId?: string; turnId?: string };
+        /** Set on a turn copied into a fork: its handoff was the parent's. */
+        inheritedAt?: string;
       };
     }
 
@@ -3143,7 +3148,9 @@ export default definePlugin({
               return result.thread;
             },
             // A fork merged into the turn is merged into its replacement too.
-            ...(payload.handoff?.threadId !== undefined && payload.handoff.turnId !== undefined
+            ...(payload.inheritedAt === undefined &&
+            payload.handoff?.threadId !== undefined &&
+            payload.handoff.turnId !== undefined
               ? { merge: { threadId: payload.handoff.threadId, turnId: payload.handoff.turnId } }
               : {}),
           },
