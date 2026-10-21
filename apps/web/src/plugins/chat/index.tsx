@@ -7,6 +7,8 @@ import {
   NAVIGATION_CAPABILITY,
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
+  UNDO_CAPABILITY,
+  targetKey,
   type Connections,
   type DeviceSettings,
   type Keybindings,
@@ -14,6 +16,7 @@ import {
   type Navigation,
   type NodeTarget,
   type ThreadsCatalog,
+  type ThreadUndoService,
   VISITS_CAPABILITY,
   type ThreadVisits,
 } from "@jhin/client-api";
@@ -38,7 +41,7 @@ import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
-import { createDrafts } from "../../lib/composer.ts";
+import { createDrafts, type ComposerDraft } from "../../lib/composer.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { CHAT_SECTION, ChatSettings } from "../../lib/settings.ts";
@@ -219,6 +222,7 @@ export const chatPlugin = builtin(
       [UI_DIALOGS_CAPABILITY]: "^1",
       [KEYBINDINGS_CAPABILITY]: "^1",
       [VISITS_CAPABILITY]: "^1",
+      [UNDO_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -350,6 +354,68 @@ export const chatPlugin = builtin(
       }
 
       // --- Commands -------------------------------------------------------------
+      // T3's "Discard draft" (D451): a new thread's draft card goes, with an undo.
+      const undo = context.services.tryGet<ThreadUndoService>(UNDO_CAPABILITY);
+      context.commands.register({
+        name: "chat.draft.discard",
+        title: "Discard draft",
+        description:
+          "Discards the draft of a new thread in a project (its text and images), leaving it if open; the sidebar offers to undo it",
+        input: z.object({
+          node: z.string(),
+          remote: z.string().optional(),
+          projectId: z.string(),
+        }),
+        output: z.object({ discarded: z.boolean() }),
+        handler: async (input) => {
+          const target: NodeTarget = {
+            node: input.node,
+            ...(input.remote === undefined ? {} : { remote: input.remote }),
+          };
+          const key = `${targetKey(target)}|draft|${input.projectId}`;
+          const draftRoute = { ...target, project: input.projectId };
+          const isOpen = () => {
+            const route = navigation.current();
+            return (
+              route.thread === undefined &&
+              route.project === input.projectId &&
+              route.node === target.node &&
+              route.remote === target.remote
+            );
+          };
+          let kept: ComposerDraft | undefined;
+          const perform = async () => {
+            kept = services.drafts.get(key);
+            const open = isOpen();
+            if (kept === undefined && !open) return false;
+            // Away first: the composer that shows it keeps no text to write back.
+            if (open) navigation.navigate({});
+            services.drafts.set(key, { prompt: "", attachments: [] });
+            services.drafts.flush();
+            return true;
+          };
+          const revert = async () => {
+            if (services.drafts.get(key) !== undefined)
+              throw new Error("The draft has new content.");
+            if (kept !== undefined) services.drafts.set(key, kept);
+            navigation.navigate(draftRoute);
+          };
+          const discarded =
+            undo === undefined
+              ? await perform()
+              : await undo.run({
+                  kind: "discard",
+                  key,
+                  action: "Discarded",
+                  noun: "draft",
+                  failureTitle: "Failed to restore draft",
+                  perform,
+                  revert,
+                });
+          return { discarded };
+        },
+      });
+
       /** A failure reaches whoever ran the command (the palette shows it, a shortcut logs it). */
       const register = (
         name: string,

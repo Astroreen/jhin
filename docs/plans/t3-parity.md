@@ -911,6 +911,49 @@ nothing); `apps/web/test/sidebar-arrange.browser.test.tsx` (one
 `threads.arrange` per drop with its steps, nothing landing when a step is
 refused); `e2e/tests/sidebar.spec.ts` (the drag test, twice).
 
+- **D450. T3's undo notice.** Unpinning, settling, snoozing and archiving
+  a thread through its commands (`thread.unpin`, `thread.settle`,
+  `thread.snooze`, `thread.archive`: the card's buttons, the menu, the
+  shortcuts) offer their undo at the top of the sidebar's footer, as T3's
+  SidebarThreadUndoNotice does: "Unpinned 1 thread, Ctrl+Z to undo" (the
+  shortcut's label, else "Undo"), a status line in the sidebar's alert
+  tone, for 5 seconds after the latest action. Consecutive actions of one
+  kind group ("Settled 2 threads") and one undo restores the group; the
+  command `thread.undo` ("Undo", ⌘/Ctrl+Z while neither a terminal nor an
+  editable field has focus, T3's binding) runs it. What undo does is T3's:
+  an unpin pins again at its old key, a settle un-settles and pins and
+  snoozes again what it unpinned and woke (in one `threads.arrange` for
+  the first two, D449), a snooze wakes, an archive unarchives; a failure
+  toasts T3's titles ("Failed to undo unpin", "Failed to undo settle",
+  "Failed to wake thread", "Failed to undo archive"). An action that undoes
+  another by hand (pin after an unpin, un-settle, wake, unarchive) voids
+  its undo, as T3's ThreadUndo claims do. Archiving's former "Thread
+  archived" toast with its Undo button goes; the notice replaces it. The
+  notice is a contribution (`jhin.thread-actions.undo-notice`) to the new
+  slot `sidebar.notices` (`SIDEBAR_NOTICES_SLOT`), and the undo itself is
+  the capability `client.undo@1` (`UNDO_CAPABILITY`, `ThreadUndoService`
+  in `@jhin/client-api`), provided by `jhin.thread-actions`, so another
+  plugin's action can offer its undo the same way: it names what was done
+  and to what (`action`, `noun`) and which undos its success voids
+  (`voids`). T3 offers no undo for
+  pinning, and neither does this: "undo of a pin" is the undo of an unpin.
+- **D451. Discarding a draft from its card.** The card of a new thread's
+  draft gets T3's "Discard draft" button (an X shown while the pointer
+  rests on the card, with that tooltip). It runs `chat.draft.discard`
+  (`node`, `remote?`, `projectId`), which leaves the draft if it is open and
+  clears its text and images, with no question asked, and offers its undo
+  through `client.undo@1`: "Discarded 1 draft". Undo brings the text back
+  and opens the draft again, unless the draft has new text meanwhile:
+  "Failed to restore draft", "The draft has new content." (T3's words).
+
+The proof of D450–D451: `apps/web/test/thread-undo.test.ts` (the notice's
+words and grouping, one undo per group, the run before it next, expiry
+after five seconds, a voided undo, a claim a later action took, a failed
+undo's title); `e2e/tests/sidebar.spec.ts` ("D450": unpin from the card and
+Ctrl+Z pinning it again at its key, settle and the notice's button bringing
+it back pinned, archive and undo; "D451": a draft discarded from its card,
+the notice, and undo bringing back its text), with screenshots.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -1276,8 +1319,12 @@ and as events arrive).
   threads plugin does not know a thread's pull request (linking them is
   W4's); per-project overrides of the settle settings (T3 resolves them per
   project; a Jhin node has one project config layer, D19); the Working
-  shelf, multi-select and sweeping actions over several rows, undo of a pin,
-  the jump-number hints and discarding a draft from its card. The card's branch, diff and pull request are `source-control.md`'s
+  shelf, multi-select and sweeping actions over several rows, the
+  jump-number hints; the undo of an unpin or a settle done by dragging (a
+  drop writes through `threads.arrange`, not the commands that offer an
+  undo, D450); T3's X on a thread's card that clears its unsent composer
+  text (the sidebar does not know a thread's draft, which the chat plugin
+  keeps). The card's branch, diff and pull request are `source-control.md`'s
   D117 and its terminal indicator `terminal.md`'s D148, all in the
   `sidebar.thread.indicators` slot.
 - Pushing a node's config changes to its clients: a change of

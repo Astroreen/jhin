@@ -29,6 +29,7 @@ import {
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREAD_DETAILS_SLOT,
+  SIDEBAR_NOTICES_SLOT,
   THREADS_CAPABILITY,
   targetKey,
   type Connections,
@@ -1409,6 +1410,27 @@ export const sidebarPlugin = builtin(
                   <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
                     {project?.name}
                   </span>
+                  {/* T3's discard button, shown while the pointer rests on the card (D451). */}
+                  <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            aria-label="Discard draft"
+                            className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
+                            onKeyDown={(event) => event.stopPropagation()}
+                            type="button"
+                            {...inRow(() =>
+                              run("chat.draft.discard", { ...node.target, projectId }),
+                            )}
+                          />
+                        }
+                      >
+                        <XIcon className="size-3" />
+                      </TooltipTrigger>
+                      <TooltipPopup side="top">Discard draft</TooltipPopup>
+                    </Tooltip>
+                  </span>
                 </div>
                 <div aria-hidden className="mt-0.5 truncate text-sm font-medium text-foreground/90">
                   New thread
@@ -2334,6 +2356,8 @@ export const sidebarPlugin = builtin(
               </SidebarGroup>
             </SidebarContent>
             <SidebarFooter>
+              {/* T3's footer starts with its undo notice: here any plugin's notes. */}
+              <Slot name={SIDEBAR_NOTICES_SLOT} />
               {/* T3's footer: its utility items on the left. */}
               <SidebarMenu className="flex-row items-center">
                 <SidebarMenuItem className="shrink-0">
