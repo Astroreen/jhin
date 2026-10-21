@@ -853,6 +853,10 @@ Each workstream lists its PRs here as they merge.
   messages and `agent.turn.started`, and forks of generations keep
   `generationOf` (`jhin.threads`); `agents.read` and `agents.message` for
   agents over MCP (D621–D629).
+- A2 #179: `jhin.inbox`, the owner's inbox in Civilization mode: open items
+  of every node in `civilization.sidebar.inbox`, an item's page with the
+  answer box in `civilization.views`, a toast or system notification per new
+  item, `civilization.inbox.open` (D630).
 - A3 #104: `@jhin/missions-api` (records, the `missions` stream's events and
   fold, intent chain, Markdown) and the `jhin.missions` plugin: `missions.*`
   and `slices.*` commands, the stream guarded by `missions.read`, agents
