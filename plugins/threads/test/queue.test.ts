@@ -588,9 +588,10 @@ describe("jhin.threads: steering (D204, D205)", () => {
     expect(started(events)).toEqual(["/hold on"]);
   });
 
-  it("refuses to steer an agent that cannot, and lists which agents can", async () => {
+  /** A node with an agent that cannot steer, and a thread of it whose turn holds. */
+  async function plainHolding() {
     const plain: AgentRuntime = { agentId: "acme.plain", startTurn: fakeTurn };
-    const { client } = await node({
+    const running = await node({
       plugins: [
         {
           manifest: testManifest("acme.plain", {
@@ -607,18 +608,116 @@ describe("jhin.threads: steering (D204, D205)", () => {
         },
       ],
     });
+    const thread = await running.client.call<Thread>("threads.create", { agentId: "acme.plain" });
+    const watched = watch(running.client, thread.id);
+    await running.client.call("threads.send", { threadId: thread.id, text: "/hold" });
+    await watched.until(ThreadEvents.itemDelta);
+    return { ...running, thread, watched, ...watched };
+  }
+  /** The turns' start events, in order. */
+  const starts = (events: readonly StoredEvent[]) =>
+    events
+      .filter((event) => event.type === ThreadEvents.turnStarted)
+      .map((event) => event.payload as { turnId: string; messageId?: string });
+
+  it("lists which agents steer, and restarts the turn of one that cannot with the steer (D803)", async () => {
+    const { client, thread, events, watched } = await plainHolding();
     const agents = await client.call<{ agentId: string; steering: boolean }[]>("agents.list");
     expect(Object.fromEntries(agents.map((agent) => [agent.agentId, agent.steering]))).toEqual({
       "acme.plain": false,
       "jhin.agent-fake": true,
     });
-    const thread = await client.call<Thread>("threads.create", { agentId: "acme.plain" });
-    const { until } = watch(client, thread.id);
-    await client.call("threads.send", { threadId: thread.id, text: "/hold" });
-    await until(ThreadEvents.itemDelta);
-    await expect(
-      client.call("threads.steer", { threadId: thread.id, text: "no" }),
-    ).rejects.toMatchObject({ code: "STEER_UNSUPPORTED" });
+    await client.call("threads.queue.add", { threadId: thread.id, text: "after it" });
+    const sent = await client.call<{ turnId?: string; outcome: string }>("threads.steer", {
+      threadId: thread.id,
+      text: "change course",
+    });
+    expect(sent.outcome).toBe("started");
+    // The held turn stopped and the steer started the next one, before what was
+    // queued; the stop held no queue, so that follows.
+    await untilCount(watched, ThreadEvents.turnStarted, 3);
+    expect(started(events)).toEqual(["/hold", "change course", "after it"]);
+    expect(starts(events)[1]!.turnId).toBe(sent.turnId);
+    expect(count(events, ThreadEvents.turnInterrupted)).toBe(1);
+    expect(count(events, ThreadEvents.turnSteered)).toBe(0);
+    await untilCount(watched, ThreadEvents.turnCompleted, 2);
+    expect(lastQueue(events)).toMatchObject({ messages: [] });
+    expect(lastQueue(events)?.held).toBeUndefined();
+  });
+
+  it("starts a restart's message past a hold already on the queue, which stays (D803)", async () => {
+    const { client, thread, events, watched } = await plainHolding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "held one" });
+    await client.call("threads.interrupt", { threadId: thread.id });
+    await untilCount(watched, ThreadEvents.turnInterrupted, 1);
+    // A new turn past the held queue, as a send does, then a steer into it.
+    await client.call("threads.send", { threadId: thread.id, text: "/hold again" });
+    await untilCount(watched, ThreadEvents.turnStarted, 2);
+    const sent = await client.call<{ turnId?: string; outcome: string }>("threads.steer", {
+      threadId: thread.id,
+      text: "now",
+    });
+    expect(sent.outcome).toBe("started");
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+    expect(started(events)).toEqual(["/hold", "/hold again", "now"]);
+    expect(starts(events)[2]!.turnId).toBe(sent.turnId);
+    // What was held before stays held: the restart went past it, not through it.
+    expect(lastQueue(events)).toMatchObject({ messages: [{ text: "held one" }] });
+    expect(lastQueue(events)?.held).toMatchObject({ reason: "interrupted" });
+  });
+
+  it("keeps two steers sent during one restart in the order sent (D803)", async () => {
+    const { client, thread, events, watched } = await plainHolding();
+    const [one, two] = await Promise.all([
+      client.call<{ outcome: string }>("threads.steer", { threadId: thread.id, text: "one" }),
+      client.call<{ outcome: string }>("threads.steer", { threadId: thread.id, text: "two" }),
+    ]);
+    expect(one.outcome).toBe("started");
+    expect(two.outcome).toBe("queued");
+    await untilCount(watched, ThreadEvents.turnCompleted, 2);
+    expect(started(events)).toEqual(["/hold", "one", "two"]);
+    expect(count(events, ThreadEvents.turnInterrupted)).toBe(1);
+  });
+
+  it("promotes a second queued message during a restart behind the first (D803)", async () => {
+    const { client, thread, events, watched } = await plainHolding();
+    const add = (text: string) =>
+      client.call<{ messageId: string }>("threads.queue.add", { threadId: thread.id, text });
+    const first = await add("first");
+    const second = await add("second");
+    const [one, two] = await Promise.all([
+      client.call<{ turnId: string }>("threads.queue.steer", {
+        threadId: thread.id,
+        messageId: first.messageId,
+      }),
+      client.call<{ turnId: string }>("threads.queue.steer", {
+        threadId: thread.id,
+        messageId: second.messageId,
+      }),
+    ]);
+    expect(one.turnId).toBe(starts(events)[1]?.turnId);
+    // Queued behind the restart: answered with the turn that ran then, not refused.
+    expect(two.turnId).toBe(starts(events)[0]!.turnId);
+    await untilCount(watched, ThreadEvents.turnCompleted, 2);
+    expect(started(events)).toEqual(["/hold", "first", "second"]);
+  });
+
+  it("restarts with a queued message promoted to a steer (D803)", async () => {
+    const { client, thread, events, watched } = await plainHolding();
+    const { messageId } = await client.call<{ messageId: string }>("threads.queue.add", {
+      threadId: thread.id,
+      text: "promoted",
+    });
+    const steered = await client.call<{ turnId: string }>("threads.queue.steer", {
+      threadId: thread.id,
+      messageId,
+    });
+    await untilCount(watched, ThreadEvents.turnStarted, 2);
+    expect(started(events)).toEqual(["/hold", "promoted"]);
+    expect(starts(events)[1]).toMatchObject({ turnId: steered.turnId, messageId });
+    expect(count(events, ThreadEvents.turnInterrupted)).toBe(1);
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+    expect(lastQueue(events)).toMatchObject({ messages: [] });
   });
 
   it("queues a steer first when the turn ends before the agent took it", async () => {

@@ -1530,6 +1530,43 @@ Reference: T3 Code at `eb7b35ac` (D53).
   the steer as before. When the subagent ends after its turn, Claude Code
   reads its result in the next turn of the live session; T3's wake of an
   idle thread for it (its continuation turns) stays Deferred.
+- **D803. T3's restart dispatch for agents that cannot steer**
+  (`CommandPolicy.ts` `decideSteeringExecution`: `interrupt_restart` when a
+  provider cannot steer actively). `threads.steer` and `threads.queue.steer`
+  no longer refuse an agent without `steering`; `STEER_UNSUPPORTED` stays a
+  known code but is no longer sent. Instead:
+  - The message goes first in the thread's queue, and the running turn is
+    stopped as Stop stops it (bounded, and given up on for an agent that
+    ignores it). That stop holds no queue (D202).
+  - Once the stop's end is recorded, the message starts the next turn at
+    once, past a hold already on the queue, which stays for the rest. What
+    was queued follows the restarted turn.
+  - A steer sent while a restart is under way waits right after its message,
+    in the order sent (`threads.steer` answers `queued`, `threads.queue.steer`
+    the running turn's id). A Stop pressed meanwhile is a stop like any other: the
+    queue is held, with the message first.
+  - A turn that stopped or ended before the restart began, or that fails
+    instead of stopping, leaves the message first in the queue, as for a
+    steer that came too late.
+  - `threads.steer` answers `started` with the new turn's id, or `queued`.
+    `threads.queue.steer` answers the new turn's id, or the stopped turn's
+    id while the message still waits (its `turnId` is required).
+  - The client offers steering for every running turn, as T3's composer does
+    for a provider that steers either way. The "Queued instead" notice says
+    only that the turn ended first.
+
+  T3 restarts the run as a new attempt of the same run. Jhin records the
+  stopped turn and a new turn with the message, so the timeline shows the
+  stop.
+
+- **D804. Steering a turn that waits for an approval or an answer stays as
+  it is, which is T3's behaviour.** T3 steers a run while one of its
+  requests is pending (`dispatchSteerIntoRun` checks only that the run is
+  `running`; its run status `waiting` is the drain after the agent's turn),
+  and the provider takes the message once it goes on. T3's composer, like
+  Jhin's (D209), sends nothing while an approval is open, and its typed text
+  answers an open question. So a steer from the queue banner or a command
+  reaches the agent after the approval or answer, as in T3.
 
 ### Composer leftovers (W23, `t3-roadmap.md`)
 
@@ -1687,10 +1724,8 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   being moved to the background (D805): the threads plugin recorded it as
   steered, and the runtime only logs it (T3 fails the steer and starts the
   follow-up turn; `AgentTurn.steer` is synchronous, D204).
-- Steering (W1): restarting a turn with the new message
-  for agents that cannot steer (T3's `restart` dispatch), and steering a
-  turn that waits for an approval or an answer (the agent gets the message
-  once it goes on).
+- T3's restart as a new attempt of the same run (D803): here the stopped
+  turn and the restarted one are two turns in the timeline.
 - Steering a Claude Code that does not mark its frames (an older CLI): its
   first result after a steer ends the turn, so a steer it took only after
   answering loses its answer. And one that sends no idle reports: a result

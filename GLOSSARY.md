@@ -143,7 +143,9 @@ Words about Jhin:
   thread is free, unless the queue is **held** after a stopped or failed
   turn.
 - **Steer** — a message sent into the running turn instead of after it; the
-  agent takes it into the work it is doing (`threads.steer`).
+  agent takes it into the work it is doing (`threads.steer`). For an agent
+  that cannot steer, the turn stops and the message starts the next one at
+  once (a **restart**, T3's restart dispatch).
 - **Proposed plan** — a plan an agent proposes in plan mode for the user to
   accept (`agent.plan.proposed`); the composer offers to implement the latest
   one, in its thread or a new one. T3 Code's term.
