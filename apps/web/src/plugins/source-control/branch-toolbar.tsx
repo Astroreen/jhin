@@ -129,9 +129,10 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     };
 
     const trimmed = query.trim();
-    // A draft on GitHub can check a pull request out into its thread (D902, D903).
+    // A draft on GitHub can check a pull request out into its thread (D902, D903); not while
+    // the picker chooses a new worktree's base.
     const pullRequestReference =
-      thread === undefined && projectStatus.provider?.kind === "github"
+      thread === undefined && !choosingBase && projectStatus.provider?.kind === "github"
         ? parsePullRequestReference(trimmed)
         : null;
     const items: RefItem[] = (branches ?? []).map((ref) => ({

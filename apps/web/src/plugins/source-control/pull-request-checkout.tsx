@@ -100,6 +100,8 @@ export function PullRequestCheckoutDialog({
 
   useEffect(() => {
     if (!open || parsedDebounced === null || resolved.has(parsedDebounced)) return;
+    // A failure is shown until the reference is edited; editing it asks again.
+    if (resolveError?.reference === parsedDebounced) return;
     let current = true;
     void threads
       .call<{ pullRequest: PullRequest }>(target, "git.pr.resolve", {
@@ -116,7 +118,7 @@ export function PullRequestCheckoutDialog({
     return () => {
       current = false;
     };
-  }, [open, parsedDebounced, projectId, resolved, target, threads]);
+  }, [open, parsedDebounced, projectId, resolveError, resolved, target, threads]);
 
   const pullRequest = parsed === null ? undefined : resolved.get(parsed);
   // Until it is resolved or failed to be: waiting for typing to pause, or for the node.
@@ -188,6 +190,7 @@ export function PullRequestCheckoutDialog({
             <Input
               onChange={(event) => {
                 setDirty(true);
+                setResolveError(undefined);
                 setReference(event.target.value);
               }}
               onKeyDown={(event) => {

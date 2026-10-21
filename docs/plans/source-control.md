@@ -616,7 +616,8 @@ with screenshots).
   (D252), as T3 fills its draft.
 
 - **D903. T3's "Checkout pull request" dialog** (`PullRequestThreadDialog`),
-  in the branch picker of a draft whose repository is on GitHub: a search
+  in the branch picker of a draft whose repository is on GitHub (not while
+  it picks a new worktree's base): a search
   that reads as a pull request (T3's `parsePullRequestReference`: a GitHub
   pull request URL, `gh pr checkout <x>`, `123` or `#123`) puts "Checkout
   pull request" with the reference first in the list, and choosing it opens
@@ -628,7 +629,8 @@ with screenshots).
   state's colour, Cancel / Local / Worktree, "Preparing local..." and
   "Preparing worktree...", Enter for Worktree, no closing while preparing).
   It resolves the reference with `git.pr.resolve` once typing pauses for
-  450 ms and checks it out with `git.pr.checkout` (D902); a worktree becomes
+  450 ms (a failure shows until the reference is edited, which asks again)
+  and checks it out with `git.pr.checkout` (D902); a worktree becomes
   the draft's workspace as an existing worktree (D252's `existing_worktree`,
   the selector's "Previous worktree"), a local checkout keeps "Current
   checkout".

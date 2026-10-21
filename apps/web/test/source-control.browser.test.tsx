@@ -1514,6 +1514,48 @@ describe("worktrees in the client", () => {
     expect(document.body.textContent).not.toContain("Checkout pull request");
   });
 
+  it("asks again after a failed lookup once the reference is edited, and offers no checkout for a worktree's base", async () => {
+    let failures = 1;
+    const { value } = services(
+      viewWith(status({ provider: { kind: "github", available: true } })),
+      {
+        "git.branches": { branches: [] },
+        "git.pr.resolve": () => {
+          if (failures-- > 0) throw new Error("gh exited with code 1");
+          return { pullRequest: { ...pr, number: 7, headBranch: "feature", baseBranch: "main" } };
+        },
+      },
+    );
+    const drafts = createDraftWorkspaces();
+    const Toolbar = createBranchToolbar(value, drafts);
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    const draft = mount(<Toolbar project={project} target={target} />);
+    await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "#7");
+    await userEvent.click(page.getByRole("option", { name: /Checkout pull request/ }));
+    const dialog = page.getByRole("dialog", { name: "Checkout pull request" });
+    await expect.element(dialog.getByText("gh exited with code 1")).toBeVisible();
+    await userEvent.fill(dialog.getByRole("textbox"), "#7");
+    await expect.element(dialog.getByText("#7 · feature to main")).toBeVisible();
+    await act(async () =>
+      (dialog.getByRole("button", { name: "Cancel" }).element() as HTMLElement).click(),
+    );
+    draft.unmount();
+
+    act(() =>
+      drafts.set(draftKey(target, "app"), {
+        mode: "worktree",
+        baseRef: "feature/toolbar",
+        startFromOrigin: false,
+      }),
+    );
+    mount(<Toolbar project={project} target={target} />);
+    await userEvent.click(page.getByRole("combobox", { name: /^Branch From/ }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "#7");
+    await expect.element(page.getByText("No refs found.")).toBeVisible();
+    expect(document.body.textContent).not.toContain("Checkout pull request");
+  });
+
   it("never offers to delete a worktree this node did not make", async () => {
     const asked: string[] = [];
     let around!: (
