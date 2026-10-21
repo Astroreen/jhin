@@ -225,6 +225,13 @@ export function createHeadlessShell(options: HeadlessShellOptions) {
         hash.update(chunk);
         await file.write(chunk);
       }
+    } catch (cause) {
+      if (cause instanceof HeadlessShellInstallError) throw cause;
+      // A connection reset, the 15 min timeout or a full disk mid-download.
+      throw new HeadlessShellInstallError(
+        "The download from storage.googleapis.com stopped. Check this machine's network access and free disk space.",
+        { cause },
+      );
     } finally {
       await file.close();
     }

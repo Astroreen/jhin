@@ -97,15 +97,15 @@ export default definePlugin({
     const tabs = createTabs({
       chromium: new Chromium({
         executablePath: () => context.config.get<Config>(CONFIG_SECTION).executablePath,
-        // Kept in Jhin's home, shared by every plugin of the node (T3: `<home>/tools`).
-        headlessShell: createHeadlessShell({
-          root: Path.join(
-            paths?.home ?? Path.join(Os.tmpdir(), "jhin"),
-            "tools",
-            "chrome-headless-shell",
-          ),
-          release: headlessShellRelease(process.platform, process.arch),
-        }),
+        // Kept in Jhin's home, shared by every plugin of the node (T3: `<home>/tools`); a
+        // plugin run without a home (tests) never installs one into a shared temp folder.
+        headlessShell:
+          paths === undefined
+            ? undefined
+            : createHeadlessShell({
+                root: Path.join(paths.home, "tools", "chrome-headless-shell"),
+                release: headlessShellRelease(process.platform, process.arch),
+              }),
       }),
       streams,
       dataDir: paths?.dataDir(context.plugin.id) ?? Path.join(Os.tmpdir(), "jhin-preview"),
