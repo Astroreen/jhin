@@ -366,6 +366,8 @@ async function main(): Promise<void> {
 
   // Quitting stops the node first and waits for it (D522).
   app.on("before-quit", (event) => {
+    // Whatever runs (a restart dialog, a start in flight) stops from here on.
+    quitting = true;
     clearBadge();
     updates.stop();
     if (node === undefined) {

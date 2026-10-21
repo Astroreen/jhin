@@ -43,7 +43,14 @@
     },
     "apps/desktop": {
       // The main process and the preload are built apart (docs/plans/desktop.md, D511).
-      "entry": ["src/main.ts", "src/preload.ts", "vite.config.ts", "vite.preload.config.ts"],
+      "entry": [
+        "src/main.ts",
+        "src/preload.ts",
+        "vite.config.ts",
+        "vite.preload.config.ts",
+        // Run as a child process by local-node.test.ts.
+        "test/fixtures/*.mjs",
+      ],
     },
     "plugins/desktop": {
       // A client plugin built for the browser (D514).

@@ -1,0 +1,68 @@
+import * as Fs from "node:fs";
+import * as Os from "node:os";
+import * as Path from "node:path";
+
+import { afterEach, describe, expect, it } from "vite-plus/test";
+
+import { startLocalNode } from "../src/local-node.ts";
+
+const CLI = Path.join(import.meta.dirname, "fixtures", "fake-cli.mjs");
+const PATHS = { cli: CLI, plugin: "/nowhere" };
+const previous = process.env["FAKE_CLI"];
+afterEach(() => {
+  if (previous === undefined) delete process.env["FAKE_CLI"];
+  else process.env["FAKE_CLI"] = previous;
+});
+
+const home = () => Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-desktop-node-"));
+
+describe("startLocalNode (D512)", () => {
+  it("resolves with the address the node prints and the token of its home", async () => {
+    process.env["FAKE_CLI"] = "ready";
+    const node = await startLocalNode(PATHS, home());
+    expect(node).toMatchObject({ url: "http://127.0.0.1:7777/", token: "secret" });
+    await node.stop();
+  });
+
+  it("rejects with the node's output when it exits first", async () => {
+    process.env["FAKE_CLI"] = "exit";
+    await expect(startLocalNode(PATHS, home())).rejects.toThrow(
+      /exited with 3:\nconfig file not applied/,
+    );
+  });
+
+  it("stops a node without a token and says where it looked", async () => {
+    process.env["FAKE_CLI"] = "no-token";
+    await expect(startLocalNode(PATHS, home())).rejects.toThrow(
+      /no access token at .*jhin\.auth-token/,
+    );
+  });
+
+  it("kills a node that ignores SIGTERM, and tells nobody it stopped", async () => {
+    process.env["FAKE_CLI"] = "stuck";
+    const node = await startLocalNode(PATHS, home(), 50);
+    const exits: string[] = [];
+    node.onExit((output) => exits.push(output));
+    await node.stop();
+    expect(exits).toEqual([]);
+  });
+
+  it("reports a node that exits by itself to its listeners", async () => {
+    process.env["FAKE_CLI"] = "ready";
+    const node = await startLocalNode(PATHS, home());
+    const exited = new Promise<string>((resolve) => node.onExit(resolve));
+    const [pid] = (await import("node:child_process"))
+      .execFileSync(
+        "pgrep",
+        ["-f", "--", `fake-cli.mjs serve --ui --plugin-dir /nowhere --home ${node.home}`],
+        {
+          encoding: "utf8",
+        },
+      )
+      .trim()
+      .split("\n")
+      .map(Number);
+    process.kill(pid!, "SIGKILL");
+    expect(await exited).toContain("ui: http://127.0.0.1:7777/");
+  });
+});

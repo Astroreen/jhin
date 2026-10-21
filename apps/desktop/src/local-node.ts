@@ -42,6 +42,8 @@ function localNodeHome(env: NodeJS.ProcessEnv = process.env): string {
 export function startLocalNode(
   paths: LocalNodePaths,
   home = localNodeHome(),
+  /** How long `stop` waits after SIGTERM; tests shorten it. */
+  stopGraceMs = STOP_GRACE_MS,
 ): Promise<RunningLocalNode> {
   Fs.mkdirSync(home, { recursive: true });
   const child = ChildProcess.spawn(
@@ -71,7 +73,7 @@ export function startLocalNode(
     if (child.exitCode !== null || child.signalCode !== null) return;
     child.kill("SIGTERM");
     // A node stuck in its plugins' dispose must not keep the app from quitting.
-    const kill = setTimeout(() => child.kill("SIGKILL"), STOP_GRACE_MS);
+    const kill = setTimeout(() => child.kill("SIGKILL"), stopGraceMs);
     await exited;
     clearTimeout(kill);
   };

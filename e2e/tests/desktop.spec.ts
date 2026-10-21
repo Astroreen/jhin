@@ -32,10 +32,6 @@ test.skip(
   "Electron needs a display: run under xvfb-run -a",
 );
 
-// Each test starts Electron and a node in it; that takes seconds on a loaded
-// runner, so the limit is a ceiling for process startups. Nothing waits on it.
-test.describe.configure({ timeout: 90_000 });
-
 interface Launched {
   readonly app: ElectronApplication;
   readonly window: Page;
