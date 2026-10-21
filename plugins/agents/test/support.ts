@@ -93,7 +93,7 @@ interface Patches {
   failNext: "node" | "project" | undefined;
 }
 
-export function hostConfig(
+function hostConfig(
   kernel: () => TestKernel,
   layers: Record<string, Record<string, unknown>>,
   patches: Patches,

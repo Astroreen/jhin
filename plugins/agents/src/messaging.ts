@@ -57,7 +57,7 @@ const originOf = ({ messageId, kind, from, traceId, inReplyTo }: AgentMessage): 
  * The answer a turn gave: its last assistant message once it completed;
  * `undefined` for a failed, interrupted or silent turn (D624).
  */
-export function answerOfTurn(events: readonly StoredEvent[], turnId: string): string | undefined {
+function answerOfTurn(events: readonly StoredEvent[], turnId: string): string | undefined {
   let last: string | undefined;
   for (const event of events) {
     const payload = event.payload as { turnId?: unknown; kind?: unknown; text?: unknown } | null;
