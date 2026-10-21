@@ -24,12 +24,12 @@ describe("pairing codes (security.md D419)", () => {
     });
     const typed = `${code.slice(0, 4).toLowerCase()}-${code.slice(4, 8)} ${code.slice(8)}`;
     expect(normalizeCode(typed)).toBe(code);
-    expect(store.redeem(typed, 1, (link) => link)).toEqual(link);
-    expect(store.redeem(code, 2, (link) => link)).toBeUndefined();
+    expect(store.redeem(typed, 1, (opened) => opened)).toEqual(link);
+    expect(store.redeem(code, 2, (opened) => opened)).toBeUndefined();
 
     const late = store.create({ permissions: ["*"], now: 0, expiresAt: 100 });
     expect(store.list(50).map((entry) => entry.id)).toEqual([late.link.id]);
-    expect(store.redeem(late.code, 100, (link) => link)).toBeUndefined();
+    expect(store.redeem(late.code, 100, (opened) => opened)).toBeUndefined();
     expect(store.list(100)).toEqual([]);
   });
 
@@ -38,7 +38,7 @@ describe("pairing codes (security.md D419)", () => {
     const { link, code } = store.create({ permissions: ["*"], now: 0, expiresAt: 10 });
     expect(JSON.stringify(store.list(1))).not.toContain(code);
     expect(store.revoke(link.id)).toBe(true);
-    expect(store.redeem(code, 1, (link) => link)).toBeUndefined();
+    expect(store.redeem(code, 1, (opened) => opened)).toBeUndefined();
   });
 
   it("keeps a code valid when using it fails", () => {
