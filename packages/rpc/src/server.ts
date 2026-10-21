@@ -8,7 +8,12 @@ import {
 import type { EventLog, StoredEvent } from "@jhin/storage-api";
 
 import type { Peer } from "./peer.ts";
-import { UNGUARDED_STREAM_PERMISSION, type LiveStreams, type StreamSource } from "./streams.ts";
+import {
+  UNGUARDED_STREAM_PERMISSION,
+  type FollowedStream,
+  type LiveStreams,
+  type StreamSource,
+} from "./streams.ts";
 import {
   AckParams,
   ErrorCodes,
@@ -177,11 +182,16 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     if (log.follow !== undefined) {
       // A source that reads elsewhere (D500): it replays and follows on its own.
       // Its events go as they come; a window is not kept here (mesh-streams.md Deferred).
-      const followed = log.follow(
+      // The entry exists before `follow` runs, so a source may call back at once.
+      let followed: FollowedStream | undefined;
+      const entry: Subscription = { dispose: () => followed?.dispose() };
+      subscriptions.set(id, entry);
+      const current = () => subscriptions.get(id) === entry;
+      followed = log.follow(
         stream,
         after,
         (event) => {
-          if (subscriptions.get(id) !== followed || event.sequence <= lastSent) return;
+          if (!current() || event.sequence <= lastSent) return;
           lastSent = event.sequence;
           peer.send(
             JSON.stringify({
@@ -192,9 +202,9 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
           );
         },
         (error) => {
-          if (subscriptions.get(id) !== followed) return;
+          if (!current()) return;
           subscriptions.delete(id);
-          followed.dispose();
+          entry.dispose();
           try {
             peer.send(
               JSON.stringify({
@@ -208,12 +218,13 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
           }
         },
       );
-      subscriptions.set(id, followed);
+      // Unsubscribed (or ended) while `follow` ran: let it go at once.
+      if (!current()) followed.dispose();
       try {
         return { subscription: id, head: await followed.ready };
       } catch (error) {
         followed.dispose();
-        if (subscriptions.get(id) === followed) subscriptions.delete(id);
+        if (current()) subscriptions.delete(id);
         throw error;
       }
     }

@@ -85,7 +85,7 @@ export interface MeshOptions {
    * This node's live streams (`rpc.streams@1`): the ones shared with the mesh
    * (D501) are read from here by members, not from the event log.
    */
-  readonly streams?: Pick<LiveStreams, "sourceOf">;
+  readonly streams?: Pick<LiveStreams, "sourceOf"> & Partial<Pick<LiveStreams, "guardOf">>;
   /** Streams relayed at once at most (D502); default 10 000. */
   readonly maxRelays?: number;
 }

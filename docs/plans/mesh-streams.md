@@ -78,7 +78,12 @@ terminals of threads on mesh members (terminal).
   error (`rpc.subscription.ended`, D500), hop by hop to the subscriber. A relay whose
   route would lead back to the neighbor that asked for it fails with
   `RELAY_LOOP`, so routes that briefly disagree do not make two nodes relay
-  to each other.
+  to each other. A relay closed before it attached fails with
+  `RELAY_CLOSED`; a closing mesh ends its attached relays. Over a link, a
+  member reads a shared stream only within `jhin.mesh.memberPermissions`
+  (`security.md` D416): it needs what the stream needs there (its served
+  permissions, or its guard for the event log), as a call does, and is
+  refused with `PERMISSION_DENIED` otherwise.
 - **D500. `rpc.streams@1.2`: a source can be followed instead of read.** A
   relay has no events to read, only a subscription elsewhere. A served
   source may have `follow(stream, after, listener)`, returning the
@@ -171,10 +176,11 @@ A stack of three PRs, each based on the one before:
   trims nothing there, so `source-control` and `mesh/outbox` grow as before.
 - Relay loops longer than one hop back: `RELAY_LOOP` stops a relay sent
   back to the neighbor that asked; a cycle through three nodes whose routes
-  disagree at once is only bounded by `RELAY_LIMIT`.
-- Subscriptions over a mesh link run with every permission on the owner, as
-  mirrors do (`security.md` D416 caps calls, not subscriptions); relays are
-  checked where the subscriber connects (D502).
+  disagree at once is only bounded by `RELAY_LIMIT`. A hop count or the
+  nodes a request passed, carried with it, would bound it; so would a limit
+  per neighbor (today one member can take all 10 000 slots).
+- A relay whose route is gone waits for one, without an expiry, holding its
+  slot until its subscriber leaves (D499).
 
 - Mirrors of trimmed streams: a mirror copies from sequence 1 and treats a
   gap as a failed append (D26), so a stream that may be trimmed must not be

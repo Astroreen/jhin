@@ -668,6 +668,36 @@ describe("relays (D499)", () => {
     void b;
   });
 
+  it("settles a relay disposed before it attached, and ends attached ones when the mesh closes", async () => {
+    const { a, memory } = await relayChain();
+    const early = followRelay(a, "relay/c/terminal/t/1");
+    early.dispose();
+    await expect(early.ready).rejects.toMatchObject({ code: "RELAY_CLOSED" });
+
+    memory.append("terminal/t/1", ...output("one"));
+    const attached = followRelay(a, "relay/c/terminal/t/1");
+    await attached.ready;
+    a.mesh.dispose();
+    expect(await attached.ended).toMatchObject({ code: "NODE_UNREACHABLE" });
+  });
+
+  it("lets members read a shared stream only within memberPermissions (security.md D416)", async () => {
+    const network = createMemoryNetwork();
+    const live = createLiveStreams();
+    const memory = createMemoryStreams({ firstSequence: 1 });
+    live.serve("terminal/", memory, { permissions: ["terminals.read"] });
+    const a = startNode(network, "a");
+    const c = startNode(network, "c", { streams: live, memberPermissions: ["threads.read"] });
+    c.mesh.share("terminal/");
+    await c.mesh.join(a.address, a.mesh.invite().code);
+    await until([a, c], () => view(a, c)?.reachable === true);
+    memory.append("terminal/t/1", ...output("secret"));
+    await expect(followRelay(a, "relay/c/terminal/t/1").ready).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      details: { missing: ["terminals.read"] },
+    });
+  });
+
   it("relays at most maxRelays streams at once", async () => {
     const network = createMemoryNetwork();
     const a = startNode(network, "a", { maxRelays: 1 });

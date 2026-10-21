@@ -332,7 +332,7 @@ describe("followed sources (rpc.streams@1.2, D500)", () => {
     expect(opened[0]!.disposed).toBe(true);
   });
 
-  it("ends an attached subscription when the source ends it, telling the client (rpc.ended)", async () => {
+  it("ends an attached subscription when the source ends it, telling the client (rpc.subscription.ended)", async () => {
     const live = createLiveStreams();
     const { source, opened, firstOpen } = elsewhere();
     live.serve("relay/", source);
@@ -352,5 +352,35 @@ describe("followed sources (rpc.streams@1.2, D500)", () => {
     opened[0]!.end(Object.assign(new Error("not shared"), { code: "STREAM_NOT_SHARED" }));
     expect(await ended).toMatchObject({ code: "STREAM_NOT_SHARED" });
     expect(opened[0]!.disposed).toBe(true);
+  });
+
+  it("takes events and an end a source sends while follow() still runs", async () => {
+    const live = createLiveStreams();
+    const event = (sequence: number): StoredEvent => ({
+      stream: "relay/x/s",
+      sequence,
+      type: "app.a",
+      payload: sequence,
+      at: "",
+    });
+    live.serve("relay/", {
+      head: async () => 0,
+      read: async () => [],
+      subscribe: () => ({ dispose: () => undefined }),
+      follow(_stream, _after, listener, end) {
+        listener(event(1));
+        end(Object.assign(new Error("gone"), { code: "STREAM_NOT_SHARED" }));
+        return { ready: Promise.resolve(1), dispose: () => undefined };
+      },
+    });
+    const { client } = harness(live);
+    const seen: number[] = [];
+    const ended = new Promise<{ code: string }>((resolve) =>
+      client.subscribe("relay/x/s", { onError: (error) => resolve(error) }, (item) => {
+        seen.push(item.sequence);
+      }),
+    );
+    expect(await ended).toMatchObject({ code: "STREAM_NOT_SHARED" });
+    expect(seen).toEqual([1]);
   });
 });

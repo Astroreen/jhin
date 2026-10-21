@@ -11,7 +11,13 @@ import {
   type ServedStream,
   type StreamSource,
 } from "@jhin/rpc";
-import { intersectPermissions, toDisposable, type Disposable, type Invocation } from "@jhin/sdk";
+import {
+  intersectPermissions,
+  missingPermissions,
+  toDisposable,
+  type Disposable,
+  type Invocation,
+} from "@jhin/sdk";
 import type { EventLog, StoredEvent } from "@jhin/storage-api";
 
 import { shortestPath } from "./routing.ts";
@@ -141,9 +147,23 @@ export interface Mesh extends Disposable {
 }
 
 /** The event log as neighbors see it: only mirrorable and shared streams. */
-function readableLog(log: EventLog, shared: (stream: string) => boolean): EventLog {
+function readableLog(
+  log: EventLog,
+  shared: (stream: string) => boolean,
+  lacks: (stream: string) => readonly string[],
+): EventLog {
   const readable = (stream: string) => MIRRORABLE.test(stream) || shared(stream);
   const check = (stream: string) => {
+    // A shared stream needs what its guard names, within memberPermissions (D416).
+    if (!MIRRORABLE.test(stream) && shared(stream)) {
+      const missing = lacks(stream);
+      if (missing.length > 0) {
+        throw new MeshError("PERMISSION_DENIED", `Members may not read ${stream}`, {
+          stream,
+          missing,
+        });
+      }
+    }
     if (!readable(stream)) {
       throw new MeshError("STREAM_NOT_SHARED", `Stream ${stream} is not shared with other nodes`, {
         stream,
@@ -299,8 +319,32 @@ export function createMesh(options: MeshOptions): Mesh {
     return {
       sourceOf(stream: string): ServedStream | undefined {
         if (stream.startsWith(RELAY_PREFIX)) return { source: relayed, permissions: [] };
-        return isShared(stream) ? options.streams?.sourceOf(stream) : undefined;
+        if (!isShared(stream)) return undefined;
+        const served = options.streams?.sourceOf(stream);
+        if (served === undefined) return undefined;
+        const missing = memberLacks(served.permissions);
+        return missing.length === 0
+          ? served
+          : { source: refusing(stream, missing), permissions: [] };
       },
+    };
+  };
+  /**
+   * What members may not read of a shared stream (security.md D416): a
+   * subscription over a link needs what the stream needs, within
+   * `memberPermissions`, as a call from a member does.
+   */
+  const memberLacks = (needs: readonly string[]) =>
+    missingPermissions(options.memberPermissions?.() ?? ["*"], needs);
+  /** A source that refuses every subscription to `stream`. */
+  const refusing = (stream: string, missing: readonly string[]): StreamSource => {
+    const error = () =>
+      new MeshError("PERMISSION_DENIED", `Members may not read ${stream}`, { stream, missing });
+    return {
+      head: () => Promise.reject(error()),
+      read: () => Promise.reject(error()),
+      subscribe: () => toDisposable(() => undefined),
+      follow: () => ({ ready: Promise.reject(error()), dispose: () => undefined }),
     };
   };
 
@@ -308,7 +352,13 @@ export function createMesh(options: MeshOptions): Mesh {
   const serveLink = (nodeId: string): RpcServerOptions => ({
     caller: { id: `node:${nodeId}`, permissions: ["*"] },
     logger: log,
-    ...(options.log === undefined ? {} : { log: readableLog(options.log, isShared) }),
+    ...(options.log === undefined
+      ? {}
+      : {
+          log: readableLog(options.log, isShared, (stream) =>
+            memberLacks(options.streams?.guardOf?.(stream) ?? []),
+          ),
+        }),
     streams: linkStreams(nodeId),
     hello: () => ({ nodeId: selfId }),
     newTraceId: randomId,
@@ -521,7 +571,7 @@ export function createMesh(options: MeshOptions): Mesh {
     /** The neighbor this relay serves, when one asked: the route must not lead back to it. */
     readonly from: string | undefined;
     readonly listener: (event: StoredEvent) => void;
-    /** Ends an attached relay with an error (`rpc.ended` for its subscriber). */
+    /** Ends an attached relay with an error (`rpc.subscription.ended` for its subscriber). */
     readonly end: (error: unknown) => void;
     /** The last sequence passed on: a new attach resumes after it. */
     last: number;
@@ -629,6 +679,7 @@ export function createMesh(options: MeshOptions): Mesh {
         resolve = ok;
         reject = fail;
       });
+      let settled = false;
       const state: Relay = {
         owner: parsed.owner,
         stream: parsed.stream,
@@ -645,11 +696,18 @@ export function createMesh(options: MeshOptions): Mesh {
           state.attempt += 1;
           state.subscription?.dispose();
           state.subscription = undefined;
+          // Gone before it attached: whoever waits on `ready` must not wait forever.
+          if (!settled) {
+            settled = true;
+            state.settle = undefined;
+            reject(new MeshError("RELAY_CLOSED", "The relay was closed before it attached"));
+          }
         },
       };
       const stop = state.stop;
       state.settle = (outcome) => {
         state.settle = undefined;
+        settled = true;
         if ("head" in outcome) resolve(outcome.head);
         else {
           stop();
@@ -878,8 +936,7 @@ export function createMesh(options: MeshOptions): Mesh {
       closed = true;
       for (const state of mirrors.values()) state.subscription?.dispose();
       for (const state of relaying) {
-        state.subscription?.dispose();
-        state.settle?.({ error: new MeshError("NODE_UNREACHABLE", "The mesh is closed") });
+        failRelay(state, new MeshError("NODE_UNREACHABLE", "The mesh is closed"));
       }
       relaying.clear();
       for (const client of clients.values()) client.close();
