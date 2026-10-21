@@ -479,7 +479,12 @@ export default definePlugin({
 
     // T3's quit hold (D947): the hint while ⌘/Ctrl+Q is down, and its setting.
     const setQuitShortcut = bridge.setQuitShortcut?.bind(bridge);
-    if (setQuitShortcut !== undefined) {
+    // All three come with the quit hold; an app without one of them gets none of it.
+    if (
+      setQuitShortcut !== undefined &&
+      bridge.getQuitShortcut !== undefined &&
+      bridge.onQuitShortcut !== undefined
+    ) {
       context.commands.register({
         name: "desktop.quit-shortcut.set",
         description:
