@@ -2189,7 +2189,7 @@ export default definePlugin({
     /** Settles a thread by the automatic rule, as of its last activity; false if it may not. */
     const autoSettle = (threadId: string, may: (thread: Thread, nowMs: number) => boolean) =>
       updateThread(threadId, (thread) => {
-        const nowMs = Date.now();
+        const nowMs = Date.parse(now());
         if (!mayAutoSettle(thread, nowMs) || !may(thread, nowMs)) return thread;
         const { unsettledAt: _back, activeOrderKey: _key, ...rest } = thread;
         const activity = lastActivity(thread, nowMs);
@@ -2257,7 +2257,7 @@ export default definePlugin({
     const sweep = async () => {
       const rule = settleRule();
       if (rule === undefined) return;
-      const nowMs = Date.now();
+      const nowMs = Date.parse(now());
       for (const thread of await listThreads()) {
         if (autoSettledAt(thread, nowMs, rule) === undefined) continue;
         await autoSettle(

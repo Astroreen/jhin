@@ -621,7 +621,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (closedAt === undefined) return;
     for (const thread of threads.values()) {
       if (thread.projectId !== repo.project.id || thread.branch !== branch) continue;
-      const key = JSON.stringify([repo.project.id, thread.threadId, pr.number, pr.state]);
+      const key = JSON.stringify([repo.project.id, thread.threadId, pr.number, pr.state, closedAt]);
       if (announced.has(key)) continue;
       announced.add(key);
       context.commands
@@ -630,14 +630,20 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           reason: pr.state === "merged" ? "pull-request-merged" : "pull-request-closed",
           closedAt,
         })
-        .catch((error: unknown) => {
-          announced.delete(key);
-          context.log.warn("settling a thread on its pull request failed", {
-            threadId: thread.threadId,
-            pullRequest: pr.number,
-            error: String(error),
-          });
-        });
+        .then(
+          // Not settled now (the rule off, a pin): asked again next lookup, the rule may allow it.
+          (result) => {
+            if ((result as { settled?: boolean }).settled !== true) announced.delete(key);
+          },
+          (error: unknown) => {
+            announced.delete(key);
+            context.log.warn("settling a thread on its pull request failed", {
+              threadId: thread.threadId,
+              pullRequest: pr.number,
+              error: String(error),
+            });
+          },
+        );
     }
   };
 
