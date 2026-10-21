@@ -185,6 +185,14 @@ const errorText = (cause: unknown, fallback: string) =>
   cause instanceof Error ? cause.message : fallback;
 
 /** The attachment's object URL: its own for a picked file, the node's (kept for the page) otherwise. */
+/** The type a frame needs for its kind, when the stored one is another (else no copy is made). */
+function frameType(kind: string, stored: string | undefined): string | undefined {
+  const needed = kind === "pdf" ? "application/pdf" : kind === "html" ? "text/html" : undefined;
+  return needed === undefined || stored?.split(";")[0]?.trim().toLowerCase() === needed
+    ? undefined
+    : needed;
+}
+
 function useSourceUrl(
   source: AttachmentPreviewSource,
   wanted: boolean,
@@ -276,12 +284,7 @@ export function AttachmentFilePreview(
   const needsText = kind === "text" || kind === "markdown" || (kind === "html" && !rendered);
   // Text needs only its first MiB, not the whole file.
   const needsUrl = !needsText && kind !== "unsupported";
-  const { url, error } = useSourceUrl(
-    props,
-    needsUrl,
-    revision,
-    kind === "pdf" ? "application/pdf" : kind === "html" ? "text/html" : undefined,
-  );
+  const { url, error } = useSourceUrl(props, needsUrl, revision, frameType(kind, props.mimeType));
   const wordWrap = useSection(chat.context, DIFF_SECTION, DiffSettings).wordWrap;
 
   useEffect(() => {

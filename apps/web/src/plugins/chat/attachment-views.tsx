@@ -13,6 +13,7 @@ import { formatAttachmentSize } from "../../lib/attachment-files.ts";
 import { isVideoAttachment, prepareVideoFirstFrame } from "../../lib/file-preview.ts";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
+import { useChat } from "./services.ts";
 import {
   AttachmentLoaderContext,
   AttachmentPreviewDialog,
@@ -149,6 +150,7 @@ function FileAttachment({ attachment }: { attachment: StoredAttachment }) {
   const loader = useContext(AttachmentLoaderContext);
   const theme = useResolvedTheme();
   const [previewing, setPreviewing] = useState(false);
+  const chat = useChat();
   const identity = (
     <>
       <PierreEntryIcon kind="file" pathValue={attachment.name} theme={theme} />
@@ -159,12 +161,20 @@ function FileAttachment({ attachment }: { attachment: StoredAttachment }) {
     return <div className="flex min-w-0 items-center gap-2 py-1 text-sm">{identity}</div>;
   }
   const download = () => {
-    void loader.url(attachment).then((url) => {
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = attachment.name;
-      anchor.click();
-    });
+    loader.url(attachment).then(
+      (url) => {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = attachment.name;
+        anchor.click();
+      },
+      (cause: unknown) =>
+        chat.toasts?.show({
+          type: "error",
+          title: "Could not save file",
+          description: cause instanceof Error ? cause.message : "Please try again.",
+        }),
+    );
   };
   return (
     <div className="flex min-w-0 items-center gap-1">
