@@ -305,7 +305,7 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
 
 ## Deferred
 
-- The `desktop.update.*` commands over RPC, CLI and MCP: they are client
+- The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
   commands of the app's page (D520), as every client command is today, so
   only the palette, keybindings and client plugins reach them.
 - A machine-readable ready signal from `jhin serve` (the app reads the CLI's
