@@ -1,6 +1,7 @@
 // Prompt history is derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/composerPromptHistory.ts. Drafts follow apps/web/src/composerDraftStore.ts.
 import type { TurnAttachment } from "@jhin/agent-api";
+import { targetKey, type NodeTarget } from "@jhin/client-api";
 
 export interface PromptHistoryEntry {
   readonly id: string;
@@ -152,6 +153,38 @@ export function createDrafts(storage: Storage = localStorage) {
 }
 
 export type Drafts = ReturnType<typeof createDrafts>;
+
+/** Where a thread's composer keeps its draft. */
+export const threadDraftKey = (target: NodeTarget, threadId: string) =>
+  `${targetKey(target)}|thread|${threadId}`;
+
+/** A draft with a sent message put back after it: its text after the draft's (a blank line between), its images after the draft's. */
+export function appendToDraft(
+  draft: ComposerDraft | undefined,
+  message: ComposerDraft,
+): ComposerDraft {
+  const current = draft ?? { prompt: "", attachments: [] };
+  const prompt =
+    current.prompt.trim() === ""
+      ? message.prompt
+      : message.prompt === ""
+        ? current.prompt
+        : `${current.prompt}\n\n${message.prompt}`;
+  return { prompt, attachments: [...current.attachments, ...message.attachments] };
+}
+
+/**
+ * As T3 Code's "Edit from here" puts a message back: `appendToDraft`, or
+ * `undefined` when the images do not fit beside the draft's (T3 refuses the
+ * rewind then).
+ */
+export function restoreIntoDraft(
+  draft: ComposerDraft | undefined,
+  message: ComposerDraft,
+): ComposerDraft | undefined {
+  const { dropped } = fitAttachments(draft?.attachments ?? [], message.attachments);
+  return dropped.length > 0 ? undefined : appendToDraft(draft, message);
+}
 
 /** Images the composer accepts, as T3 Code does (HEIC is not converted here). */
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;

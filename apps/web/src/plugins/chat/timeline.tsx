@@ -1,8 +1,8 @@
 // The timeline's design follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/MessagesTimeline.tsx, WorkLog.tsx, TimelineSystemDivider.tsx,
 // MessageCopyButton.tsx and ProposedPlanCard.tsx.
-import type { TurnAttachment } from "@jhin/agent-api";
-import { Badge, Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
+import type { ChatMessageActionProps, NodeTarget } from "@jhin/client-api";
+import { Badge, Button, Slot, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import {
   BotIcon,
   BrainIcon,
@@ -27,7 +27,15 @@ import {
   XIcon,
   type LucideIcon,
 } from "lucide-react";
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   formatDayAwareTimestamp,
@@ -52,7 +60,13 @@ import {
 import { MessageText } from "./message-text.tsx";
 import { ProposedPlanCard, type SavePlan } from "./proposed-plan-card.tsx";
 
-function MessageCopyButton({ text, label = "Copy message" }: { text: string; label?: string }) {
+export function MessageCopyButton({
+  text,
+  label = "Copy message",
+}: {
+  text: string;
+  label?: string;
+}) {
   const { copied, copy } = useCopy();
   return (
     <Tooltip>
@@ -71,6 +85,33 @@ function MessageCopyButton({ text, label = "Copy message" }: { text: string; lab
       </TooltipTrigger>
       <TooltipPopup side="top">{copied ? "Copied" : label}</TooltipPopup>
     </Tooltip>
+  );
+}
+
+/** Where the timeline's messages live, for the `chat.message.actions` slot. */
+const MessageActionsContext = createContext<
+  { target: NodeTarget; threadId: string; running: boolean } | undefined
+>(undefined);
+
+/**
+ * The hover row's buttons of a message: the `chat.message.actions` slot, or
+ * only the copy button where the timeline is shown without a thread.
+ */
+function MessageActions(props: {
+  turnId: string;
+  role: "user" | "assistant";
+  text: string;
+  latest: boolean;
+}) {
+  const where = useContext(MessageActionsContext);
+  if (where === undefined) {
+    return props.text === "" ? null : <MessageCopyButton text={props.text} />;
+  }
+  return (
+    <Slot
+      name="chat.message.actions"
+      props={{ ...where, ...props } satisfies ChatMessageActionProps}
+    />
   );
 }
 
@@ -106,9 +147,12 @@ const isLong = (text: string) => text.length > 600 || text.split("\n").length > 
 function UserMessage({
   turn,
   format,
+  latest = false,
 }: {
-  turn: Pick<TimelineTurn, "text" | "attachments" | "startedAt">;
+  /** With its `turnId` when it is the message a turn answers: only that one is edited from here. */
+  turn: Pick<TimelineTurn, "text" | "attachments" | "startedAt"> & { turnId?: string };
   format: TimestampFormat;
+  latest?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const long = isLong(turn.text);
@@ -168,7 +212,13 @@ function UserMessage({
         <div className="flex shrink-0 items-center gap-2">
           <Timestamp at={turn.startedAt} format={format} />
           <div className="flex items-center gap-0.5">
-            <MessageCopyButton text={turn.text} />
+            {turn.turnId === undefined ? (
+              turn.text === "" ? null : (
+                <MessageCopyButton text={turn.text} />
+              )
+            ) : (
+              <MessageActions latest={latest} role="user" text={turn.text} turnId={turn.turnId} />
+            )}
           </div>
         </div>
       </div>
@@ -178,6 +228,8 @@ function UserMessage({
 
 function AssistantMessage(props: {
   item: MessageItem;
+  turnId: string;
+  latest: boolean;
   streaming: boolean;
   showMeta: boolean;
   format: TimestampFormat;
@@ -194,7 +246,14 @@ function AssistantMessage(props: {
       </article>
       {props.showMeta ? (
         <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">
-          {item.text === "" ? null : <MessageCopyButton text={item.text} />}
+          <div className="flex items-center gap-0.5">
+            <MessageActions
+              latest={props.latest}
+              role="assistant"
+              text={item.text}
+              turnId={props.turnId}
+            />
+          </div>
           <Timestamp at={item.at} format={props.format} />
         </div>
       ) : null}
@@ -542,7 +601,7 @@ function TurnView(props: {
 
   return (
     <div className="flex flex-col" data-turn={turn.turnId}>
-      <UserMessage format={format} turn={turn} />
+      <UserMessage format={format} latest={props.latest} turn={turn} />
       {running ? (
         <div className="pb-1.5">
           <div className="border-b border-border/60 pt-1 pb-2">
@@ -613,6 +672,8 @@ function TurnView(props: {
             <AssistantMessage
               format={format}
               item={block.item}
+              latest={props.latest}
+              turnId={turn.turnId}
               key={block.item.itemId}
               paddingClass={block.final ? "pb-4" : "pb-2"}
               showMeta={block.final}
@@ -665,14 +726,21 @@ function TurnView(props: {
 export function TimelineView(props: {
   timeline: Timeline;
   format: TimestampFormat;
-  /** Sends a failed turn's message again, with its images. */
-  onRetry?(text: string, attachments: readonly TurnAttachment[]): Promise<unknown>;
+  /** The thread shown: its messages get the `chat.message.actions` slot. */
+  thread?: { target: NodeTarget; threadId: string };
+  /** Runs a failed turn's message again (D224). */
+  onRetry?(turn: TimelineTurn): Promise<unknown>;
   /** The thread's project folder, where "Save to workspace" writes. */
   projectPath?: string;
   onSavePlan?: SavePlan;
 }) {
   const { turns } = props.timeline;
   const now = useNow();
+  const running = turns.at(-1)?.state === "running";
+  const where = useMemo(
+    () => (props.thread === undefined ? undefined : { ...props.thread, running }),
+    [props.thread?.target, props.thread?.threadId, running],
+  );
   if (turns.length === 0) {
     return (
       <div className="flex h-full items-center justify-center py-24">
@@ -684,19 +752,19 @@ export function TimelineView(props: {
   }
   return (
     <NowContext.Provider value={now}>
-      {turns.map((turn, index) => (
-        <TurnView
-          format={props.format}
-          key={turn.turnId}
-          latest={index === turns.length - 1}
-          turn={turn}
-          {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
-          {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
-          {...(props.onRetry === undefined
-            ? {}
-            : { onRetry: () => props.onRetry!(turn.text, turn.attachments) })}
-        />
-      ))}
+      <MessageActionsContext.Provider value={where}>
+        {turns.map((turn, index) => (
+          <TurnView
+            format={props.format}
+            key={turn.turnId}
+            latest={index === turns.length - 1}
+            turn={turn}
+            {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
+            {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
+            {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
+          />
+        ))}
+      </MessageActionsContext.Provider>
     </NowContext.Provider>
   );
 }

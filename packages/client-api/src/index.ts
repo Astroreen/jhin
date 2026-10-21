@@ -287,6 +287,24 @@ export interface ChatHeaderActionProps {
 }
 
 /**
+ * What the `chat.message.actions` slot gives each contribution: a message of
+ * the timeline whose hover row it renders in (T3 Code's copy, "Edit from
+ * here" and "Fork from this response" buttons). `assistant` is a turn's final
+ * answer.
+ */
+export interface ChatMessageActionProps {
+  readonly target: NodeTarget;
+  readonly threadId: string;
+  readonly turnId: string;
+  readonly role: "user" | "assistant";
+  readonly text: string;
+  /** The message belongs to the thread's latest turn. */
+  readonly latest: boolean;
+  /** A turn of the thread runs now. */
+  readonly running: boolean;
+}
+
+/**
  * What the `chat.drawer` slot gives each contribution: the open thread, shown
  * under its chat (T3's terminal drawer is one).
  */

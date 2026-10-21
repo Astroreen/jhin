@@ -59,7 +59,9 @@ import {
 import {
   fitAttachments,
   readImage,
+  appendToDraft,
   stepPromptHistory,
+  type ComposerDraft,
   type PromptHistoryEntry,
   type PromptHistoryPosition,
 } from "../../lib/composer.ts";
@@ -106,6 +108,10 @@ const RUNTIME_MODES: Record<string, { label: string; description: string; icon: 
 };
 
 export interface ComposerHandleApi {
+  /** Puts a sent message back after what is typed. */
+  restore(draft: ComposerDraft): void;
+  /** What is typed and attached now. */
+  draft(): ComposerDraft;
   focus(): void;
   toggleModelPicker(): void;
   cycleRuntimeMode(): void;
@@ -1043,6 +1049,14 @@ export function Composer(props: ComposerProps) {
     props.onSelectionChange({ ...props.selection, interactionMode: planMode ? "default" : "plan" });
   };
   useImperativeHandle(props.handleRef, () => ({
+    restore(draft) {
+      const restored = appendToDraft({ prompt, attachments }, draft);
+      setPrompt(restored.prompt);
+      setAttachments(restored.attachments);
+      historyPosition.current = null;
+      focus();
+    },
+    draft: () => ({ prompt, attachments }),
     focus,
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,

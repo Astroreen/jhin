@@ -1,5 +1,6 @@
 import type { AgentRuntime, TurnRequest } from "@jhin/agent-api";
 import type { RpcClient } from "@jhin/rpc";
+import type { AgentRegistry } from "@jhin/agent-api";
 import { definePlugin } from "@jhin/sdk";
 import { testManifest } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
@@ -17,6 +18,23 @@ interface Thread {
   id: string;
   updatedAt?: string;
   lastTurn?: { turnId: string; status: string; agentId: string; at: string };
+}
+
+/** A plugin that registers `runtime` through agent.registry@1. */
+function registering(runtime: AgentRuntime) {
+  return {
+    manifest: testManifest(`acme.${runtime.agentId}`, {
+      side: "server",
+      requires: { "agent.registry": "^1" },
+    }),
+    definition: definePlugin({
+      activate(context) {
+        context.subscriptions.add(
+          context.services.get<AgentRegistry>("agent.registry").register(runtime),
+        );
+      },
+    }),
+  };
 }
 
 /** A runtime that answers as the fake one does and keeps the history of every turn. */
@@ -292,5 +310,165 @@ describe("jhin.threads: rolling back turns (D220, D221)", () => {
     expect(events.filter((event) => event.type === "threads.thread.rolled-back")).toHaveLength(1);
     // The refused rollback held nothing: the thread takes a turn.
     await turn(client, thread.id, "three");
+  });
+});
+
+describe("jhin.threads: regenerating a turn (D224)", () => {
+  it("drops the latest turn and runs its message again with its settings", async () => {
+    const { runtime, histories } = recordingRuntime();
+    const requests: TurnRequest[] = [];
+    const tracked: AgentRuntime = {
+      ...runtime,
+      startTurn: (request) => {
+        requests.push(request);
+        return runtime.startTurn(request);
+      },
+    };
+    const { client } = await node({ runtime: tracked });
+    const thread = await client.call<Thread>("threads.create", {});
+    const first = await turn(client, thread.id, "one");
+    const image = {
+      kind: "image",
+      name: "dot.png",
+      mimeType: "image/png",
+      dataUrl: "data:image/png;base64,AAAA",
+    };
+    const { untilMatch } = watch(client, thread.id);
+    const { turnId: second } = await client.call<{ turnId: string }>("threads.send", {
+      threadId: thread.id,
+      text: "/fail two",
+      attachments: [image],
+      runtimeMode: "approval-required",
+    });
+    await untilMatch((event) => event.type === "agent.turn.failed");
+
+    const result = await client.call<{ turnId: string; turnIds: string[] }>("threads.regenerate", {
+      threadId: thread.id,
+    });
+    expect(result.turnIds).toEqual([second]);
+    expect(result.turnId).not.toBe(second);
+    expect(requests.at(-1)).toMatchObject({
+      turnId: result.turnId,
+      input: { text: "/fail two", attachments: [image] },
+      runtimeMode: "approval-required",
+    });
+    // The agent sees the kept turn only.
+    expect(turnIdsOf(histories.at(-1)!)).toEqual([undefined, first]);
+  });
+
+  it("regenerates an earlier turn, dropping every later one", async () => {
+    const { client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const first = await turn(client, thread.id, "one");
+    const second = await turn(client, thread.id, "two");
+    const third = await turn(client, thread.id, "three");
+    const { untilMatch } = watch(client, thread.id);
+
+    const result = await client.call<{ turnId: string; turnIds: string[] }>("threads.regenerate", {
+      threadId: thread.id,
+      turnId: second,
+    });
+    expect(result.turnIds).toEqual([second, third]);
+    const started = await untilMatch(
+      (event) =>
+        event.type === "agent.turn.started" &&
+        (event.payload as { turnId: string }).turnId === result.turnId,
+    );
+    expect(started.payload).toMatchObject({ input: { text: "two" } });
+    await expect(
+      client.call("threads.regenerate", { threadId: thread.id, turnId: third }),
+    ).rejects.toMatchObject({ code: "TURN_NOT_FOUND" });
+    const rolledBack = await untilMatch((event) => event.type === "threads.thread.rolled-back");
+    expect(rolledBack.payload).toEqual({ turnIds: [second, third], toTurnId: first });
+  });
+
+  it("regenerates the first turn, and keeps the record on the new turn", async () => {
+    const { client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const only = await turn(client, thread.id, "hello");
+    const { untilMatch } = watch(client, thread.id);
+    const result = await client.call<{ turnId: string; turnIds: string[] }>("threads.regenerate", {
+      threadId: thread.id,
+    });
+    expect(result.turnIds).toEqual([only]);
+    await untilMatch(
+      (event) =>
+        event.type === "agent.turn.completed" &&
+        (event.payload as { turnId: string }).turnId === result.turnId,
+    );
+    const index = watch(client, "stream:threads");
+    await index.untilMatch((event) => {
+      const last = (event.payload as unknown as Thread).lastTurn;
+      return last?.turnId === result.turnId && last.status === "completed";
+    });
+    const { thread: after } = await client.call<{ thread: Thread }>("threads.get", {
+      threadId: thread.id,
+    });
+    expect(after.lastTurn).toMatchObject({ turnId: result.turnId, status: "completed" });
+  });
+
+  it("runs the turn on the thread's agent when its own agent is gone from the node", async () => {
+    const gone: AgentRuntime = { agentId: "acme.gone", startTurn: fakeTurn };
+    const first = await node({ plugins: [registering(gone)] });
+    const thread = await first.client.call<Thread>("threads.create", { agentId: "acme.gone" });
+    await turn(first.client, thread.id, "hello");
+    await first.stop();
+    const second = await node({ storage: first.storage, data: first.data });
+    const { untilMatch } = watch(second.client, thread.id);
+    const { turnId } = await second.client.call<{ turnId: string }>("threads.regenerate", {
+      threadId: thread.id,
+    });
+    const started = await untilMatch(
+      (event) =>
+        event.type === "agent.turn.started" &&
+        (event.payload as { turnId: string }).turnId === turnId,
+    );
+    expect(started.payload).toMatchObject({ agentId: "jhin.agent-fake", input: { text: "hello" } });
+  });
+
+  it("tells a turn's message and settings, and rolls back to before a turn", async () => {
+    const { client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const first = await turn(client, thread.id, "one");
+    const second = await turn(client, thread.id, "two");
+    expect(
+      await client.call("threads.turn", { threadId: thread.id, turnId: second }),
+    ).toMatchObject({
+      turnId: second,
+      agentId: "jhin.agent-fake",
+      input: { text: "two" },
+      previousTurnId: first,
+    });
+    expect(
+      await client.call("threads.rollback", { threadId: thread.id, beforeTurnId: second }),
+    ).toMatchObject({ turnIds: [second], thread: { lastTurn: { turnId: first } } });
+    await expect(
+      client.call("threads.turn", { threadId: thread.id, turnId: second }),
+    ).rejects.toMatchObject({ code: "TURN_NOT_FOUND" });
+    await expect(
+      client.call("threads.rollback", { threadId: thread.id, beforeTurnId: second }),
+    ).rejects.toMatchObject({ code: "TURN_NOT_FOUND" });
+    await expect(
+      client.call("threads.rollback", { threadId: thread.id, turnId: first, beforeTurnId: first }),
+    ).rejects.toBeDefined();
+  });
+
+  it("refuses a thread without turns or with a turn running, dropping nothing", async () => {
+    const { client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    await expect(client.call("threads.regenerate", { threadId: thread.id })).rejects.toMatchObject({
+      code: "TURN_NOT_FOUND",
+    });
+    await expect(client.call("threads.regenerate", { threadId: "nope" })).rejects.toMatchObject({
+      code: "THREAD_NOT_FOUND",
+    });
+
+    const { until, events } = watch(client, thread.id);
+    await client.call("threads.send", { threadId: thread.id, text: "/hold on" });
+    await until("agent.item.delta");
+    await expect(client.call("threads.regenerate", { threadId: thread.id })).rejects.toMatchObject({
+      code: "TURN_IN_PROGRESS",
+    });
+    expect(events.some((event) => event.type === "threads.thread.rolled-back")).toBe(false);
   });
 });
