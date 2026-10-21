@@ -206,8 +206,15 @@ export function threadRoute(
 ): (NodeTarget & { thread: string }) | undefined {
   const match = /^jhin:\/\/([^/]+)\/threads\/([^/?#]+)$/.exec(href);
   if (match === null) return undefined;
-  const node = decodeURIComponent(match[1]!);
-  const thread = decodeURIComponent(match[2]!);
+  let node: string;
+  let thread: string;
+  try {
+    node = decodeURIComponent(match[1]!);
+    thread = decodeURIComponent(match[2]!);
+  } catch {
+    // A link typed or pasted with a broken escape leads nowhere; it never breaks the prompt.
+    return undefined;
+  }
   if (node === from.nodeId) return { ...from.target, thread };
   if (from.selfNodeId === undefined) return undefined;
   return node === from.selfNodeId
@@ -319,7 +326,11 @@ export function useComposerChipActions(options: {
         file={shown.file}
         mimeType=""
         name={shown.name}
-        onClose={() => setShown(undefined)}
+        onClose={() => {
+          // A preview still on its way when the dialog closes does not open it again.
+          latest.current += 1;
+          setShown(undefined);
+        }}
         origin={shown.origin}
         sizeBytes={shown.sizeBytes}
       />

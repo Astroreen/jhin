@@ -217,5 +217,13 @@ describe("jhin.threads: project files for @ mentions (D302)", () => {
     await expect(skill({ name: "deploy", agentId: "acme.none" })).rejects.toMatchObject({
       code: "AGENT_NOT_FOUND",
     });
+    // A SKILL.md that is a link to another file reads nothing.
+    Fs.writeFileSync(Path.join(data, "secret.txt"), "keep");
+    Fs.rmSync(Path.join(dir, ".claude", "skills", "deploy", "SKILL.md"));
+    Fs.symlinkSync(
+      Path.join(data, "secret.txt"),
+      Path.join(dir, ".claude", "skills", "deploy", "SKILL.md"),
+    );
+    await expect(skill({ name: "deploy" })).rejects.toMatchObject({ code: "PATH_NOT_SKILL" });
   });
 });

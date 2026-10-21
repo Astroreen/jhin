@@ -87,6 +87,8 @@ const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const MAX_WRITTEN_FILE_CHARS = 1_000_000;
 /** The most `projects.read-file` and `agents.skill.read` read of a file: a video's 50 MB (D855). */
 const MAX_READ_FILE_BYTES = 50 * 1024 * 1024;
+/** The file of a skill's instructions, the only one `agents.skill.read` reads. */
+const SKILL_FILE = "SKILL.md";
 /** Images sent as data URLs, together: they are stored in the turn's first event. */
 const MAX_INLINE_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
 const MAX_BROWSE_ENTRIES = 500;
@@ -576,6 +578,8 @@ async function readFileHead(
   path: string,
   maxBytes: number,
   whole: boolean,
+  /** Where the opened file must be (Linux checks the handle itself, `/proc/self/fd`). */
+  allowed: (real: string) => boolean = () => true,
 ): Promise<{ path: string; sizeBytes: number; data: string; truncated: boolean } | undefined> {
   let file: Fs.promises.FileHandle;
   try {
@@ -583,9 +587,16 @@ async function readFileHead(
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ELOOP" || code === "EISDIR") return undefined;
+    if (code === "ENOENT") {
+      throw new ThreadsError("FILE_NOT_FOUND", `${path} does not exist`, { path });
+    }
     throw error;
   }
   try {
+    // A folder on the way swapped for a link after the path was checked leads the handle
+    // elsewhere: on Linux the handle's own path is checked too; elsewhere that race stays.
+    const opened = await Fs.promises.readlink(`/proc/self/fd/${file.fd}`).catch(() => undefined);
+    if (opened !== undefined && !allowed(opened)) return undefined;
     const stat = await file.stat();
     if (!stat.isFile()) return undefined;
     if (whole && stat.size > maxBytes) {
@@ -2031,7 +2042,10 @@ export default definePlugin({
         }
         const relative = Path.relative(realRoot, real);
         if (relative === "" || outside(relative)) throw refuse();
-        const head = await readFileHead(real, maxBytes, whole);
+        const head = await readFileHead(real, maxBytes, whole, (opened) => {
+          const inside = Path.relative(realRoot, opened);
+          return inside !== "" && !outside(inside);
+        });
         if (head === undefined) throw refuse();
         return head;
       },
@@ -2211,13 +2225,24 @@ export default definePlugin({
         if (skill === undefined) {
           throw new ThreadsError("SKILL_NOT_FOUND", `The agent offers no skill ${name}`, { name });
         }
-        // The path is the runtime's, trusted as the agent's own (D1004); its errors are its own.
-        const head = await readFileHead(skill.path, maxBytes, whole).catch((error: unknown) => {
+        // Only a skill's SKILL.md, and not through a link to another file (D1004): the path is
+        // the runtime's, and a project's skills folder is anyone's who can write there.
+        const notInstructions = () =>
+          new ThreadsError("PATH_NOT_SKILL", `${skill.path} is not a skill's SKILL.md`, { name });
+        if (Path.basename(skill.path) !== SKILL_FILE) throw notInstructions();
+        const real = await Fs.promises.realpath(skill.path).catch((error: unknown) => {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
           throw new ThreadsError("FILE_NOT_FOUND", `${skill.path} does not exist`, {
             path: skill.path,
           });
         });
+        if (Path.basename(real) !== SKILL_FILE) throw notInstructions();
+        const head = await readFileHead(
+          real,
+          maxBytes,
+          whole,
+          (opened) => Path.basename(opened) === SKILL_FILE,
+        );
         if (head === undefined) {
           throw new ThreadsError("SKILL_NOT_FOUND", `${skill.path} is not a file`, { name });
         }

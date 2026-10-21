@@ -29,5 +29,7 @@ describe("a thread chip's address (D1005)", () => {
     expect(threadRoute("jhin://self/threads/t", unknown)).toBeUndefined();
     expect(threadRoute("jhin://self/agents/a", local)).toBeUndefined();
     expect(threadRoute("https://example.com", local)).toBeUndefined();
+    // A broken escape, typed or pasted, leads nowhere instead of throwing in the prompt.
+    expect(threadRoute("jhin://%E0%A4%A/threads/t", local)).toBeUndefined();
   });
 });

@@ -1777,7 +1777,11 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   a file inside the thread's worktree or else the project's folder. A path
   out of the folder is refused before anything is looked up, so the answer
   never tells whether a file outside exists; a link that leads out is
-  refused too, and the file is opened once, never through a link at its end.
+  refused too, and the file is read through one handle, opened never through
+  a link at its end; on Linux the handle's own path (`/proc/self/fd`) is
+  checked against the folder too, elsewhere a folder on the way swapped for
+  a link between the check and the open, by someone who can already write
+  into the project, is not guarded against, as for `projects.write-file`.
   Text reads its first MiB as D854 does; media goes whole up to D855's 50 MB
   (`whole`: one past the limit is refused, `FILE_TOO_LARGE`, before it is
   read) and is "too large to preview" past it. Only the latest preview asked
@@ -1791,10 +1795,11 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   command `agents.skill.read` (`{ projectId, agentId?, name, maxBytes?,
   whole? }`, under `projects.read`, since a user's skills are outside
   projects): it reads only the path the agent's runtime gives for one of its
-  skills, which is trusted as the agent's own, and says when the skill or
-  its file is missing. The composer asks the agent's skills
-  (`agents.commands`) while the prompt holds a skill chip, not only while
-  `$` or `/` is typed.
+  skills, and only a file named `SKILL.md` that is not a link to another
+  file (`PATH_NOT_SKILL`), since a project's skills folder is anyone's who
+  can write there; it says when the skill or its file is missing. The
+  composer asks the agent's skills (`agents.commands`) while the prompt
+  holds a skill chip, not only while `$` or `/` is typed.
 - **D1005. A pull request or thread chip** is T3's too: a pull request with
   its glyph, its URL in a tooltip, opened in the browser when pressed; a
   thread with T3's `MessagesSquare` and "Open thread", which opens it
@@ -1804,6 +1809,11 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   link to no web page) is no button, and a thread one says "Thread no longer
   available". The state of a pull request and the thread's current title
   come with their context records.
+
+### Sidebar leftovers (W26)
+
+W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
+
 - **D962. The selection menu's "Custom…" snooze, as T3's.** The "Snooze
   (N)" submenu ends with a separator and "Custom…", which asks in the same
   "Custom snooze" dialog as a single thread and snoozes every selected
