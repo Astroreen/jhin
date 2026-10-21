@@ -295,32 +295,41 @@ interface RawRemark {
 const text = (value: unknown) => (typeof value === "string" ? value : undefined);
 const login = (actor: RawActor | null | undefined) => text(actor?.login) ?? null;
 
-/** The node's GitHub account (`gh api user`), asked once per `gh`. */
-const viewers = new Map<string, Promise<string | null>>();
-function viewerOf(ghPath: string, cwd: string): Promise<string | null> {
-  let viewer = viewers.get(ghPath);
-  if (viewer === undefined) {
-    viewer = ghJson(ghPath, cwd, ["api", "user"]).then(
-      (answer) => text((answer as RawActor | null)?.login) ?? null,
-      () => null,
-    );
-    viewers.set(ghPath, viewer);
-    // A failed answer is asked again next time.
-    void viewer.then((value) => {
-      if (value === null) viewers.delete(ghPath);
-    });
-  }
-  return viewer;
+/** How long the node's GitHub account is taken as known: a `gh auth switch` shows within it. */
+const VIEWER_TTL_MS = 10 * 60_000;
+
+/** The plugin's answers of `gh api user`, by `gh`; kept by whoever reads watches. */
+export type Viewers = Map<string, { readonly at: number; readonly login: Promise<string | null> }>;
+
+/** The node's GitHub account (`gh api user`), asked again once its answer is old. */
+function viewerOf(viewers: Viewers, ghPath: string, cwd: string): Promise<string | null> {
+  const known = viewers.get(ghPath);
+  if (known !== undefined && Date.now() - known.at < VIEWER_TTL_MS) return known.login;
+  const asked = ghJson(ghPath, cwd, ["api", "user"]).then(
+    (answer) => text((answer as RawActor | null)?.login) ?? null,
+    () => null,
+  );
+  viewers.set(ghPath, { at: Date.now(), login: asked });
+  // A failed answer is asked again next time.
+  void asked.then((value) => {
+    if (value === null && viewers.get(ghPath)?.login === asked) viewers.delete(ghPath);
+  });
+  return asked;
 }
 
 const WATCH_FIELDS =
   "number,url,state,headRefOid,mergeable,baseRefName,statusCheckRollup,comments,reviews,author";
 
 /** What a watch reads of a pull request (D272): checks, mergeability and remarks. */
-export async function readWatch(ghPath: string, cwd: string, url: string): Promise<WatchRead> {
+export async function readWatch(
+  ghPath: string,
+  cwd: string,
+  url: string,
+  viewers: Viewers,
+): Promise<WatchRead> {
   const [answer, viewer] = await Promise.all([
     ghJson(ghPath, cwd, ["pr", "view", url, "--json", WATCH_FIELDS]),
-    viewerOf(ghPath, cwd),
+    viewerOf(viewers, ghPath, cwd),
   ]);
   const raw = (answer ?? {}) as Record<string, unknown>;
   const state = text(raw["state"])?.toLowerCase();

@@ -102,11 +102,14 @@ export function evaluateWatch(watch: PullRequestWatch, read: WatchRead): WatchRe
   const own = new Set(
     [read.viewer, read.author].filter((name) => name !== null).map((name) => name!.toLowerCase()),
   );
-  const through = Date.parse(watch.remarksThrough);
+  const parsedThrough = Date.parse(watch.remarksThrough);
+  const through = Number.isNaN(parsedThrough) ? Date.parse(watch.startedAt) : parsedThrough;
   const activeAt = (remark: Remark) => remark.editedAt ?? remark.createdAt;
   // Times are per second: remarks at the boundary are told apart by id.
   const fresh = read.remarks.filter((remark) => {
     const at = Date.parse(activeAt(remark));
+    // A time the forge wrote that cannot be read is no news.
+    if (Number.isNaN(at)) return false;
     return (
       (at > through || (at === through && !watch.remarkIds.includes(remark.id))) &&
       !own.has(remark.author?.toLowerCase() ?? "")

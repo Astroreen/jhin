@@ -2,7 +2,13 @@ import type { PullRequestWatch, ThreadPullRequest } from "@jhin/source-control-a
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { evaluateWatch, startWatch, watchMessage } from "../src/index.ts";
+import {
+  createLinks,
+  createWatcher,
+  evaluateWatch,
+  startWatch,
+  watchMessage,
+} from "../src/index.ts";
 import { fakeGh, ghPullRequest, git, node, repository } from "./support.ts";
 
 const T0 = "2026-10-20T10:00:00Z";
@@ -246,5 +252,123 @@ describe("jhin.source-control: watching a pull request", () => {
           `Pull request #8 (${closing}) was closed, so Jhin stopped watching it. Call git_pr_watch if it reopens.`,
       ),
     );
+  });
+});
+
+describe("the watcher", () => {
+  function memoryKv() {
+    const data = new Map<string, unknown>();
+    return {
+      get: async (namespace: string, key: string) => data.get(`${namespace}/${key}`) as never,
+      set: async (namespace: string, key: string, value: unknown) => {
+        data.set(`${namespace}/${key}`, value);
+      },
+      delete: async (namespace: string, key: string) => data.delete(`${namespace}/${key}`),
+      list: async (namespace: string, options: { prefix?: string } = {}) =>
+        [...data]
+          .filter(([key]) => key.startsWith(`${namespace}/${options.prefix ?? ""}`))
+          .map(([key, value]) => ({ key: key.slice(namespace.length + 1), value: value as never })),
+    };
+  }
+
+  const URL7 = "https://github.com/acme/demo/pull/7";
+
+  async function setup() {
+    const kv = memoryKv() as never;
+    const sent: string[] = [];
+    const thread = { archived: false, busy: false };
+    let reading: ((value: unknown) => void) | undefined;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    let answer: unknown = read();
+    const links = createLinks({
+      kv,
+      append: async () => undefined,
+      remoteOf: async () => null,
+      read: async () => undefined,
+      warn: () => undefined,
+    });
+    const watcher = createWatcher({
+      kv,
+      links,
+      read: async () => {
+        if (answer === "hold") {
+          const held = new Promise((resolve) => (reading = resolve));
+          entered();
+          return held as never;
+        }
+        if (answer instanceof Error) throw answer;
+        return answer as never;
+      },
+      thread: async () => thread,
+      send: async (_threadId, text) => {
+        sent.push(text);
+      },
+      warn: () => undefined,
+      now: () => T0,
+    });
+    const { pullRequest } = await links.link("t", { url: URL7 }, "agent");
+    await watcher.watch("t", pullRequest);
+    return {
+      links,
+      watcher,
+      sent,
+      thread,
+      answer: (value: unknown) => (answer = value),
+      release: (value: unknown) => reading!(value),
+      /** Resolves once the watcher is reading a held answer. */
+      started,
+      watching: async () => (await links.list("t"))[0]?.watch !== undefined,
+    };
+  }
+
+  it("leaves a watch stopped while its pull request was read", async () => {
+    const { watcher, links, answer, release, watching, started } = await setup();
+    answer("hold");
+    const sweep = watcher.sweep();
+    // Unwatched while `gh` still answers: the sweep must not bring it back.
+    await started;
+    await watcher.unwatch("t", (await links.list("t"))[0]!);
+    release(read({ mergeability: "conflicting" }));
+    expect(await sweep).toMatchObject({ checked: 1 });
+    expect(await watching()).toBe(false);
+  });
+
+  it("stops after eight failed reads in a row and says so", async () => {
+    const { watcher, sent, answer, watching } = await setup();
+    answer(new Error("gh is gone"));
+    for (let index = 1; index < 8; index += 1) await watcher.sweep();
+    expect(await watching()).toBe(true);
+    expect(sent).toEqual([]);
+    await watcher.sweep();
+    expect(await watching()).toBe(false);
+    expect(sent).toEqual([
+      `Jhin stopped watching pull request #7 (${URL7}) because it failed to read it from the host 8 times in a row. Check it yourself, and call git_pr_watch to watch it again.`,
+    ]);
+  });
+
+  it("ends the watch of an archived thread without waking it", async () => {
+    const { watcher, sent, thread, answer, watching } = await setup();
+    thread.archived = true;
+    answer(read({ mergeability: "conflicting" }));
+    expect(await watcher.sweep()).toEqual({ checked: 1, woken: 0 });
+    expect(await watching()).toBe(false);
+    expect(sent).toEqual([]);
+  });
+
+  it("holds news during a turn and sends it once when the turn ends and a sweep runs together", async () => {
+    const { watcher, sent, thread, answer } = await setup();
+    thread.busy = true;
+    answer(
+      read({
+        remarks: [{ id: "c1", author: "reviewer", body: "Hm", createdAt: later(1) }],
+      }),
+    );
+    expect(await watcher.sweep()).toEqual({ checked: 1, woken: 1 });
+    expect(sent).toEqual([]);
+    thread.busy = false;
+    await Promise.all([watcher.idle("t"), watcher.sweep(), watcher.idle("t")]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain('- 1 new comment:\n  - reviewer: "Hm"');
   });
 });

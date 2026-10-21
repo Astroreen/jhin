@@ -70,6 +70,7 @@ import {
   pullRequestAt,
   pullRequestFor,
   readWatch,
+  type Viewers,
   remoteHost,
 } from "./github.ts";
 import { createLinks, type LinkTarget } from "./links.ts";
@@ -89,6 +90,7 @@ export {
 export { agentWriter, parseJsonObject, plainWriter } from "./writer.ts";
 export { createLinks, pullRequestUrl } from "./links.ts";
 export { evaluateWatch, startWatch, watchMessage } from "./pr-watch.ts";
+export { createWatcher } from "./watcher.ts";
 
 export const CONFIG_SECTION = "jhin.source-control";
 const NAMESPACE = "jhin.source-control";
@@ -303,6 +305,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   });
 
   // --- Watching linked pull requests (D271–D274) ---------------------------------------
+  /** The node's GitHub accounts as `gh` last named them, for as long as the plugin runs. */
+  const viewers: Viewers = new Map();
   const watcher = createWatcher({
     kv,
     links,
@@ -314,7 +318,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         repo?.location?.isRepo === true
           ? repo.location.root
           : (repo?.project.path ?? process.cwd());
-      return readWatch(config().ghPath, cwd, link.url);
+      return readWatch(config().ghPath, cwd, link.url, viewers);
     },
     thread: async (threadId) => {
       const answer = (await context.commands
@@ -817,17 +821,24 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   };
   schedulePullRequests();
   let watchTimer: ReturnType<typeof setInterval> | undefined;
+  let watchSweeping = false;
   const scheduleWatch = () => {
     if (watchTimer !== undefined) clearInterval(watchTimer);
     watchTimer = undefined;
     const seconds = config().watchSweepSeconds;
     if (seconds === 0) return;
     watchTimer = setInterval(() => {
+      // No new sweep while the last one still reads.
+      if (watchSweeping) return;
+      watchSweeping = true;
       void watcher
         .sweep()
         .catch((error: unknown) =>
           context.log.warn("watching pull requests failed", { error: String(error) }),
-        );
+        )
+        .finally(() => {
+          watchSweeping = false;
+        });
     }, seconds * 1000);
     watchTimer.unref?.();
   };
@@ -1337,8 +1348,29 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     permissions: ["git.write"],
     handler: async (input) => {
       await ensureThread(input.threadId);
-      const { pullRequest } = await links.link(input.threadId, target(input), "agent");
-      const result = await watcher.watch(input.threadId, pullRequest);
+      // An archived thread is refused before anything is linked.
+      const thread = (await context.commands
+        .execute("threads.get", { threadId: input.threadId })
+        .catch(() => undefined)) as { thread?: { archivedAt?: string } } | undefined;
+      if (thread?.thread?.archivedAt !== undefined) {
+        throw new SourceControlError(
+          "ACTION_UNAVAILABLE",
+          `Thread ${input.threadId} is archived and cannot watch pull requests`,
+        );
+      }
+      const { pullRequest, alreadyLinked } = await links.link(
+        input.threadId,
+        target(input),
+        "agent",
+      );
+      let result: Awaited<ReturnType<typeof watcher.watch>>;
+      try {
+        result = await watcher.watch(input.threadId, pullRequest);
+      } catch (error) {
+        // A refused watch leaves no link it made behind.
+        if (!alreadyLinked) await links.unlink(input.threadId, target(input));
+        throw error;
+      }
       const current = (await links.find(input.threadId, target(input))) ?? pullRequest;
       return { pullRequest: current, ...result };
     },

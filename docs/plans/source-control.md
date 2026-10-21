@@ -581,7 +581,9 @@ with a screenshot).
   and `PullRequestWatchReactor.ts` at D53): `git.pr.watch` (links it first,
   as `agent`) and `git.pr.unwatch` (`git.write`; MCP tools `git_pr_watch`,
   `git_pr_unwatch`), refused for an archived thread and a merged pull request
-  ("The pull request is merged, so there is nothing to watch."). The watch is
+  ("The pull request is merged, so there is nothing to watch."). A refused
+  watch leaves no link behind; an archived thread is refused before anything
+  is linked. The watch is
   part of the link (`watch`: what it has told already: the head commit, the
   failed checks, whether all passed, comments up to when and by id, a
   conflict, comment-only wakes and failed reads in a row), so it survives
@@ -589,7 +591,10 @@ with a screenshot).
 - **D272. Every `watchSweepSeconds` (120; 0 = only on request) the node reads
   each watched pull request** (`gh pr view <url> --json
   headRefOid,mergeable,statusCheckRollup,comments,reviews,author,…` and the
-  account `gh api user`); `git.pr.watch.check` reads them now. As in T3: new
+  account `gh api user`); `git.pr.watch.check` reads them now. One sweep runs at a time;
+  a watch is changed only as it is stored then (one unwatched or restarted
+  during a read stays so); a thread archived or gone ends its watches; the
+  account is asked again after ten minutes. As in T3: new
   failed checks (failure, cancelled, action required), all checks passed
   (after a push, again), comments and reviews after the watch began by anyone
   but the account and the pull request's author, and a new conflict with the
@@ -601,7 +606,10 @@ with a screenshot).
   comments:", "- The branch now conflicts with main.", at most ten items each,
   and how to go on, naming `git_pr_unwatch`), sent with `threads.send`. While
   a turn runs (or waits for the user) the news waits in `storage.kv` and goes
-  out, joined, when the turn ends (T3's `queue_after_active`). The watch stops
+  out, joined, when the turn ends (T3's `queue_after_active`). The news is
+  kept before the watch moves past it, one thread's queue is changed by one
+  task at a time, and a send that fails for another reason than a running
+  turn is reported and dropped. The watch stops
   without a word when the pull request merges, with "Pull request #8 (…) was
   closed, so Jhin stopped watching it. Call git_pr_watch if it reopens." when
   it closes, after ten comment-only wakes in a row, and after eight failed

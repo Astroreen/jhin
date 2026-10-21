@@ -58,6 +58,15 @@ export interface Links {
   sync(threadId: string, options?: { all?: boolean }): Promise<void>;
   /** Every thread with links, for the periodic read. */
   threads(): Promise<string[]>;
+  /**
+   * Changes a link as it is stored now (`change` returns `undefined` to leave
+   * it), one change at a time per thread, and publishes the result.
+   */
+  modify(
+    threadId: string,
+    key: string,
+    change: (link: ThreadPullRequest) => ThreadPullRequest | undefined,
+  ): Promise<ThreadPullRequest | undefined>;
   /** Replaces a link's record (its snapshot, or the watch of D272) and publishes it. */
   update(threadId: string, link: ThreadPullRequest): Promise<void>;
   remove(threadId: string): Promise<void>;
@@ -276,6 +285,19 @@ export function createLinks(deps: LinksDeps): Links {
     async threads() {
       await load();
       return [...links.keys()];
+    },
+    async modify(threadId, key, change) {
+      await load();
+      return queued(threadId, async () => {
+        const list = links.get(threadId) ?? [];
+        const index = list.findIndex((item) => item.key === key);
+        if (index < 0) return undefined;
+        const next = change(list[index]!);
+        if (next === undefined) return undefined;
+        await save(threadId, list.toSpliced(index, 1, next));
+        await deps.append(SourceControlEvents.pullRequestUpdated, { threadId, pullRequest: next });
+        return next;
+      });
     },
     async update(threadId, link) {
       await load();
