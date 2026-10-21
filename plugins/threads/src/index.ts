@@ -1289,6 +1289,11 @@ export default definePlugin({
             type: ThreadEvents.usageUpdated,
             payload: { turnId, usage: item.usage as unknown as Json },
           };
+        case "context.compacted":
+          return {
+            type: ThreadEvents.contextCompacted,
+            payload: { turnId, ...(item.trigger === undefined ? {} : { trigger: item.trigger }) },
+          };
       }
     }
 

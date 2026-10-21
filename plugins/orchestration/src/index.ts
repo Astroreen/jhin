@@ -1949,8 +1949,9 @@ export default definePlugin({
       workflow: Workflow,
       body: string,
       args: unknown,
-      traceId: string | undefined,
+      invocation: Invocation,
     ) {
+      const traceId = invocation.traceId;
       const controller = new AbortController();
       running.set(workflow.workflowId, controller);
       let ending: Partial<Workflow>;
@@ -1965,6 +1966,8 @@ export default definePlugin({
             budget: workflow.budget ?? null,
             spent: () => runStates.get(workflow.workflowId)?.spent ?? 0,
             load: (ref) => loadScript(runStates.get(workflow.workflowId)?.dir, ref),
+            // As whoever started the run, with its grants and trace (agents.md D705).
+            command: (name, input) => context.commands.execute(name, input, invocation),
             log: (message) =>
               void updateWorkflow(workflow.workflowId, (current) => ({
                 ...current,
@@ -2057,7 +2060,7 @@ export default definePlugin({
     context.commands.register({
       name: "workflows.run",
       description:
-        "Runs a workflow script that orchestrates several agents, as the Workflow tool does. The script begins with `export const meta = { name, description, phases? }` (a pure literal) and its body is plain JavaScript using agent(prompt, {label, phase, schema, model, agentId, isolation}), parallel(thunks), pipeline(items, ...stages), phase(title), log(message), args, budget {total, spent(), remaining()} and workflow(nameOrRef, args) (a saved workflow of the project's .jhin/workflows/<name>.js, or {scriptPath}; one level). Instead of script, pass name or scriptPath to run a saved workflow or a file. resumeFromRunId reuses the results of an earlier run's unchanged agent() calls up to the first changed one; budget caps the output tokens of its agents. Each agent is a delegated task of the calling thread. Returns at once with a workflowId; the workflow's end wakes the calling thread with a message, so end the turn instead of polling. Date.now(), new Date() and Math.random() are unavailable. The script runs inside the node with the node's rights (it can reach the node's own functions and block it after its first await), so it needs the workflows.run permission and a full-access calling thread.",
+        "Runs a workflow script that orchestrates several agents, as the Workflow tool does. The script begins with `export const meta = { name, description, phases? }` (a pure literal) and its body is plain JavaScript using agent(prompt, {label, phase, schema, model, agentId, isolation}), parallel(thunks), pipeline(items, ...stages), phase(title), log(message), command(name, input) (runs a command of the node as the caller of workflows.run and returns its output), args, budget {total, spent(), remaining()} and workflow(nameOrRef, args) (a saved workflow of the project's .jhin/workflows/<name>.js, or {scriptPath}; one level). Instead of script, pass name or scriptPath to run a saved workflow or a file. resumeFromRunId reuses the results of an earlier run's unchanged agent() calls up to the first changed one; budget caps the output tokens of its agents. Each agent is a delegated task of the calling thread. Returns at once with a workflowId; the workflow's end wakes the calling thread with a message, so end the turn instead of polling. Date.now(), new Date() and Math.random() are unavailable. The script runs inside the node with the node's rights (it can reach the node's own functions and block it after its first await), so it needs the workflows.run permission and a full-access calling thread.",
       input: z.object({
         script: z
           .string()
@@ -2169,12 +2172,11 @@ export default definePlugin({
           phases: workflow.phases as unknown as Json,
           script,
         });
-        void startWorkflow(workflow, parsed.body, args, invocation.traceId).catch(
-          (error: unknown) =>
-            context.log.error("a workflow could not be recorded", {
-              workflowId: workflow.workflowId,
-              error: String(error),
-            }),
+        void startWorkflow(workflow, parsed.body, args, invocation).catch((error: unknown) =>
+          context.log.error("a workflow could not be recorded", {
+            workflowId: workflow.workflowId,
+            error: String(error),
+          }),
         );
         return { workflowId: workflow.workflowId, name: workflow.name, status: workflow.status };
       },

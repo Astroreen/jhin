@@ -187,6 +187,8 @@ describe("jhin.agent-codex: a turn", () => {
       kind: "tool",
       status: "completed",
     });
+    // The compaction also says the context was compacted (agents.md D709).
+    expect(payloads(events, "agent.context.compacted")).toMatchObject([{ trigger: "manual" }]);
   });
 
   it("shows the errors Codex retries until the model answers again", async () => {

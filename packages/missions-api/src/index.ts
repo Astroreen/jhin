@@ -277,6 +277,81 @@ export function intentChain(state: MissionsState, sliceId: string): IntentChain 
   };
 }
 
+// --- Progress (agents.md D702) -------------------------------------------------
+
+/**
+ * Why a slice waits for whoever runs the mission (D702): it has no assignee,
+ * its assignee set it blocked, a slice it depends on was dropped (it must be
+ * re-planned, D651), or its assignee is an agent of another node.
+ */
+export const DECISION_REASONS = ["unassigned", "blocked", "orphaned", "elsewhere"] as const;
+export const Decision = z.object({
+  sliceId: z.string(),
+  reason: z.enum(DECISION_REASONS),
+  /** For `orphaned`: the dropped slices it depends on. */
+  dropped: z.array(z.string()).optional(),
+});
+export type Decision = z.infer<typeof Decision>;
+
+export const MissionProgress = z.object({
+  /** The earliest wave with open slices; null once every slice is done or dropped. */
+  wave: z.number().int().nullable(),
+  /** Planned slices of that wave that can be handed to their assignee now. */
+  ready: z.array(z.string()),
+  /** Active slices of that wave: handed, not proved yet. */
+  working: z.array(z.string()),
+  decisions: z.array(Decision),
+  /** How many slices the mission has, dropped ones included. */
+  total: z.number().int(),
+  /** No slice is open: every one is done or dropped. */
+  slicesDone: z.boolean(),
+});
+export type MissionProgress = z.infer<typeof MissionProgress>;
+
+const isOpenSlice = (slice: Slice) => slice.status !== "done" && slice.status !== "dropped";
+
+/**
+ * Where a mission's slices are (D702). Waves run one after another: only the
+ * earliest wave with open slices moves, and its planned slices are ready once
+ * they have an assignee and none of their dependencies is dropped. A slice
+ * whose dependency was dropped is reported in any wave, since it can never
+ * start as planned. `nodeId`, when given, reports an agent of another node
+ * as `elsewhere` instead of ready.
+ */
+export function missionProgress(
+  slices: readonly Slice[],
+  options: { readonly nodeId?: string } = {},
+): MissionProgress {
+  const byId = new Map(slices.map((slice) => [slice.id, slice]));
+  const open = slices.filter(isOpenSlice);
+  const wave = open.length === 0 ? null : Math.min(...open.map((slice) => slice.wave));
+  const ready: string[] = [];
+  const working: string[] = [];
+  const decisions: Decision[] = [];
+  for (const slice of slicesInOrder(open)) {
+    const dropped = slice.dependsOn.filter((id) => byId.get(id)?.status === "dropped");
+    if (dropped.length > 0) {
+      decisions.push({ sliceId: slice.id, reason: "orphaned", dropped });
+      continue;
+    }
+    if (slice.wave !== wave) continue;
+    if (slice.status === "active") working.push(slice.id);
+    else if (slice.status === "blocked") decisions.push({ sliceId: slice.id, reason: "blocked" });
+    else if (slice.assignee === undefined)
+      decisions.push({ sliceId: slice.id, reason: "unassigned" });
+    else if (
+      options.nodeId !== undefined &&
+      !slice.assignee.startsWith(`jhin://${options.nodeId}/`)
+    )
+      decisions.push({ sliceId: slice.id, reason: "elsewhere" });
+    else ready.push(slice.id);
+  }
+  return { wave, ready, working, decisions, total: slices.length, slicesDone: open.length === 0 };
+}
+
+const slicesInOrder = (slices: readonly Slice[]) =>
+  slices.toSorted((a, b) => a.wave - b.wave || a.createdAt.localeCompare(b.createdAt));
+
 // --- Markdown (D649) ------------------------------------------------------------
 
 const steps = (list: readonly Step[]) =>
