@@ -17,7 +17,7 @@ import {
   TooltipTrigger,
 } from "@jhin/ui";
 import { ArrowRightIcon, CheckIcon, ChevronDownIcon } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { buildBaseRefChoices, filterBaseRefChoices, type BaseRefChoice } from "./base-refs.ts";
 
@@ -36,12 +36,27 @@ export function BaseRefPicker(props: {
   const { headRef, baseRef, selected } = props;
   const [query, setQuery] = useState("");
   const [branches, setBranches] = useState<readonly Branch[] | undefined>();
+  const [failed, setFailed] = useState<string | undefined>();
+  /** The latest read: an answer to an earlier one is dropped. */
+  const reads = useRef(0);
   const load = () => {
+    const read = ++reads.current;
+    // A new read starts clean: an earlier failure is not shown while it runs.
+    setFailed(undefined);
     void props.threads
       .call<{ branches: Branch[] }>(props.target, "git.branches", { projectId: props.projectId })
       .then(
-        (answer) => setBranches(answer.branches),
-        () => setBranches([]),
+        (answer) => {
+          if (read !== reads.current) return;
+          setFailed(undefined);
+          setBranches(answer.branches);
+        },
+        // Said as it is, not as "No matching refs.": the next opening reads them again.
+        (error: unknown) => {
+          if (read !== reads.current) return;
+          setFailed(error instanceof Error ? error.message : String(error));
+          setBranches([]);
+        },
       );
   };
   const refs = branches ?? [];
@@ -115,7 +130,12 @@ export function BaseRefPicker(props: {
               <span className="text-right">Remote</span>
             </div>
           </div>
-          <ComboboxEmpty>No matching refs.</ComboboxEmpty>
+          {failed === undefined ? null : (
+            <p className="px-3 py-2 text-2xs text-error/80" role="alert">
+              {`Could not read refs: ${failed}`}
+            </p>
+          )}
+          {failed === undefined ? <ComboboxEmpty>No matching refs.</ComboboxEmpty> : null}
           <ComboboxList className="max-h-64 min-w-0 overflow-x-hidden">
             <ComboboxItem
               className="w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)]"
