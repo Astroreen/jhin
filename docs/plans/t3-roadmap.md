@@ -86,6 +86,10 @@ actions), linking pull requests to threads (`git.pr.linked`, D34), several
 pull requests per thread and stacks, watching a pull request (checks done, a
 comment, a conflict) and telling the thread, other forges (GitLab, Bitbucket,
 Azure DevOps, Forgejo), GitHub Enterprise hosts and forks.
+Done: git actions (D260–D266, #54), linked pull requests and stacks
+(D267–D270, #77), watching a pull request (D271–D274, #80) and other forges,
+GitHub Enterprise and forks (D275–D279, #85); what is left is under
+`source-control.md#deferred`.
 
 ### W5. Diff panel
 
