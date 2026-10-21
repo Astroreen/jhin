@@ -241,6 +241,10 @@ export async function fakeOpenCode(
       session.model = body["model"] as NonNullable<FakeSession["model"]>;
       return json(res, 204);
     }
+    // A steer goes into the running execution: the script playing it reads it with `next`.
+    if (rest === "/prompt" && body["delivery"] === "steer") {
+      return json(res, 200, { data: { id: body["id"] } });
+    }
     if (rest === "/prompt" || rest === "/command" || rest === "/compact") {
       const rejection = rejections.shift();
       if (rejection !== undefined) return json(res, rejection.status, rejection.body);
@@ -256,6 +260,7 @@ export async function fakeOpenCode(
       return;
     }
     if (rest === "/synthetic") return json(res, 204);
+    if (method === "DELETE" && /^\/inbox\/[^/]+$/.test(rest)) return json(res, 204);
     if (/^\/permission\/[^/]+\/reply$/.test(rest)) return json(res, 204);
     if (/^\/form\/[^/]+(\/reply)?$/.test(rest)) return json(res, 204);
     return json(res, 404, { _tag: "NotFound", message: `no route ${method} ${path}` });

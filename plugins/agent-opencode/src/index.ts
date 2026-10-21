@@ -227,6 +227,8 @@ export function createOpenCodeRuntime(options: {
     }
   };
 
+  /** Undelivered steers of stopped turns, by session (D883). */
+  const strandedSteers = new Map<string, Set<string>>();
   const models = () => probed?.probe.models ?? [];
   /** What a turn can choose for `model`, as the last probe listed it (D882). */
   const modelOptions = (model: string): readonly ModelOptionDescriptor[] | undefined =>
@@ -250,6 +252,7 @@ export function createOpenCodeRuntime(options: {
     },
     runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     interactionModes: ["default", "plan"],
+    steering: true,
     async status() {
       const key = probeKey();
       const refresh = () => {
@@ -302,6 +305,7 @@ export function createOpenCodeRuntime(options: {
           return windows.get(model);
         },
         modelOptions: (model) => modelOptions(model),
+        strandedSteers,
         attachmentsDir,
         ...(options.clock === undefined ? {} : { clock: options.clock }),
         ...(options.log === undefined ? {} : { log: options.log }),

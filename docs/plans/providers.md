@@ -849,11 +849,26 @@ OpenCode 2 behaviour.
   switch when it changed; no choice sends none, so OpenCode's default
   applies. A model the last probe did not list takes no variant.
 
+- **D883. An OpenCode turn takes steered messages (W24).** The runtime
+  declares `steering`. As T3's `steerTurn` does, a steer is a prompt with
+  `delivery: "steer"` and a client id of its own
+  (`msg_jhin_steer_<session>:<turn>:<n>`), its attachments named as a
+  turn's are; one steered before OpenCode took the turn's prompt goes out
+  once it did. An execution that ends while a steer is undelivered does not
+  end the turn: OpenCode runs another execution for it, which the turn owns
+  too; the turn ends when the steer is cancelled instead
+  (`session.inbox.cancelled`). A stopped turn's undelivered steers, and one
+  whose prompt failed in a way OpenCode may still have taken it, are taken
+  back (`DELETE /api/session/<id>/inbox/<inbox>`) before the next turn's
+  prompt, so they do not reach the model first. A turn that ended or is
+  ending refuses a steer, which then becomes a turn of its own; a steer
+  OpenCode refuses is only logged, as Codex's is.
+
 ### Not ported
 
 - OpenCode 1.x (T3's `adapter.ts` over `@opencode-ai/sdk`): a CLI older than
   2.0 is reported as unsupported.
-- T3's per-thread MCP server inside OpenCode, steering, fork and rollback,
+- T3's per-thread MCP server inside OpenCode, fork and rollback,
   subagent child sessions and background wakes, reconnecting and reconciling
   a lost event stream, OpenCode Go usage limits, text generation, skills and
   `$skill` mentions, the version advisory and self-update.
@@ -863,8 +878,7 @@ OpenCode 2 behaviour.
 - OpenCode 1.x.
 - A lost event stream reconnects and reconciles the running turn from
   `message.list` (T3 does); today the turn fails.
-- Steering a running turn (`delivery: "steer"`), fork and rollback of a
-  session.
+- Fork and rollback of a session.
 - Subagent transcripts: a `subagent` call shows its result only.
 - Writing the thread's title to its OpenCode session.
 - Deleting a deleted thread's OpenCode session.

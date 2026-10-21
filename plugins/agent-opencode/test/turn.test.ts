@@ -301,6 +301,88 @@ describe("jhin.agent-opencode: a turn", () => {
     ]);
   });
 
+  it("steers a message into the running turn, which waits for its delivery", async () => {
+    const { fake, runtime } = await setup({
+      scripts: [
+        async (play) => {
+          const steered = play.next("POST", "/prompt");
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          const steer = await steered;
+          // The execution ends before the steer is delivered: the turn goes on.
+          play.emit("session.execution.succeeded", { sessionID: play.sessionId });
+          play.emit("session.inbox.delivered", {
+            sessionID: play.sessionId,
+            inboxID: steer.body!["id"],
+          });
+          await answer("Steered")(play);
+        },
+      ],
+    });
+    const turn = runtime.startTurn(request());
+    // Sent before OpenCode took the prompt: it goes out once it did.
+    turn.steer!({ text: "  also this  " });
+    const items = await drain(turn);
+    expect(items.find((item) => item.kind === "message.completed")).toMatchObject({
+      text: "Steered",
+    });
+    expect(fake.calls("POST", "/prompt")[1]!.body).toEqual({
+      id: "msg_jhin_steer_ses_1:turn-1:1",
+      text: "also this",
+      delivery: "steer",
+    });
+    expect(() => turn.steer!({ text: "late" })).toThrow(
+      "The OpenCode turn takes no more messages.",
+    );
+  });
+
+  it("ends a turn whose undelivered steer OpenCode cancelled", async () => {
+    const { runtime } = await setup({
+      scripts: [
+        async (play) => {
+          const steered = play.next("POST", "/prompt");
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          const steer = await steered;
+          play.emit("session.execution.succeeded", { sessionID: play.sessionId });
+          play.emit("session.inbox.cancelled", {
+            sessionID: play.sessionId,
+            inboxID: steer.body!["id"],
+          });
+        },
+      ],
+    });
+    const turn = runtime.startTurn(request());
+    turn.steer!({ text: "more" });
+    expect(await drain(turn)).toEqual([]);
+  });
+
+  it("takes back the steers a stopped turn left before the next prompt", async () => {
+    let stopTurn = () => {};
+    const { fake, runtime } = await setup({
+      scripts: [
+        async (play) => {
+          const steered = play.next("POST", "/prompt");
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          await steered;
+          stopTurn();
+        },
+        answer("Next"),
+      ],
+    });
+    const turn = runtime.startTurn(request());
+    stopTurn = () => turn.interrupt();
+    turn.steer!({ text: "never delivered" });
+    await drain(turn);
+    expect(() => turn.steer!({ text: "late" })).toThrow();
+    await drain(runtime.startTurn(request({ turnId: "turn-2" })));
+    const cancelled = fake.calls("DELETE", "/inbox/msg_jhin_steer_ses_1%3Aturn-1%3A1");
+    expect(cancelled).toHaveLength(1);
+    // Taken back before the next prompt went out.
+    const order = fake.received.map((call) => `${call.method} ${call.path}`);
+    expect(order.indexOf(`DELETE ${cancelled[0]!.path}`)).toBeLessThan(
+      order.lastIndexOf("POST /api/session/ses_1/prompt"),
+    );
+  });
+
   it("fails the turn and forgets a session OpenCode no longer has", async () => {
     const { runtime, sessions } = await setup({}, { [THREAD]: "ses_gone" });
     expect((await failure(runtime.startTurn(request()))).message).toBe(SESSION_GONE);

@@ -46,6 +46,7 @@ import {
   sessionRules,
   todoSteps,
   toolCall,
+  steerPromptId,
   turnPromptId,
   unsupportedForm,
   usageOf,
@@ -105,6 +106,11 @@ export interface OpenCodeTurnDependencies {
   readonly sessions: SessionStore;
   /** The model of a turn that names none: the config's, else OpenCode's (D335). */
   readonly defaultModel: (connection: Connection, directory: string) => Promise<string>;
+  /**
+   * Steers a stopped turn sent but OpenCode never delivered, by session: the next turn
+   * takes them back before its prompt, so they do not reach the model first (D883).
+   */
+  readonly strandedSteers?: Map<string, Set<string>>;
   /** What a turn can choose for `model` (D882): its variants. */
   readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** The model's context window, read from OpenCode's model list when not known yet. */
@@ -238,6 +244,16 @@ export function openCodeTurn(
   /** Ends the wait for OpenCode's execution end. */
   let finish: ((error?: unknown) => void) | undefined;
   let stopRunning: (() => void) | undefined;
+  /** Messages steered in before OpenCode took the prompt: sent once it did (D883). */
+  const queuedSteers: TurnRequest["input"][] = [];
+  /** Steers sent and neither delivered nor cancelled yet, by their client id. */
+  const steers = new Set<string>();
+  let steerCount = 0;
+  /** The execution ended with a steer undelivered: OpenCode runs another for it. */
+  let heldEnd = false;
+  /** The turn ended or is ending: it takes no steer any more. */
+  let over = false;
+  let sendSteer: ((input: TurnRequest["input"]) => void) | undefined;
 
   type Pending =
     | { kind: "permission"; sessionId: string; data: PermissionAsked }
@@ -383,6 +399,21 @@ export function openCodeTurn(
       }
       if ((session.agent ?? "build") !== wanted) await client.switchAgent(sessionId, wanted);
       if (!sameModel(ref, session.model)) await client.switchModel(sessionId, ref);
+      // Steers a stopped turn never delivered would reach the model first (T3).
+      const stranded = deps.strandedSteers?.get(sessionId);
+      for (const inboxId of [...(stranded ?? [])]) {
+        await client.cancelInbox(sessionId, inboxId).then(
+          () => stranded!.delete(inboxId),
+          (error: unknown) =>
+            deps.log?.("could not take back an opencode steer", { error: String(error) }),
+        );
+      }
+      const strand = (inboxId: string) => {
+        if (deps.strandedSteers === undefined) return;
+        const set = deps.strandedSteers.get(sessionId) ?? new Set<string>();
+        deps.strandedSteers.set(sessionId, set);
+        set.add(inboxId);
+      };
       const rules = rulesFor(sessionId);
       if (recorded !== undefined && !sameRules(session.permissions, rules)) {
         await client.updateSession(sessionId, { permissions: rules });
@@ -572,10 +603,21 @@ export function openCodeTurn(
           }
           case "session.execution.started":
             executing = true;
+            heldEnd = false;
             return;
           case "session.execution.succeeded":
             if (!executing) return;
+            // A steer still undelivered starts another execution, which is this turn's too.
+            if (steers.size > 0) {
+              heldEnd = true;
+              return;
+            }
             finish?.();
+            return;
+          case "session.inbox.delivered":
+          case "session.inbox.cancelled":
+            if (!steers.delete(String(data["inboxID"]))) return;
+            if (heldEnd && steers.size === 0) finish?.();
             return;
           case "session.execution.interrupted":
             if (!executing) return;
@@ -697,7 +739,11 @@ export function openCodeTurn(
 
       // --- The prompt --------------------------------------------------------------------
       const ended = new Promise<void>((resolve, reject) => {
-        finish = (error) => (error === undefined ? resolve() : reject(error));
+        finish = (error) => {
+          over = true;
+          if (error === undefined) resolve();
+          else reject(error);
+        };
       });
       // Nothing is lost when `finish` comes before anyone waits for `ended`.
       ended.catch(() => undefined);
@@ -804,9 +850,33 @@ export function openCodeTurn(
         fresh = false;
         lastTurn = request.turnId;
         save();
+        sendSteer = (input) => {
+          const index = ++steerCount;
+          const inboxId = steerPromptId(sessionId, request.turnId, index);
+          steers.add(inboxId);
+          const folder = () => Path.join(attachments(), safeName(`steer-${index}`));
+          void withAttachments(input.text, { ...request, input }, folder)
+            .then((steered) =>
+              client.prompt(sessionId, { id: inboxId, text: steered.trim(), delivery: "steer" }),
+            )
+            .catch((error: unknown) => {
+              steers.delete(inboxId);
+              // OpenCode may have taken it after all: the next turn takes it back.
+              const tag = errorTag(error);
+              if (tag === undefined || !CLEAR_REJECTIONS.has(tag)) strand(inboxId);
+              deps.log?.("opencode did not take the steered message", { error: String(error) });
+              if (heldEnd && steers.size === 0) finish?.();
+            });
+        };
+        for (const input of queuedSteers.splice(0)) sendSteer(input);
         if (interrupted) void stop();
         await ended;
       } finally {
+        over = true;
+        sendSteer = undefined;
+        // A stopped turn leaves its undelivered steers to be taken back by the next one.
+        for (const inboxId of steers) strand(inboxId);
+        steers.clear();
         await stopping;
         stopListening();
         stopLost();
@@ -853,6 +923,11 @@ export function openCodeTurn(
     },
     respond(requestId, response) {
       answer?.(requestId, response);
+    },
+    steer(input) {
+      if (interrupted || over) throw new Error("The OpenCode turn takes no more messages.");
+      if (sendSteer === undefined) queuedSteers.push(input);
+      else sendSteer(input);
     },
   };
 }
