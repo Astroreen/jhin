@@ -64,6 +64,16 @@ export function BrowserSurface(props: SurfaceProps) {
   const [agentPointer, setAgentPointer] = useState<
     { x: number; y: number; click: boolean; at: number } | undefined
   >();
+  // The agent's cursor is bright for 700 ms after it moves, then fades (T3's).
+  const [cursorFresh, setCursorFresh] = useState(false);
+  useEffect(() => {
+    if (agentPointer === undefined) return;
+    setCursorFresh(true);
+    const timer = setTimeout(() => setCursorFresh(false), 700);
+    return () => clearTimeout(timer);
+  }, [agentPointer]);
+  /** Keys pressed in the page and not yet released, by code. */
+  const heldKeys = useRef(new Map<string, { key: string; code: string; keyCode: number }>());
   const [, setRendered] = useState(0);
   const canOperateRef = useRef(canOperate);
   canOperateRef.current = canOperate;
@@ -185,7 +195,10 @@ export function BrowserSurface(props: SurfaceProps) {
 
   // When control is lost, the hidden input lets go of the focus.
   useEffect(() => {
-    if (!canOperate) inputRef.current?.blur();
+    if (!canOperate) {
+      inputRef.current?.blur();
+      heldKeys.current.clear();
+    }
   }, [canOperate]);
 
   /** Page CSS pixels under a client point, through the canvas's letterbox. */
@@ -293,6 +306,10 @@ export function BrowserSurface(props: SurfaceProps) {
       return;
     }
     event.preventDefault();
+    const held = event.code || event.key;
+    if (action === "down") {
+      heldKeys.current.set(held, { key: event.key, code: event.code, keyCode: event.keyCode });
+    } else heldKeys.current.delete(held);
     const printable = event.key.length === 1 && !mod;
     send({
       type: "key",
@@ -306,7 +323,15 @@ export function BrowserSurface(props: SurfaceProps) {
     });
   };
 
-  const fresh = agentPointer !== undefined && Date.now() - agentPointer.at < 700;
+  /** Leaving the page lets go of what is held there, so no key stays down in it. */
+  const releaseHeld = () => {
+    for (const held of heldKeys.current.values()) {
+      send({ type: "key", action: "up", key: held.key, code: held.code, keyCode: held.keyCode });
+    }
+    heldKeys.current.clear();
+  };
+
+  const fresh = agentPointer !== undefined && cursorFresh;
   const pointerOpacity = fresh ? 1 : props.humanControls ? 0.18 : 0.35;
   const canvas = canvasRef.current;
   const placeAgent = () => {
@@ -347,6 +372,7 @@ export function BrowserSurface(props: SurfaceProps) {
       <textarea
         aria-description="Press Shift+Escape to leave the browser page."
         aria-label="Browser page"
+        onBlur={releaseHeld}
         className="sr-only top-0 left-0 text-base"
         disabled={!canOperate}
         onCopy={(event) => event.preventDefault()}

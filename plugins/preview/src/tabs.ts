@@ -783,7 +783,7 @@ export function createTabs(options: TabsOptions) {
         };
         try {
           const result = await run(tab);
-          void refreshTitle(tab);
+          void refreshTitle(tab).catch(() => undefined);
           settle({ status: "succeeded" });
           return result;
         } catch (error) {
@@ -1469,7 +1469,7 @@ export function createTabs(options: TabsOptions) {
             continue;
           }
           await tab.control.human(input.viewer, () => dispatch(tab, event));
-          void refreshTitle(tab);
+          void refreshTitle(tab).catch(() => undefined);
         }
       });
     },

@@ -358,11 +358,14 @@ Implements D403, D404.
   control strip, empty state, "This site can’t be reached" and dialogs; the
   canvas surface with mouse, wheel and key input; the header toggle;
   `preview.toggle`, `preview.refresh`, `preview.focus.url`; a tab an agent
-  opens to show brings up its thread's panel.
+  opens to show brings up its thread's panel. The node refreshes a tab's
+  title after each action and each input of a viewer, since a page may
+  retitle itself without navigating.
 - **Done when:** Playwright against `jhin serve --ui` sees an agent's tab come
   up in the panel, the agent's click land, the user take control, click and
   type into the page and hand control back; and the user open a page from
-  the address bar, size it as an iPhone 12 Pro and close the tab.
+  the address bar, size it as an iPhone 12 Pro and close the tab; a unit test
+  sees a tab retitled by its page.
 
 ### PR 3 — Rendered HTML
 

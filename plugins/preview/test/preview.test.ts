@@ -648,4 +648,19 @@ describe("jhin.preview", () => {
     });
     Fs.rmSync(artifact.path);
   });
+  it("retitles a tab when its page changes the title without navigating", async () => {
+    const { client } = await node();
+    await client.call("preview.open", { threadId: thread, url: `${origin}/` });
+    await client.call("preview.wait.for", { threadId: thread, text: "Preview home" });
+    const tabsStream = watch(client, previewTabsStream(thread));
+    await client.call("preview.click", {
+      threadId: thread,
+      locator: "role=button[name='Press me']",
+    });
+    await tabsStream.until(() => {
+      const status = lastTabs(tabsStream.events)[0]?.navStatus;
+      return status?.state === "success" && status.title === "Clicked";
+    });
+    tabsStream.subscription.dispose();
+  });
 });
