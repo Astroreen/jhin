@@ -414,6 +414,18 @@ with screenshots).
   file icons for folders and as the fallback, as in T3). T3's icons by MIME
   type (for previews and attachments) come with the surface that needs them.
 
+- **D924. Find in the diff**, as T3 has it at D53: T3's patch of
+  `@pierre/diffs` 1.5.2 (`patches/@pierre%2Fdiffs@1.5.2.patch`, applied with
+  pnpm's `patchedDependencies`; the web client is bundled at build, so the
+  patch ships in the client) adds a find panel to Pierre's code view.
+  ⌘/Ctrl F in the diff opens it ("Search", "N results", "1 of N", "No
+  results"), Enter and ⇧Enter (and ⌘/Ctrl G) move between matches, Escape
+  closes it. Matches are found in every file of the diff, folded or not;
+  moving to one in a folded file unfolds it (`onRevealSearchMatch`), never
+  folding a file. The patch also adds the package exports T3 imports
+  (`./types`, `./utils/parsePatchFiles`, `./utils/getFiletypeFromFileName`)
+  and a resize hook the panel needs.
+
 ### Checkpoints, reverting and worktrees (W3, `t3-roadmap.md`)
 
 - **D240. Reference: T3 Code `eb7b35ac` (D53)**: `apps/server/src/vcs/GitVcsDriver.ts`
@@ -1093,7 +1105,7 @@ with the node's token, and without one).
   on a file's name opens T3's file panel; Jhin has none, so it opens the
   editor, D286), loading the patches of a truncated diff file by file
   (`useReviewFilePatches`), refusing to expand a file whose working tree copy
-  no longer matches the patch shown (D921), find in the diff, revealing a file of a WSL node in Windows File Explorer
+  no longer matches the patch shown (D921), revealing a file of a WSL node in Windows File Explorer
   (D922), opening a remote node's file in a local editor (T3's remote editor
   URLs), and the pop-out (non-inline) panel mode.
 - The diff panel test "shows the branch's changes with Pierre" counts Shiki's

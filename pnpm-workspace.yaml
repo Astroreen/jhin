@@ -81,3 +81,8 @@ allowBuilds:
   node-pty: true
   # electron-builder's Squirrel.Windows maker; Jhin builds NSIS installers only.
   electron-winstaller: false
+
+# T3 Code's patch of @pierre/diffs (MIT, see THIRD_PARTY_NOTICES.md): find in a
+# code view and the package exports T3 imports (source-control.md D924).
+patchedDependencies:
+  "@pierre/diffs@1.5.2": patches/@pierre%2Fdiffs@1.5.2.patch

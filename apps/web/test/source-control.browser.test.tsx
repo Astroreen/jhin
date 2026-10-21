@@ -465,6 +465,25 @@ describe("the diff panel", () => {
     }
   });
 
+  it("finds in the diff and unfolds the file of the match (D924)", async () => {
+    const { value } = services(viewWith(status()), { "git.diff": diff });
+    const Panel = createDiffPanel(value);
+    const mounted = mount(<Panel />);
+    await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
+    // The view takes the keys once it has focus, as a click in it gives it.
+    const view = panel().element().querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    act(() => view.focus());
+    await userEvent.keyboard("{ControlOrMeta>}f{/ControlOrMeta}");
+    const search = page.getByPlaceholder("Search");
+    await expect.element(search).toBeVisible();
+    await userEvent.type(search, "two = 3");
+    await userEvent.keyboard("{Enter}");
+    // The match's file was folded: moving to it unfolds it.
+    await expect.element(page.getByRole("button", { name: "Collapse src/app.ts" })).toBeVisible();
+    await expect.element(page.getByText("1 of 1")).toBeVisible();
+    mounted.unmount();
+  });
+
   it("switches to the split view and writes the layout on the device", async () => {
     const config = deviceConfig({ filesCollapsed: false });
     const { value } = services(viewWith(status()), { "git.diff": diff }, config);

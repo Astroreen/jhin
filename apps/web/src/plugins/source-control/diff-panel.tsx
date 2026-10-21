@@ -730,6 +730,17 @@ export function createDiffPanel(services: SourceControlServices) {
         if (!next.delete(fileKey)) next.add(fileKey);
         return { scopeKey: collapseScopeKey, fileKeys: next };
       });
+    // Find in the diff (D924) unfolds the file of the match it moves to; it can ask again
+    // before the unfolded file reaches the view, so this never folds.
+    const unfoldFile = (fileKey: string) =>
+      setCollapsedFiles((current) => {
+        const fileKeys =
+          current.scopeKey === collapseScopeKey ? current.fileKeys : defaultCollapsed;
+        if (!fileKeys.has(fileKey)) return current;
+        const next = new Set(fileKeys);
+        next.delete(fileKey);
+        return { scopeKey: collapseScopeKey, fileKeys: next };
+      });
     const toggleAll = () => {
       setCodeViewRevision((current) => current + 1);
       setCollapsedFiles({
@@ -1043,6 +1054,7 @@ export function createDiffPanel(services: SourceControlServices) {
                     items={items}
                     key={codeViewMountKey}
                     onSelectedLinesChange={setSelectedLines}
+                    onRevealSearchMatch={(item) => unfoldFile(item.id)}
                     options={{
                       diffStyle: settings.layout === "split" ? "split" : "unified",
                       lineDiffType: "none",
