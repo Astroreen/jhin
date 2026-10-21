@@ -354,9 +354,16 @@ test("shows T3's chips with their details: a file's preview and a skill's instru
   const message = page.getByRole("textbox", { name: "Message" });
   await message.click();
   await message.pressSequentially("check @app");
-  const files = page.getByRole("listbox", { name: "Files and folders" });
-  await expect(files.getByRole("option").first()).toContainText("app.ts");
-  await message.press("Tab");
+  // The file, not a thread whose title holds "app" (an earlier test's), which comes first.
+  await page
+    .getByRole("listbox", { name: "Files and folders" })
+    .getByRole("option")
+    .filter({ hasText: "app.ts", hasNotText: "Thread" })
+    .first()
+    .click();
+  await expect(message.locator("[data-mention='src/app.ts']")).toBeVisible();
+  await message.press("End");
+  await message.pressSequentially(" ");
   await message.pressSequentially("with $dep");
   await expect(page.getByRole("listbox", { name: "Skills" }).getByRole("option")).toHaveText([
     /Deploy/,
