@@ -61,6 +61,14 @@ const TITLES: Record<Kind, string> = {
   failed: "Thread failed",
 };
 
+/**
+ * Whether a thread's changes are told to the user at all: not an archived one,
+ * nor a delegated task's, which tells its parent instead, as in T3 (D865).
+ */
+export function notifiesUser(thread: ThreadRecord): boolean {
+  return thread.archivedAt === undefined && thread.relationshipToParent !== "subagent";
+}
+
 /** What changed about a thread that the user should hear about, if anything. */
 export function notificationKind(
   previous: ThreadRecord["lastTurn"] | undefined,
@@ -240,7 +248,7 @@ export const notificationsPlugin = builtin(
             const previous = last?.get(thread.id);
             const known = last?.has(thread.id) === true;
             next.set(thread.id, thread.lastTurn);
-            if (first || !known || thread.archivedAt !== undefined) continue;
+            if (first || !known || !notifiesUser(thread)) continue;
             const kind = notificationKind(previous, thread.lastTurn);
             if (kind !== undefined) notify(target, thread, kind);
           }

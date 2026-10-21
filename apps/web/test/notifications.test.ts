@@ -1,7 +1,7 @@
 import type { ThreadRecord } from "@jhin/client-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { notificationKind } from "../src/plugins/notifications.tsx";
+import { notificationKind, notifiesUser } from "../src/plugins/notifications.tsx";
 
 type LastTurn = NonNullable<ThreadRecord["lastTurn"]>;
 
@@ -35,6 +35,17 @@ describe("notificationKind", () => {
   it("announces a new turn even when it ends the same way", () => {
     expect(notificationKind(turn("completed"), turn("completed", { turnId: "u2" }))).toBe(
       "completion",
+    );
+  });
+});
+
+describe("notifiesUser", () => {
+  it("tells the user of a thread, not of an archived one or a delegated task's (D865)", () => {
+    const thread = { id: "t", projectId: "p", title: "t", createdAt: "2026-10-21T10:00:00.000Z" };
+    expect(notifiesUser(thread)).toBe(true);
+    expect(notifiesUser({ ...thread, archivedAt: "2026-10-21T11:00:00.000Z" })).toBe(false);
+    expect(notifiesUser({ ...thread, parentThreadId: "p", relationshipToParent: "subagent" })).toBe(
+      false,
     );
   });
 });

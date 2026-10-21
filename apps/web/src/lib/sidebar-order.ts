@@ -219,6 +219,8 @@ export function sidebarThreads<Node extends CatalogNode>(
     const projects = new Map(node.catalog.projects.map((project) => [project.id, project]));
     for (const thread of node.catalog.threads) {
       if (thread.archivedAt !== undefined) continue;
+      // A delegated task's thread opens from its parent's chat, as in T3 (D865).
+      if (thread.relationshipToParent === "subagent") continue;
       if (
         options.scope !== undefined &&
         projectKey(node.target, thread.projectId) !== options.scope

@@ -285,6 +285,18 @@ describe("the sidebar's list (D70)", () => {
     expect(lists.active.map((entry) => entry.section)).toEqual(["active", "active", "active"]);
   });
 
+  it("hides a delegated task's thread: its parent's chat opens it (D865)", () => {
+    const c = node(
+      { node: "c" },
+      [project("p", "p")],
+      [
+        thread("parent", ago(2)),
+        thread("child", ago(1), { parentThreadId: "parent", relationshipToParent: "subagent" }),
+      ],
+    );
+    expect(ids(sidebarThreads([c], { nowMs: NOW }).active)).toEqual(["parent"]);
+  });
+
   it("narrows to one project of one node", () => {
     const { active, settled } = sidebarThreads([a, b], {
       nowMs: NOW,
