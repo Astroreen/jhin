@@ -1602,7 +1602,9 @@ Reference: T3 Code at `eb7b35ac` (D53).
   section shows once the node's threads are known, so a parent is never
   taken for missing while they load. Its rows are a chunk of their own,
   loaded with the panel (D440). The header's merge-back button
-  (W2) stays, since the panel is a popover. Subagent and transfer rows are
+  (W2) stays, since the panel is a popover; like the panel's, it is now
+  unavailable ("This related thread is unavailable") once the node's
+  threads are known and the parent is not among them. Subagent and transfer rows are
   W20's.
 
 ### Composer leftovers (W23, `t3-roadmap.md`)
