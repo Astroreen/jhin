@@ -1752,12 +1752,6 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   undo, D450). The card's branch, diff and pull request are `source-control.md`'s
   D117 and its terminal indicator `terminal.md`'s D148, all in the
   `sidebar.thread.indicators` slot.
-- Pushing a mesh member's config changes to a client of another node: done
-  for connections in `config-ui.md` D483–D484; a member's `host/config` is
-  not followed through the mesh yet (`config-ui.md#deferred`).
-- Visits, drafts and device settings across devices: done in `config-ui.md`
-  D485–D488, except what its Deferred list keeps (mesh members, pasted
-  images).
 
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
   offers: Jhin has no usage-limit failures to tell apart yet.
@@ -1815,7 +1809,9 @@ and searching thread contents. Elsewhere: the Codex and OpenCode runtimes
 (`providers.md`, W7, W8); checkpoints, reverting a thread's files with a
 rollback, worktrees, git actions and linked pull requests
 (`source-control.md`, W3, W4); scoped tokens and secret config values
-(`security.md`, D410–D417).
+(`security.md`, D410–D417); pushing config changes to clients and visits,
+drafts and device settings across devices (`config-ui.md`, D483–D488; what
+is left, mesh members among it, is in its Deferred list).
 
 Done since in `terminal.md` (D140–D148): the terminal drawer (node-pty and
 xterm.js), the `terminalFocus` context key and the card's terminal indicator.
