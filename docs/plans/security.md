@@ -519,6 +519,9 @@ Implements D419–D425, in two layers:
   (no Credential Manager yet, D1024); an existing store cannot move its key
   between the keychain and the file, and an unreadable one has no reset
   command: it has to be moved aside by hand (D1023).
+- A list item whose reference does not resolve is left out of the applied
+  list, so the items after it move up one place in the effective value (the
+  files and their addressed markers keep their places, D417).
 - Config secrets that are numbers or booleans stay in clear (D1025); a
   reference removed from a file by hand stays in the store (only changes
   through the host delete them, D1026).
