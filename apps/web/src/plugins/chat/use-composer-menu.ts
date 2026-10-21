@@ -48,6 +48,8 @@ interface PullRequestList {
 }
 /** Commands and skills are asked of the node again after this (T3's snapshot TTL). */
 const COMMANDS_TTL_MS = 5 * 60 * 1000;
+/** A `#` list is read from the forge again after this; a new `#` within it reuses the last. */
+const PULL_REQUEST_LIST_TTL_MS = 60 * 1000;
 
 interface Offered {
   readonly commands: readonly AgentSlashCommand[];
@@ -138,16 +140,22 @@ export function useComposerMenu(options: {
     };
   }, [pathQuery, projectId]);
 
-  // `#`: the repository's pull requests, read again for each `#` typed; words are searched on
-  // the forge once typing pauses, a number is looked up when the list lacks it.
+  // `#`: the repository's pull requests, kept per query for a while as T3's query cache keeps
+  // them; words are searched on the forge once typing pauses, a number is looked up when the
+  // list lacks it.
   const prTrigger = trigger?.kind === "pull-request" ? trigger : undefined;
   const prQuery = prTrigger?.query ?? "";
   const prTextQuery = prQuery.length > 0 && !/^\d+$/u.test(prQuery) ? prQuery : "";
-  const prListKey =
-    prTrigger === undefined ? undefined : `${projectId}|${prTrigger.rangeStart}|${prTextQuery}`;
+  const prListKey = prTrigger === undefined ? undefined : `${projectId}|${prTextQuery}`;
   const [prList, setPrList] = useState<PullRequestList>();
+  const prListCache = useRef(new Map<string, { at: number; list: PullRequestList }>());
   useEffect(() => {
     if (prListKey === undefined || projectId === undefined) return;
+    const cached = prListCache.current.get(prListKey);
+    if (cached !== undefined && Date.now() - cached.at < PULL_REQUEST_LIST_TTL_MS) {
+      setPrList(cached.list);
+      return;
+    }
     let current = true;
     const read = () =>
       void call<{ pullRequests: PullRequest[] }>("git.pr.search", {
@@ -156,7 +164,10 @@ export function useComposerMenu(options: {
         ...(prTextQuery === "" ? {} : { query: prTextQuery }),
       }).then(
         (found) => {
-          if (current) setPrList({ key: prListKey, status: "ready", entries: found.pullRequests });
+          if (!current) return;
+          const list = { key: prListKey, status: "ready" as const, entries: found.pullRequests };
+          prListCache.current.set(prListKey, { at: Date.now(), list });
+          setPrList(list);
         },
         (error: unknown) => {
           if (!current) return;
