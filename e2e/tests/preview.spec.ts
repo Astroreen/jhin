@@ -150,7 +150,8 @@ test("D950: a server a terminal started shows under Local servers and opens", as
     await page.getByRole("button", { name: "Toggle right panel" }).click();
     const panel = page.getByRole("complementary", { name: "Right panel" });
     const servers = panel.getByRole("region", { name: "Local servers" });
-    const row = servers.getByRole("button", { name: /^node localhost:\d+$/ });
+    // The process name is the OS's: `node`, or `MainThread` for Node 24 on Linux.
+    const row = servers.getByRole("button", { name: /^\S+ localhost:\d+$/ });
     await expect(row).toBeVisible();
     await expect(servers).toContainText(
       "Select a live local server to open it in this browser tab.",
