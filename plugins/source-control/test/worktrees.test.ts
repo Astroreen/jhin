@@ -4,6 +4,7 @@ import * as Path from "node:path";
 import type {
   CreatedWorktree,
   ThreadBranch,
+  TurnCheckpoint,
   Worktree,
   WorktreeStatus,
 } from "@jhin/source-control-api";
@@ -386,6 +387,82 @@ describe("jhin.source-control: worktrees that go wrong", () => {
     await expect(
       sc.client.call("threads.send", { threadId: thread.id, text: "hi" }),
     ).rejects.toMatchObject({ code: "WORKTREE_MISSING" });
+  });
+});
+
+describe("jhin.source-control: reverting to a turn", () => {
+  const checkpointOf = (threadId: string, count: number, status: string) => (event: StoredEvent) =>
+    event.type === "source-control.checkpoint.changed" &&
+    (event.payload as TurnCheckpoint).threadId === threadId &&
+    (event.payload as TurnCheckpoint).turn === count &&
+    (event.payload as TurnCheckpoint).status === status;
+  /** A thread's checkpoints as its node lists them now. */
+  const turnIds = async (sc: Node, threadId: string) =>
+    (await sc.client.call<{ checkpoints: TurnCheckpoint[] }>("git.checkpoints", { threadId }))
+      .checkpoints;
+
+  it("puts a worktree thread's files back as they were before the message", async () => {
+    const dir = repository();
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    const thread = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      workspace: { type: "worktree", baseRef: "main", branch: "feature/revert" },
+    });
+    const path = thread.worktreePath!;
+    await turn(sc, thread.id, "/write kept.txt first");
+    const second = await turn(sc, thread.id, "/write dropped.txt second");
+    await sc.until(checkpointOf(thread.id, 2, "ready"));
+
+    await sc.client.call("threads.rollback", {
+      threadId: thread.id,
+      beforeTurnId: second,
+      restoreFiles: true,
+    });
+    expect(Fs.existsSync(Path.join(path, "dropped.txt"))).toBe(false);
+    expect(Fs.readFileSync(Path.join(path, "kept.txt"), "utf8")).toBe("first\n");
+    // The dropped turn's checkpoint went stale and its ref away; turn 1 is the latest again.
+    await sc.until(checkpointOf(thread.id, 2, "stale"));
+    expect(
+      git(dir, "for-each-ref", "--format=%(refname)", "refs/jhin/").trim().split("\n"),
+    ).toEqual([`refs/jhin/checkpoints/${thread.id}/0`, `refs/jhin/checkpoints/${thread.id}/1`]);
+    expect((await sc.status()).checkpoints?.map((item) => [item.turn, item.status])).toEqual([
+      [1, "ready"],
+    ]);
+    // The next turn takes the dropped one's place.
+    await turn(sc, thread.id, "/write again.txt third");
+    // Its record is written before the turn's end is (D241), so it is there now.
+    expect((await turnIds(sc, thread.id)).map((item) => [item.turn, item.status])).toEqual([
+      [1, "ready"],
+      [2, "ready"],
+    ]);
+    expect((await turnIds(sc, thread.id))[1]?.files.map((file) => file.path)).toEqual([
+      "again.txt",
+    ]);
+  });
+
+  it("keeps the files of a thread in the project's checkout, and refuses to restore them", async () => {
+    const dir = repository();
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    const thread = await sc.client.call<Thread>("threads.create", { projectId });
+    const first = await turn(sc, thread.id, "/write a.txt one");
+    await sc.until(checkpointOf(thread.id, 1, "ready"));
+    await expect(
+      sc.client.call("threads.rollback", {
+        threadId: thread.id,
+        beforeTurnId: first,
+        restoreFiles: true,
+      }),
+    ).rejects.toThrow(
+      "File restore requires an isolated worktree. This workspace may contain changes from another thread. Rewind the conversation without restoring files instead.",
+    );
+    // Refused: nothing was dropped.
+    expect(await turnIds(sc, thread.id)).toHaveLength(1);
+
+    await sc.client.call("threads.rollback", { threadId: thread.id, beforeTurnId: first });
+    expect(Fs.existsSync(Path.join(dir, "a.txt"))).toBe(true);
+    await sc.until(checkpointOf(thread.id, 1, "stale"));
   });
 });
 

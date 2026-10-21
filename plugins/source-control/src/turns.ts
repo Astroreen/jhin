@@ -3,7 +3,11 @@
 // provider starts), CheckpointCaptureService.ts and CheckpointService.ts (the
 // checkpoint after a completed or stopped run, its file summary, `missing` and
 // `error` records that never fail the run) and checkpointing/CheckpointDiffQuery.ts
-// (a turn's diff between two checkpoints).
+// (a turn's diff between two checkpoints); reverting follows CheckpointRollbackService.ts and
+// CheckpointRestoreSafety.ts.
+import * as Fs from "node:fs/promises";
+import * as Path from "node:path";
+
 import { ThreadHooks, type TurnEndHookInput, type TurnHookInput } from "@jhin/agent-api";
 import type { PluginContext } from "@jhin/sdk";
 import {
@@ -24,6 +28,7 @@ import {
   deleteCheckpoints,
   hasCheckpoint,
   listCheckpoints,
+  restoreCheckpoint,
 } from "./checkpoints.ts";
 import { SourceControlError, createGit, locate, summarize, type Git } from "./git.ts";
 
@@ -55,6 +60,24 @@ type ThreadTurns = z.output<typeof ThreadTurns>;
 const pad = (turn: number) => String(turn).padStart(8, "0");
 const turnsKey = (threadId: string) => `turns/${threadId}`;
 const checkpointKey = (threadId: string, turn: number) => `checkpoint/${threadId}/${pad(turn)}`;
+/** A turn's count, kept for every turn started, failed ones too: what a revert goes back to. */
+const numberKey = (threadId: string, turnId: string) => `turn-number/${threadId}/${turnId}`;
+
+/** T3's CheckpointRestoreSafety message (D258). */
+const SHARED_WORKSPACE_RESTORE_MESSAGE =
+  "File restore requires an isolated worktree. This workspace may contain changes from another thread. Rewind the conversation without restoring files instead.";
+
+/** What the threads plugin's rollback hook gets (D220, D257). */
+interface RollbackInput {
+  readonly thread: {
+    readonly id: string;
+    readonly projectId: string;
+    readonly worktreePath?: string;
+  };
+  readonly turnIds: readonly string[];
+  readonly toTurnId?: string;
+  readonly restoreFiles?: boolean;
+}
 
 const publicOf = ({ cwd: _cwd, ...checkpoint }: StoredCheckpoint): TurnCheckpoint => checkpoint;
 
@@ -148,6 +171,7 @@ export function followTurns(
           running: { turnId: input.turnId, turn },
           ...(known?.latest === undefined ? {} : { latest: known.latest }),
         });
+        await kv.set(NAMESPACE, numberKey(input.threadId, input.turnId), turn);
         const repository = await repositoryOf(input.projectId, input.cwd);
         if (repository !== undefined) {
           // A start that takes too long is given up on here, well before the threads
@@ -288,6 +312,34 @@ export function followTurns(
       turn,
     });
 
+  // Reverting to a turn (D257, D258): around the threads plugin's rollback, the
+  // files go back first when asked, and the dropped turns' checkpoints go stale.
+  context.subscriptions.add(
+    context.hooks.around<RollbackInput, unknown>(ThreadHooks.rollback, async (input, next) => {
+      const threadId = input.thread.id;
+      const numbers = (
+        await Promise.all(
+          input.turnIds.map((turnId) => kv.get(NAMESPACE, numberKey(threadId, turnId))),
+        )
+      ).filter((value): value is number => typeof value === "number");
+      if (numbers.length === 0) {
+        if (input.restoreFiles === true) throw unavailable(threadId, 0);
+        return next(input);
+      }
+      // Back to the state before the first dropped turn: the checkpoint it started from.
+      const target = Math.min(...numbers) - 1;
+      if (input.restoreFiles === true) await restoreFiles(input, target);
+      const result = await next(input);
+      await locked(`thread:${threadId}`, () => forget(threadId, target)).catch((error: unknown) =>
+        context.log.warn("a revert's checkpoints could not be updated", {
+          threadId,
+          error: String(error),
+        }),
+      );
+      return result;
+    }),
+  );
+
   return {
     latest: async () =>
       (await kv.list(NAMESPACE, { prefix: "turns/" }))
@@ -330,6 +382,70 @@ export function followTurns(
     remove: (threadId) => locked(`thread:${threadId}`, () => removeThread(threadId)),
   };
 
+  /** Puts the files of checkpoint `target` back into the thread's own worktree. */
+  async function restoreFiles(input: RollbackInput, target: number) {
+    const threadId = input.thread.id;
+    const cwd = input.thread.worktreePath;
+    // Only a worktree no other thread works in: anything else may hold another
+    // thread's changes (T3's CheckpointRestoreSafety).
+    const real = (value: string) => Fs.realpath(value).catch(() => Path.resolve(value));
+    const shared =
+      cwd === undefined ||
+      (
+        await Promise.all(
+          (
+            (await context.commands.execute("threads.list", {})) as {
+              id: string;
+              worktreePath?: string;
+            }[]
+          )
+            .filter((other) => other.id !== threadId && other.worktreePath !== undefined)
+            .map(async (other) => (await real(other.worktreePath!)) === (await real(cwd))),
+        )
+      ).some(Boolean);
+    if (shared) {
+      throw new SourceControlError("WORKTREE_INVALID", SHARED_WORKSPACE_RESTORE_MESSAGE, {
+        threadId,
+      });
+    }
+    const git = createGit(deps.gitPath(), cwd);
+    const ref = checkpointRef(threadId, target);
+    if (!(await hasCheckpoint(git, ref))) throw unavailable(threadId, target);
+    await locked(cwd, () => restoreCheckpoint(git, cwd, ref));
+  }
+
+  /**
+   * The dropped turns' checkpoints go stale and their refs away; the thread's
+   * count goes back to `target`, so its next turn takes the first dropped one's
+   * place, and its latest checkpoint is the one it went back to.
+   */
+  async function forget(threadId: string, target: number) {
+    const stored = await listStored(threadId);
+    const dropped = stored.filter((checkpoint) => checkpoint.turn > target);
+    const kept = stored.filter((checkpoint) => checkpoint.turn <= target).at(-1);
+    const cwd = (await readTurns(threadId))?.cwd ?? stored.at(-1)?.cwd;
+    if (cwd !== undefined) {
+      const git = createGit(deps.gitPath(), cwd);
+      const refs = (await listCheckpoints(git, checkpointPrefix(threadId))).filter(
+        (ref) => Number(ref.slice(checkpointPrefix(threadId).length)) > target,
+      );
+      await locked(cwd, () => deleteCheckpoints(git, refs));
+    }
+    const known = await readTurns(threadId);
+    if (known !== undefined) {
+      const { latest: _latest, ...rest } = known;
+      await writeTurns({ ...rest, count: target, ...(kept === undefined ? {} : { latest: kept }) });
+    }
+    for (const checkpoint of dropped) {
+      const stale: StoredCheckpoint = { ...checkpoint, status: "stale" };
+      await kv.set(NAMESPACE, checkpointKey(threadId, checkpoint.turn), stale as unknown as Json);
+      await deps.append(SourceControlEvents.checkpointChanged, publicOf(stale));
+    }
+    // The checkpoint gone back to is the thread's latest again.
+    if (kept !== undefined)
+      await deps.append(SourceControlEvents.checkpointChanged, publicOf(kept));
+  }
+
   async function removeThread(threadId: string) {
     const stored = await listStored(threadId);
     const cwd = (await readTurns(threadId))?.cwd ?? stored.at(-1)?.cwd;
@@ -348,6 +464,9 @@ export function followTurns(
     }
     for (const checkpoint of stored) {
       await kv.delete(NAMESPACE, checkpointKey(threadId, checkpoint.turn));
+    }
+    for (const entry of await kv.list(NAMESPACE, { prefix: `turn-number/${threadId}/` })) {
+      await kv.delete(NAMESPACE, entry.key);
     }
     await kv.delete(NAMESPACE, turnsKey(threadId));
   }

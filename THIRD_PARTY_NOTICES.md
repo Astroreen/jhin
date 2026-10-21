@@ -28,8 +28,8 @@ GitHub CLI, git actions: committing, pushing, creating pull requests, naming
 feature branches and the prompts that write commit messages and pull
 requests, linking and watching pull requests, and the drivers of GitLab,
 Azure DevOps, Bitbucket and Forgejo, checkpoints of a thread's working tree
-and when they are taken, worktrees of a thread and handing a thread over to
-one), the editors plugin (`plugins/editors`: T3's editor
+and when they are taken, worktrees of a thread, handing a thread over to one
+and reverting a thread's files to a turn), the editors plugin (`plugins/editors`: T3's editor
 list, finding and starting editors), the detection
 of a node's machine kind (`packages/node-host/src/machine.ts`), the Claude
 Code agent runtime (`plugins/agent-claude`: query options, permission modes,

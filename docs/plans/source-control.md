@@ -2,11 +2,11 @@
 
 Status: **implemented** (status, diffs, branches, pull requests, the card's
 indicators, the branch toolbar and the diff panel); W3 (checkpoints,
-reverting, worktrees, D240–D259) **in progress**: the turn hooks and a
+reverting, worktrees, D240–D259) **implemented**: the turn hooks and a
 thread's own working directory (D241, D242), checkpoints, turn diffs, the
-changed files card and the card's latest turn (D243–D249), and worktrees per
-thread with the workspace selector, handoff and clean-up (D250–D256) are done
-(reverting, D257–D259, follows on W2's `threads.rollback`); git actions (W4 of
+changed files card and the card's latest turn (D243–D249), worktrees per
+thread with the workspace selector, handoff and clean-up (D250–D256) and
+reverting to a turn (D257–D259); git actions (W4 of
 `t3-roadmap.md`, D260–D266), linked pull requests (D267–D270), watching them
 (D271–D274) and other forges (D275–D279) **implemented**. This file records how
 Jhin reads the git repositories of a node's projects, how the web client
@@ -539,19 +539,27 @@ with screenshots).
   W2's drop of later turns): the dialog "Edit from here?" ("Rewind chat to before
   this message. Your prompt and attachments return to the composer.", Cancel,
   "Revert files too", "Revert and keep changes"), refused while the thread runs
-  ("Interrupt the current turn before reverting checkpoints."). Reverting drops
-  the turns from that message on (W2), restores the files of checkpoint `N-1`
-  when asked, deletes the later checkpoint refs and marks their records `stale`.
+  (W2's `threads.rollback` answers `TURN_IN_PROGRESS`). Reverting drops the
+  turns from that message on (W2); "Revert files too" passes `restoreFiles` to
+  `threads.rollback`, whose `threads.rollback` hook the source control plugin
+  wraps: it restores the files of checkpoint `N-1` (N the first dropped turn's
+  count, recorded for every turn started) before the turns are dropped, so a
+  refused restore drops nothing; afterwards it marks the dropped turns'
+  records `stale`, deletes their refs, makes `N-1` the thread's latest
+  checkpoint again and sets its count back, so the next turn takes turn `N`'s
+  place. The dialog offers both through the new optional `Dialogs.choose` of
+  `@jhin/ui` (a confirmation with a second way to agree).
 - **D258. Restoring files** is T3's: `git restore --source <checkpoint>
   --worktree --staged -- .`, `git clean -fd -- .`, `git reset --quiet -- .`
   (`HEAD`, the branch and ignored files untouched). Only a thread in a worktree no
   other thread works in may restore files; otherwise it fails with T3's "File
   restore requires an isolated worktree. This workspace may contain changes from
   another thread. Rewind the conversation without restoring files instead."
-- **D259. The agent's own session goes back too**: a runtime that can rewind its
-  conversation does it when its thread is reverted (Claude Code: a new session
-  for turn 0, otherwise resuming at the target turn's last answer); others start
-  the next turn from the thread's transcript (D91).
+- **D259. The agent's own session goes back too**, through W2's D222: a runtime
+  whose session still holds the dropped turns starts its next turn from the
+  thread's transcript (Claude Code closes its live process and starts a new
+  session). T3's native rewind (Claude's `resumeSessionAt` at the target turn's
+  last answer) stays deferred with W2's.
 
 ### Git actions (W4, D260–D266)
 
@@ -851,9 +859,10 @@ with the node's token, and without one).
   own checkpoints), retries on `index.lock` contention and T3's per-path
   batching of a long turn diff; the changed files card's per-file context
   menu and file-type icons (T3's `PierreEntryIcon`).
-- **Reverting to a turn**: restoring a checkpoint into the working tree and
-  truncating the thread after it; needs checkpoints first, and a thread
-  operation to drop later turns (threads are append-only today).
+- Reverting, from W3 (D257): T3's "Roll back" of a checkpoint item in the item
+  inspector, recreating a missing managed worktree before a rollback, and the
+  error strings T3 shows for a disconnected environment or a provider without
+  rollback.
 - Worktrees, from W3 (D240): T3's setup scripts and their progress card
   ("Setting up worktree…", "Work locally", cancelling a setup), naming a
   temporary `jhin/<hex>` branch from the first message, the cleanup rules

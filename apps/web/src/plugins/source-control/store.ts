@@ -119,7 +119,10 @@ export function applySourceControlEvent(
       if (typeof checkpoint?.threadId !== "string") return view;
       // The latest one stays: a change to an earlier turn (one reverted past) is not it.
       const known = view.checkpoints.get(checkpoint.threadId);
-      if (known !== undefined && known.turn > checkpoint.turn) return view;
+      // A revert marks the dropped turns stale, then names the turn it went back to.
+      if (known !== undefined && known.turn > checkpoint.turn && known.status !== "stale") {
+        return view;
+      }
       return {
         ...view,
         checkpoints: new Map(view.checkpoints).set(checkpoint.threadId, checkpoint),

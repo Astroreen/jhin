@@ -421,9 +421,10 @@ export const ThreadHooks = {
    */
   turnEnd: "threads.turn.end",
   /**
-   * `{ thread, turnIds, toTurnId? }`, around a rollback's recording (D220): a
-   * hook may restore what the dropped turns changed, delay or refuse it; it
-   * cannot change which turns are dropped.
+   * `{ thread, turnIds, toTurnId?, restoreFiles? }`, around a rollback's
+   * recording (D220): a hook may restore what the dropped turns changed (asked
+   * to with `restoreFiles`, D257), delay or refuse it; it cannot change which
+   * turns are dropped.
    */
   rollback: "threads.rollback",
 } as const;
