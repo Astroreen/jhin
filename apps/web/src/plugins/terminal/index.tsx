@@ -6,17 +6,21 @@ import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  THREADS_CAPABILITY,
   targetKey,
   type ChatDrawerProps,
+  type ChatHeaderActionProps,
   type Connections,
   type Keybindings,
   type Navigation,
   type NodeTarget,
   type ThreadIndicatorProps,
+  type ThreadsCatalog,
 } from "@jhin/client-api";
 import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import type { TerminalSummary } from "@jhin/terminal-api";
 import {
+  Toggle,
   Tooltip,
   TooltipPopup,
   TooltipTrigger,
@@ -28,10 +32,10 @@ import {
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { TerminalIcon } from "lucide-react";
+import { PanelRightIcon, TerminalIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
-import { useExternal, useShortcutLabels } from "../../lib/hooks.ts";
+import { useCatalog, useConfig, useExternal, useShortcutLabels } from "../../lib/hooks.ts";
 import {
   closeThreadTerminal,
   createTerminalUiStore,
@@ -45,8 +49,42 @@ import {
   terminalSessionLabel,
   type ThreadTerminalUiState,
 } from "../../lib/terminal-state.ts";
-import { TerminalDrawer } from "./drawer.tsx";
+import { formatTerminalContext, type TerminalContextSelection } from "./context.ts";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createNodeTerminals } from "./sessions.ts";
+
+// The drawer and its terminals are a chunk of their own, loaded when a terminal first shows (D440).
+const TerminalDrawer = lazyChunk(
+  () => import("./drawer.tsx").then((module) => module.TerminalDrawer),
+  {
+    loading: () => null,
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load the terminal.</ChunkFailed>,
+  },
+);
+
+/** The route's panel while a thread's terminals show right of the chat (D474). */
+const TERMINAL_PANEL = "terminal";
+
+/** The terminal's client settings (D472), as T3's appearance settings have them. */
+const SETTINGS_SECTION = "jhin.terminal-drawer";
+const TerminalSettings = z
+  .object({
+    fontFamily: z
+      .string()
+      .default("")
+      .meta({
+        title: "Terminal font",
+        description:
+          "Font families for terminals, before the default monospace stack; empty for the default.",
+        examples: ["JetBrains Mono"],
+      }),
+    fontSize: z.number().int().min(8).max(20).default(12).meta({
+      title: "Terminal font size",
+      description: "In pixels, 8 to 20.",
+    }),
+  })
+  .meta({ title: "Terminal", description: "How terminals look in this client." });
+type TerminalSettings = z.output<typeof TerminalSettings>;
 
 /** Where a thread's drawer layout is kept on this device. */
 const terminalThreadKey = (target: NodeTarget, threadId: string): string =>
@@ -78,6 +116,7 @@ export const terminalPlugin = builtin(
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
       [NAVIGATION_CAPABILITY]: "^1",
+      [THREADS_CAPABILITY]: "^1",
     },
     optional: {
       [KEYBINDINGS_CAPABILITY]: "^1",
@@ -93,6 +132,29 @@ export const terminalPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
+      const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
+      context.config.define(SETTINGS_SECTION, TerminalSettings);
+      /** "Add to chat" (D473): the selection into the open thread's composer. */
+      const addToChat = (selection: TerminalContextSelection) => {
+        void context.commands
+          .execute("chat.composer.insert", { text: formatTerminalContext(selection) })
+          .then((result) => {
+            if ((result as { inserted?: boolean }).inserted !== true) {
+              toasts?.show({ type: "info", title: "No message box to add the selection to" });
+            }
+          })
+          .catch((error: unknown) => {
+            context.log.warn("terminal selection not added to chat", { error: String(error) });
+            toasts?.show({
+              type: "error",
+              title: "Could not add the selection to the chat",
+              description: (error as Error).message,
+            });
+          });
+      };
+      /** Without the chat plugin there is no composer: the menus leave the item out. */
+      const canAddToChat = () =>
+        context.commands.list().some((command) => command.name === "chat.composer.insert");
       const ui = context.subscriptions.add(createTerminalUiStore());
       const terminals = context.subscriptions.add(createNodeTerminals(connections));
       /** Bumped to put the focus back in the active terminal. */
@@ -194,8 +256,39 @@ export const terminalPlugin = builtin(
         () => {
           const place = openThread();
           if (place === undefined) return;
+          // Shown in the right panel: the toggle hides the panel.
+          const route = navigation.current();
+          if (route.panel === TERMINAL_PANEL) {
+            const { panel: _panel, section: _section, ...rest } = route;
+            navigation.navigate(rest);
+            return;
+          }
           change(place.key, (state) => setThreadTerminalOpen(state, !state.terminalOpen));
         },
+      );
+      /** Shows the thread's terminals right of the chat, or back under it (D474). */
+      const togglePanel = () => {
+        const place = openThread();
+        if (place === undefined) return;
+        const route = navigation.current();
+        const { panel, section: _section, ...rest } = route;
+        if (panel === TERMINAL_PANEL) {
+          navigation.navigate(rest);
+          return;
+        }
+        ui.update(place.key, (state) =>
+          state.terminalIds.length === 0
+            ? newThreadTerminal(state, nextTerminalId(state.terminalIds))
+            : state,
+        );
+        navigation.navigate({ ...rest, panel: TERMINAL_PANEL });
+        requestFocus();
+      };
+      register(
+        "terminal.panel.toggle",
+        "Toggle terminal panel",
+        "Shows the open thread's terminals in the panel right of the chat, or hides the panel",
+        togglePanel,
       );
       const split = (direction: "horizontal" | "vertical") => () => {
         const place = openThread();
@@ -265,42 +358,54 @@ export const terminalPlugin = builtin(
         });
       }
 
-      // --- The drawer ------------------------------------------------------------
-      function Drawer({ target, thread, project }: ChatDrawerProps) {
-        const key = terminalThreadKey(target, thread.id);
+      // --- The drawer and the right panel ------------------------------------------
+      /** T3's drawer (or right-panel terminal) of one thread: its tabs, splits and terminals. */
+      function Terminals(props: {
+        target: NodeTarget;
+        threadId: string;
+        cwd: string;
+        placement: "drawer" | "panel";
+        visible: boolean;
+      }) {
+        const { target, threadId } = props;
+        const key = terminalThreadKey(target, threadId);
         const state = useExternal(ui, () => ui.get(key));
         const connection = useExternal(connections, () => connections.get(target.node));
         const feed = terminals.of(target.node);
         const sessions = useExternal(feed, feed.sessions);
         const focusRequestId = useExternal(focusStore, () => focusRequest);
         const shortcut = useShortcutLabels(keybindings);
-        if (target.remote !== undefined || connection === undefined || !state.terminalOpen) {
-          return null;
-        }
+        const settings = useConfig<TerminalSettings>(context, SETTINGS_SECTION);
+        if (target.remote !== undefined || connection === undefined) return null;
+        // Never shown yet: nothing to keep mounted.
+        if (!props.visible && state.terminalIds.length === 0) return null;
         const labelOf = (terminalId: string) =>
           terminalSessionLabel(
             terminalId,
-            sessions.find((item) => item.threadId === thread.id && item.terminalId === terminalId),
+            sessions.find((item) => item.threadId === threadId && item.terminalId === terminalId),
           );
         return (
           <TerminalDrawer
             client={connection.client}
-            cwd={project.path}
+            cwd={props.cwd}
             focusRequestId={focusRequestId}
-            key={key}
+            fontFamily={settings.fontFamily}
+            fontSize={settings.fontSize}
+            key={`${key}|${props.placement}`}
             labelOf={labelOf}
             onActiveChange={(terminalId) =>
               ui.update(key, (current) => setThreadActiveTerminal(current, terminalId))
             }
+            onAddToChat={canAddToChat() ? addToChat : undefined}
             onCloseRequest={(terminalId) =>
-              void confirmClose(target, thread.id, terminalId, labelOf(terminalId))
+              void confirmClose(target, threadId, terminalId, labelOf(terminalId))
             }
             onClosed={(terminalId, reason) =>
               // A closed session is gone on the node already: closing it again
               // could end a terminal another client opened since under that id.
               reason === "exited"
-                ? closeTerminal(target, thread.id, terminalId)
-                : dropTab(target, thread.id, terminalId)
+                ? closeTerminal(target, threadId, terminalId)
+                : dropTab(target, threadId, terminalId)
             }
             onHeightChange={(height) =>
               ui.update(key, (current) => setThreadTerminalHeight(current, height))
@@ -320,6 +425,7 @@ export const terminalPlugin = builtin(
                 splitThreadTerminal(current, nextTerminalId(current.terminalIds), "vertical"),
               )
             }
+            placement={props.placement}
             shortcuts={{
               split: shortcut("terminal.split"),
               splitVertical: shortcut("terminal.split-vertical"),
@@ -327,8 +433,81 @@ export const terminalPlugin = builtin(
               close: shortcut("terminal.close"),
             }}
             state={state}
-            threadId={thread.id}
+            threadId={threadId}
+            visible={props.visible}
           />
+        );
+      }
+
+      /**
+       * Under the chat. A hidden drawer keeps its terminals mounted (T3's
+       * persistent terminals, D474); while they show in the right panel the
+       * drawer gives them up.
+       */
+      function Drawer({ target, thread, project }: ChatDrawerProps) {
+        const route = useExternal(navigation, navigation.current);
+        const state = useExternal(ui, () => ui.get(terminalThreadKey(target, thread.id)));
+        if (route.panel === TERMINAL_PANEL) return null;
+        return (
+          <Terminals
+            cwd={project.path}
+            placement="drawer"
+            target={target}
+            threadId={thread.id}
+            visible={state.terminalOpen}
+          />
+        );
+      }
+
+      /** Right of the chat (`app.panel`), while the route's panel is `terminal` (D474). */
+      function Panel() {
+        const route = useExternal(navigation, navigation.current);
+        const target: NodeTarget | undefined =
+          route.node === undefined || route.panel !== TERMINAL_PANEL
+            ? undefined
+            : { node: route.node };
+        const catalog = useCatalog(threads, target);
+        if (target === undefined || route.thread === undefined || route.remote !== undefined) {
+          return null;
+        }
+        const thread = catalog?.threads.find((item) => item.id === route.thread);
+        const project = catalog?.projects.find((item) => item.id === thread?.projectId);
+        if (project === undefined) return null;
+        return (
+          <Terminals
+            cwd={project.path}
+            placement="panel"
+            target={target}
+            threadId={route.thread}
+            visible
+          />
+        );
+      }
+
+      /** The header's toggle of the right-panel terminal. */
+      function PanelToggle({ target, thread }: ChatHeaderActionProps) {
+        const route = useExternal(navigation, navigation.current);
+        const shortcut = useShortcutLabels(keybindings)("terminal.panel.toggle");
+        if (thread === undefined || target.remote !== undefined) return null;
+        const open = route.panel === TERMINAL_PANEL;
+        return (
+          <Tooltip>
+            <TooltipTrigger render={<span className="flex shrink-0" />}>
+              <Toggle
+                aria-label="Toggle terminal panel"
+                className="shrink-0"
+                onPressedChange={() => togglePanel()}
+                pressed={open}
+                size="sm"
+                variant="ghost"
+              >
+                <PanelRightIcon className="size-4" />
+              </Toggle>
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">
+              {`Toggle terminal panel${shortcut ? ` (${shortcut})` : ""}`}
+            </TooltipPopup>
+          </Tooltip>
         );
       }
 
@@ -381,6 +560,15 @@ export const terminalPlugin = builtin(
         slots.contribute<ChatDrawerProps>("chat.drawer", {
           id: "jhin.terminal.drawer",
           component: Drawer,
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute("app.panel", { id: "jhin.terminal.panel", component: Panel }),
+      );
+      context.subscriptions.add(
+        slots.contribute<ChatHeaderActionProps>("chat.header.actions", {
+          id: "jhin.terminal.panel-toggle",
+          component: PanelToggle,
         }),
       );
       context.subscriptions.add(

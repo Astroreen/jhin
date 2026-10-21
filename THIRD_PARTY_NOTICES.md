@@ -16,7 +16,7 @@ plugin's rules for them, the thread cards' branch, pull request and diff
 indicators, the branch toolbar, the git actions control and the diff panel with
 its file tree, base ref picker and turn scopes, a turn's changed files card, the
 terminal drawer, its
-tabs and splits and the terminal indicator of a thread's card, node machine
+links, selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, editing from a
 message, forks and merging them back, searching thread contents, the

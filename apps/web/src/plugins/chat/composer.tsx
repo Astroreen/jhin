@@ -147,6 +147,8 @@ export interface ComposerHandleApi {
   /** What is typed and attached now. */
   draft(): ComposerDraft;
   focus(): void;
+  /** Puts text at the cursor (after the prompt when the field is not focused), then focuses. */
+  insert(text: string): void;
   toggleModelPicker(): void;
   cycleRuntimeMode(): void;
   togglePlanMode(): void;
@@ -1252,6 +1254,21 @@ export function Composer(props: ComposerProps) {
     if (!planSupported) return;
     props.onSelectionChange({ ...props.selection, interactionMode: planMode ? "default" : "plan" });
   };
+  const insert = (text: string) => {
+    const field = textarea.current;
+    // Read once, before the update: at the cursor when the box has focus, else at the end.
+    const focused = field !== null && document.activeElement === field;
+    const start = focused ? field.selectionStart : prompt.length;
+    const end = focused ? field.selectionEnd : prompt.length;
+    const before = prompt.slice(0, start);
+    const gap = before.length > 0 && !/\s$/.test(before) ? "\n\n" : "";
+    const caret = before.length + gap.length + text.length;
+    setPrompt(`${before}${gap}${text}${prompt.slice(end)}`);
+    requestAnimationFrame(() => {
+      field?.focus();
+      field?.setSelectionRange(caret, caret);
+    });
+  };
   useImperativeHandle(props.handleRef, () => ({
     restore(draft) {
       const restored = appendToDraft({ prompt, attachments: draftAttachments(attachments) }, draft);
@@ -1262,6 +1279,7 @@ export function Composer(props: ComposerProps) {
     },
     draft: () => ({ prompt, attachments: draftAttachments(attachments) }),
     focus,
+    insert,
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,
     togglePlanMode,
