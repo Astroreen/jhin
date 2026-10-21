@@ -307,7 +307,7 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
   };
   let phase: GitActionPhase | null = null;
   /** The branch a feature branch was created from, to go back to when its commit fails. */
-  let createdFrom: string | null | undefined;
+  let createdFrom: string | undefined;
   /** The commit was made: from then on nothing is undone, its branch holds it. */
   let committed = false;
   let partial = "";
@@ -372,8 +372,9 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
         .split("\n")
         .filter((line) => line !== "");
       const name = resolveAutoFeatureBranchName(locals, preferred);
+      const from = (await git(["rev-parse", "HEAD"])).stdout.trim();
       await git(["switch", "--create", name]);
-      createdFrom = branch;
+      createdFrom = branch ?? from;
       branch = name;
       upstream = null;
       result.branch = { status: "created", name };
@@ -481,9 +482,22 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
     // changes still in the working tree.
     if (createdFrom !== undefined && !committed && branch !== null) {
       const created = branch;
-      await git(createdFrom === null ? ["switch", "--detach", "HEAD@{1}"] : ["switch", createdFrom])
+      const back = createdFrom;
+      // A branch name goes back to that branch; a commit (a detached HEAD) is checked out again.
+      const isBranch =
+        (await git(["show-ref", "--verify", "--quiet", `refs/heads/${back}`], { ok: [0, 1, 128] }))
+          .code === 0;
+      const undone = await git(isBranch ? ["switch", back] : ["switch", "--detach", back])
         .then(() => git(["branch", "-D", "--", created]))
-        .catch(() => undefined);
+        .then(
+          () => undefined,
+          (undo: unknown) => (undo as Error).message,
+        );
+      if (undone !== undefined) {
+        // Said, not swallowed: the user is left on the new branch.
+        (error as Error).message +=
+          ` (the feature branch ${created} could not be undone: ${undone})`;
+      }
     }
     run.progress({ kind: "action_failed", phase, message: (error as Error).message });
     throw error;
@@ -520,7 +534,8 @@ async function push(git: Git, branch: string): Promise<GitActionResult["push"]> 
     const counts = await aheadBehind(git, upstream);
     const parts = splitUpstream(upstream, names);
     // Up to date only with an upstream of its own name; one that follows another is published.
-    if (counts.ahead === 0 && counts.behind === 0 && parts?.branch === branch) {
+    // Nothing of its own to push (at most behind): up to date, not "pushed".
+    if (counts.ahead === 0 && parts?.branch === branch) {
       return { status: "skipped_up_to_date", branch, upstream };
     }
     if (parts !== undefined && parts.branch === branch) {

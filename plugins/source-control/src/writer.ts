@@ -172,15 +172,22 @@ async function ask(
   prompt: string,
   deadline: Deadline | undefined,
 ): Promise<string> {
-  const turn = runtime.startTurn({
-    threadId: `jhin.source-control.writer-${randomUUID()}`,
-    turnId: randomUUID(),
-    input: { text: prompt },
-    history: [],
-    cwd,
-    runtimeMode: "approval-required",
-    interactionMode: "default",
-  });
+  let turn: ReturnType<AgentRuntime["startTurn"]>;
+  try {
+    turn = runtime.startTurn({
+      threadId: `jhin.source-control.writer-${randomUUID()}`,
+      turnId: randomUUID(),
+      input: { text: prompt },
+      history: [],
+      cwd,
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+    });
+  } catch (error) {
+    // Its deadline's timer goes with it.
+    deadline?.dispose();
+    throw error;
+  }
   const consume = async () => {
     let text = "";
     for await (const item of turn.items) {
