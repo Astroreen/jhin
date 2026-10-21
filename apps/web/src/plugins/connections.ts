@@ -123,12 +123,18 @@ export const connectionsPlugin = builtin(
       const connections: Connections = {
         list: () => snapshot,
         get: (id) => snapshot.find((node) => node.id === id),
-        add: ({ url, token, label }) =>
-          keep(Saved.parse({ url, token, label: labelOf(url, label) })),
+        add: ({ url, token, label }) => {
+          const kept = keep(Saved.parse({ url, token, label: labelOf(url, label) }));
+          // A node the user connected answers the refusal the page was opened with.
+          refused = undefined;
+          return kept;
+        },
         async pair({ url, code, label }) {
           WebSocketUrl.parse(url);
           const { token } = await pairWithCode(url, code, `Browser on ${location.host}`);
-          return keep(Saved.parse({ url, token, label: labelOf(url, label) }));
+          const kept = keep(Saved.parse({ url, token, label: labelOf(url, label) }));
+          refused = undefined;
+          return kept;
         },
         rename(id, label) {
           const node = nodes.get(id);
@@ -206,20 +212,24 @@ export const connectionsPlugin = builtin(
       // Another tab changed the saved nodes: this one follows, instead of
       // dropping that tab's changes with its next save.
       const stopFollowing = store.onChange(() => {
-        void store.load().then((raw) => {
-          const stored = new Map(parseSaved(raw).map((saved) => [saved.url, saved]));
-          for (const [url, node] of nodes) {
-            const saved = stored.get(url);
-            if (saved === undefined || !sameSaved(saved, node.saved)) {
-              node.client.close();
-              nodes.delete(url);
-            } else {
-              node.saved = saved;
+        // Our own pending save goes first, so a node just added here is not
+        // dropped by reading the list before it landed.
+        void saving
+          .then(() => store.load())
+          .then((raw) => {
+            const stored = new Map(parseSaved(raw).map((saved) => [saved.url, saved]));
+            for (const [url, node] of nodes) {
+              const saved = stored.get(url);
+              if (saved === undefined || !sameSaved(saved, node.saved)) {
+                node.client.close();
+                nodes.delete(url);
+              } else {
+                node.saved = saved;
+              }
             }
-          }
-          for (const saved of stored.values()) if (!nodes.has(saved.url)) open(saved);
-          changed();
-        });
+            for (const saved of stored.values()) if (!nodes.has(saved.url)) open(saved);
+            changed();
+          });
       });
 
       context.services.provide(CONNECTIONS_CAPABILITY, connections);
