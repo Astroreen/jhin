@@ -239,6 +239,13 @@ export async function runWorkflow(
       throw new WorkflowError("WORKFLOW_SCRIPT", "agent() takes a prompt string");
     }
     const chosen = (options ?? {}) as AgentOptions;
+    // The model's `effort` option is a choice by name (D870).
+    if (
+      chosen.effort !== undefined &&
+      (typeof chosen.effort !== "string" || chosen.effort === "")
+    ) {
+      throw new WorkflowError("WORKFLOW_SCRIPT", "agent() effort must be a non-empty string");
+    }
     if (chosen.schema !== undefined) {
       const schema = chosen.schema as { type?: unknown; properties?: unknown; required?: unknown };
       if (schema.type !== "object" || typeof schema.properties !== "object") {

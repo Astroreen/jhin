@@ -96,7 +96,7 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   broader than the parent's is refused ("Child runtime mode X is broader than
   parent mode Y."), a requested mode the agent does not offer is refused, and
   an inherited one steps down to the broadest mode the agent offers that is
-  not broader. Per-turn model options (T3's `options`) wait for W6.
+  not broader. Model options (T3's `target.options`) are W20's D870.
 - **D365. Status follows the child, by events.** A task's record
   (`storage.kv`, namespace `jhin.orchestration`, `task/<id>`) mirrors the
   child turn's status from the `threads` index: `running`, `waiting` (the
@@ -206,8 +206,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   `properties`) the prompt asks for one JSON object matching it, and the
   answer is parsed and validated (Zod's `fromJSONSchema`); a mismatch is
   sent back to the same child twice at most before `null`. `agentId` is
-  Jhin's addition (any runtime); `effort` waits for per-turn options (W6) and
-  is ignored; `agentType`, `budget` and `workflow()` are not available and
+  Jhin's addition (any runtime); `effort` is the model's `effort` option
+  (D870); `agentType`, `budget` and `workflow()` are not available and
   throw. `Date.now()`, argless `new Date()` and `Math.random()` throw, as in
   the Workflow tool.
 - **D374. Limits.** At most `jhin.orchestration.maxConcurrentAgents` agents
@@ -243,14 +243,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 
 ### Deferred
 
-- Steering a task's completion into the parent's running turn (W1); today
-  it waits for the turn's end.
-- Per-turn model options for a child (T3's `target.options`, a workflow
-  agent's `effort`) — W6.
-- Worktree strategies for `orchestration.launch` and `isolation:
-  "worktree"` — enabled by W3's `workspace` field (D371); a scratch launch
-  in a fresh folder of its own (T3's) also waits for per-thread working
-  directories.
+- A scratch launch in a fresh folder of its own (T3's) waits for per-thread
+  working directories.
 - Resuming a workflow (`resumeFromRunId`), `budget`, nested `workflow()`,
   saved workflows by name and `scriptPath`, custom `agentType`s.
 - Delegating to an agent on another mesh node (`target.node`): today a task
@@ -365,6 +359,26 @@ user sees, which their Deferred lists left out.
 - **D868. Stopping from the panel** runs the command as the thread's owner
   with `parentThreadId`; a refusal is shown in a toast, and the button
   spins until the command answers.
+
+- **D869. A finished task is queued after the parent's turn, not steered
+  into it.** T3 delivers a child's completion with `queue_after_active` and
+  keeps `steer` for `t3_thread_send`; D368 already waits for the parent's
+  turn to end, so the roadmap's "steered into the parent's turn" needs no
+  change. Unlike T3, a result read before that turn ends is not delivered (D368;
+  `tasks.test.ts`, "wakes a busy parent only after its turn, and not at all
+  once the result was read").
+- **D870. Model options of a child.** `tasks.delegate`'s `target.options` is
+  T3's: `[{ id, value }]` or `{ id: value }`, passed as the child's
+  `modelOptions` (the threads plugin keeps those its model declares, D297),
+  at most 20, the last of an id winning. A child running the parent's model
+  starts from the parent's options and the chosen ones are laid over them;
+  another model starts with its defaults. A workflow agent's `effort` is the
+  model's `effort` option. `orchestration.capabilities` lists each model's
+  option descriptors, as T3 lists them.
+- **D871. Worktree isolation needs nothing more here.** `orchestration.launch`'s
+  `workspaceStrategy` and `isolation: "worktree"` reach `threads.create` as
+  `workspace` (D371), which W3 implements with source control; without it
+  they answer `WORKSPACE_UNSUPPORTED` and capabilities leave `worktree` out.
 
 ### Deferred
 
