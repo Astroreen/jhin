@@ -449,22 +449,30 @@ const WATCH_FIELDS =
 
 /**
  * The names of the checks the base branch requires (`gh pr checks --required`,
- * T3's `isRequired`, D908), or undefined when `gh` could not say. It exits 8
- * while checks are pending and 1 when none are required; its JSON still answers.
+ * T3's `isRequired`, D908), or undefined when `gh` could not say; then no check
+ * is marked and every check is the gate. Its JSON answers whatever it exits with
+ * (8 while checks are pending, 1 when one failed).
  */
 async function requiredChecks(
   ghPath: string,
   cwd: string,
   url: string,
 ): Promise<Set<string> | undefined> {
+  let result;
   try {
-    const result = await run(ghPath, ["pr", "checks", url, "--required", "--json", "name"], {
+    result = await run(ghPath, ["pr", "checks", url, "--required", "--json", "name"], {
       cwd,
       env: GH_ENV,
       timeoutMs: GH_TIMEOUT_MS,
-      ok: [0, 1, 8],
     });
-    const parsed: unknown = JSON.parse(result.stdout.trim() || "[]");
+  } catch {
+    return undefined;
+  }
+  const out = result.stdout.trim();
+  // Exit 1 with nothing on stdout: the branch requires no checks (gh says so on stderr).
+  if (out === "") return result.code === 1 ? new Set() : undefined;
+  try {
+    const parsed: unknown = JSON.parse(out);
     if (!Array.isArray(parsed)) return undefined;
     return new Set(
       parsed
@@ -472,8 +480,7 @@ async function requiredChecks(
         .filter((name) => name !== undefined),
     );
   } catch {
-    // No required checks on the branch prints a message, not JSON: none are required.
-    return new Set();
+    return undefined;
   }
 }
 

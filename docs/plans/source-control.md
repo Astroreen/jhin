@@ -745,16 +745,16 @@ with screenshots).
 
 - **D908. Required checks are the gate of a watch's "passed" wake**, as T3's
   `evaluatePullRequestWatch` has it: GitHub's required checks come from `gh
-  pr checks <url> --required --json name` (T3 asks GraphQL's `isRequired`;
-  `gh` exits 8 while some are pending and 1 when the branch requires none,
-  read as none), marking each watched check `required`. When some are
-  required, only they must finish without failing for "All N required
-  checks passed"; an advisory check still running no longer holds the wake
-  back. A required check that appears already finished after that wake
-  wakes the thread again (`PullRequestWatch.passedChecks`, additive with a
-  default), while without required checks a new passed check (a bot's) wakes
-  nobody. Failed checks wake as before, required or not. Other forges say
-  nothing of required checks: every check is the gate, as before.
+  pr checks <url> --required --json name` (T3 asks GraphQL's `isRequired`),
+  read from its JSON whatever it exits with; no output with exit 1 means the
+  branch requires none, and any other failure leaves the checks unmarked.
+  When some are required, only they must finish without failing for "All N
+  required checks passed"; an advisory check still running no longer holds
+  the wake back. A required check that appears already finished after that
+  wake wakes the thread again (`PullRequestWatch.passedChecks`, additive with
+  a default), while without required checks a new passed check (a bot's)
+  wakes nobody. Failed checks wake as before, required or not. Other forges
+  say nothing of required checks: every check is the gate, as before.
 
 #### Reverting
 
