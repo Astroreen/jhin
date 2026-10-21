@@ -1563,10 +1563,19 @@ describe("worktrees in the client", () => {
     mount(<Toolbar project={project} target={target} />);
     await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
     await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "gh pr checkout #7");
-    await userEvent.click(page.getByRole("option", { name: /Checkout pull request/ }));
+    const option = page.getByRole("option", { name: /Checkout pull request/ });
+    // GitHub's mark on the item and in the dialog's title (D904).
+    expect(option.element().querySelector('svg[data-forge="github"]')).not.toBeNull();
+    await userEvent.click(option);
 
     const dialog = page.getByRole("dialog", { name: "Checkout pull request" });
     await expect.element(dialog).toBeVisible();
+    expect(
+      dialog
+        .getByRole("heading", { name: "Checkout pull request" })
+        .element()
+        .querySelector('svg[data-forge="github"]'),
+    ).not.toBeNull();
     await expect.element(dialog.getByText(`#7 · feature to main`)).toBeVisible();
     expect(calls.find((call) => call.method === "git.pr.resolve")?.params).toEqual({
       projectId: "app",

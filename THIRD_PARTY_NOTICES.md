@@ -113,6 +113,8 @@ text ships with the package (`node_modules/heic-to/LICENSE`).
 Source: https://github.com/selfhst/icons/blob/main/svg/azure-devops.svg
 (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/). The Microsoft Azure
 DevOps mark in `apps/web/src/plugins/source-control/forge-icons.tsx`
-(`AzureDevOpsIcon`) is that SVG as T3 Code ships it, turned into a React
-component; nothing of its drawing was changed. "Azure DevOps" is a trademark of
+(`AzureDevOpsIcon`) is adapted from that SVG as T3 Code ships it: turned into
+a React component with JSX attribute names, and its gradient ids made unique
+per instance (`useId`) so two marks on one page do not share them. Its shapes
+and colours are unchanged. "Azure DevOps" is a trademark of
 Microsoft, used only to name the forge a repository is on.
