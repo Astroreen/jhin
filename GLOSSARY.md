@@ -103,7 +103,8 @@ Words about Jhin:
   follows it by its task id and is woken when it ends.
 - **Workflow** — a script that runs several agents (`agent`, `parallel`,
   `pipeline`, `phase`), each one a delegated task of the thread that started
-  it (`workflows.run`).
+  it (`workflows.run`). A **saved workflow** is one kept as
+  `.jhin/workflows/<name>.js` in a project and run by its name.
 - **Item** — one unit inside a turn: a message, a tool call, a streamed delta.
 - **Agent** — the persistent actor executing turns, at the address
   `jhin://<nodeId>/agents/<id>` (OpenRig's _seat_). Every runtime is the

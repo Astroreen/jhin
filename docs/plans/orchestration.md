@@ -207,8 +207,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   answer is parsed and validated (Zod's `fromJSONSchema`); a mismatch is
   sent back to the same child twice at most before `null`. `agentId` is
   Jhin's addition (any runtime); `effort` is the model's `effort` option
-  (D870); `agentType`, `budget` and `workflow()` are not available and
-  throw. `Date.now()`, argless `new Date()` and `Math.random()` throw, as in
+  (D870); `budget` and `workflow()` are W20's D873, D874; `agentType` is
+  not available and throws. `Date.now()`, argless `new Date()` and `Math.random()` throw, as in
   the Workflow tool.
 - **D374. Limits.** At most `jhin.orchestration.maxConcurrentAgents` agents
   of one workflow run at once (default `min(16, CPUs − 2)`, at least 1), 1000
@@ -245,8 +245,7 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 
 - A scratch launch in a fresh folder of its own (T3's) waits for per-thread
   working directories.
-- Resuming a workflow (`resumeFromRunId`), `budget`, nested `workflow()`,
-  saved workflows by name and `scriptPath`, custom `agentType`s.
+- Custom `agentType`s of a workflow agent.
 - Delegating to an agent on another mesh node (`target.node`): today a task
   runs on the parent's node.
 - Pruning old task and workflow records: they stay in `storage.kv` (and in
@@ -380,9 +379,37 @@ user sees, which their Deferred lists left out.
   `workspace` (D371), which W3 implements with source control; without it
   they answer `WORKSPACE_UNSUPPORTED` and capabilities leave `worktree` out.
 
+- **D872. `resumeFromRunId`** (`workflows.run`): a run of the same thread
+  that no longer runs (`WORKFLOW_RUNNING` otherwise: stop it first). Each run
+  keeps a journal of its completed `agent()` calls (`storage.kv`,
+  `journal/<id>`: call index, `[prompt, options]` and result). On resume the
+  calls answer from it in order while each matches the journal's call of the
+  same index; the first that differs, and every call after it, runs live,
+  as the Workflow tool resumes. A reused call is a `cached` agent of the new
+  record, with the original task. The record names `resumedFrom`.
+- **D873. `budget`** is the Workflow tool's `{ total, spent(), remaining() }`.
+  `workflows.run`'s `budget` (output tokens) sets `total`, else it is `null`
+  and `remaining()` is `Infinity`. `spent()` adds up the output tokens of the
+  run's agents (the last `agent.usage.updated` of each of their turns),
+  counted as each agent ends; the record keeps `budget` and `spent`. It is a
+  hard ceiling: once spent, `agent()` throws "The workflow's budget of N
+  tokens is spent".
+- **D874. `workflow(nameOrRef, args?)`** runs a saved workflow or
+  `{ scriptPath }` inline, in a context of its own with `args`, sharing the
+  run's agents, concurrency, budget and stop. Its agents go into the phase
+  "▸ <name>" unless they name one; `workflow()` inside it throws ("nests one
+  level only").
+- **D875. Saved workflows** are the files `.jhin/workflows/<name>.js` of the
+  thread's working directory (its worktree, else its project's folder);
+  `scriptPath` is a file, relative to that directory unless absolute.
+  `workflows.run` takes exactly one of `script`, `name` and `scriptPath`
+  (`INVALID_REQUEST`); a missing one answers `WORKFLOW_NOT_FOUND`.
+
 ### Deferred
 
 - The running count in the Lineage title ("Lineage · 2 running").
+- Saved workflows of the node (outside a project) and a command listing
+  them; today they are read from the project only.
 - A thread whose Lineage section is hidden (no rows) still counts as having
   details, so the panel does not say "No details for this thread" then.
 - T3's grouping of a turn's subagents into one "N subagents" row, the hover

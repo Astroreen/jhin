@@ -6,7 +6,9 @@
 // result rules of packages/provider-core/src/server/subagentProjection.ts.
 // Decisions: docs/plans/orchestration.md (D360–D376).
 import * as Crypto from "node:crypto";
+import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
+import * as Path from "node:path";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
@@ -54,6 +56,9 @@ const SCRIPT_SYNC_TIMEOUT_MS = 1000;
 const MAX_WORKFLOW_LOGS = 200;
 /** How often a workflow agent's answer is sent back for not matching its schema. */
 const SCHEMA_RETRIES = 2;
+/** A saved workflow's name: the file `.jhin/workflows/<name>.js` of the project (D875). */
+const SAVED_NAME = /^[\w][\w.-]*$/;
+const SAVED_DIR = Path.join(".jhin", "workflows");
 
 const Config = z
   .object({
@@ -201,6 +206,8 @@ const WorkflowAgent = z.object({
   label: z.string().optional(),
   phase: z.string().optional(),
   status: z.union([TaskStatus, z.literal("starting")]),
+  /** Its result came from the run it resumed (D872). */
+  cached: z.boolean().optional(),
 });
 const Workflow = z.object({
   workflowId: z.string(),
@@ -208,6 +215,11 @@ const Workflow = z.object({
   name: z.string(),
   description: z.string(),
   phases: z.array(z.object({ title: z.string(), detail: z.string().optional() })),
+  /** The run it resumed (D872). */
+  resumedFrom: z.string().optional(),
+  /** Its token target, and the output tokens its agents spent (D873). */
+  budget: z.number().optional(),
+  spent: z.number().optional(),
   currentPhase: z.string().optional(),
   status: WorkflowStatus,
   agents: z.array(WorkflowAgent),
@@ -389,6 +401,32 @@ function jsonOf(text: string): unknown {
 }
 
 const now = () => new Date().toISOString();
+
+/** Output tokens of a thread's turns: the last usage each turn reported (D873). */
+export function outputTokens(events: readonly StoredEvent[]): number {
+  const byTurn = new Map<string, number>();
+  for (const event of events) {
+    if (event.type !== ThreadEvents.usageUpdated) continue;
+    const payload = event.payload as {
+      turnId?: unknown;
+      usage?: { outputTokens?: unknown };
+    } | null;
+    const tokens = payload?.usage?.outputTokens;
+    if (typeof payload?.turnId === "string" && typeof tokens === "number") {
+      byTurn.set(payload.turnId, tokens);
+    }
+  }
+  return [...byTurn.values()].reduce((sum, tokens) => sum + tokens, 0);
+}
+
+/** One agent() call of a run, as its resume compares it (D872). */
+interface JournalEntry {
+  readonly index: number;
+  readonly key: string;
+  readonly result: Json;
+  readonly taskId?: string;
+  readonly childThreadId?: string;
+}
 
 export default definePlugin({
   async activate(context) {
@@ -1638,7 +1676,140 @@ export default definePlugin({
       return `${prompt}\n\nAnswer with only one JSON object that matches this JSON Schema, and nothing else:\n${JSON.stringify(schema, null, 2)}`;
     }
 
+    /** The directory a thread's saved workflows and script paths are found from (D875). */
+    async function workingDirectory(thread: ThreadRecord): Promise<string | undefined> {
+      const own = (thread as { worktreePath?: unknown }).worktreePath;
+      if (typeof own === "string") return own;
+      const projects = await run<{ id: string; path?: string }[]>("projects.list", {}).catch(
+        () => [],
+      );
+      return projects.find((project) => project.id === thread.projectId)?.path;
+    }
+
+    /** A saved workflow's script by name, or a script file (relative to `dir`) (D874, D875). */
+    async function loadScript(
+      dir: string | undefined,
+      ref: string | { readonly scriptPath: string },
+    ): Promise<string> {
+      const file =
+        typeof ref === "string"
+          ? SAVED_NAME.test(ref) && dir !== undefined
+            ? Path.join(dir, SAVED_DIR, `${ref}.js`)
+            : undefined
+          : Path.isAbsolute(ref.scriptPath)
+            ? ref.scriptPath
+            : dir === undefined
+              ? undefined
+              : Path.join(dir, ref.scriptPath);
+      const what = typeof ref === "string" ? `saved workflow ${ref}` : `script ${ref.scriptPath}`;
+      if (file === undefined) {
+        throw new OrchestrationError(
+          "WORKFLOW_NOT_FOUND",
+          `No ${what}: the thread has no project folder.`,
+        );
+      }
+      try {
+        return await Fs.readFile(file, "utf8");
+      } catch {
+        throw new OrchestrationError("WORKFLOW_NOT_FOUND", `No ${what} (${file}).`, { path: file });
+      }
+    }
+
+    /** What a run carries besides its record: its journal, what it resumes, its tokens. */
+    interface RunState {
+      readonly journal: JournalEntry[];
+      readonly prior: ReadonlyMap<number, JournalEntry>;
+      /** Off until the first call that is not the resumed run's (D872). */
+      live: boolean;
+      spent: number;
+      /** Where its saved workflows and script paths are found (D875). */
+      readonly dir: string | undefined;
+      writing: Promise<unknown>;
+    }
+    const runStates = new Map<string, RunState>();
+
     async function workflowAgent(
+      workflow: Workflow,
+      prompt: string,
+      options: AgentOptions & { index: number },
+      signal: AbortSignal,
+      traceId: string | undefined,
+    ): Promise<unknown> {
+      const state = runStates.get(workflow.workflowId);
+      const { index, ...given } = options;
+      const key = JSON.stringify([prompt, given]);
+      if (state !== undefined && !state.live) {
+        const hit = state.prior.get(index);
+        if (hit !== undefined && hit.key === key) {
+          await updateWorkflow(workflow.workflowId, (current) => ({
+            ...current,
+            agents: [
+              ...current.agents,
+              {
+                index,
+                ...(options.label === undefined ? {} : { label: options.label }),
+                ...((options.phase ?? current.currentPhase) === undefined
+                  ? {}
+                  : { phase: options.phase ?? current.currentPhase }),
+                ...(hit.taskId === undefined ? {} : { taskId: hit.taskId }),
+                ...(hit.childThreadId === undefined ? {} : { childThreadId: hit.childThreadId }),
+                status: "completed" as const,
+                cached: true,
+              },
+            ],
+          }));
+          record(workflow.workflowId, state, hit);
+          return hit.result;
+        }
+        // The first call that changed, and every one after it, runs live.
+        state.live = true;
+      }
+      let result: unknown;
+      try {
+        result = await liveAgent(workflow, prompt, options, signal, traceId);
+      } finally {
+        if (state !== undefined) await countTokens(workflow.workflowId, state, index);
+      }
+      const entry = workflows
+        .get(workflow.workflowId)
+        ?.agents.find((agent) => agent.index === index);
+      if (state !== undefined && result !== null && entry?.status === "completed") {
+        record(workflow.workflowId, state, {
+          index,
+          key,
+          result: result as Json,
+          ...(entry.taskId === undefined ? {} : { taskId: entry.taskId }),
+          ...(entry.childThreadId === undefined ? {} : { childThreadId: entry.childThreadId }),
+        });
+      }
+      return result;
+    }
+
+    /** Keeps a run's journal, in `storage.kv` (`journal/<id>`), for a later resume. */
+    function record(workflowId: string, state: RunState, entry: JournalEntry) {
+      state.journal.push(entry);
+      const entries = state.journal.toSorted((a, b) => a.index - b.index);
+      state.writing = state.writing
+        .catch(() => undefined)
+        .then(() => kv.set(NAMESPACE, `journal/${workflowId}`, entries as unknown as Json))
+        .catch((error: unknown) =>
+          context.log.error("could not record a workflow's journal", { error: String(error) }),
+        );
+    }
+
+    /** Adds the output tokens of an agent's thread to its run's spending (D873). */
+    async function countTokens(workflowId: string, state: RunState, index: number) {
+      const childThreadId = workflows
+        .get(workflowId)
+        ?.agents.find((agent) => agent.index === index)?.childThreadId;
+      if (childThreadId === undefined) return;
+      const tokens = outputTokens(await log.read(threadStream(childThreadId)).catch(() => []));
+      if (tokens === 0) return;
+      state.spent += tokens;
+      await updateWorkflow(workflowId, (current) => ({ ...current, spent: state.spent }));
+    }
+
+    async function liveAgent(
       workflow: Workflow,
       prompt: string,
       options: AgentOptions & { index: number },
@@ -1770,6 +1941,9 @@ export default definePlugin({
           {
             agent: (prompt, options) =>
               workflowAgent(workflow, prompt, options, controller.signal, traceId),
+            budget: workflow.budget ?? null,
+            spent: () => runStates.get(workflow.workflowId)?.spent ?? 0,
+            load: (ref) => loadScript(runStates.get(workflow.workflowId)?.dir, ref),
             log: (message) =>
               void updateWorkflow(workflow.workflowId, (current) => ({
                 ...current,
@@ -1806,6 +1980,10 @@ export default definePlugin({
           : { status: "failed", error: error instanceof Error ? error.message : String(error) };
       } finally {
         running.delete(workflow.workflowId);
+        // Its journal is written before the run ends, for a resume right after.
+        const state = runStates.get(workflow.workflowId);
+        runStates.delete(workflow.workflowId);
+        await state?.writing;
       }
       if (disposed) return;
       // An agent the script left running (it threw, or returned without waiting) stops with it.
@@ -1858,18 +2036,29 @@ export default definePlugin({
     context.commands.register({
       name: "workflows.run",
       description:
-        "Runs a workflow script that orchestrates several agents, as the Workflow tool does. The script begins with `export const meta = { name, description, phases? }` (a pure literal) and its body is plain JavaScript using agent(prompt, {label, phase, schema, model, agentId, isolation}), parallel(thunks), pipeline(items, ...stages), phase(title), log(message) and args. Each agent is a delegated task of the calling thread. Returns at once with a workflowId; the workflow's end wakes the calling thread with a message, so end the turn instead of polling. Date.now(), new Date() and Math.random() are unavailable. The script runs inside the node with the node's rights (it can reach the node's own functions and block it after its first await), so it needs the workflows.run permission and a full-access calling thread.",
+        "Runs a workflow script that orchestrates several agents, as the Workflow tool does. The script begins with `export const meta = { name, description, phases? }` (a pure literal) and its body is plain JavaScript using agent(prompt, {label, phase, schema, model, agentId, isolation}), parallel(thunks), pipeline(items, ...stages), phase(title), log(message), args, budget {total, spent(), remaining()} and workflow(nameOrRef, args) (a saved workflow of the project's .jhin/workflows/<name>.js, or {scriptPath}; one level). Instead of script, pass name or scriptPath to run a saved workflow or a file. resumeFromRunId reuses the results of an earlier run's unchanged agent() calls up to the first changed one; budget caps the output tokens of its agents. Each agent is a delegated task of the calling thread. Returns at once with a workflowId; the workflow's end wakes the calling thread with a message, so end the turn instead of polling. Date.now(), new Date() and Math.random() are unavailable. The script runs inside the node with the node's rights (it can reach the node's own functions and block it after its first await), so it needs the workflows.run permission and a full-access calling thread.",
       input: z.object({
         script: z
           .string()
           .min(1)
-          .max(512 * 1024),
+          .max(512 * 1024)
+          .optional(),
+        name: z
+          .string()
+          .regex(SAVED_NAME, "A saved workflow's name: letters, digits, . _ -")
+          .optional(),
+        scriptPath: z.string().min(1).max(4096).optional(),
         args: z.json().optional(),
         parentThreadId: z.string().min(1).optional(),
+        resumeFromRunId: z.string().min(1).optional(),
+        budget: z.number().int().positive().optional(),
       }),
       output: z.object({ workflowId: z.string(), name: z.string(), status: WorkflowStatus }),
       permissions: ["threads.write", WORKFLOWS_RUN_PERMISSION],
-      handler: async ({ script, args, parentThreadId: named }, invocation) => {
+      handler: async (
+        { script: given, name, scriptPath, args, parentThreadId: named, resumeFromRunId, budget },
+        invocation,
+      ) => {
         // A mesh member's calls hold every permission (foundation Deferred): it
         // runs no code here until scoped mesh calls (W13).
         if (invocation.caller?.id.startsWith("node:") === true) {
@@ -1891,6 +2080,31 @@ export default definePlugin({
             { runtimeMode: mode },
           );
         }
+        if ([given, name, scriptPath].filter((value) => value !== undefined).length !== 1) {
+          throw new OrchestrationError(
+            "INVALID_REQUEST",
+            "Pass exactly one of script, name and scriptPath.",
+          );
+        }
+        // A resumed run is one of this thread's, and no longer runs (D872).
+        let prior: JournalEntry[] = [];
+        if (resumeFromRunId !== undefined) {
+          const previous = ownWorkflow(resumeFromRunId, parentThreadId);
+          if (previous.status === "running") {
+            throw new OrchestrationError(
+              "WORKFLOW_RUNNING",
+              `Workflow ${resumeFromRunId} still runs: stop it before resuming it.`,
+              { workflowId: resumeFromRunId },
+            );
+          }
+          prior =
+            ((await kv.get(NAMESPACE, `journal/${resumeFromRunId}`)) as
+              | JournalEntry[]
+              | undefined) ?? [];
+        }
+        const dir = await workingDirectory(parent);
+        const script =
+          given ?? (await loadScript(dir, name ?? { scriptPath: scriptPath as string }));
         let parsed: ReturnType<typeof parseWorkflow>;
         try {
           parsed = parseWorkflow(script);
@@ -1910,6 +2124,8 @@ export default definePlugin({
             title: phase.title,
             ...(phase.detail === undefined ? {} : { detail: phase.detail }),
           })),
+          ...(resumeFromRunId === undefined ? {} : { resumedFrom: resumeFromRunId }),
+          ...(budget === undefined ? {} : { budget }),
           status: "running",
           agents: [],
           logs: [],
@@ -1917,6 +2133,14 @@ export default definePlugin({
           delivery: "none",
           createdAt,
           updatedAt: createdAt,
+        });
+        runStates.set(workflow.workflowId, {
+          journal: [],
+          prior: new Map(prior.map((entry) => [entry.index, entry])),
+          live: prior.length === 0,
+          spent: 0,
+          dir,
+          writing: Promise.resolve(),
         });
         await mark(parent.id, OrchestrationThreadEvents.workflowStarted, {
           workflowId: workflow.workflowId,

@@ -27,7 +27,13 @@ export const orchestrationPlugin: TestPlugin = { manifest, definition: orchestra
 export function scriptedRuntime(
   agentId: string,
   answer: (request: TurnRequest) => string,
-  options: { runtimeModes?: RuntimeMode[]; available?: boolean; message?: string } = {},
+  options: {
+    runtimeModes?: RuntimeMode[];
+    available?: boolean;
+    message?: string;
+    /** Output tokens each turn reports spending. */
+    outputTokens?: number;
+  } = {},
 ): TestPlugin {
   const runtime: AgentRuntime = {
     agentId,
@@ -45,6 +51,9 @@ export function scriptedRuntime(
     startTurn(request) {
       async function* items(): AsyncGenerator<AgentItem> {
         const text = answer(request);
+        if (options.outputTokens !== undefined) {
+          yield { kind: "usage", usage: { inputTokens: 0, outputTokens: options.outputTokens } };
+        }
         yield { kind: "message.completed", itemId: `${request.turnId}:1`, text };
       }
       return { items: items(), interrupt() {} };
