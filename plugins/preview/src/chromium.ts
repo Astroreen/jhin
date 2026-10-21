@@ -1,9 +1,16 @@
 // Launching and presenting the browser follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/preview/ServerBrowserContexts.ts (launch arguments, contexts, presentAsChrome).
+import * as Crypto from "node:crypto";
+import * as Fs from "node:fs";
 import * as Os from "node:os";
+import * as Path from "node:path";
 
-import { PreviewError } from "@jhin/preview-api";
-import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
+import {
+  DEFAULT_BROWSER_PROFILE_ID,
+  INCOGNITO_BROWSER_PROFILE_ID,
+  PreviewError,
+} from "@jhin/preview-api";
+import type { Browser, BrowserContext, CDPSession, LaunchOptions, Page } from "playwright-core";
 
 /** Device pixels per CSS pixel every tab renders at. */
 export const RENDER_SCALE = 2;
@@ -19,8 +26,12 @@ export interface ChromiumOptions {
   readonly headlessShell?: { executable(): Promise<string> } | undefined;
   /** Playwright's Chromium launcher; tests give their own. */
   readonly launcher?:
-    | (() => Promise<Pick<typeof import("playwright-core").chromium, "launch">>)
+    | (() => Promise<
+        Pick<typeof import("playwright-core").chromium, "launch" | "launchPersistentContext">
+      >)
     | undefined;
+  /** Where persistent profiles keep their folders (D952). */
+  readonly profilesDir?: string | undefined;
 }
 
 const NO_BROWSER_MESSAGE =
@@ -68,8 +79,10 @@ export async function presentAsChrome(cdp: CDPSession): Promise<void> {
 }
 
 /**
- * The node's one browser (D394): started for the first tab, closed after the
- * last one. Human tabs share a context; an agent's tab gets its own.
+ * The node's browser (D394): started for the first tab, closed after the last
+ * one. A human's tab browses with a profile (D952, T3's): the default one and
+ * user profiles keep cookies and storage in a folder of their own, incognito
+ * keeps them as long as the browser; an agent's tab gets a context of its own.
  */
 export class Chromium {
   readonly #options: ChromiumOptions;
@@ -80,88 +93,101 @@ export class Chromium {
    * found on the node's next start.
    */
   #playwrightMissing = false;
-  #shared: Promise<BrowserContext> | undefined;
+  /** Each profile's context, by profile id. */
+  readonly #profiles = new Map<string, Promise<BrowserContext>>();
+  /** Profiles being cleared: their next context waits for the folder to go. */
+  readonly #clearing = new Map<string, Promise<void>>();
 
   constructor(options: ChromiumOptions = {}) {
     this.#options = options;
   }
 
+  #chromium() {
+    return (async () =>
+      (await this.#options.launcher?.()) ?? (await import("playwright-core")).chromium)();
+  }
+
+  /**
+   * Starts something with the browser to run: the configured one, else
+   * Playwright's, else T3's pinned shell, installed now when Playwright has
+   * none (D951). Every failure is a `PREVIEW_UNAVAILABLE` saying why.
+   */
+  async #start<T>(start: (launch: LaunchOptions) => Promise<T>): Promise<T> {
+    const configured = this.#options.executablePath?.();
+    const options = (executablePath: string | undefined): LaunchOptions => ({
+      ...(executablePath === undefined ? {} : { executablePath }),
+      args: [
+        "--disable-gpu",
+        `--force-device-scale-factor=${RENDER_SCALE}`,
+        "--disable-blink-features=AutomationControlled",
+      ],
+      ignoreDefaultArgs: ["--enable-automation"],
+      headless: true,
+    });
+    const missing = (message: string) =>
+      /Executable doesn't exist|Failed to launch|ENOENT/i.test(message);
+    try {
+      try {
+        if (this.#playwrightMissing && configured === undefined) {
+          throw new Error("Executable doesn't exist (Playwright's browser, found missing before)");
+        }
+        return await start(options(configured));
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        const shell = this.#options.headlessShell;
+        // No browser of Playwright's here: T3's pinned shell, installed now (D951). A
+        // browser that is there but does not start is reported, not replaced.
+        if (
+          configured !== undefined ||
+          shell === undefined ||
+          !/Executable doesn't exist/i.test(message)
+        ) {
+          throw cause;
+        }
+        this.#playwrightMissing = true;
+        let executable: string;
+        try {
+          executable = await shell.executable();
+        } catch (installing) {
+          throw new PreviewError(
+            "PREVIEW_UNAVAILABLE",
+            installing instanceof Error ? installing.message : String(installing),
+          );
+        }
+        try {
+          return await start(options(executable));
+        } catch (failed) {
+          // The shell is there but does not start (libraries the host lacks): say so,
+          // not that there is no browser.
+          const reason = failed instanceof Error ? failed.message : String(failed);
+          throw new PreviewError(
+            "PREVIEW_UNAVAILABLE",
+            `The browser did not start: ${reason.split("\n")[0]}`,
+          );
+        }
+      }
+    } catch (cause) {
+      if (cause instanceof PreviewError) throw cause;
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new PreviewError(
+        "PREVIEW_UNAVAILABLE",
+        missing(message)
+          ? NO_BROWSER_MESSAGE
+          : `The browser did not start: ${message.split("\n")[0]}`,
+      );
+    }
+  }
+
   #launch(): Promise<Browser> {
     this.#browser ??= (async () => {
-      const chromium =
-        (await this.#options.launcher?.()) ?? (await import("playwright-core")).chromium;
-      const configured = this.#options.executablePath?.();
-      const launch = (executablePath: string | undefined) =>
-        chromium.launch({
-          ...(executablePath === undefined ? {} : { executablePath }),
-          args: [
-            "--disable-gpu",
-            `--force-device-scale-factor=${RENDER_SCALE}`,
-            "--disable-blink-features=AutomationControlled",
-          ],
-          ignoreDefaultArgs: ["--enable-automation"],
-          headless: true,
-        });
-      const missing = (message: string) =>
-        /Executable doesn't exist|Failed to launch|ENOENT/i.test(message);
-      try {
-        let browser: Browser;
-        try {
-          if (this.#playwrightMissing && configured === undefined) {
-            throw new Error(
-              "Executable doesn't exist (Playwright's browser, found missing before)",
-            );
-          }
-          browser = await launch(configured);
-        } catch (cause) {
-          const message = cause instanceof Error ? cause.message : String(cause);
-          const shell = this.#options.headlessShell;
-          // No browser of Playwright's here: T3's pinned shell, installed now (D951). A
-          // browser that is there but does not start is reported, not replaced.
-          if (
-            configured !== undefined ||
-            shell === undefined ||
-            !/Executable doesn't exist/i.test(message)
-          ) {
-            throw cause;
-          }
-          this.#playwrightMissing = true;
-          let executable: string;
-          try {
-            executable = await shell.executable();
-          } catch (installing) {
-            throw new PreviewError(
-              "PREVIEW_UNAVAILABLE",
-              installing instanceof Error ? installing.message : String(installing),
-            );
-          }
-          try {
-            browser = await launch(executable);
-          } catch (failed) {
-            // The shell is there but does not start (libraries the host lacks): say so,
-            // not that there is no browser.
-            const reason = failed instanceof Error ? failed.message : String(failed);
-            throw new PreviewError(
-              "PREVIEW_UNAVAILABLE",
-              `The browser did not start: ${reason.split("\n")[0]}`,
-            );
-          }
-        }
-        browser.on("disconnected", () => {
-          this.#browser = undefined;
-          this.#shared = undefined;
-        });
-        return browser;
-      } catch (cause) {
-        if (cause instanceof PreviewError) throw cause;
-        const message = cause instanceof Error ? cause.message : String(cause);
-        throw new PreviewError(
-          "PREVIEW_UNAVAILABLE",
-          missing(message)
-            ? NO_BROWSER_MESSAGE
-            : `The browser did not start: ${message.split("\n")[0]}`,
-        );
-      }
+      const chromium = await this.#chromium();
+      const browser = await this.#start((options) => chromium.launch(options));
+      browser.on("disconnected", () => {
+        this.#browser = undefined;
+        // Incognito lived in this browser; persistent profiles run their own.
+        this.#profiles.delete(INCOGNITO_BROWSER_PROFILE_ID);
+      });
+      return browser;
     })();
     const launching = this.#browser;
     // A launch that failed is tried again by the next tab.
@@ -176,19 +202,87 @@ export class Chromium {
     return browser.newContext({ viewport: DEFAULT_VIEWPORT, deviceScaleFactor: RENDER_SCALE });
   }
 
-  /** A new page: in the shared context, or alone in a context of its own. */
-  async newPage(isolated: boolean): Promise<{ page: Page; context: BrowserContext }> {
-    let context: BrowserContext;
-    if (isolated) {
-      context = await this.#newContext();
-    } else {
-      const shared = (this.#shared ??= this.#newContext());
-      shared.catch(() => {
-        if (this.#shared === shared) this.#shared = undefined;
+  /**
+   * The folder of a persistent profile: a digest of its id, so any id (any case,
+   * `..`, `CON`, a trailing dot) is a distinct, valid folder name on every system.
+   */
+  #profileDirectory(profileId: string): string {
+    const digest = Crypto.createHash("sha256").update(profileId).digest("hex").slice(0, 32);
+    return Path.join(
+      this.#options.profilesDir ?? Path.join(Os.tmpdir(), "jhin-preview-profiles"),
+      digest,
+    );
+  }
+
+  /** A profile's context, started for its first tab. */
+  #profile(profileId: string): Promise<BrowserContext> {
+    const cached = this.#profiles.get(profileId);
+    if (cached !== undefined) return cached;
+    const cleared = this.#clearing.get(profileId)?.catch(() => undefined) ?? Promise.resolve();
+    const pending = cleared.then(async () => {
+      if (profileId === INCOGNITO_BROWSER_PROFILE_ID) return this.#newContext();
+      const directory = this.#profileDirectory(profileId);
+      const chromium = await this.#chromium();
+      const context = await this.#start(async (options) => {
+        // Cookies and logins: for this user only. A data folder that cannot take it
+        // fails like any other start, as PREVIEW_UNAVAILABLE.
+        await Fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
+        return chromium.launchPersistentContext(directory, {
+          ...options,
+          viewport: DEFAULT_VIEWPORT,
+          deviceScaleFactor: RENDER_SCALE,
+        });
       });
-      context = await shared;
-    }
+      // A persistent profile reopens with a blank page of its own: tabs bring theirs.
+      await Promise.all(context.pages().map((page) => page.close().catch(() => undefined)));
+      return context;
+    });
+    this.#profiles.set(profileId, pending);
+    pending.then(
+      (context) => {
+        context.on("close", () => {
+          if (this.#profiles.get(profileId) === pending) this.#profiles.delete(profileId);
+        });
+      },
+      () => {
+        if (this.#profiles.get(profileId) === pending) this.#profiles.delete(profileId);
+      },
+    );
+    return pending;
+  }
+
+  /** A new page: in its profile's context, or alone in a context of its own. */
+  async newPage(
+    isolated: boolean,
+    profileId: string = DEFAULT_BROWSER_PROFILE_ID,
+  ): Promise<{ page: Page; context: BrowserContext }> {
+    const context = isolated ? await this.#newContext() : await this.#profile(profileId);
     return { page: await context.newPage(), context };
+  }
+
+  /**
+   * Forgets a profile's cookies and storage (T3's "Clear profile"): its tabs
+   * close with its context, and its folder goes. Incognito has nothing kept.
+   */
+  async clearProfile(profileId: string): Promise<void> {
+    if (profileId === INCOGNITO_BROWSER_PROFILE_ID) return;
+    // A clear of the same profile still running goes first.
+    const previous = this.#clearing.get(profileId)?.catch(() => undefined);
+    // Gone from the cache at once: a tab asked for from now on waits for the clear.
+    const pending = this.#profiles.get(profileId);
+    this.#profiles.delete(profileId);
+    const clearing = (async () => {
+      await previous;
+      const context = await pending?.catch(() => undefined);
+      await context?.close();
+      await Fs.promises.rm(this.#profileDirectory(profileId), { recursive: true, force: true });
+    })();
+    this.#clearing.set(profileId, clearing);
+    try {
+      await clearing;
+    } finally {
+      if (this.#clearing.get(profileId) === clearing) this.#clearing.delete(profileId);
+    }
   }
 
   /** A page for the recording encoder, alone in its own context. */
@@ -198,8 +292,16 @@ export class Chromium {
 
   async close(): Promise<void> {
     const browser = this.#browser;
+    const profiles = [...this.#profiles.values()];
     this.#browser = undefined;
-    this.#shared = undefined;
+    this.#profiles.clear();
+    await Promise.all(
+      profiles.map((pending) => pending.then((context) => context.close()).catch(() => undefined)),
+    );
     await browser?.then((running) => running.close()).catch(() => undefined);
+    // A clear in flight (which may have closed the last tab) finishes its folder first.
+    await Promise.all(
+      [...this.#clearing.values()].map((clearing) => clearing.catch(() => undefined)),
+    );
   }
 }

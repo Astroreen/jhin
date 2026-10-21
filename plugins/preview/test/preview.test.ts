@@ -440,6 +440,28 @@ describe("jhin.preview", () => {
     expect(missing.code).toBe("PREVIEW_TAB_NOT_FOUND");
   });
 
+  it("opens a human's tab in a profile, and clearing it closes the profile's tabs (D952)", async () => {
+    const { client } = await node();
+    const tabsStream = watch(client, previewTabsStream(thread));
+    const plain = await client.call<PreviewTab>("preview.tab.open", { threadId: thread });
+    expect(plain.profileId).toBe("default");
+    const work = await client.call<PreviewTab>("preview.tab.open", {
+      threadId: thread,
+      profileId: "work",
+    });
+    expect(work.profileId).toBe("work");
+    // An agent's tab has storage of its own, no profile.
+    await client.call("preview.open", { threadId: thread, url: `${origin}/second` });
+    await tabsStream.until(() => lastTabs(tabsStream.events).length === 3);
+    expect(lastTabs(tabsStream.events).filter((tab) => tab.profileId === undefined)).toHaveLength(
+      1,
+    );
+
+    await client.call("preview.profile.clear", { profileId: "work" });
+    await tabsStream.until(() => lastTabs(tabsStream.events).length === 2);
+    expect(lastTabs(tabsStream.events).map((tab) => tab.tabId)).not.toContain(work.tabId);
+  });
+
   it("closes a deleted thread's tabs", async () => {
     const { client, storage } = await node();
     await client.call("preview.open", { threadId: thread, url: `${origin}/second` });

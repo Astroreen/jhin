@@ -684,6 +684,27 @@ export const PreviewNavStatus = z.discriminatedUnion("state", [
 ]);
 export type PreviewNavStatus = z.infer<typeof PreviewNavStatus>;
 
+// --- Browser profiles (T3's, D952) ------------------------------------------
+
+/**
+ * A browser profile's id. Control characters are refused: ids are folded into
+ * delimiter-joined keys, and one carrying the delimiter would reach another
+ * profile (T3).
+ */
+export const BrowserProfileId = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[^\p{Cc}]+$/u);
+export type BrowserProfileId = z.output<typeof BrowserProfileId>;
+/** The profile whose cookies and storage persist, used when none is named. */
+export const DEFAULT_BROWSER_PROFILE_ID = "default";
+/** The profile that keeps nothing: its storage lives as long as the browser. */
+export const INCOGNITO_BROWSER_PROFILE_ID = "incognito";
+
+export const PreviewProfileClearInput = z.object({ profileId: BrowserProfileId });
+
 /** One tab, as the thread's `preview.tabs` event and `preview.list` give it. */
 export const PreviewTab = z.object({
   threadId: z.string(),
@@ -708,6 +729,8 @@ export const PreviewTab = z.object({
   /** The agent asked to show it to the human (T3's `reveal`). */
   reveal: z.boolean(),
   openerTabId: PreviewTabId.optional(),
+  /** A human's tab: the profile it browses with (D952). An agent's tab has its own storage. */
+  profileId: BrowserProfileId.optional(),
   openedAt: z.string(),
   updatedAt: z.string(),
 });
@@ -737,6 +760,8 @@ export const PreviewTabOpenInput = z.object({
   threadId: PreviewThreadId,
   url: BoundedUrl.optional(),
   viewport: PreviewViewportSetting.optional(),
+  /** The browser profile whose cookies the tab uses (D952); `default` when absent. */
+  profileId: BrowserProfileId.optional(),
 });
 export const PreviewTabCloseInput = z.object(TabFields);
 export const PreviewTabAdjustInput = z.object({

@@ -371,6 +371,23 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   the next request. A configured path or Playwright's own browser still
   wins, so nothing changes where one is there.
 
+### Browser profiles (W25)
+
+- **D952. A human's tab browses with a profile, as in T3.** `default` and
+  user profiles keep cookies, logins and storage in a folder of their own
+  under the plugin's data (`profiles/<digest of the id>`, so any id is a
+  distinct, valid folder name on every system, whatever its case or characters), started with Playwright's `launchPersistentContext` for the
+  profile's first tab and closed with the browser when the
+  last tab closes (its folder stays); `incognito` is a
+  context of the shared browser and keeps nothing past it. An agent's tab
+  keeps a context of its own, and a popup its opener's profile.
+  `preview.tab.open` takes an optional `profileId` (T3's id rules: 1–64
+  characters, no control characters), `PreviewTab` carries it, and
+  `preview.profile.clear` (T3's "Clear profile") closes the profile's
+  context, and with it its tabs, and removes its folder; the next tab of the
+  profile starts from nothing. Every profile starts through D951's browser
+  choice.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -386,8 +403,9 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
 - T3's desktop runtime (an Electron webview per tab, its DevTools, separate
   windows and picture-in-picture, annotation of elements, "Open in
   {environment}'s browser"): with the desktop app (W18).
-- Browser profiles and persistent logins (T3's named profiles, `profileId`,
-  "Clear profile"): every tab's cookies live as long as the browser.
+- The profiles' web client part (T3's Browser profiles settings: create,
+  rename, remove, the default profile, "Clear profile"; the tab's profile
+  picker): the node takes `profileId` since D952.
 - A test of the pinned browser's progress answer itself: it needs the
   install a test leaves running to be awaitable once it settles.
 - T3's host setup hints for the pinned browser (the AppArmor profile, the
