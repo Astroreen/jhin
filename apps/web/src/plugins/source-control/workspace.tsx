@@ -40,12 +40,30 @@ export interface DraftWorkspaces {
   get(key: string): DraftWorkspace;
   set(key: string, workspace: DraftWorkspace): void;
   subscribe(listener: () => void): () => void;
+  /** The workspace menu on screen offers to be opened by T3's `composer.workspace` (D906). */
+  offerMenu(open: () => void): () => void;
+  /** Opens the workspace menu on screen; false when there is none (no draft shown). */
+  openMenu(): boolean;
 }
 
 export function createDraftWorkspaces(): DraftWorkspaces {
   const drafts = new Map<string, DraftWorkspace>();
   const listeners = new Set<() => void>();
+  // The last menu shown is the one opened.
+  const menus: (() => void)[] = [];
   return {
+    offerMenu(open) {
+      menus.push(open);
+      return () => {
+        const index = menus.lastIndexOf(open);
+        if (index !== -1) menus.splice(index, 1);
+      };
+    },
+    openMenu() {
+      const open = menus.at(-1);
+      open?.();
+      return open !== undefined;
+    },
     get: (key) => drafts.get(key) ?? LOCAL,
     set(key, workspace) {
       if (workspace.mode === "local") drafts.delete(key);

@@ -1876,6 +1876,31 @@ describe("worktrees in the client", () => {
     expect(drafts.get(draftKey(target, "app"))).toEqual({ mode: "local", startFromOrigin: false });
   });
 
+  it("opens a draft's workspace menu for T3's composer.workspace, and nothing for a started thread (D906)", async () => {
+    const { value } = services(viewWith(status()), { "git.branches": { branches: [] } });
+    const drafts = createDraftWorkspaces();
+    const Toolbar = createBranchToolbar(value, drafts);
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    // A started thread's toolbar alone: its fixed label offers no menu.
+    const started = mount(<Toolbar project={project} target={target} thread={thread} />);
+    await expect.element(page.getByRole("img", { name: /^Workspace: / })).toBeVisible();
+    expect(drafts.openMenu()).toBe(false);
+
+    // A draft beside it offers its menu, and takes it back when it goes.
+    const draft = mount(<Toolbar project={project} target={target} />);
+    await expect.element(page.getByRole("button", { name: "Workspace" })).toBeVisible();
+    let opened = false;
+    act(() => {
+      opened = drafts.openMenu();
+    });
+    expect(opened).toBe(true);
+    await expect.element(page.getByRole("menuitemradio", { name: /New worktree/ })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    draft.unmount();
+    expect(drafts.openMenu()).toBe(false);
+    started.unmount();
+  });
+
   it("never offers to delete a worktree this node did not make", async () => {
     const asked: string[] = [];
     let around!: (

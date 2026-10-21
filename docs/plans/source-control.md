@@ -724,6 +724,12 @@ with screenshots).
   with no editors, has no menu, as in T3. Like the diff panel's, the path is
   the project's, not a worktree thread's.
 
+- **D906. T3's `composer.workspace` shortcut**: the client command
+  `composer.workspace` (`{ opened }`, false when no draft is shown) opens the
+  workspace menu of the draft on screen (D253), with T3's default key
+  `mod+shift+x` (`!terminalFocus`), overridable like every keybinding. A
+  started thread's fixed label has no menu and does not answer it.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1063,8 +1069,8 @@ with the node's token, and without one).
   branch naming settings (semantic, a custom prefix, custom instructions,
   and with them a way to turn the rename off), the cleanup rules
   (keep when, after days, on merge, on delete without asking), submodules,
-  one worktree per model of a multi-model send, the `composer.workspace`
-  shortcut, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
+  one worktree per model of a multi-model send, T3's `composer.branch` and
+  `composer.previousWorktree` shortcuts, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
   `git.worktree.handoff` takes a `threadId`), a handoff's continuation
   prompt (W1's queue), deleting a removed worktree's branch from the client's
   question (T3 keeps it too; `git.worktree.remove` takes `deleteBranch`), the

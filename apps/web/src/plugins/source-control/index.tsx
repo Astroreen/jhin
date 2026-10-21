@@ -244,6 +244,23 @@ export const sourceControlPlugin = builtin(
       // Worktrees (D253–D255): a draft's workspace, the card's icon, cleaning up on delete.
       const drafts = createDraftWorkspaces();
       context.subscriptions.add(registerWorkspaceHook(context, drafts));
+      // T3's composer.workspace (D906): mod+shift+x opens a draft's workspace menu.
+      context.commands.register({
+        name: "composer.workspace",
+        title: "Choose workspace",
+        description:
+          "Opens the workspace menu under the composer of a draft: current checkout, new worktree or previous worktree; `opened` is false when no draft is shown",
+        input: z.object({}),
+        output: z.object({ opened: z.boolean() }),
+        handler: () => ({ opened: drafts.openMenu() }),
+      });
+      if (keybindings !== undefined) {
+        context.subscriptions.add(
+          keybindings.addDefaults([
+            { key: "mod+shift+x", command: "composer.workspace", when: "!terminalFocus" },
+          ]),
+        );
+      }
       context.subscriptions.add(registerWorktreeCleanup(context, threads, dialogs, toasts));
       context.subscriptions.add(
         slots.contribute<ThreadIndicatorProps>("sidebar.thread.indicators", {

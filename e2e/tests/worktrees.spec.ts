@@ -56,6 +56,12 @@ test("D250–D255: a draft starts its thread in a new worktree; deleting the thr
   // T3's workspace menu under the composer: a new worktree from main.
   const workspace = page.getByRole("button", { name: "Workspace" });
   await expect(workspace).toHaveText(/Current checkout/);
+  // T3's composer.workspace opens it from the keyboard (D906).
+  await page.keyboard.press("ControlOrMeta+Shift+X");
+  await expect(page.getByRole("menuitemradio", { name: "New worktree" })).toBeVisible();
+  await shot(page, info, "workspace-menu-shortcut");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitemradio", { name: "New worktree" })).toBeHidden();
   await workspace.click();
   await page.getByRole("menuitemradio", { name: "New worktree" }).click();
   await expect(workspace).toHaveText(/New worktree/);
