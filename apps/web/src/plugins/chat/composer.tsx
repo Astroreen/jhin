@@ -1233,6 +1233,13 @@ export function Composer(props: ComposerProps) {
    * once the question goes.
    */
   const asideDraft = useRef<string | undefined>(undefined);
+  // It is this draft's: another draft's composer never gets it back.
+  useEffect(
+    () => () => {
+      asideDraft.current = undefined;
+    },
+    [props.draftKey],
+  );
   // Another device's text for this draft (D486): read from the node when the
   // composer opens, and taken while the composer is not in use.
   useEffect(() => {

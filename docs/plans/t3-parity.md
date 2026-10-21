@@ -1885,6 +1885,9 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   free thread with nothing queued starts its turn under the queue's lock,
   and a thread's first message runs the hook. Edits of that thread's queue
   wait for it.
+- A component test of the composer's draft put aside for a prefilled answer
+  (D1001): the fake agent asks `/edit` at once, so no draft can be typed
+  before it; the e2e test covers the literal answer only.
 - A browser component test of the composer's queue banner (the `mod-enter`
   send shortcut with something queued, the "Retry" label of a refused
   message): the e2e spec covers the flows with the default shortcut only.
