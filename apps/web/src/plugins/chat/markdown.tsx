@@ -16,6 +16,7 @@ import remarkGfm from "remark-gfm";
 
 import { highlight, languageOf } from "../../lib/highlight.ts";
 import { useCopy } from "../../lib/hooks.ts";
+import { CHAT_MARKDOWN_CLASS, type ChatMarkdownProps } from "./markdown-style.ts";
 
 /** The text of a React subtree (a code element's children). */
 function textOf(node: ReactNode): string {
@@ -166,19 +167,10 @@ const PLUGINS = [remarkGfm];
 const PLUGINS_WITH_BREAKS = [remarkGfm, remarkBreaks];
 
 /** Markdown of a message: GitHub-flavoured, code highlighted, links opening elsewhere. */
-export function ChatMarkdown(props: {
-  text: string;
-  streaming?: boolean;
-  /** Single newlines break lines, as typed (user messages). */
-  lineBreaks?: boolean;
-  className?: string;
-}) {
+export function ChatMarkdown(props: ChatMarkdownProps) {
   return (
     <div
-      className={cn(
-        "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/80 [overflow-wrap:anywhere] [word-break:break-word]",
-        props.className,
-      )}
+      className={cn(CHAT_MARKDOWN_CLASS, props.className)}
       data-streaming={props.streaming === true ? "" : undefined}
     >
       <ReactMarkdown

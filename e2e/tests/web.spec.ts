@@ -178,3 +178,54 @@ test("serves only browser files of client plugins", async ({ request }) => {
     expect((await request.get(`${node.ui}client/plugins/${path}`)).status()).toBe(404);
   }
 });
+
+test("D440: the entry chunk stays under 500 kB; the markdown renderer loads with a message", async ({
+  page,
+  request,
+}) => {
+  const html = await (await request.get(node.ui)).text();
+  // The page's one module script, whatever the order of its attributes.
+  const scripts = [...html.matchAll(/<script\b[^>]*>/g)]
+    .map(([tag]) => tag)
+    .filter((tag) => /\btype="module"/.test(tag));
+  expect(scripts).toHaveLength(1);
+  const entry = /\bsrc="([^"]+)"/.exec(scripts[0]!)?.[1];
+  expect(entry).toBeDefined();
+  const source = await (await request.get(new URL(entry!, node.ui).href)).body();
+  expect(source.byteLength).toBeLessThan(500 * 1000);
+  // Markers the minifier keeps: a class name xterm.js sets, and micromark's own name in its errors.
+  const text = source.toString();
+  expect(text).not.toContain("xterm-helper-textarea");
+  expect(text).not.toContain("micromark");
+
+  // A message brings the renderer: the agent's echo shows its markdown, not the plain text.
+  const chunks: string[] = [];
+  page.on("request", (sent) => chunks.push(new URL(sent.url()).pathname));
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("some **bold** words");
+  await message.press("Enter");
+  const reply = page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "Agent" });
+  await expect(reply.locator("strong")).toHaveText("bold");
+  expect(chunks.some((path) => /\/assets\/markdown-[\w-]+\.js$/.test(path))).toBe(true);
+  // No terminal was opened, so xterm.js was never fetched.
+  expect(chunks.some((path) => /\/assets\/viewport-[\w-]+\.js$/.test(path))).toBe(false);
+  // A long thread opened afresh: its messages may show as plain text first, then as markdown.
+  // The timeline is still at its end once the markdown is in.
+  await message.fill(
+    `a long one\n\n${Array.from({ length: 60 }, (_, i) => `**line ${i}**`).join("\n\n")}`,
+  );
+  await message.press("Enter");
+  await expect(reply.last().locator("strong").last()).toHaveText("line 59");
+  await page.reload();
+  const log = page.getByRole("log", { name: "Messages" });
+  await expect(
+    log.getByRole("article", { name: "Agent" }).last().locator("strong").last(),
+  ).toHaveText("line 59");
+  const gap = await log.evaluate(
+    (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
+  );
+  // 40 px is the timeline's own "at the end" threshold (useStickToEnd in thread-view.tsx).
+  expect(gap).toBeLessThanOrEqual(40);
+});

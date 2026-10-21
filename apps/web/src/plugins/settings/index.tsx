@@ -39,15 +39,17 @@ import {
   Settings2Icon,
   SlidersHorizontalIcon,
 } from "lucide-react";
-import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useSyncExternalStore,
+  type ComponentType,
+} from "react";
 
 import { builtin } from "../../lib/builtin.ts";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { useExternal } from "../../lib/hooks.ts";
-import { ArchivedSection } from "./archived.tsx";
-import { AppearanceSection, GeneralSection } from "./general.tsx";
-import { KeybindingsSection } from "./keybindings.tsx";
-import { NodeConfigSection } from "./node-config.tsx";
-import { NodesSection } from "./nodes.tsx";
 
 export interface SettingsServices {
   readonly context: Parameters<NonNullable<Parameters<typeof definePlugin>[0]["activate"]>>[0];
@@ -61,6 +63,25 @@ export interface SettingsServices {
   readonly toasts: Toasts | undefined;
   readonly dialogs: Dialogs | undefined;
 }
+
+// Each section is a chunk of its own, loaded when it first opens (T3 splits its settings routes, D440).
+const lazySection = <P extends object>(load: () => Promise<ComponentType<P>>) =>
+  lazyChunk(load, {
+    loading: () => null,
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load this section.</ChunkFailed>,
+  });
+const GeneralSection = lazySection(() => import("./general.tsx").then((m) => m.GeneralSection));
+const AppearanceSection = lazySection(() =>
+  import("./general.tsx").then((m) => m.AppearanceSection),
+);
+const KeybindingsSection = lazySection(() =>
+  import("./keybindings.tsx").then((m) => m.KeybindingsSection),
+);
+const NodesSection = lazySection(() => import("./nodes.tsx").then((m) => m.NodesSection));
+const NodeConfigSection = lazySection(() =>
+  import("./node-config.tsx").then((m) => m.NodeConfigSection),
+);
+const ArchivedSection = lazySection(() => import("./archived.tsx").then((m) => m.ArchivedSection));
 
 const SettingsContext = createContext<SettingsServices | undefined>(undefined);
 
