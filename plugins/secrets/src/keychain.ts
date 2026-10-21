@@ -14,7 +14,7 @@ export type Runner = (
   input: string,
 ) => Promise<{ readonly code: number; readonly stdout: string }>;
 
-export const runProcess: Runner = (command, args, input) =>
+const runProcess: Runner = (command, args, input) =>
   new Promise((resolve) => {
     let child: ChildProcess.ChildProcess;
     try {
