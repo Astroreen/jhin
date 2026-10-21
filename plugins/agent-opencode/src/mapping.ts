@@ -141,14 +141,14 @@ export const sameModel = (left: ModelRef, right: ModelRef | undefined) =>
   left.id === right?.id &&
   (left.variant ?? "default") === (right?.variant ?? "default");
 
-/**
- * OpenCode takes a client id (it must start with `msg_`) and answers a repeat of one with the
- * message it has; the id is unique across the server, so it names the session too.
- */
 /** A steer's client id: unique per turn, so a repeat is answered with the one OpenCode has. */
 export const steerPromptId = (sessionId: string, turnId: string, index: number) =>
   `msg_jhin_steer_${sessionId}:${turnId}:${index}`;
 
+/**
+ * OpenCode takes a client id (it must start with `msg_`) and answers a repeat of one with the
+ * message it has; the id is unique across the server, so it names the session too.
+ */
 export const turnPromptId = (sessionId: string, turnId: string) =>
   `msg_jhin_turn_${sessionId}:${turnId}`;
 
