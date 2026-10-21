@@ -51,7 +51,8 @@ terminals of threads on mesh members (terminal).
   append. Thread streams, the thread index and everything a mirror copies
   (D26) are never trimmed: a mirror copies a stream gap-free from sequence 1.
 - **D498. A follower that finds a gap starts over.** The client's source
-  control feed (D118) treats an event whose sequence is not the one after the
+  control feed of a connected node (D118; a member's follows a stream only
+  with D503) treats an event whose sequence is not the one after the
   last it applied as a sign that it missed some (the stream was trimmed past
   where it resumed after a disconnect), and reads `git.status` again, then
   follows the stream after the new head, as after a refused subscription.
@@ -151,6 +152,9 @@ A stack of three PRs, each based on the one before:
    node processes, with screenshots.
 
 ## Deferred
+
+- Trimming on a `storage.eventlog` provider older than 1.2: `keepNewest`
+  trims nothing there, so `source-control` and `mesh/outbox` grow as before.
 
 - Mirrors of trimmed streams: a mirror copies from sequence 1 and treats a
   gap as a failed append (D26), so a stream that may be trimmed must not be

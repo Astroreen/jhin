@@ -17,21 +17,34 @@ describe("jhin.source-control: the stream's history (D497)", () => {
       })),
     );
 
-    const sc = await node({}, { storage });
-    // The first status waits for the trim at start.
-    const snapshot = await sc.status();
+    // Records each trim: where the stream's head was, what it cut, and when it finished.
+    const order: string[] = [];
+    const trims: { head: number; through: number; forgot: number }[] = [];
+    const trim = log.trim!.bind(log);
+    log.trim = async (stream, through) => {
+      const head = await log.head(stream);
+      const forgot = await trim(stream, through);
+      trims.push({ head, through, forgot });
+      order.push("trimmed");
+      return forgot;
+    };
 
-    // The node may append (a project read) before and after the trim; however it
-    // interleaves, the stream keeps its numbering and was cut to HISTORY at the trim.
-    const head = await log.head(SOURCE_CONTROL_STREAM);
-    const prefilled = HISTORY + 150;
-    expect(snapshot.head).toBeGreaterThanOrEqual(prefilled);
-    expect(snapshot.head).toBeLessThanOrEqual(head);
+    const sc = await node({}, { storage });
+    const snapshot = await sc.status();
+    order.push("status");
+
+    // One trim at start, down to the newest HISTORY events, finished before the first status.
+    expect(trims[0]).toEqual({
+      head: trims[0]!.head,
+      through: trims[0]!.head - HISTORY,
+      forgot: trims[0]!.head - HISTORY,
+    });
+    expect(trims[0]!.head).toBeGreaterThanOrEqual(HISTORY + 150);
+    expect(order.indexOf("trimmed")).toBeLessThan(order.indexOf("status"));
+    // What the trim kept is still there, numbered as before, and git.status's head lies in it.
     const kept = (await log.read(SOURCE_CONTROL_STREAM)).map((event) => event.sequence);
+    expect(kept[0]).toBe(trims[0]!.through + 1);
     expect(kept).toEqual(Array.from({ length: kept.length }, (_, index) => kept[0]! + index));
-    expect(kept.at(-1)).toBe(head);
-    // At least HISTORY kept, and no more than HISTORY plus what came after the prefill.
-    expect(kept.length).toBeGreaterThanOrEqual(HISTORY);
-    expect(kept.length).toBeLessThanOrEqual(HISTORY + (head - prefilled));
+    expect(snapshot.head).toBeGreaterThanOrEqual(trims[0]!.head);
   });
 });
