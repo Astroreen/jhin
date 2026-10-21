@@ -713,7 +713,7 @@ function EditorForm(props: {
     draft.modelKey === ""
       ? "The node's default"
       : (modelChoices.find((choice) => choice.key === draft.modelKey)?.label ??
-        "Unavailable model");
+        (agents === undefined ? "Loading models…" : "Unavailable model"));
 
   const submit = async () => {
     if (saving || editingTaskMissing || !connected) return;
@@ -732,7 +732,8 @@ function EditorForm(props: {
       enabled: draft.enabled,
       schedule,
       threadId: draft.threadId || null,
-      workspaceStrategy: workspaceFromDraft(draft),
+      // Only a run's new thread takes one; a bound thread keeps its own (D983).
+      ...(draft.threadId === "" ? { workspaceStrategy: workspaceFromDraft(draft) } : {}),
       ...agentFromDraft(draft),
     };
     setSaving(true);
@@ -879,28 +880,31 @@ function EditorForm(props: {
                 </SelectPopup>
               </Select>
             </Field>
-            <Field htmlFor="scheduled-task-workspace" label="Workspace">
-              <Select
-                onValueChange={(value) =>
-                  setDraft((current) => ({ ...current, workspaceMode: value as WorkspaceMode }))
-                }
-                value={draft.workspaceMode}
-              >
-                <SelectTrigger id="scheduled-task-workspace" size="sm">
-                  <SelectValue>{WORKSPACE_MODE_LABELS[draft.workspaceMode]}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  {(["worktree", "root", "existing_worktree"] as const).map((mode) => (
-                    <SelectItem key={mode} label={WORKSPACE_MODE_LABELS[mode]} value={mode}>
-                      {WORKSPACE_MODE_LABELS[mode]}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            </Field>
+            {/* A bound thread keeps its own workspace (D983). */}
+            {draft.threadId !== "" ? null : (
+              <Field htmlFor="scheduled-task-workspace" label="Workspace">
+                <Select
+                  onValueChange={(value) =>
+                    setDraft((current) => ({ ...current, workspaceMode: value as WorkspaceMode }))
+                  }
+                  value={draft.workspaceMode}
+                >
+                  <SelectTrigger id="scheduled-task-workspace" size="sm">
+                    <SelectValue>{WORKSPACE_MODE_LABELS[draft.workspaceMode]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {(["worktree", "root", "existing_worktree"] as const).map((mode) => (
+                      <SelectItem key={mode} label={WORKSPACE_MODE_LABELS[mode]} value={mode}>
+                        {WORKSPACE_MODE_LABELS[mode]}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </Field>
+            )}
           </div>
 
-          {draft.workspaceMode === "worktree" ? (
+          {draft.threadId === "" && draft.workspaceMode === "worktree" ? (
             <Field htmlFor="scheduled-task-base-ref" label="Base branch">
               <div className="flex items-center gap-3">
                 <Input
@@ -925,7 +929,7 @@ function EditorForm(props: {
               </div>
             </Field>
           ) : null}
-          {draft.workspaceMode === "existing_worktree" ? (
+          {draft.threadId === "" && draft.workspaceMode === "existing_worktree" ? (
             <Field htmlFor="scheduled-task-checkout" label="Checkout path">
               <Input
                 id="scheduled-task-checkout"
@@ -965,7 +969,8 @@ function EditorForm(props: {
                   The node's default
                 </SelectItem>
                 {/* A model the node no longer lists stays a choice, so the value matches. */}
-                {draft.modelKey !== "" &&
+                {agents !== undefined &&
+                draft.modelKey !== "" &&
                 !modelChoices.some((choice) => choice.key === draft.modelKey) ? (
                   <SelectItem label="Unavailable model" value={draft.modelKey}>
                     Unavailable model

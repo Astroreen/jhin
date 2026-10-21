@@ -253,7 +253,11 @@ export function draftProblem(
       description: "Add a title, prompt and project.",
     };
   }
-  if (draft.workspaceMode === "existing_worktree" && !draft.existingWorktreePath.trim()) {
+  if (
+    draft.threadId === "" &&
+    draft.workspaceMode === "existing_worktree" &&
+    !draft.existingWorktreePath.trim()
+  ) {
     return {
       title: "Checkout path is required",
       description: "Enter the path of the checkout to run in.",

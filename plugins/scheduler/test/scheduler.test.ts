@@ -4,7 +4,7 @@ import * as Path from "node:path";
 
 import type { ScheduledTask } from "@jhin/scheduler-api";
 import { connectInMemory } from "@jhin/testing";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 
 import { fakeClock, heldThreads, node, prompts } from "./support.ts";
 
@@ -401,6 +401,7 @@ describe("jhin.scheduler: a run's workspace (D983)", () => {
   it("starts each run's thread in the task's workspace, and keeps it on the task", async () => {
     const { client } = await node();
     const checkout = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-checkout-"));
+    onTestFinished(() => Fs.rmSync(checkout, { recursive: true, force: true }));
     const created = await client.call<ScheduledTask>("scheduler.tasks.create", {
       prompt: "Look here",
       schedule: { type: "interval", everyMs: 60 * MINUTE },
