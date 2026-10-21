@@ -148,7 +148,7 @@ export interface ComposerHandle {
         cycleRuntimeMode(): void;
         togglePlanMode(): void;
         /** Sends the composer's message the other way while a turn runs (queue or steer). */
-        sendAlternate(): void;
+        sendAlternate(): Promise<boolean>;
         /** Steers the first queued message into the running turn; false when there is none. */
         steerNext(): boolean;
         /** Loads the last queued message into the composer to edit it; false when it cannot. */

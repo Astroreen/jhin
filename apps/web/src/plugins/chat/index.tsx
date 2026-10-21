@@ -562,6 +562,21 @@ export const chatPlugin = builtin(
             return {};
           },
         });
+      /** A command that answers whether it did anything (`done`, D806), as the palette and MCP need. */
+      const answer = (
+        name: string,
+        title: string,
+        description: string,
+        run: () => boolean | Promise<boolean>,
+      ) =>
+        context.commands.register({
+          name,
+          title,
+          description,
+          input: z.object({}),
+          output: z.object({ done: z.boolean() }),
+          handler: async () => ({ done: await run() }),
+        });
       register(
         "chat.composer.focus",
         "Focus the composer",
@@ -599,17 +614,17 @@ export const chatPlugin = builtin(
       );
       // The queue's shortcuts and the composer's other send, T3's
       // thread.steerQueuedMessage, thread.editQueuedMessage and composer.sendAlternate (D210).
-      register(
+      answer(
         "chat.queue.steer-next",
         "Steer the next queued message",
-        "Sends the open thread's first queued message into its running turn",
-        () => void composer.current?.steerNext(),
+        "Sends the open thread's first queued message into its running turn; `done` is false when there was none to steer",
+        () => composer.current?.steerNext() ?? false,
       );
-      register(
+      answer(
         "chat.queue.edit-latest",
         "Edit the last queued message",
-        "Loads the open thread's last queued message into the composer to change it",
-        () => void composer.current?.editLatest(),
+        "Loads the open thread's last queued message into the composer to change it; `done` is false when it could not",
+        () => composer.current?.editLatest() ?? false,
       );
       // T3's find in the thread (D801).
       register("chat.find", "Find in thread", "Opens the find bar of the open thread", () =>
@@ -625,11 +640,11 @@ export const chatPlugin = builtin(
         output: z.object({ resumed: z.boolean() }),
         handler: () => ({ resumed: composer.current?.resume() ?? false }),
       });
-      register(
+      answer(
         "chat.composer.send-alternate",
         "Send the other way",
-        "While a turn runs, steers the composer's message when follow-ups queue, or queues it when they steer",
-        () => composer.current?.sendAlternate(),
+        "While a turn runs, steers the composer's message when follow-ups queue, or queues it when they steer; `done` is false when nothing was sent",
+        () => composer.current?.sendAlternate() ?? false,
       );
       register(
         "chat.stop",

@@ -33,6 +33,7 @@ import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
 import { proposedPlanTitle } from "../../lib/proposed-plan.ts";
 import { actionablePlan, openRequests } from "../../lib/timeline.ts";
+import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import {
   Composer,
   type ComposerHandleApi,
@@ -42,10 +43,16 @@ import {
 import { ChatHeader } from "./header.tsx";
 import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
 import { useChat } from "./services.ts";
-import { ThreadFindBar, useThreadFind } from "./thread-find.tsx";
+import { useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
 import { AttachmentLoaderContext, TimelineView } from "./timeline.tsx";
+
+/** T3's find bar, a chunk of its own (D440): the find itself stays with the view. */
+const ThreadFindBar = lazyChunk(
+  () => import("./thread-find-bar.tsx").then((module) => module.ThreadFindBar),
+  { loading: () => null, failed: () => null },
+);
 
 /** Stick to the end while the user is there; a pill brings them back otherwise. */
 function useStickToEnd(dependency: unknown) {
@@ -176,7 +183,7 @@ export function ThreadView(props: {
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
-      sendAlternate: () => handle.current?.sendAlternate(),
+      sendAlternate: async () => (await handle.current?.sendAlternate()) ?? false,
       steerNext: () => handle.current?.steerNext() ?? false,
       editLatest: () => handle.current?.editLatest() ?? false,
       resume: () => handle.current?.resume() ?? false,
@@ -643,7 +650,7 @@ export function DraftView(props: {
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
-      sendAlternate: () => handle.current?.sendAlternate(),
+      sendAlternate: async () => (await handle.current?.sendAlternate()) ?? false,
       steerNext: () => handle.current?.steerNext() ?? false,
       editLatest: () => handle.current?.editLatest() ?? false,
       resume: () => handle.current?.resume() ?? false,
