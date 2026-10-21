@@ -1,7 +1,8 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/ComposerPromptEditorTiptap.tsx, apps/web/src/composer-rich-text-doc.ts,
 // apps/web/src/composer-rich-text.ts, apps/web/src/composer-code-block.ts,
-// apps/web/src/composer-undo-grouping.ts and apps/web/src/composer-list-continuation.ts at eb7b35ac.
+// apps/web/src/composer-undo-grouping.ts, apps/web/src/composer-list-continuation.ts and
+// apps/web/src/composer-editor-mentions.ts at eb7b35ac.
 //
 // The composer's prompt editor (D303): a tiptap document over a prompt that stays a markdown
 // string. Inline marks, lists, quotes and code blocks show styled; file links and skills show as
@@ -1312,6 +1313,39 @@ const EXTENSIONS = [
 ];
 
 // ---------------------------------------------------------------------------------------------
+// Surround (ComposerPromptEditorTiptap.tsx handleTextInput, composer-editor-mentions.ts)
+
+const SURROUND_CLOSE: Readonly<Record<string, string>> = {
+  "(": ")",
+  "[": "]",
+  "{": "}",
+  "'": "'",
+  '"': '"',
+  "“": "”",
+  "`": "`",
+  "<": ">",
+  "«": "»",
+  "*": "*",
+  _: "_",
+};
+
+/** Whether [from, to) holds the whitespace just before or after a chip, which the chip needs. */
+function boundsChip(doc: ProseMirrorNode, from: number, to: number): boolean {
+  let touches = false;
+  const whitespaceAt = (pos: number) =>
+    pos >= from && pos < to && /\s/.test(doc.textBetween(pos, pos + 1, "", ""));
+  // Only a chip just outside the range or inside it can own one of its characters.
+  doc.nodesBetween(Math.max(0, from - 1), Math.min(doc.content.size, to + 1), (node, pos) => {
+    if (touches) return false;
+    if (node.isAtom && node.isInline && !node.isText) {
+      touches = whitespaceAt(pos - 1) || whitespaceAt(pos + node.nodeSize);
+    }
+    return true;
+  });
+  return touches;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Code blocks (composer-code-block.ts)
 
 function codeBlockText(state: EditorState): { from: number; text: string } | null {
@@ -1616,6 +1650,38 @@ export function PromptEditor(props: PromptEditorProps) {
     return splitBlockKeepMarks(view.state, dispatch);
   };
 
+  /** T3's surround (D844): a bracket or quote typed over a selection wraps it. */
+  const surroundSelection = (view: EditorView, from: number, to: number, text: string) => {
+    if (view.composing || text.length !== 1) return false;
+    const closer = SURROUND_CLOSE[text];
+    const { selection, doc } = view.state;
+    // An input method's update replaces a range even without a user selection.
+    if (
+      closer === undefined ||
+      !(selection instanceof TextSelection) ||
+      selection.empty ||
+      selection.from !== from ||
+      selection.to !== to
+    ) {
+      return false;
+    }
+    // Never a chip or styled text (the plain replace keeps its marks), nor the space bounding a chip.
+    let special = false;
+    doc.nodesBetween(from, to, (node) => {
+      if (
+        (node.isAtom && node.isInline && !node.isText) ||
+        (node.isText && node.marks.length > 0)
+      ) {
+        special = true;
+      }
+      return !special;
+    });
+    if (special || boundsChip(doc, from, to)) return false;
+    const tr = view.state.tr.insertText(closer, to).insertText(text, from);
+    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, from + 1, to + 1)));
+    return true;
+  };
+
   /** Pasted text is read as markdown, so a pasted file link or list arrives as one. */
   const handlePaste = (view: EditorView, event: ClipboardEvent): boolean => {
     const data = event.clipboardData;
@@ -1674,6 +1740,7 @@ export function PromptEditor(props: PromptEditorProps) {
       editorProps: {
         attributes,
         handleKeyDown,
+        handleTextInput: surroundSelection,
         handlePaste,
         handleDOMEvents: {
           paste: (_view, event) => {

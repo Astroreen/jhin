@@ -106,6 +106,18 @@ export function GeneralSection() {
           resetAction={reset("followUpBehavior", "follow-up behavior")}
           title="Follow-up behavior"
         />
+        <SettingsRow
+          control={
+            <Switch
+              aria-label="Show skills in slash menu"
+              checked={chat.showSkillsInSlashMenu}
+              onCheckedChange={(showSkillsInSlashMenu) => set({ showSkillsInSlashMenu })}
+            />
+          }
+          description="Also include skills in the / command menu. Skills always appear when you type $."
+          resetAction={reset("showSkillsInSlashMenu", "skills in slash menu")}
+          title="Show skills in slash menu"
+        />
         <DiffRows />
       </SettingsSection>
       {/* T3's "Organization" section; its auto-settle rows are node config (jhin.threads, D444). */}

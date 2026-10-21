@@ -1293,6 +1293,7 @@ export function Composer(props: ComposerProps) {
     prompt,
     cursor,
     planMode: planSupported,
+    showSkillsInSlashMenu: settings.showSkillsInSlashMenu,
     enabled: approval === undefined && question === undefined,
   });
   /** T3's onSelectComposerItem: inserts the command, skill or file, or runs a built-in. */

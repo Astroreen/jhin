@@ -385,3 +385,32 @@ describe("code blocks in the prompt (D841–D843)", () => {
       .toBeEnabled();
   });
 });
+
+describe("wrapping a selection (D844)", () => {
+  it("wraps the selection in a bracket or quote and keeps it selected", async () => {
+    const editor = mount("say word");
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    tiptap.commands.setTextSelection({ from: 5, to: 9 });
+    tiptap.commands.focus();
+    await userEvent.keyboard("(");
+    await editor.reported("say (word)");
+    await userEvent.keyboard('"');
+    await editor.reported('say ("word")');
+    expect(
+      tiptap.state.doc.textBetween(tiptap.state.selection.from, tiptap.state.selection.to),
+    ).toBe("word");
+  });
+
+  it("replaces a selection that holds the space a chip needs, as T3 does", async () => {
+    const editor = mount("[a.ts](src/a.ts) next");
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    const end = tiptap.state.doc.content.size - 1;
+    // The space after the chip and "next".
+    tiptap.commands.setTextSelection({ from: end - 5, to: end });
+    tiptap.commands.focus();
+    expect(tiptap.state.doc.textBetween(end - 5, end)).toBe(" next");
+    await userEvent.keyboard("(");
+    // Replaced, as T3 does, rather than wrapped.
+    await editor.reported("[a.ts](src/a.ts)(");
+  });
+});

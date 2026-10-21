@@ -234,11 +234,13 @@ export function slashMenuItems(input: {
   readonly planMode: boolean;
   readonly commands: readonly AgentSlashCommand[];
   readonly skills: readonly AgentSkill[];
+  /** T3's "Show skills in slash menu" (D845); off, a command named like a skill shows again. */
+  readonly showSkills: boolean;
   readonly query: string;
   readonly atPromptStart: boolean;
   readonly promptOtherwiseEmpty: boolean;
 }): ComposerMenuItem[] {
-  const skills = dedupeSkills(input.skills);
+  const skills = !input.showSkills ? [] : dedupeSkills(input.skills);
   const skillNames = new Set(skills.map((skill) => skill.name.toLowerCase()));
   const items: ComposerMenuItem[] = [
     ...builtInCommands(input.planMode),
