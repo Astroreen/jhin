@@ -248,7 +248,7 @@ Not decisions. Each needs a plan before it is built (AGENTS.md rule 4: what is
 not built goes to Deferred). They map onto what exists in [`../map.md`](../map.md):
 
 - **Agent entity with an address**: `jhin://<nodeId>/agents/<id>` is
-  reserved (`foundation.md#D52`). A seat is close to it: role, skills, model
+  reserved (`docs/plans/foundation.md#D52`). A seat is close to it: role, skills, model
   and inherited lore attached to the address, not to the process.
 - **Agent-to-agent messaging over the mesh**: any agent reaches any agent on
   any node, through commands (`agents.send`, `agents.ask`) so RPC, CLI and MCP

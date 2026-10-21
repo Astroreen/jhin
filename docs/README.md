@@ -41,8 +41,8 @@ what is deferred, and how it landed. Plans are canon once implemented.
 | [`mesh-streams.md`](plans/mesh-streams.md)     | relays of members' streams, trimming event log streams (W17)                              | implemented |
 | [`t3-roadmap.md`](plans/t3-roadmap.md)         | the W1–W18 workstreams porting the rest of T3 Code                                        | in progress |
 
-Workstreams add new plans (`preview.md`, `security.md`,
-`mesh-streams.md`, `desktop.md`); `t3-roadmap.md` names who owns which.
+Workstreams add new plans (`preview.md`, `mesh-streams.md`,
+`desktop.md`; [`security.md`](plans/security.md) has landed); [`t3-roadmap.md`](plans/t3-roadmap.md) names who owns which.
 
 ## Research
 
@@ -63,6 +63,8 @@ knowing the world in general, not Jhin; the library is the diff.
   ([reinvent the wheel](lore/reinvent-the-wheel.md)).
 - **Routes, not piles.** Every page is reachable from the trailhead
   (`AGENTS.md` → here → the page). A fact nobody can reach does not help.
+  `jhin context.map` lists the pages no route reaches and the routes that
+  lead nowhere; a test keeps both lists empty.
 - **One source of truth per fact.** Link to it instead of copying it. When it
   changes, it changes in one place and every link reads the new version.
 - **Stories for lessons.** A rule covers one case; a story carries the lesson
@@ -76,7 +78,7 @@ Knowledge has stable addresses, like code ids (AGENTS.md rule 8):
 - a file: `docs/plans/terminal.md`;
 - a section: `docs/plans/terminal.md#deferred` (the heading's anchor) — read
   only that section, not the whole file;
-- a decision: `foundation.md#D11`, found by searching for `**D11.`;
+- a decision: `plans/foundation.md#D11`, found by searching for `**D11.`;
 - a story: `lore/doghouse-moonbase.md`, or its name, "moonbase".
 
 Do not rename headings, files or decision numbers that others link to. Move

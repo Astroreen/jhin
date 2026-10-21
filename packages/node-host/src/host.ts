@@ -263,6 +263,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     activate(context) {
       const paths: HostPaths = {
         home: home.root,
+        cwd,
         dataDir(plugin) {
           if (!DOTTED_ID.test(plugin)) {
             throw new Error(`dataDir needs a plugin id, got ${JSON.stringify(plugin)}`);
@@ -636,7 +637,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       apiVersion: PLUGIN_API_VERSION,
       side: "server",
       provides: {
-        [HOST_PATHS_CAPABILITY]: "1.0.0",
+        [HOST_PATHS_CAPABILITY]: "1.1.0",
         [HOST_TRACE_CAPABILITY]: "1.0.0",
         [HOST_PLUGINS_CAPABILITY]: "1.0.0",
         [HOST_IDENTITY_CAPABILITY]: "1.0.0",

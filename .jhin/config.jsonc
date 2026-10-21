@@ -1,0 +1,24 @@
+// Project config layer of the Jhin repository (docs/plans/foundation.md#config).
+{
+  // How this repository's context library is arranged (jhin.context, docs/plans/agents.md#a4-context-library-and-lore-d661d680).
+  "jhin.context": {
+    // The maturity table of docs/README.md#maturity, by location. A page's
+    // front matter (`maturity: note`) overrides it; the longest prefix wins.
+    "maturity": {
+      "AGENTS.md": "canon",
+      "GLOSSARY.md": "canon",
+      "docs/map.md": "canon",
+      "docs/README.md": "canon",
+      "docs/plans/": "canon",
+      // Plans in progress are notes until they land.
+      "docs/plans/agents.md": "note",
+      "docs/plans/t3-roadmap.md": "note",
+      "docs/lore/": "insight",
+      "docs/research/": "insight",
+    },
+    "skill": {
+      "name": "jhin-map",
+      "description": "Before you add a plugin, capability, command, package or UI piece to Jhin, open this — Jhin probably already has most of it, and this shows where. Also the way in to Jhin's decisions (D-numbers), vocabulary, running workstreams and the lore of how agents go wrong here.",
+    },
+  },
+}

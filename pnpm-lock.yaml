@@ -264,6 +264,9 @@ importers:
       '@jhin/plugin-auth-token':
         specifier: workspace:*
         version: link:../../plugins/auth-token
+      '@jhin/plugin-context':
+        specifier: workspace:*
+        version: link:../../plugins/context
       '@jhin/plugin-devices':
         specifier: workspace:*
         version: link:../../plugins/devices
@@ -869,6 +872,28 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+
+  plugins/context:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      jsonc-parser:
+        specifier: 'catalog:'
+        version: 3.3.1
 
   plugins/desktop:
     dependencies:

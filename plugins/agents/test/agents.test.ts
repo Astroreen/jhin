@@ -2,9 +2,11 @@ import * as Fs from "node:fs";
 import * as Path from "node:path";
 
 import { AGENTS_STREAM, AgentEvents, ThreadEvents, threadStream } from "@jhin/agent-api";
+import { definePlugin, z } from "@jhin/sdk";
+import { testManifest } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
 
-import { MAX_KNOWLEDGE_CHARS } from "../src/index.ts";
+import { MAX_KNOWLEDGE_CHARS, deferredTurn } from "../src/index.ts";
 import { CAPTURE, NODE_ID, node, watch } from "./support.ts";
 
 const builder = { role: "Builds slices and proves them", runtime: CAPTURE, model: "m1" };
@@ -276,6 +278,121 @@ describe("defined agents", () => {
     const started = await events.until(ThreadEvents.turnStarted);
     expect((started.payload as { agentId: string }).agentId).not.toBe("builder");
     expect(started.payload).not.toHaveProperty("runtimeId");
+  });
+
+  it("starts a generation from the project's lore when the node has lore.brief (A4)", async () => {
+    const asked: unknown[] = [];
+    const lore = {
+      manifest: testManifest("test.lore", { side: "server" }),
+      definition: definePlugin({
+        activate(context) {
+          context.commands.register({
+            name: "lore.brief",
+            description: "test",
+            input: z.unknown(),
+            output: z.unknown(),
+            handler: (input) => {
+              asked.push(input);
+              return { markdown: "# Lore\n\n- **moonbase**: walk back up", stories: ["moonbase"] };
+            },
+          });
+        },
+      }),
+    };
+    const { client, requests } = await node({ agents: { builder }, plugins: [lore] });
+    const { generation } = await client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      {
+        agentId: "builder",
+        reason: "first",
+      },
+    );
+    const events = watch(client, threadStream(generation.threadId));
+    await client.call("threads.send", { threadId: generation.threadId, text: "Go" });
+    await events.until(ThreadEvents.turnCompleted);
+    expect(asked).toEqual([{ projectId: "scratch", agent: "builder", reason: "start" }]);
+    const text = requests[0]?.input.text ?? "";
+    expect(text.startsWith("# Lore")).toBe(true);
+    expect(text.endsWith("Go")).toBe(true);
+
+    // Later turns of the generation get no second copy.
+    await client.call("threads.send", { threadId: generation.threadId, text: "Again" });
+    await events.until(ThreadEvents.turnCompleted, 1);
+    expect(requests[1]?.input.text).toBe("Again");
+    expect(asked).toHaveLength(1);
+  });
+
+  it("never starts the runtime of a deferred turn interrupted before it could", async () => {
+    let release!: (value: string) => void;
+    let begun = false;
+    const turn = deferredTurn(new Promise<string>((resolve) => (release = resolve)), () => {
+      begun = true;
+      return { items: (async function* () {})(), interrupt() {} };
+    });
+    const read = (async () => {
+      for await (const _ of turn.items) throw new Error("no items");
+    })();
+    turn.interrupt();
+    expect(() => turn.steer!({ text: "now" })).toThrow();
+    await read;
+    release("lore");
+    await Promise.resolve();
+    expect(begun).toBe(false);
+  });
+
+  it("interrupts the runtime's turn once it runs", async () => {
+    let interrupted = false;
+    const turn = deferredTurn(Promise.resolve("lore"), () => ({
+      items: (async function* (): AsyncGenerator<never> {})(),
+      interrupt: () => {
+        interrupted = true;
+      },
+    }));
+    for await (const _ of turn.items) throw new Error("no items");
+    turn.interrupt();
+    expect(interrupted).toBe(true);
+  });
+
+  it("fails a deferred turn's items when its runtime fails to start", async () => {
+    const turn = deferredTurn(Promise.resolve(""), () => {
+      throw new Error("no runtime");
+    });
+    await expect(
+      (async () => {
+        for await (const _ of turn.items) return;
+      })(),
+    ).rejects.toThrow("no runtime");
+  });
+
+  it("starts a generation without lore when lore.brief fails", async () => {
+    const failing = {
+      manifest: testManifest("test.lore", { side: "server" }),
+      definition: definePlugin({
+        activate(context) {
+          context.commands.register({
+            name: "lore.brief",
+            description: "test",
+            input: z.unknown(),
+            output: z.unknown(),
+            handler: () => {
+              throw new Error("the library is unreadable");
+            },
+          });
+        },
+      }),
+    };
+    const { client, requests } = await node({ agents: { builder }, plugins: [failing] });
+    const { generation } = await client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      {
+        agentId: "builder",
+        reason: "first",
+      },
+    );
+    const events = watch(client, threadStream(generation.threadId));
+    await client.call("threads.send", { threadId: generation.threadId, text: "Go" });
+    await events.until(ThreadEvents.turnCompleted);
+    expect(requests[0]?.input.text).toBe("Go");
   });
 
   it("names the knowledge files past the budget instead of inlining them", async () => {

@@ -143,6 +143,8 @@ export async function node(
     restart?: Restart;
     /** What the project file says, as `{ section: value }`. */
     project?: Record<string, unknown>;
+    /** More plugins on the node, such as a `lore.brief` command. */
+    plugins?: readonly TestPlugin[];
   } = {},
 ) {
   const data = options.restart?.data ?? Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-agents-"));
@@ -174,6 +176,7 @@ export async function node(
     captureRuntime(requests),
     hostConfig(() => kernel!, layers, patches),
     { manifest: manifest("agents"), definition: agents },
+    ...(options.plugins ?? []),
   ];
   kernel = await createTestKernel({ plugins, config: layers });
   const { client } = connectInMemory(kernel, { log: storage.storage.log });

@@ -5,6 +5,11 @@ export interface HostPaths {
   /** The Jhin home directory. */
   readonly home: string;
   /**
+   * The project directory the node runs in (`jhin --cwd`), whose `.jhin/`
+   * holds the project config layer and workspace plugins. Since 1.1.
+   */
+  readonly cwd?: string;
+  /**
    * A directory for `plugin`'s data, created on first use. `plugin` must be a
    * plugin id; anything else (`..`, `/`) is rejected.
    */
