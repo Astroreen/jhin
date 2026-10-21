@@ -5,6 +5,7 @@ import { definePlugin, type LogFields, type Logger } from "@jhin/sdk";
 import { builtin, type BuiltinPlugin } from "./lib/builtin.ts";
 import { chatPlugin } from "./plugins/chat/index.tsx";
 import { civilizationPlugin } from "./plugins/civilization.tsx";
+import { inboxPlugin } from "./plugins/inbox/index.tsx";
 import { commandPalettePlugin } from "./plugins/command-palette.tsx";
 import { connectionsPlugin } from "./plugins/connections.ts";
 import { deviceSyncPlugin } from "./plugins/device-sync.ts";
@@ -176,6 +177,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     inspectorPlugin,
     modeSwitcherPlugin,
     civilizationPlugin,
+    inboxPlugin,
   ];
 }
 
