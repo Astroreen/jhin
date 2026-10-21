@@ -440,8 +440,13 @@ export const chatPlugin = builtin(
 
       // Which threads keep an unsent draft, for their cards (t3-parity.md D963).
       context.services.provide<ChatDrafts>(CHAT_DRAFTS_CAPABILITY, {
-        hasThreadDraft: (target, threadId) =>
-          services.drafts.get(threadDraftKey(target, threadId)) !== undefined,
+        hasThreadDraft: (target, threadId) => {
+          // Blank text alone is no draft (T3's composerDraftHasUserContent).
+          const draft = services.drafts.get(threadDraftKey(target, threadId));
+          return (
+            draft !== undefined && (draft.prompt.trim() !== "" || draft.attachments.length > 0)
+          );
+        },
         subscribe: (listener) => services.drafts.subscribe(listener),
       });
 
