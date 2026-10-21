@@ -96,7 +96,7 @@ test("D250–D255: a draft starts its thread in a new worktree; deleting the thr
   await shot(page, info, "worktree-revert");
   await rewind.getByRole("button", { name: "Revert files too" }).click();
   await expect(log.getByRole("article", { name: "You" })).toHaveCount(1);
-  await expect(message).toHaveValue("/write later.txt two");
+  await expect(message).toHaveText("/write later.txt two");
   expect(Fs.existsSync(Path.join(path, "later.txt"))).toBe(false);
   expect(Fs.readFileSync(Path.join(path, "notes.txt"), "utf8")).toBe("in a worktree\n");
   await message.fill("");
