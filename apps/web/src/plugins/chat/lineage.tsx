@@ -22,7 +22,7 @@ import {
 import { useState, type ComponentType, type ReactNode } from "react";
 
 import { useCatalog } from "../../lib/hooks.ts";
-import { forkRan } from "./history.tsx";
+import { forkRan } from "../../lib/forks.ts";
 
 const LINEAGE_INITIAL_COUNT = 6;
 const LINEAGE_PAGE_COUNT = 12;
@@ -215,7 +215,10 @@ export function createLineage(deps: {
                   </span>
                   {parent ? null : (
                     <>
-                      <ArrowRightIcon className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                      <ArrowRightIcon
+                        aria-hidden
+                        className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                      />
                       <Status label={status} />
                     </>
                   )}
