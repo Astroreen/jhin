@@ -22,6 +22,11 @@ const SessionRequest = z.object({ credential: z.string().min(1).max(512) });
 export interface AuthHttpOptions {
   readonly http: HttpServer;
   readonly log: Logger;
+  /**
+   * Failed attempts per route, client address and minute. The plugin keeps it
+   * in its kernel-scoped state, so a reload does not reset the limit.
+   */
+  readonly attempts: Map<string, number>;
   /** A pairing code becomes a device token, or undefined for a wrong, used or expired code. */
   pair(code: string, label: string | undefined): IssuedToken | undefined;
   /** A token or pairing code becomes the page's own device token (security.md D421). */
@@ -106,7 +111,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
   const { http, log } = options;
   const store = new DisposableStore();
   const cookie = sessionCookieName(new URL(http.url).port);
-  const attempts = new Map<string, number>();
+  const { attempts } = options;
 
   /** False (and answered with 429) once a client tried too often this minute. */
   const bucket = (route: string, request: IncomingMessage) =>

@@ -689,6 +689,21 @@ describe("pairing (security.md D419–D422)", () => {
     expect((await post(`${httpUrl(node)}/auth/pair`, { code })).status).toBe(401);
   });
 
+  it("limits failed sign-ins on its own route, through a reload of the token plugin", async () => {
+    const node = await startNode();
+    const attempt = () => post(`${httpUrl(node)}/auth/session`, { credential: "wrong" });
+    const responses: Response[] = [];
+    for (let index = 0; index < 15; index++) responses.push(await attempt());
+    // Counted failures stay counted when the plugin reloads.
+    await node.kernel.reload("jhin.auth-token");
+    for (let index = 0; index < 26; index++) responses.push(await attempt());
+    // 41 failures cross 20 a minute even split by a minute boundary.
+    const limited = responses.find((response) => response.status === 429);
+    expect(limited).toBeDefined();
+    expect(limited!.headers.get("access-control-allow-origin")).toBeNull();
+    expect(await limited!.json()).toMatchObject({ code: "TOO_MANY_SESSION_ATTEMPTS" });
+  });
+
   it("keeps open codes through a reload of the token plugin", async () => {
     const node = await startNode();
     const { code } = await createCode(node);

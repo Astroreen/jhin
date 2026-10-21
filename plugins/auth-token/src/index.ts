@@ -343,6 +343,13 @@ export default definePlugin({
         serveAuthHttp({
           http,
           log: context.log,
+          attempts:
+            context.state.get<Map<string, number>>("attempts") ??
+            (() => {
+              const created = new Map<string, number>();
+              context.state.set("attempts", created);
+              return created;
+            })(),
           pair(code, label) {
             return pairing.redeem(code, Date.now(), (link) =>
               issuePaired(link.permissions, link.label ?? label ?? "Paired device"),
