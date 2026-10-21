@@ -267,9 +267,6 @@ importers:
       '@jhin/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
-      '@jhin/mesh-api':
-        specifier: workspace:*
-        version: link:../../packages/mesh-api
       '@jhin/preview-api':
         specifier: workspace:*
         version: link:../../packages/preview-api
