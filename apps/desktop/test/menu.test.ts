@@ -155,4 +155,42 @@ describe("buildApplicationMenu", () => {
     click(find(menu, "acme.palette"));
     expect(calls).toEqual(["command:palette.toggle"]);
   });
+
+  it("keeps the first item of an id and drops shortcuts already taken", () => {
+    const { handlers } = recorder();
+    const menu = buildApplicationMenu({
+      platform: "linux",
+      appName: "Jhin",
+      handlers,
+      contributions: [
+        {
+          id: "acme.one",
+          menu: "view",
+          label: "One",
+          command: "a",
+          accelerator: "CmdOrCtrl+Shift+P",
+        },
+        { id: "acme.one", menu: "help", label: "Again", command: "b" },
+        {
+          id: "acme.two",
+          menu: "view",
+          label: "Two",
+          command: "c",
+          accelerator: "Shift+CmdOrCtrl+p",
+        },
+        {
+          id: "acme.reload",
+          menu: "view",
+          label: "Reload",
+          command: "d",
+          accelerator: "cmdorctrl+r",
+        },
+      ],
+    });
+
+    expect(outline(menu).at(-1)).toEqual({ help: ["Check for Updates..."] });
+    expect(find(menu, "acme.one")).toMatchObject({ accelerator: "CmdOrCtrl+Shift+P" });
+    expect(find(menu, "acme.two")).not.toHaveProperty("accelerator");
+    expect(find(menu, "acme.reload")).not.toHaveProperty("accelerator");
+  });
 });

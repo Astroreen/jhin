@@ -34,6 +34,68 @@ function contributed(
   ];
 }
 
+/**
+ * Shortcuts of the built-in items, explicit or of their roles: a plugin's item
+ * cannot take them (D516).
+ */
+const BUILT_IN_ACCELERATORS = [
+  "CmdOrCtrl+,",
+  "CmdOrCtrl+R",
+  "Shift+CmdOrCtrl+R",
+  "Alt+Command+I",
+  "Ctrl+Shift+I",
+  "CmdOrCtrl+0",
+  "CmdOrCtrl+=",
+  "CmdOrCtrl+Plus",
+  "CmdOrCtrl+-",
+  "CmdOrCtrl+num0",
+  "CmdOrCtrl+numadd",
+  "CmdOrCtrl+numsub",
+  "CmdOrCtrl+Z",
+  "Shift+CmdOrCtrl+Z",
+  "CmdOrCtrl+X",
+  "CmdOrCtrl+C",
+  "CmdOrCtrl+V",
+  "CmdOrCtrl+A",
+  "CmdOrCtrl+Q",
+  "CmdOrCtrl+W",
+  "CmdOrCtrl+M",
+  "CmdOrCtrl+H",
+  "F11",
+];
+
+/** A shortcut's keys, whatever their order and case: `Shift+CmdOrCtrl+R` is `cmdorctrl+r+shift`. */
+function keys(accelerator: string): string {
+  return accelerator.toLowerCase().split("+").toSorted().join("+");
+}
+
+/**
+ * The plugins' items the menu can show: the first item of an id, and no
+ * shortcut that a built-in item or an earlier item already has.
+ */
+function usableContributions(items: readonly DesktopMenuContribution[]): DesktopMenuContribution[] {
+  const ids = new Set<string>();
+  const taken = new Set(BUILT_IN_ACCELERATORS.map(keys));
+  const usable: DesktopMenuContribution[] = [];
+  for (const item of items) {
+    if (ids.has(item.id)) continue;
+    ids.add(item.id);
+    if (item.accelerator === undefined) {
+      usable.push(item);
+      continue;
+    }
+    const shortcut = keys(item.accelerator);
+    if (taken.has(shortcut)) {
+      const { accelerator: _taken, ...rest } = item;
+      usable.push(rest);
+    } else {
+      taken.add(shortcut);
+      usable.push(item);
+    }
+  }
+  return usable;
+}
+
 /** The application menu: T3's template, plus the items plugins contribute. */
 export function buildApplicationMenu(options: {
   readonly platform: NodeJS.Platform;
@@ -41,7 +103,8 @@ export function buildApplicationMenu(options: {
   readonly handlers: MenuHandlers;
   readonly contributions: readonly DesktopMenuContribution[];
 }): MenuItemConstructorOptions[] {
-  const { platform, appName, handlers, contributions } = options;
+  const { platform, appName, handlers } = options;
+  const contributions = usableContributions(options.contributions);
   const mac = platform === "darwin";
   const settings: MenuItemConstructorOptions = {
     id: "jhin.settings",

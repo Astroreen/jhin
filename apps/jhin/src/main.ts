@@ -12,6 +12,11 @@ import type { CommandInfo } from "@jhin/sdk";
 
 const require = Module.createRequire(import.meta.url);
 
+// The desktop app runs this CLI with its own Node through ELECTRON_RUN_AS_NODE
+// (docs/plans/desktop.md, D512); what the node starts (agents, terminals,
+// tools) must not inherit it, or an Electron app it launches runs as Node.
+delete process.env["ELECTRON_RUN_AS_NODE"];
+
 /**
  * Package directories of the plugins this CLI ships with. A mode is a set of
  * plugins (D21): `serve` = `jhinDistribution`, `serve --ui` adds `jhinUi`,

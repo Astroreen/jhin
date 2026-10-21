@@ -65,6 +65,16 @@ export function startLocalNode(
   child.once("exit", () => {
     if (!stopping) for (const listener of exitListeners) listener(output);
   });
+  /** SIGTERM, then SIGKILL if the node has not exited after the grace period. */
+  const stop = async () => {
+    stopping = true;
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    // A node stuck in its plugins' dispose must not keep the app from quitting.
+    const kill = setTimeout(() => child.kill("SIGKILL"), STOP_GRACE_MS);
+    await exited;
+    clearTimeout(kill);
+  };
 
   return new Promise((resolve, reject) => {
     const onData = () => {
@@ -83,9 +93,12 @@ export function startLocalNode(
         // Missing: reported below.
       }
       if (token === "") {
-        stopping = true;
-        child.kill("SIGTERM");
-        reject(new Error(`The local node has no access token at ${tokenFile}:\n${output.trim()}`));
+        // Stopped before the error is shown, so Try Again does not meet the old node.
+        void stop().then(() =>
+          reject(
+            new Error(`The local node has no access token at ${tokenFile}:\n${output.trim()}`),
+          ),
+        );
         return;
       }
       resolve({
@@ -93,15 +106,7 @@ export function startLocalNode(
         token,
         home,
         onExit: (listener) => void exitListeners.push(listener),
-        async stop() {
-          stopping = true;
-          if (child.exitCode !== null || child.signalCode !== null) return;
-          child.kill("SIGTERM");
-          // A node stuck in its plugins' dispose must not keep the app from quitting.
-          const kill = setTimeout(() => child.kill("SIGKILL"), STOP_GRACE_MS);
-          await exited;
-          clearTimeout(kill);
-        },
+        stop,
       });
     };
     const onEarlyExit = (code: number | null) => {

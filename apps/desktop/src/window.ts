@@ -197,11 +197,14 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     if (parseSafeExternalUrl(url) !== undefined) void shell.openExternal(url);
     return { action: "deny" };
   });
-  contents.on("will-navigate", (event, url) => {
+  // A link or a server redirect: the page with the bridge never leaves the node.
+  const keepOnNode = (event: Electron.Event, url: string) => {
     if (URL.canParse(url) && new URL(url).origin === new URL(options.node().url).origin) return;
     event.preventDefault();
     if (parseSafeExternalUrl(url) !== undefined) void shell.openExternal(url);
-  });
+  };
+  contents.on("will-navigate", keepOnNode);
+  contents.on("will-redirect", keepOnNode);
 
   // Ctrl+wheel never reaches the menu accelerators: Chromium reports it here.
   contents.on("zoom-changed", (_event, direction) => zoomMainWindow(window, direction, platform));
