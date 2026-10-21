@@ -63,6 +63,31 @@ describe("which browser a tab starts (D951)", () => {
     );
   });
 
+  it("passes the shell's answer on while it installs, and tries again with the next tab", async () => {
+    let ready = false;
+    const shell = {
+      executable: async () => {
+        if (!ready) {
+          throw new Error(
+            "Jhin is installing its headless browser (12 of 120 MB downloaded). Try again in a minute.",
+          );
+        }
+        return "/home/.jhin/tools/shell";
+      },
+    };
+    const { launched, launcher } = fakeLauncher((path) =>
+      path === undefined ? MISSING : undefined,
+    );
+    const chromium = new Chromium({ headlessShell: shell, launcher });
+    await expect(chromium.newPage(true)).rejects.toMatchObject({
+      code: "PREVIEW_UNAVAILABLE",
+      message: expect.stringContaining("12 of 120 MB downloaded"),
+    });
+    ready = true;
+    await chromium.newPage(true);
+    expect(launched.at(-1)).toBe("/home/.jhin/tools/shell");
+  });
+
   it("keeps Playwright's browser when it is there", async () => {
     const shell = fakeShell();
     const { launched, launcher } = fakeLauncher(() => undefined);

@@ -388,9 +388,8 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   {environment}'s browser"): with the desktop app (W18).
 - Browser profiles and persistent logins (T3's named profiles, `profileId`,
   "Clear profile"): every tab's cookies live as long as the browser.
-- Tests of the pinned browser's progress answer, of callers sharing one
-  install and of a failed install restarting, without a timer (the installer
-  would need an injectable wait).
+- A test of the pinned browser's progress answer itself: it needs the
+  install a test leaves running to be awaitable once it settles.
 - T3's host setup hints for the pinned browser (the AppArmor profile, the
   missing libraries and their setup command, close code 4503).
 - A binary channel for frames (T3's WebSocket with per-frame acks); frames

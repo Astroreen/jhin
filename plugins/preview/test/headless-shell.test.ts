@@ -138,6 +138,34 @@ describe("chrome-headless-shell on first use (D951)", () => {
     await expect(shell.executable()).rejects.toThrow("does not contain chrome-headless-shell");
   });
 
+  it("shares one install between callers, and starts a failed one again", async () => {
+    const root = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-shell-"));
+    roots.push(root);
+    const answers = [
+      () => new Response("", { status: 503 }),
+      () =>
+        new Response(new Uint8Array(GOOD), { headers: { "content-length": String(GOOD.length) } }),
+    ];
+    let calls = 0;
+    const shell = createHeadlessShell({
+      root,
+      platform: "linux",
+      release: {
+        version: "1.0.0",
+        platform: "linux64",
+        url: "https://example.test/a.zip",
+        bytes: GOOD.length,
+        sha256: Crypto.createHash("sha256").update(GOOD).digest("hex"),
+      },
+      fetch: async () => answers[calls++]!(),
+    });
+    await expect(shell.executable()).rejects.toThrow("HTTP 503");
+    // The next request installs again; two callers at once share that install.
+    const [first, second] = await Promise.all([shell.executable(), shell.executable()]);
+    expect(first).toBe(second);
+    expect(calls).toBe(2);
+  });
+
   it("pins T3's release for each platform", () => {
     expect(headlessShellRelease("linux", "x64")).toMatchObject({
       platform: "linux64",
