@@ -465,6 +465,36 @@ describe("the diff panel", () => {
     expect(reads).toBe(2);
   });
 
+  it("shows the refs of the latest read when an earlier one answers last", async () => {
+    const answers: ((value: { branches: Branch[] } | Error) => void)[] = [];
+    const { value } = services(viewWith(status()), {
+      "git.diff": diff,
+      "git.branches": () =>
+        new Promise((resolve, reject) =>
+          answers.push((answer) => (answer instanceof Error ? reject(answer) : resolve(answer))),
+        ),
+    });
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const picker = page.getByRole("combobox", { name: "Change comparison target. Currently main" });
+    await userEvent.click(picker);
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(picker);
+    expect(answers).toHaveLength(2);
+    const develop: Branch = {
+      name: "develop",
+      current: false,
+      isDefault: false,
+      isRemote: false,
+      upstream: null,
+    };
+    await act(async () => answers[1]!({ branches: [develop] }));
+    // The first read fails last: it was superseded, so neither its error nor its refs show.
+    await act(async () => answers[0]!(new Error("too late")));
+    await expect.element(page.getByRole("option", { name: "develop" })).toBeVisible();
+    expect(page.getByRole("alert").query()).toBeNull();
+  });
+
   it("folds a renamed file from its header", async () => {
     const renamed = [
       "diff --git a/src/old.ts b/src/new.ts",
@@ -485,7 +515,9 @@ describe("the diff panel", () => {
     const Panel = createDiffPanel(value);
     mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand src/new.ts" })).toBeVisible();
-    // Neither the chevron nor the name: the counts in the header (Pierre's shadow DOM).
+    // Neither the chevron nor the name: the counts in the header. They are only reachable in
+    // Pierre's shadow DOM (@pierre/diffs 1.5.2: diffs-container, [data-diffs-header],
+    // [data-title], [data-metadata]); an upgrade that renames them fails here first.
     const header = [...document.querySelectorAll("diffs-container")]
       .flatMap((host) => [...(host.shadowRoot?.querySelectorAll("[data-diffs-header]") ?? [])])
       .find(
@@ -495,6 +527,9 @@ describe("the diff panel", () => {
     expect(metadata).toBeTruthy();
     act(() => metadata!.click());
     await expect.element(page.getByRole("button", { name: "Collapse src/new.ts" })).toBeVisible();
+    // And back: the same click folds it again.
+    act(() => metadata!.click());
+    await expect.element(page.getByRole("button", { name: "Expand src/new.ts" })).toBeVisible();
   });
 
   it("compares with the base chosen in T3's picker", async () => {
