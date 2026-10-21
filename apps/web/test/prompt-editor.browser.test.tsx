@@ -316,6 +316,18 @@ describe("code blocks in the prompt (D841–D843)", () => {
     expect(editor.value()).toBe("```\na\nb\nc\nd\n```");
   });
 
+  it("keeps a selection's end on its line when Shift+Tab takes the indent it sat in", async () => {
+    const editor = mount("```\n  a\n  b\n```");
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    // From the block's start to between the second line's two spaces.
+    tiptap.commands.setTextSelection({ from: 1, to: 6 });
+    tiptap.commands.focus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await editor.reported("```\na\nb\n```");
+    // The second line's start, not the end of the first.
+    expect(tiptap.state.selection.to).toBe(3);
+  });
+
   it("outdents an empty first line, not the line below it", async () => {
     const editor = mount("```\n\n  x\n```");
     const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;

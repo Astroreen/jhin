@@ -1359,7 +1359,9 @@ function indentCodeBlock(
   if (text === before.join("\n")) return true;
   const tr = state.tr.insertText(text, block.from + lineStart, block.from + lineEnd);
   const nextFrom = Math.max(block.from + lineStart, from + after[0]!.length - before[0]!.length);
-  const nextTo = Math.max(nextFrom, to + text.length - before.join("\n").length);
+  // An end inside the indent its own line lost stays on that line, at its start.
+  const lastLineStart = block.from + lineStart + text.length - after.at(-1)!.length;
+  const nextTo = Math.max(nextFrom, lastLineStart, to + text.length - before.join("\n").length);
   dispatch(tr.setSelection(TextSelection.create(tr.doc, nextFrom, nextTo)));
   return true;
 }
