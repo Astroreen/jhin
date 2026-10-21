@@ -733,7 +733,9 @@ with screenshots).
 - **D907. T3's `composer.branch` and `composer.previousWorktree`
   shortcuts**: `composer.branch` (`{ opened }`, default `mod+shift+g`) opens
   the branch picker under the composer of a draft or a thread, reading its
-  refs as a click does; `composer.previousWorktree` (`{ used }`, default
+  refs as a click does; `composer.previous-worktree` (T3's
+  `composer.previousWorktree`, as Jhin's command names are lowercase dotted
+  ids; `{ used }`, default
   `mod+shift+l`) has the draft on screen start its thread in the project's
   previous worktree (D253's "Previous worktree") and gives the composer the
   focus back (`chat.composer.focus`), as T3's `usePreviousWorktree` does; it

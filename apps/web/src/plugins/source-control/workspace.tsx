@@ -49,7 +49,7 @@ export interface DraftWorkspaces {
   run(control: ToolbarControl): boolean;
 }
 
-/** `composer.workspace`, `composer.branch` and `composer.previousWorktree`. */
+/** `composer.workspace`, `composer.branch` and `composer.previous-worktree`. */
 type ToolbarControl = "workspace" | "branch" | "previous-worktree";
 
 export function createDraftWorkspaces(): DraftWorkspaces {

@@ -265,7 +265,7 @@ export const sourceControlPlugin = builtin(
         handler: () => ({ opened: drafts.run("branch") }),
       });
       context.commands.register({
-        name: "composer.previousWorktree",
+        name: "composer.previous-worktree",
         title: "Use previous worktree",
         description:
           "Has the draft on screen start its thread in the project's previous worktree, as its workspace menu's Previous worktree does; `used` is false when there is no draft or no previous worktree",
@@ -278,7 +278,7 @@ export const sourceControlPlugin = builtin(
           keybindings.addDefaults([
             { key: "mod+shift+x", command: "composer.workspace", when: "!terminalFocus" },
             { key: "mod+shift+g", command: "composer.branch", when: "!terminalFocus" },
-            { key: "mod+shift+l", command: "composer.previousWorktree", when: "!terminalFocus" },
+            { key: "mod+shift+l", command: "composer.previous-worktree", when: "!terminalFocus" },
           ]),
         );
       }
