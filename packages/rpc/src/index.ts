@@ -29,6 +29,7 @@ export {
   UNGUARDED_STREAM_PERMISSION,
   createLiveStreams,
   createMemoryStreams,
+  type FollowedStream,
   type LiveStreams,
   type MemoryStreams,
   type ServedStream,

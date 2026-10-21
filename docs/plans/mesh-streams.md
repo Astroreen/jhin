@@ -73,17 +73,35 @@ terminals of threads on mesh members (terminal).
   returns. A subscription made while the owner cannot be reached fails at
   once with `NODE_UNREACHABLE`, and one the owner refuses fails with the
   owner's error (`STREAM_NOT_SHARED`, `PERMISSION_DENIED`), so a client
-  knows to fall back.
-- **D500. `rpc.streams@1.1`: a source can be followed instead of read.** A
+  knows to fall back. A relay the owner refuses later, when it attaches
+  again (the owner stopped sharing while the route was away), ends with that
+  error (`rpc.subscription.ended`, D500), hop by hop to the subscriber. A relay whose
+  route would lead back to the neighbor that asked for it fails with
+  `RELAY_LOOP`, so routes that briefly disagree do not make two nodes relay
+  to each other. A relay closed before it attached fails with
+  `RELAY_CLOSED`; a closing mesh ends its attached relays. Over a link, a member
+  reads a shared stream, or relays one through this node (needing `mesh.call`
+  too, as D502), only within `jhin.mesh.memberPermissions`
+  (`security.md` D416): it needs what the stream needs there (its served
+  permissions, or its guard for the event log), as a call does, and is
+  refused with `PERMISSION_DENIED` otherwise.
+- **D500. `rpc.streams@1.2`: a source can be followed instead of read.** A
   relay has no events to read, only a subscription elsewhere. A served
   source may have `follow(stream, after, listener)`, returning the
   subscription and a promise of the head once it is attached; `rpc.subscribe`
   then uses it instead of `subscribe`, `head` and `read`, answers with that
-  head, and fails with its error. To get that head from the next node, the
+  head, and fails with its error. A followed source may also end an attached
+  subscription with an error; the server tells the subscriber with
+  `rpc.subscription.ended {subscription, error}` (the notification
+  `terminal.md` D470 brought for overflow), and the RPC client and the link's
+  caller hand that to `onError`, as for a refusal. A followed source's
+  events go as they come: no window (D470) is kept for them. To get that head from the next node, the
   RPC client's `subscribe` takes `onReady(head)` and the link's caller
   `subscribe` takes the same callbacks (both additive). `jhin.transport-ws`
-  provides `rpc.streams@1.1`; `jhin.mesh` takes it optionally (`^1.1`), and
-  without it there are no relays (nothing to serve them through).
+  provides `rpc.streams@1.2` (1.1 is `security.md` D415's guards); `jhin.mesh`
+  takes it optionally (`^1.2`), and without it there are no relays and no
+  `mesh.relay`. Since 1.2 a served stream's permissions may be a function of
+  the stream.
 - **D501. A plugin shares a stream with the mesh: `mesh.streams@1`.** Members
   may read only the streams D26 names (threads, the thread index, `mesh`, and
   copies of them); the mesh cannot know which other streams are safe to
@@ -98,10 +116,12 @@ terminals of threads on mesh members (terminal).
 - **D502. `mesh.relay {node, stream}` names the stream to subscribe to.** It
   answers `{stream}`: `relay/<node>/<stream>`, or the stream itself for this
   node, as `mesh.open` does. Clients call it first, so a node without
-  relays answers `COMMAND_NOT_FOUND` instead of an empty stream that never
-  says anything. The command and a subscription to `relay/` need
-  `mesh.call`: a relay reads what `mesh.call` could read with
-  `terminals.get` or `git.status`. A node relays at most 10 000 streams at
+  relays (no `rpc.streams@1.2`) answers `COMMAND_NOT_FOUND` instead of an
+  empty stream that never says anything. The command needs `mesh.call`; a
+  subscription to `relay/<owner>/<stream>` needs `mesh.call` and what
+  `<stream>` needs on this node (its served or guarded permissions, else
+  `events.read`, `security.md` D415): one owner's nodes run the same
+  plugins, so a relay never reads more than its subscriber could read here. A node relays at most 10 000 streams at
   once, its own subscribers' and its neighbors' together; one more fails
   with `RELAY_LIMIT`.
 
@@ -127,11 +147,11 @@ terminals of threads on mesh members (terminal).
 
 - **D505. The in-memory mesh gets nodes wired as `jhin.mesh` wires them.**
   `@jhin/testing`'s `startMeshNode(network, id, options)` runs a mesh node
-  on the in-memory network (D38) with an optional test kernel behind it: its
-  commands answer calls from members, its live streams and event log are
-  what members read, `mesh.streams@1` is provided for its plugins to share
-  through, and a client connection serves `mesh.call`, `mesh.relay` and the
-  relays as the plugin does. Tests drive the real terminal and source
+  on the in-memory network (D38) with a test kernel: `rpc.streams@1.2`,
+  memory storage and `mesh.streams@1`, the plugin's own `mesh.call` and
+  `mesh.relay` and its relays (`meshCallCommand`, `meshRelayCommand`,
+  `serveRelays` from `@jhin/mesh-core`, which `jhin.mesh` registers too),
+  and the plugins a test gives it. `connect(caller?)` is a client of it. Tests drive the real terminal and source
   control plugins on a member through it.
 
 ## PR plan
@@ -155,6 +175,13 @@ A stack of three PRs, each based on the one before:
 
 - Trimming on a `storage.eventlog` provider older than 1.2: `keepNewest`
   trims nothing there, so `source-control` and `mesh/outbox` grow as before.
+- Relay loops longer than one hop back: `RELAY_LOOP` stops a relay sent
+  back to the neighbor that asked; a cycle through three nodes whose routes
+  disagree at once is only bounded by `RELAY_LIMIT`. A hop count or the
+  nodes a request passed, carried with it, would bound it; so would a limit
+  per neighbor (today one member can take all 10 000 slots).
+- A relay whose route is gone waits for one, without an expiry, holding its
+  slot until its subscriber leaves (D499).
 
 - Mirrors of trimmed streams: a mirror copies from sequence 1 and treats a
   gap as a failed append (D26), so a stream that may be trimmed must not be
@@ -166,5 +193,5 @@ A stack of three PRs, each based on the one before:
   session again only when the client's own connection comes back, so a
   member that restarted while the route was away leaves the tab silent until
   then.
-- Flow control through relays: every hop passes events on as they come
-  (as `terminal.md` defers it for one node).
+- Flow control through relays: every hop passes events on as they come; a
+  subscriber's window (`terminal.md` D470) is not kept for a followed source.

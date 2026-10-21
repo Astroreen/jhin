@@ -69,7 +69,10 @@ Words about Jhin:
 - **Catalog** — the replicated mesh metadata: nodes, status, capabilities,
   projects, thread metadata.
 - **Relay** — a node forwarding a request to a node the sender cannot reach
-  directly.
+  directly; also a stream a node forwards from a member to its own
+  subscribers as it happens (`relay/<owner>/<stream>`), storing nothing.
+- **Shared stream** — a stream a plugin lets mesh members read and relay
+  (`mesh.streams@1`); members read only the thread streams otherwise.
 - **Address** — a stable link `jhin://<nodeId>/<kind>/<id>`, resolvable
   through any node.
 - **Client** — the web UI (and later Electron and mobile packagings of it).

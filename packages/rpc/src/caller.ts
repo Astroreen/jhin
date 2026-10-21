@@ -4,6 +4,7 @@ import type { StoredEvent } from "@jhin/storage-api";
 import type { Peer } from "./peer.ts";
 import {
   ErrorCodes,
+  RPC_SUBSCRIPTION_ENDED,
   RPC_EVENT,
   RPC_SUBSCRIBE,
   RPC_UNSUBSCRIBE,
@@ -16,8 +17,15 @@ export interface Caller extends Disposable {
   /**
    * Subscribes to a stream of the other side, delivering events after `after`
    * in order and once. Ends when the channel closes (no reconnect here).
+   * `onReady` gets the head once the other side accepted it; `onError` why it
+   * refused, or ended it later (`rpc.subscription.ended`).
    */
-  subscribe(stream: string, after: number, onEvent: (event: StoredEvent) => void): Disposable;
+  subscribe(
+    stream: string,
+    after: number,
+    onEvent: (event: StoredEvent) => void,
+    outcome?: { onReady?(head: number): void; onError?(error: RpcError): void },
+  ): Disposable;
 }
 
 /**
@@ -33,7 +41,14 @@ export function createCaller(peer: Peer): Caller {
     string,
     { resolve(value: unknown): void; reject(error: RpcError): void }
   >();
-  const subscriptions = new Map<string, { last: number; onEvent: (event: StoredEvent) => void }>();
+  const subscriptions = new Map<
+    string,
+    {
+      last: number;
+      onEvent: (event: StoredEvent) => void;
+      onError: ((error: RpcError) => void) | undefined;
+    }
+  >();
   const gone = () =>
     new RpcError({
       code: ErrorCodes.DISCONNECTED,
@@ -45,10 +60,26 @@ export function createCaller(peer: Peer): Caller {
     const message = JSON.parse(text) as {
       id?: unknown;
       method?: unknown;
-      params?: { subscription?: string; event?: StoredEvent };
+      params?: { subscription?: string; event?: StoredEvent; error?: ErrorObject };
       result?: unknown;
       error?: ErrorObject;
     };
+    if (message.method === RPC_SUBSCRIPTION_ENDED && message.id === undefined) {
+      const id = message.params?.subscription ?? "";
+      const target = subscriptions.get(id);
+      if (target === undefined) return;
+      subscriptions.delete(id);
+      target.onError?.(
+        new RpcError(
+          message.params?.error ?? {
+            code: ErrorCodes.SERVER_ERROR,
+            message: "Subscription ended",
+            data: { code: "INTERNAL" },
+          },
+        ),
+      );
+      return;
+    }
     if (message.method === RPC_EVENT && message.id === undefined) {
       const target = subscriptions.get(message.params?.subscription ?? "");
       const event = message.params?.event;
@@ -95,11 +126,18 @@ export function createCaller(peer: Peer): Caller {
 
   return {
     call,
-    subscribe(stream, after, onEvent) {
+    subscribe(stream, after, onEvent, outcome = {}) {
       const id = `s${nextSubscription++}`;
-      subscriptions.set(id, { last: after, onEvent });
-      void call(RPC_SUBSCRIBE, { subscription: id, stream, after }).catch(() =>
-        subscriptions.delete(id),
+      subscriptions.set(id, { last: after, onEvent, onError: outcome.onError?.bind(outcome) });
+      void call<{ head?: unknown }>(RPC_SUBSCRIBE, { subscription: id, stream, after }).then(
+        (result) => {
+          if (!subscriptions.has(id)) return;
+          outcome.onReady?.(typeof result?.head === "number" ? result.head : 0);
+        },
+        (error: RpcError) => {
+          if (!subscriptions.delete(id)) return;
+          outcome.onError?.(error);
+        },
       );
       return toDisposable(() => {
         if (!subscriptions.delete(id) || closed) return;

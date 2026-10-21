@@ -27,6 +27,7 @@
     "prepack": "node ../../scripts/build.ts"
   },
   "dependencies": {
+    "@jhin/mesh-api": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*"

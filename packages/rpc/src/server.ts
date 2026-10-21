@@ -8,7 +8,12 @@ import {
 import type { EventLog, StoredEvent } from "@jhin/storage-api";
 
 import type { Peer } from "./peer.ts";
-import { UNGUARDED_STREAM_PERMISSION, type LiveStreams, type StreamSource } from "./streams.ts";
+import {
+  UNGUARDED_STREAM_PERMISSION,
+  type FollowedStream,
+  type LiveStreams,
+  type StreamSource,
+} from "./streams.ts";
 import {
   AckParams,
   ErrorCodes,
@@ -174,6 +179,55 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       bufferedSize += JSON.stringify(event).length;
       if (bufferedSize > MAX_WAITING_CHARACTERS) overflowed = true;
     };
+    if (log.follow !== undefined) {
+      // A source that reads elsewhere (D500): it replays and follows on its own.
+      // Its events go as they come; a window is not kept here (mesh-streams.md Deferred).
+      // The entry exists before `follow` runs, so a source may call back at once.
+      let followed: FollowedStream | undefined;
+      const entry: Subscription = { dispose: () => followed?.dispose() };
+      subscriptions.set(id, entry);
+      const current = () => subscriptions.get(id) === entry;
+      followed = log.follow(
+        stream,
+        after,
+        (event) => {
+          if (!current() || event.sequence <= lastSent) return;
+          lastSent = event.sequence;
+          peer.send(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              method: RPC_EVENT,
+              params: { subscription: id, event },
+            }),
+          );
+        },
+        (error) => {
+          if (!current()) return;
+          subscriptions.delete(id);
+          entry.dispose();
+          try {
+            peer.send(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                method: RPC_SUBSCRIPTION_ENDED,
+                params: { subscription: id, error: toErrorObject(error) },
+              }),
+            );
+          } catch {
+            // The peer is gone: nobody is left to tell.
+          }
+        },
+      );
+      // Unsubscribed (or ended) while `follow` ran: let it go at once.
+      if (!current()) followed.dispose();
+      try {
+        return { subscription: id, head: await followed.ready };
+      } catch (error) {
+        followed.dispose();
+        if (current()) subscriptions.delete(id);
+        throw error;
+      }
+    }
     // Subscribe first, then read the backlog: an event appended in between is
     // in the buffer, in the backlog, or both; `lastSent` drops duplicates.
     const live$ = log.subscribe(stream, (event) => (live ? deliver(event) : keep(event)));

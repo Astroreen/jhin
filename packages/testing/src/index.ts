@@ -10,3 +10,4 @@ export { nextEvent } from "./events.ts";
 export { connectInMemory, type InMemoryConnection } from "./transport.ts";
 /** In-memory mesh of N nodes in one process (D38). */
 export { createMemoryNetwork } from "@jhin/mesh-core";
+export { startMeshNode, type MemoryMeshNode } from "./mesh.ts";

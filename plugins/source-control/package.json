@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
+    "@jhin/mesh-api": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/source-control-api": "workspace:*",
@@ -60,7 +61,8 @@
     },
     "optional": {
       "rpc.streams": "^1.1",
-      "agent.registry": "^1"
+      "agent.registry": "^1",
+      "mesh.streams": "^1"
     },
     "entry": "src/index.ts"
   }

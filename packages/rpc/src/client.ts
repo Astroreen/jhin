@@ -59,6 +59,8 @@ export interface RpcClient {
        * returns, or once the promise it returns settles.
        */
       window?: SubscriptionWindow;
+      /** The node accepted it, with the stream's head then; again after every reconnect. */
+      onReady?: (head: number) => void;
     },
     onEvent: (event: StoredEvent) => void | Promise<void>,
   ): ClientSubscription;
@@ -82,6 +84,7 @@ interface SubscriptionState {
    * the settled ones at the front are acknowledged (D470).
    */
   handling: { sequence: number; done: boolean }[];
+  readonly onReady: ((head: number) => void) | undefined;
   /** Server-side id on the current connection. */
   serverId: string | undefined;
   disposed: boolean;
@@ -166,8 +169,9 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
     const id = String(nextSubscriptionId++);
     subscription.serverId = id;
     subscription.handling = [];
+    let result: unknown;
     try {
-      await send(target, RPC_SUBSCRIBE, {
+      result = await send(target, RPC_SUBSCRIBE, {
         subscription: id,
         stream: subscription.stream,
         after: subscription.lastSequence,
@@ -191,7 +195,10 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
     }
     if (subscription.disposed) {
       void send(target, RPC_UNSUBSCRIBE, { subscription: id }).catch(() => undefined);
+      return;
     }
+    const head = (result as { head?: unknown } | null)?.head;
+    subscription.onReady?.(typeof head === "number" ? head : 0);
   }
 
   function onMessage(text: string): void {
@@ -369,6 +376,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         onError: subscribeOptions.onError,
         window: subscribeOptions.window,
         handling: [],
+        onReady: subscribeOptions.onReady,
         serverId: undefined,
         disposed: false,
       };
