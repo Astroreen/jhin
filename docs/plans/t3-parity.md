@@ -1535,8 +1535,12 @@ Reference: T3 Code at `eb7b35ac` (D53).
   provider cannot steer actively). `threads.steer` and `threads.queue.steer`
   no longer refuse an agent without `steering` (`STEER_UNSUPPORTED` stays a
   known code, no longer sent): the message goes first in the thread's queue,
-  the running turn stops, and once its end is recorded the message starts
-  the next turn at once. That stop holds no queue (D202), and the message
+  the running turn stops (as Stop does: bounded, and given up on for an
+  agent that ignores it), and once its end is recorded the message starts
+  the next turn at once. A turn stopped or ended while the message was
+  being queued is not taken for a restart: the message waits first, as for
+  any turn that ended before it took a steer. A turn that fails instead of
+  stopping holds the queue as any failure does, with the message first. That stop holds no queue (D202), and the message
   starts past a hold already there, which stays for the rest; so what was
   queued follows the restarted turn. `threads.steer` answers `started` with
   the new turn's id (`queued` if it could not start yet); `threads.queue.steer`

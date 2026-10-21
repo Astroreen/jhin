@@ -577,10 +577,13 @@ interface Running {
   /** Why a stop gave up on the agent before it started: it is ended as soon as it starts. */
   giveUp: string | undefined;
   /**
-   * Stopped so that a steered message starts in its place, for an agent that cannot
-   * steer (T3's restart dispatch, D803): its end holds no queue.
+   * The steered message that starts in its place, for an agent that cannot steer
+   * (T3's restart dispatch, D803): the turn's stop holds no queue, and that message
+   * starts past a hold already there.
    */
-  restarting: boolean;
+  restartWith: string | undefined;
+  /** The queued or steered message the turn started with, if it had an id. */
+  readonly messageId: string | undefined;
 }
 
 /** What a turn with open requests waits for: an approval, if one is open, else answers. */
@@ -1019,6 +1022,7 @@ export default definePlugin({
       threadId: string,
       turnId: string,
       agentId: string,
+      messageId?: string,
     ): { entry: Running; release: () => void; finish: () => void; started: () => void } {
       const current = active.get(threadId);
       if (current !== undefined) {
@@ -1052,7 +1056,8 @@ export default definePlugin({
         ending: false,
         abandon: undefined,
         giveUp: undefined,
-        restarting: false,
+        restartWith: undefined,
+        messageId,
       };
       active.set(threadId, entry);
       const release = () => {
@@ -1343,7 +1348,7 @@ export default definePlugin({
           };
           // A stop or a failure holds the queue in the same write, so no queued
           // message starts after it (T3's queueHeld); a restart for a steer does not.
-          const restarted = entry.restarting && ending.status === "interrupted";
+          const restarted = entry.restartWith !== undefined && ending.status === "interrupted";
           if (ending.status === "completed" || restarted || deleted.has(thread.id)) {
             await recordEnd(ending.type, payload);
           } else {
@@ -1373,7 +1378,9 @@ export default definePlugin({
         }
         // The thread is free: its queue goes on, past a hold for a restart's message.
         if (ending.status === "completed") void deliver(thread.id);
-        else if (entry.restarting && ending.status === "interrupted") void deliver(thread.id, true);
+        else if (entry.restartWith !== undefined && ending.status === "interrupted") {
+          void deliver(thread.id, entry.restartWith);
+        }
       };
       const items = turn.items[Symbol.asyncIterator]();
       /** Stops the wait for the agent's next item, once the turn is given up on. */
@@ -2921,7 +2928,7 @@ export default definePlugin({
       const merge = options.merge;
       const turnId = Crypto.randomUUID();
       // Nothing is awaited between checking that the thread is free and taking it.
-      const reservation = reserve(threadId, turnId, runtime.agentId);
+      const reservation = reserve(threadId, turnId, runtime.agentId, options.messageId);
       let thread: Thread;
       let settings: TurnSettings;
       let handoff: { payload: Json; text: string } | undefined;
@@ -3125,15 +3132,15 @@ export default definePlugin({
      */
     function deliver(
       threadId: string,
-      /** The head is a restart's steered message (D803): it starts past a hold, which stays. */
-      pastHold = false,
+      /** A restart's steered message (D803): as the head, it starts past a hold, which stays. */
+      restartMessage?: string,
     ): Promise<void> {
       return changeQueue(threadId, async (queue) => {
         const head = queue.messages[0];
         if (
           stopping ||
           head === undefined ||
-          (queue.held !== undefined && !pastHold) ||
+          (queue.held !== undefined && head?.id !== restartMessage) ||
           active.has(threadId)
         ) {
           return;
@@ -3153,7 +3160,7 @@ export default definePlugin({
         // crash leaves it in one place or the other, never in neither.
         const { event, record } = queueWrite(threadId, {
           messages: queue.messages.slice(1),
-          ...(pastHold && queue.held !== undefined ? { held: queue.held } : {}),
+          ...(queue.held === undefined ? {} : { held: queue.held }),
         });
         try {
           await startTurn(threadId, message, {
@@ -3336,7 +3343,9 @@ export default definePlugin({
       message: Outgoing | "queued",
     ): Promise<"restarted" | false> {
       await current.started;
-      if (current.ending || current.interrupted || active.get(threadId) !== current) return false;
+      const running = () =>
+        !current.ending && !current.interrupted && active.get(threadId) === current;
+      if (!running()) return false;
       await changeQueue(threadId, async (queue) => {
         const first =
           message === "queued"
@@ -3348,14 +3357,27 @@ export default definePlugin({
           messages: [first, ...queue.messages.filter((item) => item.id !== messageId)],
         });
       });
-      current.restarting = true;
-      current.interrupted = true;
-      current.turn?.interrupt();
-      await current.done;
+      // Stopped or ended while the queue was written: the message waits first, as
+      // for any turn that ends before it took a steer.
+      if (!running()) return false;
+      current.restartWith = messageId;
       // A promoted message is no longer kept from starting as a turn of its own.
       steering.delete(`${threadId}:${messageId}`);
-      await deliver(threadId, true);
+      // A user's Stop: bounded, and given up on for an agent that ignores it.
+      await stopTurn(threadId);
       return "restarted";
+    }
+
+    /**
+     * The turn a restart's message started (D803), once the stopped turn's end let
+     * it go; undefined while it waits in the queue (the node refused it, or the turn
+     * failed rather than stopped, so the queue is held).
+     */
+    async function restartedTurn(threadId: string, messageId: string): Promise<string | undefined> {
+      // After the delivery the stopped turn's end started: the queue's changes run in order.
+      await changeQueue(threadId, async () => undefined);
+      const running = active.get(threadId);
+      return running?.messageId === messageId ? running.turnId : undefined;
     }
 
     /**
@@ -3576,11 +3598,10 @@ export default definePlugin({
               },
             );
           }
-          // Restarted (D803): the turn the message started, else the one it stopped.
-          return {
-            messageId,
-            turnId: (steered === "restarted" && active.get(threadId)?.turnId) || turnId!,
-          };
+          // Restarted (D803): the turn the message started, once it has.
+          const restarted =
+            steered === "restarted" ? await restartedTurn(threadId, messageId) : undefined;
+          return { messageId, turnId: restarted ?? turnId! };
         } finally {
           steering.delete(`${threadId}:${messageId}`);
           // A turn that ended meanwhile left the queue to go on.
@@ -3605,11 +3626,8 @@ export default definePlugin({
         if (steered === "steered") return { messageId, turnId, outcome: "steered" as const };
         if (steered === "restarted") {
           // It started the turn that replaced the stopped one, or waits first in the queue.
-          const waiting = (await readQueue(threadId)).messages.some(
-            (item) => item.id === messageId,
-          );
-          const started = active.get(threadId)?.turnId;
-          return waiting || started === undefined
+          const started = await restartedTurn(threadId, messageId);
+          return started === undefined
             ? { messageId, outcome: "queued" as const }
             : { messageId, turnId: started, outcome: "started" as const };
         }

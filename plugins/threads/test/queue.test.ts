@@ -645,6 +645,27 @@ describe("jhin.threads: steering (D204, D205)", () => {
     expect(lastQueue(events)?.held).toBeUndefined();
   });
 
+  it("starts a restart's message past a hold already on the queue, which stays (D803)", async () => {
+    const { client, thread, events, watched } = await plainHolding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "held one" });
+    await client.call("threads.interrupt", { threadId: thread.id });
+    await untilCount(watched, ThreadEvents.turnInterrupted, 1);
+    // A new turn past the held queue, as a send does, then a steer into it.
+    await client.call("threads.send", { threadId: thread.id, text: "/hold again" });
+    await untilCount(watched, ThreadEvents.turnStarted, 2);
+    const sent = await client.call<{ turnId?: string; outcome: string }>("threads.steer", {
+      threadId: thread.id,
+      text: "now",
+    });
+    expect(sent.outcome).toBe("started");
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+    expect(started(events)).toEqual(["/hold", "/hold again", "now"]);
+    expect(starts(events)[2]!.turnId).toBe(sent.turnId);
+    // What was held before stays held: the restart went past it, not through it.
+    expect(lastQueue(events)).toMatchObject({ messages: [{ text: "held one" }] });
+    expect(lastQueue(events)?.held).toMatchObject({ reason: "interrupted" });
+  });
+
   it("restarts with a queued message promoted to a steer (D803)", async () => {
     const { client, thread, events, watched } = await plainHolding();
     const { messageId } = await client.call<{ messageId: string }>("threads.queue.add", {
