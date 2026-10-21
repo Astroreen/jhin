@@ -17,8 +17,9 @@ import {
   Spinner,
   cn,
 } from "@jhin/ui";
-import { GitPullRequestIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+
+import { forgePresentation } from "./forge-icons.tsx";
 
 const GITHUB_CHECKOUT_COMMAND = /^gh\s+pr\s+checkout\s+(.+)$/i;
 const GITHUB_PULL_REQUEST_URL = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)([/?#].*)?$/i;
@@ -48,6 +49,9 @@ function statusTone(state: string | undefined): string {
       return "text-muted-foreground";
   }
 }
+
+/** The dialog checks pull requests of GitHub out (D902): its mark in the title. */
+const GitHub = forgePresentation({ kind: "github" }).Icon;
 
 /** How long typing must pause before the reference is resolved (T3's 450 ms). */
 const RESOLVE_DELAY_MS = 450;
@@ -112,17 +116,21 @@ export function PullRequestCheckoutDialog({
     if (!open || parsedDebounced === null || resolved.has(parsedDebounced)) return;
     // A failure is shown until the reference is edited; editing it asks again.
     if (resolveError?.reference === parsedDebounced || asked.current.has(parsedDebounced)) return;
-    const reference = parsedDebounced;
-    asked.current.add(reference);
+    const asking = parsedDebounced;
+    asked.current.add(asking);
     void threads
-      .call<{ pullRequest: PullRequest }>(target, "git.pr.resolve", { projectId, reference })
+      .call<{ pullRequest: PullRequest }>(target, "git.pr.resolve", {
+        projectId,
+        reference: asking,
+      })
       .then(({ pullRequest }) => {
-        if (mounted.current) setResolved((known) => new Map(known).set(reference, pullRequest));
+        if (mounted.current) setResolved((known) => new Map(known).set(asking, pullRequest));
       })
       .catch((error: unknown) => {
-        if (mounted.current) setResolveError({ reference, message: (error as Error).message });
+        if (mounted.current)
+          setResolveError({ reference: asking, message: (error as Error).message });
       })
-      .finally(() => asked.current.delete(reference));
+      .finally(() => asked.current.delete(asking));
   }, [open, parsedDebounced, projectId, resolveError, resolved, target, threads]);
 
   const pullRequest = parsed === null ? undefined : resolved.get(parsed);
@@ -181,7 +189,7 @@ export function PullRequestCheckoutDialog({
       <DialogPopup className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center">
-            <GitPullRequestIcon className="me-2 size-4" />
+            <GitHub className="me-2 size-4" />
             Checkout pull request
           </DialogTitle>
           <DialogDescription>

@@ -20,12 +20,13 @@ import {
   TooltipPopup,
   TooltipTrigger,
 } from "@jhin/ui";
-import { ChevronDownIcon, GitBranchIcon, GitPullRequestIcon, RefreshCwIcon } from "lucide-react";
+import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { ComposerControl } from "../../lib/composer-control.tsx";
 import { useCatalog } from "../../lib/hooks.ts";
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
+import { forgePresentation } from "./forge-icons.tsx";
 import { PullRequestBadge } from "./indicators.tsx";
 import { PullRequestCheckoutDialog, parsePullRequestReference } from "./pull-request-checkout.tsx";
 import {
@@ -129,6 +130,7 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     };
 
     const trimmed = query.trim();
+    const Forge = forgePresentation(projectStatus.provider).Icon;
     // A draft on GitHub can check a pull request out into its thread (D902, D903); not while
     // the picker chooses a new worktree's base.
     const pullRequestReference =
@@ -231,7 +233,7 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
                     >
                       {item.checkout === true ? (
                         <div className="flex min-w-0 items-center gap-2">
-                          <GitPullRequestIcon className="size-4 shrink-0 text-muted-foreground" />
+                          <Forge className="size-4 shrink-0 text-muted-foreground" />
                           <div className="min-w-0">
                             <div className="truncate font-medium">{item.label}</div>
                             <div className="truncate text-muted-foreground text-xs">

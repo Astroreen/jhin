@@ -27,6 +27,12 @@ import {
   threadPullRequestBadge,
   threadPullRequestBadgePresentation,
 } from "../src/lib/pull-request.ts";
+import {
+  BitbucketIcon,
+  GitHubIcon,
+  GitLabIcon,
+  forgePresentation,
+} from "../src/plugins/source-control/forge-icons.tsx";
 import { parsePullRequestReference } from "../src/plugins/source-control/pull-request-checkout.tsx";
 import { readPullRequestInput } from "../src/plugins/source-control/links.tsx";
 import { splitForMiddleTruncate } from "../src/lib/middle-truncate.tsx";
@@ -1225,5 +1231,19 @@ describe("reading a pull request reference (D903)", () => {
     );
     expect(parsePullRequestReference("feature/x")).toBeNull();
     expect(parsePullRequestReference("")).toBeNull();
+  });
+});
+
+describe("a forge's name and mark (D904)", () => {
+  it("names each forge as T3 does, and falls back to a generic mark", () => {
+    expect(forgePresentation({ kind: "github" })).toEqual({ name: "GitHub", Icon: GitHubIcon });
+    expect(forgePresentation({ kind: "gitlab" })).toEqual({ name: "GitLab", Icon: GitLabIcon });
+    expect(forgePresentation({ kind: "bitbucket" })).toEqual({
+      name: "Bitbucket",
+      Icon: BitbucketIcon,
+    });
+    expect(forgePresentation({ kind: "azure-devops" }).name).toBe("Azure DevOps");
+    expect(forgePresentation({ kind: "forgejo" }).name).toBe("Forgejo");
+    expect(forgePresentation(null).name).toBe("source control");
   });
 });

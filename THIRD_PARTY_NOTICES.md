@@ -18,7 +18,7 @@ its file tree, base ref picker, turn scopes and comments on lines (T3's
 `reviewCommentContext.ts`, `composerContextLegacySend.ts` and
 `DiffCommentAnnotation.tsx`), a turn's changed files card, the
 workspace selector, the worktree icon and clean-up, the "Checkout pull request"
-dialog, the terminal drawer, its
+dialog, the forges' icons, the terminal drawer, its
 links, selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, its tiptap

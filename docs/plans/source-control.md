@@ -685,6 +685,14 @@ with screenshots).
   the selector's "Previous worktree"), a local checkout keeps "Current
   checkout".
 
+- **D904. A forge shows with its own mark**, as T3's
+  `getSourceControlPresentation` gives it: T3's GitHub, GitLab, Azure DevOps,
+  Bitbucket and Forgejo icons and labels (`forge-icons.tsx`), with lucide's
+  pull request mark when a repository has no forge. The git actions' pull
+  request items and quick action, the branch picker's "Checkout pull
+  request" item and the checkout dialog's title show the repository's forge
+  mark instead of a generic one.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1032,7 +1040,8 @@ with the node's token, and without one).
   `branch` of a `root` workspace, and worktree folders that tell two
   repositories of one name apart.
 - Forges (D275–D279): watching a pull request on forges other than GitHub,
-  Bitbucket Server and Data Center, forges' icons and names in the client,
+  Bitbucket Server and Data Center, forges' names in the change request
+  terminology and texts beyond D904's marks,
   tokens kept as the node's secrets instead of its environment, creating a
   GitLab merge request or an Azure DevOps pull request from a fork, checks of
   Forgejo and Bitbucket that fail to read showing as none rather than as an
