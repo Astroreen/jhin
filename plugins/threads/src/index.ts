@@ -38,7 +38,7 @@ import {
 } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, toDisposable, z } from "@jhin/sdk";
+import { definePlugin, holdsPermission, toDisposable, z } from "@jhin/sdk";
 import {
   BLOBS_CAPABILITY,
   EVENTLOG_CAPABILITY,
@@ -3620,12 +3620,26 @@ export default definePlugin({
         ),
       output: z.object({ thread: Thread, turnIds: z.array(z.string()) }),
       permissions: ["threads.write"],
-      handler: ({ threadId, turnId, beforeTurnId, restoreFiles }) =>
-        rollback(
+      handler: ({ threadId, turnId, beforeTurnId, restoreFiles }, invocation) => {
+        // Restoring files cleans the worktree's untracked files: it takes the right to
+        // change a repository too, not only a thread's.
+        if (
+          restoreFiles === true &&
+          invocation?.caller !== undefined &&
+          !holdsPermission(invocation.caller.permissions, "git.write")
+        ) {
+          throw new ThreadsError(
+            "PERMISSION_DENIED",
+            "Restoring files takes the git.write permission",
+            { threadId, permission: "git.write" },
+          );
+        }
+        return rollback(
           threadId,
           beforeTurnId === undefined ? { turnId } : { beforeTurnId },
           restoreFiles === true,
-        ),
+        );
+      },
     });
 
     /** What a turn started with, as its first event says. */

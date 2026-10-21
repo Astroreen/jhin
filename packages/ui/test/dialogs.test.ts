@@ -36,6 +36,35 @@ describe("dialogs", () => {
     expect(await third).toBeUndefined();
   });
 
+  it("chooses between two ways to agree, and keeps a plain confirmation to one", async () => {
+    const dialogs = createDialogs();
+    dialogs.register();
+    const both = dialogs.choose({
+      title: "Edit from here?",
+      confirmLabel: "Revert and keep changes",
+      alternativeLabel: "Revert files too",
+    });
+    expect(dialogs.state()).toMatchObject({
+      request: { options: { alternativeLabel: "Revert files too" } },
+    });
+    dialogs.respond("alternative");
+    expect(await both).toBe("alternative");
+    dialogs.closed();
+
+    const plain = dialogs.confirm({ title: "Delete?", alternativeLabel: "Not shown" });
+    const state = dialogs.state();
+    expect(state.status === "idle" ? undefined : state.request.options).not.toHaveProperty(
+      "alternativeLabel",
+    );
+    dialogs.respond(true);
+    expect(await plain).toBe(true);
+    dialogs.closed();
+
+    const cancelled = dialogs.choose({ title: "Edit from here?", alternativeLabel: "Too" });
+    dialogs.respond(false);
+    expect(await cancelled).toBeUndefined();
+  });
+
   it("answers at once while no host shows them, and answers the rest when the last host goes", async () => {
     const dialogs = createDialogs();
     expect(await dialogs.confirm({ title: "Nobody sees this" })).toBe(false);

@@ -205,7 +205,7 @@ export function registerHistory(
   context.commands.register({
     name: "thread.edit-from-here",
     description:
-      "Rewinds a thread to before one of its messages and puts the message's text and images back into the composer; nothing is sent. Asks first unless `confirmed`; `restoreFiles` puts its worktree's files back too",
+      "Rewinds a thread to before one of its messages and puts the message's text and images back into the composer; nothing is sent. Asks first unless `confirmed`; with `confirmed`, `restoreFiles` puts its worktree's files back too (asked, the choice is the user's)",
     input: z.object({
       ...At,
       threadId: z.string(),

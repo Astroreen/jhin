@@ -542,9 +542,12 @@ with screenshots).
   (W2's `threads.rollback` answers `TURN_IN_PROGRESS`). Reverting drops the
   turns from that message on (W2); "Revert files too" passes `restoreFiles` to
   `threads.rollback`, whose `threads.rollback` hook the source control plugin
-  wraps: it restores the files of checkpoint `N-1` (N the first dropped turn's
-  count, recorded for every turn started) before the turns are dropped, so a
-  refused restore drops nothing; afterwards it marks the dropped turns'
+  wraps: under the worktree's lock it checks that the thread is alone there and
+  that checkpoint `N-1` exists (N the first dropped turn's own count, recorded
+  for every turn started; a turn from before counts were kept restores nothing),
+  so a refused restore drops nothing; then the turns are dropped and the files
+  restored (a restore that fails says the turns were dropped). Restoring files
+  takes `git.write` besides `threads.write`. Afterwards it marks the dropped turns'
   records `stale`, deletes their refs, makes `N-1` the thread's latest
   checkpoint again and sets its count back, so the next turn takes turn `N`'s
   place. The dialog offers both through the new optional `Dialogs.choose` of

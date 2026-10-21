@@ -270,6 +270,29 @@ describe("jhin.threads: thread management", () => {
   });
 });
 
+describe("jhin.threads: restoring files with a rollback", () => {
+  it("takes the git.write permission besides threads.write", async () => {
+    const { kernel, client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const as = (permissions: string[]) => ({ caller: { id: "someone", permissions } });
+    await expect(
+      kernel.commands.execute(
+        "threads.rollback",
+        { threadId: thread.id, restoreFiles: true },
+        as(["threads.write"]),
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    // Without files to restore, threads.write is enough.
+    expect(
+      await kernel.commands.execute(
+        "threads.rollback",
+        { threadId: thread.id },
+        as(["threads.write"]),
+      ),
+    ).toMatchObject({ turnIds: [] });
+  });
+});
+
 describe("jhin.threads: agents", () => {
   const seen: TurnRequest[] = [];
   const claude: AgentRuntime = {

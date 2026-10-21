@@ -441,6 +441,46 @@ describe("jhin.source-control: reverting to a turn", () => {
     ]);
   });
 
+  it("refuses to restore a worktree two threads share, or a checkpoint that is gone, dropping nothing", async () => {
+    const dir = repository();
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    const thread = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      workspace: { type: "worktree", baseRef: "main", branch: "feature/shared" },
+    });
+    const first = await turn(sc, thread.id, "/write a.txt one");
+    await sc.until(checkpointOf(thread.id, 1, "ready"));
+    const other = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      workspace: { type: "existing_worktree", worktreePath: thread.worktreePath! },
+    });
+    await expect(
+      sc.client.call("threads.rollback", {
+        threadId: thread.id,
+        beforeTurnId: first,
+        restoreFiles: true,
+      }),
+    ).rejects.toThrow("File restore requires an isolated worktree.");
+    await sc.client.call("threads.delete", { threadId: other.id });
+
+    git(dir, "update-ref", "-d", `refs/jhin/checkpoints/${thread.id}/0`);
+    await expect(
+      sc.client.call("threads.rollback", {
+        threadId: thread.id,
+        beforeTurnId: first,
+        restoreFiles: true,
+      }),
+    ).rejects.toMatchObject({ code: "CHECKPOINT_UNAVAILABLE" });
+    expect(Fs.existsSync(Path.join(thread.worktreePath!, "a.txt"))).toBe(true);
+    expect(await turnIds(sc, thread.id)).toHaveLength(1);
+    const { thread: still } = await sc.client.call<{ thread: { lastTurn?: { turnId: string } } }>(
+      "threads.get",
+      { threadId: thread.id },
+    );
+    expect(still.lastTurn?.turnId).toBe(first);
+  });
+
   it("keeps the files of a thread in the project's checkout, and refuses to restore them", async () => {
     const dir = repository();
     const sc = await node({ watch: false });
