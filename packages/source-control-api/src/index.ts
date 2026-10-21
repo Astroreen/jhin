@@ -97,12 +97,13 @@ export const PullRequest = z.object({
 export type PullRequest = z.output<typeof PullRequest>;
 
 /**
- * Where a repository's pull requests come from. Only GitHub, through its CLI
- * (`gh`), today; `available` is false with a `reason` when `gh` is missing or
- * signed out, and pull requests are then unknown.
+ * Where a repository's pull requests come from (D275): the forge of the
+ * remote they go to, through its CLI or API; `available` is false with a
+ * `reason` when its tool is missing or signed out, and pull requests are then
+ * unknown.
  */
 export const PullRequestProvider = z.object({
-  kind: z.literal("github"),
+  kind: z.enum(["github", "gitlab", "azure-devops", "bitbucket", "forgejo"]),
   available: z.boolean(),
   reason: z.string().optional(),
 });

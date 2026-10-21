@@ -4,6 +4,14 @@
 // gitHubPullRequestJson.ts (toCheckStatus, rollupChecksState).
 import type { PullRequest, PullRequestChecks } from "@jhin/source-control-api";
 
+import {
+  ForgeUnavailable,
+  PULL_REQUEST,
+  matchesHead,
+  type Forge,
+  type ForgePullRequest,
+  type HeadContext,
+} from "./forge.ts";
 import { run, SpawnError } from "./git.ts";
 import type { Remark, WatchRead } from "./pr-watch.ts";
 
@@ -16,6 +24,8 @@ const GH_ENV = {
 const GH_TIMEOUT_MS = 20_000;
 const FIELDS =
   "number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup";
+/** What tells a fork's pull request apart from one of this repository (D277). */
+const HEAD_FIELDS = `${FIELDS},isCrossRepository,headRepositoryOwner`;
 
 /** The host of a remote URL (`https://github.com/o/r.git`, `git@github.com:o/r.git`, `ssh://…`). */
 export function remoteHost(url: string): string | undefined {
@@ -29,13 +39,7 @@ export function remoteHost(url: string): string | undefined {
 }
 
 /** Why `gh` could not answer: missing, signed out, or another failure. */
-export class GitHubUnavailable extends Error {
-  readonly kind: "missing" | "signed-out" | "failed";
-  constructor(kind: "missing" | "signed-out" | "failed", message: string) {
-    super(message);
-    this.kind = kind;
-  }
-}
+const GitHubUnavailable = ForgeUnavailable;
 
 type CheckStatus =
   | "success"
@@ -108,6 +112,8 @@ interface RawPullRequest {
   readonly mergedAt?: unknown;
   readonly closedAt?: unknown;
   readonly statusCheckRollup?: readonly RawCheck[] | null;
+  readonly isCrossRepository?: unknown;
+  readonly headRepositoryOwner?: { readonly login?: unknown } | null;
 }
 
 function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
@@ -175,37 +181,49 @@ async function ghJson(ghPath: string, cwd: string, args: readonly string[]): Pro
 }
 
 /**
- * The newest pull request whose head is `branch`, any state, or `null`.
- * Throws `GitHubUnavailable` when `gh` is missing, signed out or fails.
+ * The newest pull request whose head is `head`'s branch, any state, or
+ * `null`: of this repository's branch, or of the fork `head.owner` names
+ * (`gh pr list --head` matches the branch name alone, so a same-named branch
+ * of another fork is filtered out). Throws `GitHubUnavailable` when `gh` is
+ * missing, signed out or fails.
  */
-export async function pullRequestFor(
+async function pullRequestFor(
   ghPath: string,
   cwd: string,
-  branch: string,
+  head: string | HeadContext,
 ): Promise<PullRequest | null> {
+  const context = typeof head === "string" ? { branch: head } : head;
   const parsed = await ghJson(ghPath, cwd, [
     "pr",
     "list",
     "--head",
-    branch,
+    context.branch,
     "--state",
     "all",
     "--limit",
-    "1",
+    "10",
     "--json",
-    FIELDS,
+    HEAD_FIELDS,
   ]);
   if (!Array.isArray(parsed)) throw new GitHubUnavailable("failed", "gh answered no list");
-  const first = parsed[0] as RawPullRequest | undefined;
-  return first === undefined ? null : (toPullRequest(first) ?? null);
+  for (const raw of parsed as RawPullRequest[]) {
+    const pr = toPullRequest(raw);
+    if (pr === undefined) continue;
+    const owner = raw.headRepositoryOwner?.login;
+    const found: ForgePullRequest = {
+      pr,
+      ...(typeof raw.isCrossRepository === "boolean"
+        ? { crossRepository: raw.isCrossRepository }
+        : {}),
+      ...(typeof owner === "string" ? { headOwner: owner } : {}),
+    };
+    if (matchesHead(found, context)) return pr;
+  }
+  return null;
 }
 
 /** A pull request by its URL (`gh pr view <url>`), whichever repository it is in. */
-export async function pullRequestAt(
-  ghPath: string,
-  cwd: string,
-  url: string,
-): Promise<PullRequest> {
+async function pullRequestAt(ghPath: string, cwd: string, url: string): Promise<PullRequest> {
   const parsed = await ghJson(ghPath, cwd, ["pr", "view", url, "--json", FIELDS]);
   const pr = toPullRequest((parsed ?? {}) as RawPullRequest);
   if (pr === undefined) throw new GitHubUnavailable("failed", "gh answered no pull request");
@@ -213,7 +231,7 @@ export async function pullRequestAt(
 }
 
 /** Where GitHub looks for a pull request template, as T3's source-control-github reads it. */
-export const GITHUB_TEMPLATE_PATHS = [
+const GITHUB_TEMPLATE_PATHS = [
   ".github/pull_request_template.md",
   ".github/PULL_REQUEST_TEMPLATE.md",
   "pull_request_template.md",
@@ -227,10 +245,10 @@ export const GITHUB_TEMPLATE_PATHS = [
  * back. Throws `GitHubUnavailable` when `gh` is missing or signed out, and
  * an `Error` with `gh`'s own message when GitHub refuses.
  */
-export async function createPullRequest(
+async function createPullRequest(
   ghPath: string,
   cwd: string,
-  input: { base: string; head: string; title: string; bodyFile: string },
+  input: { base: string; head: string | HeadContext; title: string; bodyFile: string },
 ): Promise<PullRequest> {
   let result;
   try {
@@ -242,7 +260,12 @@ export async function createPullRequest(
         "--base",
         input.base,
         "--head",
-        input.head,
+        // A fork's branch is named with its owner (T3's `owner:branch` head selector).
+        typeof input.head === "string"
+          ? input.head
+          : input.head.owner === undefined
+            ? input.head.branch
+            : `${input.head.owner}:${input.head.branch}`,
         "--title",
         input.title,
         "--body-file",
@@ -270,6 +293,7 @@ export async function createPullRequest(
     throw new Error(message ?? `gh pr create exited with code ${result.code}`);
   }
   const created = await pullRequestFor(ghPath, cwd, input.head);
+  const headBranch = typeof input.head === "string" ? input.head : input.head.branch;
   if (created !== null) return created;
   const url = result.stdout.trim().split("\n").at(-1) ?? "";
   const number = Number(/\/pull\/(\d+)/.exec(url)?.[1] ?? Number.NaN);
@@ -280,7 +304,7 @@ export async function createPullRequest(
     url,
     state: "open",
     isDraft: false,
-    headBranch: input.head,
+    headBranch,
     baseBranch: input.base,
     checks: rollupChecks([]),
   };
@@ -341,7 +365,7 @@ const WATCH_FIELDS =
   "number,url,state,headRefOid,mergeable,baseRefName,statusCheckRollup,comments,reviews,author";
 
 /** What a watch reads of a pull request (D272): checks, mergeability and remarks. */
-export async function readWatch(
+async function readWatch(
   ghPath: string,
   cwd: string,
   url: string,
@@ -400,5 +424,19 @@ export async function readWatch(
       ...list("comments").map((item) => remark(item, false)),
       ...list("reviews").map((item) => remark(item, true)),
     ].filter((item): item is Remark => item !== undefined),
+  };
+}
+
+/** GitHub and GitHub Enterprise through `gh`, which picks the host from the repository or URL. */
+export function githubForge(ghPath: () => string, cwd: string, viewers: Viewers): Forge {
+  return {
+    kind: "github",
+    name: "GitHub",
+    terminology: PULL_REQUEST,
+    find: (head) => pullRequestFor(ghPath(), cwd, head),
+    at: (url) => pullRequestAt(ghPath(), cwd, url),
+    create: (input) => createPullRequest(ghPath(), cwd, input),
+    templatePaths: GITHUB_TEMPLATE_PATHS,
+    watch: (url) => readWatch(ghPath(), cwd, url, viewers),
   };
 }

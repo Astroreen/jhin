@@ -58,7 +58,7 @@ describe("jhin.source-control: pull requests through the GitHub CLI", () => {
       },
     });
     expect(gh.calls()).toContain(
-      "pr list --head feature --state all --limit 1 --json number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup",
+      "pr list --head feature --state all --limit 10 --json number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup,isCrossRepository,headRepositoryOwner",
     );
   });
 
@@ -201,10 +201,10 @@ describe("jhin.source-control: pull requests through the GitHub CLI", () => {
     );
   });
 
-  it("does not ask gh about remotes elsewhere", async () => {
+  it("asks no forge about a host that is none", async () => {
     const gh = fakeGh();
     const dir = repository();
-    git(dir, "remote", "add", "origin", "git@gitlab.com:acme/demo.git");
+    git(dir, "remote", "add", "origin", "git@git.example.com:acme/demo.git");
     git(dir, "switch", "--quiet", "--create", "feature");
     const sc = await node();
     const projectId = await sc.project(dir);

@@ -20,6 +20,9 @@ import type {
   PullResult,
 } from "@jhin/source-control-api";
 
+import { repositoryOfRemote } from "@jhin/source-control-api";
+
+import type { HeadContext } from "./forge.ts";
 import { SourceControlError, type Git } from "./git.ts";
 import type { Writer } from "./writer.ts";
 
@@ -52,7 +55,7 @@ export interface PullRequestCreator {
   template?(ref: string): Promise<string | undefined>;
 }
 
-export const DEFAULT_TERMINOLOGY: ChangeRequestTerminology = {
+const DEFAULT_TERMINOLOGY: ChangeRequestTerminology = {
   singular: "pull request",
   shortLabel: "PR",
 };
@@ -212,6 +215,38 @@ async function pushRemoteOf(git: Git, branch: string): Promise<string | undefine
     if (candidate !== undefined && names.includes(candidate)) return candidate;
   }
   return names.includes("origin") ? "origin" : names[0];
+}
+
+/**
+ * The remote pull requests go to: `upstream` when there is one (a fork
+ * cloned as `origin`), else `origin`, else the first; as `gh` picks it.
+ */
+export async function baseRemoteOf(git: Git): Promise<string | undefined> {
+  const names = await remotes(git);
+  return ["upstream", "origin"].find((name) => names.includes(name)) ?? names[0];
+}
+
+/** A remote's URL, or `undefined`. */
+export async function remoteUrlOf(git: Git, remote: string): Promise<string | undefined> {
+  const result = await git(["remote", "get-url", remote], { ok: [0, 2, 128] });
+  return result.code === 0 ? result.stdout.trim() || undefined : undefined;
+}
+
+/**
+ * Whose branch `branch` is (D277): pushed to another repository than the one
+ * pull requests go to, its pull requests come from that fork's owner.
+ */
+export async function headContextOf(git: Git, branch: string): Promise<HeadContext> {
+  const [pushTo, base] = await Promise.all([pushRemoteOf(git, branch), baseRemoteOf(git)]);
+  if (pushTo === undefined || base === undefined || pushTo === base) return { branch };
+  const [pushUrl, baseUrl] = await Promise.all([remoteUrlOf(git, pushTo), remoteUrlOf(git, base)]);
+  const from = pushUrl === undefined ? undefined : repositoryOfRemote(pushUrl);
+  const into = baseUrl === undefined ? undefined : repositoryOfRemote(baseUrl);
+  if (from === undefined || into === undefined) return { branch };
+  if (from.repository.toLowerCase() === into.repository.toLowerCase() && from.host === into.host) {
+    return { branch };
+  }
+  return { branch, owner: from.repository.split("/")[0]! };
 }
 
 /** Whether `ref` exists as a commit. */

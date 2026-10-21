@@ -170,6 +170,9 @@ Words about Jhin:
 - **Source control** — what a node reads of its projects' git repositories
   (`source-control.git@1`): the checked-out branch, ahead/behind, uncommitted
   changes, diffs, branches and the pull request of a branch.
+- **Forge** — where a repository's pull requests live: GitHub (and GitHub
+  Enterprise), GitLab, Azure DevOps, Bitbucket, Forgejo or Gitea, read
+  through its CLI or API (T3 Code's source control provider).
 - **Git action** — committing, pushing and creating a pull request in a
   project, alone or stacked in that order (T3 Code's `commit_push_pr`), from
   the chat header or the `git.action.run` command. A **feature branch** is a
