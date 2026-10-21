@@ -1704,7 +1704,9 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   `pin` on the thread's key, as `thread.unpin` does: "Unpinned 1 thread",
   and undo pins it again at its old key; it does not ask first, as T3's
   drop does not (`thread.unpin` asks when the settings say so). A drop
-  that wakes or un-settles offers nothing, as T3's.
+  that wakes or un-settles offers nothing, as T3's. To keep the entry
+  chunk under D440's 500 kB, the custom snooze dialog became a chunk of its
+  own (`custom-snooze-dialog.tsx`); a failed load cancels the request.
 
 ## Not ported (out of scope)
 
