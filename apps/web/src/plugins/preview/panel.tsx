@@ -355,6 +355,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
                   className="flex min-w-0 items-center gap-1 outline-none"
                   onClick={() => {
                     setDrafting(false);
+                    setDraftProfile(undefined);
                     services.setActiveTab(panelKey, tab.tabId);
                   }}
                   role="tab"
