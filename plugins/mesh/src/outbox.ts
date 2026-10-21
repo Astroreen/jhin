@@ -27,6 +27,8 @@ export interface Patch {
   readonly values: Record<string, unknown>;
   /** Keys removed from the section, so they take their default again (D84). */
   readonly unset?: readonly string[];
+  /** The same change as edits of leaf paths, for nodes that take them (D476). */
+  readonly edits?: readonly { readonly path: readonly string[]; readonly value?: unknown }[];
   readonly at: number;
 }
 

@@ -77,8 +77,11 @@ the same PR.
 | `jhin.example`        | the template for new plugins                                                                                                                         | `example.greet`                                                                                                                                                                                                                                                            | `plugins/example/README.md`                         |
 
 The host itself adds `host.inspect`, `host.identity`, `host.commands.list`,
-`host.config.get`, `host.config.patch`, `host.config.schema`,
+`host.config.get`, `host.config.patch`, `host.config.edit` (leaf paths, D476),
+`host.config.schema`,
 `host.plugins.reload` and `host.plugins.rescan`.
+`@jhin/host-api`'s `sendConfigChange` sends a config change to a node of any
+age (`configEdits`, `configChange`; `config-ui.md` D475).
 
 ## Client plugins (`apps/web/src/plugins/`)
 

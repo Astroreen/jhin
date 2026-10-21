@@ -37,10 +37,13 @@ import { SettingResetButton, SettingsRow } from "../../lib/settings-layout.tsx";
 
 /** What every field of one section reads and changes. */
 export interface FieldsContext {
-  /** The node file's part of the section, as edited. */
+  /** The edited file's part of the section, as edited. */
   readonly value: unknown;
-  /** The project file's part: it wins over the node file. */
-  readonly project: unknown;
+  /**
+   * The other file's part (D477): the project file wins over the node file,
+   * the node file is what the project file wins over.
+   */
+  readonly other: { readonly layer: "node" | "project"; readonly value: unknown };
   /** Errors by path inside the section, joined with dots. */
   readonly errors: ReadonlyMap<string, readonly string[]>;
   /** The section's schema, for the references inside its fields' schemas. */
@@ -509,18 +512,17 @@ function FieldRow({
   const reset = set ? (
     <SettingResetButton label={field.title} onClick={() => context.set(path, undefined)} />
   ) : undefined;
-  const fromProject = getAt(context.project, path);
+  const fromOther = getAt(context.other.value, path);
+  const shownOther = field.secret ? (
+    "it"
+  ) : (
+    <code>{brief(redact(field.schema, fromOther, context.root))}</code>
+  );
   const override =
-    fromProject === undefined ? null : (
-      <span className="block">
-        The project file sets{" "}
-        {field.secret ? (
-          "it"
-        ) : (
-          <code>{brief(redact(field.schema, fromProject, context.root))}</code>
-        )}
-        , which wins.
-      </span>
+    fromOther === undefined ? null : context.other.layer === "project" ? (
+      <span className="block">The project file sets {shownOther}, which wins.</span>
+    ) : (
+      <span className="block">The node file sets {shownOther}; this file wins over it.</span>
     );
 
   if (field.control.kind === "group") {
@@ -682,9 +684,10 @@ export function Fields({
   );
 }
 
-/** The node file's part of a whole section as JSON: the escape hatch (D80). */
+/** The edited file's part of a whole section as JSON: the escape hatch (D80). */
 export function SectionJson(props: {
-  section: string;
+  /** What the field is called, for screen readers. */
+  label: string;
   /** The section's schema: the values it marks `writeOnly` show hidden (D83). */
   schema: JsonSchema;
   value: unknown;
@@ -698,7 +701,7 @@ export function SectionJson(props: {
         describedBy={props.messages.length === 0 ? undefined : id}
         hide={(shown) => redact(props.schema, shown, props.schema)}
         invalid={props.messages.length > 0}
-        label={`${props.section} in the node file`}
+        label={props.label}
         onChange={(next) => props.onChange(next ?? {})}
         refuse={(next) =>
           typeof next === "object" && next !== null && !Array.isArray(next)

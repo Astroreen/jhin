@@ -352,24 +352,6 @@ export function hasUnparsed(value: unknown): boolean {
   return isObject(value) && Object.values(value).some(hasUnparsed);
 }
 
-/**
- * What saving `value` over the node file's `original` writes (D84): every
- * top-level key whose value changed, and the keys removed. Keys left as they
- * were are not written, so the comments inside them stay.
- */
-export function changesOf(
-  original: unknown,
-  value: Record<string, unknown>,
-): { values: Record<string, unknown>; unset: string[] } {
-  const before = isObject(original) ? original : {};
-  const values: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (!equal(item, before[key])) values[key] = item;
-  }
-  const unset = Object.keys(before).filter((key) => !Object.hasOwn(value, key));
-  return { values, unset };
-}
-
 // Validation -----------------------------------------------------------------
 
 export interface Issue {

@@ -9,6 +9,7 @@ import {
   HOST_PATHS_CAPABILITY,
   type HostIdentity,
   type HostPaths,
+  sendConfigChange,
 } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import {
@@ -413,13 +414,15 @@ export default definePlugin({
       const code = (error as { code?: unknown }).code;
       return code === "NODE_UNREACHABLE" || code === "MESH_TIMEOUT" || code === "DISCONNECTED";
     };
+    // Each node is checked for what it can do when the change reaches it (D475).
     const deliver = async (node: string, patch: Patch): Promise<Delivery> => {
-      const result = (await (node === nodeId
-        ? context.commands.execute("host.config.patch", patch)
-        : mesh.call(node, "host.config.patch", patch))) as {
-        applied: boolean;
-        conflict?: { localAt: number };
-      };
+      const result = await sendConfigChange(
+        (method, params) =>
+          node === nodeId
+            ? context.commands.execute(method, params)
+            : mesh.call(node, method, params),
+        patch,
+      );
       return result.applied
         ? { status: "applied" }
         : { status: "conflict", localAt: result.conflict?.localAt ?? 0 };
@@ -461,6 +464,13 @@ export default definePlugin({
          * (D84); a node older than this ignores them.
          */
         unset: z.array(z.string()).optional(),
+        /**
+         * The same change as edits of leaf paths (D476), for nodes that have
+         * `host.config.edit`; older ones get `values` and `unset` (D475).
+         */
+        edits: z
+          .array(z.object({ path: z.array(z.string()).min(1), value: z.unknown().optional() }))
+          .optional(),
       }),
       output: z.object({
         at: z.number(),
@@ -474,12 +484,13 @@ export default definePlugin({
         ),
       }),
       permissions: ["mesh.admin", "host.config.write"],
-      handler: async ({ nodes, layer, section, values, unset }) => {
+      handler: async ({ nodes, layer, section, values, unset, edits }) => {
         const patch: Patch = {
           layer,
           section,
           values,
           ...(unset === undefined || unset.length === 0 ? {} : { unset }),
+          ...(edits === undefined ? {} : { edits }),
           at: Date.now(),
         };
         const targets =

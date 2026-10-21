@@ -1,6 +1,7 @@
 # Config UI plan
 
-Status: **implemented**. This file records how the settings page edits a
+Status: **implemented**; W16 (D475–D488, below) **in progress**, landing as
+a stack of PRs. This file records how the settings page edits a
 node's config: a form generated from each section's schema instead of
 hand-edited JSON. It supersedes the JSON editor part of D66
 (`t3-parity.md`); the section picker, the node picker and the mesh scope
@@ -99,6 +100,165 @@ as JSON.
   `host.config.get` as `issues` (additive, by dotted path) and shows at its
   field until the field changes.
 
+## Config and settings sync (W16)
+
+Workstream W16 of `t3-roadmap.md` finishes the Deferred list below (except
+redacting secrets, W13) and two items of `t3-parity.md`: pushing a node's
+config changes to its clients, and syncing visits, drafts and device
+settings across devices. The reference is T3 Code at D53 (`eb7b35ac`); where
+T3 has no such thing (drafts and client settings stay per device there,
+rules of the form below), the decision says so.
+
+### Saving a change
+
+- **D475. A change checks the node it goes to before anything is written.**
+  `sendConfigChange` (`@jhin/host-api`) sends a change as edits through
+  `host.config.edit` (D476) where the node has that command; a node that
+  answers `COMMAND_NOT_FOUND` is older and gets the change as whole top-level
+  keys through `host.config.patch`, with `unset` only when its
+  `host.config.patch` declares `unset` in its input schema
+  (`host.commands.list`). A removal such a node cannot do is refused with
+  `CONFIG_CHANGE_UNSUPPORTED` ("too old to remove keys") and reported as
+  `failed`, never as `applied` with the key left in the file. The same
+  function runs for a save to the page's own node, for every target of
+  `mesh.config.patch` and for every queued change when it is delivered, so a
+  node that comes back older than the sender is checked then. Removing a key
+  the file does not hold is `applied`: the file is as asked.
+- **D476. Saves edit leaf paths, so comments inside a changed key stay.**
+  `host.config.edit` (`{ layer, section, edits: [{ path, value? }], at? }`,
+  additive, permission `host.config.write`) applies each edit at its path
+  inside the section with `jsonc-parser`'s `modify`; an edit without `value`
+  removes its key. Where the file has no object at an edit's parent (another
+  node of the scope whose file differs), the change's whole top-level key
+  (`values`, sent along) is written instead, so the target ends with what
+  the sender's form showed; without `values`, the missing objects are
+  created around the edit. The form computes the edits with `configEdits`: plain
+  objects on both sides are compared key by key down to the deepest path that
+  changed; a value, an array (its items have no identity but their place) or
+  a type change is written whole at its path. A change carries both forms
+  (`values`/`unset` and `edits`), so it reaches nodes of either age;
+  `mesh.config.patch` takes `edits` (additive) and its outbox keeps them. The
+  D50 write time stays per layer and section.
+- **D477. The page edits the node file or the project file.** A "File"
+  select above the form (T3 keeps settings per scope the same way, with its
+  "Inherit" state per scope) picks the layer: "Node file" (the node's
+  `config.jsonc`, the default) or "Project file" (`.jhin/config.jsonc` of
+  the project the node was started in). The form, the JSON view, comments
+  and the saved change follow the chosen layer; the other file's value shows
+  under the field: in the node file, "The project file sets X, which wins."
+  as before; in the project file, "The node file sets X; this file wins over
+  it." The mesh scope picker sends the change to the same layer of every
+  target. Changing the file with unsaved edits asks first, as changing the
+  section does.
+
+### The form
+
+- **D478. Empty text follows the schema's `clearWhenEmpty`, as in T3**
+  (`ProviderSettingsForm`'s `clearWhenEmpty: "omit" | "persist"`, D53).
+  `.meta({ clearWhenEmpty: "persist" })` keeps an emptied text field as `""`
+  in the file; the default, `"omit"`, removes its key as before. A text field
+  whose file value is `""` (whatever the hint) shows empty with the
+  placeholder "Empty" and its reset button, not the default. Numbers have no
+  empty value: an emptied number field removes its key, and `null` stays
+  the "None" box of a nullable field.
+- **D479. Arrays of objects are lists of groups.** An array whose items are
+  objects with keys the form renders (keybinding rules) is a list: each item
+  a bordered group of its fields under "Title N", with "Move up", "Move down"
+  and "Remove" (`Remove <title> N`), and "Add" at the end, which appends an
+  item holding the defaults of its required keys (an empty value where there
+  is none, which validation then reports). Required keys inside items are
+  checked (D84) and errors show at the item's fields. An item that is no
+  object, or items the form cannot render, keep the inline JSON field. T3
+  has no generic editor for these; its lists (`Arguments`, D53) add and
+  remove rows the same way.
+- **D480. A record's key is renamed in place.** The key of an entry is a text
+  field: Enter or leaving it renames the entry, keeping its value and its
+  place; Escape gives the old key back. An empty key or one already taken is
+  refused next to it ("That key is there already", "A key cannot be empty")
+  and the entry keeps its old key.
+- **D481. Fields shown only when another has a value.** `.meta({ when: {
+  mode: "custom" } })` shows a field only while its sibling `mode` (in the
+  same group) is `"custom"`; an array lists the values that show it
+  (`{ mode: ["a", "b"] }`), several keys must all match. The sibling's value
+  is the one in effect for the edited file: the edit, else the other file
+  that wins over it, else the default. A hidden field that is set or wrong
+  stays shown, as an advanced one does (D82); hidden or not, its value is
+  kept on save. This is T3's custom-only fields (branch naming instructions
+  shown for `branchNamingMode: "custom"`, D53) as a schema hint.
+- **D482. Plugins contribute field controls.** `.meta({ control: "color" })`
+  asks for the control named `color`: the form renders the first visible
+  contribution of the slot `settings.config.control.color` with
+  `ConfigControlProps` (`@jhin/client-api`: the field's key, path, title,
+  schema, default, example and whether it is a secret, the value, `onChange`
+  with `undefined` to remove the key, the label, `invalid`, `describedBy`,
+  `disabled`). Without a contribution the field gets its built-in control,
+  so a section never depends on a plugin being there. Slot rules hide,
+  reorder and replace them like any contribution (D12). T3's pickers
+  (`ThemeColorPicker`, `FontFamilyPicker`, D53) are this kind of control;
+  porting them is their workstreams' business.
+
+### Pushing config changes to clients
+
+- **D483. A node tells its clients when its config changes,** as T3's
+  `subscribeServerConfig` sends `settingsUpdated` after a write and on a
+  watched file change. The node host emits `host.config.changed`
+  (`{ layer, sections }`, the sections whose part of that file changed)
+  whenever it applies a config file: a save, a change from another node of
+  the mesh, an edit by hand the watcher sees. The builtin
+  `jhin.host-streams` (in `@jhin/node-host`, optional `rpc.streams@^1`)
+  serves those as the live stream `host/config` (permission
+  `host.config.read`); it keeps nothing, so a client subscribes for what
+  comes next and reads the current state itself.
+- **D484. Clients follow it.** `client.machines@1` asks a connection's
+  `host.identity` again when `jhin.host` changed there (D132 asked only on
+  reconnect and after this page saved). The node config page reads the
+  shown section again when it changed: an editor without changes shows the
+  new file; one with changes keeps them, rebased onto the new file (each
+  edited path set again on top of it), and says "Changed on the node while
+  you edited; your changes are kept on top of it." (T3 keeps a field's
+  draft while it is focused and shows the new value after, D53). A member of
+  a connection's mesh is not followed: its streams do not cross the mesh
+  yet (W17).
+
+### Syncing across devices
+
+- **D485. Visits live on the thread's node, as T3's `thread.visit`.** A
+  thread record gets `lastVisitedAt` (additive): `threads.visit` (`{
+  threadId, at }`) moves it forward only and changes nothing else (no
+  `updatedAt`, as T3's comment says: a read receipt is not activity), and
+  `threads.mark-unread` sets it to 1 ms before the latest turn's end (T3's
+  `thread.mark-unread`; a thread without an ended turn is refused). Both go
+  out through the `threads` index, so every client and device of the node
+  sees them. `client.visits@1` reads the record's value where the node keeps
+  one and the device's own visit otherwise (an older node, a thread never
+  visited anywhere), as T3's `resolveThreadLastVisitedAt` does; a visit is
+  sent when it moves the record forward, to a mesh member through
+  `mesh.call`.
+- **D486. Drafts follow the thread to every device.** T3 keeps drafts per
+  device; here a draft's text is also kept on the node of its thread (or of
+  its project, for a new thread): `threads.draft.get` and
+  `threads.draft.set` (`{ key, prompt, at }`, an empty prompt removes it)
+  keep it in `storage.kv`, the later `at` winning, and the live stream
+  `threads/drafts` tells a node's clients of a change. A composer takes the
+  node's draft when it is later than its own and the composer is not
+  focused, so typing is never overwritten under the cursor. Pasted images
+  stay on the device that has them (they travel as data URLs, D54).
+- **D487. Device settings follow the owner to every device.** The device
+  layer (`client.settings@1`) is also kept by every node the device is
+  connected to: `host.device-settings.get` and `host.device-settings.patch`
+  (`{ section, values, at }`, keys set to `null` removed) write
+  `device-settings.json` in the node's home, per section, the later `at`
+  winning; the live stream `host/device-settings` tells its clients. A
+  device sends each change to its open connections and, when a connection
+  opens, takes every section that node holds later than its own. Devices
+  that share a node agree. What is not a device setting stays per device:
+  the sidebar's width, the shelf and filter state, saved connections.
+- **D488. Syncing can be turned off per device.** General settings get
+  "Sync settings across devices" and "Sync drafts across devices" (section
+  `jhin.sync`, both on by default). That section is never synced itself;
+  with a switch off, the device neither sends nor takes that kind of state.
+  Visits are thread state on the node (D485) and always shared, as in T3.
+
 ## How to write a config schema (for plugin authors)
 
 The settings page renders the section a plugin declares; the schema is all
@@ -160,21 +320,17 @@ context.config.define("acme.http", Config);
 
 ## Deferred
 
-- `unset` in a mixed-version mesh: a node from before this change drops the
-  unknown field and answers `applied`, so a reset sent to it reports success
-  while the key stays in its file. It needs a version or capability check
-  before the patch goes out. `unset` of a section the file does not hold
-  reports `applied` too (nothing to remove).
+- A fan-out through a connected node older than D475: the page sends
+  `mesh.config.patch` to its own node, which delivers the change as that
+  node's version does (without `edits`, and with `unset` dropped by nodes
+  older than D84).
 - Redacting secrets in `host.config.get` (see `t3-parity.md`): the page
   hides them (D83), but they still reach the browser. A secret list item
   moved in the JSON view takes the stored value of its new position.
 - Arrays of objects (keybinding rules) as lists of groups: edited as JSON
   today.
-- Comments inside a changed top-level key: a save rewrites that key's value
-  whole, so comments inside a nested object that changed are lost. Patching
-  leaf paths would keep them.
-- Editing the project layer from the page: the form writes the node layer;
-  a value the project file sets is shown as overriding it.
+- Comments inside a changed array: an array is written whole (D476), so a
+  comment between its items is lost when any item changes.
 - Explicitly empty values: an emptied text or number field unsets its key;
   an empty string is set through JSON.
 - Renaming a key of a record in place (remove it and add it again).
@@ -212,3 +368,19 @@ The proof:
   `unset` through the mesh and the outbox.
 - Playwright `e2e/tests/config.spec.ts` (with screenshots) and the adapted
   "node config editor asks before …" in `e2e/tests/mesh.spec.ts`.
+
+### W16 landing
+
+A stack of PRs, each on the previous one. Public API, all additive:
+
+1. Saving (D475–D477): the command `host.config.edit`; `edits` on
+   `mesh.config.patch` and on queued changes; `@jhin/host-api` exports
+   `configEdits`, `configChange` and `sendConfigChange`. The proof:
+   `packages/host-api/test/config-change.test.ts` (leaf edits, both forms,
+   nodes of three ages, a removal an old node would drop refused before
+   anything is written), `packages/node-host/test/host.test.ts` ("edits leaf
+   paths, keeping the comments inside a changed key"),
+   `apps/jhin/test/mesh-sync.test.ts` (edits through the mesh),
+   `apps/web/test/node-config.browser.test.tsx` (which file wins, the change
+   a save sends) and Playwright "D477: edits the project file" in
+   `e2e/tests/config.spec.ts`.

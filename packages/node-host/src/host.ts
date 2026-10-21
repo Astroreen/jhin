@@ -93,6 +93,8 @@ const HOST_PLUGIN = "jhin.host";
 const MAX_CONFIG_SKEW_MS = 60 * 60 * 1000;
 const HOST_LOCATION = "host://jhin.host";
 const RECENT_EVENTS = 100;
+/** The key an edit may not name: assigned, it would reach `Object.prototype`. */
+const UNSAFE_KEY = "__proto__";
 
 const Machine = z.enum(MACHINE_KINDS);
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
@@ -289,6 +291,37 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         permissions: ["host.config.write"],
         handler: ({ layer, section, values, unset, at }) =>
           patchConfig(layer, section, values, unset ?? [], at ?? Date.now()),
+      });
+      context.commands.register({
+        name: "host.config.edit",
+        description:
+          "Changes values at paths inside a section of this node's node or project config file, keeping every comment outside what changed; refuses a change older than the last one (D50)",
+        input: z.object({
+          layer: z.enum(["node", "project"]),
+          section: z.string().regex(DOTTED_ID),
+          /** Applied in order; an edit without `value` removes its key (D476). */
+          edits: z.array(
+            z.object({
+              path: z.array(z.string().refine((key) => key !== UNSAFE_KEY)).min(1),
+              value: z.unknown().optional(),
+            }),
+          ),
+          /**
+           * The changed top-level keys whole, as the sender's file holds them:
+           * written instead of an edit whose parent is no object in this file.
+           */
+          values: z.record(z.string(), z.unknown()).optional(),
+          /** When the change was made (ms); later changes win. Defaults to now. */
+          at: z.number().int().nonnegative().optional(),
+        }),
+        output: z.object({
+          applied: z.boolean(),
+          at: z.number(),
+          conflict: z.object({ localAt: z.number() }).optional(),
+        }),
+        permissions: ["host.config.write"],
+        handler: ({ layer, section, edits, values, at }) =>
+          editConfig(layer, section, edits, values, at ?? Date.now()),
       });
       context.commands.register({
         name: "host.config.get",
@@ -499,12 +532,16 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     ];
   }
 
-  function patchConfig(
+  const formatting = { formattingOptions: { insertSpaces: true, tabSize: 2 } };
+  /**
+   * Writes a change to a layer's file unless a later one was written there
+   * (D50); `change` turns the file's text into the new text.
+   */
+  function writeConfig(
     layer: "node" | "project",
     section: string,
-    values: Record<string, unknown>,
-    unset: readonly string[],
     at: number,
+    change: (text: string, file: string) => string,
   ): { applied: boolean; at: number; conflict?: { localAt: number } } {
     let writes: Record<string, Record<string, number>> = {};
     try {
@@ -530,39 +567,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     if (localAt !== undefined && at < localAt) return { applied: false, at, conflict: { localAt } };
 
     const file = layer === "node" ? home.config : projectConfig;
-    // A redacted secret sent back keeps what the file holds (security.md D417).
-    const stored = readLayer(file, log)?.[section];
-    const schema = sectionSchema(section);
-    // The page shows the effective value: a secret only another layer sets stays there.
-    let effective: unknown;
-    try {
-      effective = kernel.config.get(section);
-    } catch {
-      // An invalid section has no effective value to keep a secret from.
-    }
-    const restored = Object.entries(restoreSecrets(schema, values, stored, effective, [section]));
-    let text = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
-    for (const [key, value] of restored) {
-      text = applyEdits(
-        text,
-        modify(text, [section, key], value, {
-          formattingOptions: { insertSpaces: true, tabSize: 2 },
-        }),
-      );
-    }
-    // Removed only where the section is an object: `modify` would replace anything else.
-    const current = unset.length === 0 ? undefined : parseConfigText(text, file)[section];
-    if (typeof current === "object" && current !== null && !Array.isArray(current)) {
-      for (const key of unset) {
-        if (!Object.hasOwn(current, key) || Object.hasOwn(values, key)) continue;
-        text = applyEdits(
-          text,
-          modify(text, [section, key], undefined, {
-            formattingOptions: { insertSpaces: true, tabSize: 2 },
-          }),
-        );
-      }
-    }
+    const text = change(Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n", file);
     Fs.mkdirSync(Path.dirname(file), { recursive: true });
     // Times first, then the file, each replaced atomically: a crash in between
     // can only make a later stale change lose, never win.
@@ -571,6 +576,123 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     writeAtomically(file, text);
     applyLayer(kernel, layer, file, log);
     return { applied: true, at };
+  }
+
+  /**
+   * `values` (top-level keys of a section) with each redacted secret sent
+   * back replaced by what the layer holds (security.md D417).
+   */
+  function withSecrets(
+    layer: "node" | "project",
+    section: string,
+    values: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    const file = layer === "node" ? home.config : projectConfig;
+    const stored = readLayer(file, log)?.[section];
+    // The page shows the effective value: a secret only another layer sets stays there.
+    let effective: unknown;
+    try {
+      effective = kernel.config.get(section);
+    } catch {
+      // An invalid section has no effective value to keep a secret from.
+    }
+    return restoreSecrets(sectionSchema(section), { ...values }, stored, effective, [section]);
+  }
+
+  function patchConfig(
+    layer: "node" | "project",
+    section: string,
+    values: Record<string, unknown>,
+    unset: readonly string[],
+    at: number,
+  ) {
+    return writeConfig(layer, section, at, (original, file) => {
+      let text = original;
+      for (const [key, value] of Object.entries(withSecrets(layer, section, values))) {
+        text = applyEdits(text, modify(text, [section, key], value, formatting));
+      }
+      // Removed only where the section is an object: `modify` would replace anything else.
+      const current = unset.length === 0 ? undefined : parseConfigText(text, file)[section];
+      if (typeof current === "object" && current !== null && !Array.isArray(current)) {
+        for (const key of unset) {
+          if (!Object.hasOwn(current, key) || Object.hasOwn(values, key)) continue;
+          text = applyEdits(text, modify(text, [section, key], undefined, formatting));
+        }
+      }
+      return text;
+    });
+  }
+
+  /**
+   * Applies edits of leaf paths (D476), so the comments of everything else
+   * stay, even inside a changed key. An edit whose parent is no object in the
+   * file (it changed since the edit was made) replaces that parent with an
+   * object holding the edit. Removing what the file does not hold is done:
+   * the key is not there, as asked (D475).
+   */
+  function editConfig(
+    layer: "node" | "project",
+    section: string,
+    edits: readonly { path: readonly string[]; value?: unknown }[],
+    values: Readonly<Record<string, unknown>> | undefined,
+    at: number,
+  ) {
+    // Secrets sent back redacted keep what the file holds, at their full path (D417).
+    const restoredValues = values === undefined ? undefined : withSecrets(layer, section, values);
+    const restoredEdits = edits.map((edit) => {
+      if (!Object.hasOwn(edit, "value")) return edit;
+      let wrapped: unknown = edit.value;
+      for (const key of edit.path.slice(1).toReversed()) wrapped = { [key]: wrapped };
+      const top = edit.path[0]!;
+      let value: unknown = withSecrets(layer, section, { [top]: wrapped })[top];
+      for (const key of edit.path.slice(1)) {
+        // The restored value keeps the edit's shape; anything else leaves the edit as sent.
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return edit;
+        value = (value as Record<string, unknown>)[key];
+      }
+      return { path: edit.path, value };
+    });
+    return writeConfig(layer, section, at, (original, file) => {
+      let text = original;
+      /** Top-level keys written whole: the edits below them are in that value already. */
+      const whole = new Set<string>();
+      for (const edit of restoredEdits) {
+        const path = [section, ...edit.path];
+        if (whole.has(edit.path[0]!)) continue;
+        const parsed = parseConfigText(text, file);
+        // The deepest object along the path: what is below it is written whole.
+        let depth = 0;
+        let parent: unknown = parsed;
+        while (depth < path.length - 1) {
+          const next = (parent as Record<string, unknown>)[path[depth]!];
+          if (typeof next !== "object" || next === null || Array.isArray(next)) break;
+          parent = next;
+          depth += 1;
+        }
+        if (depth < path.length - 1) {
+          // This file has no object where the sender's had one: the sender's whole
+          // top-level key is written, so siblings the sender showed come along (D476).
+          const top = edit.path[0]!;
+          if (restoredValues !== undefined && Object.hasOwn(restoredValues, top)) {
+            whole.add(top);
+            text = applyEdits(text, modify(text, [section, top], restoredValues[top], formatting));
+            continue;
+          }
+          if (!Object.hasOwn(edit, "value")) continue;
+          let value: unknown = edit.value;
+          for (const key of path.slice(depth + 1).toReversed()) value = { [key]: value };
+          text = applyEdits(text, modify(text, path.slice(0, depth + 1), value, formatting));
+          continue;
+        }
+        const key = path.at(-1)!;
+        if (!Object.hasOwn(edit, "value") && !Object.hasOwn(parent as object, key)) continue;
+        text = applyEdits(
+          text,
+          modify(text, path, Object.hasOwn(edit, "value") ? edit.value : undefined, formatting),
+        );
+      }
+      return text;
+    });
   }
 
   function inspect(): NodeInspection {

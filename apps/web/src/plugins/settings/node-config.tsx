@@ -1,4 +1,5 @@
 import type { NodeConnection } from "@jhin/client-api";
+import { configChange, sendConfigChange, type ConfigChange } from "@jhin/host-api";
 import {
   Alert,
   AlertDescription,
@@ -15,7 +16,6 @@ import { BracesIcon, ClockIcon, ListIcon, SaveIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
-  changesOf,
   equal,
   getAt,
   hasUnparsed,
@@ -59,21 +59,33 @@ const pretty = (value: unknown) => JSON.stringify(value ?? {}, null, 2);
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** A section as read, with its node file part being edited: the edit always belongs to it. */
+/** Which of a node's config files the page edits (D477). */
+export type ConfigLayer = ConfigChange["layer"];
+
+/** How the page names each file. */
+const LAYER_TITLES: Readonly<Record<ConfigLayer, string>> = {
+  node: "Node file",
+  project: "Project file",
+};
+
+/** A section as read, with one file's part being edited: the edit always belongs to it. */
 export interface Loaded {
   readonly section: string;
+  /** The file being edited. */
+  readonly layer: ConfigLayer;
   readonly read: ConfigRead;
-  /** The node file's part as read, to tell whether it was edited and what changed. */
+  /** The file's part as read, to tell whether it was edited and what changed. */
   readonly original: unknown;
-  /** The node file's part as edited; text that is no value yet stays `Unparsed`. */
+  /** The file's part as edited; text that is no value yet stays `Unparsed`. */
   readonly value: unknown;
 }
 
-const loadedFrom = (section: string, read: ConfigRead): Loaded => ({
+const loadedFrom = (section: string, layer: ConfigLayer, read: ConfigRead): Loaded => ({
   section,
+  layer,
   read,
-  original: read.layers.node ?? {},
-  value: read.layers.node ?? {},
+  original: read.layers[layer] ?? {},
+  value: read.layers[layer] ?? {},
 });
 
 /**
@@ -87,9 +99,9 @@ export function readBack(
   next: ConfigRead,
 ): Loaded | undefined {
   if (current?.section !== section) return current;
-  const original = next.layers.node ?? {};
+  const original = next.layers[current.layer] ?? {};
   return equal(current.value, sent)
-    ? { section, read: next, original, value: original }
+    ? { ...current, read: next, original, value: original }
     : { ...current, read: next, original };
 }
 
@@ -101,6 +113,7 @@ export function readBack(
 export function useLoadedSection(
   client: Pick<NodeConnection["client"], "call">,
   section: string | undefined,
+  layer: ConfigLayer = "node",
 ) {
   const [loaded, setLoaded] = useState<Loaded | undefined>();
   useEffect(() => {
@@ -110,17 +123,17 @@ export function useLoadedSection(
     void client
       .call<ConfigRead>("host.config.get", { section })
       .then((next) => {
-        if (current) setLoaded(loadedFrom(section, next));
+        if (current) setLoaded(loadedFrom(section, layer, next));
       })
       .catch((error: unknown) => {
         if (current) {
-          setLoaded(loadedFrom(section, { error: (error as Error).message, layers: {} }));
+          setLoaded(loadedFrom(section, layer, { error: (error as Error).message, layers: {} }));
         }
       });
     return () => {
       current = false;
     };
-  }, [client, section]);
+  }, [client, section, layer]);
   return [loaded, setLoaded] as const;
 }
 
@@ -239,7 +252,8 @@ function ConfigEditor({
   const client = connection.client;
   const [schemas, setSchemas] = useState<Readonly<Record<string, JsonSchema>> | undefined>();
   const [section, setSection] = useState<string | undefined>();
-  const [loaded, setLoaded] = useLoadedSection(client, section);
+  const [layer, setLayer] = useState<ConfigLayer>("node");
+  const [loaded, setLoaded] = useLoadedSection(client, section, layer);
   const [asJson, setAsJson] = useState(false);
   const [scope, setScope] = useState<readonly string[] | undefined>();
   const [saving, setSaving] = useState(false);
@@ -299,29 +313,38 @@ function ConfigEditor({
       ? []
       : Object.keys(loaded.value).filter((key) => !form.fields.some((field) => field.key === key));
 
+  /** Whether unsaved edits may go: they are none, or the user gives them up. */
+  const discard = async () =>
+    !edited ||
+    dialogs === undefined ||
+    (await dialogs.confirm({
+      title: `Discard the changes to ${loaded.section}?`,
+      description: "They were not saved.",
+      confirmLabel: "Discard",
+      variant: "destructive",
+    }));
+
   /** Another section, once unsaved edits are given up on purpose. */
   const choose = async (next: string) => {
-    if (next === section) return;
-    if (
-      edited &&
-      dialogs !== undefined &&
-      !(await dialogs.confirm({
-        title: `Discard the changes to ${loaded.section}?`,
-        description: "They were not saved.",
-        confirmLabel: "Discard",
-        variant: "destructive",
-      }))
-    ) {
-      return;
-    }
+    if (next === section || !(await discard())) return;
     setOutcomes([]);
     setAsJson(false);
     setSection(next);
   };
 
+  /** The other file, once unsaved edits are given up on purpose (D477). */
+  const chooseLayer = async (next: ConfigLayer) => {
+    if (next === layer || !(await discard())) return;
+    setOutcomes([]);
+    setLayer(next);
+  };
+  const other: ConfigLayer = layer === "node" ? "project" : "node";
+
   const targets = scope ?? (self === undefined ? [] : [self.nodeId]);
   const blocked =
     loaded === undefined ||
+    // Another file chosen, and not read yet: the edit is still the old file's.
+    loaded.layer !== layer ||
     !isObject(loaded.value) ||
     hasUnparsed(loaded.value) ||
     validate(schema, loaded.value).length > 0;
@@ -330,28 +353,28 @@ function ConfigEditor({
     if (loaded === undefined || blocked || !isObject(loaded.value)) return;
     // The section the edit was read for, whatever is chosen meanwhile, and the
     // value saved, whatever is changed meanwhile.
-    const { section: saved, value: sent, original } = loaded;
-    // Only what changed is written, so a reset key goes and the rest keeps its comments (D84).
-    const { values, unset } = changesOf(original, sent);
-    const change = {
-      layer: "node" as const,
-      section: saved,
-      values,
-      ...(unset.length === 0 ? {} : { unset }),
-    };
+    const { section: saved, value: sent, original, layer: file } = loaded;
+    // Only the paths that changed are written, so the rest keeps its comments (D84, D476).
+    const change = configChange(file, saved, original, sent);
     setSaving(true);
     // The previous save's outcome is not this one's.
     setOutcomes([]);
     try {
       const onlySelf = self === undefined || (targets.length === 1 && targets[0] === self.nodeId);
       if (onlySelf) {
-        const result = await client.call<{ applied: boolean }>("host.config.patch", change);
-        setOutcomes([
-          {
-            node: self?.nodeId ?? connection.label,
-            status: result.applied ? "applied" : "conflict",
-          },
-        ]);
+        const node = self?.nodeId ?? connection.label;
+        try {
+          // Checked for what the node can do before anything is written (D475).
+          const result = await sendConfigChange(
+            (method, params) => client.call(method, params),
+            change,
+          );
+          setOutcomes([{ node, status: result.applied ? "applied" : "conflict" }]);
+        } catch (error) {
+          if ((error as { code?: unknown }).code !== "CONFIG_CHANGE_UNSUPPORTED") throw error;
+          setOutcomes([{ node, status: "failed", error: (error as Error).message }]);
+          return;
+        }
       } else {
         const result = await client.call<{ results: Outcome[] }>("mesh.config.patch", {
           nodes: targets,
@@ -398,7 +421,7 @@ function ConfigEditor({
       ? undefined
       : {
           value: loaded.value,
-          project: read?.layers.project,
+          other: { layer: other, value: read?.layers[other] },
           errors,
           root: schema ?? {},
           set: (path, next) =>
@@ -443,6 +466,26 @@ function ConfigEditor({
             title="Section"
           />
         )}
+        {names === undefined || names.length === 0 ? null : (
+          <SettingsRow
+            control={
+              <Select
+                onValueChange={(value) => void chooseLayer(value as ConfigLayer)}
+                value={layer}
+              >
+                <SelectTrigger aria-label="Config file" className="w-full sm:w-64" size="sm">
+                  <SelectValue>{LAYER_TITLES[layer]}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup>
+                  <SelectItem value="node">{LAYER_TITLES.node}</SelectItem>
+                  <SelectItem value="project">{LAYER_TITLES.project}</SelectItem>
+                </SelectPopup>
+              </Select>
+            }
+            description="The node's config.jsonc, or .jhin/config.jsonc of the project the node was started in, which wins over it."
+            title="File"
+          />
+        )}
       </SettingsSection>
       {loaded === undefined || form === undefined || context === undefined ? null : (
         <SettingsSection
@@ -469,8 +512,9 @@ function ConfigEditor({
               </p>
             )}
             <p className="text-xs text-muted-foreground/80">
-              Changes go to this section of the node's config.jsonc, keeping its comments; a key
-              left unset takes its default.
+              {layer === "node"
+                ? "Changes go to this section of the node's config.jsonc, keeping its comments; a key left unset takes its default."
+                : "Changes go to this section of the project's .jhin/config.jsonc, keeping its comments; a key left unset takes the node file's value or its default."}
             </p>
           </div>
           {read?.error === undefined ? null : (
@@ -491,12 +535,8 @@ function ConfigEditor({
                 </pre>
               </SettingsRow>
               <SettingsRow
-                description={
-                  formFits
-                    ? "This section in the node's config.jsonc."
-                    : "This section in the node's config.jsonc. Its schema has no keys a form can show."
-                }
-                title="Node file"
+                description={`This section in ${layer === "node" ? "the node's config.jsonc" : "the project's .jhin/config.jsonc"}.${formFits ? "" : " Its schema has no keys a form can show."}`}
+                title={LAYER_TITLES[layer]}
               >
                 <SectionJson
                   messages={[...errors.entries()].flatMap(([path, messages]) =>
@@ -508,7 +548,7 @@ function ConfigEditor({
                     )
                   }
                   schema={schema ?? {}}
-                  section={loaded.section}
+                  label={`${loaded.section} in the ${LAYER_TITLES[layer].toLowerCase()}`}
                   value={loaded.value}
                 />
               </SettingsRow>
@@ -518,7 +558,7 @@ function ConfigEditor({
               <Fields context={context} fields={form.fields} path={[]} />
               {unknownKeys.length === 0 ? null : (
                 <SettingsRow
-                  description={`The node file also sets ${unknownKeys.join(", ")}, which the schema does not know. Saving keeps them; edit them as JSON.`}
+                  description={`The ${LAYER_TITLES[layer].toLowerCase()} also sets ${unknownKeys.join(", ")}, which the schema does not know. Saving keeps them; edit them as JSON.`}
                   title="Other keys"
                 />
               )}

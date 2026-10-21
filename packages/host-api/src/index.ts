@@ -105,3 +105,4 @@ export const SECRET_REDACTED = "••••••";
 export const isRedactedSecret = (value: unknown): value is string =>
   typeof value === "string" &&
   (value === SECRET_REDACTED || value.startsWith(`${SECRET_REDACTED}#`));
+export * from "./config-change.ts";

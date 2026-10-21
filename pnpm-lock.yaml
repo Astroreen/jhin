@@ -255,6 +255,9 @@ importers:
       '@jhin/client-api':
         specifier: workspace:*
         version: link:../../packages/client-api
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
       '@jhin/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
