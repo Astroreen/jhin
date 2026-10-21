@@ -1517,8 +1517,9 @@ T3 Code `eb7b35ac` as D290 says.
 - **D843. Tab indents in a code block,** as T3's `indentCodeBlock`: with no
   selection Tab inserts two spaces; with one it indents every line the
   selection touches, and Shift+Tab takes back two spaces, a tab or a space
-  from each. Outside code blocks Tab keeps its list nesting (D303) and
-  otherwise leaves the editor.
+  from each. Inside a block Tab never leaves the editor, as in T3, so the
+  keyboard way out is to move the caret below the block. Outside code blocks
+  Tab keeps its list nesting (D303) and otherwise leaves the editor.
 
 ## Not ported (out of scope)
 
@@ -1541,7 +1542,9 @@ T3 Code `eb7b35ac` as D290 says.
 - Applying Fast Mode and Ultracode to a live Claude Code session through
   `applyFlagSettings` (T3 does): a change of them starts it again (D298).
 - The editor's parts T3 has and this port left out (D303): the file icons
-  of the code-block language picker (D842; with the chips' file icons), headings,
+  of the code-block language picker (D842; with the chips' file icons), a
+  keyboard way out of a code block other than moving the caret (D843; T3 has
+  none), headings,
   horizontal rules and task lists (kept as text), visible marks at the caret,
   citation and context-reference chips, chip popovers (file icons, a skill's
   description and "View instructions"), `#` pull-request mentions and other
