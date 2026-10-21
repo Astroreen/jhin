@@ -431,11 +431,18 @@ describe("the diff panel", () => {
     mounted.unmount();
   });
 
-  it("says why the base ref picker has no refs when git.branches fails", async () => {
+  it("says why the base ref picker has no refs when git.branches fails, and reads them again", async () => {
+    let reads = 0;
     const { value } = services(viewWith(status()), {
       "git.diff": diff,
       "git.branches": () => {
-        throw new Error("git is busy");
+        reads++;
+        if (reads === 1) throw new Error("git is busy");
+        return {
+          branches: [
+            { name: "develop", current: false, isDefault: false, isRemote: false, upstream: null },
+          ],
+        };
       },
     });
     const Panel = createDiffPanel(value);
@@ -448,6 +455,14 @@ describe("the diff panel", () => {
       .toHaveTextContent("Could not read refs: git is busy");
     // The reason replaces "No matching refs.", not joins it.
     expect(page.getByText("No matching refs.").query()).toBeNull();
+    // Opened again, the picker reads the refs again, and the reason goes.
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(
+      page.getByRole("combobox", { name: "Change comparison target. Currently main" }),
+    );
+    await expect.element(page.getByRole("option", { name: "develop" })).toBeVisible();
+    expect(page.getByRole("alert").query()).toBeNull();
+    expect(reads).toBe(2);
   });
 
   it("folds a renamed file from its header", async () => {

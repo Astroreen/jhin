@@ -41,6 +41,8 @@ export function BaseRefPicker(props: {
   const reads = useRef(0);
   const load = () => {
     const read = ++reads.current;
+    // A new read starts clean: an earlier failure is not shown while it runs.
+    setFailed(undefined);
     void props.threads
       .call<{ branches: Branch[] }>(props.target, "git.branches", { projectId: props.projectId })
       .then(
