@@ -184,7 +184,28 @@ export type AgentItem =
    * as markdown. The latest one of a thread's latest turn can be implemented.
    */
   | { readonly kind: "plan.proposed"; readonly itemId: string; readonly markdown: string }
-  | { readonly kind: "usage"; readonly usage: TokenUsage };
+  | { readonly kind: "usage"; readonly usage: TokenUsage }
+  /**
+   * Since 1.4: a subagent the agent started inside the turn (Claude Code's
+   * `Agent` tool), shown as a child thread of the thread (orchestration.md
+   * D876). `subagentId` names it in the items that follow.
+   */
+  | {
+      readonly kind: "subagent.started";
+      readonly subagentId: string;
+      readonly title: string;
+      readonly prompt: string;
+      readonly model?: string;
+    }
+  /** Since 1.4: an item of a subagent's own work; it is not nested further. */
+  | { readonly kind: "subagent.item"; readonly subagentId: string; readonly item: AgentItem }
+  /** Since 1.4: a subagent ended. */
+  | {
+      readonly kind: "subagent.ended";
+      readonly subagentId: string;
+      readonly status: "completed" | "failed" | "interrupted";
+      readonly error?: string;
+    };
 
 export interface AgentTurn {
   /** Ends when the turn completes; throws when it fails. */
@@ -331,7 +352,7 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1, 1.2 and 1.3).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -431,6 +452,11 @@ export const ThreadEvents = {
    * was forked at, after the events copied from the parent.
    */
   threadForked: "threads.thread.forked",
+  /**
+   * Thread stream: a subagent the turn's agent started, shown as the child
+   * thread `childThreadId` (`{ turnId, subagentId, childThreadId, title }`, D877).
+   */
+  subagentStarted: "threads.subagent.started",
 } as const;
 
 /**

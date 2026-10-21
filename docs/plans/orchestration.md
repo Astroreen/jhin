@@ -246,6 +246,12 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 - A scratch launch in a fresh folder of its own (T3's) waits for per-thread
   working directories.
 - Custom `agentType`s of a workflow agent.
+- A Claude subagent run in the background (`run_in_background`) ends its
+  thread with the call's result, which comes at its start; its later work
+  is not shown. A subagent's text is shown whole, not streamed.
+- The web side of provider subagents: the "Open subagent" link of the
+  `Agent` call, the bar that replaces the composer in their thread ("Runs on
+  its own", "Open parent") and their Lineage rows.
 - Delegating to an agent on another mesh node (`target.node`): today a task
   runs on the parent's node.
 - Pruning old task and workflow records: they stay in `storage.kv` (and in
@@ -408,6 +414,27 @@ user sees, which their Deferred lists left out.
   `scriptPath` is a file, relative to that directory unless absolute.
   `workflows.run` takes exactly one of `script`, `name` and `scriptPath`
   (`INVALID_REQUEST`); a missing one answers `WORKFLOW_NOT_FOUND`.
+
+- **D876. A runtime's own subagents** (T3's provider-native subagents,
+  `subagentProjection.makeSubagentChildThread`) reach the threads plugin as
+  three more items of `agent.runtime@1` (1.4; `agent.registry` 1.2):
+  `subagent.started { subagentId, title, prompt, model? }`, `subagent.item
+  { subagentId, item }` and `subagent.ended { subagentId, status, error? }`.
+  A runtime writes no other thread itself.
+- **D877. The threads plugin projects them into child threads.** A started
+  subagent gets a thread in the parent's project (and worktree) with
+  `parentThreadId`, `relationshipToParent: "subagent"` and `subagentOrigin:
+  "provider"`, titled after it ("Subagent" when it has no title), and one
+  turn: its prompt as the input, its items as that turn's events, ended by
+  `subagent.ended` or, still open, as interrupted with the parent's turn.
+  The parent's stream gets `threads.subagent.started { turnId, subagentId,
+  childThreadId, title }`. A subagent's own subagents are not shown apart,
+  and a failure there never fails the parent's turn.
+- **D878. Claude Code's `Agent` (and `Task`) calls** are such subagents: the
+  call's `description` is the title and its `prompt` the input; the
+  messages with its `parent_tool_use_id` become its items (whole text and
+  reasoning blocks, tool calls and their results); the call's result ends
+  it (a failed result fails it). The call itself stays in the parent's turn.
 
 ### Deferred
 

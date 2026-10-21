@@ -137,6 +137,8 @@ const log = (deps: ClaudeTurnDependencies) => (deps.log === undefined ? {} : { l
 
 /** Tool output kept in the thread's log; longer output is cut. */
 const MAX_TOOL_OUTPUT = 20_000;
+/** The tools that start a subagent: `Agent`, and `Task` in older CLIs. */
+const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
 
 /** How Jhin's runtime and interaction modes map onto Claude Code (T3's mapping). */
 export function permissionMode(
@@ -388,6 +390,63 @@ export function claudeTurn(
       return;
     }
     out.push({ kind: "tool.started", itemId: id, tool: toolCall(name, input) });
+    // Its own work is shown as a child thread (orchestration.md D878).
+    if (SUBAGENT_TOOLS.has(name)) {
+      const fields = (input ?? {}) as { description?: unknown; prompt?: unknown; model?: unknown };
+      out.push({
+        kind: "subagent.started",
+        subagentId: id,
+        title: typeof fields.description === "string" ? fields.description : "Subagent",
+        prompt: typeof fields.prompt === "string" ? fields.prompt : "",
+        ...(typeof fields.model === "string" ? { model: fields.model } : {}),
+      });
+    }
+  };
+
+  /** A subagent's own messages, as items of its thread (D878): whole messages, not streamed. */
+  const subagentTools = new Map<string, string>();
+  const projectSubagent = (subagentId: string, message: SDKMessage) => {
+    const items: AgentItem[] = [];
+    if (message.type === "assistant") {
+      message.message.content.forEach((block, index) => {
+        if (block.type === "text" || block.type === "thinking") {
+          const text = block.type === "text" ? block.text : block.thinking;
+          if (text.trim().length === 0) return;
+          const kind = block.type === "text" ? "message" : "reasoning";
+          items.push({
+            kind: `${kind}.completed`,
+            itemId: `${subagentId}:${message.message.id}:${index}`,
+            text,
+          });
+        } else if (block.type === "tool_use") {
+          subagentTools.set(block.id, block.name);
+          if (!isSilentTool(block.name)) {
+            items.push({
+              kind: "tool.started",
+              itemId: block.id,
+              tool: toolCall(block.name, block.input),
+            });
+          }
+        }
+      });
+    } else if (message.type === "user" && typeof message.message.content !== "string") {
+      for (const block of message.message.content) {
+        if (block.type !== "tool_result") continue;
+        const name = subagentTools.get(block.tool_use_id);
+        if (name === undefined || isSilentTool(name)) continue;
+        const text = toolResultText(block.content);
+        const output =
+          text.length > MAX_TOOL_OUTPUT ? `${text.slice(0, MAX_TOOL_OUTPUT)}\n…` : text;
+        const failed = block.is_error === true;
+        items.push({
+          kind: "tool.completed",
+          itemId: block.tool_use_id,
+          status: failed ? "failed" : "completed",
+          ...(output.length === 0 ? {} : failed ? { error: output } : { output }),
+        });
+      }
+    }
+    for (const item of items) out.push({ kind: "subagent.item", subagentId, item });
   };
 
   const usage = () =>
@@ -404,8 +463,11 @@ export function claudeTurn(
         } satisfies AgentItem);
 
   const project = (message: SDKMessage) => {
-    // Subagents' own messages stay inside their Agent tool call.
-    if ("parent_tool_use_id" in message && message.parent_tool_use_id) return;
+    // A subagent's own messages go to its thread.
+    if ("parent_tool_use_id" in message && message.parent_tool_use_id) {
+      projectSubagent(message.parent_tool_use_id, message);
+      return;
+    }
     switch (message.type) {
       case "stream_event": {
         const event = message.event;
@@ -506,6 +568,19 @@ export function claudeTurn(
             status,
             ...(output.length === 0 ? {} : status === "failed" ? { error: output } : { output }),
           });
+          if (SUBAGENT_TOOLS.has(tool.name)) {
+            out.push({
+              kind: "subagent.ended",
+              subagentId: block.tool_use_id,
+              status:
+                status === "completed"
+                  ? "completed"
+                  : status === "failed"
+                    ? "failed"
+                    : "interrupted",
+              ...(status === "failed" && output.length > 0 ? { error: output } : {}),
+            });
+          }
         }
         return;
       }

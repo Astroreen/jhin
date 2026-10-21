@@ -287,11 +287,11 @@ export const toolUse = (
 export const toolResult = (
   id: string,
   content: unknown,
-  options: { isError?: boolean; structured?: unknown } = {},
+  options: { isError?: boolean; structured?: unknown; parent?: string } = {},
 ) =>
   message({
     type: "user",
-    parent_tool_use_id: null,
+    parent_tool_use_id: options.parent ?? null,
     message: {
       role: "user",
       content: [{ type: "tool_result", tool_use_id: id, content, is_error: options.isError }],

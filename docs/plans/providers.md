@@ -59,7 +59,7 @@ specific to Claude: the runtime is a plugin on the public API.
   `ExitPlanMode` shows the proposed plan as a message and is denied with T3's
   message, so Claude stops and waits for the user. `TodoWrite` and the
   `TaskCreate`/`TaskUpdate`/`TaskList` tools are plan updates, not tool calls.
-  A subagent's own messages stay inside its `Agent` tool call.
+  A subagent's own messages go to a child thread (orchestration.md D878).
 - **D94. Streaming.** Partial messages stream text and (summarized)
   reasoning as deltas; a block completes once, whether its snapshot or its
   `content_block_stop` comes first. Usage is reported at each API message
@@ -346,11 +346,6 @@ Done since: steering a running turn (`t3-parity.md` D204–D206).
   list for every Claude Code.
 - Slash commands and skills from Claude Code's initialization in the
   composer.
-- Subagent transcripts; today only the `Agent` tool's result shows. T3 shows
-  a Claude subagent as a child thread of the parent (`subagentProjection`'s
-  `makeSubagentChildThread`), not inside the tool call. Jhin has no child
-  threads yet (W10's delegated tasks bring them), nor a way for a runtime to
-  write another thread's items through `agent.runtime@1`.
 - A snapshot frame Claude Code would send twice for one unstreamed block
   (not seen so far) shows twice: since D342 identical texts are not merged.
 - Session files of a deleted thread under an earlier config directory: D345
