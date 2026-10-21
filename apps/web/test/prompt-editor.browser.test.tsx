@@ -1,3 +1,4 @@
+import type { Editor } from "@tiptap/core";
 import { act, createRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -13,6 +14,8 @@ interface Mounted {
   value(): string;
   /** Sets the prompt from outside, as clearing after a send or a history recall does. */
   setFromParent(value: string): void;
+  /** Disables the editor from outside, as a busy composer does. */
+  setDisabled(disabled: boolean): void;
   /** Resolves once the editor reports `expected` (and `cursor`, when given), or already has. */
   reported(expected: string, cursor?: number): Promise<void>;
   editable(): HTMLElement;
@@ -39,10 +42,13 @@ function mount(
     [];
   let current = initial;
   let setOutside: ((value: string) => void) | undefined;
+  let setDisabledOutside: ((disabled: boolean) => void) | undefined;
 
   function Harness() {
     const [value, setValue] = useState(initial);
+    const [disabled, setDisabled] = useState(false);
     setOutside = setValue;
+    setDisabledOutside = setDisabled;
     return (
       <PromptEditor
         value={value}
@@ -57,6 +63,7 @@ function mount(
         }}
         onSubmit={() => submits.push(current)}
         onKeyDown={options.onKeyDown}
+        disabled={disabled}
         placeholder="Ask anything"
         sendShortcut={options.sendShortcut ?? "enter"}
         handleRef={handleRef}
@@ -81,6 +88,7 @@ function mount(
       current = value;
       act(() => setOutside!(value));
     },
+    setDisabled: (disabled) => act(() => setDisabledOutside!(disabled)),
     reported: (expected, cursor) => {
       const matches = (value: string, at: number) =>
         value === expected && (cursor === undefined || at === cursor);
@@ -188,6 +196,10 @@ describe("the prompt editor (D303)", () => {
     expect(root.querySelector("s")?.textContent).toBe("gone");
     expect(root.querySelectorAll("ul > li")).toHaveLength(2);
     expect(root.querySelector("blockquote")?.textContent).toBe("quote");
+    // A code block is a React node view, which mounts after the editor.
+    await expect
+      .element(page.getByRole("combobox", { name: "Code language: TypeScript" }))
+      .toBeVisible();
     expect(root.querySelector("pre")?.textContent).toBe("const a = 1;");
 
     editor.handle.setValue(editor.value());
@@ -240,5 +252,136 @@ describe("the prompt editor (D303)", () => {
     await editor.reported("one\ntwo", 3);
     expect(editor.handle.caretOnFirstLine()).toBe(true);
     expect(editor.handle.caretOnLastLine()).toBe(false);
+  });
+});
+
+describe("code blocks in the prompt (D841–D843)", () => {
+  it("colours a code block's tokens in both themes", async () => {
+    const editor = mount("```ts\nconst a = 1;\n```");
+    const token = page.getByText("const", { exact: true });
+    await expect.element(token).toHaveClass("composer-code-token");
+    const style = (token.element() as HTMLElement).getAttribute("style") ?? "";
+    expect(style).toContain("--shiki-light:");
+    expect(style).toContain("--shiki-dark:");
+    editor.handle.setValue(editor.value());
+    expect(editor.value()).toBe("```ts\nconst a = 1;\n```");
+  });
+
+  it("keeps a block's colours while its edited text is tokenized again", async () => {
+    const editor = mount("```ts\nconst a = 1;\n```");
+    await expect
+      .element(page.getByText("const", { exact: true }))
+      .toHaveClass("composer-code-token");
+    // A transaction dispatches synchronously; the new text's tokens cannot have arrived yet.
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    tiptap.commands.insertContentAt(tiptap.state.doc.child(0).nodeSize - 1, " ");
+    expect(editor.value()).toBe("```ts\nconst a = 1; \n```");
+    expect(page.getByText("const", { exact: true }).element()).toHaveClass("composer-code-token");
+
+    // A new language drops the old one's colours until its own arrive.
+    tiptap.commands.updateAttributes("codeBlock", { language: "python" });
+    expect(editor.editable().querySelector(".composer-code-token[style]")).toBeNull();
+  });
+
+  it("indents with Tab and outdents with Shift+Tab, in a code block only", async () => {
+    const editor = mount("```\na\nb\n```");
+    editor.handle.focus();
+    editor.handle.replaceRange(4, 4, "");
+    await userEvent.keyboard("{Tab}");
+    await editor.reported("```\n  a\nb\n```");
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await editor.reported("```\na\nb\n```");
+    expect(document.activeElement).toBe(editor.editable());
+  });
+
+  it("moves every line a selection touches, and not the line it ends at the start of", async () => {
+    const editor = mount("```\na\n b\n\tc\nd\n```");
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    // The block's text starts at position 1; offset 5 is the start of the "\tc" line.
+    tiptap.commands.setTextSelection({ from: 1, to: 6 });
+    tiptap.commands.focus();
+    await userEvent.keyboard("{Tab}");
+    await editor.reported("```\n  a\n   b\n\tc\nd\n```");
+    // The selection followed its lines, so Shift+Tab takes back what Tab added.
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await editor.reported("```\na\n b\n\tc\nd\n```");
+
+    // Two spaces, one space and a tab come off; a line with none stays.
+    tiptap.commands.setTextSelection({ from: 1, to: 9 });
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await editor.reported("```\na\nb\nc\nd\n```");
+    const changes = editor.changes.length;
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(editor.changes.length).toBe(changes);
+    expect(editor.value()).toBe("```\na\nb\nc\nd\n```");
+  });
+
+  it("keeps a selection's end on its line when Shift+Tab takes the indent it sat in", async () => {
+    const editor = mount("```\n  a\n  b\n```");
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    // From the block's start to between the second line's two spaces.
+    tiptap.commands.setTextSelection({ from: 1, to: 6 });
+    tiptap.commands.focus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await editor.reported("```\na\nb\n```");
+    // The second line's start, not the end of the first.
+    expect(tiptap.state.selection.to).toBe(3);
+  });
+
+  it("leaves a selection from a code block into the text below to Tab's default", async () => {
+    const editor = mount("```\na\n```\ntext");
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    tiptap.commands.setTextSelection({ from: 1, to: tiptap.state.doc.content.size - 1 });
+    tiptap.commands.focus();
+    await userEvent.keyboard("{Tab}");
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(editor.value()).toBe("```\na\n```\ntext");
+  });
+
+  it("outdents an empty first line, not the line below it", async () => {
+    const editor = mount("```\n\n  x\n```");
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    tiptap.commands.setTextSelection(1);
+    tiptap.commands.focus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(editor.changes.map(([value]) => value)).not.toContain("```\n\nx\n```");
+    expect(editor.value()).toBe("```\n\n  x\n```");
+  });
+
+  it("leaves Tab alone outside a code block", async () => {
+    const editor = mount("text");
+    editor.handle.focus();
+    await userEvent.keyboard("{Tab}");
+    expect(editor.value()).toBe("text");
+    expect(editor.changes).toEqual([]);
+  });
+
+  it("changes the fence's language from the header and keeps what follows it", async () => {
+    const editor = mount("```ts title=x\nconst a = 1;\n```");
+    await userEvent.click(page.getByRole("combobox", { name: "Code language: TypeScript" }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search languages" }), "pyth");
+    await userEvent.click(page.getByRole("option", { name: "Python" }));
+    await editor.reported("```python title=x\nconst a = 1;\n```");
+    // The caret is back at the block's end.
+    await userEvent.keyboard("2");
+    await editor.reported("```python title=x\nconst a = 1;2\n```");
+    expect(page.getByRole("combobox", { name: "Code language: Python" }).query()).toBeTruthy();
+
+    await userEvent.click(page.getByRole("combobox", { name: "Code language: Python" }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search languages" }), "zzz");
+    await expect.element(page.getByText("No matching languages.")).toBeVisible();
+    await userEvent.fill(page.getByRole("combobox", { name: "Search languages" }), "plain");
+    await userEvent.click(page.getByRole("option", { name: "Plain text" }));
+    // Something follows the language, so plain text writes `text` to keep it.
+    await editor.reported("```text title=x\nconst a = 1;2\n```");
+
+    editor.setDisabled(true);
+    await expect
+      .element(page.getByRole("combobox", { name: "Code language: Plain text" }))
+      .toBeDisabled();
+    editor.setDisabled(false);
+    await expect
+      .element(page.getByRole("combobox", { name: "Code language: Plain text" }))
+      .toBeEnabled();
   });
 });

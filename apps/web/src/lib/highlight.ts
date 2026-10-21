@@ -32,8 +32,10 @@ const LANGUAGES: Record<string, () => Promise<{ default: LanguageInput }>> = {
   php: () => import("shiki/dist/langs/php.mjs"),
   powershell: () => import("shiki/dist/langs/powershell.mjs"),
   python: () => import("shiki/dist/langs/python.mjs"),
+  r: () => import("shiki/dist/langs/r.mjs"),
   ruby: () => import("shiki/dist/langs/ruby.mjs"),
   rust: () => import("shiki/dist/langs/rust.mjs"),
+  scala: () => import("shiki/dist/langs/scala.mjs"),
   scss: () => import("shiki/dist/langs/scss.mjs"),
   shellscript: () => import("shiki/dist/langs/shellscript.mjs"),
   sql: () => import("shiki/dist/langs/sql.mjs"),
@@ -86,8 +88,9 @@ const ALIASES: Record<string, string> = {
 export function languageOf(fence: string | undefined): string | undefined {
   if (fence === undefined) return undefined;
   const name = fence.trim().toLowerCase();
-  const resolved = ALIASES[name] ?? name;
-  return LANGUAGES[resolved] === undefined ? undefined : resolved;
+  // Own keys only: a fence named `constructor` must not find Object's.
+  const resolved = Object.hasOwn(ALIASES, name) ? ALIASES[name]! : name;
+  return Object.hasOwn(LANGUAGES, resolved) ? resolved : undefined;
 }
 
 let core: Promise<HighlighterCore> | undefined;
@@ -111,11 +114,12 @@ function highlighter(): Promise<HighlighterCore> {
   return core;
 }
 
-/** HTML of the code highlighted in both themes (CSS variables `--shiki-light` / `--shiki-dark`). */
-export async function highlight(code: string, language: string): Promise<string> {
-  const key = `${language}\u0000${code}`;
-  const cached = cache.get(key);
-  if (cached !== undefined) return cached;
+const THEMES = {
+  themes: { light: "github-light-default", dark: "github-dark-default" },
+  defaultColor: false,
+} as const;
+
+async function withGrammar(language: string): Promise<HighlighterCore> {
   const instance = await highlighter();
   let load = loading.get(language);
   if (load === undefined) {
@@ -125,11 +129,51 @@ export async function highlight(code: string, language: string): Promise<string>
     loading.set(language, load);
   }
   await load;
-  const html = instance.codeToHtml(code, {
-    lang: language,
-    themes: { light: "github-light-default", dark: "github-dark-default" },
-    defaultColor: false,
-  });
+  return instance;
+}
+
+/** A coloured run of a code's text: offsets into it, and the CSS variables of both themes. */
+export interface HighlightedToken {
+  readonly from: number;
+  readonly to: number;
+  readonly style: string;
+}
+
+/**
+ * The code's coloured runs in both themes, for editors that colour text in place
+ * (the composer's code blocks) rather than render Shiki's HTML.
+ */
+export async function highlightTokens(
+  code: string,
+  language: string,
+): Promise<readonly HighlightedToken[]> {
+  const instance = await withGrammar(language);
+  const { tokens } = instance.codeToTokens(code, { lang: language, ...THEMES });
+  const runs: HighlightedToken[] = [];
+  let offset = 0;
+  for (const [index, line] of tokens.entries()) {
+    // The separator between lines, which Shiki drops: CRLF is two characters, LF or a lone CR one.
+    if (index > 0) offset += code.startsWith("\r\n", offset) ? 2 : 1;
+    for (const token of line) {
+      const style = Object.entries(token.htmlStyle ?? {})
+        .map(([name, value]) => `${name}:${value}`)
+        .join(";");
+      if (style && token.content.trim()) {
+        runs.push({ from: offset, to: offset + token.content.length, style });
+      }
+      offset += token.content.length;
+    }
+  }
+  return runs;
+}
+
+/** HTML of the code highlighted in both themes (CSS variables `--shiki-light` / `--shiki-dark`). */
+export async function highlight(code: string, language: string): Promise<string> {
+  const key = `${language}\u0000${code}`;
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+  const instance = await withGrammar(language);
+  const html = instance.codeToHtml(code, { lang: language, ...THEMES });
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value!);
   cache.set(key, html);
   return html;

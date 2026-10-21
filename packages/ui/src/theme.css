@@ -915,3 +915,16 @@ code {
   font-style: var(--shiki-dark-font-style);
   font-weight: var(--shiki-dark-font-weight);
 }
+
+/* A token of a code block in the composer, coloured in place by a decoration. */
+.composer-code-token {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+}
+
+.dark .composer-code-token {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+}

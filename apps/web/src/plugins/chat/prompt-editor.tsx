@@ -33,7 +33,7 @@ import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from "@tipta
 import { type EditorState, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { ReplaceStep } from "@tiptap/pm/transform";
 import type { EditorView } from "@tiptap/pm/view";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 
@@ -42,6 +42,8 @@ import {
   splitPromptIntoSegments,
   submitsOnKey,
 } from "../../lib/composer-trigger.ts";
+import { ComposerCodeBlockHighlight } from "./code-block-highlight.ts";
+import { CODE_BLOCK_HEADER_CLASS_NAME, CodeBlockView } from "./code-block-view.tsx";
 
 export interface PromptEditorHandle {
   focus(): void;
@@ -1013,6 +1015,15 @@ const ComposerCodeBlockExtension = CodeBlock.extend({
       Backspace: () => unwrapCodeBlockAtStart(this.editor),
     };
   },
+  addNodeView() {
+    return ReactNodeViewRenderer(CodeBlockView, {
+      // Tiptap shields only events aimed at the picker's button itself; a click on its
+      // label would reach ProseMirror and move the selection.
+      stopEvent: ({ event }) =>
+        event.target instanceof Element &&
+        event.target.closest(`.${CODE_BLOCK_HEADER_CLASS_NAME}`) !== null,
+    });
+  },
   // Tiptap's ``` + space rule would open a fence inside a list item or quote, where the
   // serializer has no line for it. Enter on a fence line covers the gesture at top level.
   addInputRules() {
@@ -1293,6 +1304,7 @@ const EXTENSIONS = [
   ComposerSkillExtension,
   ComposerCodeExtension,
   ComposerCodeBlockExtension,
+  ComposerCodeBlockHighlight,
   ComposerBlockquoteExtension,
   ComposerBulletListExtension,
   ComposerOrderedListExtension,
@@ -1306,6 +1318,52 @@ function codeBlockText(state: EditorState): { from: number; text: string } | nul
   const { $from, $to } = state.selection;
   if ($from.parent.type.spec.code !== true || !$from.sameParent($to)) return null;
   return { from: $from.start(), text: $from.parent.textContent };
+}
+
+const CODE_BLOCK_INDENT = "  ";
+
+function outdentLine(line: string): string {
+  if (line.startsWith(CODE_BLOCK_INDENT)) return line.slice(CODE_BLOCK_INDENT.length);
+  if (line.startsWith("\t") || line.startsWith(" ")) return line.slice(1);
+  return line;
+}
+
+/** Tab in a code block (D843): two spaces at the caret, or every touched line moved in or out. */
+function indentCodeBlock(
+  state: EditorState,
+  direction: "in" | "out",
+  dispatch: (tr: Transaction) => void,
+): boolean {
+  const block = codeBlockText(state);
+  if (!block) return false;
+  const { from, to } = state.selection;
+  if (from === to && direction === "in") {
+    dispatch(state.tr.insertText(CODE_BLOCK_INDENT, from, to));
+    return true;
+  }
+  const startOffset = from - block.from;
+  const endOffset = to - block.from;
+  // At offset 0 a search from `startOffset - 1` would find a newline at 0, past an empty first line.
+  const lineStart = startOffset === 0 ? 0 : block.text.lastIndexOf("\n", startOffset - 1) + 1;
+  const newlineAfter = block.text.indexOf("\n", Math.max(startOffset, endOffset - 1));
+  const lineEnd = newlineAfter === -1 ? block.text.length : newlineAfter;
+  const before = block.text.slice(lineStart, lineEnd).split("\n");
+  const after = before.map((line) =>
+    direction === "in"
+      ? line.length === 0
+        ? line
+        : `${CODE_BLOCK_INDENT}${line}`
+      : outdentLine(line),
+  );
+  const text = after.join("\n");
+  if (text === before.join("\n")) return true;
+  const tr = state.tr.insertText(text, block.from + lineStart, block.from + lineEnd);
+  const nextFrom = Math.max(block.from + lineStart, from + after[0]!.length - before[0]!.length);
+  // An end inside the indent its own line lost stays on that line, at its start.
+  const lastLineStart = block.from + lineStart + text.length - after.at(-1)!.length;
+  const nextTo = Math.max(nextFrom, lastLineStart, to + text.length - before.join("\n").length);
+  dispatch(tr.setSelection(TextSelection.create(tr.doc, nextFrom, nextTo)));
+  return true;
 }
 
 function indentedNewlineInCodeBlock(
@@ -1474,7 +1532,7 @@ function caretOnVisualEdge(editor: Editor | null, edge: "start" | "end"): boolea
 // The component
 
 const EDITOR_CLASS_NAME =
-  "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed whitespace-pre-wrap wrap-break-word text-foreground outline-none [&_blockquote]:border-s-2 [&_blockquote]:ps-3 [&_blockquote]:text-muted-foreground [&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_ol]:list-decimal [&_ol]:ps-5 [&_pre]:my-1 [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_pre]:font-mono [&_pre]:text-[0.9em] [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:list-disc [&_ul]:ps-5";
+  "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed whitespace-pre-wrap wrap-break-word text-foreground outline-none [&_blockquote]:border-s-2 [&_blockquote]:ps-3 [&_blockquote]:text-muted-foreground [&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_ol]:list-decimal [&_ol]:ps-5 [&_pre]:font-mono [&_pre]:text-[0.9em] [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:list-disc [&_ul]:ps-5";
 
 export function PromptEditor(props: PromptEditorProps) {
   const { value, placeholder, disabled = false, readOnly = false, className, handleRef } = props;
@@ -1522,8 +1580,13 @@ export function PromptEditor(props: PromptEditorProps) {
     if (event.isComposing || event.keyCode === 229) return event.key === "Enter";
     const current = latest.current;
     if (current.onKeyDown?.(event) === true) return true;
-    if (event.key !== "Enter") return false;
     const dispatch = (tr: Transaction) => view.dispatch(tr.scrollIntoView());
+    if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      if (codeBlockText(view.state) === null) return false;
+      event.preventDefault();
+      return indentCodeBlock(view.state, event.shiftKey ? "out" : "in", dispatch);
+    }
+    if (event.key !== "Enter") return false;
     const mod = event.metaKey || event.ctrlKey;
     if (!mod && codeBlockText(view.state) !== null) {
       return (
@@ -1654,7 +1717,11 @@ export function PromptEditor(props: PromptEditorProps) {
   useLayoutEffect(() => {
     if (!editor || mountedEditor.current !== editor) return;
     editor.view.setProps({ attributes });
-    if (editor.isEditable !== editable) editor.setEditable(editable, false);
+    if (editor.isEditable !== editable) {
+      editor.setEditable(editable, false);
+      // Node views (a code block's language picker) read `isEditable` on a transaction.
+      editor.view.dispatch(editor.state.tr.setMeta("composerEditable", editable));
+    }
   });
 
   useLayoutEffect(() => {

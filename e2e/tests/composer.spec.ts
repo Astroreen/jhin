@@ -285,3 +285,31 @@ test("switches to plan mode with /plan sent alone, and dismisses a menu with Esc
   );
   await expect(message).toHaveText("");
 });
+
+test("highlights a code block in the prompt, picks its language and indents with Tab", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.click();
+  await message.pressSequentially("```ts");
+  await message.press("Enter");
+  await message.pressSequentially("const total = 1;");
+  await expect(message.getByText("const", { exact: true })).toHaveClass(/composer-code-token/);
+  await message.press("Home");
+  await message.press("Tab");
+  await expect(message.locator("pre")).toHaveText("  const total = 1;");
+  await expect(message).toBeFocused();
+
+  await page.getByRole("combobox", { name: "Code language: TypeScript" }).click();
+  await page.getByRole("combobox", { name: "Search languages" }).fill("py");
+  const shot = info.outputPath("code-block-language.png");
+  await page.screenshot({ path: shot });
+  await info.attach("code block language picker", { path: shot, contentType: "image/png" });
+  await page.getByRole("option", { name: "Python" }).click();
+  await expect(page.getByRole("combobox", { name: "Code language: Python" })).toBeVisible();
+  const highlighted = info.outputPath("code-block.png");
+  await page.screenshot({ path: highlighted });
+  await info.attach("highlighted code block", { path: highlighted, contentType: "image/png" });
+});
