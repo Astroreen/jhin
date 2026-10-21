@@ -164,6 +164,20 @@ describe("settings fan-out (D20, D50)", () => {
       expect(reset.results).toEqual([{ node: back.nodeId, status: "applied" }]);
       expect((await greet(back)).message).toBe("Hello, x!");
 
+      // Edits of leaf paths go through too; values and unset are what older nodes take (D476).
+      const edited = await a.client.call<{ results: { node: string; status: string }[] }>(
+        "mesh.config.patch",
+        {
+          nodes: [back.nodeId],
+          layer: "node",
+          section: "jhin.example",
+          values: { greeting: "Not this" },
+          edits: [{ path: ["greeting"], value: "Edited" }],
+        },
+      );
+      expect(edited.results).toEqual([{ node: back.nodeId, status: "applied" }]);
+      expect((await greet(back)).message).toBe("Edited, x!");
+
       // A change made on c later than a's wins; a hears about the conflict.
       await back.client.call("host.config.patch", {
         layer: "node",

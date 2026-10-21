@@ -2,6 +2,7 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+import { parseConfigText } from "@jhin/kernel";
 import { MACHINE_KINDS } from "@jhin/host-api";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -779,6 +780,95 @@ export default definePlugin({
     // Back to the schema's default.
     expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hello, A!");
   });
+  it("edits leaf paths, keeping the comments inside a changed key (D476)", async () => {
+    const home = tempDir("home");
+    const config = Path.join(home, "config.jsonc");
+    Fs.writeFileSync(
+      config,
+      [
+        "{",
+        '  "jhin.example": {',
+        "    // the greeting",
+        '    "greeting": "Hey",',
+        '    "nested": {',
+        "      // kept: a sibling changes",
+        '      "a": 1,',
+        '      "b": 2',
+        "    },",
+        '    "flat": "x"',
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd"), distribution: [EXAMPLE] });
+    await host.ready();
+
+    const edited = await host.execute("host.config.edit", {
+      layer: "node",
+      section: "jhin.example",
+      edits: [
+        { path: ["nested", "b"], value: 3 },
+        { path: ["nested", "c"], value: [1, 2] },
+        // Below a value that is no object: the value becomes one.
+        { path: ["flat", "deep"], value: true },
+        // Not in the file: nothing to remove, and done.
+        { path: ["absent"] },
+        { path: ["greeting"] },
+      ],
+    });
+    expect(edited.value).toMatchObject({ applied: true });
+    const text = Fs.readFileSync(config, "utf8");
+    expect(text).toContain("// kept: a sibling changes");
+    expect(text).not.toContain('"greeting"');
+    // Keys the schema does not know read back redacted (D417): the file says what is there.
+    const nodeLayer = () => parseConfigText(Fs.readFileSync(config, "utf8"))["jhin.example"];
+    expect(nodeLayer()).toEqual({
+      nested: { a: 1, b: 3, c: [1, 2] },
+      flat: { deep: true },
+    });
+    // The project file's twin of a path is not touched.
+    const project = await host.execute("host.config.edit", {
+      layer: "project",
+      section: "jhin.example",
+      edits: [{ path: ["greeting"], value: "Yo" }],
+    });
+    expect(project.value).toMatchObject({ applied: true });
+    expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Yo, A!");
+    // A file without the object the sender's had takes the sender's whole key.
+    await host.execute("host.config.edit", {
+      layer: "node",
+      section: "jhin.example",
+      edits: [{ path: ["nested", "b"], value: 4 }],
+      values: { nested: { a: 1, b: 4 } },
+    });
+    await host.execute("host.config.edit", {
+      layer: "node",
+      section: "jhin.example",
+      edits: [{ path: ["other", "b"], value: 4 }],
+      values: { other: { a: 1, b: 4 } },
+    });
+    expect(nodeLayer()).toMatchObject({ nested: { a: 1, b: 4, c: [1, 2] }, other: { a: 1, b: 4 } });
+    // A change older than the last one loses (D50).
+    const stale = await host.execute("host.config.edit", {
+      layer: "node",
+      section: "jhin.example",
+      edits: [{ path: ["flat"] }],
+      at: 1,
+    });
+    expect(stale.value).toMatchObject({
+      applied: false,
+      conflict: { localAt: expect.any(Number) },
+    });
+    // A key that would reach Object.prototype is refused.
+    const unsafe = await host.execute("host.config.edit", {
+      layer: "node",
+      section: "jhin.example",
+      edits: [{ path: ["__proto__", "x"], value: 1 }],
+    });
+    expect(unsafe.error).toBeDefined();
+  });
+
   it("reports what the node is, with the owner's machine kind over the detected one", async () => {
     const home = tempDir("home");
     Fs.writeFileSync(

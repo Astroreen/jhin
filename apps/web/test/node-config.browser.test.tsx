@@ -4,8 +4,10 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
-import { changesOf, HIDDEN, sectionForm, setAt } from "../src/lib/config-form.ts";
-import { Fields, SectionJson } from "../src/plugins/settings/config-fields.tsx";
+import { configChange } from "@jhin/host-api";
+
+import { HIDDEN, sectionForm, setAt } from "../src/lib/config-form.ts";
+import { Fields, SectionJson, type FieldsContext } from "../src/plugins/settings/config-fields.tsx";
 import {
   errorsOf,
   readBack,
@@ -58,6 +60,7 @@ describe("the node config editor", () => {
 describe("reading a section back after a save", () => {
   const saving: Loaded = {
     section: "a",
+    layer: "node",
     read: { value: { x: 1 }, layers: { node: { x: 1 } } },
     original: { x: 1 },
     value: { x: 2 },
@@ -67,6 +70,7 @@ describe("reading a section back after a save", () => {
   it("shows the file as saved when nothing was changed meanwhile", () => {
     expect(readBack(saving, "a", saving.value, saved)).toEqual({
       section: "a",
+      layer: "node",
       read: saved,
       original: { x: 2 },
       value: { x: 2 },
@@ -116,7 +120,11 @@ afterEach(() => {
 });
 
 /** The form of the section over a node file holding `original`, as the settings page shows it. */
-function mountForm(original: Record<string, unknown>, issues: Loaded["read"]["issues"] = []) {
+function mountForm(
+  original: Record<string, unknown>,
+  issues: Loaded["read"]["issues"] = [],
+  other: FieldsContext["other"] = { layer: "project", value: undefined },
+) {
   const form = sectionForm("acme.server", schema, [{ path: ["name"], text: "How others see it." }]);
   const state: { value: unknown } = { value: original };
   function Form() {
@@ -124,6 +132,7 @@ function mountForm(original: Record<string, unknown>, issues: Loaded["read"]["is
     state.value = value;
     const loaded: Loaded = {
       section: "acme.server",
+      layer: "node",
       read: { layers: { node: original }, issues },
       original,
       value,
@@ -132,7 +141,7 @@ function mountForm(original: Record<string, unknown>, issues: Loaded["read"]["is
       <Fields
         context={{
           value,
-          project: undefined,
+          other,
           errors: errorsOf(schema, loaded),
           root: schema,
           set: (path, next) => setValue((current: unknown) => setAt(current, path, next)),
@@ -154,6 +163,18 @@ function mountForm(original: Record<string, unknown>, issues: Loaded["read"]["is
 }
 
 describe("a config section as a form (D80)", () => {
+  it("says which file wins over the other (D477)", async () => {
+    mountForm({}, [], { layer: "project", value: { port: 9000 } });
+    await expect
+      .element(page.getByText("The project file sets 9000, which wins."))
+      .toBeInTheDocument();
+    for (const cleanup of mounted.splice(0)) cleanup();
+    mountForm({ port: 9000 }, [], { layer: "node", value: { port: 8080 } });
+    await expect
+      .element(page.getByText("The node file sets 8080; this file wins over it."))
+      .toBeInTheDocument();
+  });
+
   it("edits a switch, a text field and a choice, and saves only what changed", async () => {
     const view = mountForm({ port: 8080, proxies: ["10.0.0.1"] });
 
@@ -171,9 +192,22 @@ describe("a config section as a form (D80)", () => {
       name: "edge",
       header: "forwarded",
     });
-    expect(changesOf({ port: 8080, proxies: ["10.0.0.1"] }, view.state.value as never)).toEqual({
+    expect(
+      configChange(
+        "node",
+        "acme.server",
+        { port: 8080, proxies: ["10.0.0.1"] },
+        view.state.value as never,
+      ),
+    ).toEqual({
+      layer: "node",
+      section: "acme.server",
       values: { open: true, name: "edge", header: "forwarded" },
-      unset: [],
+      edits: [
+        { path: ["open"], value: true },
+        { path: ["name"], value: "edge" },
+        { path: ["header"], value: "forwarded" },
+      ],
     });
   });
 
@@ -269,7 +303,7 @@ describe("a config section as a form (D80)", () => {
           messages={[]}
           onChange={(next) => changes.push(next)}
           schema={schema}
-          section="acme.server"
+          label="acme.server in the node file"
           value={value}
         />,
       ),

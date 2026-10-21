@@ -170,3 +170,37 @@ test("D441: a shortcut that another command has warns of the conflict", async ({
   await page.getByRole("button", { name: "Reset shortcut of Toggle sidebar" }).click();
   await expect(conflict).toHaveCount(0);
 });
+
+test("D477: edits the project file, which wins over the node file", async ({ page }, info) => {
+  node = await startNode({ setup: writeDemoPlugin });
+  // The node runs in its home: the project file is the home's .jhin/config.jsonc.
+  const projectFile = Path.join(node.home, ".jhin", "config.jsonc");
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  await page.getByRole("combobox", { name: "Config section" }).click();
+  await page.getByRole("option", { name: /^Demo/ }).click();
+  await page.getByRole("combobox", { name: "Config file" }).click();
+  await page.getByRole("option", { name: "Project file" }).click();
+
+  const section = page.getByRole("region", { name: "Demo" });
+  await expect(
+    section.getByText('The node file sets "first"; this file wins over it.'),
+  ).toBeVisible();
+  await section.getByRole("textbox", { name: "Label" }).fill("project");
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByRole("list", { name: "Outcome" })).toContainText("applied");
+  expect(JSON.parse(Fs.readFileSync(projectFile, "utf8"))).toMatchObject({
+    "acme.demo": { label: "project" },
+  });
+  expect(await node.client().call("host.config.get", { section: "acme.demo" })).toMatchObject({
+    value: { label: "project" },
+    layers: { node: { label: "first" }, project: { label: "project" } },
+  });
+  const shot = info.outputPath("config-project-file.png");
+  await page.screenshot({ path: shot, fullPage: true });
+  await info.attach("config-project-file", { path: shot, contentType: "image/png" });
+});

@@ -3,7 +3,6 @@ import { z } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  changesOf,
   getAt,
   hasUnparsed,
   HIDDEN,
@@ -236,13 +235,6 @@ describe("editing and saving values", () => {
     expect(setAt({ l: ["a", "b"] }, ["l", "1"], "c")).toEqual({ l: ["a", "c"] });
     expect(setAt({ l: ["a", "b"] }, ["l", "0"], undefined)).toEqual({ l: ["b"] });
     expect(getAt({ l: ["a", { k: 1 }] }, ["l", "1", "k"])).toBe(1);
-  });
-
-  it("writes only the top-level keys that changed, and removes the ones reset", () => {
-    expect(
-      changesOf({ host: "0.0.0.0", port: 1, tls: { cert: "a" } }, { port: 2, tls: { cert: "a" } }),
-    ).toEqual({ values: { port: 2 }, unset: ["host"] });
-    expect(changesOf(undefined, { open: true })).toEqual({ values: { open: true }, unset: [] });
   });
 
   it("titles keys in sentence case", () => {
