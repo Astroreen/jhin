@@ -752,6 +752,14 @@ function activateScheduler(context: PluginContext): void {
         delete kept.model;
       }
       if (input.model === null) delete kept.model;
+      // Another agent without a model of its own takes none of the old agent's.
+      if (
+        typeof input.agentId === "string" &&
+        input.agentId !== rest.agentId &&
+        input.model === undefined
+      ) {
+        delete kept.model;
+      }
       return {
         ...(kept as typeof rest),
         ...(input.title === undefined ? {} : { title: input.title }),

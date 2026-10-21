@@ -432,6 +432,13 @@ describe("jhin.scheduler: a run's workspace (D983)", () => {
       model: "plain",
     });
     expect(chosen).toMatchObject({ agentId: "jhin.agent-fake", model: "plain" });
+    // Another agent named alone leaves the old agent's model behind.
+    const other = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      agentId: "jhin.agent-other",
+    });
+    expect(other.agentId).toBe("jhin.agent-other");
+    expect(other.model).toBeUndefined();
     const cleared = await client.call<ScheduledTask>("scheduler.tasks.update", {
       id: created.id,
       agentId: null,
