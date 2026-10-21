@@ -78,7 +78,10 @@ function Connect({ cancellable }: { cancellable: boolean }) {
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`,
   );
   const [token, setToken] = useState("");
-  const [error, setError] = useState<string | undefined>(() => connections.refusedCredential?.());
+  const [typedError, setError] = useState<string | undefined>();
+  // The page's own credential is checked in the background; its refusal shows when it comes.
+  const refused = useExternal(connections, () => connections.refusedCredential?.());
+  const error = typedError ?? refused;
   const [pairing, setPairing] = useState(false);
   const close = () => {
     const { panel: _panel, ...rest } = navigation.current();

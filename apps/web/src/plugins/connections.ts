@@ -157,12 +157,17 @@ export const connectionsPlugin = builtin(
       }
       // The page's own node: a credential in the fragment opens its session;
       // without one, a session it opened before still counts.
+      // The page's own node: met in the background, so a slow node never holds
+      // up the client (security.md D421). A credential in the fragment opens its
+      // session; without one, a session it opened before still counts.
       const own = sameOriginUrl();
       let refused: string | undefined;
+      let disposed = false;
       const credential = takeTokenFromUrl();
-      try {
+      const meetOwnNode = async () => {
         if (credential !== undefined) {
           const session = await currentSession();
+          if (disposed) return;
           if (session === undefined) {
             // No node serves this page (a `jhin client` page): the token is kept here.
             if (!looksLikePairingCode(credential)) {
@@ -175,15 +180,12 @@ export const connectionsPlugin = builtin(
             // A reload with the same `#token=` keeps the session it opened, instead of
             // issuing one more device token; a pairing code always pairs.
             if (session !== true || looksLikePairingCode(credential)) await openSession(credential);
-            keep({ url: own, session: true, label: location.host });
+            if (!disposed) keep({ url: own, session: true, label: location.host });
           }
-        } else if (!nodes.has(own) && (await currentSession()) === true) {
+        } else if (!nodes.has(own) && (await currentSession()) === true && !disposed) {
           keep({ url: own, session: true, label: location.host });
         }
-      } catch (error) {
-        context.log.warn("this page's node refused its credential", { error: String(error) });
-        refused = error instanceof Error ? error.message : String(error);
-      }
+      };
       changed();
 
       // Another tab changed the saved nodes: this one follows, instead of
@@ -206,6 +208,14 @@ export const connectionsPlugin = builtin(
       });
 
       context.services.provide(CONNECTIONS_CAPABILITY, connections);
+      void meetOwnNode()
+        .catch((error: unknown) => {
+          context.log.warn("this page's node refused its credential", { error: String(error) });
+          refused = error instanceof Error ? error.message : String(error);
+        })
+        .finally(() => {
+          if (!disposed) changed();
+        });
 
       // What can be done to a connected node, as commands (its menu runs them).
       const Node = z.object({ node: z.string() });
@@ -255,6 +265,7 @@ export const connectionsPlugin = builtin(
 
       context.subscriptions.add({
         dispose() {
+          disposed = true;
           stopFollowing();
           for (const node of nodes.values()) node.client.close();
           nodes.clear();
