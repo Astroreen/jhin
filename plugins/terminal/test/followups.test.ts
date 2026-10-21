@@ -421,6 +421,22 @@ describe("history files (D464)", () => {
     }
   });
 
+  it("writes what comes after a delete, after it, and flushes it on stop", async () => {
+    const dir = tempDir();
+    const history = createHistoryFiles(dir, quiet);
+    history.write("t", "term-1", () => "old");
+    await history.flush();
+    // Closed and opened again under the same ids at once: the new output is
+    // written after the delete, and a stop still finds it pending.
+    const deleting = history.delete("t", "term-1");
+    history.write("t", "term-1", () => "new");
+    await history.flush();
+    await deleting;
+    expect(Fs.readFileSync(Path.join(dir, "t", "term-1.log"), "utf8")).toBe("new");
+    // Written whole: no temporary file is left beside it.
+    expect(Fs.readdirSync(Path.join(dir, "t"))).toEqual(["term-1.log"]);
+  });
+
   it("leaves a session's history alone when the plugin stops while the session starts", async () => {
     const dir = tempDir();
     const cwd = tempDir();

@@ -61,6 +61,23 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
   const deleting = new Map<string, Promise<void>>();
   const key = (threadId: string, terminalId: string) => `${threadId}\u0000${terminalId}`;
 
+  /**
+   * Replaces a file at once: written beside it, then renamed over it, so a
+   * crash mid-write keeps the old history. New files are the owner's only.
+   */
+  const replace = async (file: string, content: string) => {
+    const folder = Path.dirname(file);
+    await Fs.promises.mkdir(folder, { recursive: true, mode: 0o700 });
+    const temporary = `${file}.${process.pid}.${Crypto.randomUUID()}.tmp`;
+    try {
+      await Fs.promises.writeFile(temporary, content, { mode: 0o600 });
+      await Fs.promises.rename(temporary, file);
+    } catch (error) {
+      await Fs.promises.rm(temporary, { force: true }).catch(() => undefined);
+      throw error;
+    }
+  };
+
   const run = (id: string, file: string, entry: Pending): Promise<void> => {
     entry.timer = undefined;
     const content = entry.content();
@@ -68,8 +85,7 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
       await entry.running;
       if (content === undefined) return;
       try {
-        await Fs.promises.mkdir(Path.dirname(file), { recursive: true, mode: 0o700 });
-        await Fs.promises.writeFile(file, content, { mode: 0o600 });
+        await replace(file, content);
       } catch (error) {
         log.warn("terminal history not written", { file, error: String(error) });
       }
@@ -124,11 +140,9 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
       }
       const history = boundHistory(raw, limits);
       if (cut || history !== raw) {
-        await Fs.promises
-          .writeFile(file, history, { mode: 0o600 })
-          .catch((error: unknown) =>
-            log.warn("terminal history not capped", { file, error: String(error) }),
-          );
+        await replace(file, history).catch((error: unknown) =>
+          log.warn("terminal history not capped", { file, error: String(error) }),
+        );
       }
       return history;
     },
@@ -144,15 +158,19 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
     },
     delete(threadId, terminalId) {
       const id = key(threadId, terminalId);
+      // Kept pending while the delete runs, so a write for these ids waits for it.
+      const entry: Pending = pending.get(id) ?? {
+        timer: undefined,
+        content: () => undefined,
+        running: undefined,
+      };
+      pending.set(id, entry);
+      if (entry.timer !== undefined) clearTimeout(entry.timer);
+      entry.timer = undefined;
+      const prior = entry.running;
+      const file = fileOf(threadId, terminalId);
       const deleted = (async () => {
-        const entry = pending.get(id);
-        if (entry !== undefined) {
-          if (entry.timer !== undefined) clearTimeout(entry.timer);
-          entry.timer = undefined;
-          await entry.running;
-          if (pending.get(id) === entry) pending.delete(id);
-        }
-        const file = fileOf(threadId, terminalId);
+        await prior;
         await Fs.promises
           .rm(file, { force: true })
           .catch((error: unknown) =>
@@ -161,6 +179,15 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
         // The thread's folder goes with its last terminal.
         await Fs.promises.rmdir(Path.dirname(file)).catch(() => undefined);
       })();
+      // A write armed again meanwhile (the same ids opened again) runs after
+      // the delete, and stays pending until then.
+      entry.running = deleted;
+      void deleted.finally(() => {
+        if (entry.running === deleted) entry.running = undefined;
+        if (entry.running === undefined && entry.timer === undefined && pending.get(id) === entry) {
+          pending.delete(id);
+        }
+      });
       deleting.set(id, deleted);
       void deleted.finally(() => {
         if (deleting.get(id) === deleted) deleting.delete(id);
