@@ -1486,7 +1486,8 @@ Reference: T3 Code at `eb7b35ac` (D53).
   goes only to a free thread (`threads.send`, never queued), so pressing
   again never sends it twice. The
   client command `chat.thread.resume` ("Resume thread") does the same for
-  the open thread. T3 also resumes a turn that failed on a usage limit; Jhin
+  the open thread and answers `{ resumed }`, false when there was nothing to
+  resume or text is typed. T3 also resumes a turn that failed on a usage limit; Jhin
   has no usage-limit failures yet (Deferred).
 - **D801. Find in a thread**, T3's `chat.find` (`ThreadFindBar.tsx`,
   `threadFindHighlights.ts`). The client command `chat.find` ("Find in

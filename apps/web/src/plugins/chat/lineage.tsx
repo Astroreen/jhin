@@ -206,7 +206,8 @@ export function createLineage(deps: {
         <LineageRowList rows={rows}>
           {(row) => {
             const parent = row.relationship === "parent";
-            const title = row.thread?.title ?? row.threadId;
+            // A parent the node no longer has is named as T3 names it, not by its id.
+            const title = row.thread?.title ?? "Source conversation";
             const relationship = parent ? "Parent thread" : "Fork";
             const missing = row.thread === undefined;
             // The parent row shows the fork's status, as T3's edge does.
