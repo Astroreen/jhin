@@ -1533,11 +1533,13 @@ Reference: T3 Code at `eb7b35ac` (D53).
   reads its result in the next turn of the live session; T3's wake of an
   idle thread for it (its continuation turns) stays Deferred.
 - **D806. The queue's client commands say whether they did anything,** as
-  `chat.thread.resume` does (D800): `chat.queue.steer-next`,
-  `chat.queue.edit-latest` and `chat.composer.send-alternate` answer
-  `{ done }`, false when there was nothing to do (nothing queued or typed, a
-  message being edited, the composer unable to send), so the palette and
-  MCP can tell.
+  `chat.thread.resume` does (D800). They answer `{ done }`, so the palette
+  and MCP can tell: `chat.queue.steer-next` is done when a queued message was
+  steered, `chat.queue.edit-latest` when one was loaded into the composer,
+  and `chat.composer.send-alternate` when a message went (as `send` itself
+  reports). Saving an edited queued message, answering a question or
+  switching the mode with `/plan` or `/default` acts, but sends no message,
+  so it answers false.
 - **D803. T3's restart dispatch for agents that cannot steer**
   (`CommandPolicy.ts` `decideSteeringExecution`: `interrupt_restart` when a
   provider cannot steer actively). `threads.steer` and `threads.queue.steer`
