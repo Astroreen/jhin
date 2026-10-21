@@ -42,5 +42,11 @@ describe("browser profiles of this device (D953)", () => {
 
   it("drops a broken stored value instead of failing", () => {
     expect(PreviewBrowserSettings.parse({ profiles: "oops" }).profiles).toEqual([]);
+    // One bad entry goes; the others stay.
+    expect(
+      PreviewBrowserSettings.parse({
+        profiles: [{ id: "work", name: "Work" }, { id: "", name: "x" }, 42],
+      }).profiles,
+    ).toEqual([{ id: "work", name: "Work" }]);
   });
 });

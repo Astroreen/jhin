@@ -399,8 +399,9 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   profile and data" (after a confirmation). In the right panel, "+" opens a
   tab in the default profile and T3's "Open browser in a profile" menu
   beside it in another; a tab of another profile than the default shows its
-  name before the address and "Profile: <name>" in its menu, and a profile
-  this device no longer has shows as "Removed profile".
+  name before the address, every human tab's menu says "Profile: <name>"
+  (T3's More menu), and a profile this device no longer has shows as
+  "Removed profile".
 
 ### Proof
 

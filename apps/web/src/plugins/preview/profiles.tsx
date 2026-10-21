@@ -36,7 +36,19 @@ const UserProfile = z.object({
   name: z.string().trim().min(1).max(BROWSER_PROFILE_NAME_MAX_LENGTH),
 });
 export const PreviewBrowserSettings = z.object({
-  profiles: z.array(UserProfile).max(BROWSER_PROFILE_MAX_COUNT).catch([]).default([]),
+  // One broken entry is dropped, not the whole list (the next write would lose the rest).
+  profiles: z
+    .array(z.unknown())
+    .catch([])
+    .default([])
+    .transform((entries) =>
+      entries
+        .flatMap((entry) => {
+          const parsed = UserProfile.safeParse(entry);
+          return parsed.success ? [parsed.data] : [];
+        })
+        .slice(0, BROWSER_PROFILE_MAX_COUNT),
+    ),
   defaultProfileId: z.string().optional().catch(undefined),
 });
 export type PreviewBrowserSettings = z.output<typeof PreviewBrowserSettings>;
