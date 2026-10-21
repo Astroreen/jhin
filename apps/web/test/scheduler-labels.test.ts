@@ -157,6 +157,17 @@ describe("a task's workspace and model in the editor (D983, D984)", () => {
     const draft = taskToDraft(stored);
     expect(workspaceFromDraft(draft)).toEqual(stored.workspaceStrategy);
     expect(agentFromDraft(draft)).toEqual({ agentId: "jhin.agent-claude", model: "claude-opus" });
+    // A branch given over RPC survives an edit.
+    const branched = taskToDraft({
+      ...stored,
+      workspaceStrategy: { type: "worktree", baseRef: "dev", branch: "feature/x" },
+    });
+    expect(workspaceFromDraft(branched)).toEqual({
+      type: "worktree",
+      baseRef: "dev",
+      startFromOrigin: false,
+      branch: "feature/x",
+    });
     expect(
       draftProblem({ ...draft, existingWorktreePath: " " }, { hasProject: true, hasSecret: false }),
     ).toEqual({

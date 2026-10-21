@@ -746,8 +746,13 @@ function EditorForm(props: {
         await call(connection, "scheduler.tasks.update", {
           id: draft.editingId,
           ...common,
-          // "The node's default" clears a model chosen before (D984).
-          ...(draft.modelKey === "" ? { agentId: null, model: null } : {}),
+          // "The node's default" clears a model chosen before, and an agent without models
+          // leaves none behind (D984).
+          ...(draft.modelKey === ""
+            ? { agentId: null, model: null }
+            : agentFromDraft(draft).model === undefined
+              ? { model: null }
+              : {}),
         });
       }
     } catch (error) {

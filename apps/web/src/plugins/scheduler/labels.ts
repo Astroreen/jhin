@@ -101,6 +101,8 @@ export interface DraftState {
   readonly baseRef: string;
   readonly startFromOrigin: boolean;
   readonly existingWorktreePath: string;
+  /** A strategy's `branch`, kept through an edit (the editor does not show it). */
+  readonly workspaceBranch: string;
   /** `<agentId>\0<model>`; empty: the node's default agent and model (D984). */
   readonly modelKey: string;
 }
@@ -125,14 +127,16 @@ export function agentFromDraft(draft: DraftState): { agentId?: string; model?: s
 
 /** T3's workspace strategy of a draft. */
 export function workspaceFromDraft(draft: DraftState): WorkspaceStrategy {
+  const branch = draft.workspaceBranch === "" ? {} : { branch: draft.workspaceBranch };
   return draft.workspaceMode === "root"
-    ? { type: "root" }
+    ? { type: "root", ...branch }
     : draft.workspaceMode === "existing_worktree"
-      ? { type: "existing_worktree", worktreePath: draft.existingWorktreePath.trim() }
+      ? { type: "existing_worktree", worktreePath: draft.existingWorktreePath.trim(), ...branch }
       : {
           type: "worktree",
           baseRef: draft.baseRef.trim() || "main",
           startFromOrigin: draft.startFromOrigin,
+          ...branch,
         };
 }
 
@@ -161,6 +165,7 @@ export const EMPTY_DRAFT: DraftState = {
   baseRef: "main",
   startFromOrigin: true,
   existingWorktreePath: "",
+  workspaceBranch: "",
   modelKey: "",
 };
 
@@ -224,6 +229,7 @@ export function taskToDraft(task: ScheduledTask): DraftState {
     baseRef: workspace?.type === "worktree" ? workspace.baseRef : "main",
     startFromOrigin: workspace?.type === "worktree" ? (workspace.startFromOrigin ?? false) : true,
     existingWorktreePath: workspace?.type === "existing_worktree" ? workspace.worktreePath : "",
+    workspaceBranch: workspace?.branch ?? "",
     modelKey: task.agentId === undefined ? "" : modelKey(task.agentId, task.model ?? ""),
   };
 }
