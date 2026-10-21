@@ -90,15 +90,20 @@ export function createContentSearch(
         deadline = setTimeout(() => resolve("failed"), options.deadlineMs ?? NODE_DEADLINE_MS);
         deadlines.add(deadline);
       });
-      const answer = threads
-        .call<{ matches: Omit<ContentMatch, "target">[] }>(target, "threads.search", { query })
-        .then(
-          (result): ContentMatch[] | "failed" =>
-            result.matches.map((match) => ({ ...match, target })),
-          // A node without the command finds nothing; any other failure is told apart.
-          (error: unknown): ContentMatch[] | "failed" =>
-            UNKNOWN_COMMAND.has(String((error as { code?: unknown } | null)?.code)) ? [] : "failed",
-        );
+      // A call that throws at once fails like one that rejects: the other nodes are still asked.
+      let call: Promise<{ matches: Omit<ContentMatch, "target">[] }>;
+      try {
+        call = threads.call(target, "threads.search", { query });
+      } catch (error) {
+        call = Promise.reject(error);
+      }
+      const answer = call.then(
+        (result): ContentMatch[] | "failed" =>
+          result.matches.map((match) => ({ ...match, target })),
+        // A node without the command finds nothing; any other failure is told apart.
+        (error: unknown): ContentMatch[] | "failed" =>
+          UNKNOWN_COMMAND.has(String((error as { code?: unknown } | null)?.code)) ? [] : "failed",
+      );
       void Promise.race([answer, late])
         .finally(() => {
           clearTimeout(deadline);

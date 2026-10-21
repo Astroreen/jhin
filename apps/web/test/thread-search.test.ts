@@ -222,6 +222,24 @@ describe("searching thread contents on every node (D228)", () => {
     expect(search.get().matches.map((found) => found.threadId)).toEqual(["t2"]);
   });
 
+  it("asks the other nodes when calling one throws at once", async () => {
+    vi.useFakeTimers();
+    const { threads, calls } = nodes();
+    const throwing = {
+      call: <T>(target: NodeTarget, method: string, params?: unknown) => {
+        if (target.node === "a") throw new Error("no connection");
+        return threads.call<T>(target, method, params);
+      },
+    };
+    const search = createContentSearch(throwing);
+    search.request("lisbon", [a, b]);
+    vi.advanceTimersByTime(200);
+    expect(calls.map((call) => call.target)).toEqual([b]);
+    calls[0]!.answer([match("t2", "user", "2026-10-20T11:00:00Z")]);
+    await until(search, (state) => !state.pending);
+    expect(search.get()).toMatchObject({ failed: 1, matches: [{ threadId: "t2" }] });
+  });
+
   it("marks every occurrence of the query, ignoring ASCII case", () => {
     expect(highlightParts("Lisbon and lisbon", "LISBON")).toEqual([
       { text: "Lisbon", highlighted: true },
