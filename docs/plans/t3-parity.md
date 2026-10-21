@@ -706,7 +706,7 @@ alone, Escape), with screenshots.
   CLI connect with the node's owner token, which holds every permission
   (`*`), and a call relayed through the mesh runs with `*` too, so a client
   reaches a mesh member's `host.identity` through its connection. A token
-  without it (once tokens carry scopes, see Scoped tokens in Deferred) shows
+  without it (once tokens carry scopes, see `security.md`, D410–D416) shows
   the node as a server, and the client logs why (D132). The kinds are T3 Code's seven, with T3's labels:
   `server` (Server), `cloud` (Cloud VM), `linux` (Linux/WSL), `desktop`,
   `laptop`, `mac-mini` (Mini PC) and `mac-studio` (Workstation); they live in
@@ -1500,13 +1500,6 @@ Reference: T3 Code at `eb7b35ac` (D53).
 
 ## Deferred
 
-- Real agent adapters for Codex and OpenCode. Claude Code is done
-  (`docs/plans/providers.md`).
-- Git and source control: done in `source-control.md` (D110–D120) for the
-  branch, diff and pull request on the cards, the branch toolbar and the diff
-  panel; checkpoints and reverting to a turn, worktrees, git actions
-  (commit, push, create a pull request) and linking pull requests to threads
-  are deferred there.
 - Applying Fast Mode and Ultracode to a live Claude Code session through
   `applyFlagSettings` (T3 does): a change of them starts it again (D298).
 - The editor's parts T3 has and this port left out (D303): Shiki highlighting
@@ -1523,8 +1516,7 @@ Reference: T3 Code at `eb7b35ac` (D53).
   message (here a file downloads), video attachments, and T3's captured
   window context on screenshots. A live Claude Code session starts again
   when a turn's attachments add their folder to `additionalDirectories`.
-- Thread history (W2, D220–D228): reverting files with a rollback (W3's
-  checkpoints), Claude Code's native rewind and fork (`resumeSessionAt` and
+- Thread history (W2, D220–D228): Claude Code's native rewind and fork (`resumeSessionAt` and
   `forkSession` instead of a new session with the transcript, D222, D225;
   until then a Claude session record that could not be written, or one
   from before D222, lets the next turn resume a session that still holds
@@ -1543,8 +1535,6 @@ Reference: T3 Code at `eb7b35ac` (D53).
   after 30 s; here the next change of the query or of the nodes does) and
   T3's Lineage panel listing a
   thread's forks.
-- Editing a sent message, regenerating, forking a thread.
-- Searching thread contents (the palette and the sidebar search titles).
 - Sidebar (T3's layout, D70, D75–D79): T3's "Keep threads with a PR"
   (`sidebarAutoSettleKeepPullRequests`) and its rule that an open pull
   request linked to a thread keeps it from settling by inactivity: the
@@ -1566,12 +1556,6 @@ Reference: T3 Code at `eb7b35ac` (D53).
 - Drafts are per device; syncing them, and device settings, across devices
   (`config-ui.md` D486–D488). Visits are shared through the thread's node
   since `config-ui.md` D485.
-- Scoped tokens. Done in `security.md` (D410–D416): device tokens carry
-  their grants, so `projects.browse`, `host.config.read` and
-  `host.identity` are given on purpose, and mesh calls carry their caller's
-  scope; `host.config.get` redacts secrets (D417).
-- Secret config values. Done in `security.md` (D417): `host.config.get`
-  redacts `writeOnly` values and a save keeps them.
 
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
   offers: Jhin has no usage-limit failures to tell apart yet.
@@ -1613,7 +1597,12 @@ Reference: T3 Code at `eb7b35ac` (D53).
 
 Done since in `t3-roadmap.md`'s W1 (D200–D211): the server-side queue and
 steering, idempotent thread creation and one write for a record and its
-index event.
+index event. W2 (D220–D228): editing a sent message, regenerating, forking
+and searching thread contents. Elsewhere: the Codex and OpenCode runtimes
+(`providers.md`, W7, W8); checkpoints, reverting a thread's files with a
+rollback, worktrees, git actions and linked pull requests
+(`source-control.md`, W3, W4); scoped tokens and secret config values
+(`security.md`, D410–D417).
 
 Done since in `terminal.md` (D140–D148): the terminal drawer (node-pty and
 xterm.js), the `terminalFocus` context key and the card's terminal indicator.
