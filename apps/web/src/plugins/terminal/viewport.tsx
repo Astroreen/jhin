@@ -4,7 +4,6 @@
 // context menu of nightly eb7b35ac ("Paste", "Select all", "Jump to latest").
 import "@xterm/xterm/css/xterm.css";
 
-import type { RpcClient } from "@jhin/rpc";
 import { Menu, MenuItem, MenuPopup, copyText } from "@jhin/ui";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -21,6 +20,7 @@ import {
 } from "./links.ts";
 import { muteRepliesWhileReplaying } from "./replay.ts";
 import { terminalThemeFromApp } from "./theme.ts";
+import type { TerminalChannel } from "./channel.ts";
 
 /** T3's monospace stack, used when no terminal font is set. */
 export const DEFAULT_TERMINAL_FONT_STACK =
@@ -78,7 +78,7 @@ function menuPoint(bounds: DOMRect, pointer: { x: number; y: number }): { x: num
 }
 
 export function TerminalViewport(props: {
-  client: RpcClient;
+  client: TerminalChannel;
   threadId: string;
   terminalId: string;
   terminalLabel: string;

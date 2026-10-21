@@ -473,10 +473,6 @@ read again from a snapshot).
 
 ## Deferred
 
-- Terminals of threads on mesh members (D47): calls could be relayed with
-  `mesh.call`, but live streams are not mirrored between nodes, so the
-  drawer and the indicator only work for threads on a connected node; for
-  others the toggle says so.
 - Permissions on subscriptions to the event log. Done in `security.md`
   (D415).
 - Provider environments for a terminal (T3's `providerInstanceId`, D462):

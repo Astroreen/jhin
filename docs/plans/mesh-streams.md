@@ -1,6 +1,6 @@
 # Mesh live streams
 
-Status: **in progress**. Workstream W17 of `t3-roadmap.md`: the streams of a
+Status: **implemented** (the stack in the PR plan below). Workstream W17 of `t3-roadmap.md`: the streams of a
 mesh member reach a client connected to another node, so the source control
 and the terminals of threads on members work like local ones, and the event
 log streams that only grow (`source-control`, `mesh/outbox`) are trimmed.
@@ -172,6 +172,11 @@ A stack of three PRs, each based on the one before:
    node processes, with screenshots.
 
 ## Deferred
+
+- A member's terminal list (D504) whose relay fails for another reason than
+  missing relays (`NODE_UNREACHABLE` while its route is away) stays empty,
+  so its cards show no terminal indicator until the connection's client
+  changes; an open terminal says why in its own line.
 
 - Trimming on a `storage.eventlog` provider older than 1.2: `keepNewest`
   trims nothing there, so `source-control` and `mesh/outbox` grow as before.

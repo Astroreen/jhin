@@ -904,9 +904,6 @@ with the node's token, and without one).
   T3's own file icons in the tree, "Reveal in file manager", opening a
   remote node's file in a local editor (T3's remote editor URLs), and the
   pop-out (non-inline) panel mode.
-- Live source control of mesh members: their `source-control` stream is not
-  mirrored (D26); clients re-read it when the member's thread catalog
-  changes. Mirroring it needs the mesh to share a stream it does not know.
 - Settling a thread on a merged pull request (T3's sidebar) and the
   terminal indicator (the terminal plugin contributes it to
   `sidebar.thread.indicators`). The branch-mismatch warning is done

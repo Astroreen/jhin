@@ -1,4 +1,3 @@
-import type { RpcClient } from "@jhin/rpc";
 import type { Disposable } from "@jhin/sdk";
 import {
   TerminalEvents,
@@ -6,6 +5,8 @@ import {
   type TerminalSnapshot,
   type TerminalSummary,
 } from "@jhin/terminal-api";
+
+import type { TerminalChannel } from "./channel.ts";
 
 /** T3's output window: at most this much output is on its way to a terminal (D470). */
 export const TERMINAL_OUTPUT_WINDOW = { events: 8, bytes: 64 * 1024 };
@@ -34,7 +35,8 @@ export interface TerminalSink {
  * restarted and the session with it.
  */
 export function attachTerminal(options: {
-  readonly client: RpcClient;
+  /** The terminal's node: a connection, or a mesh member through one (D504). */
+  readonly client: TerminalChannel;
   readonly threadId: string;
   readonly terminalId: string;
   readonly cwd: string;

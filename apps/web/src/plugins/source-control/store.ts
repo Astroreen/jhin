@@ -161,6 +161,12 @@ interface Feed {
   generation: number;
   /** Starts over since the last load that worked: the first is immediate, later ones back off. */
   retries: number;
+  /**
+   * A member whose stream cannot be relayed (the connection has no relays, or
+   * the member shares nothing): its view is read again on catalog changes
+   * (D118) until the connection's client changes, when the relay is tried again.
+   */
+  relayless: boolean;
 }
 
 /** The longest wait before a feed that keeps failing starts over. */
@@ -169,9 +175,10 @@ const MAX_RETRY_MS = 30_000;
 /**
  * The source control of every node a view looks at: `git.status`, then the
  * node's `source-control` stream after the head it reflects. A mesh member
- * reached through a connection shares no such stream (only threads are
- * mirrored, D26), so its view is read again whenever its thread catalog
- * changes: a turn that ends, a thread created.
+ * reached through a connection is followed through the connection's relay of
+ * its stream (D503); without one (an older node or member), its view is read
+ * again whenever its thread catalog changes: a turn that ends, a thread
+ * created.
  */
 export function createSourceControlStore(
   connections: Connections,
@@ -238,7 +245,8 @@ export function createSourceControlStore(
         feed.stop?.();
         feed.stop = start(feed, client);
       });
-    if (feed.target.remote === undefined) {
+    /** `git.status`, then `stream` (the node's own, or a member's relay of it) after its head. */
+    const follow = (stream: string) =>
       void load()
         .then((snapshot) => {
           if (!current()) return;
@@ -246,8 +254,15 @@ export function createSourceControlStore(
           /** A gap was seen: nothing more is applied until the feed has started over. */
           let restarting = false;
           subscription = client.subscribe(
-            SOURCE_CONTROL_STREAM,
-            { after: snapshot.head, onError: failed },
+            stream,
+            {
+              after: snapshot.head,
+              onError: (error) => {
+                // A member that shares nothing (older than D501): read it again on catalog changes.
+                if (error.code === "STREAM_NOT_SHARED") fallBack();
+                else failed(error);
+              },
+            },
             (event) => {
               if (!current() || restarting) return;
               // A gap: the stream was trimmed past where it resumed (D498). Start over, once.
@@ -262,8 +277,9 @@ export function createSourceControlStore(
           );
         })
         .catch(failed);
-    } else {
-      // Read again on every change of the member's catalog; one read at a time, the last wins.
+    /** D118: no stream to follow, so the view is read again whenever the member's catalog changes. */
+    const reread = () => {
+      // One read at a time, the last wins.
       let running = false;
       let again = false;
       const reload = () => {
@@ -290,6 +306,28 @@ export function createSourceControlStore(
         last = next;
         reload();
       });
+    };
+    const fallBack = () => {
+      if (!current()) return;
+      // Nothing of the refused stream may land on top of the re-reads.
+      subscription?.dispose();
+      subscription = undefined;
+      feed.relayless = true;
+      reread();
+    };
+    const remote = feed.target.remote;
+    if (remote === undefined) follow(SOURCE_CONTROL_STREAM);
+    else if (feed.relayless) reread();
+    else {
+      // D503: the member's stream through the connected node's relay (D499).
+      void client
+        .call<{ stream: string }>("mesh.relay", { node: remote, stream: SOURCE_CONTROL_STREAM })
+        .then(({ stream }) => current() && follow(stream))
+        .catch((error: unknown) => {
+          const code = (error as { code?: unknown }).code;
+          if (code === "COMMAND_NOT_FOUND") fallBack();
+          else failed(error);
+        });
     }
     return () => {
       feed.generation += 1;
@@ -307,6 +345,8 @@ export function createSourceControlStore(
     feed.stop?.();
     feed.stop = undefined;
     feed.client = client;
+    // A new connection may have relays, and the member may share its stream by now.
+    feed.relayless = false;
     if (client !== undefined) feed.stop = start(feed, client);
   };
 
@@ -331,6 +371,7 @@ export function createSourceControlStore(
           stop: undefined,
           generation: 0,
           retries: 0,
+          relayless: false,
         };
         feeds.set(key, feed);
         sync(feed);

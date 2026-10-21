@@ -2,7 +2,6 @@
 // (the drawer, its resize handle, action buttons, split panes and terminal sidebar, its
 // right-panel placement), apps/web/src/components/PersistentThreadTerminals.tsx (terminals
 // kept mounted while hidden) and apps/web/src/components/ui/panel-tab-close-button.tsx.
-import type { RpcClient } from "@jhin/rpc";
 import {
   Button,
   Popover,
@@ -40,6 +39,7 @@ import {
   type ThreadTerminalGroup,
   type ThreadTerminalUiState,
 } from "../../lib/terminal-state.ts";
+import type { TerminalChannel } from "./channel.ts";
 import type { TerminalContextSelection } from "./context.ts";
 
 // xterm.js is a chunk of its own, loaded when a terminal first shows (D440).
@@ -136,7 +136,7 @@ export interface TerminalDrawerProps {
   fontSize: number;
   /** "Add to chat" for a selection (D473). */
   onAddToChat?: ((selection: TerminalContextSelection) => void) | undefined;
-  client: RpcClient;
+  client: TerminalChannel;
   threadId: string;
   cwd: string;
   state: ThreadTerminalUiState;

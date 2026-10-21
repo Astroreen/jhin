@@ -49,6 +49,7 @@ import {
   terminalSessionLabel,
   type ThreadTerminalUiState,
 } from "../../lib/terminal-state.ts";
+import { terminalChannel } from "./channel.ts";
 import { formatTerminalContext, type TerminalContextSelection } from "./context.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createNodeTerminals } from "./sessions.ts";
@@ -171,20 +172,14 @@ export const terminalPlugin = builtin(
         },
       };
 
-      /** The open thread, when its node is a connection of this client. */
+      /** The open thread, on a connection of this client or on a member of its mesh (D504). */
       const openThread = (): { key: string; target: NodeTarget; threadId: string } | undefined => {
         const route = navigation.current();
         if (route.node === undefined || route.thread === undefined) return undefined;
-        if (route.remote !== undefined) {
-          toasts?.show({
-            type: "info",
-            title: "Terminal unavailable",
-            description:
-              "Terminals open on nodes this client connects to; this thread is on another node of the mesh.",
-          });
-          return undefined;
-        }
-        const target = { node: route.node };
+        const target: NodeTarget = {
+          node: route.node,
+          ...(route.remote === undefined ? {} : { remote: route.remote }),
+        };
         return { key: terminalThreadKey(target, route.thread), target, threadId: route.thread };
       };
       const change = (
@@ -204,8 +199,9 @@ export const terminalPlugin = builtin(
       const closeTerminal = (target: NodeTarget, threadId: string, terminalId: string) => {
         dropTab(target, threadId, terminalId);
         const client = connections.get(target.node)?.client;
-        void client
-          ?.call("terminals.close", { threadId, terminalId })
+        if (client === undefined) return;
+        void terminalChannel(client, target.remote)
+          .call("terminals.close", { threadId, terminalId })
           .catch((error: unknown) =>
             context.log.warn("terminal not closed", { terminalId, error: String(error) }),
           );
@@ -231,7 +227,7 @@ export const terminalPlugin = builtin(
         terminalSessionLabel(
           terminalId,
           terminals
-            .of(target.node)
+            .of(target)
             .sessions()
             .find((item) => item.threadId === threadId && item.terminalId === terminalId),
         );
@@ -371,12 +367,12 @@ export const terminalPlugin = builtin(
         const key = terminalThreadKey(target, threadId);
         const state = useExternal(ui, () => ui.get(key));
         const connection = useExternal(connections, () => connections.get(target.node));
-        const feed = terminals.of(target.node);
+        const feed = terminals.of(target);
         const sessions = useExternal(feed, feed.sessions);
         const focusRequestId = useExternal(focusStore, () => focusRequest);
         const shortcut = useShortcutLabels(keybindings);
         const settings = useConfig<TerminalSettings>(context, SETTINGS_SECTION);
-        if (target.remote !== undefined || connection === undefined) return null;
+        if (connection === undefined) return null;
         // Never shown yet: nothing to keep mounted.
         if (!props.visible && state.terminalIds.length === 0) return null;
         const labelOf = (terminalId: string) =>
@@ -386,7 +382,7 @@ export const terminalPlugin = builtin(
           );
         return (
           <TerminalDrawer
-            client={connection.client}
+            client={terminalChannel(connection.client, target.remote)}
             cwd={props.cwd}
             focusRequestId={focusRequestId}
             fontFamily={settings.fontFamily}
@@ -465,11 +461,9 @@ export const terminalPlugin = builtin(
         const target: NodeTarget | undefined =
           route.node === undefined || route.panel !== TERMINAL_PANEL
             ? undefined
-            : { node: route.node };
+            : { node: route.node, ...(route.remote === undefined ? {} : { remote: route.remote }) };
         const catalog = useCatalog(threads, target);
-        if (target === undefined || route.thread === undefined || route.remote !== undefined) {
-          return null;
-        }
+        if (target === undefined || route.thread === undefined) return null;
         const thread = catalog?.threads.find((item) => item.id === route.thread);
         const project = catalog?.projects.find((item) => item.id === thread?.projectId);
         if (project === undefined) return null;
@@ -485,10 +479,10 @@ export const terminalPlugin = builtin(
       }
 
       /** The header's toggle of the right-panel terminal. */
-      function PanelToggle({ target, thread }: ChatHeaderActionProps) {
+      function PanelToggle({ thread }: ChatHeaderActionProps) {
         const route = useExternal(navigation, navigation.current);
         const shortcut = useShortcutLabels(keybindings)("terminal.panel.toggle");
-        if (thread === undefined || target.remote !== undefined) return null;
+        if (thread === undefined) return null;
         const open = route.panel === TERMINAL_PANEL;
         return (
           <Tooltip>
@@ -514,9 +508,8 @@ export const terminalPlugin = builtin(
       // --- A card's indicator ------------------------------------------------------
       /** T3's ThreadTerminalStatusButton: a program runs in one of the thread's terminals. */
       function Indicator({ target, thread }: ThreadIndicatorProps) {
-        const feed = terminals.of(target.node);
+        const feed = terminals.of(target);
         const sessions = useExternal(feed, feed.sessions);
-        if (target.remote !== undefined) return null;
         const running: TerminalSummary[] = sessions.filter(
           (item) => item.threadId === thread.id && item.hasRunningSubprocess,
         );
@@ -541,7 +534,11 @@ export const terminalPlugin = builtin(
                       revealThreadTerminal(state, first.terminalId),
                     );
                     requestFocus();
-                    navigation.navigate({ node: target.node, thread: thread.id });
+                    navigation.navigate({
+                      node: target.node,
+                      ...(target.remote === undefined ? {} : { remote: target.remote }),
+                      thread: thread.id,
+                    });
                   }}
                   onKeyDown={(event) => event.stopPropagation()}
                   onPointerDown={(event) => event.stopPropagation()}

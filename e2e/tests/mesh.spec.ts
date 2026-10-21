@@ -391,3 +391,52 @@ test("D442: a mesh member's menu in settings changes its icon on the member", as
     );
   }
 });
+
+test("D504: the terminal of a thread on c, reached through a, runs there and streams back", async ({
+  page,
+}, info) => {
+  // a serves the client; c only joins a's mesh. The client never connects to c.
+  const a = await start({ mode: "ui", config: { "jhin.mesh": { name: "a" } } });
+  const c = await start({
+    mode: "serve",
+    config: { "jhin.mesh": { name: "c" }, "jhin.terminal": { shell: "/bin/sh" } },
+  });
+  const invite = await a.client().call<{ url: string; code: string }>("mesh.invite");
+  await c.client().call("mesh.join", { url: invite.url, code: invite.code });
+  await untilReachable(a, "c");
+
+  await page.goto(`${a.ui}#token=${a.token}`);
+  await newThreadOn(page, "c");
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("terminal on c");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: terminal on c");
+
+  // T3's shortcut opens the drawer for the remote thread like for a local one.
+  await page.keyboard.press("ControlOrMeta+j");
+  const drawer = page.getByRole("complementary", { name: "Terminal" });
+  const first = drawer.getByRole("group", { name: "Terminal 1" });
+  await expect(first.getByRole("textbox", { name: "Terminal input" })).toBeFocused();
+  await expect(first.locator(".xterm-rows")).toContainText("$");
+  await page.keyboard.type("echo on-$((6*7)) && pwd");
+  await page.keyboard.press("Enter");
+  await expect(first.locator(".xterm-rows")).toContainText("on-42");
+  // The scratch project of c, not of a.
+  const onC = await c.client().call<{ terminals: { cwd: string }[] }>("terminals.list");
+  expect(onC.terminals).toHaveLength(1);
+  await expect(first.locator(".xterm-rows")).toContainText(onC.terminals[0]!.cwd);
+  expect(await a.client().call("terminals.list")).toEqual({ terminals: [] });
+
+  // A program running on c shows on the card, as for a local thread.
+  await page.keyboard.type("sleep 60");
+  await page.keyboard.press("Enter");
+  const card = threadRow(page, "terminal on c");
+  await expect(
+    card.locator("[data-thread-indicators]").getByRole("button", {
+      name: "1 terminal process running. Open terminal",
+    }),
+  ).toBeVisible();
+  const shot = info.outputPath("mesh-terminal.png");
+  await page.screenshot({ path: shot });
+  await info.attach("mesh-terminal", { path: shot, contentType: "image/png" });
+});
