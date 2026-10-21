@@ -1289,7 +1289,7 @@ export default definePlugin({
             workflows: true,
             scheduledTasks: context.commands
               .list()
-              .some((command) => command.name === "schedules.create"),
+              .some((command) => command.name === "scheduler.tasks.create"),
             workspaceStrategies: workspaceSupported()
               ? (["root", "worktree", "existing_worktree"] as const).slice()
               : ["root" as const],

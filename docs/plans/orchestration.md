@@ -158,7 +158,7 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   the runtime's own message, else "Agent is unavailable."); the calling
   thread's id, agent, model and modes; and `features`: `appOwnedSubagents`,
   `asyncPolling`, `cancellation`, `workflows`, `threadManagement` are true;
-  `scheduledTasks` is true once a command `schedules.create` (W11) exists;
+  `scheduledTasks` is true once a command `scheduler.tasks.create` (W11) exists;
   `workspaceStrategies` lists what `orchestration.launch` accepts here.
 - **D370. `orchestration.launch`** is T3's `t3_thread_launch`: a top-level
   thread with `title`, in `projectId` (the caller's project when omitted; a
