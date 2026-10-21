@@ -111,6 +111,14 @@ export {
   MenuTrigger,
 } from "./components/menu.tsx";
 export {
+  ContextChip,
+  ContextChipLabel,
+  ContextChipPopover,
+  ContextChipShell,
+  contextChipVariants,
+  type ContextChipKind,
+} from "./components/context-chip.tsx";
+export {
   Popover,
   PopoverClose,
   PopoverCreateHandle,

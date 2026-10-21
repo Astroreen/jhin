@@ -107,4 +107,123 @@ describe("jhin.threads: project files for @ mentions (D302)", () => {
       client.call("agents.commands", { projectId: project.id, agentId: "acme.none" }),
     ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
   });
+
+  const decode = (head: { data: string }) => Buffer.from(head.data, "base64").toString("utf8");
+
+  it("reads the start of a project's file, or all of it or nothing (D1003)", async () => {
+    const { client, data } = await node();
+    const dir = Path.join(data, "app");
+    write(dir, ["src/main.ts", "empty.txt"]);
+    Fs.writeFileSync(Path.join(dir, "src", "main.ts"), "export const answer = 42;\n");
+    Fs.writeFileSync(Path.join(dir, "empty.txt"), "");
+    const project = await client.call<{ id: string }>("projects.create", { path: dir });
+    const read = (input: Record<string, unknown>) =>
+      client.call<{ data: string; sizeBytes: number; truncated: boolean }>("projects.read-file", {
+        projectId: project.id,
+        ...input,
+      });
+
+    const whole = await read({ path: "src/main.ts" });
+    expect([decode(whole), whole.sizeBytes, whole.truncated]).toEqual([
+      "export const answer = 42;\n",
+      26,
+      false,
+    ]);
+    const head = await read({ path: "src/main.ts", maxBytes: 6 });
+    expect([decode(head), head.truncated]).toEqual(["export", true]);
+    // `whole`: a file past the limit is refused before it is read.
+    await expect(read({ path: "src/main.ts", maxBytes: 6, whole: true })).rejects.toMatchObject({
+      code: "FILE_TOO_LARGE",
+      details: { sizeBytes: 26 },
+    });
+    expect(await read({ path: "empty.txt" })).toMatchObject({ data: "", sizeBytes: 0 });
+    await expect(read({ path: "gone.ts" })).rejects.toMatchObject({ code: "FILE_NOT_FOUND" });
+  });
+
+  it("never reads outside the project, nor says what is there", async () => {
+    const { client, data } = await node();
+    const dir = Path.join(data, "app");
+    write(dir, ["src/main.ts"]);
+    Fs.writeFileSync(Path.join(data, "secret.txt"), "keep");
+    Fs.symlinkSync(Path.join(data, "secret.txt"), Path.join(dir, "linked.txt"));
+    const project = await client.call<{ id: string }>("projects.create", { path: dir });
+    for (const path of [
+      "../secret.txt",
+      // Missing outside answers as an existing one does: no probing the host's files.
+      "../missing.txt",
+      Path.join(data, "secret.txt"),
+      "linked.txt",
+      "src",
+      ".",
+    ]) {
+      await expect(
+        client.call("projects.read-file", { projectId: project.id, path }),
+        path,
+      ).rejects.toMatchObject({ code: "PATH_OUTSIDE_PROJECT" });
+    }
+  });
+
+  it("reads in a thread's worktree, and only for a thread of the project", async () => {
+    const { client, data } = await node();
+    const dir = Path.join(data, "app");
+    const worktree = Path.join(data, "app-feature");
+    write(dir, ["a.txt"]);
+    write(worktree, ["a.txt"]);
+    Fs.writeFileSync(Path.join(dir, "a.txt"), "main");
+    Fs.writeFileSync(Path.join(worktree, "a.txt"), "feature");
+    const project = await client.call<{ id: string }>("projects.create", { path: dir });
+    Fs.mkdirSync(Path.join(data, "other"));
+    const other = await client.call<{ id: string }>("projects.create", {
+      path: Path.join(data, "other"),
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      projectId: project.id,
+      worktreePath: worktree,
+    });
+    const foreign = await client.call<{ id: string }>("threads.create", { projectId: other.id });
+
+    expect(
+      decode(
+        await client.call<{ data: string }>("projects.read-file", {
+          projectId: project.id,
+          threadId: thread.id,
+          path: "a.txt",
+        }),
+      ),
+    ).toBe("feature");
+    await expect(
+      client.call("projects.read-file", {
+        projectId: project.id,
+        threadId: foreign.id,
+        path: "a.txt",
+      }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+  });
+
+  it("reads a skill's instructions, only of a skill the agent offers (D1004)", async () => {
+    const { client, data } = await node();
+    const dir = Path.join(data, "app");
+    write(dir, ["README.md"]);
+    const project = await client.call<{ id: string }>("projects.create", { path: dir });
+    const skill = (input: Record<string, unknown>) =>
+      client.call<{ data: string }>("agents.skill.read", { projectId: project.id, ...input });
+
+    // The fake agent's skill `deploy` names a SKILL.md that is not there yet.
+    await expect(skill({ name: "deploy" })).rejects.toMatchObject({ code: "FILE_NOT_FOUND" });
+    write(dir, [".claude/skills/deploy/SKILL.md"]);
+    Fs.writeFileSync(Path.join(dir, ".claude", "skills", "deploy", "SKILL.md"), "# Deploy\n");
+    expect(decode(await skill({ name: "deploy" }))).toBe("# Deploy\n");
+    await expect(skill({ name: "other" })).rejects.toMatchObject({ code: "SKILL_NOT_FOUND" });
+    await expect(skill({ name: "deploy", agentId: "acme.none" })).rejects.toMatchObject({
+      code: "AGENT_NOT_FOUND",
+    });
+    // A SKILL.md that is a link to another file reads nothing.
+    Fs.writeFileSync(Path.join(data, "secret.txt"), "keep");
+    Fs.rmSync(Path.join(dir, ".claude", "skills", "deploy", "SKILL.md"));
+    Fs.symlinkSync(
+      Path.join(data, "secret.txt"),
+      Path.join(dir, ".claude", "skills", "deploy", "SKILL.md"),
+    );
+    await expect(skill({ name: "deploy" })).rejects.toMatchObject({ code: "PATH_NOT_SKILL" });
+  });
 });

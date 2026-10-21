@@ -26,7 +26,8 @@ dialog, the forges' icons, the terminal drawer, its
 links (with the targets of path links, T3's `fileLinks.ts`), selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, its tiptap
-prompt editor, menus, attachments and model options, editing from a
+prompt editor, menus, attachments and model options, its context chips
+(`packages/ui/src/components/context-chip.tsx`, `plugins/chat/composer-chips.tsx`), editing from a
 message, forks and merging them back, searching thread contents, the
 find in a thread with its highlights (`plugins/chat/thread-find.tsx`, `thread-find-bar.tsx`), the
 thread details panel and its Lineage section (`plugins/chat/thread-details-panel.tsx`,

@@ -85,6 +85,10 @@ const SUBAGENT_WORK: ReadonlySet<string> = new Set(SUBAGENT_WORK_KINDS);
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 /** What `projects.write-file` writes at most: a plan, a note, never a dump. */
 const MAX_WRITTEN_FILE_CHARS = 1_000_000;
+/** The most `projects.read-file` and `agents.skill.read` read of a file: a video's 50 MB (D855). */
+const MAX_READ_FILE_BYTES = 50 * 1024 * 1024;
+/** The file of a skill's instructions, the only one `agents.skill.read` reads. */
+const SKILL_FILE = "SKILL.md";
 /** Images sent as data URLs, together: they are stored in the turn's first event. */
 const MAX_INLINE_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
 const MAX_BROWSE_ENTRIES = 500;
@@ -563,6 +567,76 @@ const AgentInfo = z.object({
   /** The runtime its turns run on: its own id for a runtime. */
   runtimeId: z.string(),
   role: z.string().optional(),
+});
+
+/**
+ * The first `maxBytes` of a file as base64, or undefined when it is not a file. The file is opened
+ * once, never through a link at its end, and its handle is what is checked and read. `whole`
+ * refuses a file past `maxBytes` (`FILE_TOO_LARGE`) before reading any of it.
+ */
+async function readFileHead(
+  path: string,
+  maxBytes: number,
+  whole: boolean,
+  /** Where the opened file must be (Linux checks the handle itself, `/proc/self/fd`). */
+  allowed: (real: string) => boolean = () => true,
+): Promise<{ path: string; sizeBytes: number; data: string; truncated: boolean } | undefined> {
+  let file: Fs.promises.FileHandle;
+  try {
+    file = await Fs.promises.open(path, Fs.constants.O_RDONLY | (Fs.constants.O_NOFOLLOW ?? 0));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ELOOP" || code === "EISDIR") return undefined;
+    if (code === "ENOENT") {
+      throw new ThreadsError("FILE_NOT_FOUND", `${path} does not exist`, { path });
+    }
+    throw error;
+  }
+  try {
+    // A folder on the way swapped for a link after the path was checked leads the handle
+    // elsewhere: on Linux the handle's own path is checked too; elsewhere that race stays.
+    const opened = await Fs.promises.readlink(`/proc/self/fd/${file.fd}`).catch(() => undefined);
+    if (opened !== undefined && !allowed(opened)) return undefined;
+    const stat = await file.stat();
+    if (!stat.isFile()) return undefined;
+    if (whole && stat.size > maxBytes) {
+      throw new ThreadsError("FILE_TOO_LARGE", `The file is larger than ${maxBytes} bytes`, {
+        path,
+        sizeBytes: stat.size,
+      });
+    }
+    const buffer = Buffer.alloc(Math.min(maxBytes, stat.size));
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+    return {
+      path,
+      sizeBytes: stat.size,
+      data: buffer.subarray(0, bytesRead).toString("base64"),
+      truncated: bytesRead < stat.size,
+    };
+  } finally {
+    await file.close();
+  }
+}
+
+/** How much of a file to read: its start, or with `whole` all of it or nothing. */
+const ReadLimit = {
+  maxBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_READ_FILE_BYTES)
+    .default(1024 * 1024),
+  whole: z
+    .boolean()
+    .default(false)
+    .describe("All of the file or nothing: one past maxBytes is refused before it is read"),
+};
+
+const FileHead = z.object({
+  path: z.string(),
+  sizeBytes: z.number(),
+  data: z.string(),
+  truncated: z.boolean(),
 });
 
 class ThreadsError extends Error {
@@ -1926,6 +2000,57 @@ export default definePlugin({
       },
     });
 
+    // T3 opens a mentioned file in its file panel; here its preview dialog (t3-parity.md D1003).
+    context.commands.register({
+      name: "projects.read-file",
+      description:
+        "Reads the start of a file inside a project's directory, or a thread's worktree, by a path relative to it (base64), for previewing a mentioned file",
+      input: z.object({
+        projectId: z.string(),
+        /** Its worktree, when it has one, is the folder the path is in. */
+        threadId: z.string().optional(),
+        path: z.string().trim().min(1).max(4096),
+        ...ReadLimit,
+      }),
+      output: FileHead,
+      permissions: ["projects.read"],
+      handler: async ({ projectId, threadId, path, maxBytes, whole }) => {
+        const project = await getProject(projectId);
+        const thread = threadId === undefined ? undefined : await getThread(threadId);
+        if (thread !== undefined && thread.projectId !== projectId) {
+          throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId} in this project`, {
+            threadId,
+          });
+        }
+        const root = Path.resolve(thread?.worktreePath ?? project.path);
+        const refuse = () =>
+          new ThreadsError("PATH_OUTSIDE_PROJECT", "The path must be a file inside the project", {
+            projectId,
+            path,
+          });
+        const outside = (relative: string) =>
+          relative === ".." || relative.startsWith(`..${Path.sep}`) || Path.isAbsolute(relative);
+        // A path out of the folder is refused before anything is looked up there, so the
+        // answer never says whether a file outside exists.
+        const lexical = Path.relative(root, Path.resolve(root, path));
+        if (lexical === "" || outside(lexical)) throw refuse();
+        // A link inside the project must not lead the read out of it.
+        const realRoot = await Fs.promises.realpath(root);
+        const real = await Fs.promises.realpath(Path.resolve(root, path)).catch(() => undefined);
+        if (real === undefined) {
+          throw new ThreadsError("FILE_NOT_FOUND", `${path} does not exist`, { path });
+        }
+        const relative = Path.relative(realRoot, real);
+        if (relative === "" || outside(relative)) throw refuse();
+        const head = await readFileHead(real, maxBytes, whole, (opened) => {
+          const inside = Path.relative(realRoot, opened);
+          return inside !== "" && !outside(inside);
+        });
+        if (head === undefined) throw refuse();
+        return head;
+      },
+    });
+
     context.commands.register({
       name: "projects.browse",
       description:
@@ -2069,6 +2194,59 @@ export default definePlugin({
           commands: AgentSlashCommand[];
           skills: AgentSkill[];
         };
+      },
+    });
+
+    // T3's "View instructions" of a skill chip (t3-parity.md D1004): only a file the agent
+    // names as one of its skills is read.
+    context.commands.register({
+      name: "agents.skill.read",
+      description:
+        "Reads the start of a skill's instructions (its SKILL.md, base64), a skill the agent offers in a project's folder",
+      input: z.object({
+        projectId: z.string(),
+        agentId: z.string().optional(),
+        name: z.string().min(1),
+        ...ReadLimit,
+      }),
+      output: FileHead,
+      // It reads outside projects too (a user's skills): what the agent itself may read.
+      permissions: ["projects.read"],
+      handler: async ({ projectId, agentId, name, maxBytes, whole }) => {
+        const project = await getProject(projectId);
+        const runtime = agentId === undefined ? await defaultRuntime() : registry.get(agentId);
+        if (runtime === undefined) {
+          throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${agentId ?? ""} on this node`, {
+            agentId,
+          });
+        }
+        const found = (await runtime.commands?.({ cwd: project.path }))?.skills ?? [];
+        const skill = found.find((candidate) => candidate.name === name);
+        if (skill === undefined) {
+          throw new ThreadsError("SKILL_NOT_FOUND", `The agent offers no skill ${name}`, { name });
+        }
+        // Only a skill's SKILL.md, and not through a link to another file (D1004): the path is
+        // the runtime's, and a project's skills folder is anyone's who can write there.
+        const notInstructions = () =>
+          new ThreadsError("PATH_NOT_SKILL", `${skill.path} is not a skill's SKILL.md`, { name });
+        if (Path.basename(skill.path) !== SKILL_FILE) throw notInstructions();
+        const real = await Fs.promises.realpath(skill.path).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          throw new ThreadsError("FILE_NOT_FOUND", `${skill.path} does not exist`, {
+            path: skill.path,
+          });
+        });
+        if (Path.basename(real) !== SKILL_FILE) throw notInstructions();
+        const head = await readFileHead(
+          real,
+          maxBytes,
+          whole,
+          (opened) => Path.basename(opened) === SKILL_FILE,
+        );
+        if (head === undefined) {
+          throw new ThreadsError("SKILL_NOT_FOUND", `${skill.path} is not a file`, { name });
+        }
+        return head;
       },
     });
 

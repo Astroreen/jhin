@@ -161,10 +161,16 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   plugin folders, as the dev layer (D15); the desktop app adds its plugin so.
 - `agent.runtime` 1.5 (`@jhin/agent-api`): a question's `initialAnswer`, an
   answer to edit (`plans/t3-parity.md` D1001).
+- `projects.read-file` and `agents.skill.read` (`jhin.threads`) — the start of
+  a project's file and of a skill's SKILL.md, for the composer's file and skill
+  chips (`plans/t3-parity.md` D1003, D1004).
 - `@jhin/ui` also exports the settings layout (`SettingsSection`,
   `SettingsRow`), `useNativeTitlebarHeight` (`plans/desktop.md#D514`, `#D515`) and
   `ThreadDetailsSection` for sections of the thread details panel
   (`plans/t3-parity.md#D802`).
+- `@jhin/ui`'s `ContextChip` (with `ContextChipShell`, `ContextChipPopover`) — T3's
+  inline chip for a file, skill, pull request, thread or terminal excerpt, tinted by
+  kind; the composer's chips are its (`plans/t3-parity.md` D1002).
 - `apps/web/src/lib/pierre-icons.ts` and `pierre-entry-icon.tsx` — T3's file
   icons: `T3_PIERRE_ICONS` for a `@pierre/trees` tree and `PierreEntryIcon`
   for one file (`plans/source-control.md#D923`); use them wherever a file is shown.

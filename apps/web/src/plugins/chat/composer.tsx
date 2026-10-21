@@ -122,6 +122,7 @@ const PromptEditor = lazy(() =>
 );
 import { useComposerMenu } from "./use-composer-menu.ts";
 import { type PutAside, usePutAside } from "./put-aside.ts";
+import { ComposerChipsContext, useComposerChipActions } from "./composer-chips.tsx";
 import {
   useAttachmentLoader,
   useAttachmentUrl,
@@ -1378,8 +1379,14 @@ export function Composer(props: ComposerProps) {
   // They are followed only while `@` is typed, as T3's useThreadShells(isPathTrigger).
   const pathTrigger = detectComposerTrigger(prompt, cursor)?.kind === "path";
   const catalog = useCatalog(chat.threads, pathTrigger ? props.target : undefined);
-  const members = useMeshMembers(chat.mesh, pathTrigger ? props.target.node : undefined);
-  const nodeId = props.target.remote ?? members?.find((member) => member.self)?.nodeId ?? undefined;
+  // A thread chip opens its thread wherever in the mesh it is: the members are followed then too.
+  const threadChip = prompt.includes("](jhin://");
+  const members = useMeshMembers(
+    chat.mesh,
+    pathTrigger || threadChip ? props.target.node : undefined,
+  );
+  const selfNodeId = members?.find((member) => member.self)?.nodeId ?? undefined;
+  const nodeId = props.target.remote ?? selfNodeId;
   const menu = useComposerMenu({
     call: (method, params) => chat.threads.call(props.target, method, params),
     projectId: props.context?.project?.id,
@@ -1393,6 +1400,15 @@ export function Composer(props: ComposerProps) {
     threads: catalog?.threads ?? [],
     threadAddress: (threadId) =>
       nodeId === undefined ? undefined : `jhin://${nodeId}/threads/${threadId}`,
+  });
+  const chips = useComposerChipActions({
+    target: props.target,
+    projectId: props.context?.project?.id,
+    threadId: props.context?.thread?.id,
+    agentId: agent?.agentId,
+    nodeId,
+    selfNodeId,
+    skills: menu.skills,
   });
   /**
    * T3's onSelectComposerItem: inserts the command, skill, file, pull request or thread, or
@@ -1946,33 +1962,36 @@ export function Composer(props: ComposerProps) {
                           </div>
                         }
                       >
-                        <PromptEditor
-                          className={cn(
-                            "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed wrap-break-word text-foreground outline-none",
-                            approval !== undefined && "min-h-10",
-                          )}
-                          disabled={disabled}
-                          handleRef={editor}
-                          onBlur={() => setFocused(false)}
-                          onChange={(value, caret) => {
-                            if (value !== prompt) setPrompt(value);
-                            setCursor(caret);
-                            setCaretAtStart(caret === 0);
-                          }}
-                          onFocus={() => setFocused(true)}
-                          onKeyDown={onKeyDown}
-                          onPaste={onPaste}
-                          onSubmit={() => void send()}
-                          placeholder={placeholder}
-                          readOnly={busy && question === undefined}
-                          literalText={literalAnswer}
-                          richText={settings.composerRichTextEnabled}
-                          sendShortcut={
-                            settings.sendShortcut === "mod-enter" ? "mod-enter" : "enter"
-                          }
-                          value={approval !== undefined ? "" : prompt}
-                        />
+                        <ComposerChipsContext value={chips.actions}>
+                          <PromptEditor
+                            className={cn(
+                              "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed wrap-break-word text-foreground outline-none",
+                              approval !== undefined && "min-h-10",
+                            )}
+                            disabled={disabled}
+                            handleRef={editor}
+                            onBlur={() => setFocused(false)}
+                            onChange={(value, caret) => {
+                              if (value !== prompt) setPrompt(value);
+                              setCursor(caret);
+                              setCaretAtStart(caret === 0);
+                            }}
+                            onFocus={() => setFocused(true)}
+                            onKeyDown={onKeyDown}
+                            onPaste={onPaste}
+                            onSubmit={() => void send()}
+                            placeholder={placeholder}
+                            readOnly={busy && question === undefined}
+                            literalText={literalAnswer}
+                            richText={settings.composerRichTextEnabled}
+                            sendShortcut={
+                              settings.sendShortcut === "mod-enter" ? "mod-enter" : "enter"
+                            }
+                            value={approval !== undefined ? "" : prompt}
+                          />
+                        </ComposerChipsContext>
                       </Suspense>
+                      {chips.dialog}
                     </div>
                   </div>
                   {approval === undefined ? (

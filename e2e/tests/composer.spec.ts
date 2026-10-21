@@ -338,6 +338,60 @@ test("offers commands, skills and files from / $ and @, and inserts what is pick
   await expect(answer.getByRole("link", { name: "app.ts" })).toHaveAttribute("href", "src/app.ts");
 });
 
+test("shows T3's chips with their details: a file's preview and a skill's instructions", async ({
+  page,
+}, info) => {
+  const scratch = Path.join(node.home, "data", "jhin.threads", "scratch");
+  Fs.mkdirSync(Path.join(scratch, "src"), { recursive: true });
+  Fs.writeFileSync(Path.join(scratch, "src", "app.ts"), "export const port = 8080;\n");
+  Fs.mkdirSync(Path.join(scratch, ".claude", "skills", "deploy"), { recursive: true });
+  Fs.writeFileSync(
+    Path.join(scratch, ".claude", "skills", "deploy", "SKILL.md"),
+    "# Deploying\n\nRun the release script.\n",
+  );
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.click();
+  await message.pressSequentially("check @app");
+  // The file, not a thread whose title holds "app" (an earlier test's), which comes first.
+  await page
+    .getByRole("listbox", { name: "Files and folders" })
+    .getByRole("option")
+    .filter({ hasText: "app.ts", hasNotText: "Thread" })
+    .first()
+    .click();
+  await expect(message.locator("[data-mention='src/app.ts']")).toBeVisible();
+  await message.press("End");
+  await message.pressSequentially(" ");
+  await message.pressSequentially("with $dep");
+  await expect(page.getByRole("listbox", { name: "Skills" }).getByRole("option")).toHaveText([
+    /Deploy/,
+  ]);
+  await message.press("Enter");
+
+  // A file chip shows its file in the preview dialog (D1003).
+  await page.getByRole("button", { name: "Preview src/app.ts" }).click();
+  const preview = page.getByRole("dialog", { name: "app.ts" });
+  await expect(preview).toContainText("export const port = 8080;");
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+
+  // A skill chip: its description, and its SKILL.md behind "View instructions" (D1004).
+  await page.getByRole("button", { name: "Skill Deploy. Show details" }).click();
+  await expect(page.getByText("Deploy the app")).toBeVisible();
+  const shot = info.outputPath("skill-chip.png");
+  await page.screenshot({ path: shot });
+  await info.attach("skill chip", { path: shot, contentType: "image/png" });
+  await page.getByRole("button", { name: "View instructions" }).click();
+  const instructions = page.getByRole("dialog", { name: "SKILL.md" });
+  await expect(instructions.getByRole("heading", { name: "Deploying" })).toBeVisible();
+  await expect(page.getByText("Deploy the app")).toBeHidden();
+  const dialogShot = info.outputPath("skill-instructions.png");
+  await page.screenshot({ path: dialogShot });
+  await info.attach("skill instructions", { path: dialogShot, contentType: "image/png" });
+});
+
 test("switches to plan mode with /plan sent alone, and dismisses a menu with Escape", async ({
   page,
 }) => {

@@ -62,6 +62,7 @@ import {
 } from "../../lib/composer-trigger.ts";
 import { ComposerCodeBlockHighlight } from "./code-block-highlight.ts";
 import { CODE_BLOCK_HEADER_CLASS_NAME, CodeBlockView } from "./code-block-view.tsx";
+import { MentionNodeView, ReferenceNodeView, SkillNodeView } from "./composer-chips.tsx";
 
 export interface PromptEditorHandle {
   focus(): void;
@@ -1099,6 +1100,13 @@ const ComposerMentionExtension = Node.create({
       basename(String(node.attrs["path"])),
     ];
   },
+  addNodeView() {
+    return ReactNodeViewRenderer(MentionNodeView, {
+      as: "span",
+      // On the node's own element, there at once: the view inside renders a moment later.
+      attrs: ({ node }) => ({ "data-mention": String(node.attrs["path"]) }),
+    });
+  },
   renderText({ node }) {
     return atomSource(node);
   },
@@ -1134,6 +1142,12 @@ const ComposerSkillExtension = Node.create({
       mergeAttributes(HTMLAttributes, { class: CHIP_CLASS_NAME, contenteditable: "false" }),
       String(node.attrs["name"]),
     ];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(SkillNodeView, {
+      as: "span",
+      attrs: ({ node }) => ({ "data-skill": String(node.attrs["name"]) }),
+    });
   },
   renderText({ node }) {
     return atomSource(node);
@@ -1183,6 +1197,15 @@ const ComposerReferenceExtension = Node.create({
       mergeAttributes(HTMLAttributes, { class: CHIP_CLASS_NAME, contenteditable: "false" }),
       String(node.attrs["label"]),
     ];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(ReferenceNodeView, {
+      as: "span",
+      attrs: ({ node }) => ({
+        "data-reference": String(node.attrs["kind"]),
+        "data-href": String(node.attrs["href"]),
+      }),
+    });
   },
   renderText({ node }) {
     return atomSource(node);

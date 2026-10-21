@@ -1757,6 +1757,58 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   (a later question's answer, prefilled or not, is an answer too), and a
   draft another device sends (D486) replaces the one put aside, not the
   answer. The fake agent's `/edit` asks one.
+- **D1002. T3's context chips,** as `ContextChip.tsx`: a chip tinted by its
+  kind (file, mention, skill, pull request and its states, thread, terminal,
+  citation and the rest of T3's kinds, T3's `oklch` accents mixed into the
+  theme's border and text), a dashed one for context no longer there and a
+  red one for an invalid one, with T3's `ContextChipShell` (details in a
+  tooltip) and `ContextChipPopover` (pressed, details above it). It is
+  public, in `@jhin/ui`, for any plugin that shows context inline. The
+  prompt's chips are T3's node views, React views over the same atoms, so the
+  document and the markdown it writes stay as before (D303); the view
+  renders a moment after the document, so the atom's own element carries
+  its `data-mention`, `data-skill` or `data-reference`.
+- **D1003. A file chip** is T3's mention chip: the file's Pierre icon (D923)
+  and its basename, its path in a tooltip, and pressed ("Preview <path>")
+  its preview in D854's dialog under "Workspace", where T3 opens its
+  right-hand file panel. The file is read by the new node command
+  `projects.read-file` (`{ projectId, threadId?, path, maxBytes?, whole? }`
+  → `{ path, sizeBytes, data, truncated }`, base64, under `projects.read`):
+  a file inside the thread's worktree or else the project's folder. A path
+  out of the folder is refused before anything is looked up, so the answer
+  never tells whether a file outside exists; a link that leads out is
+  refused too, and the file is read through one handle, opened never through
+  a link at its end; on Linux the handle's own path (`/proc/self/fd`) is
+  checked against the folder too, elsewhere a folder on the way swapped for
+  a link between the check and the open, by someone who can already write
+  into the project, is not guarded against, as for `projects.write-file`.
+  Text reads its first MiB as D854 does; media goes whole up to D855's 50 MB
+  (`whole`: one past the limit is refused, `FILE_TOO_LARGE`, before it is
+  read) and is "too large to preview" past it. Only the latest preview asked
+  for shows. A folder (a path ending in `/`) shows its folder icon and opens
+  nothing.
+- **D1004. A skill chip** is T3's: lucide's box, the skill's display name
+  (else its name in title case, `skillDisplayName`), and pressed a popover
+  with the name, its description or "No description is available for this
+  skill.", and "View instructions" when the agent offers the skill. That
+  opens its SKILL.md in the same dialog under "Skill", read by the new
+  command `agents.skill.read` (`{ projectId, agentId?, name, maxBytes?,
+  whole? }`, under `projects.read`, since a user's skills are outside
+  projects): it reads only the path the agent's runtime gives for one of its
+  skills, and only a file named `SKILL.md` that is not a link to another
+  file (`PATH_NOT_SKILL`), since a project's skills folder is anyone's who
+  can write there; it says when the skill or its file is missing. The
+  composer asks the agent's skills (`agents.commands`) while the prompt
+  holds a skill chip, not only while `$` or `/` is typed.
+- **D1005. A pull request or thread chip** is T3's too: a pull request with
+  its glyph, its URL in a tooltip, opened in the browser when pressed; a
+  thread with T3's `MessagesSquare` and "Open thread", which opens it
+  wherever its `jhin://` address leads: the composer's node, the node the
+  client is connected to, or another member of the mesh as that node's
+  remote (D504). A chip that cannot open (an address of no node in reach, a
+  link to no web page) is no button, and a thread one says "Thread no longer
+  available". The state of a pull request and the thread's current title
+  come with their context records.
 
 ### Sidebar leftovers (W26)
 
@@ -1819,8 +1871,10 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
     T3 has none);
   - the vertical spacing T3 gives headings (the composer's blocks have none);
   - visible marks at the caret;
-  - citation and context-reference chips, and chip popovers (file icons, a
-    skill's description and "View instructions");
+  - T3's citation chips (a passage of an agent's message quoted into the
+    prompt, with a comment) and the chips of a sent message;
+  - a preview of a mentioned file in a panel beside the thread (D1003
+    opens a dialog, T3 its right-hand file panel);
   - T3's context record for a mentioned pull request or thread (D851; its
     title, branches and "untrusted data" block);
   - listing pull requests on forges other than GitHub (D849);
