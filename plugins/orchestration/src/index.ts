@@ -89,6 +89,9 @@ const ThreadRecord = z
     runtimeMode: z.enum(RUNTIME_MODES).optional(),
     interactionMode: z.enum(INTERACTION_MODES).optional(),
     parentThreadId: z.string().optional(),
+    modelOptions: z
+      .array(z.object({ id: z.string(), value: z.union([z.string(), z.boolean()]) }))
+      .optional(),
     lastTurn: z
       .object({
         turnId: z.string(),
@@ -118,6 +121,21 @@ const AgentInfo = z
 type AgentInfo = z.infer<typeof AgentInfo>;
 
 // --- Records -------------------------------------------------------------------
+
+/** A model option chosen for a turn (D297). */
+type ModelOption = { readonly id: string; readonly value: string | boolean };
+const OptionValue = z.union([z.string(), z.boolean()]);
+/** T3's target options: a list of selections, or a record of them by id (D870). */
+const TargetOptions = z
+  .union([
+    z.array(z.object({ id: z.string().min(1), value: OptionValue })).max(20),
+    z.record(z.string().min(1), OptionValue),
+  ])
+  .transform((options): ModelOption[] =>
+    Array.isArray(options)
+      ? options
+      : Object.entries(options).map(([id, value]) => ({ id, value })),
+  );
 
 const TaskStatus = z.enum([
   "running",
@@ -886,6 +904,7 @@ export default definePlugin({
       readonly target?: {
         readonly agentId?: string | undefined;
         readonly model?: string | undefined;
+        readonly options?: readonly ModelOption[] | undefined;
       };
       readonly runtimeMode?: RuntimeMode | "inherit";
       readonly interactionMode?: InteractionMode | "inherit";
@@ -963,6 +982,10 @@ export default definePlugin({
       }
       const sameAgent = agent.agentId === parentAgent?.agentId;
       const model = requestedModel ?? (sameAgent ? parent.model : undefined);
+      // Options go with their model: the parent's only while the child runs the parent's model (D870).
+      const modelOptions =
+        request.target?.options ??
+        (sameAgent && model === parent.model ? parent.modelOptions : undefined);
       const runtimeMode = resolveMode<RuntimeMode>({
         kind: "runtime",
         requested: request.runtimeMode,
@@ -998,6 +1021,7 @@ export default definePlugin({
             title,
             agentId: agent.agentId,
             ...(model === undefined ? {} : { model }),
+            ...(modelOptions === undefined ? {} : { modelOptions }),
             runtimeMode,
             interactionMode,
             parentThreadId: parent.id,
@@ -1137,7 +1161,13 @@ export default definePlugin({
       input: z.object({
         task: z.string().trim().min(1).max(MAX_TASK_LENGTH),
         target: z
-          .object({ agentId: z.string().min(1).optional(), model: z.string().min(1).optional() })
+          .object({
+            agentId: z.string().min(1).optional(),
+            model: z.string().min(1).optional(),
+            options: TargetOptions.optional().describe(
+              "Model option selections advertised by orchestration_capabilities, as [{id, value}] or {id: value}.",
+            ),
+          })
           .optional(),
         title: z.string().max(MAX_TITLE_LENGTH).optional(),
         role: z.enum(Roles).optional(),
@@ -1275,7 +1305,13 @@ export default definePlugin({
           z.object({
             agentId: z.string(),
             name: z.string(),
-            models: z.array(z.object({ id: z.string(), name: z.string() })),
+            models: z.array(
+              z.object({
+                id: z.string(),
+                name: z.string(),
+                options: z.array(z.object({ id: z.string(), type: z.string() }).loose()).optional(),
+              }),
+            ),
             defaultModel: z.string().nullable(),
             runtimeModes: z.array(z.enum(RUNTIME_MODES)),
             interactionModes: z.array(z.enum(INTERACTION_MODES)),
@@ -1321,7 +1357,11 @@ export default definePlugin({
             return {
               agentId: agent.agentId,
               name: agent.name,
-              models: agent.models.map((model) => ({ id: model.id, name: model.name })),
+              models: agent.models.map((model) => ({
+                id: model.id,
+                name: model.name,
+                ...(Array.isArray(model.options) ? { options: model.options } : {}),
+              })),
               defaultModel: agent.defaultModel ?? null,
               runtimeModes: agent.runtimeModes,
               interactionModes: agent.interactionModes,
@@ -1616,12 +1656,18 @@ export default definePlugin({
             parentThreadId: workflow.parentThreadId,
             task: options.schema === undefined ? prompt : schemaPrompt(prompt, options.schema),
             ...(options.label === undefined ? {} : { title: options.label }),
-            ...(options.agentId === undefined && options.model === undefined
+            ...(options.agentId === undefined &&
+            options.model === undefined &&
+            options.effort === undefined
               ? {}
               : {
                   target: {
                     ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
                     ...(options.model === undefined ? {} : { model: options.model }),
+                    // The model's `effort` option (D870); a model without it drops it.
+                    ...(options.effort === undefined
+                      ? {}
+                      : { options: [{ id: "effort", value: options.effort }] }),
                   },
                 }),
             ...(options.isolation === undefined ? {} : { isolation: options.isolation }),
