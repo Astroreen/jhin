@@ -281,6 +281,13 @@ and QR code.
 
 ## Deferred
 
+- DNS rebinding (D418): a page on a name re-pointed at the node's address
+  sends `Origin` and `Host` with that name, so it counts as the node's own
+  page. It gets no session cookie (the browser keeps the node's cookie for
+  the node's own host) and has no token, so it can call nothing; a `Host`
+  allowlist (`jhin.http.allowedHosts`: loopback names, the bound and
+  advertised addresses) would refuse it outright.
+
 - A secret whose real value starts with the marker and `#`
   (`••••••#note`) reads as an addressed marker and is refused on save
   (D417); such a value has to be changed to be saved.
