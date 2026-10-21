@@ -1510,7 +1510,9 @@ T3 Code `eb7b35ac` as D290 says.
   ("Plain text" first; here `apps/web/src/lib/code-languages.ts`), a language the list lacks shown first under its own name.
   The pick rewrites only the first word of the fence's info string, so
   `ts title=x` keeps `title=x`; plain text clears it, or writes `text` when
-  something follows. The caret returns to the block's end. The prompt's
+  something follows. The search matches a language's label and id, as T3's; the aliases only
+  name an existing fence (`ts` shows as TypeScript). The caret returns to the
+  block's end. The prompt's
   markdown is the only state, so drafts and the queue keep the language.
 - **D843. Tab indents in a code block,** as T3's `indentCodeBlock`: with no
   selection Tab inserts two spaces; with one it indents every line the
