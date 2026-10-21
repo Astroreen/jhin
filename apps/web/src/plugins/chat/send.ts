@@ -87,6 +87,7 @@ export async function sendMessage(
           outcome ?? failure(new Error(`The node answered a steer with ${String(sent?.outcome)}`))
         );
       } catch (error) {
+        // A node from before D803 refuses an agent that cannot steer: queued instead.
         if ((error as { code?: unknown } | null)?.code !== "STEER_UNSUPPORTED") throw error;
       }
     } else if (mode === "send" || mode === "start") {
