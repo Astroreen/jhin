@@ -81,3 +81,39 @@ test("D389: creates, pauses, runs and deletes a scheduled task from settings", a
     ).tasks.map((task) => task.title),
   ).toEqual(["Release notes"]);
 });
+
+test("D981: the thread details list the thread's automations, pause and run them", async ({
+  page,
+}, info) => {
+  node = await startNode();
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("automated");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: automated");
+  const threadId = decodeURIComponent(/[#&]t=([^&]+)/.exec(page.url())?.[1] ?? "");
+  await node.client().call("scheduler.tasks.create", {
+    title: "Nightly check",
+    prompt: "check",
+    schedule: { type: "interval", everyMs: 3_600_000 },
+    threadId,
+  });
+
+  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
+  const automations = page.getByRole("region", { name: "Automations" });
+  await expect(automations).toContainText("Nightly check");
+  await expect(automations).toContainText("· next");
+  await shoot(page.getByRole("region", { name: "Thread details" }), info, "thread-automations");
+
+  await automations.getByRole("switch", { name: "Pause Nightly check" }).click();
+  await expect(automations).toContainText("· paused");
+  await expect(automations.getByRole("switch", { name: "Resume Nightly check" })).toBeVisible();
+
+  await automations.getByRole("button", { name: "Run Nightly check now" }).click();
+  // The run goes to the bound thread.
+  await expect(page.getByRole("article", { name: "Agent" }).last()).toHaveText("Echo: check");
+
+  await automations.getByRole("button", { name: "Manage scheduled tasks" }).click();
+  await expect(page.getByRole("heading", { name: "Scheduled tasks" }).first()).toBeVisible();
+});

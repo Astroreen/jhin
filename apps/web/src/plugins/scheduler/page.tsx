@@ -68,6 +68,7 @@ import { TASK_ACTIONS_SLOT, type TaskActionProps } from "./actions.tsx";
 import type { SchedulerStore, SchedulerView } from "./store.ts";
 
 export { createSchedulerStore } from "./store.ts";
+export { ThreadAutomations } from "./automations.tsx";
 
 export interface SchedulerServices {
   readonly store: SchedulerStore;

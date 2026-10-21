@@ -33,7 +33,8 @@ thread details panel and its Lineage section (`plugins/chat/thread-details-panel
 `lineage.tsx`, `packages/ui/src/components/thread-details-section.tsx`), the
 scheduled tasks settings page, the subagent, workflow and created-thread rows
 of delegated work and their Lineage rows in `plugins/orchestration`, the
-subagent bar `plugins/chat/subagent-bar.tsx`), the
+subagent bar `plugins/chat/subagent-bar.tsx`, the thread's automations
+`plugins/scheduler/automations.tsx`), the
 threads plugin's merge-back handoff and search snippets
 (`plugins/threads/src/history.ts`), source control (`plugins/source-control`:
 reading git status and diffs, pull requests and their checks through the

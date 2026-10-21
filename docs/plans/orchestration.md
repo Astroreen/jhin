@@ -447,6 +447,22 @@ user sees, which their Deferred lists left out.
   without one), the status ("Working 12s", "Completed in 1m 3s"), "Runs on
   its own" and "Open parent". The fake agent's `/subagent <task>` runs one.
 
+- **D981. The thread's automations** (W20 continues in D981–D1000): T3's
+  `ThreadAutomationsPanel` is a section of the thread details panel
+  (`chat.thread.details`, contribution `jhin.scheduler.automations`,
+  before Lineage, as in T3) listing the scheduled tasks bound to the thread (`threadId`):
+  their status dot (never, running, succeeded, failed), title, schedule and
+  "next …" or "paused", "Edit <title>" (opens Settings → Scheduled tasks),
+  "Run <title> now" (not for a webhook; `scheduler.tasks.run`) and the
+  switch "Pause <title>"/"Resume <title>" (`scheduler.tasks.update` with
+  `enabled` alone); "Manage scheduled tasks" in its heading. A failure is
+  told in a toast. It shows while the thread has such tasks, or with
+  the error when they cannot be read (as in T3), for a thread of the
+  connection's own node.
+- **D982. One scheduler store per client, loaded with its first view:** the
+  settings page and the automations section share it, in the page's chunk
+  (D440); a chunk that failed to load is tried again.
+
 ### Deferred
 
 - The running count in the Lineage title ("Lineage · 2 running").
@@ -583,8 +599,6 @@ the rest of it is unchanged since D53's tag.
 
 ### Deferred
 
-- The thread's automations panel: T3 shows a thread's tasks in its thread
-  details panel, which Jhin does not have yet.
 - The editor's workspace strategy (a new worktree, the project checkout, a
   given checkout; W3's worktrees) and its model picker: a new thread runs on
   the node's default agent and model unless a command gives others.
