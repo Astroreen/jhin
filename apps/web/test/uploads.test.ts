@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { createAttachmentUrls, downloadAttachment, uploadAttachment } from "../src/lib/uploads.ts";
+import {
+  createAttachmentUrls,
+  downloadAttachment,
+  readAttachmentHead,
+  uploadAttachment,
+} from "../src/lib/uploads.ts";
 
 /** A node keeping uploads in memory, as `attachments.*` does. */
 function fakeNode() {
@@ -25,7 +30,7 @@ function fakeNode() {
       return { received: blob.bytes.length } as T;
     }
     const offset = Number(input.offset ?? 0);
-    const part = blob.bytes.slice(offset, offset + 1024 * 1024);
+    const part = blob.bytes.slice(offset, offset + Number(input.length ?? 1024 * 1024));
     return {
       data: Buffer.from(part).toString("base64"),
       mimeType: blob.mimeType,
@@ -55,6 +60,16 @@ describe("uploads (D292)", () => {
 
     const back = new Uint8Array(await (await downloadAttachment(node.call, "att-0")).arrayBuffer());
     expect(Buffer.compare(back, bytes)).toBe(0);
+  });
+
+  it("reads the head of an attachment in one call, saying whether that is all", async () => {
+    const node = fakeNode();
+    await uploadAttachment(node.call, new File(["Hello, world"], "a.txt"), "file");
+    const head = await readAttachmentHead(node.call, "att-0", 5);
+    expect(new TextDecoder().decode(head.bytes)).toBe("Hello");
+    expect(head.done).toBe(false);
+    expect((await readAttachmentHead(node.call, "att-0", 1024)).done).toBe(true);
+    expect(node.calls.filter((method) => method === "attachments.read")).toHaveLength(2);
   });
 
   it("stops an upload that was cancelled", async () => {

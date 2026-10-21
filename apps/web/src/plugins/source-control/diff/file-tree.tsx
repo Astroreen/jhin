@@ -18,7 +18,7 @@ import {
   setAllDirectoriesExpanded,
   type DiffFileTreeEntry,
 } from "./file-tree-logic.ts";
-import { useResolvedTheme } from "./theme.ts";
+import { useResolvedTheme } from "../../../lib/resolved-theme.ts";
 
 const PIERRE_TREE_UNSAFE_CSS = `
   :host {

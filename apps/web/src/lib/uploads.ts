@@ -86,6 +86,23 @@ export async function downloadAttachment(call: NodeCall, attachmentId: string): 
 }
 
 /**
+ * Reads the first `length` bytes of an attachment (at most 1 MiB, one
+ * call), and whether they are all of it: a text preview needs no more.
+ */
+export async function readAttachmentHead(
+  call: NodeCall,
+  attachmentId: string,
+  length: number,
+): Promise<{ bytes: Uint8Array; done: boolean }> {
+  const chunk = await call<{ data: string; done: boolean }>("attachments.read", {
+    attachmentId,
+    offset: 0,
+    length,
+  });
+  return { bytes: base64ToBytes(chunk.data), done: chunk.done };
+}
+
+/**
  * Object URLs of attachments read from their nodes, one load per attachment
  * however many views show it. Kept for the page's life: an attachment never
  * changes once sent.

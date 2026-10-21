@@ -151,6 +151,35 @@ describe("jhin.threads: attachments as blobs (D291–D294)", () => {
     });
   });
 
+  it("names a queued upload by id in the queue's event, so a client can show its thumbnail", async () => {
+    const { client } = await node();
+    const thread = await client.call<{ id: string }>("threads.create", {});
+    const watched = watch(client, thread.id);
+    await client.call("threads.send", { threadId: thread.id, text: "/hold on" });
+    await watched.until("agent.item.delta");
+    const { attachmentId } = await client.call<Begun>("attachments.begin", {
+      kind: "image",
+      name: "dot.png",
+      mimeType: "image/png",
+      sizeBytes: 3,
+    });
+    await client.call("attachments.write", { attachmentId, offset: 0, data: base64("png") });
+    const image = { kind: "image", id: attachmentId, name: "dot.png", mimeType: "image/png" };
+    await client.call("threads.queue.add", {
+      threadId: thread.id,
+      text: "",
+      attachments: [{ ...image, sizeBytes: 3 }],
+      messageId: "m-1",
+    });
+    const updated = await watched.until("threads.queue.updated");
+    expect(updated.payload).toMatchObject({
+      messages: [{ id: "m-1", attachments: [{ ...image, sizeBytes: 3 }] }],
+    });
+    // The id reads the queued image back.
+    const read = await client.call<{ data: string }>("attachments.read", { attachmentId });
+    expect(Buffer.from(read.data, "base64").toString()).toBe("png");
+  });
+
   it("refuses what T3 refuses: unsupported images, too large files, too many", async () => {
     const { client } = await node();
     await expect(

@@ -1,22 +1,22 @@
 // Attaching files follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac:
 // apps/web/src/components/chat/ChatComposer.tsx (addComposerAttachments, the attachment
-// rows and thumbnails, large pastes as pasted-text.txt).
+// rows and thumbnails, large pastes as pasted-text.txt). Their views are in attachment-views.tsx.
 import type { StoredAttachment, TurnAttachment } from "@jhin/agent-api";
 import type { Toasts } from "@jhin/ui";
-import { Button, Spinner, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
-import { FileIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
   classifyAttachmentFile,
   fileAttachmentTooLargeMessage,
-  formatAttachmentSize,
   normalizeImageFileMimeType,
 } from "../../lib/attachment-files.ts";
 import { fitAttachments, type DraftAttachment } from "../../lib/composer.ts";
+import { videoMimeType } from "../../lib/file-preview.ts";
+import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 /** Image compression loads with the first image attached, not with the page (D440). */
 const imageCompression = () => import("../../lib/image-compression.ts");
 import { ATTACHMENT_LIMITS, uploadAttachment, type NodeCall } from "../../lib/uploads.ts";
+import type { AttachmentLoader } from "./attachment-media.tsx";
 
 /** An attachment in the composer: uploading, uploaded, or failed. */
 export interface ComposerAttachment {
@@ -32,6 +32,17 @@ export interface ComposerAttachment {
   readonly progress: number;
   readonly stored?: StoredAttachment;
   readonly error?: string;
+}
+
+/** What the attachments above the prompt show and do. */
+export interface ComposerAttachmentsProps {
+  readonly items: readonly ComposerAttachment[];
+  /** The picked file of an item, while the composer has it. */
+  fileOf(localId: string): File | undefined;
+  /** Reads an uploaded item back from the node (a draft restored after a reload). */
+  readonly loader: AttachmentLoader | undefined;
+  onRemove(localId: string): void;
+  onRetry(localId: string): void;
 }
 
 const fromDraft = (item: DraftAttachment): ComposerAttachment => ({
@@ -173,6 +184,12 @@ export function useComposerAttachments(options: {
       } else if (file.size > ATTACHMENT_LIMITS.fileBytes) {
         error(fileAttachmentTooLargeMessage(file.name, ATTACHMENT_LIMITS.fileBytes));
         continue;
+      } else {
+        // A video without a type (or a generic one) is typed by its name, as T3 does.
+        const video = videoMimeType({ name: file.name, mimeType: file.type });
+        if (video !== null && video !== file.type) {
+          file = new File([file], file.name, { type: video, lastModified: file.lastModified });
+        }
       }
       const kind = classification === "image" ? "image" : "file";
       const previewUrl =
@@ -266,121 +283,18 @@ export function useComposerAttachments(options: {
     };
   };
 
-  return { items, add, remove, retry, forMessage, take, replace };
+  /** The file picked for an item, while this composer has it (a preview reads it locally). */
+  const fileOf = (localId: string): File | undefined => files.current.get(localId);
+
+  return { items, add, remove, retry, forMessage, take, replace, fileOf };
 }
 
-/** T3's attachments above the prompt: image thumbnails, then a row per file. */
-export function ComposerAttachments(props: {
-  readonly items: readonly ComposerAttachment[];
-  onRemove(localId: string): void;
-  onRetry(localId: string): void;
-}) {
-  const images = props.items.filter((item) => item.kind === "image");
-  const others = props.items.filter((item) => item.kind === "file");
-  if (props.items.length === 0) return null;
-  return (
-    <div className="mb-3 flex flex-col gap-2">
-      {images.length > 0 ? (
-        <div className="flex max-w-full flex-wrap gap-2">
-          {images.map((item) => (
-            <div
-              className="group/attachment relative h-16 w-16 shrink-0 snap-start overflow-hidden rounded-lg border border-border/80 bg-background"
-              data-attachment-status={item.status}
-              key={item.localId}
-            >
-              {item.previewUrl === undefined ? (
-                <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                  <FileIcon className="size-5" />
-                </div>
-              ) : (
-                <img alt={item.name} className="h-full w-full object-cover" src={item.previewUrl} />
-              )}
-              {item.status === "uploading" ? (
-                <div
-                  aria-label={`Uploading ${item.name}`}
-                  aria-valuenow={Math.round(item.progress * 100)}
-                  className="absolute inset-0 flex items-center justify-center bg-background/60"
-                  role="progressbar"
-                >
-                  <Spinner size="sm" />
-                </div>
-              ) : item.status === "failed" ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/70">
-                  <RetryButton item={item} onRetry={props.onRetry} />
-                </div>
-              ) : null}
-              <span className="absolute top-1 right-1 flex">
-                <Button
-                  aria-label={`Remove ${item.name}`}
-                  onClick={() => props.onRemove(item.localId)}
-                  size="icon-xs"
-                  variant="media-close"
-                >
-                  <XIcon />
-                </Button>
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {others.map((item) => (
-        <div
-          className="flex min-w-0 items-center gap-2 rounded-lg border border-border/80 bg-background px-2 py-1.5 text-sm"
-          data-attachment-status={item.status}
-          key={item.localId}
-        >
-          <FileIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate">{item.name}</span>
-          <span
-            className={cn(
-              "shrink-0 text-xs tabular-nums",
-              item.status === "failed" ? "text-destructive" : "text-muted-foreground",
-            )}
-            {...(item.status === "uploading"
-              ? {
-                  role: "progressbar",
-                  "aria-label": `Uploading ${item.name}`,
-                  "aria-valuenow": Math.round(item.progress * 100),
-                }
-              : {})}
-          >
-            {item.status === "uploading"
-              ? `${Math.round(item.progress * 100)}%`
-              : item.status === "failed"
-                ? "Attach again"
-                : formatAttachmentSize(item.sizeBytes)}
-          </span>
-          {item.status === "failed" ? <RetryButton item={item} onRetry={props.onRetry} /> : null}
-          <Button
-            aria-label={`Remove ${item.name}`}
-            onClick={() => props.onRemove(item.localId)}
-            size="icon-xs"
-            variant="ghost"
-          >
-            <XIcon />
-          </Button>
-        </div>
-      ))}
-    </div>
-  );
-}
+/** T3's attachments above the prompt, a chunk of its own loaded with the first one (D440). */
+const ComposerAttachmentsView = lazyChunk(
+  () => import("./attachment-views.tsx").then((module) => module.ComposerAttachments),
+  { loading: () => null, failed: () => null },
+);
 
-function RetryButton(props: { item: ComposerAttachment; onRetry(localId: string): void }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            aria-label={`Retry ${props.item.name}`}
-            onClick={() => props.onRetry(props.item.localId)}
-            size="icon-xs"
-            variant="ghost"
-          />
-        }
-      >
-        <RotateCcwIcon />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{props.item.error ?? "Upload failed"}</TooltipPopup>
-    </Tooltip>
-  );
+export function ComposerAttachments(props: ComposerAttachmentsProps) {
+  return props.items.length === 0 ? null : <ComposerAttachmentsView {...props} />;
 }

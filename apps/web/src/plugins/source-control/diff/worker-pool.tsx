@@ -5,7 +5,7 @@ import DiffsWorker from "@pierre/diffs/worker/worker.js?worker";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { PREFERRED_HIGHLIGHTER, resolveDiffThemeName, type DiffThemeName } from "./rendering.ts";
-import { useResolvedTheme } from "./theme.ts";
+import { useResolvedTheme } from "../../../lib/resolved-theme.ts";
 
 const DIFF_WORKER_IDLE_TTL_MS = 30_000;
 function resolveDiffWorkerPoolSize() {
