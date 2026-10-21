@@ -127,6 +127,12 @@ describe("checking a pull request out (D902)", () => {
 
     const again = await checkoutWorktree(createGit("git", dir), target, options);
     expect(again).toEqual(prepared);
+
+    // Its folder deleted, the worktree is made again rather than reused.
+    Fs.rmSync(path, { recursive: true, force: true });
+    const remade = await checkoutWorktree(createGit("git", dir), target, options);
+    expect(remade).toEqual(prepared);
+    expect(git(path, "rev-parse", "HEAD").trim()).toBe(head);
   });
 
   it("refuses a worktree of the branch the project's checkout is on", async () => {

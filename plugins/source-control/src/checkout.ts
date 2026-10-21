@@ -298,6 +298,8 @@ export async function checkoutWorktree(
 ): Promise<PreparedPullRequest> {
   const { pr } = target;
   const local = worktreeBranchOf(target);
+  // A worktree git still lists but whose folder is gone is pruned, not reused.
+  await git(["worktree", "prune"]);
   const entries = await listWorktrees(git);
   const same = (a: string, b: string) => Path.resolve(a) === Path.resolve(b);
   // A fork's head named like a branch of this repository is not that branch.
