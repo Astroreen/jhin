@@ -170,8 +170,9 @@ Words about Jhin:
   shortcut; `when` tests **context keys** that plugins set (`composerFocus`).
 - **Command palette** — the searchable list of titled commands, projects and
   threads (⌘/Ctrl+K).
-- **Visit** — when a thread was last seen on this device, in its node's own
-  time; a turn that ended after it shows the thread as unread.
+- **Visit** — when a thread was last seen, in its node's own time; the node
+  keeps it for every device (`lastVisitedAt`), a device its own where the node
+  does not. A turn that ended after it shows the thread as unread.
 - **Settled** — a thread that needs nothing more, settled by hand or by its
   node: after the days without activity the node is configured with (three
   by default) and with no turn running or waiting for the user, or when its

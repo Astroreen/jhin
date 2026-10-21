@@ -87,6 +87,24 @@ describe("visits shared through the thread's node (D485)", () => {
     expect(calls.at(-1)).toEqual({ method: "threads.mark-unread", params: { threadId: "t1" } });
   });
 
+  it("tries again after the node could not take a visit", async () => {
+    let fail = true;
+    const sent: unknown[] = [];
+    const visits = createVisits(memoryStorage(), {
+      record: () => thread(),
+      call: async (_target, method, params) => {
+        sent.push(params);
+        if (fail) throw new Error("unreachable");
+      },
+    });
+    visits.visit({ node: "a" }, "t1", LATER);
+    await Promise.resolve();
+    await Promise.resolve();
+    fail = false;
+    visits.visit({ node: "a" }, "t1", LATER);
+    expect(sent).toHaveLength(2);
+  });
+
   it("reads the node's visit over this device's own", () => {
     expect(lastVisitOf({ ...thread(), lastVisitedAt: AT }, LATER)).toBe(AT);
     expect(lastVisitOf(thread(), LATER)).toBe(LATER);

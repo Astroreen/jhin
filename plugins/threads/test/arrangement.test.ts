@@ -480,7 +480,8 @@ describe("jhin.threads: a drop as one write (D449)", () => {
 describe("jhin.threads: visits shared by every device (D485)", () => {
   it("moves a thread's visit forward only, without counting it as activity", async () => {
     const { client, thread, record } = await withThread();
-    const later = "2026-10-21T12:00:00.000Z";
+    // Past the thread's creation, before the node's now.
+    const later = new Date(Date.now() - 1000).toISOString();
     const seen = record((item) => item.lastVisitedAt === later);
     const visited = await client.call<Thread>("threads.visit", { threadId: thread.id, at: later });
     expect(visited.lastVisitedAt).toBe(later);
@@ -489,9 +490,18 @@ describe("jhin.threads: visits shared by every device (D485)", () => {
     await seen;
     const earlier = await client.call<Thread>("threads.visit", {
       threadId: thread.id,
-      at: "2026-10-20T12:00:00.000Z",
+      at: new Date(Date.now() - 60_000).toISOString(),
     });
     expect(earlier.lastVisitedAt).toBe(later);
+    // A clock ahead of the node's counts as the node's now.
+    const ahead = await client.call<Thread>("threads.visit", {
+      threadId: thread.id,
+      at: "2999-01-01T00:00:00.000Z",
+    });
+    expect(Date.parse(ahead.lastVisitedAt!)).toBeLessThanOrEqual(Date.now());
+    await expect(
+      client.call("threads.visit", { threadId: "nope", at: later }),
+    ).rejects.toBeDefined();
   });
 
   it("marks the latest completed turn unread: the visit goes to just before it ended", async () => {

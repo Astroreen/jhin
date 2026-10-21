@@ -2562,11 +2562,14 @@ export default definePlugin({
       output: Thread,
       permissions: ["threads.write"],
       handler: ({ threadId, at }) =>
-        updateThread(threadId, (thread) =>
-          thread.lastVisitedAt !== undefined && Date.parse(thread.lastVisitedAt) >= Date.parse(at)
+        updateThread(threadId, (thread) => {
+          // A visit from a clock ahead of this node's counts as now, or it would
+          // hide every later turn on every device.
+          const seen = Math.min(Date.parse(at), Date.parse(now()));
+          return thread.lastVisitedAt !== undefined && Date.parse(thread.lastVisitedAt) >= seen
             ? thread
-            : { ...thread, lastVisitedAt: at },
-        ),
+            : { ...thread, lastVisitedAt: new Date(seen).toISOString() };
+        }),
     });
 
     context.commands.register({
