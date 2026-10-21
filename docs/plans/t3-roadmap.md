@@ -205,16 +205,16 @@ each continues the plans named and moves what it finishes out of their
 Deferred lists. Internal hardening that no user sees stays in Deferred
 unless a workstream needs it.
 
-| Id  | Workstream                                              | Plans                                                        | Decisions |
-| --- | ------------------------------------------------------- | ------------------------------------------------------------ | --------- |
-| W19 | Steering and thread history leftovers                   | `t3-parity.md`                                               | D800–D819 |
-| W20 | Delegated work in the UI, subagent threads, automations | `orchestration.md`, `providers.md`                           | D861–D880 |
-| W21 | Worktree, git and pull request leftovers                | `source-control.md`                                          | D901–D920 |
-| W22 | Diff panel leftovers                                    | `source-control.md`                                          | D921–D940 |
-| W23 | Composer leftovers                                      | `t3-parity.md`, `terminal.md`                                | D841–D860 |
-| W24 | Codex and OpenCode parity                               | `providers.md`                                               | D881–D900 |
-| W25 | Preview, devices and the desktop app                    | `preview.md`, `desktop.md`                                   | D941–D960 |
-| W26 | Pairing, sidebar, terminal and config leftovers         | `security.md`, `t3-parity.md`, `terminal.md`, `config-ui.md` | D961–D980 |
+| Id  | Workstream                                              | Plans                                                        | Decisions             |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------ | --------------------- |
+| W19 | Steering and thread history leftovers                   | `t3-parity.md`                                               | D800–D819             |
+| W20 | Delegated work in the UI, subagent threads, automations | `orchestration.md`, `providers.md`                           | D861–D880, D981–D1000 |
+| W21 | Worktree, git and pull request leftovers                | `source-control.md`                                          | D901–D920             |
+| W22 | Diff panel leftovers                                    | `source-control.md`                                          | D921–D940             |
+| W23 | Composer leftovers                                      | `t3-parity.md`, `terminal.md`                                | D841–D860             |
+| W24 | Codex and OpenCode parity                               | `providers.md`                                               | D881–D900             |
+| W25 | Preview, devices and the desktop app                    | `preview.md`, `desktop.md`                                   | D941–D960             |
+| W26 | Pairing, sidebar, terminal and config leftovers         | `security.md`, `t3-parity.md`, `terminal.md`, `config-ui.md` | D961–D980             |
 
 W23 first had D680–D699, which `agents.md` gives to A4 and A5; it took the
 free block D841–D860 instead. W19 first had D600–D619, which `agents.md`
@@ -224,8 +224,9 @@ D861–D880. W24 first had D700–D719, which `agents.md` gives to A5 and A6; it
 took D881–D900. W21 first had D640–D659, which `agents.md` gives to A2 and
 A3; it took D901–D920. W22, W25 and W26 first had D660–D679, D720–D739 and
 D740–D759, inside `agents.md`'s D600–D760; they take D921–D940, D941–D960
-and D961–D980. A workstream that needs more numbers takes the next free
-block of 20 after D980 and writes it here.
+and D961–D980. W20 took the
+next block, D981–D1000. A workstream that needs more numbers takes the next
+free block of 20 after D1000 and writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
