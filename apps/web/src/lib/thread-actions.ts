@@ -1,14 +1,16 @@
 // The actions and their wording follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/hooks/useThreadActionMenu.ts and apps/web/src/components/Sidebar.tsx.
 import type { TurnAttachment } from "@jhin/agent-api";
-import type {
-  MeshMembership,
-  Navigation,
-  NodeTarget,
-  ProjectRecord,
-  ThreadRecord,
-  ThreadsCatalog,
-  ThreadVisits,
+import {
+  THREAD_DELETE_HOOK,
+  type MeshMembership,
+  type Navigation,
+  type NodeTarget,
+  type ProjectRecord,
+  type ThreadDeleteInput,
+  type ThreadRecord,
+  type ThreadsCatalog,
+  type ThreadVisits,
 } from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
 import { copyText, type Dialogs, type Toasts } from "@jhin/ui";
@@ -78,14 +80,18 @@ export async function startThread(
   },
   /** The new thread's id; chosen here by default, so asking again makes no second thread. */
   threadId: string = crypto.randomUUID(),
+  /** Adds to what `threads.create` gets (the `thread.create` hook, D253). */
+  prepare: (params: Record<string, unknown>) => Promise<Record<string, unknown>> = async (params) =>
+    params,
 ): Promise<{ readonly threadId: string; readonly uncertain?: Error }> {
-  const create = () =>
-    threads.call<ThreadRecord>(target, "threads.create", {
-      threadId,
-      projectId: first.projectId,
-      ...(first.title === undefined ? {} : { title: first.title }),
-      ...first.selection,
-    });
+  // Prepared once: asking again sends the same thread (and workspace) again.
+  const params = await prepare({
+    threadId,
+    projectId: first.projectId,
+    ...(first.title === undefined ? {} : { title: first.title }),
+    ...first.selection,
+  });
+  const create = () => threads.call<ThreadRecord>(target, "threads.create", params);
   let thread: ThreadRecord;
   try {
     thread = await create();
@@ -228,8 +234,19 @@ export function threadActions(services: ThreadActionServices) {
         return;
       }
       try {
-        await threads.call(target, "threads.delete", { threadId: thread.id });
-        leave(target, thread);
+        // Around the deletion, a plugin may ask more and clean up after it (D255).
+        const project = threads
+          .catalog(target)
+          .projects.find((item) => item.id === thread.projectId);
+        const deleted = await context.hooks.run<ThreadDeleteInput, boolean>(
+          THREAD_DELETE_HOOK,
+          { target, thread, ...(project === undefined ? {} : { project }) },
+          async () => {
+            await threads.call(target, "threads.delete", { threadId: thread.id });
+            return true;
+          },
+        );
+        if (deleted) leave(target, thread);
       } catch (error) {
         fail("Failed to delete thread", error);
       }

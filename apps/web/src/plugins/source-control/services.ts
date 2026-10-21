@@ -8,6 +8,7 @@ import {
 } from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
 import type { DiffScopes, ProjectStatus } from "@jhin/source-control-api";
+import type { ThreadRecord } from "@jhin/client-api";
 import type { Toasts } from "@jhin/ui";
 import { useSyncExternalStore } from "react";
 
@@ -61,6 +62,19 @@ export function useSourceControl(store: SourceControlStore, target: NodeTarget):
     byTarget.set(key, subscribe);
   }
   return useSyncExternalStore(subscribe, () => store.view(target));
+}
+
+/**
+ * The status of where a thread works (D251): its worktree's when it has one,
+ * else its project's.
+ */
+export function statusOfThread(
+  view: SourceControlView,
+  projectId: string,
+  thread: Pick<ThreadRecord, "worktreePath"> | undefined,
+): ProjectStatus | undefined {
+  const worktree = thread?.worktreePath;
+  return worktree === undefined ? view.projects.get(projectId) : view.worktrees.get(worktree);
 }
 
 /** The branch a thread works on, else (a draft, a thread not recorded yet) the one checked out. */

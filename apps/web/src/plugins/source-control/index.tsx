@@ -40,12 +40,17 @@ import { CHAT_SECTION, ChatSettings, readSection } from "../../lib/settings.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
-import { createBranchToolbar } from "./branch-toolbar.tsx";
 import { createRunningActions } from "./running.ts";
 import { createChangedFilesFooter } from "./checkpoints.tsx";
 import { createEditors } from "./diff/editors.tsx";
 import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
 import { turnScopeProvider } from "./diff/turns.ts";
+import {
+  createDraftWorkspaces,
+  createWorktreeIndicator,
+  registerWorkspaceHook,
+  registerWorktreeCleanup,
+} from "./workspace.tsx";
 import { createCardIndicators } from "./indicators.tsx";
 import { createLinkActions } from "./links.tsx";
 import { DIFF_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
@@ -185,6 +190,17 @@ export const sourceControlPlugin = builtin(
           component: BranchMismatch,
         }),
       );
+      // Worktrees (D253–D255): a draft's workspace, the card's icon, cleaning up on delete.
+      const drafts = createDraftWorkspaces();
+      context.subscriptions.add(registerWorkspaceHook(context, drafts));
+      context.subscriptions.add(registerWorktreeCleanup(context, threads, dialogs, toasts));
+      context.subscriptions.add(
+        slots.contribute<ThreadIndicatorProps>("sidebar.thread.indicators", {
+          id: "jhin.source-control.worktree",
+          order: -50,
+          component: createWorktreeIndicator(services),
+        }),
+      );
       // T3's order on the card: branch, (a terminal), pull request, diff.
       context.subscriptions.add(
         slots.contribute<ThreadIndicatorProps>("sidebar.thread.indicators", {
@@ -210,7 +226,14 @@ export const sourceControlPlugin = builtin(
       context.subscriptions.add(
         slots.contribute<ChatComposerContextProps>("chat.composer.context", {
           id: "jhin.source-control.branch-toolbar",
-          component: createBranchToolbar(services),
+          // Its pickers and the workspace menu load with it, not with the page (D440).
+          component: lazyChunk<ChatComposerContextProps>(
+            () =>
+              import("./branch-toolbar.tsx").then((module) =>
+                module.createBranchToolbar(services, drafts),
+              ),
+            { loading: () => null, failed: () => null },
+          ),
         }),
       );
       // Linking pull requests from the thread's menu, before archiving and deleting it.

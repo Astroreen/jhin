@@ -27,6 +27,10 @@ export const SourceControlEvents = {
   pullRequestUpdated: "git.pr.updated",
   /** A thread's `TurnCheckpoint` after a change (D245). */
   checkpointChanged: "source-control.checkpoint.changed",
+  /** A `WorktreeStatus` after a change: a worktree a thread works in (D251). */
+  worktreeChanged: "source-control.worktree.changed",
+  /** `{ worktreePath }`: no thread works in that worktree any more. */
+  worktreeRemoved: "source-control.worktree.removed",
 } as const;
 
 export const FileChangeStatus = z.enum([
@@ -244,6 +248,36 @@ export const TurnCheckpoint = z.object({
 });
 export type TurnCheckpoint = z.output<typeof TurnCheckpoint>;
 
+/** The status of a worktree a thread works in (D251): its project's, read in the worktree. */
+export const WorktreeStatus = ProjectStatus.extend({ worktreePath: z.string() });
+export type WorktreeStatus = z.output<typeof WorktreeStatus>;
+
+/** A worktree of a repository, as `git worktree list` lists it. */
+export const Worktree = z.object({
+  path: z.string(),
+  /** `null` on a detached `HEAD`. */
+  branch: z.string().nullable(),
+  /** The repository's own working tree, not an added worktree. */
+  main: z.boolean(),
+  /** Under the node's worktrees directory: made here, and made again if it goes missing. */
+  managed: z.boolean(),
+  /** The threads that work in it. */
+  threadIds: z.array(z.string()),
+});
+export type Worktree = z.output<typeof Worktree>;
+
+/** A worktree just made (D250). */
+export const CreatedWorktree = z.object({
+  path: z.string(),
+  branch: z.string(),
+  baseRef: z.string(),
+  /** What the branch starts from: `baseRef`, or `refs/remotes/origin/<baseRef>`. */
+  startRef: z.string(),
+  /** Asked to start from origin, it did: false when origin has no such branch (T3's handoff result). */
+  startedFromOrigin: z.boolean(),
+});
+export type CreatedWorktree = z.output<typeof CreatedWorktree>;
+
 /** What `git.status` returns: everything to show, and the stream head it reflects. */
 export const StatusSnapshot = z.object({
   head: z.number().int().nonnegative(),
@@ -253,6 +287,8 @@ export const StatusSnapshot = z.object({
   links: z.array(ThreadPullRequests).optional(),
   /** Each thread's latest checkpoint (1.1). */
   checkpoints: z.array(TurnCheckpoint).optional(),
+  /** The worktrees threads work in (1.1). */
+  worktrees: z.array(WorktreeStatus).optional(),
 });
 export type StatusSnapshot = z.output<typeof StatusSnapshot>;
 
@@ -306,6 +342,17 @@ export type SourceControlErrorCode =
   | "BRANCH_INVALID"
   /** A turn diff names a turn without a ready checkpoint. */
   | "CHECKPOINT_UNAVAILABLE"
+  /** A new worktree's branch exists already. */
+  | "BRANCH_EXISTS"
+  /** The worktrees directory setting, or a path given as a worktree, is unusable. */
+  | "WORKTREE_INVALID"
+  /** A worktree to remove that threads still work in. */
+  | "WORKTREE_IN_USE"
+  /** A thread's worktree is gone and could not be made again. */
+  | "WORKTREE_MISSING"
+  /** A handoff of a thread that works in a worktree already. */
+  | "ALREADY_IN_WORKTREE"
+  | "THREAD_ARCHIVED"
   | "GIT_FAILED"
   /** A git action that cannot run now: a detached `HEAD`, nothing to commit, no remote. */
   | "ACTION_UNAVAILABLE"
@@ -320,7 +367,13 @@ export interface SourceControl {
   status(projectId: string, options?: { refresh?: boolean }): Promise<ProjectStatus>;
   diff(
     projectId: string,
-    options?: { scope?: DiffScope; base?: string; ignoreWhitespace?: boolean },
+    options?: {
+      scope?: DiffScope;
+      base?: string;
+      ignoreWhitespace?: boolean;
+      /** The thread's working directory instead: its worktree, when it has one (1.1). */
+      threadId?: string;
+    },
   ): Promise<Diff>;
   /** What a thread's turns changed, `fromTurn` (the turn before by default) to `turn` (1.1). */
   turnDiff(
@@ -330,8 +383,39 @@ export interface SourceControl {
   ): Promise<Diff>;
   /** A thread's checkpoints, oldest first (1.1). */
   checkpoints(threadId: string): Promise<TurnCheckpoint[]>;
-  branches(projectId: string): Promise<Branch[]>;
-  /** Checks a branch out (`create`: a new one from `HEAD`); `threadId` moves that thread to it. */
+  /** A new worktree of a project's repository (1.1, D250). */
+  createWorktree(
+    projectId: string,
+    options: {
+      baseRef: string;
+      branch?: string | undefined;
+      startFromOrigin?: boolean | undefined;
+    },
+  ): Promise<CreatedWorktree>;
+  /**
+   * Removes a listed worktree no thread works in (`force`: with its changes;
+   * `deleteBranch`: its branch too).
+   */
+  removeWorktree(
+    projectId: string,
+    path: string,
+    options?: { force?: boolean; deleteBranch?: boolean },
+  ): Promise<void>;
+  worktrees(projectId: string): Promise<Worktree[]>;
+  /** Moves a thread into a new worktree (1.1, D256). */
+  handoff(
+    threadId: string,
+    options?: {
+      branch?: string | undefined;
+      baseRef?: string | undefined;
+      startFromOrigin?: boolean | undefined;
+    },
+  ): Promise<CreatedWorktree>;
+  branches(projectId: string, options?: { threadId?: string }): Promise<Branch[]>;
+  /**
+   * Checks a branch out (`create`: a new one from `HEAD`); `threadId` moves that
+   * thread to it, in the thread's worktree when it has one.
+   */
   checkout(
     projectId: string,
     branch: string,

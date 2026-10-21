@@ -178,7 +178,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   field W3 adds there. Until `threads.create`'s input lists `workspace`, only
   a plain `root` is accepted and the others answer `WORKSPACE_UNSUPPORTED`;
   the check reads the command's schema at call time, so W3's change turns
-  them on with no change here. `tasks.delegate`'s `isolation: "worktree"`
+  them on with no change here; `worktree` is listed (`orchestrator.capabilities`)
+  only where the node's source control makes worktrees (`git.worktree.create`). `tasks.delegate`'s `isolation: "worktree"`
   is `{type:"worktree", baseRef:"HEAD", startFromOrigin:false}` of the
   parent's checkout the same way.
 

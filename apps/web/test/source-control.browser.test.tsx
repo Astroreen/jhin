@@ -3,6 +3,7 @@ import type {
   Navigation,
   NodeCatalog,
   Route,
+  ThreadDeleteInput,
   ThreadRecord,
   ThreadsCatalog,
 } from "@jhin/client-api";
@@ -23,6 +24,7 @@ import { page, userEvent } from "vite-plus/test/browser";
 
 import { formatShortTimestamp } from "../src/lib/format.ts";
 import { createChangedFilesFooter } from "../src/plugins/source-control/checkpoints.tsx";
+import { createBranchToolbar } from "../src/plugins/source-control/branch-toolbar.tsx";
 import { createDiffPanel } from "../src/plugins/source-control/diff-panel.tsx";
 import { createGitActionsControl } from "../src/plugins/source-control/git-actions.tsx";
 import { createRunningActions } from "../src/plugins/source-control/running.ts";
@@ -38,6 +40,12 @@ import { createEditors } from "../src/plugins/source-control/diff/editors.tsx";
 import type { SourceControlServices } from "../src/plugins/source-control/services.ts";
 import { DIFF_SECTION, DiffSettings } from "../src/lib/settings.ts";
 import type { SourceControlStore, SourceControlView } from "../src/plugins/source-control/store.ts";
+import {
+  createDraftWorkspaces,
+  createWorktreeIndicator,
+  draftKey,
+  registerWorktreeCleanup,
+} from "../src/plugins/source-control/workspace.tsx";
 
 const target = { node: "ws://a/rpc" };
 const thread: ThreadRecord = {
@@ -220,6 +228,7 @@ const viewWith = (
   threads: new Map([["t1", { threadId: "t1", projectId: "app", branch, at: "" }]]),
   links: new Map<string, readonly ThreadPullRequest[]>(),
   checkpoints: new Map(),
+  worktrees: new Map(),
 });
 
 describe("a thread card's source control indicators", () => {
@@ -358,7 +367,7 @@ describe("the diff panel", () => {
     expect(calls.filter((call) => call.method === "git.diff")).toEqual([
       {
         method: "git.diff",
-        params: { projectId: "app", scope: "branch", ignoreWhitespace: true },
+        params: { threadId: "t1", scope: "branch", ignoreWhitespace: true },
       },
     ]);
     expect(
@@ -450,7 +459,7 @@ describe("the diff panel", () => {
       .element(page.getByRole("combobox", { name: "Change comparison target. Currently develop" }))
       .toBeVisible();
     expect(calls.findLast((call) => call.method === "git.diff")?.params).toEqual({
-      projectId: "app",
+      threadId: "t1",
       scope: "branch",
       ignoreWhitespace: true,
       base: "develop",
@@ -986,3 +995,189 @@ function diffOf(patch: string): Diff {
     deletions: 0,
   };
 }
+
+describe("worktrees in the client", () => {
+  const settle = async () => {
+    for (let index = 0; index < 3; index++) await act(async () => undefined);
+  };
+
+  it("marks a worktree thread's card with its folder and branch", () => {
+    const Worktree = createWorktreeIndicator(services(viewWith(status(), "jhin/abcd1234")).value);
+    const card = mount(
+      <Worktree
+        active={false}
+        target={target}
+        thread={{ ...thread, worktreePath: "/w/app/jhin-abcd1234" }}
+      />,
+    );
+    expect(card.container.querySelector("[data-thread-worktree]")?.getAttribute("aria-label")).toBe(
+      "Worktree: jhin-abcd1234 (jhin/abcd1234)",
+    );
+    card.unmount();
+    const local = mount(<Worktree active={false} target={target} thread={thread} />);
+    expect(local.container.textContent).toBe("");
+    local.unmount();
+  });
+
+  it("lets a draft pick a new worktree and its base; a thread shows where it works", async () => {
+    const { value } = services(viewWith(status()), {
+      "git.branches": {
+        branches: [
+          {
+            name: "feature/toolbar",
+            current: true,
+            isDefault: false,
+            isRemote: false,
+            upstream: null,
+          },
+          { name: "main", current: false, isDefault: true, isRemote: false, upstream: null },
+        ],
+      },
+    });
+    const drafts = createDraftWorkspaces();
+    const Toolbar = createBranchToolbar(value, drafts);
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    const draft = mount(<Toolbar project={project} target={target} />);
+    const workspace = draft.container.querySelector<HTMLElement>('[aria-label="Workspace"]')!;
+    expect(workspace.textContent).toContain("Current checkout");
+    act(() => workspace.click());
+    await settle();
+    const worktree = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+      (item) => item.textContent?.includes("New worktree"),
+    )!;
+    act(() => worktree.click());
+    await settle();
+    expect(workspace.textContent).toContain("New worktree");
+    expect(
+      draft.container.querySelector('[aria-label="Branch From feature/toolbar"]'),
+    ).not.toBeNull();
+    expect(drafts.get(draftKey(target, "app"))).toEqual({
+      mode: "worktree",
+      baseRef: "feature/toolbar",
+      startFromOrigin: false,
+    });
+    act(() =>
+      drafts.set(draftKey(target, "app"), {
+        ...drafts.get(draftKey(target, "app")),
+        startFromOrigin: true,
+      }),
+    );
+    expect(
+      draft.container.querySelector('[aria-label="Branch From origin/feature/toolbar"]'),
+    ).not.toBeNull();
+    draft.unmount();
+
+    const started = mount(
+      <Toolbar
+        project={project}
+        target={target}
+        thread={{ ...thread, worktreePath: "/w/app/jhin-abcd1234" }}
+      />,
+    );
+    expect(started.container.querySelector('[aria-label="Workspace: Worktree"]')).not.toBeNull();
+    started.unmount();
+  });
+
+  it("never offers to delete a worktree this node did not make", async () => {
+    const asked: string[] = [];
+    let around!: (
+      input: ThreadDeleteInput,
+      next: (input: ThreadDeleteInput) => Promise<boolean>,
+    ) => Promise<boolean>;
+    const context = {
+      hooks: {
+        around: (_name: string, hook: typeof around) => {
+          around = hook;
+          return toDisposable(() => undefined);
+        },
+      },
+    } as unknown as PluginContext;
+    const threads = {
+      catalog: () => ({ status: "ready", projects: [], threads: [] }),
+      subscribe: () => toDisposable(() => undefined),
+      call: async () => ({
+        worktrees: [{ path: "/home/me/by-hand", managed: false, threadIds: ["t1"] }],
+      }),
+      open: async () => "",
+    } as unknown as ThreadsCatalog;
+    registerWorktreeCleanup(
+      context,
+      threads,
+      {
+        confirm: async (options) => {
+          asked.push(options.title);
+          return true;
+        },
+        prompt: async () => undefined,
+      },
+      undefined,
+    );
+    expect(
+      await around(
+        { target, thread: { ...thread, worktreePath: "/home/me/by-hand" } },
+        async () => true,
+      ),
+    ).toBe(true);
+    expect(asked).toEqual([]);
+  });
+
+  it("deletes a worktree only its thread used, after the thread, when asked", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const catalog: NodeCatalog = {
+      status: "ready",
+      projects: [],
+      threads: [{ ...thread, worktreePath: "/w/app/jhin-abcd1234" }],
+    };
+    const threads: ThreadsCatalog = {
+      catalog: () => catalog,
+      subscribe: () => toDisposable(() => undefined),
+      call: async <T,>(_target: unknown, method: string, params?: unknown) => {
+        calls.push({ method, params });
+        if (method === "git.worktree.list") {
+          return {
+            worktrees: [{ path: "/w/app/jhin-abcd1234", managed: true, threadIds: ["t1"] }],
+          } as T;
+        }
+        return undefined as T;
+      },
+      open: async () => "",
+    };
+    let around!: (
+      input: ThreadDeleteInput,
+      next: (input: ThreadDeleteInput) => Promise<boolean>,
+    ) => Promise<boolean>;
+    const context = {
+      hooks: {
+        around: (_name: string, hook: typeof around) => {
+          around = hook;
+          return toDisposable(() => undefined);
+        },
+      },
+    } as unknown as PluginContext;
+    const asked: string[] = [];
+    const dialogs = {
+      confirm: async (options: { title: string; description?: string }) => {
+        asked.push(`${options.title} ${options.description}`);
+        return true;
+      },
+      prompt: async () => undefined,
+    };
+    registerWorktreeCleanup(context, threads, dialogs, undefined);
+    const deleted = await around({ target, thread: catalog.threads[0]! }, async () => {
+      calls.push({ method: "threads.delete", params: {} });
+      return true;
+    });
+    expect(deleted).toBe(true);
+    expect(asked).toEqual([
+      "Delete the worktree too? This thread is the only one linked to this worktree:\njhin-abcd1234\n\nIts uncommitted changes are lost; its branch stays.",
+    ]);
+    expect(calls).toEqual([
+      { method: "git.worktree.list", params: { projectId: "app" } },
+      { method: "threads.delete", params: {} },
+      {
+        method: "git.worktree.remove",
+        params: { projectId: "app", path: "/w/app/jhin-abcd1234", force: true },
+      },
+    ]);
+  });
+});

@@ -15,7 +15,7 @@ thread order, settling, pinning, snoozing and dragging, with the threads
 plugin's rules for them, the thread cards' branch, pull request and diff
 indicators, the branch toolbar, the git actions control and the diff panel with
 its file tree, base ref picker and turn scopes, a turn's changed files card, the
-terminal drawer, its
+workspace selector, the worktree icon and clean-up, the terminal drawer, its
 links, selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, editing from a
@@ -28,7 +28,8 @@ GitHub CLI, git actions: committing, pushing, creating pull requests, naming
 feature branches and the prompts that write commit messages and pull
 requests, linking and watching pull requests, and the drivers of GitLab,
 Azure DevOps, Bitbucket and Forgejo, checkpoints of a thread's working tree
-and when they are taken), the editors plugin (`plugins/editors`: T3's editor
+and when they are taken, worktrees of a thread and handing a thread over to
+one), the editors plugin (`plugins/editors`: T3's editor
 list, finding and starting editors), the detection
 of a node's machine kind (`packages/node-host/src/machine.ts`), the Claude
 Code agent runtime (`plugins/agent-claude`: query options, permission modes,

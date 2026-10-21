@@ -307,6 +307,31 @@ export interface ThreadParkInput {
   readonly action: "settle" | "snooze";
 }
 
+/**
+ * The hook a client's thread start runs (D253): `before` hooks add to what
+ * `threads.create` gets for a draft's first message, e.g. the `workspace` a
+ * thread works in. Its output is those parameters.
+ */
+export const THREAD_CREATE_HOOK = "thread.create";
+export interface ThreadCreateInput {
+  readonly target: NodeTarget;
+  readonly projectId: string;
+  /** The parameters of `threads.create`, as far as the hooks before have added. */
+  readonly params: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * The hook deleting a thread runs through (D255), after the user confirmed it:
+ * `around` hooks may ask more and act after the node deleted it (a worktree
+ * only that thread used). The output says whether the thread was deleted.
+ */
+export const THREAD_DELETE_HOOK = "thread.delete";
+export interface ThreadDeleteInput {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  readonly project?: ProjectRecord;
+}
+
 /** What the `project.actions` slot gives each item of a project's menu. */
 export interface ProjectActionProps {
   readonly target: NodeTarget;
