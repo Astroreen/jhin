@@ -262,7 +262,9 @@ function prune(value: unknown, label: readonly string[]): unknown {
 /**
  * `incoming` (some top-level keys of a section) with the marker replaced,
  * wherever its schema says a secret is, by what the layer being changed
- * (`stored`) holds at the same place, by key or by position in a list. The
+ * (`stored`) holds: a plain marker takes the secret at its own key; inside a
+ * list only an addressed marker (`••••••#/keys/1`) is taken, at its address,
+ * and a plain one is refused, since a position may have moved. The
  * marker anywhere else is a value like any other. A secret only another
  * layer holds (`elsewhere`, the effective value) is never copied into this
  * one: its key is left out, so the other layer keeps providing it. A marker

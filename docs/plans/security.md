@@ -132,9 +132,9 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
 
   `host.config.patch` and `mesh.config.patch` treat the marker as "keep
   what is stored", only where the schema has a secret (elsewhere the marker
-  is a value like any other): by key or by position in a list, or at the
-  marker's own address, which must name a secret (inside a list only an
-  addressed marker is taken); always from the layer
+  is a value like any other): a plain marker by its own key, an addressed
+  one at its address, which must name a secret; inside a list only an
+  addressed marker is taken, a plain one is refused; always from the layer
   being changed, by own keys only. A secret only another layer (or a
   default) holds is never copied into this one: its key is left out of the
   change, and the other layer keeps providing it. A marker no layer has a
