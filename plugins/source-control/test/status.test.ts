@@ -365,18 +365,20 @@ describe("jhin.source-control: a thread's branch", () => {
     await sc.until(threadEvent(thread.id, (record) => record.branch === "main"));
     // Checked out from a terminal, then the thread runs a turn there.
     git(dir, "switch", "--quiet", "--create", "work");
-    await sc.client.call("threads.send", { threadId: thread.id, text: "hello" });
+    // Held until interrupted, so the turn's end cannot record a later checkout meanwhile.
+    await sc.client.call("threads.send", { threadId: thread.id, text: "/hold on" });
     await sc.until(threadEvent(thread.id, (record) => record.branch === "work"));
     const read = await sc.client.call<{ checkedOut: boolean; thread: { branch: string } }>(
       "git.thread.status",
       { threadId: thread.id },
     );
     expect(read).toMatchObject({ checkedOut: true, thread: { branch: "work" } });
-    // Back on main without a turn: the thread stays on its branch, no longer checked out.
+    // Back on main without a turn starting: the thread stays on its branch, no longer checked out.
     git(dir, "switch", "--quiet", "main");
     expect(
       await sc.client.call("git.thread.status", { threadId: thread.id, refresh: true }),
     ).toMatchObject({ checkedOut: false, thread: { branch: "work" } });
+    await sc.client.call("threads.interrupt", { threadId: thread.id });
   });
 
   it("reads the checkout when a thread is created, not a status the watcher has not caught up with", async () => {

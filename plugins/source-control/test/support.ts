@@ -3,7 +3,7 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import type { RpcClient } from "@jhin/rpc";
+import { LIVE_STREAMS_CAPABILITY, createLiveStreams, type RpcClient } from "@jhin/rpc";
 import {
   SOURCE_CONTROL_STREAM,
   type ProjectStatus,
@@ -61,6 +61,9 @@ export const write = (dir: string, file: string, content: string) => {
 export function repository(): string {
   const dir = temp("jhin-sc-repo-");
   git(dir, "init", "--quiet", "--initial-branch=main");
+  // The node commits too (git actions), with whatever identity the repository has.
+  git(dir, "config", "user.name", "Test");
+  git(dir, "config", "user.email", "test@example.com");
   write(dir, "README.md", "one\ntwo\nthree\n");
   git(dir, "add", ".");
   git(dir, "commit", "--quiet", "-m", "first");
@@ -78,12 +81,32 @@ export function fakeGh(): {
   fail(code: number, stderr: string): void;
   /** Answers again after `fail`. */
   recover(): void;
+  /** Makes `gh pr create` print `stderr` and exit with `code`. */
+  failCreate(code: number, stderr: string): void;
+  /** The body file `gh pr create` was given for `head`. */
+  body(head: string): string | undefined;
   calls(): string[];
 } {
   const dir = temp("jhin-fake-gh-");
   const script = `#!/bin/sh
 echo "$*" >> "${dir}/calls"
 if [ -f "${dir}/exit" ]; then cat "${dir}/stderr" >&2; exit "$(cat "${dir}/exit")"; fi
+if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
+  if [ -f "${dir}/create-exit" ]; then cat "${dir}/create-stderr" >&2; exit "$(cat "${dir}/create-exit")"; fi
+  shift 2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --base) base="$2"; shift 2;;
+      --head) head="$2"; shift 2;;
+      --title) title="$2"; shift 2;;
+      --body-file) cp "$2" "${dir}/body-$head.md"; shift 2;;
+      *) shift;;
+    esac
+  done
+  printf '[{"number":42,"title":"%s","url":"https://github.com/acme/demo/pull/42","state":"OPEN","isDraft":false,"headRefName":"%s","baseRefName":"%s","statusCheckRollup":[]}]' "$title" "$head" "$base" > "${dir}/pr-$head.json"
+  echo "https://github.com/acme/demo/pull/42"
+  exit 0
+fi
 if [ "$1" = "pr" ] && [ "$2" = "list" ] && [ "$3" = "--head" ]; then
   if [ -f "${dir}/pr-$4.json" ]; then cat "${dir}/pr-$4.json"; else echo "[]"; fi
   exit 0
@@ -106,6 +129,14 @@ exit 1
       Fs.writeFileSync(Path.join(dir, "exit"), String(code));
     },
     recover: () => Fs.rmSync(Path.join(dir, "exit")),
+    failCreate(code, stderr) {
+      Fs.writeFileSync(Path.join(dir, "create-stderr"), stderr);
+      Fs.writeFileSync(Path.join(dir, "create-exit"), String(code));
+    },
+    body: (head) =>
+      Fs.existsSync(Path.join(dir, `body-${head}.md`))
+        ? Fs.readFileSync(Path.join(dir, `body-${head}.md`), "utf8")
+        : undefined,
     calls: () =>
       Fs.existsSync(Path.join(dir, "calls"))
         ? Fs.readFileSync(Path.join(dir, "calls"), "utf8").trim().split("\n")
@@ -146,6 +177,7 @@ export async function node(
 ): Promise<Node> {
   const data = options.data ?? temp("jhin-sc-node-");
   const storage = memoryStoragePlugin();
+  const live = createLiveStreams();
   const logWaiters = new Map<string, (() => void)[]>();
   const logger = recordingLogger((message) => {
     for (const resolve of logWaiters.get(message)?.splice(0) ?? []) resolve();
@@ -161,13 +193,14 @@ export async function node(
         },
       }),
       storage,
+      mockCapability(LIVE_STREAMS_CAPABILITY, live),
       { manifest: manifest("threads"), definition: threads },
       { manifest: manifest("agent-fake"), definition: agent },
       { manifest: manifest("source-control"), definition: sourceControl },
     ],
     config: { node: { "jhin.source-control": config } },
   });
-  const { client } = connectInMemory(kernel, { log: storage.storage.log });
+  const { client } = connectInMemory(kernel, { log: storage.storage.log, streams: live });
   cleanups.push(async () => {
     client.close();
     await kernel.stop();

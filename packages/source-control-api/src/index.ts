@@ -119,6 +119,13 @@ export const ProjectStatus = z.object({
   /** The URL of `origin` (or the first remote). */
   remoteUrl: z.string().nullable(),
   workingTree: WorkingTree,
+  /**
+   * Commits on `branch` its default branch lacks (T3's `aheadOfDefaultCount`):
+   * whether there is anything for a pull request. Absent when unknown.
+   */
+  aheadOfDefault: z.number().int().nonnegative().optional(),
+  /** The repository has a remote to push to (T3's `hasPrimaryRemote`). Absent when unknown. */
+  hasPrimaryRemote: z.boolean().optional(),
   provider: PullRequestProvider.nullable(),
   /**
    * The pull request of each branch looked up (the checked-out one and the
@@ -194,7 +201,11 @@ export type SourceControlErrorCode =
   | "NOT_A_REPOSITORY"
   | "BRANCH_NOT_FOUND"
   | "BRANCH_INVALID"
-  | "GIT_FAILED";
+  | "GIT_FAILED"
+  /** A git action that cannot run now: a detached `HEAD`, nothing to commit, no remote. */
+  | "ACTION_UNAVAILABLE"
+  /** The forge refused or failed to create the pull request. */
+  | "PULL_REQUEST_FAILED";
 
 /** The service of `source-control.git@1`, for other server plugins. */
 export interface SourceControl {
@@ -212,4 +223,149 @@ export interface SourceControl {
     options?: { create?: boolean; threadId?: string },
   ): Promise<ProjectStatus>;
   threadBranch(threadId: string): Promise<ThreadBranch | undefined>;
+  /** Runs a git action (D261): commit, push and create a pull request, in that order. */
+  runAction(projectId: string, input: GitActionOptions): Promise<GitActionResult>;
+  /** Pulls the checked-out branch from its upstream, fast-forward only. */
+  pull(projectId: string): Promise<PullResult>;
 }
+
+// --- Git actions (docs/plans/source-control.md, D260–D266) -------------------------------
+
+/**
+ * T3 Code's stacked git actions: each runs its steps in order (feature
+ * branch, commit, push, pull request) and stops at the first that fails.
+ */
+export const GitStackedAction = z.enum([
+  "commit",
+  "push",
+  "create_pr",
+  "commit_push",
+  "commit_push_pr",
+]);
+export type GitStackedAction = z.output<typeof GitStackedAction>;
+
+/** The steps of a git action, as its progress names them. */
+export const GitActionPhase = z.enum(["branch", "commit", "push", "pr"]);
+export type GitActionPhase = z.output<typeof GitActionPhase>;
+
+export const GitActionOptions = z.object({
+  action: GitStackedAction,
+  /** Chosen by the client, so it can follow the action's progress before it starts. */
+  actionId: z.string().min(1).max(200).optional(),
+  /** First line the subject, the rest the body; written by the node's writer when absent. */
+  commitMessage: z.string().trim().min(1).max(10_000).optional(),
+  /** Commit on a new branch named after the changes (only for actions that commit). */
+  featureBranch: z.boolean().optional(),
+  /** Commit only these files (paths relative to the repository); every change when absent. */
+  filePaths: z.array(z.string().min(1)).min(1).optional(),
+  /** The thread the action is for: a new branch becomes its branch, a pull request is linked to it. */
+  threadId: z.string().min(1).optional(),
+});
+export type GitActionOptions = z.input<typeof GitActionOptions>;
+
+/** What T3 calls the forge's word for a pull request: GitLab says merge request. */
+export const ChangeRequestTerminology = z.object({
+  /** "pull request" */
+  singular: z.string(),
+  /** "PR" */
+  shortLabel: z.string(),
+});
+export type ChangeRequestTerminology = z.output<typeof ChangeRequestTerminology>;
+
+/** The call to action of a finished git action's toast. */
+export const GitActionCta = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }),
+  z.object({ kind: z.literal("open_pr"), label: z.string(), url: z.string() }),
+  z.object({ kind: z.literal("run_action"), label: z.string(), action: GitStackedAction }),
+]);
+export type GitActionCta = z.output<typeof GitActionCta>;
+
+export const GitActionResult = z.object({
+  actionId: z.string(),
+  action: GitStackedAction,
+  branch: z.object({
+    status: z.enum(["created", "skipped_not_requested"]),
+    name: z.string().optional(),
+  }),
+  commit: z.object({
+    status: z.enum(["created", "skipped_no_changes", "skipped_not_requested"]),
+    sha: z.string().optional(),
+    subject: z.string().optional(),
+  }),
+  push: z.object({
+    status: z.enum(["pushed", "skipped_up_to_date", "skipped_not_requested"]),
+    branch: z.string().optional(),
+    upstream: z.string().optional(),
+    setUpstream: z.boolean().optional(),
+  }),
+  pr: z.object({
+    status: z.enum(["created", "opened_existing", "skipped_not_requested"]),
+    pullRequest: PullRequest.optional(),
+  }),
+  toast: z.object({
+    title: z.string(),
+    description: z.string().optional(),
+    cta: GitActionCta,
+  }),
+});
+export type GitActionResult = z.output<typeof GitActionResult>;
+
+export const PullResult = z.object({
+  status: z.enum(["pulled", "skipped_up_to_date"]),
+  branch: z.string(),
+  upstream: z.string().nullable(),
+});
+export type PullResult = z.output<typeof PullResult>;
+
+/**
+ * A git action's progress, on the live stream `SOURCE_CONTROL_ACTIONS_STREAM`
+ * (T3's `GitActionProgressEvent`): started with its phases, each phase with
+ * its label, a commit hook's output, and how it ended.
+ */
+export const GitActionProgress = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("action_started"),
+    actionId: z.string(),
+    projectId: z.string(),
+    action: GitStackedAction,
+    phases: z.array(GitActionPhase),
+  }),
+  z.object({
+    kind: z.literal("phase_started"),
+    actionId: z.string(),
+    projectId: z.string(),
+    action: GitStackedAction,
+    phase: GitActionPhase,
+    label: z.string(),
+  }),
+  z.object({
+    kind: z.literal("hook_output"),
+    actionId: z.string(),
+    projectId: z.string(),
+    action: GitStackedAction,
+    stream: z.enum(["stdout", "stderr"]),
+    text: z.string(),
+  }),
+  z.object({
+    kind: z.literal("action_finished"),
+    actionId: z.string(),
+    projectId: z.string(),
+    action: GitStackedAction,
+    result: GitActionResult,
+  }),
+  z.object({
+    kind: z.literal("action_failed"),
+    actionId: z.string(),
+    projectId: z.string(),
+    action: GitStackedAction,
+    phase: GitActionPhase.nullable(),
+    message: z.string(),
+  }),
+]);
+export type GitActionProgress = z.output<typeof GitActionProgress>;
+
+/** The live stream of git actions' progress (`rpc.streams@1`); nothing of it survives a restart. */
+export const SOURCE_CONTROL_ACTIONS_STREAM = "source-control/actions";
+
+/** Event type of every `GitActionProgress` on `SOURCE_CONTROL_ACTIONS_STREAM`. */
+export const GIT_ACTION_PROGRESS = "source-control.action.progress";

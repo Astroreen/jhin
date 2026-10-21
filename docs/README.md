@@ -31,7 +31,7 @@ what is deferred, and how it landed. Plans are canon once implemented.
 | [`foundation.md`](plans/foundation.md)         | kernel, plugins, config, mesh, transport, storage, process                                | implemented |
 | [`t3-parity.md`](plans/t3-parity.md)           | T3 Code's client, threads, sidebar, machine icons                                         | implemented |
 | [`providers.md`](plans/providers.md)           | agent runtimes (Claude Code), agent registry, sessions                                    | implemented |
-| [`source-control.md`](plans/source-control.md) | git status, diffs, branches, pull requests                                                | implemented |
+| [`source-control.md`](plans/source-control.md) | git status, diffs, branches, pull requests, git actions                                   | implemented |
 | [`terminal.md`](plans/terminal.md)             | PTY terminals and the terminal drawer                                                     | implemented |
 | [`config-ui.md`](plans/config-ui.md)           | settings forms generated from config schemas                                              | implemented |
 | [`orchestration.md`](plans/orchestration.md)   | delegated tasks, thread launches, workflows (W10); scheduler (W11)                        | in progress |

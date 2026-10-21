@@ -1,4 +1,5 @@
 import type {
+  Connections,
   Navigation,
   NodeCatalog,
   Route,
@@ -12,6 +13,10 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createDiffPanel } from "../src/plugins/source-control/diff-panel.tsx";
+import {
+  createGitActionsControl,
+  createRunningActions,
+} from "../src/plugins/source-control/git-actions.tsx";
 import { createCardIndicators } from "../src/plugins/source-control/indicators.tsx";
 import type { SourceControlServices } from "../src/plugins/source-control/services.ts";
 import type { SourceControlStore, SourceControlView } from "../src/plugins/source-control/store.ts";
@@ -52,6 +57,7 @@ const status = (fields: Partial<ProjectStatus> = {}): ProjectStatus => ({
 
 function services(view: SourceControlView, answers: Record<string, unknown> = {}) {
   const calls: { method: string; params: unknown }[] = [];
+  const shown: { type?: string; title: unknown; description?: unknown; action?: string }[] = [];
   const store: SourceControlStore = {
     view: () => view,
     subscribe: () => toDisposable(() => undefined),
@@ -75,15 +81,35 @@ function services(view: SourceControlView, answers: Record<string, unknown> = {}
     },
     subscribe: () => toDisposable(() => undefined),
   };
+  // No live connection: progress is not followed, the action still runs.
+  const connections = {
+    get: () => undefined,
+    list: () => [],
+    subscribe: () => toDisposable(() => undefined),
+  } as unknown as Connections;
   const value: SourceControlServices = {
     context: {} as PluginContext,
     store,
     threads,
+    connections,
     navigation,
-    toasts: undefined,
+    running: createRunningActions(),
+    toasts: {
+      show: (toast) => {
+        shown.push({
+          ...(toast.type === undefined ? {} : { type: toast.type }),
+          title: toast.title,
+          ...(toast.description === undefined ? {} : { description: toast.description }),
+          ...(toast.action === undefined ? {} : { action: toast.action.label }),
+        });
+        return String(shown.length);
+      },
+      update: () => undefined,
+      close: () => undefined,
+    },
     shortcut: () => undefined,
   };
-  return { value, calls };
+  return { value, calls, shown };
 }
 
 function mount(element: React.ReactNode) {
@@ -264,5 +290,145 @@ describe("the diff panel", () => {
     await act(async () => undefined);
     expect(second.container.textContent).toContain("No net changes in this selection.");
     second.unmount();
+  });
+});
+
+describe("the git actions in the chat header", () => {
+  const project = {
+    id: "app",
+    name: "app",
+    path: "/src/app",
+    scratch: false,
+    createdAt: "2026-10-19T10:00:00.000Z",
+  };
+  const changed = {
+    files: [
+      { path: "src/a.ts", status: "modified" as const, insertions: 3, deletions: 1, binary: false },
+      { path: "src/b.ts", status: "added" as const, insertions: 5, deletions: 0, binary: false },
+    ],
+    fileCount: 2,
+    insertions: 8,
+    deletions: 1,
+    truncated: false,
+  };
+  const result = {
+    actionId: "a1",
+    action: "commit_push_pr",
+    branch: { status: "skipped_not_requested" },
+    commit: { status: "created", sha: "abcdef1234", subject: "Port the toolbar" },
+    push: { status: "pushed", branch: "feature/toolbar", upstream: "origin/feature/toolbar" },
+    pr: { status: "created", pullRequest: { ...pr, state: "open" } },
+    toast: {
+      title: "Created PR #42",
+      description: "Port the toolbar",
+      cta: { kind: "open_pr", label: "View PR", url: pr.url },
+    },
+  };
+  const button = (container: HTMLElement, name: string) =>
+    [...container.querySelectorAll("button")].find(
+      (element) =>
+        element.textContent?.trim() === name || element.getAttribute("aria-label") === name,
+    );
+
+  it("commits, pushes and opens a pull request from a feature branch, then shows the result", async () => {
+    const { value, calls, shown } = services(
+      viewWith(
+        status({
+          workingTree: changed,
+          upstream: "origin/feature/toolbar",
+          remoteUrl: "https://github.com/acme/app.git",
+          pullRequests: {},
+        }),
+      ),
+      { "git.action.run": result },
+    );
+    const Control = createGitActionsControl(value);
+    const view = mount(<Control project={project} target={target} thread={thread} />);
+    expect(view.container.querySelector('[role="group"]')!.getAttribute("aria-label")).toBe(
+      "Git actions",
+    );
+    const quick = button(view.container, "Commit, push & PR")!;
+    await act(async () => quick.click());
+    expect(calls).toContainEqual({
+      method: "git.action.run",
+      params: expect.objectContaining({
+        projectId: "app",
+        action: "commit_push_pr",
+        threadId: "t1",
+      }),
+    });
+    expect(shown).toEqual([
+      {
+        type: "success",
+        title: "Created PR #42",
+        description: "Port the toolbar",
+        action: "View PR",
+      },
+    ]);
+    view.unmount();
+  });
+
+  it("asks before pushing to the default branch, and can go to a feature branch instead", async () => {
+    const { value, calls } = services(
+      viewWith(
+        status({
+          branch: "main",
+          workingTree: changed,
+          upstream: "origin/main",
+          remoteUrl: "https://github.com/acme/app.git",
+          pullRequests: {},
+        }),
+        "main",
+      ),
+      { "git.action.run": result },
+    );
+    const Control = createGitActionsControl(value);
+    const view = mount(<Control project={project} target={target} thread={thread} />);
+    await act(async () => button(view.container, "Commit & push")!.click());
+    expect(calls.filter((call) => call.method === "git.action.run")).toHaveLength(0);
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Commit & push to default ref?");
+    expect(dialog.textContent).toContain(
+      'This action will commit and push changes on "main". You can continue on this ref or create a feature ref and run the same action there.',
+    );
+    await act(async () =>
+      button(dialog as HTMLElement, "Check out feature branch & continue")!.click(),
+    );
+    expect(calls).toContainEqual({
+      method: "git.action.run",
+      params: expect.objectContaining({ action: "commit_push", featureBranch: true }),
+    });
+    view.unmount();
+  });
+
+  it("says why an action is unavailable, and offers to initialize a folder that is no repository", async () => {
+    const { value, calls } = services(
+      viewWith(
+        status({
+          upstream: "origin/feature/toolbar",
+          remoteUrl: "x",
+          pullRequests: {},
+          aheadOfDefault: 0,
+          workingTree: { files: [], fileCount: 0, insertions: 0, deletions: 0, truncated: false },
+        }),
+      ),
+    );
+    const Control = createGitActionsControl(value);
+    const clean = mount(<Control project={project} target={target} thread={thread} />);
+    // Clean and up to date: the quick action only explains itself.
+    const quick = button(clean.container, "Commit")!;
+    expect(quick.getAttribute("aria-disabled")).toBe("true");
+    clean.unmount();
+
+    const plain = services(
+      viewWith(status({ isRepo: false, reason: "Not a git repository", branch: null })),
+      { "git.init": status() },
+    );
+    const Init = createGitActionsControl(plain.value);
+    const view = mount(<Init project={project} target={target} thread={thread} />);
+    await act(async () => button(view.container, "Initialize Git")!.click());
+    expect(plain.calls).toContainEqual({ method: "git.init", params: { projectId: "app" } });
+    expect(calls).toEqual([]);
+    view.unmount();
   });
 });

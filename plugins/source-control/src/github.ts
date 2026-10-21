@@ -111,6 +111,7 @@ function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
   if (
     typeof raw.number !== "number" ||
     typeof raw.url !== "string" ||
+    !/^https?:\/\//i.test(raw.url) ||
     (state !== "open" && state !== "closed" && state !== "merged")
   ) {
     return undefined;
@@ -171,4 +172,78 @@ export async function pullRequestFor(
   if (!Array.isArray(parsed)) throw new GitHubUnavailable("failed", "gh answered no list");
   const first = parsed[0] as RawPullRequest | undefined;
   return first === undefined ? null : (toPullRequest(first) ?? null);
+}
+
+/** Where GitHub looks for a pull request template, as T3's source-control-github reads it. */
+export const GITHUB_TEMPLATE_PATHS = [
+  ".github/pull_request_template.md",
+  ".github/PULL_REQUEST_TEMPLATE.md",
+  "pull_request_template.md",
+  "PULL_REQUEST_TEMPLATE.md",
+  "docs/pull_request_template.md",
+  "docs/PULL_REQUEST_TEMPLATE.md",
+];
+
+/**
+ * Opens a pull request of `head` into `base` with `gh pr create` and reads it
+ * back. Throws `GitHubUnavailable` when `gh` is missing or signed out, and
+ * an `Error` with `gh`'s own message when GitHub refuses.
+ */
+export async function createPullRequest(
+  ghPath: string,
+  cwd: string,
+  input: { base: string; head: string; title: string; bodyFile: string },
+): Promise<PullRequest> {
+  let result;
+  try {
+    result = await run(
+      ghPath,
+      [
+        "pr",
+        "create",
+        "--base",
+        input.base,
+        "--head",
+        input.head,
+        "--title",
+        input.title,
+        "--body-file",
+        input.bodyFile,
+      ],
+      { cwd, env: GH_ENV, timeoutMs: 60_000 },
+    );
+  } catch (error) {
+    if (error instanceof SpawnError && (error.code === "ENOENT" || error.code === "EACCES")) {
+      throw new GitHubUnavailable("missing", "GitHub CLI (gh) is not installed on this node");
+    }
+    throw error;
+  }
+  if (result.code !== 0) {
+    if (result.code === 4 || SIGNED_OUT.test(result.stderr)) {
+      throw new GitHubUnavailable(
+        "signed-out",
+        "GitHub CLI is not signed in: run `gh auth login` on this node",
+      );
+    }
+    const message = result.stderr
+      .trim()
+      .split("\n")
+      .find((line) => line.trim() !== "");
+    throw new Error(message ?? `gh pr create exited with code ${result.code}`);
+  }
+  const created = await pullRequestFor(ghPath, cwd, input.head);
+  if (created !== null) return created;
+  const url = result.stdout.trim().split("\n").at(-1) ?? "";
+  const number = Number(/\/pull\/(\d+)/.exec(url)?.[1] ?? Number.NaN);
+  if (!Number.isInteger(number)) throw new Error("gh created a pull request it cannot find");
+  return {
+    number,
+    title: input.title,
+    url,
+    state: "open",
+    isDraft: false,
+    headBranch: input.head,
+    baseBranch: input.base,
+    checks: rollupChecks([]),
+  };
 }

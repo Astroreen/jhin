@@ -13,12 +13,14 @@ parts of its logic (keybindings, command palette search, work-log summaries,
 prompt history, timestamps, thread status, settings forms, the sidebar's
 thread order, settling, pinning, snoozing and dragging, with the threads
 plugin's rules for them, the thread cards' branch, pull request and diff
-indicators, the branch toolbar and the diff panel, the terminal drawer, its
+indicators, the branch toolbar, the git actions control and the diff panel, the terminal drawer, its
 tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`), source
 control (`plugins/source-control`: reading git status and diffs, pull
-requests and their checks through the GitHub CLI), the detection
+requests and their checks through the GitHub CLI, git actions: committing,
+pushing, creating pull requests, naming feature branches and the prompts
+that write commit messages and pull requests), the detection
 of a node's machine kind (`packages/node-host/src/machine.ts`), the Claude
 Code agent runtime (`plugins/agent-claude`: query options, permission modes,
 tool, question and plan mapping, result errors, the model catalog, live

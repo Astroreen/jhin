@@ -1,9 +1,16 @@
-import { targetKey, type Navigation, type NodeTarget, type ThreadsCatalog } from "@jhin/client-api";
+import {
+  targetKey,
+  type Connections,
+  type Navigation,
+  type NodeTarget,
+  type ThreadsCatalog,
+} from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
 import type { ProjectStatus } from "@jhin/source-control-api";
 import type { Toasts } from "@jhin/ui";
 import { useSyncExternalStore } from "react";
 
+import type { RunningActions } from "./git-actions.tsx";
 import type { SourceControlStore, SourceControlView } from "./store.ts";
 
 /** What the source control components use, handed over by the plugin. */
@@ -11,7 +18,10 @@ export interface SourceControlServices {
   readonly context: PluginContext;
   readonly store: SourceControlStore;
   readonly threads: ThreadsCatalog;
+  readonly connections: Connections;
   readonly navigation: Navigation;
+  /** The git actions running from this client. */
+  readonly running: RunningActions;
   readonly toasts: Toasts | undefined;
   /** The label of the diff panel's shortcut, e.g. "⌘D". */
   shortcut(): string | undefined;

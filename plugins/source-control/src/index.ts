@@ -1,19 +1,32 @@
+import { randomUUID } from "node:crypto";
 import * as Path from "node:path";
 
-import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
-import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
+import {
+  AGENT_REGISTRY_CAPABILITY,
+  THREADS_STREAM,
+  ThreadEvents,
+  type AgentRegistry,
+  type AgentRuntime,
+} from "@jhin/agent-api";
+import { LIVE_STREAMS_CAPABILITY, createMemoryStreams, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z, type PluginContext } from "@jhin/sdk";
 import {
   Branch,
   Diff,
   DiffScope,
+  GIT_ACTION_PROGRESS,
+  GitActionOptions,
+  GitActionResult,
   ProjectStatus,
   PullRequest,
+  PullResult,
+  SOURCE_CONTROL_ACTIONS_STREAM,
   SOURCE_CONTROL_CAPABILITY,
   SOURCE_CONTROL_STREAM,
   SourceControlEvents,
   StatusSnapshot,
   ThreadBranch,
+  type GitActionProgress,
   type PullRequestProvider,
   type SourceControl,
 } from "@jhin/source-control-api";
@@ -41,11 +54,33 @@ import {
   type LocalStatus,
   type Repository,
 } from "./git.ts";
-import { GitHubUnavailable, pullRequestFor, remoteHost } from "./github.ts";
+import {
+  DEFAULT_TERMINOLOGY,
+  aheadOfBase,
+  pull,
+  runStackedAction,
+  type PullRequestCreator,
+} from "./actions.ts";
+import {
+  GITHUB_TEMPLATE_PATHS,
+  GitHubUnavailable,
+  createPullRequest,
+  pullRequestFor,
+  remoteHost,
+} from "./github.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
+import { agentWriter } from "./writer.ts";
 
 export { parseNumstat, parseStatus } from "./git.ts";
 export { remoteHost, rollupChecks } from "./github.ts";
+export {
+  parseCommitMessage,
+  resolveAutoFeatureBranchName,
+  sanitizeFeatureBranchName,
+  sanitizeSubject,
+  splitUpstream,
+} from "./actions.ts";
+export { agentWriter, parseJsonObject, plainWriter } from "./writer.ts";
 
 export const CONFIG_SECTION = "jhin.source-control";
 const NAMESPACE = "jhin.source-control";
@@ -80,6 +115,18 @@ export const Config = z
     ghPath: z.string().default("gh").meta({
       title: "GitHub CLI executable",
       description: "Path to gh, the GitHub CLI",
+      advanced: true,
+    }),
+    writerTimeoutSeconds: z.number().int().min(1).max(3_600).default(120).meta({
+      title: "Writer time limit (seconds)",
+      description:
+        "How long the writer agent may take; past it the message is written without a model",
+      advanced: true,
+    }),
+    writerAgent: z.string().optional().meta({
+      title: "Writer agent",
+      description:
+        "The agent runtime that writes commit messages and pull requests, by id (see agents.list); the thread's agent, else the first available one, when unset",
       advanced: true,
     }),
   })
@@ -161,6 +208,41 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
   if (live?.guard !== undefined) {
     context.subscriptions.add(live.guard(SOURCE_CONTROL_STREAM, ["git.read"]));
+  }
+
+  // A git action's progress is a live stream (D263): clients follow it while the action runs.
+  const progressStreams = createMemoryStreams({ log: context.log });
+  if (live !== undefined) {
+    context.subscriptions.add(
+      // A commit hook's output may hold secrets: following it takes what running an action takes.
+      live.serve(SOURCE_CONTROL_ACTIONS_STREAM, progressStreams, { permissions: ["git.write"] }),
+    );
+  }
+  /** How many progress events the stream keeps for clients that subscribe late. */
+  const KEPT_PROGRESS = 500;
+  const publishProgress = (event: GitActionProgress) => {
+    progressStreams.append(SOURCE_CONTROL_ACTIONS_STREAM, GIT_ACTION_PROGRESS, event as never);
+    const kept = progressStreams.events(SOURCE_CONTROL_ACTIONS_STREAM).length;
+    if (kept > KEPT_PROGRESS)
+      progressStreams.drop(SOURCE_CONTROL_ACTIONS_STREAM, kept - KEPT_PROGRESS);
+  };
+  /**
+   * Writes to a project's repository (git actions, pulls, checkouts) run one at
+   * a time, so none moves `HEAD` under another; a project's entry goes once its
+   * last write is done.
+   */
+  const writeChains = new Map<string, Promise<unknown>>();
+  function exclusive<T>(projectId: string, task: () => Promise<T>): Promise<T> {
+    const next = (writeChains.get(projectId) ?? Promise.resolve()).then(task);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    writeChains.set(projectId, settled);
+    void settled.then(() => {
+      if (writeChains.get(projectId) === settled) writeChains.delete(projectId);
+    });
+    return next;
   }
 
   const repos = new Map<string, Repo>();
@@ -383,6 +465,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       readRemoteUrl(git),
       readDefaultBranch(git),
     ]);
+    // The default branch has nothing to propose against itself (T3's aheadOfDefaultCount).
+    const aheadOfDefault =
+      local.head.branch === null || local.head.unborn
+        ? undefined
+        : local.head.branch === defaultBranch
+          ? 0
+          : await aheadOfBase(git, defaultBranch);
     const host = remoteUrl === null ? undefined : remoteHost(remoteUrl);
     const github =
       host !== undefined && githubHosts.map((item) => item.toLowerCase()).includes(host);
@@ -399,6 +488,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       defaultBranch,
       remoteUrl,
       workingTree: summarize(local.files),
+      ...(aheadOfDefault === undefined ? {} : { aheadOfDefault }),
+      hasPrimaryRemote: remoteUrl !== null,
       provider: repo.provider,
       pullRequests: {},
       checkedAt: new Date().toISOString(),
@@ -718,20 +809,155 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           );
         }
       }
-      const { git } = await gitOf(repo);
-      const remotes = (await git(["remote"])).stdout.split("\n").filter((line) => line !== "");
-      await checkout(git, branch, { create: options.create === true, remotes });
-      const status = await refresh(repo);
-      if (options.threadId !== undefined) {
-        await setThreadBranch(options.threadId, projectId, status.branch);
-      }
-      return status;
+      return exclusive(projectId, async () => {
+        const { git } = await gitOf(repo);
+        const remotes = (await git(["remote"])).stdout.split("\n").filter((line) => line !== "");
+        await checkout(git, branch, { create: options.create === true, remotes });
+        const status = await refresh(repo);
+        if (options.threadId !== undefined) {
+          await setThreadBranch(options.threadId, projectId, status.branch);
+        }
+        return status;
+      });
     },
     threadBranch: async (threadId) => {
       await loadThreads();
       return threads.get(threadId);
     },
+    runAction: async (projectId, options) => {
+      const input = GitActionOptions.parse(options);
+      const repo = await repoOf(projectId);
+      if (input.threadId !== undefined) {
+        const owner = await threadProject(input.threadId);
+        if (owner !== projectId) {
+          throw new SourceControlError(
+            "THREAD_PROJECT_MISMATCH",
+            `Thread ${input.threadId} belongs to another project`,
+            { threadId: input.threadId, projectId, threadProjectId: owner },
+          );
+        }
+      }
+      const actionId = input.actionId ?? randomUUID();
+      /** The action's progress ended (finished or failed): every later failure must say so. */
+      let ended = false;
+      const progress = (
+        event: Parameters<Parameters<typeof runStackedAction>[0]["progress"]>[0],
+      ) => {
+        if (event.kind === "action_finished" || event.kind === "action_failed") ended = true;
+        publishProgress({
+          ...event,
+          ...(event.kind === "action_finished" ? { result: { ...event.result, actionId } } : {}),
+          actionId,
+          projectId,
+          action: input.action,
+        } as GitActionProgress);
+      };
+      return exclusive(projectId, async () => {
+        try {
+          const status = await refresh(repo);
+          const { git, root } = await gitOf(repo);
+          const location = repo.location;
+          if (location?.isRepo !== true) {
+            throw new SourceControlError("NOT_A_REPOSITORY", "The project is not a git repository");
+          }
+          try {
+            const result = await runStackedAction({
+              git,
+              root,
+              gitDir: location.gitDir,
+              action: input.action,
+              commitMessage: input.commitMessage,
+              featureBranch: input.featureBranch,
+              filePaths: input.filePaths,
+              defaultBranch: status.defaultBranch,
+              forge: forgeOf(repo, root),
+              writer: agentWriter({
+                runtime: () => writerRuntime(input.threadId),
+                deadline: () => {
+                  let timer: ReturnType<typeof setTimeout> | undefined;
+                  const reached = new Promise<void>((resolve) => {
+                    timer = setTimeout(resolve, config().writerTimeoutSeconds * 1000);
+                  });
+                  return { reached, dispose: () => clearTimeout(timer) };
+                },
+                warn: (message, fields) => context.log.warn(message, { projectId, ...fields }),
+              }),
+              progress,
+            });
+            return { ...result, actionId };
+          } finally {
+            const after = await refresh(repo).catch(() => undefined);
+            if (after !== undefined && input.threadId !== undefined && after.isRepo) {
+              await setThreadBranch(input.threadId, projectId, after.branch);
+            }
+            if (repo.provider !== null) void lookUpPullRequests(repo, { force: true });
+          }
+        } catch (error) {
+          // Failed before its steps began (no repository, a read that failed): still said.
+          if (!ended)
+            progress({ kind: "action_failed", phase: null, message: (error as Error).message });
+          throw error;
+        }
+      });
+    },
+    pull: async (projectId) => {
+      const repo = await repoOf(projectId);
+      return exclusive(projectId, async () => {
+        const { git } = await gitOf(repo);
+        try {
+          return await pull(git);
+        } finally {
+          await refresh(repo).catch(() => undefined);
+        }
+      });
+    },
   };
+
+  /** Where the repository's pull requests are created: GitHub through `gh`, when its remote is there. */
+  function forgeOf(repo: Repo, root: string): PullRequestCreator | undefined {
+    if (repo.provider === null) return undefined;
+    const ghPath = () => config().ghPath;
+    const git = repo.git!;
+    return {
+      terminology: DEFAULT_TERMINOLOGY,
+      find: (branch) => pullRequestFor(ghPath(), root, branch),
+      create: async (request) => {
+        try {
+          return await createPullRequest(ghPath(), root, request);
+        } catch (error) {
+          throw new SourceControlError("PULL_REQUEST_FAILED", (error as Error).message);
+        }
+      },
+      template: async (ref) => {
+        for (const path of GITHUB_TEMPLATE_PATHS) {
+          const shown = await git(["show", `${ref}:${path}`], { ok: [0, 128] });
+          if (shown.code === 0 && shown.stdout.trim() !== "") return shown.stdout;
+        }
+        return undefined;
+      },
+    };
+  }
+
+  /** The agent that writes messages: the configured one, the thread's, else the first available. */
+  async function writerRuntime(threadId: string | undefined): Promise<AgentRuntime | undefined> {
+    const registry = context.services.tryGet<AgentRegistry>(AGENT_REGISTRY_CAPABILITY);
+    if (registry === undefined) return undefined;
+    const configured = config().writerAgent;
+    if (configured !== undefined) return registry.get(configured);
+    if (threadId !== undefined) {
+      const answer = (await context.commands
+        .execute("threads.get", { threadId })
+        .catch(() => undefined)) as { thread?: { agentId?: string } } | undefined;
+      const agentId = answer?.thread?.agentId;
+      const runtime = agentId === undefined ? undefined : registry.get(agentId);
+      if (runtime !== undefined) return runtime;
+    }
+    for (const runtime of registry.list()) {
+      const status = await runtime.status?.().catch(() => ({ available: false }));
+      if (status === undefined || status.available) return runtime;
+    }
+    return undefined;
+  }
 
   // --- Commands ---------------------------------------------------------------------------
 
@@ -860,6 +1086,62 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         ...(create === undefined ? {} : { create }),
         ...(threadId === undefined ? {} : { threadId }),
       }),
+  });
+
+  context.commands.register({
+    name: "git.action.run",
+    title: "Run a git action",
+    description:
+      "Commits, pushes and creates a pull request in a project (or a thread's project), as T3 Code's git actions do: `commit`, `push`, `create_pr`, `commit_push` or `commit_push_pr`. Without `commitMessage` the node's agent writes it; `featureBranch` commits on a new branch named after the changes. Progress goes to the `source-control/actions` live stream under `actionId`",
+    input: z
+      .object({
+        projectId: z.string().min(1).optional(),
+        ...GitActionOptions.shape,
+      })
+      .refine((input) => input.projectId !== undefined || input.threadId !== undefined, {
+        message: "Name a projectId or a threadId",
+      }),
+    output: GitActionResult,
+    permissions: ["git.write"],
+    handler: async ({ projectId, ...options }) =>
+      service.runAction(projectId ?? (await threadProject(options.threadId!)), options),
+  });
+
+  context.commands.register({
+    name: "git.init",
+    title: "Initialize Git",
+    description: "Makes a project that is no git repository one (`git init` in its folder)",
+    input: z.object({ projectId: z.string().min(1) }),
+    output: ProjectStatus,
+    permissions: ["git.write"],
+    handler: async ({ projectId }) => {
+      const repo = await repoOf(projectId);
+      if (repo.project.scratch === true) {
+        throw new SourceControlError(
+          "NOT_A_REPOSITORY",
+          "Chats without a project have no repository",
+          { projectId },
+        );
+      }
+      return exclusive(projectId, async () => {
+        const status = await statusOf(repo);
+        if (!status.isRepo) {
+          await createGit(config().gitPath, repo.project.path)(["init", "--quiet"]);
+        }
+        return refresh(repo);
+      });
+    },
+  });
+
+  context.commands.register({
+    name: "git.pull",
+    title: "Pull",
+    description:
+      "Pulls the checked-out branch of a project (or a thread's project) from its upstream, fast-forward only",
+    input: Target,
+    output: PullResult,
+    permissions: ["git.write"],
+    handler: async (input) => service.pull(await projectOf(input)),
   });
 
   context.services.provide(SOURCE_CONTROL_CAPABILITY, service);

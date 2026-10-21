@@ -32,6 +32,7 @@ import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { createBranchToolbar } from "./branch-toolbar.tsx";
 import { createDiffPanel, DIFF_PANEL } from "./diff-panel.tsx";
+import { createGitActionsControl, createRunningActions } from "./git-actions.tsx";
 import { createCardIndicators } from "./indicators.tsx";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 import { createSourceControlStore } from "./store.ts";
@@ -39,8 +40,9 @@ import { createSourceControlStore } from "./store.ts";
 /**
  * Source control in the web client (docs/plans/source-control.md): the thread
  * cards' branch, pull request and diff (`sidebar.thread.indicators`), the
- * branch toolbar under the composer (`chat.composer.context`), and the diff
- * panel (`app.panel`) with its toggle in the chat header.
+ * branch toolbar under the composer (`chat.composer.context`), the git
+ * actions in the chat header, and the diff panel (`app.panel`) with its
+ * toggle in the chat header.
  */
 export const sourceControlPlugin = builtin(
   "jhin.source-control",
@@ -68,7 +70,9 @@ export const sourceControlPlugin = builtin(
         context,
         store,
         threads,
+        connections,
         navigation,
+        running: createRunningActions(),
         toasts,
         shortcut: () => keybindings?.labelFor("diff.toggle"),
       };
@@ -175,6 +179,14 @@ export const sourceControlPlugin = builtin(
         slots.contribute<ChatComposerContextProps>("chat.composer.context", {
           id: "jhin.source-control.branch-toolbar",
           component: createBranchToolbar(services),
+        }),
+      );
+      // T3's order in the header: the git actions, then the panel toggles.
+      context.subscriptions.add(
+        slots.contribute<ChatHeaderActionProps>("chat.header.actions", {
+          id: "jhin.source-control.git-actions",
+          order: -100,
+          component: createGitActionsControl(services),
         }),
       );
       context.subscriptions.add(

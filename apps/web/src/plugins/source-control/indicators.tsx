@@ -34,7 +34,9 @@ export function PullRequestBadge({
 }) {
   const status = prStatusIndicator(pr)!;
   const checks = pullRequestChecksPresentation(pr.checks);
-  const anchor: ReactElement = <a href={pr.url} rel="noopener noreferrer" target="_blank" />;
+  // Only a web page is linked: a forge's answer is no reason to run anything else.
+  const href = /^https?:\/\//i.test(pr.url) ? pr.url : undefined;
+  const anchor: ReactElement = <a href={href} rel="noopener noreferrer" target="_blank" />;
   const label = checks === null ? status.tooltip : `${status.tooltip}. ${checks.label}`;
   return (
     <Tooltip>
