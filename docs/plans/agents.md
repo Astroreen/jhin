@@ -650,5 +650,5 @@ Each workstream lists its PRs here as they merge.
   and `slices.*` commands, the stream guarded by `missions.read`, agents
   reaching it (D641–D652). The mission view in Civilization mode waits for
   A8's slots (#105).
-- A4: `jhin.context` (D661–D670), and the lore brief on a generation's
+- A4 #91: `jhin.context` (D661–D670), and the lore brief on a generation's
   start in `jhin.agents` (D671).
