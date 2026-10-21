@@ -19,7 +19,7 @@ import {
 } from "@jhin/ui";
 import { useEffect, useRef, useState } from "react";
 
-import { forgePresentation } from "./forge-icons.tsx";
+import { forgeIcon } from "./forge-icons.tsx";
 
 const GITHUB_CHECKOUT_COMMAND = /^gh\s+pr\s+checkout\s+(.+)$/i;
 const GITHUB_PULL_REQUEST_URL = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)([/?#].*)?$/i;
@@ -51,7 +51,7 @@ function statusTone(state: string | undefined): string {
 }
 
 /** The dialog checks pull requests of GitHub out (D902): its mark in the title. */
-const GitHub = forgePresentation({ kind: "github" }).Icon;
+const GitHub = forgeIcon({ kind: "github" });
 
 /** How long typing must pause before the reference is resolved (T3's 450 ms). */
 const RESOLVE_DELAY_MS = 450;

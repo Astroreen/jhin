@@ -107,3 +107,12 @@ images to JPEG before they are attached (`t3-parity.md` D296), as T3 Code
 does. It is a separate chunk that the browser loads only when a HEIC image is
 attached, so it can be replaced with another build of the library. Its license
 text ships with the package (`node_modules/heic-to/LICENSE`).
+
+## selfhst/icons (Azure DevOps mark)
+
+Source: https://github.com/selfhst/icons/blob/main/svg/azure-devops.svg
+(CC BY 4.0, https://creativecommons.org/licenses/by/4.0/). The Microsoft Azure
+DevOps mark in `apps/web/src/plugins/source-control/forge-icons.tsx`
+(`AzureDevOpsIcon`) is that SVG as T3 Code ships it, turned into a React
+component; nothing of its drawing was changed. "Azure DevOps" is a trademark of
+Microsoft, used only to name the forge a repository is on.

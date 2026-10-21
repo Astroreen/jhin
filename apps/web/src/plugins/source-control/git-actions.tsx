@@ -65,7 +65,7 @@ import {
   type GitActionMenuItem,
   type GitQuickAction,
 } from "./git-actions-logic.ts";
-import { forgePresentation } from "./forge-icons.tsx";
+import { forgeIcon } from "./forge-icons.tsx";
 import type { RunningAction } from "./running.ts";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 
@@ -89,7 +89,7 @@ interface RunInput {
   readonly filePaths?: string[];
 }
 
-type ForgeIcon = ReturnType<typeof forgePresentation>["Icon"];
+type ForgeIcon = ReturnType<typeof forgeIcon>;
 
 /** A pull request's action shows the forge's mark, as T3's `GitActionItemIcon` does (D904). */
 function GitActionItemIcon({ icon, Forge }: { icon: GitActionIconName; Forge: ForgeIcon }) {
@@ -203,7 +203,7 @@ export function createGitActionsControl(services: SourceControlServices) {
     if (projectId === undefined || project?.scratch === true) return null;
     const projectStatus: ProjectStatus | undefined = view.projects.get(projectId);
     if (projectStatus === undefined) return null;
-    const Forge = forgePresentation(projectStatus.provider).Icon;
+    const Forge = forgeIcon(projectStatus.provider);
 
     const isBusy = current !== undefined;
     const status = projectStatus.isRepo ? gitActionStatus(projectStatus) : null;

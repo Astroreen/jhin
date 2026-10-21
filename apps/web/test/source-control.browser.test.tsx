@@ -1096,6 +1096,34 @@ describe("the git actions in the chat header", () => {
         element.textContent?.trim() === name || element.getAttribute("aria-label") === name,
     );
 
+  it("shows the repository's forge mark on its pull request action (D904)", () => {
+    const quickIcon = (provider: ProjectStatus["provider"]) => {
+      const { value } = services(
+        viewWith(
+          status({
+            workingTree: changed,
+            upstream: "origin/feature/toolbar",
+            pullRequests: {},
+            provider,
+          }),
+        ),
+      );
+      const Control = createGitActionsControl(value);
+      const view = mount(<Control project={project} target={target} thread={thread} />);
+      const svg = view.container.querySelector('[role="group"] button svg')!;
+      const mark =
+        svg.getAttribute("viewBox") === "0 0 24 24"
+          ? svg.getAttribute("class")
+          : svg.getAttribute("viewBox");
+      view.unmount();
+      return mark;
+    };
+    // T3's GitHub and GitLab marks, and lucide's pull request without a forge.
+    expect(quickIcon({ kind: "github", available: true })).toBe("0 0 1024 1024");
+    expect(quickIcon({ kind: "gitlab", available: true })).toBe("0 0 32 32");
+    expect(quickIcon(null)).toContain("lucide-git-pull-request");
+  });
+
   it("commits, pushes and opens a pull request from a feature branch, then shows the result", async () => {
     const { value, calls, shown } = services(
       viewWith(

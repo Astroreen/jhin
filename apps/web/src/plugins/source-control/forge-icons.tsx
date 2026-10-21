@@ -1,14 +1,15 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/Icons.tsx
 // (GitHubIcon, GitLabIcon, AzureDevOpsIcon, BitbucketIcon, ForgejoIcon) and
 // apps/web/src/sourceControlPresentation.ts with the forges' client definitions (their
-// labels), so a repository's forge shows with its own mark and name (D904).
+// labels), so a repository's forge shows with its own mark (D904). The Azure DevOps mark is
+// selfhst/icons' (CC BY 4.0), named in THIRD_PARTY_NOTICES.md.
 import type { PullRequestProvider } from "@jhin/source-control-api";
 import { GitPullRequestIcon } from "lucide-react";
 import { useId, type ElementType, type FC, type SVGProps } from "react";
 
 type Icon = FC<SVGProps<SVGSVGElement>>;
 
-export const GitHubIcon: Icon = (props) => (
+const GitHubIcon: Icon = (props) => (
   <svg {...props} viewBox="0 0 1024 1024" fill="none">
     <path
       fillRule="evenodd"
@@ -20,7 +21,7 @@ export const GitHubIcon: Icon = (props) => (
   </svg>
 );
 
-export const GitLabIcon = ({
+const GitLabIcon = ({
   monochrome = false,
   ...props
 }: SVGProps<SVGSVGElement> & { readonly monochrome?: boolean }) => (
@@ -210,7 +211,7 @@ const AzureDevOpsIcon: Icon = (props) => {
   );
 };
 
-export const BitbucketIcon: Icon = (props) => {
+const BitbucketIcon: Icon = (props) => {
   const id = useId().replaceAll(":", "");
   const gradientId = `${id}-bitbucket-a`;
 
@@ -255,26 +256,17 @@ const ForgejoIcon: Icon = (props) => (
 
 type ForgeKind = PullRequestProvider["kind"];
 
-const FORGES: Record<
-  ForgeKind,
-  { readonly name: string; readonly Icon: ElementType<{ className?: string }> }
-> = {
-  github: { name: "GitHub", Icon: GitHubIcon },
-  gitlab: { name: "GitLab", Icon: GitLabIcon },
-  "azure-devops": { name: "Azure DevOps", Icon: AzureDevOpsIcon },
-  bitbucket: { name: "Bitbucket", Icon: BitbucketIcon },
-  forgejo: { name: "Forgejo", Icon: ForgejoIcon },
+const FORGES: Record<ForgeKind, ElementType<{ className?: string }>> = {
+  github: GitHubIcon,
+  gitlab: GitLabIcon,
+  "azure-devops": AzureDevOpsIcon,
+  bitbucket: BitbucketIcon,
+  forgejo: ForgejoIcon,
 };
 
-/** T3's `getSourceControlPresentation`: the forge's name and mark, a generic one without a forge. */
-export function forgePresentation(provider: Pick<PullRequestProvider, "kind"> | null | undefined): {
-  readonly name: string;
-  readonly Icon: ElementType<{ className?: string }>;
-} {
-  return (
-    (provider ? FORGES[provider.kind] : undefined) ?? {
-      name: "source control",
-      Icon: GitPullRequestIcon,
-    }
-  );
+/** T3's `sourceControlIcon`: the forge's mark, a generic pull request mark without a forge. */
+export function forgeIcon(
+  provider: Pick<PullRequestProvider, "kind"> | null | undefined,
+): ElementType<{ className?: string }> {
+  return (provider ? FORGES[provider.kind] : undefined) ?? GitPullRequestIcon;
 }
