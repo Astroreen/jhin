@@ -303,8 +303,11 @@ export function buildDiffReviewComment(input: {
   };
 }
 
+/** Neither an opening nor a closing tag inside the text can start or end a block. */
 function neutralizeClosingTag(value: string): string {
-  return value.replace(/<\/(review_comment)/gi, "<\\/$1");
+  return value.replace(/<(\/?)(review_comment)/gi, (_tag, slash: string, name: string) =>
+    slash === "" ? `<\u200b${name}` : `<\\/${name}`,
+  );
 }
 
 function escapeAttribute(value: string): string {
@@ -334,7 +337,7 @@ export function serializeReviewComment(comment: ReviewComment): string {
     ...[...comment.diff.matchAll(/`+/g)].map((match) => match[0].length),
   );
   const fence = "`".repeat(Math.max(3, longestRun + 1));
-  // A closing tag inside the comment or the lines would end the block early.
+  // A tag inside the comment or the lines would end the block early or fake another one.
   const text = neutralizeClosingTag(comment.text);
   const diff = neutralizeClosingTag(comment.diff);
   const body = diff ? `${text}\n\n${fence}diff\n${diff}\n${fence}` : text;

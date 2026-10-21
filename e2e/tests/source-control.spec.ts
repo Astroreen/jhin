@@ -175,7 +175,7 @@ test("D113–D120: a card shows its thread's branch, pull request and diff; the 
   await expect(warning).toBeHidden();
 });
 
-test("D280–D284: the diff panel renders with @pierre/diffs, splits, lists files in a tree and compares with a chosen base", async ({
+test("D280–D285: the diff panel renders with @pierre/diffs, splits, lists files in a tree, compares with a chosen base and sends a comment on a line to the composer", async ({
   page,
 }, info) => {
   await startWithRepository(page);
@@ -240,6 +240,7 @@ test("D280–D284: the diff panel renders with @pierre/diffs, splits, lists file
   await panel.getByRole("button", { name: "Comment", exact: true }).click();
   await expect(box).toBeHidden();
   const message = page.getByRole("textbox", { name: "Message" });
+  await expect(message).toContainText("<review_comment");
   await expect(message).toContainText('filePath="src/greet.ts"');
   await expect(message).toContainText("Say goodbye politely");
   await shot(page, info, "source-control-diff-comment-sent");

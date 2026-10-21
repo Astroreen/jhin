@@ -378,9 +378,11 @@ export function createDiffPanel(services: SourceControlServices) {
   const { commands, events } = services.context;
   /** Commands come and go with their plugins: whether one is there, kept current. */
   const subscribeCommands = (listener: () => void) => {
-    const subscriptions = ["kernel.plugin.activated", "kernel.plugin.deactivated"].map((type) =>
-      events.on(type, listener),
-    );
+    const subscriptions = [
+      "kernel.plugin.activated",
+      "kernel.plugin.deactivated",
+      "kernel.plugin.reloaded",
+    ].map((type) => events.on(type, listener));
     return () => {
       for (const subscription of subscriptions) subscription.dispose();
     };
@@ -591,6 +593,13 @@ export function createDiffPanel(services: SourceControlServices) {
     };
     // A draft goes with what it was opened on: another scope, base or whitespace setting, or
     // a refresh that drops its file, closes it (its annotation would be gone, and with it Cancel).
+    // A panel closed while a comment is on its way drops the answer.
+    useEffect(
+      () => () => {
+        drafts.current += 1;
+      },
+      [],
+    );
     const draftStale =
       draft !== null && (draft.what !== what || !diffFileKeys.includes(draft.fileKey));
     useEffect(() => {
@@ -627,7 +636,12 @@ export function createDiffPanel(services: SourceControlServices) {
     };
     /** Puts the comment into the composer as T3 sends a review comment to a provider. */
     const sendComment = (text: string) => {
-      if (draft === null || draftStale) return;
+      if (draft === null) return;
+      if (draftStale) {
+        // Its scope or file went a moment ago: the draft closes rather than sending nowhere.
+        closeDraft();
+        return;
+      }
       const comment = buildDiffReviewComment({
         sectionId: draft.sectionId,
         sectionTitle: draft.sectionTitle,
@@ -655,7 +669,16 @@ export function createDiffPanel(services: SourceControlServices) {
         .then(
           (answer) => {
             if (!current()) return;
-            if (InsertAnswer.safeParse(answer).data?.inserted === true) {
+            const parsed = InsertAnswer.safeParse(answer);
+            if (!parsed.success) {
+              services.toasts?.show({
+                type: "error",
+                title: "Could not add the comment to the chat",
+                description: "The composer gave an answer the panel does not understand.",
+              });
+              return;
+            }
+            if (parsed.data.inserted) {
               closeDraft();
               return;
             }
