@@ -45,7 +45,7 @@ the same PR.
 | `@jhin/http-api`           | contract of `http.server@1`                                                                                                                                                |
 | `@jhin/auth-api`           | contract of `auth.verifier@1` (1.1: a principal's `expiresAt`), principal ids and auth events                                                                              |
 | `@jhin/mcp-api`            | contract of `mcp.server@1`: the MCP endpoint and agent credentials                                                                                                         |
-| `@jhin/storage-api`        | contracts of `storage.kv@1`, `storage.eventlog@1.2` (records with an append, D208; `trim`, D496), an in-memory version, the contract tests                                               |
+| `@jhin/storage-api`        | contracts of `storage.kv@1`, `storage.eventlog@1.2` (records with an append, D208; `trim`, D496), an in-memory version, the contract tests                                 |
 | `@jhin/agent-api`          | contracts of `agent.runtime@1` (1.2: steering; 1.3: defined agents), `agent.registry@1`, events, `visibleThreadEvents`, `agents.*`, `historyTranscript`, `pickEnvironment` |
 | `@jhin/source-control-api` | contract of `source-control.git@1.1` and its events: statuses, thread branches, turn checkpoints (`TurnCheckpoint`)                                                        |
 | `@jhin/terminal-api`       | contract of `terminal.sessions@1`, its commands and stream events                                                                                                          |
