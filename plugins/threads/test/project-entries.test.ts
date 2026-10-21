@@ -57,6 +57,10 @@ describe("jhin.threads: project files for @ mentions (D302)", () => {
     write(repo, ["src/app.ts", "build/out.js", ".gitignore"]);
     Fs.writeFileSync(Path.join(repo, ".gitignore"), "build/\n");
     ChildProcess.execFileSync("git", ["init", "-q"], { cwd: repo });
+    // A tracked file deleted from the working tree is no longer offered.
+    write(repo, ["src/gone.ts"]);
+    ChildProcess.execFileSync("git", ["add", "src/gone.ts"], { cwd: repo });
+    Fs.rmSync(Path.join(repo, "src", "gone.ts"));
     const entries = createProjectEntries();
     const found = await entries.search(repo, "", { limit: 50 });
     expect(found.entries.map((entry) => entry.path).toSorted()).toEqual([

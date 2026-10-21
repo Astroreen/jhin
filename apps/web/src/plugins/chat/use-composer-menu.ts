@@ -61,7 +61,8 @@ export function useComposerMenu(options: {
     })
       .then(
         (value) => setOffered({ key: offeredKey, at: Date.now(), value }),
-        () => setOffered({ key: offeredKey, at: Date.now(), value: { commands: [], skills: [] } }),
+        // A failure is not kept: the next trigger asks again.
+        () => undefined,
       )
       .finally(() => {
         if (loading.current === offeredKey) loading.current = undefined;

@@ -1,4 +1,7 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): packages/shared/src/searchRanking.ts at eb7b35ac.
+// The same file serves the web client (apps/web/src/lib/search-ranking.ts) and the threads
+// plugin (plugins/threads/src/search-ranking.ts): a verbatim copy of T3's, changed only by
+// taking T3's again; no package both import holds ranking helpers today.
 export type RankedSearchResult<T> = {
   item: T;
   score: number;

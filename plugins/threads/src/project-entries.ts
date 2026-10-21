@@ -29,16 +29,27 @@ export interface ProjectEntry {
 interface Index {
   readonly entries: readonly ProjectEntry[];
   readonly truncated: boolean;
-  readonly builtAt: number;
-  usedAt: number;
 }
 
-/** The files git lists (tracked, and untracked but not ignored); undefined outside git. */
-function gitFiles(root: string): Promise<string[] | undefined> {
+/**
+ * The files git lists (tracked, and untracked but not ignored), without tracked files
+ * deleted from the working tree; undefined outside git.
+ */
+async function gitFiles(root: string): Promise<string[] | undefined> {
+  const [listed, deleted] = await Promise.all([
+    gitList(root, ["--cached", "--others", "--exclude-standard"]),
+    gitList(root, ["--deleted"]),
+  ]);
+  if (listed === undefined) return undefined;
+  const gone = new Set(deleted ?? []);
+  return [...new Set(listed)].filter((path) => !gone.has(path));
+}
+
+function gitList(root: string, flags: readonly string[]): Promise<string[] | undefined> {
   return new Promise((resolve) => {
     ChildProcess.execFile(
       "git",
-      ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+      ["ls-files", ...flags, "-z"],
       { cwd: root, maxBuffer: 64 * 1024 * 1024 },
       (error, stdout) => {
         if (error !== null) resolve(undefined);
@@ -138,11 +149,15 @@ export function rankEntries(
 
 /** An index per project folder, built when searched and dropped after 15 minutes unused. */
 export function createProjectEntries(now: () => number = Date.now) {
-  const indexes = new Map<string, Promise<Index>>();
+  /**
+   * Per project folder: the index (built or being built), when it was asked for
+   * last, and when its build started. One build at a time per folder.
+   */
+  const indexes = new Map<string, { index: Promise<Index>; usedAt: number; startedAt: number }>();
   const build = async (root: string): Promise<Index> => {
     const files = (await gitFiles(root)) ?? (await walkFiles(root, MAX_INDEXED_ENTRIES));
     const { entries, truncated } = entriesOf(files);
-    return { entries, truncated, builtAt: now(), usedAt: now() };
+    return { entries, truncated };
   };
   return {
     async search(
@@ -150,19 +165,23 @@ export function createProjectEntries(now: () => number = Date.now) {
       query: string,
       options: { limit: number; kind?: "file" | "directory" },
     ): Promise<{ entries: ProjectEntry[]; truncated: boolean }> {
-      for (const [key, pending] of indexes) {
-        const index = await pending.catch(() => undefined);
-        if (index === undefined || now() - index.usedAt > INDEX_IDLE_MS) indexes.delete(key);
+      const at = now();
+      // Unused indexes go, without waiting for any build.
+      for (const [key, entry] of indexes) {
+        if (at - entry.usedAt > INDEX_IDLE_MS) indexes.delete(key);
       }
-      let pending = indexes.get(root);
-      const current = pending === undefined ? undefined : await pending.catch(() => undefined);
-      if (current === undefined || now() - current.builtAt > INDEX_FRESH_MS) {
-        pending = build(root);
-        indexes.set(root, pending);
-        pending.catch(() => indexes.delete(root));
+      let entry = indexes.get(root);
+      if (entry === undefined || at - entry.startedAt > INDEX_FRESH_MS) {
+        const index = build(root);
+        entry = { index, usedAt: at, startedAt: at };
+        indexes.set(root, entry);
+        const started = entry;
+        index.catch(() => {
+          if (indexes.get(root) === started) indexes.delete(root);
+        });
       }
-      const index = await pending!;
-      index.usedAt = now();
+      entry.usedAt = at;
+      const index = await entry.index;
       const ranked = rankEntries(index.entries, query, options.limit + 1, options.kind);
       return {
         entries: ranked.slice(0, options.limit),

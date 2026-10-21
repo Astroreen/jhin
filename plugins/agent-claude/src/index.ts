@@ -415,6 +415,10 @@ export function createClaudeRuntime(options: {
       const key = `${probeKey()}|${cwd}`;
       let entry = commandProbes.get(key);
       if (entry === undefined || Date.now() - entry.at > COMMANDS_TTL_MS) {
+        // Folders not asked about for a while are forgotten.
+        for (const [other, kept] of commandProbes) {
+          if (Date.now() - kept.at > COMMANDS_TTL_MS) commandProbes.delete(other);
+        }
         entry = {
           at: Date.now(),
           commands: probe(options.query, config, cwd).then((found) => found.commands ?? []),
