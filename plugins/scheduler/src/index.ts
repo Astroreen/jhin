@@ -28,7 +28,14 @@ import {
   type ScheduleInput,
   type SchedulerService,
 } from "@jhin/scheduler-api";
-import { definePlugin, holdsPermission, z, type Invocation, type PluginContext } from "@jhin/sdk";
+import {
+  definePlugin,
+  holdsPermission,
+  z,
+  type Invocation,
+  type PluginContext,
+  describePermissions,
+} from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -1159,6 +1166,17 @@ function activateScheduler(context: PluginContext): void {
   };
   const withId = z.object({ id: z.string().describe("The task's id, from scheduler.tasks.list.") });
 
+  // The titles of this plugin's permissions (security.md D961).
+  describePermissions(context, {
+    "scheduler.read": {
+      title: "View scheduled tasks",
+      description: "Read scheduled tasks and their runs.",
+    },
+    "scheduler.write": {
+      title: "Manage scheduled tasks",
+      description: "Create, change, run and delete scheduled tasks.",
+    },
+  });
   context.commands.register({
     name: "scheduler.tasks.list",
     title: "List scheduled tasks",

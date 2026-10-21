@@ -21,7 +21,7 @@ import {
   clampHtmlRenderHeight,
   injectHtmlRenderBootstrap,
 } from "@jhin/preview-api";
-import { definePlugin, z } from "@jhin/sdk";
+import { definePlugin, z, describePermissions } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 
 import { inlineLocalImages, missingImagesError } from "./inline.ts";
@@ -115,6 +115,13 @@ export default definePlugin({
     context.services.provide(PREVIEW_HTML_CAPABILITY, { renderer });
     const limit = createLimit(MAX_RUNNING);
 
+    // The titles of this plugin's permissions (security.md D961).
+    describePermissions(context, {
+      "preview.write": {
+        title: "Control previews",
+        description: "Open browser previews and host browser automation.",
+      },
+    });
     context.commands.register({
       name: "html.preview",
       title: "Preview HTML",

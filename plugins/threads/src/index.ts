@@ -40,7 +40,7 @@ import {
 } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, holdsPermission, toDisposable, z } from "@jhin/sdk";
+import { definePlugin, holdsPermission, toDisposable, z, describePermissions } from "@jhin/sdk";
 import {
   BLOBS_CAPABILITY,
   EVENTLOG_CAPABILITY,
@@ -1520,6 +1520,29 @@ export default definePlugin({
     }
 
     // --- Projects --------------------------------------------------------------
+    // The titles of this plugin's permissions (security.md D961).
+    describePermissions(context, {
+      "threads.read": {
+        title: "View threads",
+        description: "Read threads, their turns, status and queued messages.",
+      },
+      "threads.write": {
+        title: "Operate threads",
+        description: "Start, update, and stop threads and their turns.",
+      },
+      "projects.read": {
+        title: "View projects",
+        description: "List projects and search their files.",
+      },
+      "projects.write": {
+        title: "Change projects",
+        description: "Add, edit and remove projects, and write their files.",
+      },
+      "projects.browse": {
+        title: "Browse files",
+        description: "Browse this machine's folders to add a project.",
+      },
+    });
     context.commands.register({
       name: "projects.list",
       description: "Projects on this node, the scratch project first",

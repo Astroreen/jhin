@@ -52,7 +52,7 @@ import {
   type LiveStreams,
   type StreamSource,
 } from "@jhin/rpc";
-import { definePlugin, toDisposable, z, type Invocation } from "@jhin/sdk";
+import { definePlugin, toDisposable, z, type Invocation, describePermissions } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 
 import { Chromium } from "./chromium.ts";
@@ -156,6 +156,17 @@ export default definePlugin({
     const agent = (input: PreviewTarget, invocation: Invocation) => sessionKey(input, invocation);
 
     // --- The agent's tools (T3's preview_* and t3_preview_*) --------------------------
+    // The titles of this plugin's permissions (security.md D961).
+    describePermissions(context, {
+      "preview.read": {
+        title: "View previews",
+        description: "Read browser preview tabs and their frames.",
+      },
+      "preview.write": {
+        title: "Control previews",
+        description: "Open browser previews and host browser automation.",
+      },
+    });
     context.commands.register({
       name: "preview.status",
       title: "Get preview status",

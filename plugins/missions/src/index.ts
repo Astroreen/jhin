@@ -27,7 +27,7 @@ import {
   type MissionsState,
 } from "@jhin/missions-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, z, type Invocation } from "@jhin/sdk";
+import { definePlugin, z, type Invocation, describePermissions } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   StorageError,
@@ -239,6 +239,17 @@ export default definePlugin({
     const write = { permissions: ["missions.write"] } as const;
 
     // --- Intent -------------------------------------------------------------------
+    // The titles of this plugin's permissions (security.md D961).
+    describePermissions(context, {
+      "missions.read": {
+        title: "View missions",
+        description: "Read intents, missions and slices.",
+      },
+      "missions.write": {
+        title: "Manage missions",
+        description: "Set intents, and change missions and slices.",
+      },
+    });
     context.commands.register({
       name: "missions.intent.get",
       description: "A project's intent (what it is for) and its process between missions",

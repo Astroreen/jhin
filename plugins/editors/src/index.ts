@@ -3,7 +3,7 @@
 import * as ChildProcess from "node:child_process";
 
 import { EDITORS, HOST_EDITORS_CAPABILITY, type EditorErrorCode } from "@jhin/host-api";
-import { definePlugin, z } from "@jhin/sdk";
+import { definePlugin, z, describePermissions } from "@jhin/sdk";
 
 import * as Path from "node:path";
 
@@ -76,6 +76,17 @@ export function createEditorsPlugin(
         list: () => availableEditors(host),
       });
 
+      // The titles of this plugin's permissions (security.md D961).
+      describePermissions(context, {
+        "editor.list": {
+          title: "List editors",
+          description: "Read the editors installed on this machine.",
+        },
+        "editor.open": {
+          title: "Open in editor",
+          description: "Open files in an editor on this machine.",
+        },
+      });
       context.commands.register({
         name: "editors.list",
         description: "The editors installed on this node that can open a project's files",

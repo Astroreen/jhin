@@ -3,7 +3,13 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
-import { definePlugin, z, type PluginDefinition } from "@jhin/sdk";
+import {
+  definePlugin,
+  describePermissions,
+  z,
+  type PermissionEntry,
+  type PluginDefinition,
+} from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import {
   createTestKernel,
@@ -41,6 +47,7 @@ const echo = {
         permissions: ["app.write"],
         handler: (input) => input,
       });
+      describePermissions(context, { "app.write": { title: "Write echoes" } });
     },
   }),
 };
@@ -343,10 +350,24 @@ describe("device tokens (security.md D411–D414)", () => {
   it("lists the permissions the node's commands need", async () => {
     const node = await startNode();
     const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
-      permissions: { permission: string; commands: string[] }[];
+      permissions: PermissionEntry[];
     };
-    expect(permissions).toContainEqual({ permission: "app.write", commands: ["app.write"] });
-    expect(permissions).toContainEqual({ permission: "events.read", commands: [] });
+    expect(permissions).toContainEqual({
+      permission: "app.write",
+      commands: ["app.write"],
+      title: "Write echoes",
+    });
+    expect(permissions).toContainEqual({
+      permission: "events.read",
+      commands: [],
+      title: "Read event streams",
+      description: "Subscribe to event streams no other permission guards.",
+    });
+    // T3's wording for a permission that matches its scope (security.md D961).
+    expect(permissions.find((entry) => entry.permission === "auth.write")).toMatchObject({
+      title: "Manage access",
+      description: "Issue and revoke credentials for other clients.",
+    });
     expect(permissions.find((entry) => entry.permission === "auth.write")?.commands).toEqual([
       "auth.clients.revoke",
       "auth.clients.revoke-others",

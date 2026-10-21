@@ -14,7 +14,7 @@ import {
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, createMemoryStreams, type LiveStreams } from "@jhin/rpc";
 import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
-import { definePlugin, z, type PluginContext } from "@jhin/sdk";
+import { definePlugin, z, type PluginContext, describePermissions } from "@jhin/sdk";
 import {
   Branch,
   Diff,
@@ -1686,6 +1686,17 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     threadId?: string | undefined;
   }) => input.projectId ?? (await threadProject(input.threadId!));
 
+  // The titles of this plugin's permissions (security.md D961).
+  describePermissions(context, {
+    "git.read": {
+      title: "View source control",
+      description: "Read status, branches, diffs, checkpoints and pull requests.",
+    },
+    "git.write": {
+      title: "Change source control",
+      description: "Commit, push, manage branches and repositories, and change pull requests.",
+    },
+  });
   context.commands.register({
     name: "git.status",
     description:

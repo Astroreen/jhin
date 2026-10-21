@@ -4,7 +4,7 @@ import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import { LIVE_STREAMS_CAPABILITY, createMemoryStreams, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, z } from "@jhin/sdk";
+import { definePlugin, z, describePermissions } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 import {
   CloseTerminalInput,
@@ -160,6 +160,17 @@ export default definePlugin({
     }
 
     const Empty = z.object({});
+    // The titles of this plugin's permissions (security.md D961).
+    describePermissions(context, {
+      "terminals.read": {
+        title: "View terminals",
+        description: "Read existing terminal output and status.",
+      },
+      "terminals.write": {
+        title: "Use terminals",
+        description: "Create terminals and send input to running shells.",
+      },
+    });
     context.commands.register({
       name: "terminals.open",
       title: "Open a terminal",

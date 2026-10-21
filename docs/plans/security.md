@@ -270,6 +270,20 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   advertised URLs (`jhin.mesh.advertise`) or its listening address. T3's
   hosted relay and T3 Connect are not ported.
 
+### Leftovers (W26)
+
+- **D961. A permission has a title and a description, from the plugin that
+  needs it.** As T3's scope options ("View terminals", "Read existing
+  terminal output and status."). `auth.permissions.list` runs its answer
+  through the hook `auth.permissions.describe` (`PERMISSIONS_DESCRIBE_HOOK`
+  in `@jhin/sdk`); a plugin adds the titles of the permissions its commands
+  need with `describePermissions(context, { "terminals.read": { title,
+  description } })`, an `after` hook that returns a disposable. A permission
+  nobody describes keeps its id as its title. T3's wording is kept where a
+  permission matches a T3 scope; the rest follows it. The pairing dialog
+  shows a title with its description and the id, as T3's list. A client's
+  granted scopes stay ids: they may be patterns (`git.*`, `*`).
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -374,5 +388,3 @@ Implements D419–D425, in two layers:
 - `lastSeenAt` is kept in memory and written with the next change of
   `clients.json`, so a restart may lose the latest ones. Expired tokens are
   dropped from the file with the next write.
-- Titles for permissions in the UI (T3's "View terminals", "Use
-  terminals", …): the permission list shows ids grouped by namespace.
