@@ -323,28 +323,33 @@ test("hides skills from the / menu with T3's setting, and still offers them afte
   await expect(toggle).toBeChecked();
   await toggle.click();
   await expect(toggle).not.toBeChecked();
-  const shot = info.outputPath("skills-setting.png");
-  await page.screenshot({ path: shot });
-  await info.attach("show skills in slash menu", { path: shot, contentType: "image/png" });
+  try {
+    const shot = info.outputPath("skills-setting.png");
+    await page.screenshot({ path: shot });
+    await info.attach("show skills in slash menu", { path: shot, contentType: "image/png" });
 
-  await page.goto(`${node.ui}#token=${node.token}`);
-  await page.getByRole("button", { name: "Start a thread" }).click();
-  const message = page.getByRole("textbox", { name: "Message" });
-  await message.click();
-  await message.pressSequentially("/");
-  const commands = page.getByRole("listbox", { name: "Commands" });
-  await expect(commands.getByRole("option")).toHaveText([
-    /\/model/,
-    /\/plan/,
-    /\/default/,
-    /\/review/,
-  ]);
-  await message.press("Escape");
-  await message.pressSequentially(" then $dep");
-  await expect(page.getByRole("listbox", { name: "Skills" }).getByRole("option")).toHaveText([
-    /Deploy/,
-  ]);
-
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("switch", { name: "Show skills in slash menu" }).click();
+    await page.goto(`${node.ui}#token=${node.token}`);
+    await page.getByRole("button", { name: "Start a thread" }).click();
+    const message = page.getByRole("textbox", { name: "Message" });
+    await message.click();
+    await message.pressSequentially("/");
+    const commands = page.getByRole("listbox", { name: "Commands" });
+    await expect(commands.getByRole("option")).toHaveText([
+      /\/model/,
+      /\/plan/,
+      /\/default/,
+      /\/review/,
+    ]);
+    await message.press("Escape");
+    await message.pressSequentially(" then $dep");
+    await expect(page.getByRole("listbox", { name: "Skills" }).getByRole("option")).toHaveText([
+      /Deploy/,
+    ]);
+  } finally {
+    // The node is shared with the other specs: put the default back even on a failure.
+    await page.goto(`${node.ui}#token=${node.token}`);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("switch", { name: "Show skills in slash menu" }).click();
+    await expect(page.getByRole("switch", { name: "Show skills in slash menu" })).toBeChecked();
+  }
 });

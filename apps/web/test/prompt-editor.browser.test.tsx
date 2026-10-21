@@ -408,7 +408,9 @@ describe("wrapping a selection (D844)", () => {
     // The space after the chip and "next".
     tiptap.commands.setTextSelection({ from: end - 5, to: end });
     tiptap.commands.focus();
+    expect(tiptap.state.doc.textBetween(end - 5, end)).toBe(" next");
     await userEvent.keyboard("(");
-    expect(editor.value()).not.toContain("( next)");
+    // Replaced, as T3 does, rather than wrapped.
+    await editor.reported("[a.ts](src/a.ts)(");
   });
 });

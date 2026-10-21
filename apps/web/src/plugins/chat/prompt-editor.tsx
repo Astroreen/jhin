@@ -1334,7 +1334,8 @@ function boundsChip(doc: ProseMirrorNode, from: number, to: number): boolean {
   let touches = false;
   const whitespaceAt = (pos: number) =>
     pos >= from && pos < to && /\s/.test(doc.textBetween(pos, pos + 1, "", ""));
-  doc.descendants((node, pos) => {
+  // Only a chip just outside the range or inside it can own one of its characters.
+  doc.nodesBetween(Math.max(0, from - 1), Math.min(doc.content.size, to + 1), (node, pos) => {
     if (touches) return false;
     if (node.isAtom && node.isInline && !node.isText) {
       touches = whitespaceAt(pos - 1) || whitespaceAt(pos + node.nodeSize);
