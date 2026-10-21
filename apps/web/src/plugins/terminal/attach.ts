@@ -7,12 +7,19 @@ import {
   type TerminalSummary,
 } from "@jhin/terminal-api";
 
+/** T3's output window: at most this much output is on its way to a terminal (D470). */
+export const TERMINAL_OUTPUT_WINDOW = { events: 8, bytes: 64 * 1024 };
+
 /** Where an attached terminal's output goes: an xterm.js instance, or a test's record. */
 export interface TerminalSink {
   /** Clears the screen: a new process starts, or the session is read again. */
   reset(): void;
-  /** Output of the process; `replay` for what it printed before this client attached. */
-  write(data: string, replay: boolean): void;
+  /**
+   * Output of the process; `replay` for what it printed before this client
+   * attached. A promise says when it is shown: the node sends more output
+   * as it is (D470).
+   */
+  write(data: string, replay: boolean): void | Promise<void>;
   /** A line of T3's `[terminal] …` messages. */
   system(message: string): void;
   /** The process exited, or the session was closed. */
@@ -147,8 +154,15 @@ export function attachTerminal(options: {
       terminalStream(threadId, terminalId),
       {
         after: snapshot.sequence,
+        window: TERMINAL_OUTPUT_WINDOW,
         onError: (error) => {
-          if (!stale()) sink.system(error.message);
+          if (stale()) return;
+          // Too far behind the output: read the terminal again from what it keeps.
+          // Each time takes 16 MiB of output the client did not show, so a
+          // flood re-reads at most that often (accepted, D470).
+          if (error.code === "SUBSCRIPTION_OVERFLOW") {
+            void attach().catch((failure: unknown) => sink.system((failure as Error).message));
+          } else sink.system(error.message);
         },
       },
       (event) => {
@@ -159,8 +173,7 @@ export function attachTerminal(options: {
             sink.reset();
             break;
           case TerminalEvents.output:
-            sink.write((event.payload as { data: string }).data, false);
-            break;
+            return sink.write((event.payload as { data: string }).data, false);
           case TerminalEvents.exited:
             end("exited");
             break;

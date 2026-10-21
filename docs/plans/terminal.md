@@ -356,18 +356,26 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
   only when the size in cells changed.
 
 - **D470. Flow control: acknowledged output windows**, T3's
-  `withTerminalOutputWindow`. `rpc.subscribe` takes an optional
-  `window: {events, bytes}`; with it the server has at most that many
-  events and bytes (as sent, JSON) of the subscription unacknowledged, and
-  the client acknowledges each event with the notification
-  `rpc.ack {subscription, sequence}` once its handler is done (a handler
-  that returns a promise, such as a terminal writing to xterm, acknowledges
-  when it settles). Events beyond the window wait on the server. Waiting
-  events are bounded: past 16 MiB the server ends the subscription with
-  the notification `rpc.subscription.ended {subscription, error}` (code
-  `SUBSCRIPTION_OVERFLOW`), and the client reports it to `onError`; the
+  `withTerminalOutputWindow`. `rpc.subscribe` takes an optional `window:
+  {events, bytes}`; with it the server has at most that many events, and
+  characters of their JSON as sent, of the subscription unacknowledged
+  (one event larger than the window still goes alone), and the client
+  acknowledges with the notification `rpc.ack {subscription, sequence}`
+  once a handler is done (a handler that returns a promise, such as a
+  terminal writing to xterm, when it settles; one that throws or rejects
+  is done too; a rejection is the handler's to report). Acknowledgements
+  are cumulative, so the client acknowledges only the settled events at
+  the front, in the order they came, and acknowledges an event resent
+  after a reconnect without handling it again. Events beyond the window
+  wait on the server. Waiting events are bounded: past 16 MiB the server
+  ends the subscription with the notification `rpc.subscription.ended
+  {subscription, error}` (code `SUBSCRIPTION_OVERFLOW`), and the client
+  reports it to `onError`; a backlog past the bound before the
+  subscription started fails `rpc.subscribe` itself with that code. The
   terminal client then attaches again from a snapshot, which is bounded by
-  the scrollback. The terminal client asks for T3's window, 8 events or
+  the scrollback; a shell that floods faster than the client shows it
+  re-reads once per 16 MiB it could not show, with the screen reset each
+  time (accepted). The terminal client asks for T3's window, 8 events or
   64 KiB. Old clients send no window and get every event as it comes; old
   servers ignore the window and the notifications, so both mix.
 
@@ -430,6 +438,19 @@ limit), `apps/web/test/terminal-attach.test.ts` (a re-attach against a
 1.0 node opening a new shell, `restartIfNotRunning`) and the NixOS check
 of D471.
 
+The proof of D470: `packages/rpc/test/flow-control.test.ts` (on the wire:
+at most the window unacknowledged, live events waiting too, one
+acknowledgement freeing several, the window in JSON characters, no window
+sending everything, an overflow ending the subscription with
+`rpc.subscription.ended`; through the client: an event acknowledged when
+its handler's promise settles, the overflow reaching `onError`, a backlog
+past the bound failing the subscription, a later event settled first
+acknowledging nothing, the window going on after a reconnect) and
+`apps/web/test/terminal-attach.test.ts` (a terminal whose output is not
+shown has at most T3's 8 events on their way while the shell printed
+20000 lines, and gets the rest once it shows them; an ended subscription
+read again from a snapshot).
+
 ## Deferred
 
 - Terminals of threads on mesh members (D47): calls could be relayed with
@@ -443,10 +464,11 @@ of D471.
 - Windows itself (D468): the PowerShell process table is tested with a
   fake runner only; no Windows machine ran it. PowerShell's cold start may
   pass T3's 1.5 s timeout, which the poll's back-off (D144) then absorbs.
+- A terminal that cannot keep up with a flood (D470) re-reads its
+  snapshot once per 16 MiB with no back-off; T3 blocks the stream instead.
 - `terminals.write` is in effect shell access as the node's user, whoever
   holds it (an MCP client included); grant it only where that is meant.
   D461 narrows what a shell inherits, not what it can read on the machine.
-- Flow control (D470): lands in the next PR of this workstream.
 - Links, the selection menu and "Add to chat", fonts, the right-panel
   terminal and hidden terminals kept mounted (D472–D474): land in the
   following PR of this workstream.
