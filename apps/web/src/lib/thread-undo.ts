@@ -143,5 +143,3 @@ export function createThreadUndo(options: {
     },
   };
 }
-
-export type ThreadUndo = ReturnType<typeof createThreadUndo>;
