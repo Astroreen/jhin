@@ -183,6 +183,12 @@ describe("a picked pull request or thread in the prompt", () => {
     ).toEqual(["pull-request"]);
   });
 
+  it("encodes a thread address that holds a parenthesis or a space", () => {
+    const link = serializeComposerThreadLink("Cache", "jhin://node (a)/threads/t)1");
+    const [segment] = splitPromptIntoSegments(link);
+    expect(segment).toMatchObject({ type: "reference", kind: "thread", source: link });
+  });
+
   it("is a link labelled with the thread's title to its jhin:// address", () => {
     const link = serializeComposerThreadLink(
       "  Fix [the] cache\n now ",

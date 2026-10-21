@@ -35,9 +35,8 @@ const PULL_REQUESTS_UNAVAILABLE = new Set([
   "ACTION_UNAVAILABLE",
   "NOT_A_REPOSITORY",
   "PROJECT_NOT_FOUND",
+  // The kernel's code for a command no plugin registered.
   "COMMAND_NOT_FOUND",
-  "METHOD_NOT_FOUND",
-  "UNKNOWN_COMMAND",
 ]);
 
 const errorCode = (error: unknown) => String((error as { code?: unknown } | null)?.code);

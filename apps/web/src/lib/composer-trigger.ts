@@ -68,7 +68,7 @@ export function serializeComposerPullRequestLink(pullRequest: {
  * `jhin://<nodeId>/threads/<id>` address (D24), as T3 links a thread context.
  */
 export function serializeComposerThreadLink(title: string, address: string): string {
-  return `[${sanitizeReferenceLabel(title, "thread")}](${address})`;
+  return `[${sanitizeReferenceLabel(title, "thread")}](${encodeMarkdownLinkDestination(address)})`;
 }
 
 const THREAD_ADDRESS_REGEX = /^jhin:\/\/[^/\s]+\/threads\/[^/\s?#]+$/;

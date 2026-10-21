@@ -428,11 +428,23 @@ describe("wrapping a selection (D844)", () => {
     const end = tiptap.state.doc.content.size - 1;
     // The space after the chip and "next".
     tiptap.commands.setTextSelection({ from: end - 5, to: end });
-    tiptap.commands.focus();
     expect(tiptap.state.doc.textBetween(end - 5, end)).toBe(" next");
-    await userEvent.keyboard("(");
-    // Replaced, as T3 does, rather than wrapped.
-    await editor.reported("[a.ts](src/a.ts)(");
+    // The editor's text input handler declines, so the browser's plain replace runs, as T3's
+    // does. Asked directly: how a browser replaces a range beside a chip varies.
+    const view = tiptap.view;
+    const wrapped = view.someProp("handleTextInput", (handle) =>
+      handle(view, end - 5, end, "(", () => view.state.tr),
+    );
+    expect(wrapped).toBeFalsy();
+    expect(editor.value()).toBe("[a.ts](src/a.ts) next");
+    // Without the chip's space, the same selection wraps.
+    tiptap.commands.setTextSelection({ from: end - 4, to: end });
+    expect(
+      view.someProp("handleTextInput", (handle) =>
+        handle(view, end - 4, end, "(", () => view.state.tr),
+      ),
+    ).toBe(true);
+    await editor.reported("[a.ts](src/a.ts) (next)");
   });
 });
 
