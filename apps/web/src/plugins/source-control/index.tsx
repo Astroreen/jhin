@@ -5,6 +5,7 @@ import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  THREAD_DETAILS_SLOT,
   THREADS_CAPABILITY,
   type ChatComposerContextProps,
   type ChatHeaderActionProps,
@@ -131,7 +132,23 @@ export const sourceControlPlugin = builtin(
         );
       }
 
-      const { Branch, PullRequestIndicator, DiffCount } = createCardIndicators(services);
+      const { Branch, PullRequestIndicator, DiffCount, BranchDetail, BranchMismatch } =
+        createCardIndicators(services);
+      // The hover card: the branch, and T3's warning when another one is checked out.
+      context.subscriptions.add(
+        slots.contribute<ThreadIndicatorProps>(THREAD_DETAILS_SLOT, {
+          id: "jhin.source-control.branch-detail",
+          order: 0,
+          component: BranchDetail,
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute<ThreadIndicatorProps>(THREAD_DETAILS_SLOT, {
+          id: "jhin.source-control.branch-mismatch",
+          order: 10,
+          component: BranchMismatch,
+        }),
+      );
       // T3's order on the card: branch, (a terminal), pull request, diff.
       context.subscriptions.add(
         slots.contribute<ThreadIndicatorProps>("sidebar.thread.indicators", {

@@ -297,6 +297,13 @@ export interface ChatDrawerProps {
 }
 
 /**
+ * The `sidebar.thread.details` slot gets the same props: lines of the card
+ * T3 Code shows while the pointer rests on a thread (its hover card), after
+ * the project and the node and before the agent, such as the thread's branch.
+ */
+export const THREAD_DETAILS_SLOT = "sidebar.thread.details";
+
+/**
  * What the `sidebar.thread.indicators` slot gives each contribution: a
  * thread card and where its thread lives. Contributions render on the card's
  * last line, between where T3 Code shows the branch and the node's and

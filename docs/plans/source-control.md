@@ -427,10 +427,12 @@ with screenshots).
   changes. Mirroring it needs the mesh to share a stream it does not know.
 - Trimming the `source-control` stream: statuses are appended only on change,
   but `storage.eventlog@1` has no truncation, so the history only grows.
-- Settling a thread on a merged pull request (T3's sidebar), the card's
-  branch-mismatch warning (T3's tooltip "You're currently checked out on
-  another branch.") and the terminal indicator (the terminal plugin
-  contributes it to `sidebar.thread.indicators`).
+- Settling a thread on a merged pull request (T3's sidebar) and the
+  terminal indicator (the terminal plugin contributes it to
+  `sidebar.thread.indicators`). The branch-mismatch warning is done
+  (`t3-parity.md` D443): source control contributes the hover card's
+  branch line and the warning to `sidebar.thread.details`, the hover card's
+  twin of `sidebar.thread.indicators`.
 - Scoped permissions. Done in `security.md` (D410–D416): a device token
   holds `git.read` or `git.write` only when granted (`git.*` for both), and
   the `source-control` stream needs `git.read` (D415).

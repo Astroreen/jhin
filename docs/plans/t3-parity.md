@@ -794,6 +794,27 @@ nothing while the member is out of reach) and `e2e/tests/mesh.spec.ts` ("D442": 
 menu in a's settings changes b's icon, kept in b's node file; once b is
 stopped its menu says so and its kinds are disabled), with a screenshot.
 
+- **D443. The hover card names the thread's branch and warns when another
+  one is checked out**, as T3's SidebarThreadTooltip does: a line with the
+  branch (GitBranchIcon, middle-truncated) and under it, in the warning
+  tone, "You're currently checked out on another branch." when the
+  project's checkout has a branch and it is not the thread's (T3's
+  resolveLocalCheckoutBranchMismatch). The lines come from the new slot
+  `sidebar.thread.details` (`THREAD_DETAILS_SLOT` in `@jhin/client-api`,
+  the props of `sidebar.thread.indicators`), placed after the project and
+  the node and before the agent; `jhin.source-control` contributes
+  `jhin.source-control.branch-detail` and
+  `jhin.source-control.branch-mismatch`. T3 leaves a thread with a worktree
+  of its own out: here no thread has one yet (`source-control.md`, W3), and
+  the rule takes that exception when it does.
+
+The proof of D443: `apps/web/test/source-control.browser.test.tsx` (the
+branch line and the warning; none while the branch is checked out, without
+a branch, a repository or a checked-out branch) and
+`e2e/tests/source-control.spec.ts` (git switches the project's checkout
+under the thread, the hover card warns after the project and branch lines,
+and stops once switched back), with a screenshot.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,

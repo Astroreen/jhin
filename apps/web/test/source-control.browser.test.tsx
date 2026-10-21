@@ -166,6 +166,40 @@ describe("a thread card's source control indicators", () => {
   });
 });
 
+describe("a thread's hover card lines (D443)", () => {
+  const props = { target, thread, active: false };
+  it("names the thread's branch and warns when the project has another one checked out", () => {
+    const elsewhere = createCardIndicators(services(viewWith(status({ branch: "main" }))).value);
+    const card = mount(
+      <div>
+        <elsewhere.BranchDetail {...props} />
+        <elsewhere.BranchMismatch {...props} />
+      </div>,
+    );
+    expect(card.container.querySelector("[data-thread-branch-detail]")!.textContent).toBe(
+      "feature/toolbar",
+    );
+    expect(card.container.querySelector("[data-thread-branch-mismatch]")!.textContent).toBe(
+      "You're currently checked out on another branch.",
+    );
+    card.unmount();
+  });
+
+  it("does not warn while the thread's branch is checked out, nor without a branch or a repository", () => {
+    for (const view of [
+      viewWith(status()),
+      viewWith(status({ branch: "main" }), null),
+      viewWith(status({ isRepo: false, branch: null })),
+      viewWith(status({ branch: null })),
+    ]) {
+      const { BranchMismatch } = createCardIndicators(services(view).value);
+      const card = mount(<BranchMismatch {...props} />);
+      expect(card.container.childElementCount).toBe(0);
+      card.unmount();
+    }
+  });
+});
+
 describe("the diff panel", () => {
   const diff: Diff = {
     projectId: "app",

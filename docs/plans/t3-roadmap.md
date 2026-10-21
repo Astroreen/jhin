@@ -151,9 +151,9 @@ account is out of scope.
 Everything left in the sidebar item of `t3-parity.md` Deferred (settling on a
 merged pull request, per-thread auto-settle, the node's sweep, one write per
 drop, the Working shelf, multi-select, undo of a pin, collision detection,
-jump-number hints, discarding a draft from its card), the branch-mismatch
-warning, the Icon submenu for mesh members, warnings for conflicting
-keybindings and code splitting of the web client.
+jump-number hints, discarding a draft from its card) and code splitting of
+the web client. Done: warnings for conflicting keybindings (D441), the Icon
+submenu for mesh members (D442) and the branch-mismatch warning (D443).
 
 ### W15. Terminal follow-ups
 
