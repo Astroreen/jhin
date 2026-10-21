@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   builderConfig,
   nightlyVersion,
+  packageOptions,
   releaseVersion,
   SIGNING_SECRETS,
   signing,
@@ -21,8 +22,9 @@ describe("versions", () => {
   it("keeps releases on the stable track", () => {
     expect(releaseVersion("v1.2.3")).toBe("1.2.3");
     expect(updateChannel("1.2.3")).toBe("latest");
-    expect(updateChannel("1.2.3-beta.1")).toBe("latest");
     expect(() => releaseVersion("main")).toThrow("Invalid release version");
+    // A suffix would be a GitHub prerelease, which the stable feed never offers.
+    expect(() => releaseVersion("v1.2.3-rc.1")).toThrow("Invalid release version");
   });
 });
 
@@ -133,5 +135,27 @@ describe("builderConfig", () => {
         certificateProfileName: "x",
       },
     });
+  });
+});
+
+describe("packageOptions", () => {
+  const host = { platform: "darwin", arch: "arm64" };
+
+  it("packages for the host by default", () => {
+    expect(packageOptions({}, host)).toEqual({ platform: "mac", arch: "arm64" });
+    expect(packageOptions({ platform: "mac", arch: "arm64" }, host)).toEqual({
+      platform: "mac",
+      arch: "arm64",
+    });
+  });
+
+  it("refuses unknown values and cross builds", () => {
+    expect(() => packageOptions({ platform: "constructor" }, host)).toThrow("Unknown platform");
+    expect(() => packageOptions({ arch: "ia32" }, host)).toThrow("Unknown arch");
+    expect(() => packageOptions({ arch: "x64" }, host)).toThrow("build on that system");
+    expect(() => packageOptions({ platform: "win" }, host)).toThrow("build on that system");
+    expect(() => packageOptions({}, { platform: "freebsd", arch: "x64" })).toThrow(
+      "Cannot package",
+    );
   });
 });

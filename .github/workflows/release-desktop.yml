@@ -1,14 +1,19 @@
 # Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): .github/workflows/release.yml
-# and release-desktop.yml, reduced to the desktop app (docs/plans/desktop.md, D924).
+# and release-desktop.yml, reduced to the desktop app (docs/plans/desktop.md, D925).
 #
 # Builds the desktop app on Linux, macOS and Windows and publishes the
 # installers with electron-updater's feed files to this repository's releases,
 # which is where the app looks for updates (D519):
-#   - a pushed tag v1.2.3 publishes a stable release (`latest*.yml`);
+#   - a pushed tag v1.2.3, or "stable", publishes the stable release of
+#     apps/desktop/package.json's version (`latest*.yml`) from a commit on main;
 #   - "nightly" publishes the prerelease v<version>-nightly.<date>.<run> (`nightly*.yml`);
-#   - "dry-run" (the default) builds without a feed and publishes nothing.
+#   - "dry-run" (the default, and every pull request that changes packaging)
+#     builds without a feed and publishes nothing.
 # Each platform signs only when all its secrets are set (scripts/desktop-release.ts,
-# SIGNING_SECRETS); without them the installers are unsigned.
+# SIGNING_SECRETS). A stable release fails on macOS and Windows without them,
+# unless "allow_unsigned" is chosen: an unsigned macOS app cannot update itself.
+# A failed run is finished with "Re-run failed jobs": publishing uploads into a
+# release that already exists.
 
 name: Release desktop
 
@@ -16,6 +21,13 @@ on:
   push:
     tags:
       - "v*.*.*"
+  pull_request:
+    paths:
+      - .github/workflows/release-desktop.yml
+      - scripts/desktop-release.ts
+      - scripts/package-desktop.ts
+      - apps/desktop/package.json
+      - apps/desktop/resources/**
   workflow_dispatch:
     inputs:
       channel:
@@ -27,17 +39,18 @@ on:
           - dry-run
           - nightly
           - stable
-      version:
-        description: "Stable version (for example 1.2.3); defaults to apps/desktop/package.json"
+      allow_unsigned:
+        description: "Publish a stable release without macOS and Windows signing"
         required: false
-        type: string
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
   group: release-desktop-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   meta:
@@ -51,11 +64,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          sparse-checkout: |
-            scripts
-            apps/desktop/package.json
-            package.json
-          sparse-checkout-cone-mode: false
+          # The whole history: a stable release must come from a commit on main.
+          fetch-depth: 0
+          filter: blob:none
       # Node 24 runs the TypeScript helpers as they are.
       - uses: actions/setup-node@v6
         with:
@@ -63,20 +74,25 @@ jobs:
       - id: meta
         name: Resolve the version
         env:
-          CHANNEL: ${{ github.event_name == 'push' && 'stable' || inputs.channel }}
-          INPUT_VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ github.event_name == 'push' && 'stable' || inputs.channel || 'dry-run' }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
+          set -euo pipefail
+          if [[ "$CHANNEL" == "stable" ]] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "A stable release must be built from a commit on main; $GITHUB_SHA is not." >&2
+            exit 1
+          fi
           node --input-type=module -e '
             import * as Fs from "node:fs";
             import { nightlyVersion, releaseVersion, updateChannel } from "./scripts/desktop-release.ts";
-            const { CHANNEL, INPUT_VERSION, RUN_NUMBER, GITHUB_REF_NAME, GITHUB_EVENT_NAME, GITHUB_OUTPUT } = process.env;
-            const base = JSON.parse(Fs.readFileSync("apps/desktop/package.json", "utf8")).version;
-            const version =
-              CHANNEL === "nightly" ? nightlyVersion(base, new Date(), Number(RUN_NUMBER))
-              : GITHUB_EVENT_NAME === "push" ? releaseVersion(GITHUB_REF_NAME)
-              : releaseVersion(INPUT_VERSION || base);
-            const prerelease = CHANNEL === "nightly" || version.includes("-");
+            const { CHANNEL, RUN_NUMBER, GITHUB_REF_NAME, GITHUB_EVENT_NAME, GITHUB_OUTPUT } = process.env;
+            const base = releaseVersion(JSON.parse(Fs.readFileSync("apps/desktop/package.json", "utf8")).version);
+            // A tag must name the version the app reports.
+            if (GITHUB_EVENT_NAME === "push" && releaseVersion(GITHUB_REF_NAME) !== base) {
+              throw new Error(`Tag ${GITHUB_REF_NAME} does not match apps/desktop/package.json (${base})`);
+            }
+            const version = CHANNEL === "nightly" ? nightlyVersion(base, new Date(), Number(RUN_NUMBER)) : base;
+            const prerelease = CHANNEL === "nightly";
             Fs.appendFileSync(GITHUB_OUTPUT, `version=${version}\nchannel=${CHANNEL}\nprerelease=${prerelease}\n`);
             console.log(`${CHANNEL} ${version} (${updateChannel(version)} feed files)`);
           '
@@ -101,6 +117,7 @@ jobs:
         env:
           VERSION: ${{ needs.meta.outputs.version }}
           REPOSITORY: ${{ needs.meta.outputs.channel != 'dry-run' && github.repository || '' }}
+          REQUIRE_SIGNING: ${{ needs.meta.outputs.channel == 'stable' && !inputs.allow_unsigned }}
           # macOS: a Developer ID Application certificate and an App Store Connect API key.
           CSC_LINK: ${{ matrix.platform == 'mac' && secrets.CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'mac' && secrets.CSC_KEY_PASSWORD || '' }}
@@ -125,6 +142,7 @@ jobs:
           fi
           args=(--platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --version "$VERSION")
           if [[ -n "$REPOSITORY" ]]; then args+=(--repository "$REPOSITORY"); fi
+          if [[ "$REQUIRE_SIGNING" == "true" ]]; then args+=(--require-signing); fi
           node scripts/package-desktop.ts "${args[@]}"
       - name: Upload installers
         uses: actions/upload-artifact@v7
@@ -161,6 +179,11 @@ jobs:
           PRERELEASE: ${{ needs.meta.outputs.prerelease }}
         run: |
           set -euo pipefail
+          # A re-run uploads into the release its first attempt created.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber release/*
+            exit 0
+          fi
           flags=(--repo "$GITHUB_REPOSITORY" --title "Jhin $TAG" --generate-notes --target "$GITHUB_SHA")
           if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease --latest=false); fi
           gh release create "$TAG" "${flags[@]}" release/*

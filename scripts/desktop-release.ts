@@ -2,7 +2,7 @@
 // configuration of scripts/build-desktop-artifact.ts and the signing checks of
 // .github/workflows/release-desktop.yml.
 //
-// Pure helpers of scripts/package-desktop.ts (docs/plans/desktop.md, D921–D924),
+// Pure helpers of scripts/package-desktop.ts (docs/plans/desktop.md, D922–D925),
 // unit tested in scripts/desktop-release.test.ts.
 
 export type DesktopPlatform = "linux" | "mac" | "win";
@@ -15,7 +15,7 @@ export const DESKTOP_APP_ID = "ai.jhin.desktop";
 export const UPDATE_REPOSITORY = "Astroreen/jhin";
 
 const NIGHTLY_VERSION = /^\d+\.\d+\.\d+-nightly\.\d{8}\.\d+$/;
-const RELEASE_VERSION = /^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$/;
+const RELEASE_VERSION = /^\d+\.\d+\.\d+$/;
 
 /** A nightly build updates from the `nightly` feed files, any other build from `latest` (T3). */
 export function updateChannel(version: string): "latest" | "nightly" {
@@ -30,14 +30,18 @@ export function nightlyVersion(base: string, date: Date, run: number): string {
   return `${base}-nightly.${day}.${run}`;
 }
 
-/** Checks a version given to a release (a tag without its `v`, or the dispatch input). */
+/**
+ * Checks a stable version (a tag without its `v`). Only `x.y.z`: a suffix would
+ * make a GitHub prerelease that the stable feed never offers, and nightlies have
+ * their own track.
+ */
 export function releaseVersion(raw: string): string {
   const version = raw.startsWith("v") ? raw.slice(1) : raw;
   if (!RELEASE_VERSION.test(version)) throw new Error(`Invalid release version: ${raw}`);
   return version;
 }
 
-/** The secrets a signed build needs on each system (T3's names, D923). */
+/** The secrets a signed build needs on each system (T3's names, D924). */
 export const SIGNING_SECRETS: Readonly<Record<DesktopPlatform, readonly string[]>> = {
   // A Developer ID Application certificate (.p12, base64) and an App Store
   // Connect API key (the .p8's text) for notarization.
@@ -84,7 +88,7 @@ export interface BuilderConfigInput {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 
-/** The electron-builder configuration of one platform's build (D921–D923). */
+/** The electron-builder configuration of one platform's build (D922–D924). */
 export function builderConfig(input: BuilderConfigInput): Record<string, unknown> {
   const channel = updateChannel(input.version);
   const config: Record<string, unknown> = {
@@ -182,4 +186,40 @@ function githubFeed(repository: string, channel: "nightly" | undefined): Record<
     releaseType: channel === "nightly" ? "prerelease" : "release",
     ...(channel === undefined ? {} : { channel }),
   };
+}
+
+export interface PackageOptions {
+  readonly platform: DesktopPlatform;
+  readonly arch: DesktopArch;
+}
+
+const HOST_PLATFORMS: Readonly<Record<string, DesktopPlatform>> = {
+  linux: "linux",
+  darwin: "mac",
+  win32: "win",
+};
+
+/**
+ * The platform and arch to package: the host's own. The staged app installs
+ * native addons for the machine it runs on and nothing is rebuilt (D922), so a
+ * cross build would ship the wrong addon.
+ */
+export function packageOptions(
+  values: { readonly platform?: string | undefined; readonly arch?: string | undefined },
+  host: { readonly platform: string; readonly arch: string },
+): PackageOptions {
+  const own = HOST_PLATFORMS[host.platform];
+  if (own === undefined || (host.arch !== "x64" && host.arch !== "arm64")) {
+    throw new Error(`Cannot package on ${host.platform} ${host.arch}`);
+  }
+  const platform = values.platform ?? own;
+  if (!Object.hasOwn(SIGNING_SECRETS, platform)) throw new Error(`Unknown platform: ${platform}`);
+  const arch = values.arch ?? host.arch;
+  if (arch !== "x64" && arch !== "arm64") throw new Error(`Unknown arch: ${arch}`);
+  if (platform !== own || arch !== host.arch) {
+    throw new Error(
+      `Cannot package ${platform} ${arch} on ${own} ${host.arch}: build on that system`,
+    );
+  }
+  return { platform: own, arch: host.arch };
 }

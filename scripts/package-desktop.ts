@@ -1,7 +1,8 @@
-// Packages the desktop app with electron-builder (docs/plans/desktop.md, D921–D923).
+// Packages the desktop app with electron-builder (docs/plans/desktop.md, D922–D924).
 //
 //   node scripts/package-desktop.ts [--platform linux|mac|win] [--arch x64|arm64]
 //                                   [--version 1.2.3] [--repository owner/repo] [--dir]
+//                                   [--require-signing]
 //
 // Builds the app's main process and preload, packs `jhin-ai` and
 // `@jhin/plugin-desktop` with every workspace package they need (scripts/pack.ts,
@@ -14,7 +15,8 @@
 // this repository); without it the app has none and shows updates as disabled.
 // `--dir` builds the unpacked app only, for a local check. The build signs only
 // when every secret of the platform is set (scripts/desktop-release.ts,
-// SIGNING_SECRETS); none set builds unsigned, some set is an error.
+// SIGNING_SECRETS); none set builds unsigned (an error with --require-signing),
+// some set is an error. It packages for the machine it runs on only.
 
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
@@ -22,13 +24,7 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 import { parseArgs } from "node:util";
 
-import {
-  builderConfig,
-  type DesktopArch,
-  type DesktopPlatform,
-  signing,
-  SIGNING_SECRETS,
-} from "./desktop-release.ts";
+import { builderConfig, packageOptions, signing, SIGNING_SECRETS } from "./desktop-release.ts";
 import { lockedPins } from "./packing.ts";
 import { closure, type Manifest, readJson, ROOT, workspacePackages } from "./workspace-packages.ts";
 
@@ -40,14 +36,22 @@ function step(text: string): void {
   process.stdout.write(`\n== ${text}\n`);
 }
 
+/** Quotes an argument for cmd.exe; Jhin's paths and arguments hold no `"` or `%`. */
+function quote(arg: string): string {
+  if (/["%]/.test(arg)) throw new Error(`Cannot pass ${arg} through cmd.exe`);
+  return /[\s&|<>^()]/.test(arg) ? `"${arg}"` : arg;
+}
+
 function run(command: string, args: readonly string[], cwd: string, env = process.env): void {
-  const result = ChildProcess.spawnSync(command, args, {
-    cwd,
-    env,
-    stdio: "inherit",
-    // pnpm and electron-builder are .cmd shims on Windows, which only a shell resolves.
-    shell: windows,
-  });
+  // pnpm and electron-builder are .cmd shims on Windows, which only cmd.exe runs;
+  // the line is quoted here rather than joined unquoted by `shell: true`.
+  const result = windows
+    ? ChildProcess.spawnSync(
+        process.env["ComSpec"] ?? "cmd.exe",
+        ["/d", "/s", "/c", `"${[command, ...args].map(quote).join(" ")}"`],
+        { cwd, env, stdio: "inherit", windowsVerbatimArguments: true },
+      )
+    : ChildProcess.spawnSync(command, args, { cwd, env, stdio: "inherit" });
   if (result.status !== 0)
     throw new Error(`${command} ${args.join(" ")} exited with ${result.status}`);
 }
@@ -60,28 +64,30 @@ function catalogVersion(name: string): string {
   return version;
 }
 
-const PLATFORMS: Record<string, DesktopPlatform> = { linux: "linux", darwin: "mac", win32: "win" };
-
 function main(): void {
   const { values } = parseArgs({
     options: {
-      platform: { type: "string", default: PLATFORMS[process.platform] },
-      arch: { type: "string", default: process.arch },
+      platform: { type: "string" },
+      arch: { type: "string" },
       version: { type: "string" },
       repository: { type: "string" },
       dir: { type: "boolean", default: false },
+      "require-signing": { type: "boolean", default: false },
     },
   });
-  const platform = values.platform as DesktopPlatform;
-  if (!(platform in SIGNING_SECRETS)) throw new Error(`Unknown platform: ${values.platform}`);
-  const arch = values.arch as DesktopArch;
-  if (arch !== "x64" && arch !== "arm64") throw new Error(`Unknown arch: ${values.arch}`);
+  const { platform, arch } = packageOptions(values, process);
   const desktop = readJson<Manifest & { description: string }>(Path.join(DESKTOP, "package.json"));
   const version = values.version ?? desktop.version!;
 
   const sign = signing(platform, process.env);
   if (sign.missing.length > 0) {
     throw new Error(`${platform} signing is half configured; missing: ${sign.missing.join(", ")}`);
+  }
+  // A stable release must not ship unsigned because its secrets went missing (D924).
+  if (values["require-signing"] && SIGNING_SECRETS[platform].length > 0 && !sign.signed) {
+    throw new Error(
+      `${platform} signing is required but not configured; set ${SIGNING_SECRETS[platform].join(", ")}`,
+    );
   }
   process.stdout.write(
     `${platform} ${arch} ${version}, ${sign.signed ? "signed" : "unsigned"}, ` +

@@ -3,7 +3,7 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/*.ts", "vite.config.ts"],
-      // scripts/package-desktop.ts runs its binary (docs/plans/desktop.md, D921).
+      // scripts/package-desktop.ts runs its binary (docs/plans/desktop.md, D922).
       "ignoreDependencies": ["electron-builder"],
     },
     "packages/*": {
