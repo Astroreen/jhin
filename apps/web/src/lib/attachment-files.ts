@@ -190,8 +190,8 @@ export function isHeicImageFile(file: Pick<File, "name" | "type">): boolean {
 
 /**
  * T3's Paste as Text from the desktop app's Edit menu (D946): the menu arms the
- * composer, then the app pastes. A short deadline bridges the two, and applies
- * to one paste only. Not kept across reloads: it lasts a second.
+ * composer, then the app pastes. A short deadline bridges the two, and the
+ * next paste anywhere spends it. Not kept across reloads: it lasts a second.
  */
 let pasteAsTextDeadline = 0;
 

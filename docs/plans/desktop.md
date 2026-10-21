@@ -284,7 +284,8 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   `chat.composer.paste-as-text` (when the chat plugin is there) and then
   asks the app over the bridge's optional `pasteAsText()` to paste into the
   focused page: armed before the paste, the composer keeps a large paste
-  inline for that one paste within a second, instead of attaching it as
+  inline for the one paste that follows within a second (a paste elsewhere
+  spends it too), instead of attaching it as
   `pasted-text.txt`.
 
 ## Deferred

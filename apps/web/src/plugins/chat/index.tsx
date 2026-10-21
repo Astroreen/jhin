@@ -70,7 +70,7 @@ import {
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { registerThreadDetails } from "./thread-details.tsx";
-import { armPasteAsText } from "../../lib/attachment-files.ts";
+import { armPasteAsText, consumeArmedPasteAsText } from "../../lib/attachment-files.ts";
 import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
@@ -463,6 +463,13 @@ export const chatPlugin = builtin(
           armPasteAsText();
           return {};
         },
+      });
+      // The paste that follows spends the arm wherever it lands: the composer reads
+      // it first, any other field's paste bubbles here and clears it.
+      const spendPasteAsText = () => void consumeArmedPasteAsText();
+      window.addEventListener("paste", spendPasteAsText);
+      context.subscriptions.add({
+        dispose: () => window.removeEventListener("paste", spendPasteAsText),
       });
       // T3's "Discard draft" (D451): a new thread's draft card goes, with an undo.
       const undo = context.services.tryGet<ThreadUndoService>(UNDO_CAPABILITY);
