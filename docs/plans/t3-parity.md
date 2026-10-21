@@ -1063,9 +1063,10 @@ for, built from the same rewind.
   readable when its parent is deleted or lives on a node that is away. The
   copy is one read of the parent's log, a consistent state of it; a fork's
   own turns are those without `inheritedAt`, so they stay apart from the
-  copied ones even once the fork point is rolled back in the fork. A
-  running or waiting turn cannot be forked (`TURN_IN_PROGRESS`, T3's "in-progress
-  runs cannot be forked"). The agent's own session is not copied: Claude
+  copied ones even once the fork point is rolled back in the fork. The
+  turn forked at cannot be running or waiting (`TURN_IN_PROGRESS`, T3's
+  "in-progress runs cannot be forked"); an earlier ended turn can be forked
+  while a later one runs, and the copy stops at it. The agent's own session is not copied: Claude
   starts the fork's session with the transcript (D222); T3's native session
   fork is deferred. The latest-turn final answer and every ended turn's
   final answer get "Fork from this response" (`GitForkIcon`); client
@@ -1090,7 +1091,8 @@ for, built from the same rewind.
   rollback, "Edit from here") gives the mark back, and regenerating it
   merges into the new turn again. Refused for a
   thread that is not a fork (`THREAD_NOT_FORK`), a parent that is gone
-  (`THREAD_NOT_FOUND`) or a fork with no ended turn of its own
+  (`THREAD_NOT_FOUND`), an archived parent (`THREAD_ARCHIVED`: it takes no
+  message to deliver the merge with) or a fork with no ended turn of its own
   (`TURN_NOT_FOUND`). The fork's header gets T3's `GitMergeIcon` button
   "Merge back to <parent>" ("Merge this conversation back into <parent>";
   disabled: "Complete a run in this fork before merging it back") in

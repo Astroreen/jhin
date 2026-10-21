@@ -3296,11 +3296,15 @@ export default definePlugin({
           );
         }
         const parentId = fork.forkedFrom.threadId;
-        return updateThread(parentId, (parent) => ({
-          ...parent,
-          // A newer merge of the same or another fork replaces one not yet delivered.
-          pendingMergeBack: { id: Crypto.randomUUID(), threadId, turnId: target, at: now() },
-        }));
+        return updateThread(parentId, (parent) => {
+          // An archived parent takes no message, so a mark there would never be delivered.
+          if (parent.archivedAt !== undefined) throw archivedError(parentId);
+          return {
+            ...parent,
+            // A newer merge of the same or another fork replaces one not yet delivered.
+            pendingMergeBack: { id: Crypto.randomUUID(), threadId, turnId: target, at: now() },
+          };
+        });
       },
     });
 

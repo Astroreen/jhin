@@ -756,6 +756,10 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     });
     const fork = await client.call<Fork>("threads.fork", { threadId: parent.id });
     await turn(client, fork.id, "two");
+    await client.call("threads.archive", { threadId: parent.id });
+    await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
+      code: "THREAD_ARCHIVED",
+    });
     await client.call("threads.delete", { threadId: parent.id });
     await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
       code: "THREAD_NOT_FOUND",
