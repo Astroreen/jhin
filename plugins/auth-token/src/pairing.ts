@@ -25,16 +25,14 @@ const hash = (code: string) => Crypto.createHash("sha256").update(code).digest("
 /** Uppercase, without the spaces and dashes people type between groups. */
 export const normalizeCode = (code: string): string => code.replace(/[\s-]/g, "").toUpperCase();
 
-/** Twelve characters of the alphabet, by rejection sampling so each is equally likely. */
+/**
+ * Twelve characters of the alphabet, each from one random byte: 256 is a
+ * multiple of the alphabet's 32 characters, so `byte % 32` is uniform.
+ */
 function newCode(): string {
-  let code = "";
-  // 256 is a multiple of the alphabet's 32 characters, so every byte maps evenly.
-  while (code.length < PAIRING_CODE_LENGTH) {
-    for (const byte of Crypto.randomBytes(PAIRING_CODE_LENGTH)) {
-      if (code.length < PAIRING_CODE_LENGTH) code += PAIRING_ALPHABET[byte % 32];
-    }
-  }
-  return code;
+  return [...Crypto.randomBytes(PAIRING_CODE_LENGTH)]
+    .map((byte) => PAIRING_ALPHABET[byte % PAIRING_ALPHABET.length])
+    .join("");
 }
 
 export interface PairingStore {

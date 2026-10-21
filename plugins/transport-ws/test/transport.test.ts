@@ -621,6 +621,8 @@ describe("pairing (security.md D419–D422)", () => {
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
     expect((await post(`${httpUrl(node)}/auth/pair`, { nope: 1 })).status).toBe(400);
+    const huge = await post(`${httpUrl(node)}/auth/pair`, { code: "x".repeat(20_000) });
+    expect(huge.status).toBe(413);
 
     // A foreign page refused at /auth/session spends no attempts.
     for (let attempt = 0; attempt < 25; attempt++) {
@@ -633,13 +635,13 @@ describe("pairing (security.md D419–D422)", () => {
       );
       expect(refused.status).toBe(403);
     }
-    // /auth/pair has its own bucket: 19 more (one went to the 400) still answer, then 429.
+    // /auth/pair has its own bucket: 18 more (the 400 and the 413 counted) answer, then 429.
     const statuses: number[] = [];
-    for (let attempt = 0; attempt < 20; attempt++) {
+    for (let attempt = 0; attempt < 19; attempt++) {
       statuses.push((await post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" })).status);
     }
-    expect(statuses.slice(0, 19).every((status) => status === 401)).toBe(true);
-    expect(statuses[19]).toBe(429);
+    expect(statuses.slice(0, 18).every((status) => status === 401)).toBe(true);
+    expect(statuses[18]).toBe(429);
     // The session bucket is untouched.
     expect((await post(`${httpUrl(node)}/auth/session`, { credential: "x" })).status).toBe(401);
   });

@@ -39,16 +39,24 @@ interface IssuedToken {
   readonly expiresAt?: number;
 }
 
+class BodyTooLarge extends Error {}
+
+/** The body as JSON; past `MAX_BODY` it stops reading, so the caller can still answer 413. */
 function readJson(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    let tooLarge = false;
     request.on("data", (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_BODY) request.destroy(new Error("Body too large"));
+      if (size > MAX_BODY) tooLarge = true;
       else chunks.push(chunk);
     });
     request.on("end", () => {
+      if (tooLarge) {
+        reject(new BodyTooLarge());
+        return;
+      }
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       } catch (error) {
@@ -136,7 +144,12 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
   store.add(
     http.route("POST", "/auth/pair", async (request, response) => {
       if (!admit("pair", request, response)) return;
-      const parsed = PairRequest.safeParse(await readJson(request).catch(() => undefined));
+      const body = await readJson(request).catch((error: unknown) => error);
+      if (body instanceof BodyTooLarge) {
+        send(response, 413, { code: "TOO_LARGE", message: "The request body is too large" }, CORS);
+        return;
+      }
+      const parsed = PairRequest.safeParse(body instanceof Error ? undefined : body);
       if (!parsed.success) {
         send(response, 400, { code: "INVALID", message: "Expected { code, label? }" }, CORS);
         return;
@@ -173,7 +186,12 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         return;
       }
       if (!admit("session", request, response)) return;
-      const parsed = SessionRequest.safeParse(await readJson(request).catch(() => undefined));
+      const body = await readJson(request).catch((error: unknown) => error);
+      if (body instanceof BodyTooLarge) {
+        send(response, 413, { code: "TOO_LARGE", message: "The request body is too large" });
+        return;
+      }
+      const parsed = SessionRequest.safeParse(body instanceof Error ? undefined : body);
       if (!parsed.success) {
         send(response, 400, { code: "INVALID", message: "Expected { credential }" });
         return;
