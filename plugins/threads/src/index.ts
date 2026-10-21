@@ -3357,6 +3357,10 @@ export default definePlugin({
       if (active.get(threadId) !== current) return false;
       // Claimed before the queue is written, so a steer meanwhile goes after it.
       if (after === undefined) current.restartWith = messageId;
+      /** A restart that could not go on releases its claim: later steers restart again. */
+      const release = () => {
+        if (current.restartWith === messageId) current.restartWith = undefined;
+      };
       await changeQueue(threadId, async (queue) => {
         const item =
           message === "queued"
@@ -3366,6 +3370,9 @@ export default definePlugin({
         const rest = queue.messages.filter((entry) => entry.id !== messageId);
         const at = after === undefined ? 0 : rest.findIndex((entry) => entry.id === after) + 1;
         await writeQueue(threadId, { ...queue, messages: rest.toSpliced(at, 0, item) });
+      }).catch((error: unknown) => {
+        release();
+        throw error;
       });
       // A promoted message is no longer kept from starting as a turn of its own.
       steering.delete(`${threadId}:${messageId}`);
@@ -3381,6 +3388,7 @@ export default definePlugin({
         await stopTurn(threadId, true);
       } catch (error) {
         restartStarts.delete(key);
+        release();
         throw error;
       }
       return "restarted";
@@ -3392,12 +3400,14 @@ export default definePlugin({
      * failed rather than stopped, so the queue is held).
      */
     async function restartedTurn(threadId: string, messageId: string): Promise<string | undefined> {
-      // After the delivery the stopped turn's end started: the queue's changes run in order.
-      await changeQueue(threadId, async () => undefined);
       const key = `${threadId}:${messageId}`;
-      const started = restartStarts.get(key);
-      restartStarts.delete(key);
-      return started;
+      try {
+        // After the delivery the stopped turn's end started: the queue's changes run in order.
+        await changeQueue(threadId, async () => undefined);
+        return restartStarts.get(key);
+      } finally {
+        restartStarts.delete(key);
+      }
     }
 
     /**
