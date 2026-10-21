@@ -219,6 +219,55 @@ describe("jhin.agent-codex: status", () => {
     codex.dispose();
   });
 
+  it("lists the skills Codex finds in a folder, and sends a skill as Codex parses it", async () => {
+    const cwd = process.cwd();
+    const { codex, fake } = runtime({
+      skills: [
+        { cwd: "/elsewhere", skills: [{ name: "other", path: "/o/SKILL.md", enabled: true }] },
+        {
+          cwd,
+          skills: [
+            {
+              name: "review",
+              path: "/s/review/SKILL.md",
+              enabled: true,
+              scope: "repo",
+              interface: { displayName: "Review", shortDescription: "Reviews a diff" },
+            },
+            { name: "off", path: "/s/off/SKILL.md", enabled: false },
+            { name: "", path: "/s/nameless/SKILL.md", enabled: true },
+          ],
+        },
+      ],
+    });
+    const listed = await codex.commands!({ cwd });
+    expect(listed.skills).toEqual([
+      {
+        name: "review",
+        path: "/s/review/SKILL.md",
+        description: "Reviews a diff",
+        scope: "repo",
+        displayName: "Review",
+      },
+    ]);
+    // Asked again soon: the same answer, without starting Codex again.
+    expect(await codex.commands!({ cwd })).toEqual(listed);
+    expect(fake.received("skills/list").map((call) => call.params)).toEqual([{ cwds: [cwd] }]);
+
+    const turn = codex.startTurn({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      input: { text: "€review this, costs €5" },
+      history: [],
+      cwd,
+    });
+    for await (const _ of turn.items) void _;
+    expect(fake.received("turn/start")[0]?.params).toMatchObject({
+      input: [{ type: "text", text: "$review this, costs €5" }],
+    });
+    codex.dispose();
+  });
+
   it("falls back to Codex's own default, and the config's wins", async () => {
     const first = runtime({ models: [[model("a"), model("b", { isDefault: true })]] });
     await first.codex.status!();

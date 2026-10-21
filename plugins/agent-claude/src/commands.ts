@@ -5,7 +5,7 @@
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
-import type { AgentSkill, AgentSlashCommand } from "@jhin/agent-api";
+import { SKILL_MENTION_PATTERN, type AgentSkill, type AgentSlashCommand } from "@jhin/agent-api";
 
 /** T3's COMPACT_SLASH_COMMAND: Claude Code compacts, but its initialization does not list it. */
 export const COMPACT_SLASH_COMMAND: AgentSlashCommand = {
@@ -112,13 +112,6 @@ export async function discoverSkills(configDir: string, cwd: string): Promise<Ag
   }
   return [...skills.values()];
 }
-
-/**
- * Same token shape the composer's chips recognise, so a chip and a dispatched skill are
- * always the same set (T3's SKILL_MENTION_PATTERN: any currency symbol, not an amount).
- */
-const SKILL_MENTION_PATTERN =
-  /(^|\s)\p{Sc}(?![0-9][0-9_]*(?:[kKmMbBtT]|[eE][0-9]+)?(?:\s|$))(?=[a-zA-Z0-9:_-]*[a-zA-Z])([a-zA-Z0-9][a-zA-Z0-9:_-]*)(?=\s|$)/gu;
 
 /**
  * Claude Code expands `/name args` only when it starts a text block, and only one skill

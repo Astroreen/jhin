@@ -30,6 +30,8 @@ export type Step =
 export interface Scenario {
   /** `account/read`'s answer; a ChatGPT account when absent. */
   readonly account?: unknown;
+  /** `skills/list`'s entries, one per folder. */
+  readonly skills?: readonly unknown[];
   /** Pages of `model/list`. */
   readonly models?: readonly unknown[][];
   /** Errors for the nth call of a method (null: answered normally). */
@@ -192,6 +194,9 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
           requiresOpenaiAuth: true,
         },
       });
+      return;
+    case "skills/list":
+      send({ id, result: { data: scenario.skills ?? [] } });
       return;
     case "model/list": {
       const pages = scenario.models ?? [[]];

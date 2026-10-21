@@ -25,6 +25,7 @@ import {
   tokenUsage,
   toolCall,
   toolOutcome,
+  codexSkillMentionText,
   compileModelOptions,
   isCompact,
   turnStartParams,
@@ -754,7 +755,9 @@ export function codexTurn(
       current.session.model = model;
       // A Codex thread that never saw the thread's earlier turns gets them as a transcript.
       const preface = historyTranscript(request.history, fresh ? undefined : CODEX_AGENT_ID);
-      const text = preface === undefined ? request.input.text : `${preface}${request.input.text}`;
+      // Codex parses only `$name` as a skill (T3's codexSkillMentionText).
+      const typed = codexSkillMentionText(request.input.text);
+      const text = preface === undefined ? typed : `${preface}${typed}`;
       if (interrupted) {
         keep = true;
         return;

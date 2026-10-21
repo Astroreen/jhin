@@ -8,8 +8,10 @@
 // (PREFERRED_DEFAULT_CODEX_MODELS), packages/provider-core/src/server/snapshotProbe.ts
 // (COMPACT_SLASH_COMMAND).
 import {
+  SKILL_MENTION_PATTERN,
   applicableModelOptions,
   type AgentModel,
+  type AgentSkill,
   type AgentSlashCommand,
   type ApprovalDecision,
   type InteractionMode,
@@ -301,6 +303,42 @@ export type TurnInput =
   | { readonly type: "image"; readonly url: string }
   /** An image the node keeps as a file (an upload, t3-parity.md D294). */
   | { readonly type: "localImage"; readonly path: string };
+
+/**
+ * A skill typed with any currency sigil (`€review`) as Codex parses it, `$review`
+ * (T3's codexSkillMentionText, D885).
+ */
+export const codexSkillMentionText = (text: string) =>
+  text.replace(SKILL_MENTION_PATTERN, "$1$$$2");
+
+/** The skills of `skills/list` for `cwd` (T3's parseCodexSkillsListResponse), enabled ones. */
+export function listedSkills(response: unknown, cwd: string): AgentSkill[] {
+  const data = isRecord(response) && Array.isArray(response["data"]) ? response["data"] : [];
+  const entries = data.filter(isRecord);
+  const matching = entries.find((entry) => entry["cwd"] === cwd);
+  const skills = (matching === undefined ? entries : [matching]).flatMap((entry) =>
+    Array.isArray(entry["skills"]) ? entry["skills"].filter(isRecord) : [],
+  );
+  return skills.flatMap((skill) => {
+    const name = str(skill["name"]);
+    const path = str(skill["path"]);
+    if (name === undefined || path === undefined || skill["enabled"] === false) return [];
+    const face = isRecord(skill["interface"]) ? skill["interface"] : {};
+    const description =
+      str(skill["description"]) ?? str(skill["shortDescription"]) ?? str(face["shortDescription"]);
+    const scope = str(skill["scope"]);
+    const displayName = str(face["displayName"]);
+    return [
+      {
+        name,
+        path,
+        ...(description === undefined ? {} : { description }),
+        ...(scope === undefined ? {} : { scope }),
+        ...(displayName === undefined ? {} : { displayName }),
+      },
+    ];
+  });
+}
 
 /** T3's COMPACT_SLASH_COMMAND, which Codex runs as `thread/compact/start` (D884). */
 export const COMPACT_COMMAND: AgentSlashCommand = {

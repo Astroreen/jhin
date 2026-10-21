@@ -622,11 +622,21 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   compaction hands Codex no message, so a thread Codex has not seen yet
   still gets its transcript with the next turn.
 
+- **D885. Codex's skills are offered and typed as Codex reads them (W24).**
+  `commands({ cwd })` starts an app-server in the folder and asks
+  `skills/list` for it (T3's `probeCodexSkillsForCwd`), keeping the answer
+  per config and folder for five minutes, as the status probe does; a failed
+  ask is not kept. The folder's entry wins, else every entry's skills are
+  taken (T3's `parseCodexSkillsListResponse`); a disabled skill is not
+  offered, and the description is Codex's, else its short one. A turn's
+  skill mention with any currency sigil goes to Codex as `$name` (T3's
+  `codexSkillMentionText`). The mention pattern is shared: `agent-api`
+  exports it as `SKILL_MENTION_PATTERN`, which the Claude plugin uses too.
+
 ### Deferred
 
-- Goals (`/goal`), `/feedback` and skills (`skills/list`, `$skill` mentions)
-  in the composer; reverting, forking and rolling back a Codex thread (W2,
-  W3).
+- Goals (`/goal`) and `/feedback` in the composer; reverting, forking and
+  rolling back a Codex thread (W2, W3).
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Subagent threads (`collabAgentToolCall`, `subAgentActivity`) and their

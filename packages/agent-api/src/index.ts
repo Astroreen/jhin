@@ -300,6 +300,14 @@ export interface AgentSlashCommand {
   readonly input?: { readonly hint: string };
 }
 
+/**
+ * A skill mention in a message: any currency symbol, then the name, not an amount (T3's
+ * SKILL_MENTION_PATTERN, the token the composer's chips recognise). Group 1 is the space
+ * before it, group 2 the name. Global: use it with `matchAll` or `replace`.
+ */
+export const SKILL_MENTION_PATTERN =
+  /(^|\s)\p{Sc}(?![0-9][0-9_]*(?:[kKmMbBtT]|[eE][0-9]+)?(?:\s|$))(?=[a-zA-Z0-9:_-]*[a-zA-Z])([a-zA-Z0-9][a-zA-Z0-9:_-]*)(?=\s|$)/gu;
+
 /** A skill the user can invoke by name (`$name`, since 1.2). */
 export interface AgentSkill {
   readonly name: string;

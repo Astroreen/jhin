@@ -13,6 +13,7 @@ import {
   type AgentRegistry,
   type AgentRuntime,
   type AgentRuntimeStatus,
+  type AgentSkill,
   type AgentTurn,
 } from "@jhin/agent-api";
 import { definePlugin, z } from "@jhin/sdk";
@@ -28,6 +29,7 @@ import {
   COMPACT_COMMAND,
   accountStatus,
   listedModels,
+  listedSkills,
   preferredDefault,
   type Account,
   type ListedModel,
@@ -206,6 +208,38 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
   }
 }
 
+/** Starts `codex app-server` in `cwd` and lists its skills (T3's probeCodexSkillsForCwd). */
+export async function probeSkills(
+  launch: Launcher,
+  config: Config,
+  cwd: string,
+): Promise<AgentSkill[]> {
+  const connection = launch({
+    binaryPath: config.binaryPath,
+    args: config.args ?? [],
+    cwd,
+    env: codexEnvironment(config.env, expandHome(config.homePath), config.inheritEnv),
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      (async () => {
+        await initialize(connection, VERSION);
+        return listedSkills(await connection.request("skills/list", { cwds: [cwd] }), cwd);
+      })(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Codex did not list its skills.")),
+          PROBE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    connection.close();
+  }
+}
+
 /** The Codex runtime; `launch` starts the real `codex app-server` unless a test replaces it. */
 export function createCodexRuntime(options: {
   readonly threads: ThreadStore;
@@ -234,6 +268,8 @@ export function createCodexRuntime(options: {
   };
   /** The last probe, if it ran with the config as it is now: another Codex lists other models. */
   const current = () => (probed?.key === probeKey() ? probed.probe : undefined);
+  /** The skills of each folder Codex was asked about, by config and folder. */
+  const skillProbes = new Map<string, { at: number; skills: Promise<AgentSkill[]> }>();
   const models = () => current()?.models ?? BUNDLED_MODELS;
   const defaultModel = () =>
     options.config().defaultModel ??
@@ -290,8 +326,26 @@ export function createCodexRuntime(options: {
     runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     interactionModes: ["default", "plan"],
     steering: true,
-    // T3 lists /compact for Codex (D884); Codex's skills are not listed yet.
-    commands: async () => ({ commands: [COMPACT_COMMAND], skills: [] }),
+    // T3 lists /compact for Codex (D884) and the skills Codex finds in the folder (D885).
+    async commands({ cwd }) {
+      const key = `${probeKey()}|${cwd}`;
+      let entry = skillProbes.get(key);
+      if (entry === undefined || Date.now() - entry.at > STATUS_TTL_MS) {
+        // Folders not asked about for a while are forgotten.
+        for (const [other, kept] of skillProbes) {
+          if (Date.now() - kept.at > STATUS_TTL_MS) skillProbes.delete(other);
+        }
+        entry = { at: Date.now(), skills: probeSkills(launch, options.config(), cwd) };
+        skillProbes.set(key, entry);
+        // A probe that failed is not kept.
+        void entry.skills.catch(() => skillProbes.delete(key));
+      }
+      const skills = await entry.skills.catch((error: unknown) => {
+        options.log?.("codex did not list its skills", { cwd, error: String(error) });
+        return [];
+      });
+      return { commands: [COMPACT_COMMAND], skills };
+    },
     status,
     startTurn(request) {
       const config = options.config();
