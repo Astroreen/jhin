@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { httpBase, looksLikePairingCode, parsePairingUrl, rpcUrl } from "../src/lib/session.ts";
+import {
+  currentSession,
+  httpBase,
+  looksLikePairingCode,
+  parsePairingUrl,
+  rpcUrl,
+} from "../src/lib/session.ts";
 
 describe("pairing links (security.md D422)", () => {
   it("reads the node and the code from T3's pairing link", () => {
@@ -34,5 +40,33 @@ describe("pairing links (security.md D422)", () => {
       "wss://h.example/jhin/rpc",
     );
     expect(httpBase(rpcUrl("https://h.example/jhin/"))).toBe("https://h.example/jhin");
+  });
+});
+
+describe("the page's own node (security.md D422)", () => {
+  const answering = (status: number, contentType: string) => () =>
+    Promise.resolve(
+      new Response(status === 204 ? null : "x", {
+        status,
+        headers: { "content-type": contentType },
+      }),
+    );
+
+  it("tells no node from a node that cannot answer now", async () => {
+    const real = globalThis.fetch;
+    try {
+      globalThis.fetch = answering(404, "text/plain") as typeof fetch;
+      expect(await currentSession()).toBeUndefined();
+      // A `jhin client` page answers any path with its index.html.
+      globalThis.fetch = answering(200, "text/html") as typeof fetch;
+      expect(await currentSession()).toBeUndefined();
+      globalThis.fetch = answering(401, "application/json") as typeof fetch;
+      expect(await currentSession()).toBe(false);
+      // A proxy's error page: maybe a node, not answering now. Never "no node".
+      globalThis.fetch = answering(502, "text/html") as typeof fetch;
+      await expect(currentSession()).rejects.toThrow("did not answer (502)");
+    } finally {
+      globalThis.fetch = real;
+    }
   });
 });

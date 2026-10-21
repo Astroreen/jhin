@@ -73,9 +73,12 @@ export async function pairWithCode(
  */
 export async function currentSession(): Promise<boolean | undefined> {
   const response = await fetch("/auth/session", { credentials: "same-origin" });
-  if (response.status === 404) return undefined;
-  if (!(response.headers.get("content-type") ?? "").includes("application/json")) return undefined;
-  return response.ok;
+  const json = (response.headers.get("content-type") ?? "").includes("application/json");
+  if (json) return response.ok;
+  // No node here: nothing at the path, or a `jhin client` page answering with its own HTML.
+  if (response.status === 404 || response.ok) return undefined;
+  // A proxy's 502 page or the like: the node may be there, just not answering now.
+  throw new Error(`The node behind this page did not answer (${response.status})`);
 }
 
 /** Turns a pairing code or token into this page's session cookie (D421). */
