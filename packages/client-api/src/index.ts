@@ -212,7 +212,6 @@ export interface ThreadRecord {
   readonly lastMessageAt?: string;
 }
 
-/** Where the sidebar lists a thread (D75–D77). */
 /**
  * Where the sidebar lists a thread (D75–D77); `working` only while the
  * device's Working section is on (D452).

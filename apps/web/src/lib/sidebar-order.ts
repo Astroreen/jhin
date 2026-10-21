@@ -173,18 +173,10 @@ const sortable = (value: string | undefined) => {
 };
 
 /**
- * The threads of every shown node in one list, without a section per node or
- * project, split as T3 splits them: the pinned ones on top in their order,
- * then the active ones (newest first by when they were created or came back
- * from the shelf, then those dragged into place), the snoozed ones by when
- * they wake and the settled ones by when they settled. Archived threads are
- * not listed; `scope` (a `projectKey`) keeps one project's threads.
- */
-/**
  * A thread at work (T3's isThreadWorking): its turn runs and asks nothing of
  * the user. One waiting for an answer needs the user, so it stays active.
  */
-export const isWorking = (thread: ThreadRecord): boolean => thread.lastTurn?.status === "running";
+const isWorking = (thread: ThreadRecord): boolean => thread.lastTurn?.status === "running";
 
 /**
  * When a thread came back to the inbox from the Working section: its turn
@@ -199,6 +191,14 @@ const returnedAt = (thread: ThreadRecord): string | undefined =>
 const later = (a: string | undefined, b: string | undefined) =>
   a === undefined ? b : b === undefined ? a : sortable(a) >= sortable(b) ? a : b;
 
+/**
+ * The threads of every shown node in one list, without a section per node or
+ * project, split as T3 splits them: the pinned ones on top in their order,
+ * then the active ones (newest first by when they were created or came back
+ * from the shelf, then those dragged into place), the snoozed ones by when
+ * they wake and the settled ones by when they settled. Archived threads are
+ * not listed; `scope` (a `projectKey`) keeps one project's threads.
+ */
 export function sidebarThreads<Node extends CatalogNode>(
   nodes: readonly Node[],
   options: {
