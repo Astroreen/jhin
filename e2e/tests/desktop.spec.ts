@@ -457,6 +457,10 @@ test("nightly shows its release notes in the update control's popover (D948)", a
   const shot = test.info().outputPath("release-notes.png");
   await window.screenshot({ path: shot });
   await test.info().attach("release notes", { path: shot, contentType: "image/png" });
+
+  // A press still runs the action: it downloads (T3 cancels only the popover's press).
+  await download.click();
+  await expect(window.getByText("Update downloaded")).toBeVisible();
 });
 
 test("Check for Updates... in the menu answers in T3's native dialog", async () => {
