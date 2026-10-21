@@ -1430,6 +1430,36 @@ describe("checkpoints in the client", () => {
     expect(none.container.textContent).toBe("");
     none.unmount();
   });
+
+  it("offers a changed file's context menu: Reveal in Finder and Open with (D905)", async () => {
+    const { value, calls } = services(withCheckpoints(second), {
+      "git.checkpoints": { checkpoints: [checkpoint(1), second] },
+      "editors.list": {
+        editors: [
+          { id: "zed", label: "Zed" },
+          { id: "file-manager", label: "File Manager" },
+        ],
+        revealKind: "finder",
+      },
+      "editors.open": (params: unknown) => params,
+    });
+    const Footer = createChangedFilesFooter(value, () => undefined);
+    mount(<Footer latest state="completed" target={target} thread={thread} turnId="turn-2" />);
+    const file = page.getByRole("button", { name: /b\.ts/ });
+    await expect.element(file).toBeVisible();
+    const opens = () => calls.filter((call) => call.method === "editors.open").map((c) => c.params);
+
+    await userEvent.click(file, { button: "right" });
+    await userEvent.click(page.getByRole("menuitem", { name: "Reveal in Finder" }));
+    expect(opens()).toEqual([
+      { projectId: "app", path: "src/lib/b.ts", editor: "file-manager", reveal: true },
+    ]);
+    await userEvent.click(file, { button: "right" });
+    await userEvent.click(page.getByRole("menuitem", { name: "Open with" }));
+    await userEvent.click(page.getByRole("menuitem", { name: "Zed" }));
+    expect(opens().at(-1)).toEqual({ projectId: "app", path: "src/lib/b.ts", editor: "zed" });
+    localStorage.removeItem("jhin.lastEditor");
+  });
 });
 
 describe("the diff panel across scopes", () => {

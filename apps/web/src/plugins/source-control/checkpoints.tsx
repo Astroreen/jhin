@@ -1,9 +1,18 @@
 // The changed files card follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/ChangedFilesTree.tsx (ChangedFilesCard, ChangedFilesTree)
-// and MessagesTimeline.tsx (AssistantChangedFilesSection, under a turn's answer).
+// and MessagesTimeline.tsx (AssistantChangedFilesSection, under a turn's answer, with a
+// file's context menu from fileContextMenu.ts, D905).
 import { targetKey, type ChatTurnFooterProps, type NodeTarget } from "@jhin/client-api";
 import type { TurnCheckpoint } from "@jhin/source-control-api";
-import { Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
+import {
+  Button,
+  ContextMenu,
+  ContextMenuTrigger,
+  Tooltip,
+  TooltipPopup,
+  TooltipTrigger,
+  cn,
+} from "@jhin/ui";
 import {
   ChevronRightIcon,
   ChevronsDownUpIcon,
@@ -12,8 +21,9 @@ import {
   FolderClosedIcon,
   FolderIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
+import { useCatalog } from "../../lib/hooks.ts";
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { formatCompactDiffCount } from "../../lib/pull-request.ts";
@@ -22,6 +32,7 @@ import {
   summarizeTurnDiffStats,
   type TurnDiffTreeNode,
 } from "../../lib/turn-diff-tree.ts";
+import { FileContextMenuPopup, resolveDiffPathForWorkspace } from "./diff/editors.tsx";
 import { selectionKey } from "./diff/scopes.ts";
 import { useResolvedTheme } from "./diff/theme.ts";
 import { LATEST_TURN, turnValue } from "./diff/turns.ts";
@@ -111,8 +122,10 @@ function ChangedFilesTree(props: {
   files: readonly { path: string; additions: number; deletions: number }[];
   allDirectoriesExpanded: boolean;
   onOpen(filePath: string): void;
+  /** A file's context menu is about to open; false when it has none. */
+  onMenu?(filePath: string): boolean;
 }) {
-  const { files, allDirectoriesExpanded, onOpen } = props;
+  const { files, allDirectoriesExpanded, onOpen, onMenu } = props;
   const resolvedTheme = useResolvedTheme();
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const nodes = buildTurnDiffTree(files);
@@ -165,6 +178,10 @@ function ChangedFilesTree(props: {
         className={row}
         key={`file:${node.path}`}
         onClick={() => onOpen(node.path)}
+        onContextMenu={(event) => {
+          // Only a file with something to open it with has a menu (T3's onFileContextMenu).
+          if (onMenu?.(node.path) !== true) event.stopPropagation();
+        }}
         style={{ paddingLeft }}
         type="button"
       >
@@ -193,8 +210,13 @@ function ChangedFilesTree(props: {
 }
 
 /** T3's ChangedFilesCard: the files a turn changed, opening the diff panel on them. */
-function ChangedFilesCard(props: { checkpoint: TurnCheckpoint; onOpen(filePath?: string): void }) {
-  const { checkpoint, onOpen } = props;
+function ChangedFilesCard(props: {
+  checkpoint: TurnCheckpoint;
+  onOpen(filePath?: string): void;
+  /** A file's context menu: the popup, and the hook that says which file it is for. */
+  menu?: { popup: ReactNode; onMenu(filePath: string): boolean };
+}) {
+  const { checkpoint, onOpen, menu } = props;
   const [allExpanded, setAllExpanded] = useState(true);
   const files = checkpoint.files.map((file) => ({
     path: file.path,
@@ -270,12 +292,27 @@ function ChangedFilesCard(props: { checkpoint: TurnCheckpoint; onOpen(filePath?:
           </Tooltip>
         </div>
       </div>
-      <ChangedFilesTree
-        allDirectoriesExpanded={allExpanded}
-        files={files}
-        key={String(allExpanded)}
-        onOpen={(path) => onOpen(path)}
-      />
+      {menu === undefined ? (
+        <ChangedFilesTree
+          allDirectoriesExpanded={allExpanded}
+          files={files}
+          key={String(allExpanded)}
+          onOpen={(path) => onOpen(path)}
+        />
+      ) : (
+        <ContextMenu>
+          <ContextMenuTrigger render={<div />}>
+            <ChangedFilesTree
+              allDirectoriesExpanded={allExpanded}
+              files={files}
+              key={String(allExpanded)}
+              onMenu={menu.onMenu}
+              onOpen={(path) => onOpen(path)}
+            />
+          </ContextMenuTrigger>
+          {menu.popup}
+        </ContextMenu>
+      )}
     </section>
   );
 }
@@ -289,9 +326,14 @@ export function createChangedFilesFooter(
   services: SourceControlServices,
   open: (target: NodeTarget, threadId: string) => void,
 ) {
-  const { selections } = services;
+  const { selections, threads } = services;
   return function ChangedFilesFooter({ target, thread, turnId, state }: ChatTurnFooterProps) {
     const checkpoints = useThreadCheckpoints(services, target, thread.id);
+    const view = useSourceControl(services.store, target);
+    const catalog = useCatalog(threads, target);
+    const editors = services.editors.useEditors(target);
+    const revealKind = services.editors.useRevealKind(target);
+    const [menuPath, setMenuPath] = useState<string | null>(null);
     if (state === "running") return null;
     const checkpoint = checkpoints?.find((item) => item.turnId === turnId);
     if (checkpoint === undefined || checkpoint.status !== "ready" || checkpoint.fileCount === 0) {
@@ -301,6 +343,37 @@ export function createChangedFilesFooter(
       <div className="pb-4">
         <ChangedFilesCard
           checkpoint={checkpoint}
+          menu={{
+            // The same menu as the diff panel's file names (D922): "Reveal in …", "Open with".
+            onMenu: (filePath) => {
+              const path = resolveDiffPathForWorkspace({
+                filePath,
+                workspaceRoot: catalog?.projects.find((item) => item.id === thread.projectId)?.path,
+                repositoryRoot: view.projects.get(thread.projectId)?.root,
+              });
+              if (path === null || editors.length === 0) return false;
+              setMenuPath(path);
+              return true;
+            },
+            popup: (
+              <FileContextMenuPopup
+                editors={editors}
+                onOpen={(editor) => {
+                  if (menuPath !== null) {
+                    void services.editors.open(target, thread.projectId, menuPath, editor);
+                  }
+                }}
+                onReveal={(fileManager) => {
+                  if (menuPath !== null) {
+                    void services.editors.open(target, thread.projectId, menuPath, fileManager, {
+                      reveal: true,
+                    });
+                  }
+                }}
+                revealKind={revealKind}
+              />
+            ),
+          }}
           onOpen={(filePath) => {
             const key = selectionKey({
               target,
