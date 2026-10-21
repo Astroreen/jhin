@@ -32,6 +32,8 @@ const SEMVER = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/;
 
 /** The `name@version` keys of a pnpm lockfile's `packages:` section. */
 export function lockedPackages(lockfile: string): string[] {
+  // A Windows checkout may have CRLF line ends.
+  lockfile = lockfile.replaceAll("\r\n", "\n");
   const section = /^packages:\n([\s\S]*?)^snapshots:/m.exec(lockfile)?.[1] ?? "";
   const keys = [...section.matchAll(/^ {2}'?([^'\s][^'\n]*?)'?:$/gm)].map((match) => match[1]!);
   // Every package entry has one resolution: a key this parser missed shows up here.

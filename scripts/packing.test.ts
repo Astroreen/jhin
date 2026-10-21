@@ -103,6 +103,8 @@ describe("lockedPins", () => {
     expect(lockedPackages(LOCKFILE)).toContain("@scope/one@1.2.3");
     expect(lockedPackages(LOCKFILE)).toContain("plain@4.0.0");
     expect(lockedPackages(LOCKFILE)).not.toContain("plain@4.0.0: {}");
+    // A Windows checkout's CRLF line ends.
+    expect(lockedPackages(LOCKFILE.replaceAll("\n", "\r\n"))).toEqual(lockedPackages(LOCKFILE));
   });
 
   it("fails loudly when it misses a package key", () => {
