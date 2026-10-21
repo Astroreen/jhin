@@ -479,7 +479,7 @@ export const terminalPlugin = builtin(
       }
 
       /** The header's toggle of the right-panel terminal. */
-      function PanelToggle({ target, thread }: ChatHeaderActionProps) {
+      function PanelToggle({ thread }: ChatHeaderActionProps) {
         const route = useExternal(navigation, navigation.current);
         const shortcut = useShortcutLabels(keybindings)("terminal.panel.toggle");
         if (thread === undefined) return null;
