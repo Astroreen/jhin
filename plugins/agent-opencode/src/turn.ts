@@ -3,7 +3,6 @@
 // session (startTurn, submit, onTurnEvent, onPermissionAsked, onFormCreated,
 // respondToRuntimeRequest, interruptTurn), rewritten without Effect for Jhin's agent.runtime@1.
 import * as Fs from "node:fs/promises";
-import * as Os from "node:os";
 import * as Path from "node:path";
 
 import type { AgentItem, AgentResponse, AgentTurn, TurnRequest } from "@jhin/agent-api";
@@ -101,8 +100,8 @@ export interface OpenCodeTurnDependencies {
     directory: string,
     model: string,
   ) => Promise<number | undefined>;
-  /** Where attached images are written for OpenCode to read. */
-  readonly attachmentsDir?: string;
+  /** The folder attached images are written to for OpenCode to read; made on first use. */
+  readonly attachmentsDir: () => string;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
   /** The prompt's and the interrupt's time limits; tests pass one they fire themselves. */
   readonly clock?: Clock;
@@ -154,11 +153,11 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
 async function withAttachments(
   text: string,
   request: TurnRequest,
-  folder: string,
+  folderOf: () => string,
 ): Promise<string> {
   const attachments = request.input.attachments ?? [];
   if (attachments.length === 0) return text;
-  // Private to the node's user: the folder sits in the shared temporary directory.
+  const folder = folderOf();
   await Fs.mkdir(folder, { recursive: true, mode: 0o700 });
   let result = text;
   for (const [index, attachment] of attachments.entries()) {
@@ -180,8 +179,8 @@ async function withAttachments(
 const safeName = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 /** Where a thread's attached images are kept until the thread is deleted. */
-export function attachmentsOf(threadId: string, dir?: string): string {
-  return Path.join(dir ?? Path.join(Os.tmpdir(), "jhin-opencode"), safeName(threadId));
+export function attachmentsOf(threadId: string, dir: string): string {
+  return Path.join(dir, safeName(threadId));
 }
 
 const errorTag = (error: unknown) => (error instanceof OpenCodeError ? error.tag : undefined);
@@ -793,10 +792,8 @@ export function openCodeTurn(
    * The turn's images stay while the thread does: the session's history names their paths,
    * and later turns may refer to them. They go with the thread (`attachmentsOf`).
    */
-  const attachments = Path.join(
-    attachmentsOf(request.threadId, deps.attachmentsDir),
-    safeName(request.turnId),
-  );
+  const attachments = () =>
+    Path.join(attachmentsOf(request.threadId, deps.attachmentsDir()), safeName(request.turnId));
   /** Runs the turn, then waits for its record writes. */
   const runAndClean = async () => {
     try {

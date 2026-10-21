@@ -739,7 +739,8 @@ OpenCode 2 behaviour.
   one (not in a message that carries a transcript or images). Images are written to a temporary file and named in the text as T3
   does (`[Attached image "<name>" is saved at: <path>]`); the files stay while
   the thread does (its session's history names them) and go when it is
-  deleted. The event stream is
+  deleted. They live in a folder of the node's own (`mkdtemp`, 0700), made
+  on first use and removed when the plugin deactivates. The event stream is
   subscribed before anything is sent: OpenCode keeps no events for a stream
   that was not listening.
 - **D330. The turn ends on OpenCode's execution end.** One event stream
@@ -856,9 +857,6 @@ OpenCode 2 behaviour.
 - A time limit on each request a turn makes before its prompt (agents,
   session, switches): an interrupt takes effect between them, and only the
   activation retries are bounded (60 s).
-- Attached images under the node's private data directory instead of the
-  shared temporary one (folders are created 0700, but a `jhin-opencode`
-  folder another user made first would be used).
 - Reaping an `opencode serve` left by a node that crashed: it runs detached
   (its own process group) and is stopped only when the plugin deactivates;
   T3 keeps a ledger of the servers it started for that.

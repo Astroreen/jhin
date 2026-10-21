@@ -1,5 +1,7 @@
+import * as FsSync from "node:fs";
 import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
+import * as Path from "node:path";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
@@ -142,6 +144,14 @@ export function createOpenCodeRuntime(options: {
   const env = options.env ?? (() => process.env);
   const turns = new Map<AgentTurn, { threadId: string; done: Promise<void> }>();
   const windows = new Map<string, number>();
+  /**
+   * The node's own folder for attached images, made on first use with a name nobody can
+   * guess (mkdtemp, 0700 and ours), so no other user of the machine can read or plant them.
+   */
+  let privateDir: string | undefined;
+  const attachmentsDir = () =>
+    options.attachmentsDir ??
+    (privateDir ??= FsSync.mkdtempSync(Path.join(Os.tmpdir(), "jhin-opencode-")));
   let probed: { at: number; key: string; probe: Probe } | undefined;
   const probing = new Map<string, Promise<Probe>>();
   const probeKey = () => {
@@ -282,7 +292,7 @@ export function createOpenCodeRuntime(options: {
           remember(await connection.client.models(directory));
           return windows.get(model);
         },
-        ...(options.attachmentsDir === undefined ? {} : { attachmentsDir: options.attachmentsDir }),
+        attachmentsDir,
         ...(options.clock === undefined ? {} : { clock: options.clock }),
         ...(options.log === undefined ? {} : { log: options.log }),
       });
@@ -291,13 +301,17 @@ export function createOpenCodeRuntime(options: {
       return turn;
     },
     forget: (threadId) =>
-      Fs.rm(attachmentsOf(threadId, options.attachmentsDir), { recursive: true, force: true }),
+      privateDir === undefined && options.attachmentsDir === undefined
+        ? Promise.resolve()
+        : Fs.rm(attachmentsOf(threadId, attachmentsDir()), { recursive: true, force: true }),
     settled: async (threadId) => {
       const running = [...turns.values()].filter((turn) => turn.threadId === threadId);
       await Promise.all(running.map((turn) => turn.done));
     },
     dispose() {
       for (const turn of turns.keys()) turn.interrupt();
+      // A restart makes another folder: the images of this one are not read again.
+      if (privateDir !== undefined) FsSync.rmSync(privateDir, { recursive: true, force: true });
       options.server.dispose();
     },
   };
