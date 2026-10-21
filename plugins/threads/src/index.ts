@@ -3358,7 +3358,13 @@ export default definePlugin({
         if (!turns.includes(target)) throw turnNotFound(threadId, target);
         const payload = startedWith(events, target);
         // A turn whose start was never recorded has no message to run again.
-        if (payload.input === undefined) throw turnNotFound(threadId, target);
+        if (payload.input === undefined) {
+          throw new ThreadsError(
+            "TURN_NOT_FOUND",
+            `Turn ${target} recorded no message to send again`,
+            { threadId, turnId: target },
+          );
+        }
         // A turn whose message cannot be sent again is refused before anything is dropped.
         assertMessage(payload.input?.text ?? "", payload.input?.attachments);
         let dropped: string[] = [];
@@ -3561,6 +3567,8 @@ export default definePlugin({
           );
         }
         const parentId = fork.forkedFrom.threadId;
+        // An archived parent is refused first: it takes no message to deliver a merge with.
+        if ((await getThread(parentId)).archivedAt !== undefined) throw archivedError(parentId);
         // The parent already got the fork up to this turn: merging it again would say it twice.
         const { events: parentEvents } = await visibleTurns(parentId);
         const delivered = parentEvents

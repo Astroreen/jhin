@@ -748,6 +748,18 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     await expect(
       client.call("threads.merge-back", { threadId: fork.id, turnId: tried }),
     ).rejects.toMatchObject({ code: "NOTHING_TO_MERGE" });
+    // The fork rolled back past what the parent got: its new turn merges again.
+    await client.call("threads.rollback", { threadId: fork.id });
+    const again = await turn(client, fork.id, "start over");
+    expect(await client.call<Fork>("threads.merge-back", { threadId: fork.id })).toMatchObject({
+      pendingMergeBack: { turnId: again },
+    });
+    // An archived parent that already got the turn is THREAD_ARCHIVED, not NOTHING_TO_MERGE.
+    await turn(client, parent.id, "take it");
+    await client.call("threads.archive", { threadId: parent.id });
+    await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
+      code: "THREAD_ARCHIVED",
+    });
   });
 
   it("regenerates no turn whose start recorded no message", async () => {
