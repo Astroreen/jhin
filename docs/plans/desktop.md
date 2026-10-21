@@ -269,7 +269,9 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   already exists as this run's draft (marked with the run's id, published
   once every file is up), so "Re-run failed jobs" finishes a run one platform
   broke, while any other run of an already released version fails instead of
-  replacing its files. Only publishing runs, which build from `main`, get the
+  replacing its files. A failed run that is not re-run leaves its draft
+  behind (racing runs leave one each): delete the draft on the releases page,
+  then run again. Only publishing runs, which build from `main`, get the
   signing secrets; a dry run is unsigned, and packaging gives the secrets to
   electron-builder only, never to the install's scripts.
 
@@ -294,6 +296,10 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   `latest-mac.yml` files), Linux and Windows arm64; T3's scheduled nightly
   that skips days without changes, its preview channel, and promoting a
   nightly's commit to stable; T3's DMG background; the AUR package.
+- Proof of the signed and publishing paths: pull request dry runs are
+  unsigned and publish nothing, so the first nightly (and the first run with
+  the signing secrets) is what proves notarization, Azure Trusted Signing,
+  `--require-signing` and the publish job.
 - A test of `scripts/package-desktop.ts`'s orchestration with a fake spawn:
   its pure parts are unit tested and the pull request dry run runs it whole
   on all three systems.
