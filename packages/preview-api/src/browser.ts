@@ -684,7 +684,6 @@ export const PreviewNavStatus = z.discriminatedUnion("state", [
 ]);
 export type PreviewNavStatus = z.infer<typeof PreviewNavStatus>;
 
-/** One tab, as the thread's `preview.tabs` event and `preview.list` give it. */
 // --- Browser profiles (T3's, D952) ------------------------------------------
 
 /**
@@ -706,6 +705,7 @@ export const INCOGNITO_BROWSER_PROFILE_ID = "incognito";
 
 export const PreviewProfileClearInput = z.object({ profileId: BrowserProfileId });
 
+/** One tab, as the thread's `preview.tabs` event and `preview.list` give it. */
 export const PreviewTab = z.object({
   threadId: z.string(),
   tabId: PreviewTabId,

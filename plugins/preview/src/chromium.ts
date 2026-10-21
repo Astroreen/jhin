@@ -201,9 +201,16 @@ export class Chromium {
     return browser.newContext({ viewport: DEFAULT_VIEWPORT, deviceScaleFactor: RENDER_SCALE });
   }
 
-  /** The folder of a persistent profile; `.` and `..` cannot name a parent (T3). */
+  /**
+   * The folder of a persistent profile; `.` and `..` cannot name a parent (T3),
+   * and capitals are escaped so `Work` and `work` stay apart where the file
+   * system ignores case (macOS, Windows).
+   */
   #profileDirectory(profileId: string): string {
-    const encoded = encodeURIComponent(profileId);
+    const encoded = encodeURIComponent(profileId).replace(
+      /[A-Z]/g,
+      (letter) => `%${letter.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
     return Path.join(
       this.#options.profilesDir ?? Path.join(Os.tmpdir(), "jhin-preview-profiles"),
       profileId === "." || profileId === ".." ? encoded.replaceAll(".", "%2E") : encoded,
@@ -259,7 +266,10 @@ export class Chromium {
    */
   async clearProfile(profileId: string): Promise<void> {
     if (profileId === INCOGNITO_BROWSER_PROFILE_ID) return;
+    // A clear of the same profile still running goes first.
+    const previous = this.#clearing.get(profileId)?.catch(() => undefined);
     const clearing = (async () => {
+      await previous;
       const pending = this.#profiles.get(profileId);
       if (pending !== undefined) {
         this.#profiles.delete(profileId);

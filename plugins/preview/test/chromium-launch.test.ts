@@ -162,15 +162,18 @@ describe("browser profiles (D952)", () => {
     await chromium.newPage(false);
     await chromium.newPage(false, "work");
     await chromium.newPage(false, "..");
+    await chromium.newPage(false, "Work");
     expect(persistent).toEqual([
       Path.join(root, "default"),
       Path.join(root, "work"),
       Path.join(root, "%2E%2E"),
+      // Apart from `work` also where the file system ignores case.
+      Path.join(root, "%57ork"),
     ]);
     await chromium.newPage(false, "incognito");
     // Incognito and an agent's tab start the one shared browser, not a profile.
     await chromium.newPage(true);
-    expect(launched).toHaveLength(4);
+    expect(launched).toHaveLength(5);
   });
 
   it("clears a profile: its context closes and its folder goes", async () => {
