@@ -235,11 +235,13 @@ export default definePlugin({
       input: z.object({}),
       output: z.object({}),
       handler: async () => {
+        // An older app cannot paste for the page: arm nothing then.
+        if (bridge.pasteAsText === undefined) return {};
         // A public command (rule 8), present when the chat plugin runs.
         if (context.commands.list().some((info) => info.name === "chat.composer.paste-as-text")) {
           await context.commands.execute("chat.composer.paste-as-text", {});
         }
-        await bridge.pasteAsText?.();
+        await bridge.pasteAsText();
         return {};
       },
     });
