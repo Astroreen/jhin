@@ -9,13 +9,13 @@ import {
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   FileDiffIcon,
-  FileIcon,
   FolderClosedIcon,
   FolderIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
+import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { formatCompactDiffCount } from "../../lib/pull-request.ts";
 import {
   buildTurnDiffTree,
@@ -23,6 +23,7 @@ import {
   type TurnDiffTreeNode,
 } from "../../lib/turn-diff-tree.ts";
 import { selectionKey } from "./diff/scopes.ts";
+import { useResolvedTheme } from "./diff/theme.ts";
 import { LATEST_TURN, turnValue } from "./diff/turns.ts";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 
@@ -112,6 +113,7 @@ function ChangedFilesTree(props: {
   onOpen(filePath: string): void;
 }) {
   const { files, allDirectoriesExpanded, onOpen } = props;
+  const resolvedTheme = useResolvedTheme();
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const nodes = buildTurnDiffTree(files);
   const hasDirectories = collectDirectoryPaths(nodes).length > 0;
@@ -169,7 +171,12 @@ function ChangedFilesTree(props: {
         {hasDirectories || depth > 0 ? (
           <span aria-hidden="true" className="size-3.5 shrink-0" />
         ) : null}
-        <FileIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground/70" />
+        <PierreEntryIcon
+          pathValue={node.path}
+          kind="file"
+          theme={resolvedTheme}
+          className="size-3.5 text-muted-foreground/70"
+        />
         <span className="flex min-w-0 font-mono text-xs text-foreground/85 group-hover:text-foreground">
           <MiddleTruncate value={node.name} />
         </span>

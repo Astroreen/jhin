@@ -151,6 +151,9 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   `SettingsRow`), `useNativeTitlebarHeight` (`desktop.md#D514`, `#D515`) and
   `ThreadDetailsSection` for sections of the thread details panel
   (`t3-parity.md#D802`).
+- `apps/web/src/lib/pierre-icons.ts` and `pierre-entry-icon.tsx` — T3's file
+  icons: `T3_PIERRE_ICONS` for a `@pierre/trees` tree and `PierreEntryIcon`
+  for one file (`source-control.md#D923`); use them wherever a file is shown.
 - `e2e/` — Playwright end-to-end tests.
 - `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
   `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a
