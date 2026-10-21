@@ -197,6 +197,9 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
 
 ## Deferred
 
+- A machine-readable ready signal from `jhin serve` (the app reads the CLI's
+  `ui:` and `logs:` lines and the token file the CLI itself reads for
+  `--url`).
 - The release pipeline: an electron-builder config with the GitHub
   `publish` provider and a workflow that publishes signed artifacts and
   `latest*.yml` / `nightly*.yml` to this repository's releases. Until then
