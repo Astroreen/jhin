@@ -2,20 +2,18 @@ import {
   CONNECTIONS_CAPABILITY,
   THREADS_CAPABILITY,
   type ChatTurnItemProps,
-  type Connections,
-  type ThreadsCatalog,
 } from "@jhin/client-api";
 import { definePlugin } from "@jhin/sdk";
-import { SecretsThreadEvents } from "@jhin/secrets-api";
 import { UI_SLOTS_CAPABILITY, type SlotRegistry } from "@jhin/ui";
 
 import { builtin } from "../../lib/builtin.ts";
-import { SecretRequestCard, type SecretRequestServices } from "./card.tsx";
+import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 
 /**
  * `jhin.secrets-view`: an agent's request for a secret, answered privately
  * in its turn through the `chat.turn.item` slot (docs/plans/security.md,
- * D1032).
+ * D1032). Everything but this registration is a chunk of its own, so the
+ * entry chunk stays small (D440).
  */
 export const secretsViewPlugin = builtin(
   "jhin.secrets-view",
@@ -28,20 +26,16 @@ export const secretsViewPlugin = builtin(
   },
   definePlugin({
     activate(context) {
-      const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
-      const services: SecretRequestServices = {
-        connections: context.services.get<Connections>(CONNECTIONS_CAPABILITY),
-        threads: context.services.get<ThreadsCatalog>(THREADS_CAPABILITY),
-      };
-      function SecretRequest(props: ChatTurnItemProps) {
-        if (props.event.type !== SecretsThreadEvents.requestOpened) return null;
-        return <SecretRequestCard {...props} services={services} />;
-      }
       context.subscriptions.add(
-        slots.contribute<ChatTurnItemProps>("chat.turn.item", {
-          id: "jhin.secrets.request",
-          component: SecretRequest,
-        }),
+        context.services
+          .get<SlotRegistry>(UI_SLOTS_CAPABILITY)
+          .contribute<ChatTurnItemProps>("chat.turn.item", {
+            id: "jhin.secrets.request",
+            component: lazyChunk<ChatTurnItemProps>(
+              () => import("./card.tsx").then((module) => module.secretRequestItem(context)),
+              { loading: () => null, failed: () => null },
+            ),
+          }),
       );
     },
   }),

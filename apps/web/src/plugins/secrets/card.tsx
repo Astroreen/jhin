@@ -1,7 +1,14 @@
 // T3 Code's SecretRequestCard (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/SecretRequestCard.tsx and
 // packages/client-runtime/src/secretRequest.ts.
-import type { ChatTurnItemProps, Connections, ThreadsCatalog } from "@jhin/client-api";
+import {
+  CONNECTIONS_CAPABILITY,
+  THREADS_CAPABILITY,
+  type ChatTurnItemProps,
+  type Connections,
+  type ThreadsCatalog,
+} from "@jhin/client-api";
+import type { PluginContext } from "@jhin/sdk";
 import {
   SECRET_REQUEST_DEFAULT_PLACEHOLDER,
   SECRET_REQUEST_PRIVACY_NOTE,
@@ -16,7 +23,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent 
 
 import { secretRequestFailureMessage } from "./failure.ts";
 
-export interface SecretRequestServices {
+interface SecretRequestServices {
   readonly connections: Connections;
   readonly threads: ThreadsCatalog;
 }
@@ -59,10 +66,17 @@ function useClosed(props: ChatTurnItemProps, services: SecretRequestServices, re
   return status;
 }
 
-export function SecretRequestCard(props: ChatTurnItemProps & { services: SecretRequestServices }) {
-  const request = readOpened(props.event.payload);
-  if (request === undefined) return null;
-  return <Card {...props} request={request} />;
+/** The `chat.turn.item` contribution: a card for each `secrets.request.opened`. */
+export function secretRequestItem(context: PluginContext) {
+  const services: SecretRequestServices = {
+    connections: context.services.get<Connections>(CONNECTIONS_CAPABILITY),
+    threads: context.services.get<ThreadsCatalog>(THREADS_CAPABILITY),
+  };
+  return function SecretRequestItem(props: ChatTurnItemProps) {
+    if (props.event.type !== SecretsThreadEvents.requestOpened) return null;
+    const request = readOpened(props.event.payload);
+    return request === undefined ? null : <Card {...props} request={request} services={services} />;
+  };
 }
 
 function Card(

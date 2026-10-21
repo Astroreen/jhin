@@ -377,7 +377,8 @@ The reference is T3 Code at D53 (`eb7b35ac`):
 - **D1028. A private prompt for a secret: `secrets.request`.** T3's
   `request_secret`, as the tool `secrets_request`: `{ label, reason,
   placeholder?, timeoutMs?, clientRequestId?, threadId? }` (the thread
-  defaults to the calling agent's, `Invocation.threadId`). It needs a
+  defaults to the calling agent's, `Invocation.threadId`; an agent asks in
+  its own thread only, `SECRET_REQUEST_OTHER_THREAD`). It needs a
   running turn in the thread (else `SECRET_REQUEST_NO_TURN`, T3's
   `parent_not_active`), appends `secrets.request.opened {requestId,
   turnId, label, reason, placeholder?}` to the thread and waits: for the

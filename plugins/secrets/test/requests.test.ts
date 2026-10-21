@@ -255,6 +255,40 @@ describe("secret requests (security.md D1028–D1031)", () => {
     expect(await asked).toEqual({ status: "declined" });
   });
 
+  it("is a tool a thread's agent may call, in its own thread only", async () => {
+    const target = await node();
+    const thread = await runningThread(target);
+    const other = await runningThread(target);
+    const agent = {
+      caller: { id: `jhin.agent-claude:${thread.id}`, permissions: AGENT_PERMISSIONS },
+      threadId: thread.id,
+    };
+    const elsewhere = await rejection(
+      target.kernel.commands.execute(
+        "secrets.request",
+        { threadId: other.id, label: "Token", reason: "For the API." },
+        agent,
+      ),
+    );
+    expect(elsewhere).toMatchObject({ code: "SECRET_REQUEST_OTHER_THREAD" });
+    const opened = target.until(
+      thread.id,
+      (event) => event.type === SecretsThreadEvents.requestOpened,
+    );
+    const asked = target.kernel.commands.execute(
+      "secrets.request",
+      { label: "Token", reason: "For the API." },
+      agent,
+    );
+    const { requestId } = (await opened).payload as { requestId: string };
+    await target.client.call("secrets.requests.answer", {
+      threadId: thread.id,
+      requestId,
+      answer: { type: "decline" },
+    });
+    expect(await asked).toEqual({ status: "declined" });
+  });
+
   it("ends with the turn, and needs a running one", async () => {
     const target = await node();
     const idle = await target.client.call<{ id: string }>("threads.create", {});
@@ -309,9 +343,10 @@ describe("secret requests (security.md D1028–D1031)", () => {
       timeoutMs: 5_000,
       clientRequestId: "ask-1",
     };
+    // Both at once, before either card is open: one card.
     const first = target.client.call<SecretRequestResult>("secrets.request", input);
-    const { requestId } = (await opened).payload as { requestId: string };
     const second = target.client.call<SecretRequestResult>("secrets.request", input);
+    const { requestId } = (await opened).payload as { requestId: string };
     const closed = target.until(
       thread.id,
       (event) => event.type === SecretsThreadEvents.requestClosed,

@@ -75,10 +75,20 @@ export async function registerSecretRequests(
   kv: KeyValueStore,
 ): Promise<void> {
   const pending = new Map<string, Pending>();
-  /** Requests answered or ended, so a late answer is told so (D1029). */
-  const closed = new Set<string>();
-  /** `threadId \0 clientRequestId` → its request, waiting or answered (D1028). */
-  const byClient = new Map<string, { requestId: string; result?: Result }>();
+  /**
+   * Requests answered or ended, newest last, with what their call returned:
+   * a late answer is told so (D1029), a `clientRequestId` asked again gets the
+   * same result (D1028).
+   */
+  const finished = new Map<string, Result>();
+  /** `threadId \0 clientRequestId` → its request, and the ones being opened. */
+  const byClient = new Map<string, string>();
+  const opening = new Map<string, Promise<Pending>>();
+  const remember = (requestId: string, result: Result) => {
+    finished.set(requestId, result);
+    if (finished.size > KEPT_ANSWERS) finished.delete(finished.keys().next().value!);
+    if (byClient.size > KEPT_ANSWERS) byClient.delete(byClient.keys().next().value!);
+  };
 
   const appendClosed = (threadId: string, closing: SecretRequestClosed) =>
     log.append(threadStream(threadId), [
@@ -110,61 +120,88 @@ export async function registerSecretRequests(
 
   const open = async (input: SecretRequestInput, threadId: string): Promise<Pending> => {
     const stream = threadStream(threadId);
-    const head = await log.head(stream);
-    const turnId = head === 0 ? undefined : await runningTurnOf(log, stream, head);
-    if (turnId === undefined) throw new SecretsError("SECRET_REQUEST_NO_TURN", { threadId });
-    const { thread } = (await context.commands.execute("threads.get", { threadId })) as {
-      thread: { projectId: string };
-    };
-    const requestId = Crypto.randomUUID();
-    await kv.set(NAMESPACE, pendingKey(requestId), { threadId });
-    const opened: SecretRequestOpened = {
-      requestId,
-      turnId,
-      label: input.label,
-      reason: input.reason,
-      ...(input.placeholder === undefined ? {} : { placeholder: input.placeholder }),
-    };
-    let settle!: (result: Result) => void;
-    const result = new Promise<Result>((resolve) => (settle = resolve));
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let watching: Disposable | undefined;
-    const request: Pending = {
-      requestId,
-      threadId,
-      projectId: thread.projectId,
-      result,
-      async close(status, outcome) {
-        if (pending.get(requestId) !== request) return;
-        pending.delete(requestId);
-        closed.add(requestId);
-        clearTimeout(timer);
-        if (watching !== undefined) {
-          watching.dispose();
-          subscriptions.delete(watching);
-        }
-        try {
-          await appendClosed(threadId, { requestId, status });
-          await kv.delete(NAMESPACE, pendingKey(requestId));
-        } finally {
-          settle(outcome);
-        }
-      },
-    };
-    pending.set(requestId, request);
-    // The card lives as long as the turn that asked (T3: the run).
-    watching = log.subscribe(stream, (event) => {
-      if (TURN_ENDS.has(event.type) && (event.payload as { turnId?: unknown })?.turnId === turnId) {
+    const ended = new Set<string>();
+    let request: Pending | undefined;
+    let turnId: string | undefined;
+    // Watching first: a turn that ends while the card is being opened still closes it.
+    const watching = log.subscribe(stream, (event) => {
+      const ending = (event.payload as { turnId?: unknown } | null)?.turnId;
+      if (!TURN_ENDS.has(event.type) || typeof ending !== "string") return;
+      ended.add(ending);
+      if (request !== undefined && ending === turnId) {
         void request.close("cancelled", { status: "cancelled" });
       }
     });
     subscriptions.add(watching);
-    timer = setTimeout(
-      () => void request.close("cancelled", { status: "timed_out" }),
-      input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    );
-    await log.append(stream, [{ type: SecretsThreadEvents.requestOpened, payload: { ...opened } }]);
-    return request;
+    const unwatch = () => {
+      watching.dispose();
+      subscriptions.delete(watching);
+    };
+    try {
+      const head = await log.head(stream);
+      turnId = head === 0 ? undefined : await runningTurnOf(log, stream, head);
+      if (turnId === undefined || ended.has(turnId)) {
+        throw new SecretsError("SECRET_REQUEST_NO_TURN", { threadId });
+      }
+      const { thread } = (await context.commands.execute("threads.get", { threadId })) as {
+        thread: { projectId: string };
+      };
+      const requestId = Crypto.randomUUID();
+      const opened: SecretRequestOpened = {
+        requestId,
+        turnId,
+        label: input.label,
+        reason: input.reason,
+        ...(input.placeholder === undefined ? {} : { placeholder: input.placeholder }),
+      };
+      let settle!: (result: Result) => void;
+      const result = new Promise<Result>((resolve) => (settle = resolve));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const current: Pending = {
+        requestId,
+        threadId,
+        projectId: thread.projectId,
+        result,
+        async close(status, outcome) {
+          if (pending.get(requestId) !== current) return;
+          pending.delete(requestId);
+          remember(requestId, outcome);
+          clearTimeout(timer);
+          unwatch();
+          try {
+            await appendClosed(threadId, { requestId, status });
+          } catch (error) {
+            context.log.warn("could not close a secret request card", { error: String(error) });
+          } finally {
+            await kv.delete(NAMESPACE, pendingKey(requestId)).catch(() => false);
+            settle(outcome);
+          }
+        },
+      };
+      await kv.set(NAMESPACE, pendingKey(requestId), { threadId });
+      pending.set(requestId, current);
+      request = current;
+      timer = setTimeout(
+        () => void current.close("cancelled", { status: "timed_out" }),
+        input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      );
+      try {
+        await log.append(stream, [
+          { type: SecretsThreadEvents.requestOpened, payload: { ...opened } },
+        ]);
+      } catch (error) {
+        // No card to answer: nothing of it is left behind.
+        pending.delete(requestId);
+        clearTimeout(timer);
+        await kv.delete(NAMESPACE, pendingKey(requestId)).catch(() => false);
+        throw error;
+      }
+      if (ended.has(turnId)) void current.close("cancelled", { status: "cancelled" });
+      return current;
+    } catch (error) {
+      unwatch();
+      throw error;
+    }
   };
 
   context.commands.register({
@@ -177,6 +214,14 @@ export async function registerSecretRequests(
     // It posts a card into the thread, as a message would.
     permissions: ["threads.write"],
     handler: async (input, invocation) => {
+      // An agent asks in its own thread only (D1028).
+      if (
+        input.threadId !== undefined &&
+        invocation.threadId !== undefined &&
+        input.threadId !== invocation.threadId
+      ) {
+        throw new SecretsError("SECRET_REQUEST_OTHER_THREAD", { threadId: input.threadId });
+      }
       const threadId = input.threadId ?? invocation.threadId;
       if (threadId === undefined) throw new SecretsError("SECRET_REQUEST_NO_TURN");
       const clientKey =
@@ -184,19 +229,24 @@ export async function registerSecretRequests(
           ? undefined
           : `${threadId}\u0000${input.clientRequestId}`;
       const known = clientKey === undefined ? undefined : byClient.get(clientKey);
-      if (known?.result !== undefined) return known.result;
-      const waiting = known === undefined ? undefined : pending.get(known.requestId);
-      const request = waiting ?? (await open(input, threadId));
-      if (clientKey !== undefined && known === undefined) {
-        byClient.set(clientKey, { requestId: request.requestId });
+      if (known !== undefined) {
+        const answered = finished.get(known);
+        if (answered !== undefined) return answered;
+        const waiting = pending.get(known);
+        if (waiting !== undefined) return waiting.result;
       }
-      const result = await request.result;
-      if (clientKey !== undefined) {
-        byClient.delete(clientKey);
-        byClient.set(clientKey, { requestId: request.requestId, result });
-        if (byClient.size > KEPT_ANSWERS) byClient.delete(byClient.keys().next().value!);
+      if (clientKey === undefined) return (await open(input, threadId)).result;
+      // Two calls of one id at once open one card.
+      let starting = opening.get(clientKey);
+      if (starting === undefined) {
+        starting = open(input, threadId);
+        opening.set(clientKey, starting);
+        void starting
+          .then((request) => byClient.set(clientKey, request.requestId))
+          .catch(() => undefined)
+          .finally(() => opening.delete(clientKey));
       }
-      return result;
+      return (await starting).result;
     },
   });
 
@@ -213,7 +263,7 @@ export async function registerSecretRequests(
       const request = pending.get(requestId);
       if (request === undefined || request.threadId !== threadId) {
         throw new SecretsError(
-          closed.has(requestId) ? "SECRET_REQUEST_ANSWERED" : "SECRET_REQUEST_NOT_FOUND",
+          finished.has(requestId) ? "SECRET_REQUEST_ANSWERED" : "SECRET_REQUEST_NOT_FOUND",
         );
       }
       if (answer.type === "decline") {

@@ -51,6 +51,7 @@ export const SECRETS_ERROR_MESSAGES = {
     "The secret store could not be opened (its key is missing or the file is damaged).",
   SECRET_REQUEST_NO_TURN:
     "Asking for a secret requires a running turn in the thread the request is for.",
+  SECRET_REQUEST_OTHER_THREAD: "An agent asks for a secret in its own thread only.",
   SECRET_REQUEST_NOT_FOUND: "This secret request no longer exists.",
   SECRET_REQUEST_ANSWERED: "This secret request was already answered.",
   SECRET_REF_INVALID: "That secretRef is not valid.",
