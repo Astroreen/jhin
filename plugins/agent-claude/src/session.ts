@@ -10,6 +10,7 @@
 // a running turn with a message of priority "now", whose aborted result does not end the
 // turn (steerTurn, isClaudeActiveSteeringAbortResult). T3's continuation turns, wake
 // buffers and background-work guards are not ported.
+import { pickEnvironment } from "@jhin/agent-api";
 import type {
   CanUseTool,
   EffortLevel,
@@ -226,13 +227,7 @@ function launchKey(options: Options): string {
 export function inheritedEnvironment(
   inherit: readonly string[] = ["*"],
 ): Record<string, string | undefined> {
-  const exact = new Set(inherit.filter((name) => !name.endsWith("*")));
-  const prefixes = inherit.filter((name) => name.endsWith("*")).map((name) => name.slice(0, -1));
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      ([name]) => exact.has(name) || prefixes.some((prefix) => name.startsWith(prefix)),
-    ),
-  );
+  return pickEnvironment(process.env, inherit);
 }
 
 /**

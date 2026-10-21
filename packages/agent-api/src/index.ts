@@ -351,3 +351,70 @@ export function visibleThreadEvents<T extends StoredEvent>(events: readonly T[])
 export const threadStream = (threadId: string) => `thread/${threadId}`;
 /** The node's index of projects and threads: one event per record created, changed or deleted. */
 export const THREADS_STREAM = "threads";
+
+/**
+ * The conversation an agent has not seen, as context for the first message it gets: every
+ * earlier turn of a thread whose turns ran on other agents before this one joined (no
+ * `since`), or the turns after the agent's last one (`since`: its agent id) of a thread that
+ * went to another agent and came back. `undefined` when there is none, also when `since`
+ * names an agent with no turn in the history (its session already holds what it saw).
+ * The text ends with a line saying the user's new message follows.
+ */
+export function historyTranscript(
+  history: readonly StoredEvent[],
+  since?: string,
+): string | undefined {
+  const turns: { agentId: unknown; lines: string[] }[] = [];
+  const byId = new Map<unknown, { agentId: unknown; lines: string[] }>();
+  for (const event of history) {
+    const payload = event.payload as Record<string, unknown> | null;
+    if (payload === null || typeof payload !== "object") continue;
+    if (event.type === ThreadEvents.turnStarted) {
+      const turn = { agentId: payload["agentId"], lines: [] as string[] };
+      turns.push(turn);
+      byId.set(payload["turnId"], turn);
+      const input = payload["input"] as { text?: unknown } | undefined;
+      if (typeof input?.text === "string") turn.lines.push(`User: ${input.text}`);
+    } else if (event.type === ThreadEvents.turnSteered) {
+      // A message steered into a turn is the user's too.
+      const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
+      const input = payload["input"] as { text?: unknown } | undefined;
+      if (typeof input?.text === "string") turn?.lines.push(`User: ${input.text}`);
+    } else if (event.type === ThreadEvents.itemCompleted && payload["kind"] === "message") {
+      const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
+      if (typeof payload["text"] === "string") turn?.lines.push(`Assistant: ${payload["text"]}`);
+    }
+  }
+  const last = since === undefined ? -1 : turns.findLastIndex((turn) => turn.agentId === since);
+  if (since !== undefined && last === -1) return undefined;
+  const lines = turns.slice(last + 1).flatMap((turn) => turn.lines);
+  if (lines.length === 0) return undefined;
+  return [
+    since === undefined
+      ? "This thread started before you joined it. The conversation so far:"
+      : "Since your last turn this thread went on with another agent. The conversation since then:",
+    "",
+    ...lines,
+    "",
+    "The user's new message follows.",
+    "",
+  ].join("\n");
+}
+
+/**
+ * The variables of `source` an agent runtime passes on (D346): those `inherit` names, exactly
+ * or by a prefix ending in `*`; `["*"]` is every one. Pure, so it stays isomorphic: a server
+ * runtime hands it `process.env`.
+ */
+export function pickEnvironment(
+  source: Readonly<Record<string, string | undefined>>,
+  inherit: readonly string[] = ["*"],
+): Record<string, string | undefined> {
+  const exact = new Set(inherit.filter((name) => !name.endsWith("*")));
+  const prefixes = inherit.filter((name) => name.endsWith("*")).map((name) => name.slice(0, -1));
+  return Object.fromEntries(
+    Object.entries(source).filter(
+      ([name]) => exact.has(name) || prefixes.some((prefix) => name.startsWith(prefix)),
+    ),
+  );
+}

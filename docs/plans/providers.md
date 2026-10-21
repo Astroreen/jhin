@@ -1,7 +1,8 @@
-# Providers plan: Claude Code
+# Providers plan: Claude Code and Codex
 
 Status: **implemented** (Claude Code; W9's follow-ups D340–D350 too, see
-Deferred for what is left). This file records how Jhin runs real
+Deferred for what is left; Codex too, its signed-in manual check pending,
+see "Codex (W7)"). This file records how Jhin runs real
 agents ("providers" in T3 Code) behind `agent.runtime@1.1` (D54) and
 `agent.registry@1` (D55), what was left out and what is deferred.
 
@@ -351,7 +352,7 @@ Done since: steering a running turn (`t3-parity.md` D204–D206).
   `makeSubagentChildThread`), not inside the tool call. Jhin has no child
   threads yet (W10's delegated tasks bring them), nor a way for a runtime to
   write another thread's items through `agent.runtime@1`.
-- Codex and OpenCode runtimes.
+- The OpenCode runtime (W8); Codex is W7, below.
 - A snapshot frame Claude Code would send twice for one unstreamed block
   (not seen so far) shows twice: since D342 identical texts are not merged.
 - Session files of a deleted thread under an earlier config directory: D345
@@ -412,3 +413,254 @@ Claude Code's binary for the platform, about 270 MB, as T3 Code ships it).
 - Against the real Claude Code in the web client: a supervised turn asks
   before a command, runs it once approved and answers. This check is manual
   (it needs a signed-in Claude Code); CI covers the scripted cases.
+
+## Codex (W7)
+
+Status: **implemented, manual check pending** (a supervised turn against a
+signed-in Codex, see Landing; no Codex sign-in was at hand). Codex runs behind the same `agent.runtime@1.1` and
+`agent.registry@1` as Claude Code, in its own plugin. The reference is T3
+Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
+`codexLaunchArgs.ts` and the app-server protocol of
+`packages/effect-codex-app-server`.
+
+### Decisions
+
+- **D310. Codex is the plugin `jhin.agent-codex`.** It registers one runtime
+  (`agentId` `jhin.agent-codex`, name "Codex") through `agent.registry@1`,
+  keeps its state in `storage.kv` and follows the `threads` stream through
+  `storage.eventlog@1`, as Claude Code does (D90, D101). It drives
+  `codex app-server`, Codex's JSON-RPC protocol over stdio (one JSON message
+  per line), with a small client of its own: no SDK and no generated schema.
+  It reads only the fields it needs, one by one, and drops a frame that lacks
+  the ids it belongs to (an item delta without `itemId`, an item without
+  `id`); a request about an item without one is answered with an error. The `codex` binary
+  is the one on the node's `PATH` unless `binaryPath` names another; Jhin does
+  not ship or install Codex. T3's Effect runtime, goals, subagent threads,
+  MCP apps, ChatGPT accounts managed by T3, shadow homes, usage-limit probes,
+  `/feedback`, compaction and fork/rollback are not ported (see Deferred).
+  The distribution lists it after Claude Code, so a node without
+  `jhin.threads.defaultAgent` picks Claude Code when it is signed in, Codex
+  when only Codex is, and the fake agent otherwise (D96).
+- **D311. One app-server per thread, kept between turns.** A thread's first
+  turn starts `codex app-server` in the project's folder, sends `initialize`
+  (client "Jhin", `experimentalApi`) and `initialized`, and keeps the process
+  for the thread's next turns, which go to it directly, as Claude's live
+  sessions do (D98), once Codex ended a turn itself (`turn/completed`,
+  whatever its status). It exits after `sessionIdleMinutes` (default 10; 0: no
+  limit) without a turn, when its thread is archived or deleted, on
+  `codex.sessions.close` and when the plugin deactivates; the next turn starts
+  it again and resumes. A turn whose launch settings differ from the running
+  process's (working directory, binary, `homePath`, `args`, `env`) ends it and
+  starts a new one, the way D99's launch key does. Ending an app-server sends
+  SIGTERM and, when it has not exited 2 s later, SIGKILL (T3's
+  `forceKillAfter`). A process that exits while
+  idle is started again on the next turn; one that exits mid-turn fails the
+  turn ("Codex exited while the turn was running.").
+- **D312. A Codex thread per Jhin thread, resumed.** The first turn calls
+  `thread/start` (working directory, model, T3's thread config
+  `tools.update_plan.enabled`) and records Codex's thread id in `storage.kv`
+  (`thread/<threadId>`) once `turn/start` answered: a turn that fails before
+  its message reached Codex records nothing, so the next one hands the earlier
+  turns over again. A new app-server for a thread with a record calls
+  `thread/resume` with it (`excludeTurns`), unarchiving first when Codex says
+  the session is archived (T3's rule). When Codex says it keeps no rollout of
+  the thread ("no rollout found for thread id …", what codex-cli 0.163
+  answers; any other resume error fails the turn), the turn starts a new Codex thread, handing it the
+  conversation so far as a transcript; the record is replaced once that
+  thread started, so a start that fails too keeps the old one. A deleted thread's record is
+  forgotten.
+- **D313. Modes map as in T3 Code** (`codexRuntimeModeTurnDefaults`), sent on
+  every `turn/start`: `approval-required` → approval policy `untrusted` with
+  a `readOnly` sandbox, `auto-accept-edits` → `on-request` with
+  `workspaceWrite`, `full-access` → `never` with `dangerFullAccess`;
+  `approvalsReviewer` is always `user`. Interaction mode `plan` sends
+  collaboration mode `plan` (with the model and effort, `medium` when none is
+  set, as T3 does); `default` sends collaboration mode `default` on every
+  turn, so a plan turn does not stick to the next one (T3 sends it whenever
+  it attaches its developer instructions, which is every turn there). A
+  turn's `instructions` (`agent.runtime@1.3`, a defined agent's role) are the
+  collaboration mode's developer instructions, where T3 puts its own. Every
+  turn asks for `summary: "detailed"` reasoning, as T3 does.
+- **D314. Approvals.** `item/commandExecution/requestApproval` becomes an
+  approval of a command ("Run command", the command line, Codex's reason),
+  `item/fileChange/requestApproval` one of a file change ("Edit file", the
+  changed paths T3's `codexFileChangeApprovalPrompt` lists, or the reason),
+  and `item/permissions/requestApproval` one of the permissions asked for
+  ("Grant permissions", a file change, file read or command as T3 tells
+  them apart).
+  The request id is `<itemId>:approval`. Decisions map one to one: accept →
+  `accept`, accept-for-session → `acceptForSession` (and later requests of
+  the same kind on that thread's app-server, in the same runtime mode, are
+  accepted without asking, T3's session allowance; a turn in another mode
+  asks again), decline → `decline` (the tool shows as declined),
+  cancel → `cancel`. Permissions are granted for the turn or the session, or
+  not at all; a session grant is Codex's own (`scope: "session"` in the
+  answer, as T3 answers), so Jhin keeps no allowance for it and a restarted
+  app-server asks again. The legacy `execCommandApproval` and `applyPatchApproval`
+  requests map the same way to Codex's review decisions. An interrupt answers
+  open requests with cancel.
+- **D315. Questions.** `item/tool/requestUserInput` becomes a user-input
+  request (`<itemId>:input`) with Codex's question ids, headers and options;
+  `isOther`, or a question without options, allows a free-text answer. Answers go back as `{ <id>: { answers: [...] } }`, only
+  for the ids Codex asked, several choices as several answers.
+- **D316. Plans.** `turn/plan/updated` is a plan update (`inProgress` →
+  `in_progress`). The proposed plan of a plan turn (the `plan` item, streamed
+  with `item/plan/delta`) is a proposed plan (`plan.proposed`,
+  `agent.runtime@1.2`), its completed text being authoritative, so W6's card
+  with "implement this plan" shows it, as for Claude's `ExitPlanMode`.
+- **D317. Items.** Agent messages stream with `item/agentMessage/delta` and
+  complete with the item's text (commentary and final answers alike).
+  Reasoning streams per summary part (`item/reasoning/summaryTextDelta`, and
+  the raw text when Codex sends it) and completes per part. Tool calls, with
+  T3's titles in Jhin's wording: `commandExecution` → command ("Ran
+  command", output streamed with `item/commandExecution/outputDelta`),
+  `fileChange` → file change ("Edited file", the paths, the diffs as output),
+  `mcpToolCall` → mcp (`<server>: <tool>`, the result's text or its error),
+  `dynamicToolCall` → other, `webSearch` → web ("Searched the web", T3's
+  `webSearchPatterns`), `imageView` → file read ("Viewed image"). Codex's
+  `completed`, `failed` and `declined` statuses carry over; tool output kept
+  in the thread is cut at 20 000 characters (D94). User messages, context
+  compaction, review mode and subagent items are not shown.
+- **D318. Usage.** `thread/tokenUsage/updated` reports the turn's usage as T3
+  reads it (`codexProviderTurnTokenUsage`): the last request's input, cached
+  input and output tokens, `contextTokens` from its total and the model's
+  context window when Codex names it.
+- **D319. Turn end and errors.** `turn/completed` ends the turn: `completed`
+  completes it, `interrupted` after Jhin's interrupt interrupts it,
+  `interrupted` without one fails it ("Codex stopped the turn."), `failed`
+  fails it with Codex's error message, else the last non-retried `error`
+  notification's details or message (T3's rule). An `error` notification
+  that Codex will retry is not a failure. Only frames of the turn's own
+  Codex turn id count; notifications of another turn are dropped.
+- **D320. Interrupts.** An interrupt sends `turn/interrupt` with the thread
+  and turn ids (after `turn/start` answered, when it comes before) and the
+  turn ends on Codex's `turn/completed`; an app-server that does not answer
+  the interrupt request at all is ended (one that answers it with an error,
+  say the turn just ended, is not: its `turn/completed` or the grace ends
+  the turn), and so is one that takes it but sends no
+  `turn/completed` within 10 s (T3's wait for an interrupted turn): the turn
+  ends interrupted either way, also when Codex never answers the
+  `thread/*` or `turn/start` request it was waiting on. Nothing Codex sends after the interrupt is
+  recorded. An interrupt before the app-server started never starts it.
+  Steering (`agent.runtime@1.2`, `steering`): a message steered into a
+  running turn goes to Codex as `turn/steer` with the turn's id
+  (`expectedTurnId`, T3's call); one steered before `turn/start` answered
+  goes in once it has. A turn that ended or is ending takes none. A steer
+  Codex refuses after `steer()` returned (the turn ended just then) is
+  logged only (see Deferred). A stop hides only what it caused (the grace
+  running out, Codex ended by Jhin, a later turn taking over); a failure of
+  the turn's own after it (Codex not starting, a crash, Codex failing the
+  turn) still fails it.
+- **D321. Status from Codex itself.** `status()` starts `codex app-server`
+  in the node's temporary folder, initializes it and reads `account/read`
+  and `model/list` (every page), as T3's
+  `probeCodexAppServerProvider` does; nothing reaches a model. Codex that
+  does not start is unavailable with T3's message ("Could not start Codex
+  CLI (`codex`). …"), one that needs a sign-in with "Codex CLI is not
+  authenticated. Run `codex login` and try again.", one that takes longer
+  than 20 s with "Timed out while checking Codex app-server provider
+  status." A signed-in account says which ("Signed in as <email>", or T3's
+  plan and API-key labels); the version comes from the user agent. The models
+  Codex lists replace the bundled ones; the default is the first of T3's
+  preferred models present (`gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`),
+  else Codex's own default, else the first. A turn that names no model
+  before any probe ran (a CLI or MCP call before anyone listed the agents)
+  waits for one, at most 3 s, so it does not go out with a bundled model the
+  installed Codex lacks; a Codex that hangs or does not start leaves the
+  bundled default, and the turn's own start reports what is wrong (T3's
+  "Could not start Codex CLI" for a missing binary). The config's
+  `defaultModel` skips the wait. Probes are reused and refreshed
+  as D95 does (five minutes when available, ten seconds when not, a stale
+  answer given at once), and nothing probes at activation.
+- **D322. Config section `jhin.agent-codex`:** `binaryPath` (default
+  `codex`), `homePath` (`CODEX_HOME`, `~` expanded as T3 does), `args`
+  (extra arguments after `app-server`, T3's launch args), `defaultModel`,
+  `effort` (`none` … `xhigh`, Codex's default when unset), `env` (marked
+  `writeOnly`, D83), `inheritEnv` and `sessionIdleMinutes`. Codex gets the
+  node's variables `inheritEnv` lets through (D346's allow-list, default
+  `["*"]`; `pickEnvironment` in `agent-api` is the one implementation, the
+  Claude plugin uses it too) plus `env` and `CODEX_INTERNAL_ORIGINATOR_OVERRIDE`
+  set to "Jhin", which T3 sets so Codex's first catalog fetch names the
+  client.
+- **D323. Turns Codex missed are handed to it.** As D102 does for Claude: a
+  thread that started on another agent, or went to another agent and came
+  back, gives Codex a transcript of the turns it did not see in front of the
+  new message. The transcript is shared: `agent-api` exports it as
+  `historyTranscript`, so every runtime words it the same way; Claude's
+  `transcript` is that function.
+- **D324. Tests drive a fake app-server process.** `test/fake-app-server.ts`
+  is a Node script that speaks the app-server protocol: it answers
+  `initialize`, `account/read`, `model/list`, `thread/*` and `turn/*` and
+  plays scripted notifications and server requests for each `turn/start`,
+  from a scenario file the test writes; it logs every message it receives,
+  so a test reads what Jhin sent after the turn ended, without waiting on
+  time. Tests run it with `binaryPath` (an executable wrapper) through the
+  same spawn as the real `codex`; CI never runs the real CLI. A check
+  against a signed-in Codex is manual.
+
+### Deferred
+
+- Per-turn model options in the composer: reasoning effort and service tier
+  (fast mode) from `model/list`'s descriptors (W6); only the config's
+  `effort` applies.
+- Goals (`/goal`), `/compact`, `/feedback` and skills (`skills/list`, `$skill`
+  mentions) in the composer; reverting, forking and rolling back a Codex
+  thread (W2, W3).
+- Asynchronous questions (`agentMessage` with `delivery: "async"`) that
+  Codex asks while it goes on working: shown as the message's text today.
+- Subagent threads (`collabAgentToolCall`, `subAgentActivity`) and their
+  transcripts; background terminals Codex keeps after a turn.
+- MCP elicitations, app access requests and MCP apps; attaching the node's
+  own MCP server to Codex (as for Claude, W9).
+- Usage limits and rate-limit windows (`account/rateLimits/*`), T3's
+  usage-limit wording with the reset time, and retry progress items for
+  errors Codex retries.
+- ChatGPT sign-in from Jhin, several Codex accounts per node and shadow
+  homes; signing in is `codex login` on the node.
+- Models a newer Codex would list (T3's `updateRequiredModels`) and custom
+  model slugs.
+- The manual check of Landing: a supervised turn against a signed-in Codex
+  asks before a command, runs it once approved and answers (only a sign-in
+  with an invalid API key was at hand: Codex took Jhin's `thread/start`,
+  `thread/resume` and `turn/start` and failed the turn with its 401).
+- A steered message Codex refuses (`turn/steer` fails, typically because the
+  turn just ended) is only logged: the threads plugin already recorded it as
+  steered, and there is no way yet for a runtime to hand it back as a
+  follow-up.
+- Scoping "accept for session" more narrowly than T3 does: T3's session
+  allowance, ported as is (D314), accepts every later command (or file
+  change) on the thread's app-server in that mode, not only the approved one;
+  the approval's wording does not say so yet.
+- A cap on running app-servers, and keeping one alive while it still has
+  background work.
+- A time limit on `thread/start`, `thread/resume` and `turn/start`: a Codex
+  that stays up but never answers them holds the turn until it is stopped
+  (the stop then frees it, D320). They may legitimately wait on Codex's MCP
+  servers starting, so no fixed limit is set.
+
+### Landing
+
+One PR. Public API it changes: `historyTranscript` in `@jhin/agent-api`
+(additive) and new ids — the plugin `jhin.agent-codex`, its config section,
+the storage namespace `jhin.agent-codex` and the commands
+`codex.sessions.list` and `codex.sessions.close`. The distribution gains the
+plugin, not Codex itself.
+
+**Done when:**
+
+- The affected checks and CI pass; `pnpm pack:smoke` runs the packed CLI
+  with the plugin.
+- The fake app-server proves: text, reasoning, a command with streamed
+  output and usage; a failed turn with Codex's error; command, file-change
+  and permission approvals accepted, declined, accepted for the session and
+  cancelled by an interrupt; questions answered by id; a todo plan and a
+  plan turn's proposed plan; two turns on one app-server, a resume on a new
+  one, the fallback to a new Codex thread with a transcript, the unarchive
+  retry; archive and delete; the idle end (and none at 0); a restart on a
+  new `homePath`; Codex exiting mid-turn; an interrupt that keeps the
+  app-server; frames of other turns and threads dropped; the turns another
+  agent ran handed over; images; a later turn taking over; the status probe
+  (signed in, plan labels, signed out, not starting, model pages and the
+  preferred default) and the `codex.sessions.*` commands.
+- Against a signed-in Codex (manual): a supervised turn asks before a
+  command, runs it once approved and answers.

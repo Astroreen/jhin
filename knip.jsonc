@@ -29,6 +29,7 @@
         "@jhin/plugin-terminal",
         "@jhin/plugin-scheduler",
         "@jhin/plugin-agent-claude",
+        "@jhin/plugin-agent-codex",
         "@jhin/plugin-agent-fake",
         "@jhin/plugin-orchestration",
         "@jhin/plugin-mcp-server",
