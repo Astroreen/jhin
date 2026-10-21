@@ -219,5 +219,3 @@ export function createAgentsStore(connections: Connections) {
     },
   };
 }
-
-export type AgentsStore = ReturnType<typeof createAgentsStore>;

@@ -42,10 +42,10 @@ import { useExternal } from "../lib/hooks.ts";
 
 /** The mode and route panel of an agent's page (D614). */
 const CIVILIZATION_MODE = "civilization";
-export const AGENT_PANEL = "agent";
+const AGENT_PANEL = "agent";
 
 /** The route of an agent's page: the agent in `section`, a generation's thread in `thread`. */
-export const agentRoute = (node: string, agentId: string, threadId?: string): Route => ({
+const agentRoute = (node: string, agentId: string, threadId?: string): Route => ({
   node,
   mode: CIVILIZATION_MODE,
   panel: AGENT_PANEL,

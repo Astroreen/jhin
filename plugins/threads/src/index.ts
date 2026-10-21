@@ -16,7 +16,6 @@ import {
   INTERACTION_MODES,
   RUNTIME_MODES,
   THREADS_STREAM,
-  GenerationOf,
   applicableModelOptions,
   ThreadEvents,
   ThreadHooks,

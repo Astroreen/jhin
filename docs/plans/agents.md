@@ -252,10 +252,18 @@ types and the schemas of the `agents.*` commands) is
 - **D613. Skills are names in A1.** The definition lists them and the
   instructions name them; installing or limiting a runtime's skills per agent
   is deferred.
-- **D614. The client shows agents in Civilization mode only (D741):** a
-  roster of agents per project (title, role, status) and an agent page with
-  its generations, read-only (no composer), and stop and resume. Nothing of it
-  goes into the Threads sidebar or header. It contributes to A8's shell.
+- **D614. The client shows agents in Civilization mode only (D741):** the
+  client plugin `jhin.agents-ui` fills A8's `civilization.sidebar.agents`
+  with a roster per node (title, role, a status dot) and `civilization.views`
+  with an agent's page at the route `panel=agent`, `section=<agentId>`,
+  `thread=<generation>`: its header (role, address, runtime, status), Stop or
+  Resume, New generation, the list of generations and the chosen one's
+  conversation. The conversation comes through a new public slot,
+  `thread.transcript` (`ThreadTranscriptProps`: target and thread id), which
+  the chat plugin fills with its timeline and no composer, header or
+  requests: a generation is observed, not driven. Statuses come from the
+  `agents` stream and the `threads` index (D608). Nothing of it goes into the
+  Threads sidebar or header. Agents of remote mesh members are deferred.
 
 ### A2. Messaging between agents, and the owner (D621–D640)
 
@@ -435,6 +443,8 @@ What `docs/README.md` does by hand, as a plugin for any project:
 - An `agent.directory@1` service for plugins that read agents in process;
   the `agents.*` commands serve them for now.
 - Archiving or settling earlier generations automatically on rotate (D606).
+- The roster and agent page for agents of remote mesh members (D614): the
+  client follows the agents of its direct connections only.
 - Mode places that survive a page reload (D744 keeps them for the page's
   life); a mode per window or per node.
 - Offering Civilization mode for a mesh member reached through another node
