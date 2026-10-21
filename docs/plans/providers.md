@@ -907,11 +907,12 @@ OpenCode 2 behaviour.
   reads back what it missed (T3's `backfill` and `reconcile`): the session's
   messages newest first, back to the turn's own prompt, are replayed as the
   events they would have been (a text, reasoning or tool completes once,
-  streamed or read back), and a session that `GET /api/session/active` no
-  longer lists ended while the stream was down: completed when its last
+  streamed or read back), and a session that `GET /api/session/active`,
+  asked after the history, no longer lists ended while the stream was down: completed when its last
   `idle` message says `succeeded`, failed with "OpenCode ended the turn
   with an error while Jhin was reconnecting." for `failed`, else as
-  stopped. A turn still running goes on with the stream's events. A stream
+  stopped (a restarted server writes no `idle` for the execution it lost,
+  T3's reading). A turn still running goes on with the stream's events. A stream
   that does not open again fails its turns with "The OpenCode event stream
   was lost and could not reconnect." (T3's wording), the session marked
   unsettled as before; one that cannot be read back fails as lost.
@@ -921,9 +922,10 @@ OpenCode 2 behaviour.
 
 - OpenCode 1.x (T3's `adapter.ts` over `@opencode-ai/sdk`): a CLI older than
   2.0 is reported as unsupported.
-- T3's per-thread MCP server inside OpenCode, fork and rollback,
-  subagent child sessions and background wakes, OpenCode Go usage limits, text generation, skills and
-  `$skill` mentions, the version advisory and self-update.
+- T3's per-thread MCP server inside OpenCode, fork and rollback, subagent
+  child sessions and background wakes, OpenCode Go usage limits, text
+  generation, skills and `$skill` mentions, the version advisory and
+  self-update.
 
 ### Deferred
 

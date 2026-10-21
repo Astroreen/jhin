@@ -1015,7 +1015,14 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
       id: "msg_a1",
       type: "assistant",
       content: [
+        { type: "reasoning", text: "Thinking." },
         { type: "text", text: "Hello" },
+        {
+          type: "tool",
+          id: "call_2",
+          name: "read",
+          state: { status: "error", input: { path: "x" }, error: { message: "no such file" } },
+        },
         {
           type: "tool",
           id: "call_1",
@@ -1032,8 +1039,17 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
     fake.active.delete("ses_1");
     fake.dropStreams();
     const items = await done;
+    // Two messages a page: the history is read over two pages, back to the prompt.
+    expect(fake.calls("GET", "/message")).toHaveLength(2);
     expect(items.filter((item) => item.kind !== "message.delta")).toEqual([
+      { kind: "reasoning.completed", itemId: "msg_a1:reasoning:0", text: "Thinking." },
       { kind: "message.completed", itemId: "msg_a1:text:0", text: "Hello" },
+      {
+        kind: "tool.started",
+        itemId: "call_2",
+        tool: expect.objectContaining({ name: "read" }),
+      },
+      { kind: "tool.completed", itemId: "call_2", status: "failed", error: "no such file" },
       {
         kind: "tool.started",
         itemId: "call_1",
@@ -1042,6 +1058,29 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
       { kind: "tool.completed", itemId: "call_1", status: "completed", output: "README.md" },
     ]);
     expect(sessions.records.get(THREAD)).toEqual({ id: "ses_1", turnId: "turn-1" });
+  });
+
+  it.each([
+    ["failed", "OpenCode ended the turn with an error while Jhin was reconnecting."],
+    [undefined, "OpenCode stopped the turn."],
+  ])("fails a turn that ended %s while its stream was down", async (outcome, message) => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const { fake, runtime } = await setup({
+      scripts: [
+        (play) => {
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          started();
+        },
+      ],
+    });
+    const failed = failure(runtime.startTurn(request()));
+    await running;
+    fake.record("ses_1", { id: "msg_jhin_turn_ses_1:turn-1", type: "user" });
+    if (outcome !== undefined) fake.record("ses_1", { id: "msg_i1", type: "idle", outcome });
+    fake.active.delete("ses_1");
+    fake.dropStreams();
+    expect((await failed).message).toBe(message);
   });
 
   it("goes on with a turn still running once its stream is open again", async () => {

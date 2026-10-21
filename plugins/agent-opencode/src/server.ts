@@ -259,6 +259,8 @@ export function createServerOwner(options: {
     readonly listeners: Map<string, Set<(event: StreamEvent) => void>>;
     readonly lost: Set<(reason: string) => void>;
     readonly reconnected: Set<() => void>;
+    /** Ends the wait between two reconnect attempts. */
+    cancelReconnect: () => void;
     exited: boolean;
     /** Turns and probes using this server now. */
     users: number;
@@ -280,6 +282,7 @@ export function createServerOwner(options: {
 
   const stop = (server: Running) => {
     server.stopped = true;
+    server.cancelReconnect();
     retired.delete(server);
     server.stream?.close();
     server.stream = undefined;
@@ -344,6 +347,7 @@ export function createServerOwner(options: {
       listeners: new Map(),
       lost: new Set(),
       reconnected: new Set(),
+      cancelReconnect: () => {},
       exited: false,
       users: 0,
       retired: false,
@@ -390,7 +394,15 @@ export function createServerOwner(options: {
         await openStream(server);
       } catch (error) {
         if (left <= 1) throw error;
-        await new Promise<void>((resolve) => timers.after(RECONNECT_DELAY_MS, resolve));
+        await new Promise<void>((resolve) => {
+          const cancel = timers.after(RECONNECT_DELAY_MS, resolve);
+          // A stop ends the wait: the next attempt sees the server gone.
+          server.cancelReconnect = () => {
+            cancel();
+            resolve();
+          };
+        });
+        server.cancelReconnect = () => {};
         return attempt(left - 1);
       }
     };
@@ -403,7 +415,8 @@ export function createServerOwner(options: {
           options.log?.("could not reconnect to the opencode event stream", {
             error: String(error),
           });
-          lose(server, RECONNECT_FAILED);
+          // A server that exited meanwhile already told its turns why.
+          if (!server.exited) lose(server, RECONNECT_FAILED);
         },
       )
       .finally(() => {

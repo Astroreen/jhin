@@ -783,7 +783,6 @@ export function openCodeTurn(
        */
       const reconcile = async () => {
         if (!sent || finish === undefined) return;
-        const active = await client.active();
         const promptId = turnPromptId(sessionId, request.turnId);
         const read: SessionMessage[] = [];
         let cursor: string | undefined;
@@ -839,7 +838,11 @@ export function openCodeTurn(
             }
           }
         }
+        // Read after the history: a turn that ends in between is not judged on an old answer.
+        const active = await client.active();
         if (sessionId in active) return;
+        // Not running and no `idle` after the prompt: a restarted server writes none for the
+        // execution it lost (T3's reading), so the turn was stopped.
         const idle = recent.find((message) => message.type === "idle");
         finish?.(
           idle?.outcome === "succeeded" || interrupted

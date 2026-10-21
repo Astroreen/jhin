@@ -273,8 +273,14 @@ export async function fakeOpenCode(
     }
     if (rest === "/synthetic") return json(res, 204);
     if (method === "GET" && rest === "/message") {
+      // Two a page, newest first: the cursor is where the next page starts.
       const listed = (messages.get(sessionId) ?? []).toReversed();
-      return json(res, 200, { data: listed, cursor: {} });
+      const start = Number(request.query.get("cursor") ?? 0);
+      const next = start + 2 < listed.length ? String(start + 2) : undefined;
+      return json(res, 200, {
+        data: listed.slice(start, start + 2),
+        cursor: next === undefined ? {} : { next },
+      });
     }
     if (method === "DELETE" && /^\/inbox\/[^/]+$/.test(rest)) {
       const status = inboxCancels.shift() ?? 204;
