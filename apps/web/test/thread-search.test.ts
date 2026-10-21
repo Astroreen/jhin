@@ -201,6 +201,27 @@ describe("searching thread contents on every node (D228)", () => {
     expect(calls[0]!.query).toBe("a".repeat(199));
   });
 
+  it("keeps a node's earlier matches on show until it answers a query asked again", async () => {
+    vi.useFakeTimers();
+    const { threads, calls } = nodes();
+    const search = createContentSearch(threads);
+    search.request("lisbon", [a, b]);
+    vi.advanceTimersByTime(200);
+    calls[0]!.answer([match("t1", "user", "2026-10-20T10:00:00Z")]);
+    calls[1]!.fail("PERMISSION_DENIED");
+    await until(search, (state) => !state.pending);
+    vi.advanceTimersByTime(10_000);
+    search.request("lisbon", [a, b]);
+    vi.advanceTimersByTime(200);
+    // Asking again: no flash of an empty list while the nodes answer.
+    expect(search.get()).toMatchObject({ pending: true, matches: [{ threadId: "t1" }] });
+    calls[2]!.answer([]);
+    await until(search, (state) => state.matches.length === 0);
+    calls[3]!.answer([match("t2", "user", "2026-10-20T11:00:00Z")]);
+    await until(search, (state) => !state.pending);
+    expect(search.get().matches.map((found) => found.threadId)).toEqual(["t2"]);
+  });
+
   it("marks every occurrence of the query, ignoring ASCII case", () => {
     expect(highlightParts("Lisbon and lisbon", "LISBON")).toEqual([
       { text: "Lisbon", highlighted: true },

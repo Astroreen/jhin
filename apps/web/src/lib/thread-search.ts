@@ -76,7 +76,14 @@ export function createContentSearch(
     let waiting = targets.length;
     let matches: ContentMatch[] = [];
     let failed = 0;
-    publish({ query, pending: waiting > 0, matches, failed });
+    // Asked again for the same query, a node's earlier matches show until it answers anew.
+    const earlier = state.query === query ? state.matches : [];
+    const answered = new Set<string>();
+    const shown = () =>
+      [...matches, ...earlier.filter((match) => !answered.has(targetKey(match.target)))].toSorted(
+        byRank,
+      );
+    publish({ query, pending: waiting > 0, matches: shown(), failed });
     for (const target of targets) {
       let deadline: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<ContentMatch[] | "failed">((resolve) => {
@@ -100,16 +107,17 @@ export function createContentSearch(
         .then((found) => {
           if (id !== generation) return;
           waiting -= 1;
+          answered.add(targetKey(target));
           if (found === "failed") failed += 1;
-          else matches = [...matches, ...found].toSorted(byRank);
-          publish({ query, pending: waiting > 0, matches, failed });
+          else matches = [...matches, ...found];
+          publish({ query, pending: waiting > 0, matches: shown(), failed });
           if (found !== "failed") return;
           // Past its deadline: an answer that still comes for this query counts after all.
           void answer.then((late) => {
             if (id !== generation || late === "failed") return;
             failed -= 1;
-            matches = [...matches, ...late].toSorted(byRank);
-            publish({ query, pending: waiting > 0, matches, failed });
+            matches = [...matches, ...late];
+            publish({ query, pending: waiting > 0, matches: shown(), failed });
           });
         });
     }
