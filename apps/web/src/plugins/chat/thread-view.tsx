@@ -33,13 +33,13 @@ import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
 import { proposedPlanTitle } from "../../lib/proposed-plan.ts";
 import { actionablePlan, openRequests } from "../../lib/timeline.ts";
+import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import {
   Composer,
   type ComposerHandleApi,
   type QueueActions,
   type Selection,
 } from "./composer.tsx";
-import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { ChatHeader } from "./header.tsx";
 import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
 import { useChat } from "./services.ts";
@@ -183,7 +183,7 @@ export function ThreadView(props: {
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
-      sendAlternate: () => handle.current?.sendAlternate() ?? false,
+      sendAlternate: async () => (await handle.current?.sendAlternate()) ?? false,
       steerNext: () => handle.current?.steerNext() ?? false,
       editLatest: () => handle.current?.editLatest() ?? false,
       resume: () => handle.current?.resume() ?? false,
@@ -650,7 +650,7 @@ export function DraftView(props: {
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
-      sendAlternate: () => handle.current?.sendAlternate() ?? false,
+      sendAlternate: async () => (await handle.current?.sendAlternate()) ?? false,
       steerNext: () => handle.current?.steerNext() ?? false,
       editLatest: () => handle.current?.editLatest() ?? false,
       resume: () => handle.current?.resume() ?? false,

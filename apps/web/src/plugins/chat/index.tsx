@@ -563,14 +563,19 @@ export const chatPlugin = builtin(
           },
         });
       /** A command that answers whether it did anything (`done`, D806), as the palette and MCP need. */
-      const answer = (name: string, title: string, description: string, run: () => boolean) =>
+      const answer = (
+        name: string,
+        title: string,
+        description: string,
+        run: () => boolean | Promise<boolean>,
+      ) =>
         context.commands.register({
           name,
           title,
           description,
           input: z.object({}),
           output: z.object({ done: z.boolean() }),
-          handler: () => ({ done: run() }),
+          handler: async () => ({ done: await run() }),
         });
       register(
         "chat.composer.focus",

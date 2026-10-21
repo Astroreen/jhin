@@ -1513,12 +1513,6 @@ Reference: T3 Code at `eb7b35ac` (D53).
   inside a finished turn's folded work is not rendered until it is
   unfolded, so it is not found (T3 opens the fold holding the current
   match; Deferred).
-- **D806. The queue's client commands say whether they did anything,** as
-  `chat.thread.resume` does (D800): `chat.queue.steer-next`,
-  `chat.queue.edit-latest` and `chat.composer.send-alternate` answer
-  `{ done }`, false when there was nothing to do (nothing queued or typed, a
-  message being edited, the composer unable to send), so the palette and
-  MCP can tell.
 - **D805. Claude's foreground subagents go to the background before a
   steer**, as T3's `ClaudeAdapterV2.ts` (`backgroundForegroundSubagents`
   before `steerTurn`). A steer reaches Claude Code with priority "now",
@@ -1538,6 +1532,12 @@ Reference: T3 Code at `eb7b35ac` (D53).
   the steer as before. When the subagent ends after its turn, Claude Code
   reads its result in the next turn of the live session; T3's wake of an
   idle thread for it (its continuation turns) stays Deferred.
+- **D806. The queue's client commands say whether they did anything,** as
+  `chat.thread.resume` does (D800): `chat.queue.steer-next`,
+  `chat.queue.edit-latest` and `chat.composer.send-alternate` answer
+  `{ done }`, false when there was nothing to do (nothing queued or typed, a
+  message being edited, the composer unable to send), so the palette and
+  MCP can tell.
 - **D803. T3's restart dispatch for agents that cannot steer**
   (`CommandPolicy.ts` `decideSteeringExecution`: `interrupt_restart` when a
   provider cannot steer actively). `threads.steer` and `threads.queue.steer`

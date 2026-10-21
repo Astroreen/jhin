@@ -175,7 +175,7 @@ export interface ComposerHandleApi {
   cycleRuntimeMode(): void;
   togglePlanMode(): void;
   /** Sends the message the other way while a turn runs: queued instead of steered, or back. */
-  sendAlternate(): boolean;
+  sendAlternate(): Promise<boolean>;
   /** Steers the first queued message into the running turn; false when it cannot. */
   steerNext(): boolean;
   /** Edits the last queued message in the composer; false when it cannot (T3's editLatest). */
@@ -1374,16 +1374,8 @@ export function Composer(props: ComposerProps) {
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,
     togglePlanMode,
-    // False when nothing goes: nothing typed or attached, or the composer cannot send now.
-    sendAlternate() {
-      const text = editor.current?.value() ?? prompt;
-      if (busy || props.unavailable !== undefined || approval !== undefined) return false;
-      // Saving an edited queued message or answering a question is no send.
-      if (editing !== undefined || question !== undefined) return false;
-      if (text.trim() === "" && attachments.length === 0) return false;
-      void send(true);
-      return true;
-    },
+    // True once the message went: not for an edit, an answer, or nothing to send.
+    sendAlternate: () => send(true),
     steerNext() {
       const next = queued[0];
       const actions = props.queueActions;
@@ -1494,11 +1486,12 @@ export function Composer(props: ComposerProps) {
         : followUp === "steer"
           ? "Steer message"
           : "Send message";
-  const send = async (alternate = false) => {
-    if (busy || props.unavailable !== undefined || approval !== undefined) return;
+  /** Sends what is typed; true once it went as a message (not an edit, an answer or a mode switch). */
+  const send = async (alternate = false): Promise<boolean> => {
+    if (busy || props.unavailable !== undefined || approval !== undefined) return false;
     if (question !== undefined) {
       await submitAnswers();
-      return;
+      return false;
     }
     // What the editor holds now: a key can come before the render of what was
     // just typed (or cleared), so the state may still be the text before it.
@@ -1506,26 +1499,26 @@ export function Composer(props: ComposerProps) {
     const hasTyped = typed.trim() !== "" || attachments.length > 0;
     if (planFollowUp !== undefined && !hasTyped) {
       await implement(false);
-      return;
+      return false;
     }
-    if (!hasTyped) return;
+    if (!hasTyped) return false;
     // `/plan` or `/default` sent alone switch the mode instead (T3).
     const standalone = attachments.length === 0 ? parseStandaloneComposerSlashCommand(typed) : null;
     if (standalone !== null && planSupported) {
       props.onSelectionChange({ ...props.selection, interactionMode: standalone });
       setPrompt("");
       setCursor(0);
-      return;
+      return false;
     }
     const ready = uploads.forMessage();
     if (!ready.ok) {
       toasts?.show({ type: "error", title: ready.message });
-      return;
+      return false;
     }
     const text = typed;
     if (editing !== undefined) {
       // An edit is saved, never sent as a new message beside the queued one.
-      if (props.queueActions === undefined) return;
+      if (props.queueActions === undefined) return false;
       setBusy(true);
       try {
         if (await props.queueActions.edit(editing.id, text, ready.attachments)) {
@@ -1536,7 +1529,7 @@ export function Composer(props: ComposerProps) {
       } finally {
         setBusy(false);
       }
-      return;
+      return false;
     }
     // Cleared first, restored if sending fails (as T3 Code does).
     setPrompt("");
@@ -1552,6 +1545,7 @@ export function Composer(props: ComposerProps) {
       } else {
         taken.sent();
       }
+      return sent;
     } finally {
       setBusy(false);
     }
