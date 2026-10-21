@@ -25,5 +25,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      treeshake: {
+        // The kernel's JSONC reading (config files) never runs in the page; the
+        // parser has no side effects, so it is dropped with it (D440).
+        moduleSideEffects: (id) => !id.includes("/node_modules/jsonc-parser/"),
+      },
+    },
   },
 });

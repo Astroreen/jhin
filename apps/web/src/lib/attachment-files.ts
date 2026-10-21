@@ -2,7 +2,6 @@
 // packages/client-runtime/src/textPaste.ts, packages/client-runtime/src/state/attachments.ts and
 // the pasted-text fold in apps/web/src/components/chat/ChatComposer.tsx at eb7b35ac.
 // The server upload-capability checks are left out.
-import { isHeicImageFile } from "./image-compression.ts";
 
 /** How the composer takes a file: as an image, as a file, or refused as an image it cannot send. */
 export type AttachmentFileKind = "image" | "file" | "unsupported-image";
@@ -171,4 +170,20 @@ export function fileAttachmentTooLargeMessage(name: string, maxUploadBytes: numb
         ? `${maxUploadBytes / 1024} KB`
         : `${maxUploadBytes} ${maxUploadBytes === 1 ? "byte" : "bytes"}`;
   return `'${name}' exceeds the ${maxUploadSize} attachment limit.`;
+}
+
+// Kept here, not in image-compression.ts, so telling a HEIC file apart does not
+// pull the image codecs into the page's first chunk (D440).
+const HEIC_IMAGE_MIME_TYPE = /^image\/hei(?:c|f)$/i;
+const HEIC_IMAGE_EXTENSION = /\.(?:heic|heif)$/i;
+
+/** Finder and some browsers omit the MIME type when dragging HEIC photos. */
+export function isHeicImageFile(file: Pick<File, "name" | "type">): boolean {
+  if (HEIC_IMAGE_MIME_TYPE.test(file.type)) {
+    return true;
+  }
+  return (
+    (file.type === "" || file.type.toLowerCase() === "application/octet-stream") &&
+    HEIC_IMAGE_EXTENSION.test(file.name)
+  );
 }
