@@ -33,9 +33,7 @@ import { useEffect, useState } from "react";
 import { parsePatch, type DiffFile } from "../../lib/diff.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { formatCompactDiffCount } from "../../lib/pull-request.ts";
-import { useSourceControl, type SourceControlServices } from "./services.ts";
-
-export const DIFF_PANEL = "diff";
+import { useSourceControl, type SourceControlServices, DIFF_PANEL } from "./services.ts";
 
 const SCOPE_LABEL: Record<DiffScope, string> = { branch: "Changes", uncommitted: "Uncommitted" };
 
