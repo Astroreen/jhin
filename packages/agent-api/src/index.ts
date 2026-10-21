@@ -11,6 +11,7 @@ export const AGENT_REGISTRY_CAPABILITY = "agent.registry";
 
 export * from "./modes.ts";
 export * from "./agents.ts";
+export * from "./messages.ts";
 export * from "./orchestration.ts";
 
 import type { InteractionMode, RuntimeMode } from "./modes.ts";
