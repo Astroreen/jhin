@@ -203,6 +203,8 @@ function useSourceUrl(
    * them rather than downloading them.
    */
   type?: string,
+  /** Whether the bytes go in the unsandboxed PDF frame, which shows only a real PDF. */
+  pdf = false,
 ) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -212,41 +214,47 @@ function useSourceUrl(
     setUrl(null);
     if (!wanted) return;
     setError(null);
-    if (file !== undefined) {
-      const local = URL.createObjectURL(type === undefined ? file : new Blob([file], { type }));
-      setUrl(local);
-      return () => URL.revokeObjectURL(local);
-    }
-    if (stored === undefined || loader === undefined) {
+    if (file === undefined && (stored === undefined || loader === undefined)) {
       setError("The attachment is unavailable.");
       return;
     }
     let current = true;
-    let own: string | undefined;
-    setUrl(null);
-    loader
-      .url(stored)
-      .then(async (loaded) => {
-        if (type === undefined) return loaded;
-        const bytes = await (await fetch(loaded)).blob();
-        const made = URL.createObjectURL(new Blob([bytes], { type }));
-        // Closed meanwhile: the cleanup ran before this URL existed.
-        if (!current) {
-          URL.revokeObjectURL(made);
-          return made;
-        }
-        own = made;
-        return own;
-      })
-      .then(
-        (loaded) => current && setUrl(loaded),
-        (cause: unknown) => current && setError(errorText(cause, "The attachment is unavailable.")),
-      );
+    const owned: string[] = [];
+    const own = (blob: Blob) => {
+      const made = URL.createObjectURL(blob);
+      // Closed meanwhile: the cleanup ran before this URL existed.
+      if (current) owned.push(made);
+      else URL.revokeObjectURL(made);
+      return made;
+    };
+    const show = async () => {
+      const shown =
+        file !== undefined
+          ? own(type === undefined ? file : new Blob([file], { type }))
+          : await loader!
+              .url(stored!)
+              .then(async (loaded) =>
+                type === undefined
+                  ? loaded
+                  : own(new Blob([await (await fetch(loaded)).blob()], { type })),
+              );
+      // The PDF frame cannot be sandboxed (the built-in viewer refuses it), so only bytes that
+      // are a PDF go in it, whatever type the upload claimed.
+      if (pdf) {
+        const head = await (await (await fetch(shown)).blob()).slice(0, 5).text();
+        if (head !== "%PDF-") throw new Error("This file is not a PDF.");
+      }
+      return shown;
+    };
+    show().then(
+      (shown) => current && setUrl(shown),
+      (cause: unknown) => current && setError(errorText(cause, "The attachment is unavailable.")),
+    );
     return () => {
       current = false;
-      if (own !== undefined) URL.revokeObjectURL(own);
+      for (const made of owned) URL.revokeObjectURL(made);
     };
-  }, [file, stored, loader, wanted, revision, type]);
+  }, [file, stored, loader, wanted, revision, type, pdf]);
   return { url: wanted ? url : null, error: wanted ? error : null };
 }
 
@@ -286,7 +294,13 @@ export function AttachmentFilePreview(
   const needsText = kind === "text" || kind === "markdown" || (kind === "html" && !rendered);
   // Text needs only its first MiB, not the whole file.
   const needsUrl = !needsText && kind !== "unsupported";
-  const { url, error } = useSourceUrl(props, needsUrl, revision, frameType(kind, props.mimeType));
+  const { url, error } = useSourceUrl(
+    props,
+    needsUrl,
+    revision,
+    frameType(kind, props.mimeType),
+    kind === "pdf",
+  );
   const wordWrap = useSection(chat.context, DIFF_SECTION, DiffSettings).wordWrap;
 
   useEffect(() => {

@@ -164,6 +164,15 @@ describe("the preview of an attachment (T3's AttachmentFilePreview)", () => {
     expect((await (await fetch(element.src)).blob()).type).toBe("text/html");
   });
 
+  it("frames only bytes that are a PDF in the unsandboxed PDF frame", async () => {
+    const file = new File(["<script>1</script>"], "fake.pdf", { type: "application/pdf" });
+    await mount(
+      <AttachmentFilePreview file={file} mimeType={file.type} name={file.name} sizeBytes={18} />,
+    );
+    await expect.element(page.getByText("This file is not a PDF.")).toBeVisible();
+    expect(document.querySelector("iframe")).toBeNull();
+  });
+
   it("offers a retry when a sent video's bytes do not play", async () => {
     const { loader, reads } = nodeLoader("not really a video");
     await mount(
