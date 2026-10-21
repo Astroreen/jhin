@@ -446,6 +446,8 @@ describe("the diff panel", () => {
     await expect
       .element(page.getByRole("alert"))
       .toHaveTextContent("Could not read refs: git is busy");
+    // The reason replaces "No matching refs.", not joins it.
+    expect(page.getByText("No matching refs.").query()).toBeNull();
   });
 
   it("folds a renamed file from its header", async () => {
