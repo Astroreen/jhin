@@ -214,7 +214,8 @@ rules of the form below), the decision says so.
 - **D484. Clients follow it.** The builtin client plugin
   `jhin.node-config-feed` follows `host/config` on every connection and
   emits the client event `node.config.changed` (`{ connection, layer,
-  sections }`). `client.machines@1` asks a connection's
+  sections, all? }`, `@jhin/client-api`); a connection that opens again
+  emits it with `all: true`, since nothing is replayed while it was away. `client.machines@1` asks a connection's
   `host.identity` again when `jhin.host` changed there (D132 asked only on
   reconnect and after this page saved). The node config page reads the
   shown section again when it changed: an editor without changes shows the
@@ -231,8 +232,11 @@ rules of the form below), the decision says so.
   thread record gets `lastVisitedAt` (additive): `threads.visit` (`{
   threadId, at }`) moves it forward only and changes nothing else (no
   `updatedAt`, as T3's comment says: a read receipt is not activity), and
-  `threads.mark-unread` sets it to 1 ms before the latest turn's end (T3's
-  `thread.mark-unread`; a thread without an ended turn is refused). Both go
+  `threads.mark-unread` sets it to 1 ms before the latest turn's end, when
+  that turn completed (T3's `thread.mark-unread`; the record keeps only its
+  latest turn, so a thread whose latest turn did not complete is refused). A
+  visit from a clock ahead of the node's counts as the node's now, unless it
+  is exactly the thread's own snooze wake time (dismissing "Woke"). Both go
   out through the `threads` index, so every client and device of the node
   sees them. `client.visits@1` reads the record's value where the node keeps
   one and the device's own visit otherwise (an older node, a thread never
@@ -419,3 +423,8 @@ A stack of PRs, each on the previous one. Public API, all additive:
    `node.config.changed`), `apps/web/test/node-config.browser.test.tsx`
    (`rebase`) and Playwright "D483, D484: a change made elsewhere reaches the
    open page".
+4. Visits shared by every device (D485): `threads.visit`,
+   `threads.mark-unread`, `ThreadRecord.lastVisitedAt` and `lastVisitOf` in
+   `@jhin/client-api`. The proof: `plugins/threads/test/arrangement.test.ts`
+   ("visits shared by every device"), `apps/web/test/thread-status.test.ts`
+   ("visits shared through the thread's node").

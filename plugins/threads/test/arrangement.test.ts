@@ -17,6 +17,7 @@ interface Thread {
   snoozedUntil?: string;
   snoozedAt?: string;
   lastSnoozeWakeAt?: string;
+  lastVisitedAt?: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -473,5 +474,63 @@ describe("jhin.threads: a drop as one write (D449)", () => {
       await client.call("threads.arrange", { steps: [{ op: "unpin", threadId: thread.id }] }),
     ).toEqual({ threads: [] });
     expect(index.events.length).toBe(appended);
+  });
+});
+
+describe("jhin.threads: visits shared by every device (D485)", () => {
+  it("moves a thread's visit forward only, without counting it as activity", async () => {
+    const { client, thread, record } = await withThread();
+    // Past the thread's creation, before the node's now.
+    const later = new Date(Date.now() - 1000).toISOString();
+    const seen = record((item) => item.lastVisitedAt === later);
+    const visited = await client.call<Thread>("threads.visit", { threadId: thread.id, at: later });
+    expect(visited.lastVisitedAt).toBe(later);
+    expect(visited.updatedAt).toBe(thread.updatedAt);
+    // Every client following the index hears of it.
+    await seen;
+    const earlier = await client.call<Thread>("threads.visit", {
+      threadId: thread.id,
+      at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    expect(earlier.lastVisitedAt).toBe(later);
+    // A clock ahead of the node's counts as the node's now.
+    const ahead = await client.call<Thread>("threads.visit", {
+      threadId: thread.id,
+      at: "2999-01-01T00:00:00.000Z",
+    });
+    expect(Date.parse(ahead.lastVisitedAt!)).toBeLessThanOrEqual(Date.now());
+    await expect(
+      client.call("threads.visit", { threadId: "nope", at: later }),
+    ).rejects.toBeDefined();
+  });
+
+  it("stores a visit normalised, and takes a snooze's own wake time as it is", async () => {
+    const { client, thread } = await withThread();
+    const local = new Date(Date.now() - 2 * 3_600_000);
+    const offset = local.toISOString().replace("Z", "+00:00");
+    const stored = await client.call<Thread>("threads.visit", { threadId: thread.id, at: offset });
+    expect(stored.lastVisitedAt).toBe(local.toISOString());
+    // Dismissing "Woke": the wake time is the node's own, even ahead of its clock.
+    const until = inAnHour();
+    await client.call("threads.snooze", { threadId: thread.id, until });
+    const woke = await client.call<Thread>("threads.visit", { threadId: thread.id, at: until });
+    expect(woke.lastVisitedAt).toBe(new Date(until).toISOString());
+    // Any other time ahead still counts as now.
+    const ahead = new Date(Date.parse(until) + 60_000).toISOString();
+    const clamped = await client.call<Thread>("threads.visit", { threadId: thread.id, at: ahead });
+    expect(clamped.lastVisitedAt).toBe(new Date(until).toISOString());
+  });
+
+  it("marks the latest completed turn unread: the visit goes to just before it ended", async () => {
+    const { client, thread, turn } = await withThread();
+    await expect(client.call("threads.mark-unread", { threadId: thread.id })).rejects.toMatchObject(
+      {
+        code: "NO_COMPLETED_TURN",
+      },
+    );
+    const done = await turn();
+    await client.call("threads.visit", { threadId: thread.id, at: done.lastTurn!.at });
+    const unread = await client.call<Thread>("threads.mark-unread", { threadId: thread.id });
+    expect(Date.parse(unread.lastVisitedAt!)).toBe(Date.parse(done.lastTurn!.at) - 1);
   });
 });

@@ -224,6 +224,12 @@ export interface ThreadRecord {
   readonly snoozedAt?: string;
   /** When a snooze last ended by hand. */
   readonly lastSnoozeWakeAt?: string;
+  /**
+   * When the thread was last seen on any device, as its node records it
+   * (T3 Code's `lastVisitedAt`, docs/plans/config-ui.md D485); absent on a
+   * node older than that, or for a thread never visited.
+   */
+  readonly lastVisitedAt?: string;
   /** The thread and turn it was forked at. */
   readonly forkedFrom?: { readonly threadId: string; readonly turnId: string };
   /** A fork merged back, delivered to the agent with the next message. */
@@ -295,6 +301,14 @@ export const VISITS_CAPABILITY = "client.visits";
 /** The key of a thread in a `ThreadVisits` snapshot. */
 export const visitKey = (target: NodeTarget, threadId: string): string =>
   `${targetKey(target)}|${threadId}`;
+
+/**
+ * When a thread was last seen: what its node records, which every device
+ * shares, else this device's own visit (T3 Code's
+ * `resolveThreadLastVisitedAt`, D485).
+ */
+export const lastVisitOf = (thread: ThreadRecord, local: string | undefined): string | undefined =>
+  thread.lastVisitedAt ?? local;
 
 export interface ThreadVisits {
   /** When the thread was last seen, as a time of the thread's node. */

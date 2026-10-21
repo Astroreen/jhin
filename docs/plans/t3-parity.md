@@ -1541,8 +1541,9 @@ and as events arrive).
 - Pushing a mesh member's config changes to a client of another node: done
   for connections in `config-ui.md` D483–D484; a member's `host/config` is
   not followed through the mesh yet (`config-ui.md#deferred`).
-- Visits and drafts are per device; syncing them, and device settings, across
-  devices.
+- Drafts are per device; syncing them, and device settings, across devices
+  (`config-ui.md` D486–D488). Visits are shared through the thread's node
+  since `config-ui.md` D485.
 - Scoped tokens. Done in `security.md` (D410–D416): device tokens carry
   their grants, so `projects.browse`, `host.config.read` and
   `host.identity` are given on purpose, and mesh calls carry their caller's

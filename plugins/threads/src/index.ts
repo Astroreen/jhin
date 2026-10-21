@@ -195,6 +195,12 @@ const Thread = z.object({
   snoozedAt: z.string().optional(),
   /** When a snooze last ended by hand: the automatic rule counts it as activity. */
   lastSnoozeWakeAt: z.string().optional(),
+  /**
+   * When the thread was last seen, on any device, as a time of this node
+   * (T3 Code's `lastVisitedAt`, docs/plans/config-ui.md D485). Read state,
+   * not activity: it leaves `updatedAt` alone.
+   */
+  lastVisitedAt: z.string().optional(),
   /** The thread that delegated this one's work (docs/plans/orchestration.md, D363). */
   parentThreadId: z.string().optional(),
   /** How it relates to `parentThreadId`: a delegated child task's thread is a `subagent`. */
@@ -2545,6 +2551,49 @@ export default definePlugin({
           // Stamped again even for the same time: snoozing a thread that woke
           // means "seen, not now".
           return { ...thread, snoozedUntil: new Date(wakeMs).toISOString(), snoozedAt: at };
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.visit",
+      description:
+        "Records that a thread was seen as of a time of this node, for every device (D485); never moves back",
+      input: ThreadId.extend({ at: z.iso.datetime({ offset: true }) }),
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId, at }) =>
+        updateThread(threadId, (thread) => {
+          // A visit from a clock ahead of this node's counts as now, or it would
+          // hide every later turn on every device. A snooze's own wake time
+          // (dismissing "Woke", D78) is a time this node set: it stands as is.
+          const wake = [thread.snoozedUntil, thread.lastSnoozeWakeAt].some(
+            (time) => time !== undefined && Date.parse(time) === Date.parse(at),
+          );
+          const seen = wake ? Date.parse(at) : Math.min(Date.parse(at), Date.parse(now()));
+          return thread.lastVisitedAt !== undefined && Date.parse(thread.lastVisitedAt) >= seen
+            ? thread
+            : { ...thread, lastVisitedAt: new Date(seen).toISOString() };
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.mark-unread",
+      description:
+        "Shows a thread's latest completed turn as new again on every device: its visit goes back to just before that turn ended (D485)",
+      input: ThreadId,
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId }) =>
+        updateThread(threadId, (thread) => {
+          if (thread.lastTurn?.status !== "completed") {
+            throw new ThreadsError(
+              "NO_COMPLETED_TURN",
+              "The thread has no completed turn to mark unread",
+              { threadId },
+            );
+          }
+          const before = new Date(Date.parse(thread.lastTurn.at) - 1).toISOString();
+          return { ...thread, lastVisitedAt: before };
         }),
     });
 

@@ -44,6 +44,7 @@ import {
   type ThreadSection,
   type ThreadsCatalog,
   VISITS_CAPABILITY,
+  lastVisitOf,
   visitKey,
   type ThreadVisits,
   type NodeActionProps,
@@ -1294,7 +1295,8 @@ export const sidebarPlugin = builtin(
         const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false);
         const committed = useRef(false);
         const status = sidebarThreadStatus(thread);
-        const lastVisit = seen[visitKey(target, thread.id)];
+        // The node's record wins: it is what every device saw (D485).
+        const lastVisit = lastVisitOf(thread, seen[visitKey(target, thread.id)]);
         const unread = isUnread(thread, lastVisit);
         const woke = isWoke(thread, lastVisit, now);
         const top = sidebarTopStatus(status, unread, woke);
