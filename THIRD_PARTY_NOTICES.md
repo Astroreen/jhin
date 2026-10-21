@@ -59,7 +59,8 @@ viewers, page operations, snapshots, recordings, viewport presets, URL
 normalisation and the tools' wording), rendered HTML (`plugins/html-render` and
 `@jhin/preview-api`: the page's bootstrap, theme variables and guides, image
 inlining, the public proxy, console capture and measuring; the web client's
-frame), pairing (`plugins/auth-token`:
+frame), devices (`plugins/devices`: finding the Android SDK, the device tools'
+wording and the Device panel), pairing (`plugins/auth-token`:
 pairing codes, the pairing and session endpoints; the web client's pairing
 links, saved nodes in IndexedDB, Authorized clients settings and QR code
 component) and the desktop app (`apps/desktop`, `plugins/desktop`,

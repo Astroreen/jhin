@@ -16,6 +16,7 @@ import { notificationsPlugin } from "./plugins/notifications.tsx";
 import { schedulerPlugin } from "./plugins/scheduler/index.tsx";
 import { settingsPlugin } from "./plugins/settings/index.tsx";
 import { sidebarPlugin } from "./plugins/sidebar.tsx";
+import { devicePanelPlugin } from "./plugins/devices/index.tsx";
 import { htmlRenderViewPlugin } from "./plugins/html-render/index.tsx";
 import { previewPanelPlugin } from "./plugins/preview/index.tsx";
 import { sourceControlPlugin } from "./plugins/source-control/index.tsx";
@@ -113,6 +114,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     terminalPlugin,
     previewPanelPlugin,
     htmlRenderViewPlugin,
+    devicePanelPlugin,
     commandPalettePlugin,
     settingsPlugin,
     schedulerPlugin,
