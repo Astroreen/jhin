@@ -297,6 +297,7 @@ export const chatPlugin = builtin(
         attachmentUrls,
         unconfirmed: createUnconfirmed(),
         composer,
+        threadFind: { current: undefined },
       };
 
       function Routed() {
@@ -524,6 +525,10 @@ export const chatPlugin = builtin(
         "Loads the open thread's last queued message into the composer to change it",
         () => void composer.current?.editLatest(),
       );
+      // T3's find in the thread (D801).
+      register("chat.find", "Find in thread", "Opens the find bar of the open thread", () =>
+        services.threadFind.current?.open(),
+      );
       // T3's "Resume thread" for a stopped turn or a held queue (D800).
       register(
         "chat.thread.resume",
@@ -605,6 +610,11 @@ export const chatPlugin = builtin(
               when: "!terminalFocus && !editableFocus",
             },
             { key: "mod+l", command: "chat.composer.focus", when: "!terminalFocus" },
+            {
+              key: "mod+f",
+              command: "chat.find",
+              when: "threadOpen && !terminalFocus && !previewFocus",
+            },
             {
               key: "mod+shift+enter",
               command: "chat.queue.steer-next",

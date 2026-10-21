@@ -128,6 +128,8 @@ export interface ChatServices {
   readonly unconfirmed: Unconfirmed;
   /** What commands can do to the composer on screen. */
   readonly composer: ComposerHandle;
+  /** The open thread's find bar (D801), for `chat.find`. */
+  readonly threadFind: { current: { open(): void } | undefined };
 }
 
 /** The mounted composer, for commands (focus it, open its model picker). */

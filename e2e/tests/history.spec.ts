@@ -200,3 +200,38 @@ test("finds threads by their messages from the sidebar and the palette", async (
   await option.click();
   await expect(page.getByRole("heading", { level: 2 })).toHaveText("an unrelated title");
 });
+
+test("finds text in the thread with mod+f and steps through the matches (D801)", async ({
+  page,
+}, info) => {
+  const { message } = await thread(page, "an apple a day", "another apple");
+  await message.press("ControlOrMeta+f");
+  const find = page.getByRole("searchbox", { name: "Find in thread" });
+  await expect(find).toBeFocused();
+  await find.fill("APPLE");
+  // The user's two messages and the agent's two echoes.
+  const count = page.getByRole("search", { name: "Find in thread" }).getByText(/^\d+\/\d+$/);
+  await expect(count).toHaveText("1/4");
+  await shoot(page, info, "thread-find");
+  await find.press("Enter");
+  await expect(count).toHaveText("2/4");
+  await find.press("Shift+Enter");
+  await find.press("Shift+Enter");
+  await expect(count).toHaveText("4/4");
+  await page.getByRole("button", { name: "Next match" }).click();
+  await expect(count).toHaveText("1/4");
+
+  await find.fill("pear");
+  await expect(count).toHaveText("0/0");
+  await expect(page.getByRole("button", { name: "Next match" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Close find" }).click();
+  await expect(find).toHaveCount(0);
+  // Closing hands focus back to the composer; Escape closes the bar too.
+  await expect(message).toBeFocused();
+  await message.press("ControlOrMeta+f");
+  await expect(find).toBeFocused();
+  await find.press("Escape");
+  await expect(find).toHaveCount(0);
+  await expect(message).toBeFocused();
+});

@@ -23,6 +23,7 @@ icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, its tiptap
 prompt editor, menus, attachments and model options, editing from a
 message, forks and merging them back, searching thread contents, the
+find in a thread with its highlights (`plugins/chat/thread-find.tsx`), the
 scheduled tasks settings page), the
 threads plugin's merge-back handoff and search snippets
 (`plugins/threads/src/history.ts`), source control (`plugins/source-control`:
