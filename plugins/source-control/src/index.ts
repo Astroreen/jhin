@@ -1624,10 +1624,17 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     const git = createGit(config().gitPath, input.cwd);
     const branch = (await git(["branch", "--show-current"])).stdout.trim();
     if (stopped || !isTemporaryBranch(branch)) return;
-    const events = (await context.commands.execute("threads.events", {
-      threadId: input.threadId,
-      limit: 1000,
-    })) as StoredEvent[];
+    // All of them: a rollback far down the log still hands the naming to a later turn.
+    const events: StoredEvent[] = [];
+    for (;;) {
+      const page = (await context.commands.execute("threads.events", {
+        threadId: input.threadId,
+        after: events.at(-1)?.sequence ?? 0,
+        limit: 1000,
+      })) as StoredEvent[];
+      events.push(...page);
+      if (page.length < 1000) break;
+    }
     const text = firstMessageOf(events, input.turnId);
     if (text === undefined) return;
     const fragment = await writerFor(input.projectId, input.threadId).branchName({
