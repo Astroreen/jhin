@@ -371,6 +371,43 @@ test("D78: dragging reorders the pinned and active threads and settles onto the 
   await info.attach("sidebar-dragged", { path: shot, contentType: "image/png" });
 });
 
+test("D964: a drag that unpins or settles offers the undo", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["one", "two", "pinned"]) await addThread(x, title);
+  const threads = await x.client().call<{ id: string; title: string }[]>("threads.list", {});
+  const id = (title: string) => threads.find((thread) => thread.title === title)!.id;
+  await x.client().call("threads.pin", { threadId: id("pinned"), orderKey: "c" });
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["pinned", "two", "one"]);
+  const notice = (action: string) =>
+    page.getByRole("status").filter({ hasText: `${action} 1 thread` });
+
+  // Dragged among the active threads: unpinned, with T3's notice; undo pins it again.
+  await drag(page, threadRow(page, "pinned"), threadRow(page, "one"), 20);
+  await expect(threadRow(page, "pinned").getByRole("button", { name: "Unpin thread" })).toHaveCount(
+    0,
+  );
+  await expect(notice("Unpinned")).toHaveText("Unpinned 1 thread, Ctrl+Z to undo");
+  const shot = info.outputPath("drag-unpin-undo.png");
+  await page.screenshot({ path: shot });
+  await info.attach("drag-unpin-undo", { path: shot, contentType: "image/png" });
+  await notice("Unpinned").getByRole("button", { name: "Ctrl+Z to undo" }).click();
+  await expect(cardTitles(page)).toHaveText(["pinned", "two", "one"]);
+  await expect(
+    threadRow(page, "pinned").getByRole("button", { name: "Unpin thread" }),
+  ).toBeVisible();
+
+  // Dragged onto Settled: settled, with the notice; undo brings it back pinned.
+  await drag(page, threadRow(page, "pinned"), page.getByRole("button", { name: "Settled (0)" }));
+  await expect(page.getByRole("button", { name: "Settled (1)" })).toBeVisible();
+  await expect(notice("Settled")).toHaveText("Settled 1 thread, Ctrl+Z to undo");
+  await notice("Settled").getByRole("button", { name: "Ctrl+Z to undo" }).click();
+  await expect(cardTitles(page)).toHaveText(["pinned", "two", "one"]);
+  await expect(
+    threadRow(page, "pinned").getByRole("button", { name: "Unpin thread" }),
+  ).toBeVisible();
+});
+
 test("D445: a thread's Auto-settle behavior, kept on the node", async ({ page }, info) => {
   const x = await start({ mode: "ui" });
   await addThread(x, "keep me around");

@@ -1695,6 +1695,16 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   It refuses an open thread, whose composer holds its text itself.
   Without `chat.drafts`, cards show no draft.
 
+- **D964. A drag that unpins or settles offers the undo, as T3's.** T3's
+  drop calls the same `unpinThread` and `settleThread` as the buttons, so
+  its notice follows. A drop onto Settled runs `thread.settle` (its undo
+  un-settles, pins and snoozes again, D450) when that command is there,
+  else settles as before. A drop of a pinned thread among the active ones
+  writes its one `threads.arrange` (D449) through `client.undo@1` as kind
+  `pin` on the thread's key, as `thread.unpin` does: "Unpinned 1 thread",
+  and undo pins it again at its old key. A drop that wakes or un-settles
+  offers nothing, as T3's.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -1745,13 +1755,11 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   threads plugin does not know a thread's pull request (linking them is
   W4's); per-project overrides of the settle settings (T3 resolves them per
   project; a Jhin node has one project config layer, D19);
-  the selection menu's "Regenerate titles (N)" (no title
-  regeneration yet); dragging a selection into the
-  chat as context; the undo of an unpin or a settle done by dragging (a
-  drop writes through `threads.arrange`, not the commands that offer an
-  undo, D450). The card's branch, diff and pull request are `source-control.md`'s
-  D117 and its terminal indicator `terminal.md`'s D148, all in the
-  `sidebar.thread.indicators` slot.
+  the selection menu's "Regenerate titles (N)" (no title regeneration yet);
+  dragging a selection into the chat as context. The card's branch, diff
+  and pull request are `source-control.md`'s D117 and its terminal
+  indicator `terminal.md`'s D148, all in the `sidebar.thread.indicators`
+  slot.
 
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
   offers: Jhin has no usage-limit failures to tell apart yet.

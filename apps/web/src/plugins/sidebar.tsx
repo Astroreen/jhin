@@ -44,10 +44,12 @@ import {
   type ThreadSection,
   type ThreadsCatalog,
   CHAT_DRAFTS_CAPABILITY,
+  UNDO_CAPABILITY,
   VISITS_CAPABILITY,
   lastVisitOf,
   visitKey,
   type ChatDrafts,
+  type ThreadUndoService,
   type ThreadVisits,
   type NodeActionProps,
   type ThreadActionProps,
@@ -472,6 +474,7 @@ export const sidebarPlugin = builtin(
       [VISITS_CAPABILITY]: "^1",
       [MACHINES_CAPABILITY]: "^1",
       [CHAT_DRAFTS_CAPABILITY]: "^1",
+      [UNDO_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -486,6 +489,9 @@ export const sidebarPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
       const drafts = context.services.tryGet<ChatDrafts>(CHAT_DRAFTS_CAPABILITY);
+      const undo = context.services.tryGet<ThreadUndoService>(UNDO_CAPABILITY);
+      const hasCommand = (name: string) =>
+        context.commands.list().some((command) => command.name === name);
       const machines = context.services.tryGet<NodeMachines>(MACHINES_CAPABILITY);
       const search = createValue("");
       /** The threads the nodes find by their messages while a search is typed (D228). */
@@ -3422,11 +3428,39 @@ export const sidebarPlugin = builtin(
                     : undefined,
           };
           optimistic.set(drop);
+          const writeAll = async () => {
+            for (const write of writes)
+              await threads.call(write.target, "threads.arrange", { steps: write.steps });
+            return true;
+          };
           try {
-            if (plan.kind === "settle") await settle(entry);
-            else
-              for (const write of writes)
-                await threads.call(write.target, "threads.arrange", { steps: write.steps });
+            // T3's drop runs the same actions as the buttons, with their undo (D964).
+            if (plan.kind === "settle") {
+              if (hasCommand("thread.settle"))
+                await context.commands.execute("thread.settle", refOf(entry));
+              else await settle(entry);
+            } else if (
+              plan.kind === "move-active" &&
+              plan.unpin &&
+              !plan.unsettle &&
+              !plan.unsnooze &&
+              undo !== undefined
+            ) {
+              const orderKey = entry.thread.pinOrderKey;
+              await undo.run({
+                kind: "pin",
+                key: visitKey(entry.node.target, entry.thread.id),
+                action: "Unpinned",
+                noun: "thread",
+                failureTitle: "Failed to undo unpin",
+                perform: writeAll,
+                revert: () =>
+                  threads.call(entry.node.target, "threads.pin", {
+                    threadId: entry.thread.id,
+                    ...(orderKey === undefined ? {} : { orderKey }),
+                  }),
+              });
+            } else await writeAll();
           } catch (error) {
             if (plan.kind !== "settle")
               toasts?.show({
