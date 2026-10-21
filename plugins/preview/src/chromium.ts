@@ -222,16 +222,17 @@ export class Chromium {
     const pending = cleared.then(async () => {
       if (profileId === INCOGNITO_BROWSER_PROFILE_ID) return this.#newContext();
       const directory = this.#profileDirectory(profileId);
-      // Cookies and logins: for this user only.
-      await Fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
       const chromium = await this.#chromium();
-      const context = await this.#start((options) =>
-        chromium.launchPersistentContext(directory, {
+      const context = await this.#start(async (options) => {
+        // Cookies and logins: for this user only. A data folder that cannot take it
+        // fails like any other start, as PREVIEW_UNAVAILABLE.
+        await Fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
+        return chromium.launchPersistentContext(directory, {
           ...options,
           viewport: DEFAULT_VIEWPORT,
           deviceScaleFactor: RENDER_SCALE,
-        }),
-      );
+        });
+      });
       // A persistent profile reopens with a blank page of its own: tabs bring theirs.
       await Promise.all(context.pages().map((page) => page.close().catch(() => undefined)));
       return context;
