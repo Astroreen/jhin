@@ -70,6 +70,8 @@ export const TransportConfig = z
  * written out (`node:443` for https) or left off is the same host.
  */
 function sameHost(origin: URL, requested: string): boolean {
+  // Only a host and a port: `good@evil`, `evil/x` or `evil?x` would parse as another host.
+  if (!/^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d+)?$/i.test(requested)) return false;
   const target = `${origin.protocol}//${requested}`;
   return URL.canParse(target) && new URL(target).host === origin.host;
 }

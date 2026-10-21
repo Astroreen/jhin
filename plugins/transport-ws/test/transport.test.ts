@@ -391,13 +391,12 @@ describe("a revoke while a token is checked (security.md D414)", () => {
 
 describe("Origin allowlist (security.md D418)", () => {
   /** Opens a socket as a browser page on `origin` would; resolves with the HTTP status or "open". */
-  const openFrom = (node: Node, origin: string | undefined) =>
+  const openFrom = (node: Node, origin: string | undefined, headers: Record<string, string> = {}) =>
     new Promise<number | "open">((resolve, reject) => {
-      const socket = new WebSocket(
-        node.url,
-        ["jhin.v1", `jhin.token.${node.token}`],
-        origin === undefined ? {} : { origin },
-      );
+      const socket = new WebSocket(node.url, ["jhin.v1", `jhin.token.${node.token}`], {
+        ...(origin === undefined ? {} : { origin }),
+        headers,
+      });
       socket.once("open", () => {
         socket.close();
         resolve("open");
@@ -429,24 +428,13 @@ describe("Origin allowlist (security.md D418)", () => {
       allowedOrigins: ["https://client.example"],
       trustProxy: ["127.0.0.0/8", "::1"],
     });
-    // As the proxy forwards it: its own Host, and the one the browser asked for.
-    const behindProxy = (origin: string) =>
-      new Promise<number | "open">((resolve, reject) => {
-        const socket = new WebSocket(node.url, ["jhin.v1", `jhin.token.${node.token}`], {
-          origin,
-          headers: { "x-forwarded-host": "jhin.example" },
-        });
-        socket.once("open", () => {
-          socket.close();
-          resolve("open");
-        });
-        socket.once("unexpected-response", (_request, response) =>
-          resolve(response.statusCode ?? 0),
-        );
-        socket.once("error", reject);
-      });
+    const behindProxy = (origin: string, forwardedHost = "jhin.example") =>
+      openFrom(node, origin, { "x-forwarded-host": forwardedHost });
     expect(await behindProxy("https://jhin.example")).toBe("open");
     expect(await behindProxy("https://elsewhere.example")).toBe(403);
+    // A forwarded host that parses as another host is no host at all.
+    expect(await behindProxy("https://evil.example", "jhin.example@evil.example")).toBe(403);
+    expect(await behindProxy("https://evil.example", "evil.example/x")).toBe(403);
   });
 
   it("keeps allowed origins as canonical origins and refuses anything else", () => {
@@ -482,6 +470,14 @@ describe("Origin allowlist (security.md D418)", () => {
     // IPv6 hosts compare as hosts too.
     expect(originAllowed("http://[::1]:7777", "[::1]:7777", listed)).toBe(true);
     expect(originAllowed("http://[::1]:7777", "[::1]:7778", listed)).toBe(false);
+    for (const hostile of [
+      "node.example@evil.example",
+      "evil.example/x",
+      "evil.example?x",
+      "a b",
+    ]) {
+      expect(originAllowed("https://evil.example", hostile, listed)).toBe(false);
+    }
     expect(originAllowed("not an origin", "node:7777", [])).toBe(false);
     // `null` (a sandboxed frame, a file: page) is refused even while nothing is listed.
     expect(originAllowed("null", "node:7777", [])).toBe(false);
