@@ -4,6 +4,13 @@
 // "Create pairing link" dialog and the QR code of the link.
 import type { NodeConnection } from "@jhin/client-api";
 import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
   Badge,
   Button,
   Checkbox,
@@ -242,6 +249,8 @@ function NodeClients({ node }: { node: NodeConnection }) {
   const [links, setLinks] = useState<readonly PairingLink[]>([]);
   const [error, setError] = useState<string | undefined>();
   const [creating, setCreating] = useState(false);
+  const [confirmingOthers, setConfirmingOthers] = useState(false);
+  const [pending, setPending] = useState(false);
   // Answers that come after this node's section is gone change nothing.
   const mounted = useRef(true);
   useEffect(
@@ -265,10 +274,14 @@ function NodeClients({ node }: { node: NodeConnection }) {
     );
   }, [node]);
   useEffect(load, [load]);
-  const run = (method: string, input: unknown) =>
-    node.client
+  // One change at a time: the buttons wait for the node's answer.
+  const run = (method: string, input: unknown) => {
+    setPending(true);
+    return node.client
       .call(method, input)
-      .then(load, (failure: unknown) => mounted.current && setError((failure as Error).message));
+      .then(load, (failure: unknown) => mounted.current && setError((failure as Error).message))
+      .finally(() => mounted.current && setPending(false));
+  };
 
   return (
     <SettingsSection
@@ -276,7 +289,8 @@ function NodeClients({ node }: { node: NodeConnection }) {
         <div className="flex items-center gap-1">
           {clients !== undefined && clients.some((client) => !client.current) ? (
             <Button
-              onClick={() => void run("auth.clients.revoke-others", {})}
+              disabled={pending}
+              onClick={() => setConfirmingOthers(true)}
               size="xs"
               variant="ghost-muted"
             >
@@ -316,6 +330,7 @@ function NodeClients({ node }: { node: NodeConnection }) {
               </div>
               <Button
                 aria-label={`Revoke pairing link ${link.label ?? link.id}`}
+                disabled={pending}
                 onClick={() => void run("auth.pairing.revoke", { id: link.id })}
                 size="xs"
                 variant="outline"
@@ -351,6 +366,7 @@ function NodeClients({ node }: { node: NodeConnection }) {
               {client.current ? null : (
                 <Button
                   aria-label={`Revoke ${client.label}`}
+                  disabled={pending}
                   onClick={() => void run("auth.clients.revoke", { id: client.id })}
                   size="xs"
                   variant="outline"
@@ -362,6 +378,28 @@ function NodeClients({ node }: { node: NodeConnection }) {
           ))}
         </ul>
       )}
+      <AlertDialog onOpenChange={setConfirmingOthers} open={confirmingOthers}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke other clients?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Other paired clients will need a new pairing link before reconnecting.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <Button
+              onClick={() => {
+                setConfirmingOthers(false);
+                void run("auth.clients.revoke-others", {});
+              }}
+              variant="destructive"
+            >
+              Revoke others
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
       {creating ? (
         <CreateLinkDialog node={node} onClose={() => setCreating(false)} onCreated={load} />
       ) : null}

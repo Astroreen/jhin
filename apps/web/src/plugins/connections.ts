@@ -57,7 +57,8 @@ function takeTokenFromUrl(): string | undefined {
   params.delete("token");
   const rest = params.toString();
   // The pairing page has done its work: the client opens at its root.
-  const path = location.pathname === "/pair" ? "/" : location.pathname;
+  // `/pair`, or `/jhin/pair` behind a proxy path: the client opens at that base.
+  const path = location.pathname.replace(/\/pair\/?$/, "/");
   history.replaceState(null, "", `${path}${location.search}${rest === "" ? "" : `#${rest}`}`);
   return token;
 }
