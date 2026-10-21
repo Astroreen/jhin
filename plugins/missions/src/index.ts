@@ -160,7 +160,9 @@ export default definePlugin({
           name: string;
         }[];
       } catch (error) {
-        if ((error as { code?: unknown }).code === "COMMAND_NOT_FOUND") return undefined;
+        // Only projects.list itself missing means no projects, not a command it calls.
+        const { code, details } = error as { code?: unknown; details?: { command?: unknown } };
+        if (code === "COMMAND_NOT_FOUND" && details?.command === "projects.list") return undefined;
         throw error;
       }
     };
