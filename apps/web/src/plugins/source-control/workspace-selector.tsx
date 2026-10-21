@@ -1,6 +1,7 @@
 // The workspace menu of the branch toolbar follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/BranchToolbar.tsx and BranchToolbar.logic.ts (the menu and its
-// labels) and PreviousWorktreeItemContent.tsx. A chunk of its own with the toolbar (D440).
+// labels), PreviousWorktreeItemContent.tsx and BranchToolbarEnvModeSelector.tsx (its
+// composer.workspace shortcut, D906). A chunk of its own with the toolbar (D440).
 import type { NodeTarget, ProjectRecord, ThreadRecord } from "@jhin/client-api";
 import type { ProjectStatus } from "@jhin/source-control-api";
 import {
@@ -22,6 +23,8 @@ import {
   FolderIcon,
   HistoryIcon,
 } from "lucide-react";
+
+import { useEffect, useState } from "react";
 
 import { ComposerControl } from "../../lib/composer-control.tsx";
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
@@ -75,6 +78,10 @@ export function WorkspaceSelector(props: {
   const view = useSourceControl(props.services.store, target);
   const key = draftKey(target, project.id);
   const draft = useDraftWorkspace(drafts, key);
+  const [open, setOpen] = useState(false);
+  // A draft's menu answers T3's `composer.workspace` shortcut; a started thread's is fixed.
+  const offers = thread === undefined;
+  useEffect(() => (offers ? drafts.offerMenu(() => setOpen(true)) : undefined), [drafts, offers]);
   if (thread !== undefined) {
     const label = lockedWorkspaceLabel(thread.worktreePath);
     return (
@@ -123,12 +130,13 @@ export function WorkspaceSelector(props: {
     } else drafts.set(key, LOCAL);
   };
   return (
-    <Menu>
+    <Menu onOpenChange={setOpen} open={open}>
       <Tooltip>
         <TooltipTrigger
           render={
             <MenuTrigger
               aria-label="Workspace"
+              data-composer-shortcut="composer.workspace"
               className="min-w-0 shrink active:scale-100"
               data-composer-context-item
               render={<ComposerControl size="xs" />}
