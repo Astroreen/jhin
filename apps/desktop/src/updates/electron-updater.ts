@@ -36,7 +36,9 @@ export function createElectronUpdater(options: {
   return {
     async check() {
       const result = await autoUpdater.checkForUpdates();
-      return result?.isUpdateAvailable === true ? { version: result.updateInfo.version } : null;
+      return result?.isUpdateAvailable === true
+        ? { version: result.updateInfo.version, releaseNotes: result.updateInfo.releaseNotes }
+        : null;
     },
     async download(onProgress) {
       const progress = (info: { percent: number }) => onProgress(info.percent);
@@ -56,6 +58,8 @@ export function createElectronUpdater(options: {
       autoUpdater.channel = channel;
       autoUpdater.allowDowngrade = allowDowngrade;
       autoUpdater.allowPrerelease = channel === "nightly";
+      // Nightly's notes cover every release since the running one (T3, D948).
+      autoUpdater.fullChangelog = channel === "nightly";
     },
     setAllowDowngrade(allow) {
       autoUpdater.allowDowngrade = allow;

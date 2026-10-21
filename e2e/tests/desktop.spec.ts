@@ -88,7 +88,7 @@ function nodeClient({ home, window }: Launched): RpcClient {
 }
 
 /** A generic update feed (T3's mock updates) offering `version` with a small payload. */
-async function serveFeed(version: string): Promise<string> {
+async function serveFeed(version: string, releaseNotes?: string): Promise<string> {
   const payload = Buffer.from(`Jhin ${version} for the update test\n`);
   const sha512 = Crypto.createHash("sha512").update(payload).digest("base64");
   const file = `Jhin-${version}.AppImage`;
@@ -101,11 +101,14 @@ async function serveFeed(version: string): Promise<string> {
     `path: ${file}`,
     `sha512: ${sha512}`,
     "releaseDate: '2026-10-20T00:00:00.000Z'",
+    ...(releaseNotes === undefined
+      ? []
+      : ["releaseNotes: |", ...releaseNotes.split("\n").map((line) => `  ${line}`)]),
     "",
   ].join("\n");
   feed = Http.createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://localhost").pathname;
-    if (/^\/latest-linux(-arm64)?\.yml$/.test(path)) response.end(yml);
+    if (/^\/(latest|nightly)-linux(-arm64)?\.yml$/.test(path)) response.end(yml);
     else if (path === `/${file}`) response.end(payload);
     else response.writeHead(404).end();
   });
@@ -411,6 +414,53 @@ test("updates come from the feed: check, download, then the install asks first",
     downloadedVersion: "99.0.0",
     channel: "latest",
   });
+});
+
+test("nightly shows its release notes in the update control's popover (D948)", async () => {
+  const version = "99.0.0-nightly.20261021.1";
+  const url = await serveFeed(
+    version,
+    "## What's Changed\n- feat: release notes in the update control\n- fix: a second change",
+  );
+  const appImage = Path.join(temporary("appimage"), "Jhin.AppImage");
+  Fs.writeFileSync(appImage, "the running AppImage\n");
+  const { window } = await launch({ JHIN_DESKTOP_UPDATE_FEED: url, APPIMAGE: appImage });
+
+  // Switching the track checks at once (D519).
+  await window.evaluate(() =>
+    (
+      window as unknown as {
+        jhin: { kernel: { commands: { execute(name: string, input: unknown): Promise<unknown> } } };
+      }
+    ).jhin.kernel.commands.execute("desktop.update.channel.set", { channel: "nightly" }),
+  );
+  const download = window.getByRole("button", { name: `Update ${version} ready to download` });
+  await expect(download).toBeVisible();
+  await download.hover();
+  const notes = window.getByRole("dialog", { name: "Nightly update release notes" });
+  await expect(notes.getByText("Update ready to download")).toBeVisible();
+  await expect(notes.getByRole("heading", { name: "What's changed" })).toBeVisible();
+  await expect(notes.getByRole("listitem")).toHaveText([
+    "fix: a second change",
+    "feat: release notes in the update control",
+  ]);
+  await expect(notes.getByRole("link", { name: "View release on GitHub" })).toHaveAttribute(
+    "href",
+    `https://github.com/Astroreen/jhin/releases/tag/v${version}`,
+  );
+  // Keyboard users reach them too: a keyboard focus opens the popover (T3).
+  await window.mouse.move(600, 300);
+  await expect(notes).toHaveCount(0);
+  await window.keyboard.press("Shift");
+  await download.focus();
+  await expect(notes.getByRole("heading", { name: "What's changed" })).toBeVisible();
+  const shot = test.info().outputPath("release-notes.png");
+  await window.screenshot({ path: shot });
+  await test.info().attach("release notes", { path: shot, contentType: "image/png" });
+
+  // A press still runs the action: it downloads (T3 cancels only the popover's press).
+  await download.click();
+  await expect(window.getByText("Update downloaded")).toBeVisible();
 });
 
 test("Check for Updates... in the menu answers in T3's native dialog", async () => {

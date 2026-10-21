@@ -24,7 +24,17 @@ export const DesktopUpdateStatus = z.enum([
 ]);
 export type DesktopUpdateStatus = z.output<typeof DesktopUpdateStatus>;
 
-/** T3 Code's update state, without its release notes and CPU architectures (Deferred). */
+/** One release's notes for the update control (T3's `DesktopUpdateReleaseNote`, D948). */
+export const DesktopUpdateReleaseNote = z.object({
+  version: z.string(),
+  /** The newest items, at most eight. */
+  items: z.array(z.string()),
+  /** How many items the release has in all. */
+  totalItems: z.number().int(),
+});
+export type DesktopUpdateReleaseNote = z.output<typeof DesktopUpdateReleaseNote>;
+
+/** T3 Code's update state, without its CPU architectures (Deferred). */
 export const DesktopUpdateState = z.object({
   enabled: z.boolean(),
   status: DesktopUpdateStatus,
@@ -32,6 +42,10 @@ export const DesktopUpdateState = z.object({
   currentVersion: z.string(),
   availableVersion: z.string().nullable(),
   downloadedVersion: z.string().nullable(),
+  /** Nightly's notes of the releases since this version, newest first (D948). */
+  releaseNotes: z.array(DesktopUpdateReleaseNote).default([]),
+  /** Releases with notes beyond the six shown. */
+  omittedReleaseCount: z.number().int().default(0),
   downloadPercent: z.number().nullable(),
   /** ISO time of the last check. */
   checkedAt: z.string().nullable(),

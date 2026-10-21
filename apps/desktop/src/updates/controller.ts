@@ -21,6 +21,7 @@ import {
   reduceDesktopUpdateStateOnNoUpdate,
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./machine.ts";
+import { normalizeDesktopUpdateReleaseNotes } from "./release-notes.ts";
 
 /** T3's timing: the first check after start, then a check every few minutes (D519). */
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
@@ -29,7 +30,11 @@ const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60_000;
 /** What the controller needs of electron-updater; `electron-updater.ts` adapts it. */
 export interface Updater {
   /** The newest version on the feed, or null when the feed has none newer. */
-  check(): Promise<{ readonly version: string } | null>;
+  check(): Promise<{
+    readonly version: string;
+    /** electron-updater's `releaseNotes`: a string, or a list per release with nightly's full changelog. */
+    readonly releaseNotes?: unknown;
+  } | null>;
   /** Downloads the version the last check found; resolves once it is complete. */
   download(onProgress: (percent: number) => void): Promise<void>;
   /** Quits the app, installs the download and starts the new version. */
@@ -270,10 +275,26 @@ export class UpdateController {
         });
         this.#set(reduceDesktopUpdateStateOnNoUpdate(this.#state, this.#now()));
       } else {
-        this.#set(
-          reduceDesktopUpdateStateOnUpdateAvailable(this.#state, found.version, this.#now()),
+        // T3's release notes (D948): nightly lists every release since this one.
+        const { releaseNotes, omittedReleaseCount } = normalizeDesktopUpdateReleaseNotes(
+          found.releaseNotes,
+          found.version,
+          this.#state.channel,
         );
-        this.#log("update available", { version: found.version, reason });
+        this.#set(
+          reduceDesktopUpdateStateOnUpdateAvailable(
+            this.#state,
+            found.version,
+            this.#now(),
+            releaseNotes,
+            omittedReleaseCount,
+          ),
+        );
+        this.#log("update available", {
+          version: found.version,
+          reason,
+          releaseNoteGroups: releaseNotes.length,
+        });
       }
     } catch (error) {
       this.#set(reduceDesktopUpdateStateOnCheckFailure(this.#state, describe(error), this.#now()));
