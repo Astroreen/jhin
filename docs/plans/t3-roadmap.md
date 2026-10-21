@@ -289,8 +289,11 @@ block of 20 after D980 and writes it here.
   `jhin client` page, device metadata and live updates in the authorized
   clients list, an OS keychain store, Tailscale Serve, MCP OAuth, permission
   titles (done, `security.md` D961); "Keep threads with a PR", per-project
-  settle overrides, "Regenerate titles (N)", the "Custom…" snooze, dragging a
-  selection into the chat, undo of a drag unpin or settle, the X that clears
-  a draft; provider environments for a terminal, clickable paths in terminal
-  output, right-panel terminals as surfaces; T3's color and font pickers,
-  dragging list items.
+  settle overrides, "Regenerate titles (N)", the "Custom…" snooze (done,
+  `t3-parity.md` D962), dragging a selection into the chat, undo of a drag
+  unpin or settle (done, D964), the X that clears a draft (done, D963);
+  provider environments for a terminal, clickable paths in terminal output
+  (done, `terminal.md` D965), right-panel terminals as surfaces; T3's color
+  and font pickers, dragging list items. What is not done stays in the
+  Deferred lists of `security.md`, `t3-parity.md`, `terminal.md` and
+  `config-ui.md`.
