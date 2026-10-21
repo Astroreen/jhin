@@ -614,6 +614,8 @@ the rest of it is unchanged since D53's tag.
 
 ### Deferred
 
+- One shared `WorkspaceStrategy` contract: threads, orchestration and
+  `@jhin/scheduler-api` each define T3's three strategies.
 - The task editor's model options (effort and the like), T3's base branch
   picker in place of a text field, and "Edit" of the thread's automations
   opening that task's editor (the route has no task yet).
