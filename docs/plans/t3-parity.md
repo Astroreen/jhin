@@ -975,6 +975,30 @@ Ctrl+Z pinning it again at its key, settle and the notice's button bringing
 it back pinned, archive and undo; "D451": a draft discarded from its card,
 the notice, and undo bringing back its text), with screenshots.
 
+- **D452. T3's Working section (beta), a device setting.** Settings →
+  General → Organization gets T3's "Working section (beta)" ("Fold working
+  and monitoring threads into a Working section. They return to the top of
+  the inbox when they need you."), `workingSection` of the chat settings,
+  off by default. On, an active thread whose turn runs (T3's
+  isThreadWorking; one waiting for an answer needs the user and stays)
+  leaves the inbox for a "Working" section below it (`working`, a new
+  `ThreadSection`, additive): T3's muted header, "Working (N)" while
+  collapsed, collapsed by default and kept per device
+  (`jhin.sidebar.working-expanded`), the open thread still shown when
+  collapsed, cards newest sent first (the later of creation and
+  `lastMessageAt`). Pinned threads stay pinned. Nothing drops into it and its
+  rows do not drag, as in T3. A thread back from it (its turn ended or asks
+  for something) is on top of the inbox: T3's return tracker, read from the
+  record (`lastTurn.at` of a turn no longer running) instead of remembered.
+  The shortcuts count its shown rows between the inbox and the shelves.
+
+The proof of D452: `apps/web/test/sidebar-order.test.ts` ("the Working
+section": off by default; running threads folded, newest sent first, pinned
+and asking ones left; a returned thread on top of the inbox) and
+`e2e/tests/sidebar.spec.ts` ("D452": the setting on, "Working (1)",
+expanded, and the thread back on top once its turn is stopped), with a
+screenshot.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -1381,8 +1405,8 @@ and as events arrive).
   request linked to a thread keeps it from settling by inactivity: the
   threads plugin does not know a thread's pull request (linking them is
   W4's); per-project overrides of the settle settings (T3 resolves them per
-  project; a Jhin node has one project config layer, D19); the Working
-  shelf, multi-select and sweeping actions over several rows, the
+  project; a Jhin node has one project config layer, D19);
+  multi-select and sweeping actions over several rows, the
   jump-number hints; the undo of an unpin or a settle done by dragging (a
   drop writes through `threads.arrange`, not the commands that offer an
   undo, D450); T3's X on a thread's card that clears its unsent composer

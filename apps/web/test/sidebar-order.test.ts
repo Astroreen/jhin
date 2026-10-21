@@ -329,3 +329,43 @@ describe("the sidebar's list (D70)", () => {
     expect(searchSidebarThreads(active, "  ")).toEqual([]);
   });
 });
+
+describe("the Working section (D452)", () => {
+  const a = node(
+    { node: "a" },
+    [project("web", "web")],
+    [
+      thread("idle", ago(3), { projectId: "web", lastTurn: turn("completed", ago(2)) }),
+      thread("busy-old", ago(10), {
+        projectId: "web",
+        lastTurn: turn("running", ago(0.2)),
+        lastMessageAt: ago(0.2),
+      }),
+      thread("busy-new", ago(5), { projectId: "web", lastTurn: turn("running", ago(1)) }),
+      thread("asks", ago(4), { projectId: "web", lastTurn: turn("waiting", ago(0.5), "approval") }),
+      thread("back", ago(20), { projectId: "web", lastTurn: turn("completed", ago(0.1)) }),
+      thread("pinned-busy", ago(6), {
+        projectId: "web",
+        pinnedAt: ago(1),
+        lastTurn: turn("running", ago(0.3)),
+      }),
+    ],
+  );
+
+  it("is off by default: running threads stay in the inbox", () => {
+    const lists = sidebarThreads([a], { nowMs: NOW });
+    expect(ids(lists.working)).toEqual([]);
+    expect(ids(lists.active)).toContain("busy-new");
+  });
+
+  it("folds threads at work into it, newest sent first; pinned and asking ones stay", () => {
+    const lists = sidebarThreads([a], { nowMs: NOW, working: true });
+    // busy-old's latest message is newer than busy-new's creation.
+    expect(ids(lists.working)).toEqual(["busy-old", "busy-new"]);
+    expect(ids(lists.pinned)).toEqual(["pinned-busy"]);
+    expect(lists.working.map((entry) => entry.section)).toEqual(["working", "working"]);
+    // Back from it (its turn ended a moment ago) puts a thread on top of the inbox; one asking
+    // for an answer came back too.
+    expect(ids(lists.active)).toEqual(["back", "asks", "idle"]);
+  });
+});

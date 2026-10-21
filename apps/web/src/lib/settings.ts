@@ -29,6 +29,8 @@ export const ChatSettings = z.object({
   confirmDelete: z.boolean().default(true),
   /** Ask before unpinning a thread (T3's confirmThreadUnpin). */
   confirmUnpin: z.boolean().default(false),
+  /** T3's Working section (beta): threads at work leave the inbox until they need you (D452). */
+  workingSection: z.boolean().default(false),
 });
 export type ChatSettings = z.output<typeof ChatSettings>;
 

@@ -213,7 +213,11 @@ export interface ThreadRecord {
 }
 
 /** Where the sidebar lists a thread (D75–D77). */
-export type ThreadSection = "pinned" | "active" | "snoozed" | "settled";
+/**
+ * Where the sidebar lists a thread (D75–D77); `working` only while the
+ * device's Working section is on (D452).
+ */
+export type ThreadSection = "pinned" | "active" | "working" | "snoozed" | "settled";
 
 /** What a client knows of one node's projects and threads. */
 export interface NodeCatalog {

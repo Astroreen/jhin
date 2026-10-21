@@ -141,6 +141,7 @@ import { useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
 import { MachineIcon } from "../lib/machine-icon.tsx";
 import { useMachineKind } from "../lib/machines.ts";
 import { createShownNodes, showsHosts, type NodeWithCatalog } from "../lib/nodes.ts";
+import { CHAT_SECTION, ChatSettings, readSection, useSection } from "../lib/settings.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 import {
   createSidebarCollisionDetection,
@@ -195,6 +196,7 @@ type SearchEntry = Entry & { readonly match?: ContentMatch };
 
 const SETTLED_EXPANDED_STORAGE_KEY = "jhin.sidebar.settled-expanded";
 const SNOOZED_EXPANDED_STORAGE_KEY = "jhin.sidebar.snoozed-expanded";
+const WORKING_EXPANDED_STORAGE_KEY = "jhin.sidebar.working-expanded";
 /** A row drags once the pointer moved this far (T3's SIDEBAR_DRAG_DISTANCE); one object, as useSensor memoizes on it. */
 const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } };
 const PROJECT_SCOPE_STORAGE_KEY = "jhin.sidebar.project-scope";
@@ -483,6 +485,11 @@ export const sidebarPlugin = builtin(
         key: SNOOZED_EXPANDED_STORAGE_KEY,
         valid: (value): value is boolean => typeof value === "boolean",
       });
+      /** T3's Working section is collapsed until opened, kept per device (D452). */
+      const workingExpanded = createValue(false, {
+        key: WORKING_EXPANDED_STORAGE_KEY,
+        valid: (value): value is boolean => typeof value === "boolean",
+      });
       /** The time the list is drawn with, which its commands use too (one clock). */
       const clock = createClock();
       const dragState = createValue<DragState | undefined>(undefined);
@@ -542,6 +549,8 @@ export const sidebarPlugin = builtin(
         count: settledCount.get(),
         expanded: settledExpanded.get(),
         snoozedOpen: snoozedExpanded.get(),
+        workingOpen: workingExpanded.get(),
+        working: readSection(context, CHAT_SECTION, ChatSettings).workingSection,
         current: routeThreadKey(navigation.current()),
         drop: optimistic.get(),
       });
@@ -561,8 +570,11 @@ export const sidebarPlugin = builtin(
         const scopeKey = scopes.some((item) => item.key === state.scoped)
           ? state.scoped
           : undefined;
-        const sections = withDrop(sidebarThreads(nodes, { nowMs, scope: scopeKey }), state.drop);
-        const { pinned, active, snoozed, settled } = sections;
+        const sections = withDrop(
+          sidebarThreads(nodes, { nowMs, scope: scopeKey, working: state.working }),
+          state.drop,
+        );
+        const { pinned, active, working, snoozed, settled } = sections;
         const current = state.current === undefined ? {} : { current: state.current };
         const { shown, hidden } = shownSettled(settled, {
           count: state.count,
@@ -574,7 +586,13 @@ export const sidebarPlugin = builtin(
           expanded: state.snoozedOpen,
           ...current,
         }).shown;
-        const all = [...pinned, ...active, ...snoozed, ...settled];
+        // Collapsed, the Working section still shows the open thread (T3's routeThreadOnly).
+        const shownWorking = shownSettled(working, {
+          count: working.length,
+          expanded: state.workingOpen,
+          ...current,
+        }).shown;
+        const all = [...pinned, ...active, ...working, ...snoozed, ...settled];
         // Title matches first, then the threads found only by their messages (T3's order).
         const titled: SearchEntry[] = searchSidebarThreads(all, state.query);
         const titledKeys = new Set(titled.map((entry) => entry.key));
@@ -594,14 +612,16 @@ export const sidebarPlugin = builtin(
           scopeKey,
           pinned,
           active,
+          working,
           snoozed,
           settled,
           shown,
+          shownWorking,
           shownSnoozed,
           hidden,
           results,
           /** The rows in the list's order, as the shortcuts count them. */
-          rows: [...pinned, ...active, ...shownSnoozed, ...shown],
+          rows: [...pinned, ...active, ...shownWorking, ...shownSnoozed, ...shown],
         };
       };
 
@@ -614,6 +634,7 @@ export const sidebarPlugin = builtin(
         const all = [
           ...sections.pinned,
           ...sections.active,
+          ...sections.working,
           ...sections.snoozed,
           ...sections.settled,
         ];
@@ -623,6 +644,7 @@ export const sidebarPlugin = builtin(
         const next = {
           pinned: without(sections.pinned),
           active: without(sections.active),
+          working: without(sections.working),
           snoozed: without(sections.snoozed),
           settled: without(sections.settled),
         };
@@ -799,7 +821,8 @@ export const sidebarPlugin = builtin(
       }) {
         const { entry, active, hosts, now, sortable } = props;
         const { thread, project, node, section } = entry;
-        const variant = section === "pinned" || section === "active" ? "card" : "slim";
+        const variant =
+          section === "pinned" || section === "active" || section === "working" ? "card" : "slim";
         const target = node.target;
         const ref = { ...target, threadId: thread.id };
         const seen = useExternal(visitStore, visitStore.snapshot);
@@ -1330,7 +1353,8 @@ export const sidebarPlugin = builtin(
       }) {
         const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
           id: props.entry.key,
-          disabled: props.disabled,
+          // Working rows stay where their turn put them (T3): dragging moves nothing there.
+          disabled: props.disabled || props.entry.section === "working",
           animateLayoutChanges,
         });
         const drag = useExternal(dragState, dragState.get);
@@ -1343,7 +1367,11 @@ export const sidebarPlugin = builtin(
             hosts={props.hosts}
             // Keyed by variant, so a card that becomes a slim row is a new row.
             key={
-              props.entry.section === "pinned" || props.entry.section === "active" ? "card" : "slim"
+              props.entry.section === "pinned" ||
+              props.entry.section === "active" ||
+              props.entry.section === "working"
+                ? "card"
+                : "slim"
             }
             now={props.now}
             sortable={{ listeners, setNodeRef, transform, transition, isDragging }}
@@ -1862,6 +1890,8 @@ export const sidebarPlugin = builtin(
         const query = useExternal(search, search.get);
         const expanded = useExternal(settledExpanded, settledExpanded.get);
         const snoozedOpen = useExternal(snoozedExpanded, snoozedExpanded.get);
+        const workingOpen = useExternal(workingExpanded, workingExpanded.get);
+        const working = useSection(context, CHAT_SECTION, ChatSettings).workingSection;
         const count = useExternal(settledCount, settledCount.get);
         const scoped = useExternal(scope, scope.get);
         const highlighted = useExternal(highlight, highlight.get);
@@ -1882,6 +1912,8 @@ export const sidebarPlugin = builtin(
           count,
           expanded,
           snoozedOpen,
+          workingOpen,
+          working,
           current,
           drop,
         });
@@ -1980,14 +2012,18 @@ export const sidebarPlugin = builtin(
             : sidebarListItems({
                 pinned: keys(list.pinned),
                 active: keys(list.active),
+                working: list.working.length === 0 ? undefined : keys(list.shownWorking),
                 snoozed: list.snoozed.length === 0 ? undefined : keys(list.shownSnoozed),
                 settled: keys(list.shown),
               });
         const entries = new Map(
-          [...list.pinned, ...list.active, ...list.shownSnoozed, ...list.shown].map((entry) => [
-            entry.key,
-            entry,
-          ]),
+          [
+            ...list.pinned,
+            ...list.active,
+            ...list.shownWorking,
+            ...list.shownSnoozed,
+            ...list.shown,
+          ].map((entry) => [entry.key, entry]),
         );
         const from = drag?.from;
         const over = drag?.over ?? null;
@@ -2138,10 +2174,26 @@ export const sidebarPlugin = builtin(
               return boundary("pinned-divider", "Active");
             case "active-placeholder":
               return placeholder("active-placeholder", "Active", list.active.length, "active");
-            case "snoozed-header":
+            case "working-header":
+              // T3's Working section: below the inbox, pushing the shelves down.
               return (
                 <SortableMarker
                   className="mx-0.5 mt-auto h-8"
+                  key={item.marker}
+                  marker={item.marker}
+                >
+                  <SectionHeaderButton
+                    expanded={workingOpen}
+                    label={workingOpen ? "Working" : `Working (${list.working.length})`}
+                    onToggle={() => workingExpanded.set(!workingOpen)}
+                    tone="muted"
+                  />
+                </SortableMarker>
+              );
+            case "snoozed-header":
+              return (
+                <SortableMarker
+                  className={cn("mx-0.5 h-8", list.working.length === 0 && "mt-auto")}
                   key={item.marker}
                   marker={item.marker}
                 >
@@ -2156,7 +2208,10 @@ export const sidebarPlugin = builtin(
             case "settled-header":
               return (
                 <SortableMarker
-                  className={cn("mx-0.5 h-8", list.snoozed.length === 0 && "mt-auto")}
+                  className={cn(
+                    "mx-0.5 h-8",
+                    list.working.length === 0 && list.snoozed.length === 0 && "mt-auto",
+                  )}
                   key={item.marker}
                   marker={item.marker}
                 >

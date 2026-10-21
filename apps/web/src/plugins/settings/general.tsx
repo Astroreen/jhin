@@ -108,6 +108,20 @@ export function GeneralSection() {
         />
         <DiffRows />
       </SettingsSection>
+      {/* T3's "Organization" section; its auto-settle rows are node config (jhin.threads, D444). */}
+      <SettingsSection title="Organization">
+        <SettingsRow
+          control={
+            <Switch
+              aria-label="Working section"
+              checked={chat.workingSection}
+              onCheckedChange={(workingSection) => set({ workingSection })}
+            />
+          }
+          description="Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you."
+          title="Working section (beta)"
+        />
+      </SettingsSection>
       <SettingsSection title="Confirmations">
         <SettingsRow
           control={
