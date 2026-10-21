@@ -308,6 +308,18 @@ export interface ThreadVisits {
 }
 
 /**
+ * What the `thread.selection.actions` slot gives each item of the menu of a
+ * sidebar selection (two or more threads, D454): the selected threads.
+ */
+export interface ThreadSelectionActionProps {
+  readonly threads: readonly {
+    readonly target: NodeTarget;
+    readonly thread: ThreadRecord;
+    readonly section: ThreadSection;
+  }[];
+}
+
+/**
  * What the `thread.actions` slot gives each item of a thread's menu (the
  * sidebar's context menu, the thread view's title menu).
  */

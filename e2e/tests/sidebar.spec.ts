@@ -547,3 +547,75 @@ test("D453: holding the jump modifier shows the rows' numbers", async ({ page },
   await page.keyboard.up("Control");
   await expect(hints).toHaveCount(0);
 });
+
+test("D454: select several threads and act on them at once", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["one", "two", "three", "four"]) await addThread(x, title);
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["four", "three", "two", "one"]);
+
+  // Ctrl+click picks a row, Shift+click adds the rows up to another; Escape clears.
+  await threadRow(page, "four").click({ modifiers: ["Control"] });
+  await expect(threadRow(page, "four")).toHaveAttribute("data-selected", "");
+  await page.keyboard.press("Escape");
+  await expect(threadRow(page, "four")).not.toHaveAttribute("data-selected");
+  await threadRow(page, "four").click({ modifiers: ["Control"] });
+  await threadRow(page, "two").click({ modifiers: ["Shift"] });
+  for (const title of ["four", "three", "two"])
+    await expect(threadRow(page, title)).toHaveAttribute("data-selected", "");
+  await expect(threadRow(page, "one")).not.toHaveAttribute("data-selected");
+  await expect(page.locator("main")).toContainText("No active thread");
+
+  await threadRow(page, "three").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Settle (3)" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Mark unread (3)" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete (3)" })).toBeVisible();
+  const shot = info.outputPath("multi-select.png");
+  await page.screenshot({ path: shot });
+  await info.attach("multi-select", { path: shot, contentType: "image/png" });
+  await page.getByRole("menuitem", { name: "Settle (3)" }).click();
+  await expect(page.getByRole("button", { name: "Settled (3)" })).toBeVisible();
+  await expect(cardTitles(page)).toHaveText(["one"]);
+  await expect(page.getByRole("status").filter({ hasText: "Settled" })).toHaveText(
+    "Settled 3 threads, Ctrl+Z to undo",
+  );
+
+  // A plain click opens one thread and ends the selection: its menu is the thread's own.
+  await threadRow(page, "one").click();
+  await threadRow(page, "one").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Settle thread" })).toBeVisible();
+});
+
+test("D454: a selection's Delete asks once, and Mark unread marks them all", async ({ page }) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["keep", "drop a", "drop b"]) await addThread(x, title);
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["drop b", "drop a", "keep"]);
+
+  // Seen first: no "Done" on them; marked unread together, both say "Done" again.
+  for (const title of ["drop b", "drop a"]) await threadRow(page, title).click();
+  await threadRow(page, "keep").click();
+  for (const title of ["drop b", "drop a"])
+    await expect(threadRow(page, title).getByText("Done")).toHaveCount(0);
+  await threadRow(page, "drop b").click({ modifiers: ["Control"] });
+  await threadRow(page, "drop a").click({ modifiers: ["Control"] });
+  await threadRow(page, "drop a").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Mark unread (2)" }).click();
+  for (const title of ["drop b", "drop a"])
+    await expect(threadRow(page, title).getByText("Done")).toBeVisible();
+
+  await threadRow(page, "drop b").click({ modifiers: ["Control"] });
+  await threadRow(page, "drop a").click({ modifiers: ["Control"] });
+  await threadRow(page, "drop a").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete (2)" }).click();
+  const dialog = page.getByRole("alertdialog").or(page.getByRole("dialog"));
+  await expect(dialog).toContainText("Delete 2 threads?");
+  await expect(dialog).toContainText(
+    "This permanently clears conversation history for these threads.",
+  );
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect(cardTitles(page)).toHaveText(["keep"]);
+  expect(
+    (await x.client().call<{ title: string }[]>("threads.list", {})).map((t) => t.title),
+  ).toEqual(["keep"]);
+});

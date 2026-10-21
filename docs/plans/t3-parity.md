@@ -1066,6 +1066,34 @@ exactly the jump modifiers per platform, other commands not counted) and
 `e2e/tests/sidebar.spec.ts` ("D453": Ctrl held shows Ctrl+1–3 on the rows,
 Ctrl+2 opens the second, releasing hides them), with a screenshot.
 
+- **D454. Multi-select, as T3 selects rows.** ⌘-click on a Mac (Ctrl-click
+  elsewhere) adds a row to the selection or takes it out, Shift-click adds
+  the rows from the last one picked to it (the list's order, additive), a
+  plain click opens a thread and ends the selection, Escape clears it.
+  Selected rows take T3's selected background (`bg-sidebar-row-selected`)
+  and `data-selected`. The context menu of a row in a selection of two or
+  more is T3's selection menu instead of `thread.actions`: the new slot
+  `thread.selection.actions` (`ThreadSelectionActionProps`: the selected
+  threads, additive), where the sidebar contributes
+  `jhin.sidebar.selection.unpin`, `.settle`, `.snooze`, `.mark-unread`,
+  `.separator` and `.delete`: "Unpin (N)"
+  (while any is pinned), "Settle (N)" (disabled when all are settled),
+  "Snooze (N)" with T3's presets "label (when)" (while every one can
+  snooze), "Mark unread (N)" and "Delete (N)" (destructive, asking "Delete N
+  threads?" / "This permanently clears conversation history for these
+  threads." when the Delete confirmation is on). Each is a command acting on
+  the selection (`sidebar.selection.unpin`, `.settle`, `.snooze { until }`,
+  `.mark-unread`, `.delete`, `.clear`) that runs the single thread's command
+  for each thread, so the undo notice groups them ("Settled 3 threads"),
+  then clears the selection; failures toast T3's titles ("Failed to snooze
+  N threads", "Failed to delete threads").
+
+The proof of D454: `e2e/tests/sidebar.spec.ts` ("D454": Ctrl-click, Escape,
+Shift-click range, the selection menu, "Settle (3)" landing three threads on
+the shelf with one grouped notice, a plain click back to the thread's own
+menu; "Mark unread (2)", and "Delete (2)" asking once and deleting both on
+the node), with a screenshot.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -1477,12 +1505,6 @@ and as events arrive).
   after 30 s; here the next change of the query or of the nodes does) and
   T3's Lineage panel listing a
   thread's forks.
-- Sidebar (T3's layout, D70, D75–D79): settling on a merged pull request,
-  T3's per-thread "Auto-settle behavior" and its configurable number of days
-  (here always 3), the automatic rule applied by the node (T3 sweeps every
-  minute; here the client applies it, and the node only at a turn's start),
-  one write per drop (a drop is a command per thread it orders, so two
-
 - Editing a sent message, regenerating, forking a thread.
 - Searching thread contents (the palette and the sidebar search titles).
 - Sidebar (T3's layout, D70, D75–D79): T3's "Keep threads with a PR"
@@ -1491,7 +1513,10 @@ and as events arrive).
   threads plugin does not know a thread's pull request (linking them is
   W4's); per-project overrides of the settle settings (T3 resolves them per
   project; a Jhin node has one project config layer, D19);
-  multi-select and sweeping actions over several rows; the undo of an unpin or a settle done by dragging (a
+  T3's sweep over several rows from a row's Settle, Un-settle or Wake
+  button; the selection menu's "Regenerate titles (N)" (no title
+  regeneration yet) and its "Custom…" snooze; dragging a selection into the
+  chat as context; the undo of an unpin or a settle done by dragging (a
   drop writes through `threads.arrange`, not the commands that offer an
   undo, D450); T3's X on a thread's card that clears its unsent composer
   text (the sidebar does not know a thread's draft, which the chat plugin
