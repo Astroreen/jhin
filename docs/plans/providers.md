@@ -596,11 +596,21 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   same spawn as the real `codex`; CI never runs the real CLI. A check
   against a signed-in Codex is manual.
 
+- **D881. A Codex turn takes its model's options (W24).** `model/list`'s
+  models carry T3's descriptors (`mapCodexModelCapabilities`): a
+  "Reasoning" select (`reasoningEffort`) of the model's
+  `supportedReasoningEfforts`, its `defaultReasoningEffort` the default
+  (`medium` for the `gpt-6-astra` family), and a "Service Tier" select
+  (`serviceTier`) of "Standard" (`default`) plus the model's `serviceTiers`,
+  or its `additionalSpeedTiers` ("Fast" for `fast`), when it has any. A
+  turn's `modelOptions` that apply to its model (D297) become `turn/start`'s
+  `effort` and `serviceTier`; the turn's effort wins over the config's
+  `effort`, and a tier nobody chose is not sent, so Codex's default applies.
+  A model `model/list` did not name takes no options, only the config's
+  effort.
+
 ### Deferred
 
-- Per-turn model options in the composer: reasoning effort and service tier
-  (fast mode) from `model/list`'s descriptors (W6); only the config's
-  `effort` applies.
 - Goals (`/goal`), `/compact`, `/feedback` and skills (`skills/list`, `$skill`
   mentions) in the composer; reverting, forking and rolling back a Codex
   thread (W2, W3).

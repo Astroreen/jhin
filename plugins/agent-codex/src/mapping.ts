@@ -2,18 +2,23 @@
 // apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts (codexRuntimeModeTurnDefaults,
 // buildCodexTurnStartParams, codexFileChangeApprovalPrompt, webSearchPatterns, the approval
 // and user-input answers, codexProviderTurnTokenUsage, codexPlanStepStatus),
-// apps/server/src/provider/CodexProvider.ts (codexPlanLabel, the account labels) and
+// apps/server/src/provider/CodexProvider.ts (codexPlanLabel, the account labels,
+// mapCodexModelCapabilities), apps/server/src/codexModelOptions.ts and
 // packages/shared/src/model.ts (formatCodexModelName), packages/contracts/src/model.ts
 // (PREFERRED_DEFAULT_CODEX_MODELS).
-import type {
-  AgentModel,
-  ApprovalDecision,
-  InteractionMode,
-  PlanStep,
-  RuntimeMode,
-  TokenUsage,
-  ToolCall,
-  UserQuestion,
+import {
+  applicableModelOptions,
+  type AgentModel,
+  type ApprovalDecision,
+  type InteractionMode,
+  type ModelOptionChoice,
+  type ModelOptionDescriptor,
+  type ModelOptionSelection,
+  type PlanStep,
+  type RuntimeMode,
+  type TokenUsage,
+  type ToolCall,
+  type UserQuestion,
 } from "@jhin/agent-api";
 
 /** Tool output kept in the thread's log; longer output is cut (D94). */
@@ -39,21 +44,142 @@ export interface ListedModel {
   readonly displayName?: string;
   readonly description?: string;
   readonly isDefault?: boolean;
+  readonly supportedReasoningEfforts?: readonly { readonly reasoningEffort?: unknown }[];
+  readonly defaultReasoningEffort?: string | null;
+  readonly serviceTiers?:
+    | readonly { readonly id?: unknown; readonly name?: unknown; readonly description?: unknown }[]
+    | null;
+  readonly additionalSpeedTiers?: readonly unknown[] | null;
+  readonly defaultServiceTier?: string | null;
 }
 
 export function listedModels(models: readonly ListedModel[]): AgentModel[] {
-  return models.map((model) => ({
-    id: model.model,
-    name: formatModelName(model.displayName ?? model.model),
-    ...(model.description ? { description: model.description } : {}),
-  }));
+  return models.map((model) => {
+    const options = modelOptions(model);
+    return {
+      id: model.model,
+      name: formatModelName(model.displayName ?? model.model),
+      ...(model.description ? { description: model.description } : {}),
+      ...(options.length === 0 ? {} : { options }),
+    };
+  });
 }
+
+const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+  max: "Max",
+  ultra: "Ultra",
+};
+
+/** The service tier Codex uses when the turn names none. */
+const DEFAULT_SERVICE_TIER = "default";
+
+const SERVICE_TIER_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  ultrafast: "Even faster, more expensive",
+};
+
+/** What a turn can choose for a listed model (T3's mapCodexModelCapabilities, D881). */
+export function modelOptions(model: ListedModel): ModelOptionDescriptor[] {
+  const defaultEffort =
+    modelFamily(model.model) === "gpt-6-astra" ? "medium" : model.defaultReasoningEffort;
+  const efforts: ModelOptionChoice[] = (model.supportedReasoningEfforts ?? []).flatMap(
+    ({ reasoningEffort }) =>
+      typeof reasoningEffort === "string"
+        ? [
+            {
+              id: reasoningEffort,
+              label: REASONING_EFFORT_LABELS[reasoningEffort] ?? reasoningEffort,
+              ...(reasoningEffort === defaultEffort ? { isDefault: true } : {}),
+            },
+          ]
+        : [],
+  );
+  const tiers =
+    model.serviceTiers && model.serviceTiers.length > 0
+      ? model.serviceTiers.flatMap((tier) =>
+          typeof tier.id === "string"
+            ? [
+                {
+                  id: tier.id,
+                  name: typeof tier.name === "string" ? tier.name : tier.id,
+                  description: typeof tier.description === "string" ? tier.description : "",
+                },
+              ]
+            : [],
+        )
+      : (model.additionalSpeedTiers ?? []).flatMap((id) =>
+          typeof id === "string"
+            ? [{ id, name: id === "fast" ? "Fast" : id, description: "" }]
+            : [],
+        );
+  const defaultTier = tiers.some((tier) => tier.id === model.defaultServiceTier)
+    ? model.defaultServiceTier
+    : DEFAULT_SERVICE_TIER;
+
+  const options: ModelOptionDescriptor[] = [];
+  if (efforts.length > 0) {
+    options.push({ id: "reasoningEffort", label: "Reasoning", type: "select", options: efforts });
+  }
+  if (tiers.length > 0) {
+    options.push({
+      id: "serviceTier",
+      label: "Service Tier",
+      type: "select",
+      options: [
+        {
+          id: DEFAULT_SERVICE_TIER,
+          label: "Standard",
+          ...(defaultTier === DEFAULT_SERVICE_TIER ? { isDefault: true } : {}),
+        },
+        ...tiers.map((tier) => {
+          const description = SERVICE_TIER_DESCRIPTIONS[tier.id] ?? tier.description;
+          return {
+            id: tier.id,
+            label: tier.name,
+            ...(description ? { description } : {}),
+            ...(defaultTier === tier.id ? { isDefault: true } : {}),
+          };
+        }),
+      ],
+    });
+  }
+  return options;
+}
+
+/**
+ * The effort and service tier `turn/start` gets (D881): the turn's choices that apply to
+ * the model's options, then the config's effort; a tier nobody chose is left to Codex.
+ */
+export function compileModelOptions(
+  descriptors: readonly ModelOptionDescriptor[] | undefined,
+  selections: readonly ModelOptionSelection[] | undefined,
+  configEffort: string | undefined,
+): { readonly effort?: string; readonly serviceTier?: string } {
+  const chosen = applicableModelOptions(descriptors, selections);
+  const value = (id: string) => {
+    const found = chosen.find((selection) => selection.id === id)?.value;
+    return typeof found === "string" ? found : undefined;
+  };
+  const effort = value("reasoningEffort") ?? configEffort;
+  const serviceTier = value("serviceTier");
+  return {
+    ...(effort === undefined ? {} : { effort }),
+    ...(serviceTier === undefined ? {} : { serviceTier }),
+  };
+}
+
+/** `openai.gpt-6-astra` → `gpt-6-astra` (T3's codexModelFamily). */
+const modelFamily = (slug: string) => (slug.startsWith("openai.gpt-") ? slug.slice(7) : slug);
 
 /** T3's applyPreferredCodexDefaultModel: a preferred model, else Codex's default, else the first. */
 export function preferredDefault(models: readonly ListedModel[]): string | undefined {
-  const family = (slug: string) => (slug.startsWith("openai.gpt-") ? slug.slice(7) : slug);
   for (const preferred of PREFERRED_MODELS) {
-    const found = models.find((model) => family(model.model) === preferred);
+    const found = models.find((model) => modelFamily(model.model) === preferred);
     if (found !== undefined) return found.model;
   }
   return (models.find((model) => model.isDefault) ?? models[0])?.model;
@@ -182,6 +308,7 @@ export function turnStartParams(input: {
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: InteractionMode;
   readonly effort?: string | undefined;
+  readonly serviceTier?: string | undefined;
   /** What the agent is told besides the conversation (`TurnRequest.instructions`). */
   readonly instructions?: string | undefined;
 }): Record<string, unknown> {
@@ -197,6 +324,7 @@ export function turnStartParams(input: {
     approvalPolicy: defaults.approvalPolicy,
     sandboxPolicy: defaults.sandboxPolicy,
     ...(input.effort === undefined ? {} : { effort: input.effort }),
+    ...(input.serviceTier === undefined ? {} : { serviceTier: input.serviceTier }),
     // Sent on every turn, so a plan turn's mode does not stick to the next one.
     collaborationMode: {
       mode: input.interactionMode === "plan" ? "plan" : "default",

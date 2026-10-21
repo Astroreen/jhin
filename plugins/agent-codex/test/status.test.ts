@@ -84,6 +84,121 @@ describe("jhin.agent-codex: status", () => {
     codex.dispose();
   });
 
+  it("describes a model's efforts and service tiers, and a turn's choices reach Codex", async () => {
+    const { codex, fake } = runtime(
+      {
+        models: [
+          [
+            model("gpt-6.1-sol", {
+              isDefault: true,
+              defaultReasoningEffort: "high",
+              supportedReasoningEfforts: [
+                { reasoningEffort: "low" },
+                { reasoningEffort: "high" },
+                { reasoningEffort: "xhigh" },
+              ],
+              serviceTiers: [{ id: "fast", name: "Fast", description: "Faster replies" }],
+            }),
+            model("gpt-6-astra", {
+              supportedReasoningEfforts: [
+                { reasoningEffort: "medium" },
+                { reasoningEffort: "high" },
+              ],
+              defaultReasoningEffort: "high",
+              additionalSpeedTiers: ["fast", "ultrafast"],
+              defaultServiceTier: "fast",
+            }),
+          ],
+        ],
+      },
+      { effort: "low" },
+    );
+    await codex.status!();
+    expect(codex.models?.[0]?.options).toEqual([
+      {
+        id: "reasoningEffort",
+        label: "Reasoning",
+        type: "select",
+        options: [
+          { id: "low", label: "Low" },
+          { id: "high", label: "High", isDefault: true },
+          { id: "xhigh", label: "Extra High" },
+        ],
+      },
+      {
+        id: "serviceTier",
+        label: "Service Tier",
+        type: "select",
+        options: [
+          { id: "default", label: "Standard", isDefault: true },
+          { id: "fast", label: "Fast", description: "Faster replies" },
+        ],
+      },
+    ]);
+    // T3 defaults the gpt-6-astra family to medium, and keeps the catalog's default tier.
+    expect(codex.models?.[1]?.options).toEqual([
+      {
+        id: "reasoningEffort",
+        label: "Reasoning",
+        type: "select",
+        options: [
+          { id: "medium", label: "Medium", isDefault: true },
+          { id: "high", label: "High" },
+        ],
+      },
+      {
+        id: "serviceTier",
+        label: "Service Tier",
+        type: "select",
+        options: [
+          { id: "default", label: "Standard" },
+          { id: "fast", label: "Fast", isDefault: true },
+          { id: "ultrafast", label: "ultrafast", description: "Even faster, more expensive" },
+        ],
+      },
+    ]);
+
+    const run = async (turnId: string, extra: Record<string, unknown>) => {
+      const turn = codex.startTurn({
+        threadId: "thread-1",
+        turnId,
+        input: { text: "hi" },
+        history: [],
+        cwd: process.cwd(),
+        ...extra,
+      });
+      for await (const _ of turn.items) void _;
+    };
+    await run("turn-1", {
+      model: "gpt-6.1-sol",
+      modelOptions: [
+        { id: "reasoningEffort", value: "xhigh" },
+        { id: "serviceTier", value: "fast" },
+      ],
+    });
+    // A choice the model does not offer is dropped: the config's effort, no tier.
+    await run("turn-2", {
+      model: "gpt-6.1-sol",
+      modelOptions: [{ id: "reasoningEffort", value: "minimal" }],
+    });
+    // A model Codex did not list takes no options.
+    await run("turn-3", {
+      model: "custom-slug",
+      modelOptions: [{ id: "serviceTier", value: "fast" }],
+    });
+    const [first, second, third] = fake.received("turn/start").map((call) => call.params);
+    expect(first).toMatchObject({
+      effort: "xhigh",
+      serviceTier: "fast",
+      collaborationMode: { settings: { reasoning_effort: "xhigh" } },
+    });
+    expect(second).toMatchObject({ effort: "low" });
+    expect(second).not.toHaveProperty("serviceTier");
+    expect(third).toMatchObject({ model: "custom-slug", effort: "low" });
+    expect(third).not.toHaveProperty("serviceTier");
+    codex.dispose();
+  });
+
   it("falls back to Codex's own default, and the config's wins", async () => {
     const first = runtime({ models: [[model("a"), model("b", { isDefault: true })]] });
     await first.codex.status!();
