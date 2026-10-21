@@ -14,7 +14,6 @@ import {
   type RpcClient,
 } from "@jhin/rpc";
 import { TerminalEvents, terminalStream } from "@jhin/terminal-api";
-import { MESH_STREAMS_CAPABILITY } from "@jhin/mesh-api";
 import {
   connectInMemory,
   createMemoryNetwork,
@@ -496,18 +495,13 @@ describe("a terminal of a thread on a mesh member (D504)", () => {
   /** A client of a, and c with the terminal plugin, joined to a's mesh. */
   async function member(options: { relays?: boolean } = {}) {
     const network = createMemoryNetwork();
-    const a = startMeshNode(network, "a");
-    const c = startMeshNode(network, "c");
-    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-web-terminal-member-"));
-    const kernel = await createTestKernel({
-      plugins: [
-        mockCapability(LIVE_STREAMS_CAPABILITY, c.live, "1.1.0"),
-        mockCapability(MESH_STREAMS_CAPABILITY, c.meshStreams),
-        { manifest, definition: terminal },
-      ],
+    // a, the connected node, runs no terminal plugin: what runs is c's.
+    const a = await startMeshNode(network, "a");
+    const c = await startMeshNode(network, "c", {
+      plugins: [{ manifest, definition: terminal }],
       config: { node: { "jhin.terminal": { shell: "/bin/sh" } } },
     });
-    c.use(kernel);
+    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-web-terminal-member-"));
     await c.join(a);
     const connection = a.connect();
     if (options.relays === false) {
@@ -521,10 +515,8 @@ describe("a terminal of a thread on a mesh member (D504)", () => {
           : call(method, params)) as typeof connection.client.call;
     }
     stops.push(async () => {
-      connection.client.close();
-      await kernel.stop();
-      a.dispose();
-      c.dispose();
+      await a.stop();
+      await c.stop();
       Fs.rmSync(cwd, { recursive: true, force: true });
     });
     return { channel: terminalChannel(connection.client, "c"), client: connection.client, cwd };

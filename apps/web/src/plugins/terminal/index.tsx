@@ -26,9 +26,11 @@ import {
   TooltipTrigger,
   UI_DIALOGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
+  UI_TOASTS_CAPABILITY,
   cn,
   type Dialogs,
   type SlotRegistry,
+  type Toasts,
 } from "@jhin/ui";
 import { PanelRightIcon, TerminalIcon } from "lucide-react";
 
@@ -120,6 +122,7 @@ export const terminalPlugin = builtin(
     optional: {
       [KEYBINDINGS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
+      [UI_TOASTS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -129,7 +132,6 @@ export const terminalPlugin = builtin(
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
-      import { terminalChannel } from "./channel.ts";
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
       context.config.define(SETTINGS_SECTION, TerminalSettings);

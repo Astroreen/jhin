@@ -45,7 +45,7 @@ function memberChannel(client: RpcClient, member: string): TerminalChannel {
           if (disposed) return;
           const code = (error as { code?: unknown }).code;
           options.onError?.(
-            code === "COMMAND_NOT_FOUND" || code === "RELAY_UNAVAILABLE"
+            code === "COMMAND_NOT_FOUND"
               ? new RpcError({
                   code: ErrorCodes.METHOD_NOT_FOUND,
                   message: "This node cannot stream terminals of other nodes of its mesh",

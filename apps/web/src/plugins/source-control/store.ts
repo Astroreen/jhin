@@ -321,7 +321,7 @@ export function createSourceControlStore(
         .then(({ stream }) => current() && follow(stream))
         .catch((error: unknown) => {
           const code = (error as { code?: unknown }).code;
-          if (code === "COMMAND_NOT_FOUND" || code === "RELAY_UNAVAILABLE") fallBack();
+          if (code === "COMMAND_NOT_FOUND") fallBack();
           else failed(error);
         });
     }
