@@ -23,6 +23,7 @@ import {
   GitActionOptions,
   GitActionResult,
   ProjectStatus,
+  PreparedPullRequest,
   PullRequest,
   PullResult,
   SOURCE_CONTROL_ACTIONS_STREAM,
@@ -81,6 +82,12 @@ import { githubForge, remoteHost } from "./github.ts";
 import type { Viewers } from "./github.ts";
 import { createLinks, type LinkTarget } from "./links.ts";
 import { createWatcher } from "./watcher.ts";
+import {
+  checkoutLocal,
+  checkoutWorktree,
+  isPullRequestOf,
+  normalizeReference,
+} from "./checkout.ts";
 import { followTurns } from "./turns.ts";
 import {
   createWorktree,
@@ -1926,6 +1933,100 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     handler: async ({ source, ...input }) => {
       await ensureThread(input.threadId);
       return links.link(input.threadId, target(input), source ?? "agent");
+    },
+  });
+
+  /** The forge that checks a project's pull requests out, its repository and git (D902). */
+  const checkoutForge = async (projectId: string) => {
+    const repo = await repoOf(projectId);
+    const { git, root } = await gitOf(repo);
+    const forge =
+      repo.forge === undefined ? undefined : makeForge(repo.forge.kind, root, repo.forge.url);
+    if (forge?.resolve === undefined) {
+      throw new SourceControlError(
+        "ACTION_UNAVAILABLE",
+        forge === undefined
+          ? "This repository has no remote on a known forge."
+          : `Checking out a ${forge.terminology.singular} of ${forge.name} is not supported yet.`,
+        { projectId },
+      );
+    }
+    const resolve = forge.resolve.bind(forge);
+    // A forge was made, so the repository has one, with its remote's URL.
+    const forgeUrl = repo.forge!.url;
+    const lookUp = async (reference: string) => {
+      const normalized = normalizeReference(reference);
+      if (normalized === "") {
+        throw new SourceControlError("PULL_REQUEST_INVALID", "Name a pull request");
+      }
+      let found;
+      try {
+        found = await resolve(normalized);
+      } catch (error) {
+        throw new SourceControlError("PULL_REQUEST_FAILED", (error as Error).message, {
+          reference: normalized,
+        });
+      }
+      // A URL may name another repository's pull request: its refs are not this one's. A
+      // number or branch is looked up in this repository (a renamed one answers its new URL).
+      if (/^https?:\/\//i.test(normalized) && !isPullRequestOf(forgeUrl, found.pr.url)) {
+        throw new SourceControlError(
+          "PULL_REQUEST_INVALID",
+          `${found.pr.url} is not a pull request of this project's repository.`,
+          { reference: normalized },
+        );
+      }
+      return found;
+    };
+    return { repo, git, root, lookUp };
+  };
+
+  const PullRequestReference = z.object({
+    projectId: z.string().min(1),
+    reference: z.string().min(1).meta({
+      description: "The pull request's number (`42`, `#42`), URL or head branch",
+    }),
+  });
+
+  context.commands.register({
+    name: "git.pr.resolve",
+    title: "Resolve pull request",
+    description: "Looks a pull request of a project's repository up by number, URL or head branch",
+    input: PullRequestReference,
+    output: z.object({ pullRequest: PullRequest }),
+    permissions: ["git.read"],
+    handler: async ({ projectId, reference }) => {
+      const { lookUp } = await checkoutForge(projectId);
+      return { pullRequest: (await lookUp(reference)).pr };
+    },
+  });
+
+  context.commands.register({
+    name: "git.pr.checkout",
+    title: "Checkout pull request",
+    description:
+      "Checks a pull request out for a new thread: in the project's own checkout (`local`) or in a worktree (`worktree`, reused when one has its branch)",
+    input: PullRequestReference.extend({ mode: z.enum(["local", "worktree"]) }),
+    output: PreparedPullRequest,
+    permissions: ["git.write"],
+    handler: async ({ projectId, reference, mode }) => {
+      const { repo, git, root, lookUp } = await checkoutForge(projectId);
+      const found = await lookUp(reference);
+      const warn = (message: string, fields: Record<string, unknown>) =>
+        context.log.warn(message, { projectId, ...fields });
+      // One at a time per project, as worktrees are made.
+      const prepared = await exclusive(projectId, () =>
+        mode === "local"
+          ? checkoutLocal(git, found, warn)
+          : checkoutWorktree(git, found, {
+              repository: root,
+              root: worktreesRoot(config().worktreesDirectory, hostPaths.home),
+              createGit: (cwd) => createGit(config().gitPath, cwd),
+              warn,
+            }),
+      );
+      void refresh(repo).catch(() => undefined);
+      return prepared;
     },
   });
 

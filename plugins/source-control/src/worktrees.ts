@@ -44,7 +44,7 @@ export function worktreesRoot(setting: string, home: string): string {
 }
 
 /** `<root>/<repository>/<branch, "/" as "-">`, as T3 places them. */
-const worktreePath = (root: string, repository: string, branch: string) =>
+export const worktreePath = (root: string, repository: string, branch: string) =>
   Path.join(root, Path.basename(repository), branch.replaceAll("/", "-"));
 
 /** A path under the worktrees root, two levels down: one this plugin made and may make again. */

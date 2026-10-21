@@ -8,6 +8,7 @@ import {
   ForgeUnavailable,
   PULL_REQUEST,
   matchesHead,
+  type CheckoutTarget,
   type Forge,
   type ForgePullRequest,
   type HeadContext,
@@ -114,6 +115,7 @@ interface RawPullRequest {
   readonly statusCheckRollup?: readonly RawCheck[] | null;
   readonly isCrossRepository?: unknown;
   readonly headRepositoryOwner?: { readonly login?: unknown } | null;
+  readonly headRepository?: { readonly name?: unknown } | null;
 }
 
 function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
@@ -228,6 +230,38 @@ async function pullRequestAt(ghPath: string, cwd: string, url: string): Promise<
   const pr = toPullRequest((parsed ?? {}) as RawPullRequest);
   if (pr === undefined) throw new GitHubUnavailable("failed", "gh answered no pull request");
   return pr;
+}
+
+/**
+ * A pull request by number, URL or head branch (`gh pr view <reference>`),
+ * with where its head lives (T3's `getChangeRequest`, D902).
+ */
+async function checkoutTarget(
+  ghPath: string,
+  cwd: string,
+  reference: string,
+): Promise<CheckoutTarget> {
+  const raw = ((await ghJson(ghPath, cwd, [
+    "pr",
+    "view",
+    "--json",
+    `${HEAD_FIELDS},headRepository`,
+    "--",
+    reference,
+  ])) ?? {}) as RawPullRequest;
+  const pr = toPullRequest(raw);
+  if (pr === undefined) throw new GitHubUnavailable("failed", "gh answered no pull request");
+  const owner = text(raw.headRepositoryOwner?.login);
+  const name = text(raw.headRepository?.name);
+  const crossRepository = raw.isCrossRepository === true;
+  return {
+    pr,
+    crossRepository,
+    ...(owner === undefined ? {} : { headOwner: owner }),
+    ...(crossRepository && owner !== undefined && name !== undefined
+      ? { headRepository: `${owner}/${name}` }
+      : {}),
+  };
 }
 
 /** Where GitHub looks for a pull request template, as T3's source-control-github reads it. */
@@ -435,6 +469,7 @@ export function githubForge(ghPath: () => string, cwd: string, viewers: Viewers)
     terminology: PULL_REQUEST,
     find: (head) => pullRequestFor(ghPath(), cwd, head),
     at: (url) => pullRequestAt(ghPath(), cwd, url),
+    resolve: (reference) => checkoutTarget(ghPath(), cwd, reference),
     create: (input) => createPullRequest(ghPath(), cwd, input),
     templatePaths: GITHUB_TEMPLATE_PATHS,
     watch: (url) => readWatch(ghPath(), cwd, url, viewers),

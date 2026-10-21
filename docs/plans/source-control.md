@@ -571,6 +571,50 @@ with screenshots).
   (Deferred). Two threads that share a fresh worktree and start at once both
   try; the second rename fails and is only logged.
 
+- **D902. Checking a pull request out for a thread**, T3's `resolvePullRequest`
+  and `preparePullRequestThread`: `git.pr.resolve { projectId, reference }`
+  (`git.read`) answers `{ pullRequest }`, and `git.pr.checkout { projectId,
+  reference, mode }` (`git.write`) answers `PreparedPullRequest` (`{
+  pullRequest, branch, worktreePath, isOnPullRequestHead }`). A reference is a
+  number, `#42`, a URL or a head branch, read by the forge's new optional
+  `resolve` (GitHub: `gh pr view --json … -- <reference>`); one starting with
+  `-` is refused (`PULL_REQUEST_INVALID`), and so is a URL of another
+  repository's pull request (its refs are not this one's; T3 would check that
+  repository's out), compared by host, owner and name whatever the remote's
+  protocol, user or port. A forge without `resolve` answers
+  `ACTION_UNAVAILABLE`. The head is fetched from the remote of the pull
+  request's own repository (with `origin` a fork, the `upstream` that `gh`
+  read it in), else `origin`, else the first remote, or from the fork's remote (one whose configured
+  URL is the fork's, else a new one named after its owner, `-1`… when
+  taken); when that fetch fails (a head branch that is gone, for one) it
+  falls back to `refs/pull/<n>/head` without an upstream, as T3 does, and
+  logs a warning. A fork's remote, once added, stays in the repository's
+  config even when the checkout then fails, as T3's `ensureRemote` leaves
+  it. `local` checks the head branch out in the project's
+  checkout (a fork whose head is named like its base as `<owner>/<head>`),
+  created or fast-forwarded to the head and tracking it; git failures answer
+  T3's "The pull request could not be checked out with git." followed by
+  git's own reason. Where T3
+  resets the branch hard, Jhin refuses a checkout with changes to tracked files ("Commit or
+  stash the changes in the project's checkout before checking a pull request
+  out in it.") and a branch with commits the head does not have ("Branch
+  '<branch>' has commits that pull request #<n> does not. Push or move them,
+  then check it out again."): both would be lost. `worktree` uses the head
+  branch, or `jhin/pr-<n>/<head>` for a fork (T3's `t3code/pr-…`): a
+  worktree on that branch is reused and fast-forwarded to `refs/pull/<n>/head`
+  when clean (`isOnPullRequestHead` says whether it got there); T3's
+  fallback to a worktree on the bare head branch is left out, since for a
+  fork that is this repository's own branch. The branch checked out in the
+  project's checkout is refused with T3's "This PR branch is already checked
+  out in the main repo. Use Local, or switch the main repo off that branch
+  before creating a worktree thread."; otherwise the branch is made at the
+  head (an existing one only when behind, as above) and checked out in a new
+  worktree under the worktrees directory (D250), tracking the head; a branch
+  made for a worktree that then fails to be created is deleted again.
+  Checkouts of one project run one at a time, with its worktrees. The
+  thread itself is created by the client with that branch and worktree
+  (D252), as T3 fills its draft.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -901,7 +945,7 @@ with the node's token, and without one).
   batching of a long turn diff; the changed files card's per-file context
   menu and file-type icons (T3's `PierreEntryIcon`).
 - Reverting, from W3 (D257): T3's "Roll back" of a checkpoint item in the item
-  inspector, recreating a missing managed worktree before a rollback, and the
+  inspector (Jhin has no item inspector yet; it comes with that panel), recreating a missing managed worktree before a rollback, and the
   error strings T3 shows for a disconnected environment or a provider without
   rollback.
 - Worktrees, from W3 (D240): T3's setup scripts and their progress card
@@ -924,8 +968,14 @@ with the node's token, and without one).
   Forgejo and Bitbucket that fail to read showing as none rather than as an
   error, Forgejo's search for a branch's pull request among
   the 50 most recently updated only, and GitLab's matching of a fork's merge
-  request by its owner (a same-named branch of another fork can match), and T3's checkout of a pull request into
-  a thread ("Checkout pull request").
+  request by its owner (a same-named branch of another fork can match), and
+  checking a pull request out (D902) on forges other than GitHub.
+- Checking a pull request out (D902): T3's dialog and the branch picker's
+  "Checkout pull request" item (the next W21 PR), resetting a reused
+  worktree whose head was rewritten (T3's `refs/t3code/pre-refresh`), setup
+  scripts after a checkout, and a fork whose head is named like its base
+  being compared with the base repository's default branch (Jhin compares it
+  with the pull request's base).
 - Watching (D274): review thread comments on lines, required checks as the
   gate, read fingerprints, rate limit pauses, a notification for a wake and
   the sidebar's "Waiting" for a watched thread (W14 may take it).
@@ -940,7 +990,8 @@ with the node's token, and without one).
   runtime would avoid it (W9).
 - Cancelling a running git action: writes to a project queue behind it (its
   writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
-  minutes), with no way to stop it from the client.
+  minutes), with no way to stop it from the client. T3 has none either (at
+  D53 and at `v0.1.2-nightly.20261021.3457`), so W21 leaves it until T3 does.
 - What D285 leaves of T3's review comments: a comment is text in the
   composer, not T3's context chip (W6's rich composer, #81, brings chips),
   so the diff does not show the comments already added, with their "Delete

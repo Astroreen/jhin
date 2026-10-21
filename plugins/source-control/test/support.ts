@@ -112,6 +112,8 @@ fi
 if [ "$1" = "api" ] && [ "$4" = "user" ]; then echo '{"login":"jhin-bot"}'; exit 0; fi
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   number="$(basename "$3")"
+  for arg in "$@"; do last="$arg"; done
+  if [ "$3" = "--json" ]; then number="$(basename "$last")"; fi
   if [ -f "${dir}/view-$number.json" ]; then cat "${dir}/view-$number.json"; exit 0; fi
   echo "no pull requests found" >&2
   exit 1

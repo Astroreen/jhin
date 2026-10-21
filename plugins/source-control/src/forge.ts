@@ -53,6 +53,12 @@ export function matchesHead(found: ForgePullRequest, head: HeadContext): boolean
   return found.crossRepository !== true;
 }
 
+/** A pull request to check out, and where its head lives (D902). */
+export interface CheckoutTarget extends ForgePullRequest {
+  /** `owner/name` of a fork's head repository. */
+  readonly headRepository?: string;
+}
+
 /** What the plugin asks of a forge, whichever it is. */
 export interface Forge {
   readonly kind: ForgeKind;
@@ -63,6 +69,8 @@ export interface Forge {
   find(head: HeadContext): Promise<PullRequest | null>;
   /** A pull request by its URL. */
   at(url: string): Promise<PullRequest>;
+  /** A pull request by its number, URL or head branch, to check out (D902). */
+  resolve?(reference: string): Promise<CheckoutTarget>;
   create(input: {
     readonly base: string;
     readonly head: HeadContext;
