@@ -1702,25 +1702,12 @@ export default definePlugin({
             );
           }
         }
-        if (removedProjects.has(projectId)) {
-          throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
-        }
-        // A removal of the project that starts meanwhile waits for this thread.
         // Creations of one id run one at a time, so the second finds the first's thread.
-        const creating =
+        return creatingIn(projectId, () =>
           threadId === undefined
             ? createThread(Crypto.randomUUID(), projectId, title, settings)
-            : queued(threadId, () => createThread(threadId, projectId, title, settings));
-        const underWay = creations.get(projectId) ?? new Set<Promise<unknown>>();
-        creations.set(projectId, underWay.add(creating));
-        try {
-          return await creating;
-        } finally {
-          underWay.delete(creating);
-          if (underWay.size === 0 && creations.get(projectId) === underWay) {
-            creations.delete(projectId);
-          }
-        }
+            : queued(threadId, () => createThread(threadId, projectId, title, settings)),
+        );
       },
     });
 
@@ -3182,16 +3169,32 @@ export default definePlugin({
      */
     async function mergeBackHandoff(
       thread: Thread,
-      merge: { readonly threadId: string; readonly turnId: string },
+      merge: { readonly threadId: string; readonly turnId: string; readonly id?: string },
       userText: string,
     ): Promise<{ payload: Json; text: string } | "gone" | "unreadable"> {
       try {
+        // A mark whose turn started but whose clearing never got written (the node
+        // stopped in between) was delivered: it is not delivered twice.
+        if (merge.id !== undefined) {
+          const { events: shown } = await visibleTurns(thread.id);
+          const delivered = shown.some(
+            (event) =>
+              event.type === ThreadEvents.turnStarted &&
+              (event.payload as { handoff?: { mergeId?: unknown } }).handoff?.mergeId === merge.id,
+          );
+          if (delivered) return "gone";
+        }
         const fork = await getThread(merge.threadId);
         const { events, own } = await ownTurns(fork);
         const index = own.indexOf(merge.turnId);
         if (index === -1) return "gone";
         return {
-          payload: { kind: "merge-back", threadId: fork.id, turnId: merge.turnId },
+          payload: {
+            kind: "merge-back",
+            threadId: fork.id,
+            turnId: merge.turnId,
+            ...(merge.id === undefined ? {} : { mergeId: merge.id }),
+          },
           text: mergeBackMessage({
             fork,
             target: thread,

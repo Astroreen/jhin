@@ -703,6 +703,34 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     expect(await pendingOf(client, second.id)).toBeUndefined();
   });
 
+  it("never delivers a merge twice when clearing its mark could not be written", async () => {
+    const { client, storage, parent, fork, requests } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    let fail = true;
+    log.append = async (stream, batch, options) => {
+      const clearing = options?.records?.some(
+        (record) =>
+          record.key === `thread/${parent.id}` &&
+          "value" in record &&
+          (record.value as { pendingMergeBack?: unknown }).pendingMergeBack === undefined,
+      );
+      if (fail && clearing) {
+        fail = false;
+        throw new Error("disk full");
+      }
+      return append(stream, batch, options);
+    };
+    await turn(client, parent.id, "go on");
+    expect(requests.at(-1)!.input.text).toContain("Merge-back context from forked conversation.");
+    expect(await pendingOf(client, parent.id)).toBeDefined();
+    // The mark outlived its delivery: the next message goes alone and the mark goes.
+    await turn(client, parent.id, "and then");
+    expect(requests.at(-1)!.input.text).toBe("and then");
+    expect(await pendingOf(client, parent.id)).toBeUndefined();
+  });
+
   it("merges again into a regenerated turn, leaving no mark", async () => {
     const { client, parent, fork, requests } = await forked();
     await client.call("threads.merge-back", { threadId: fork.id });
