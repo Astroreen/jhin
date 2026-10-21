@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from "@jhin/ui";
 import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { ComposerControl } from "../../lib/composer-control.tsx";
 import { useCatalog } from "../../lib/hooks.ts";
@@ -79,18 +79,28 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     const originSwitch = useId();
     const key = draftKey(target, project?.id ?? "");
     const draft = useDraftWorkspace(drafts, key);
-    // T3's composer.branch (D907): the branch picker opens, a draft's or a thread's.
-    // Set once the picker renders below; a toolbar that renders nothing opens nothing.
-    const openPicker = useRef<(() => void) | undefined>(undefined);
-    openPicker.current = undefined;
-    useEffect(
-      () =>
-        drafts.offer("branch", () => {
-          openPicker.current?.();
-          return openPicker.current !== undefined;
-        }),
-      [],
-    );
+    // T3's composer.branch (D907): the branch picker opens, a draft's or a thread's, and
+    // reads its refs as a click does. Offered only while the toolbar renders its picker.
+    const projectId = project !== undefined && !project.scratch ? project.id : undefined;
+    const pickerShown =
+      projectId !== undefined &&
+      view.projects.get(projectId)?.isRepo === true &&
+      (statusOfThread(view, projectId, thread) ?? view.projects.get(projectId)) !== undefined;
+    const threadDir = thread?.worktreePath === undefined ? undefined : thread.id;
+    useEffect(() => {
+      if (!pickerShown || projectId === undefined) return undefined;
+      return drafts.offer("branch", () => {
+        setOpen(true);
+        void threads
+          .call<{ branches: Branch[] }>(target, "git.branches", {
+            projectId,
+            ...(threadDir === undefined ? {} : { threadId: threadDir }),
+          })
+          .then((answer) => setBranches(answer.branches))
+          .catch(() => setBranches([]));
+        return true;
+      });
+    }, [pickerShown, projectId, target, threadDir]);
     if (project === undefined || project.scratch) return null;
     const projectStatus = view.projects.get(project.id);
     const status = statusOfThread(view, project.id, thread) ?? projectStatus;
@@ -110,11 +120,6 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
         })
         .then((answer) => setBranches(answer.branches))
         .catch(() => setBranches([]));
-
-    openPicker.current = () => {
-      setOpen(true);
-      load();
-    };
 
     const select = (item: RefItem) => {
       setOpen(false);
