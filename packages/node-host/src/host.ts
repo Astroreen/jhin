@@ -667,7 +667,11 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       if (store === undefined) return;
       secretStore = store;
       context.onDeactivate(() => {
-        if (secretStore === store) secretStore = undefined;
+        if (secretStore !== store) return;
+        secretStore = undefined;
+        // Without the store its references are left out again (D1025).
+        applyLayer(kernel, "node", home.config, log);
+        applyLayer(kernel, "project", projectConfig, log);
       });
       // The layers again, now that their references resolve.
       applyLayer(kernel, "node", home.config, log);
@@ -853,16 +857,49 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
 
     const file = layer === "node" ? home.config : projectConfig;
     const original = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
-    const text = change(original, file);
+    sealedNow.length = 0;
+    let text: string;
+    try {
+      text = change(original, file);
+    } catch (error) {
+      forgetSealed(sealedNow.splice(0), new Set());
+      throw error;
+    }
     Fs.mkdirSync(Path.dirname(file), { recursive: true });
     // Times first, then the file, each replaced atomically: a crash in between
     // can only make a later stale change lose, never win.
     writes[layer] = { ...writes[layer], [section]: at };
-    writeAtomically(writesFile, `${JSON.stringify(writes, null, 2)}\n`);
-    writeAtomically(file, text);
+    try {
+      writeAtomically(writesFile, `${JSON.stringify(writes, null, 2)}\n`);
+      writeAtomically(file, text);
+    } catch (error) {
+      // Nothing names what this change stored: it leaves the store too (D1026).
+      forgetSealed(sealedNow.splice(0), new Set());
+      throw error;
+    }
+    // Stored for this change but not written (a key sent both whole and as an edit).
+    forgetSealed(sealedNow.splice(0), referencesIn(text, file));
     forgetRemovedSecrets(original, text, file);
     applyLayer(kernel, layer, file, log);
     return { applied: true, at };
+  }
+
+  /** References `sealed` stored for the change being written (D1026). */
+  const sealedNow: string[] = [];
+
+  /** Deletes from the store the references of `stored` that `kept` does not name. */
+  function forgetSealed(stored: readonly string[], kept: ReadonlySet<string>): void {
+    const store = secretStore;
+    for (const reference of stored) {
+      if (store === undefined || kept.has(reference)) continue;
+      try {
+        store.deleteConfig(reference);
+      } catch (error) {
+        log.warn("could not delete a config secret from the secret store", {
+          error: String(error),
+        });
+      }
+    }
   }
 
   /** The config secret references `text` (a config file) holds; none when it does not parse. */
@@ -908,9 +945,11 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   function sealed(section: string, values: Record<string, unknown>): Record<string, unknown> {
     const store = secretStore;
     if (store === undefined) return values;
-    return sealSecrets(sectionSchema(section), values, (text, path) =>
-      store.putConfig(text, { section, path }),
-    );
+    return sealSecrets(sectionSchema(section), values, (text, path) => {
+      const reference = store.putConfig(text, { section, path });
+      sealedNow.push(reference);
+      return reference;
+    });
   }
 
   /** Moves the secrets in clear of `layers`' files into the store (security.md D1027). */
@@ -926,7 +965,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
         const schema = sectionSchema(section);
         const places: { path: (string | number)[]; reference: string }[] = [];
-        // Found first, stored only once the file is written: a refused write keeps nothing.
+        // Found first, stored while the file is written: a failed write keeps nothing.
         sealSecrets(schema, value as Record<string, unknown>, (_text, path) => {
           places.push({ path: [...path], reference: "" });
           return "";
@@ -940,6 +979,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
             for (const key of place.path) leaf = (leaf as Record<string | number, unknown>)?.[key];
             if (typeof leaf !== "string") continue;
             place.reference = store.putConfig(leaf, { section, path: place.path });
+            sealedNow.push(place.reference);
             // A leaf edit: every comment of the file stays.
             text = applyEdits(
               text,

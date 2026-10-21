@@ -80,11 +80,23 @@ function unseal(sealed: Sealed, key: Buffer): Entries {
   return { config: parsed.config ?? {}, refs: parsed.refs ?? {} };
 }
 
+/** Written to a temporary file, flushed to disk, then renamed over `file`. */
 function writeAtomically(file: string, text: string): void {
   const temporary = `${file}.${process.pid}.tmp`;
-  Fs.writeFileSync(temporary, text, { mode: 0o600 });
-  Fs.chmodSync(temporary, 0o600);
-  Fs.renameSync(temporary, file);
+  try {
+    const fd = Fs.openSync(temporary, "w", 0o600);
+    try {
+      Fs.writeFileSync(fd, text);
+      Fs.fsyncSync(fd);
+    } finally {
+      Fs.closeSync(fd);
+    }
+    Fs.chmodSync(temporary, 0o600);
+    Fs.renameSync(temporary, file);
+  } catch (error) {
+    Fs.rmSync(temporary, { force: true });
+    throw error;
+  }
 }
 
 function readSealed(file: string): Sealed | undefined {

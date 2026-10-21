@@ -209,6 +209,33 @@ describe("config secrets in the secret store (security.md D1025–D1027)", () =>
     ).toBe(true);
   });
 
+  it("keeps nothing in the store when the file cannot be written", async () => {
+    const home = tempDir("home");
+    writeVault(home);
+    Fs.writeFileSync(
+      Path.join(home, "config.jsonc"),
+      `{ "jhin.secrets": { "keychain": "off" } }\n`,
+    );
+    const cwd = tempDir("cwd");
+    const dir = Path.join(cwd, ".jhin");
+    Fs.mkdirSync(dir);
+    host = new HostProcess({ home, cwd, distribution: [SECRETS] });
+    await host.ready();
+    // The project directory cannot take the new file.
+    Fs.chmodSync(dir, 0o500);
+    try {
+      const failed = await host.execute("host.config.patch", {
+        layer: "project",
+        section: "acme.vault",
+        values: { key: NEW_B },
+      });
+      expect(failed.error).toBeDefined();
+    } finally {
+      Fs.chmodSync(dir, 0o700);
+    }
+    expect((await host.execute("secrets.status")).value.configSecrets).toBe(0);
+  });
+
   it("leaves a reference with no store out, and keeps saving in clear without one", async () => {
     const home = tempDir("home");
     writeVault(home);

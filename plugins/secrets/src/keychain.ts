@@ -14,11 +14,18 @@ export type Runner = (
   input: string,
 ) => Promise<{ readonly code: number; readonly stdout: string }>;
 
+/** How long a keychain may take, so a locked one cannot hold up the node's start. */
+const KEYCHAIN_TIMEOUT_MS = 15_000;
+
 const runProcess: Runner = (command, args, input) =>
   new Promise((resolve) => {
     let child: ChildProcess.ChildProcess;
     try {
-      child = ChildProcess.spawn(command, args, { stdio: ["pipe", "pipe", "ignore"] });
+      // Killed past the limit: it then counts as no keychain (the key file is used).
+      child = ChildProcess.spawn(command, args, {
+        stdio: ["pipe", "pipe", "ignore"],
+        timeout: KEYCHAIN_TIMEOUT_MS,
+      });
     } catch {
       resolve({ code: -1, stdout: "" });
       return;
