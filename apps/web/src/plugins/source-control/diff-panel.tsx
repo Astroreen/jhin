@@ -636,7 +636,16 @@ export function createDiffPanel(services: SourceControlServices) {
         range: draft.range,
         text,
       });
-      if (comment === null) return;
+      if (comment === null) {
+        // The lines left the diff (a refresh changed the file): say so, and let a new comment start.
+        services.toasts?.show({
+          type: "info",
+          title: "These lines are no longer in the diff",
+          description: "Comment on them again where they are now.",
+        });
+        closeDraft();
+        return;
+      }
       const sent = draft.id;
       setSending(sent);
       // The answer belongs to this draft: a draft closed meanwhile (another scope) hears nothing.

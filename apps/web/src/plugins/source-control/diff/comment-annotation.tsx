@@ -32,6 +32,7 @@ export function DiffCommentAnnotation(props: {
   const trimmedText = text.trim();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Focused once Pierre has placed the annotation (T3 waits a frame the same way).
   useLayoutEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       textareaRef.current?.focus({ preventScroll: true });
@@ -50,7 +51,6 @@ export function DiffCommentAnnotation(props: {
     >
       <Textarea
         aria-label={`Comment on lines ${rangeLabel}`}
-        autoFocus
         onChange={(event) => props.onTextChange(event.target.value)}
         onFocus={(event) => {
           const end = event.currentTarget.value.length;

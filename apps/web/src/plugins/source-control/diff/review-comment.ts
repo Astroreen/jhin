@@ -303,6 +303,10 @@ export function buildDiffReviewComment(input: {
   };
 }
 
+function neutralizeClosingTag(value: string): string {
+  return value.replace(/<\/(review_comment)/gi, "<\\/$1");
+}
+
 function escapeAttribute(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -330,9 +334,10 @@ export function serializeReviewComment(comment: ReviewComment): string {
     ...[...comment.diff.matchAll(/`+/g)].map((match) => match[0].length),
   );
   const fence = "`".repeat(Math.max(3, longestRun + 1));
-  const body = comment.diff
-    ? `${comment.text}\n\n${fence}diff\n${comment.diff}\n${fence}`
-    : comment.text;
+  // A closing tag inside the comment or the lines would end the block early.
+  const text = neutralizeClosingTag(comment.text);
+  const diff = neutralizeClosingTag(comment.diff);
+  const body = diff ? `${text}\n\n${fence}diff\n${diff}\n${fence}` : text;
   return `<review_comment ${attributes}>\n${body}\n</review_comment>`;
 }
 
