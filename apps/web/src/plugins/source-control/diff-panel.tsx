@@ -4,7 +4,15 @@
 // diffs/useCodeViewFileReveal.ts and chat/DiffStatLabel.tsx.
 import type { NodeTarget } from "@jhin/client-api";
 import type { DiffScopeContext, DiffScopeResult, ProjectStatus } from "@jhin/source-control-api";
-import type { CodeViewDiffItem, CodeViewScrollTarget, FileDiffMetadata } from "@pierre/diffs";
+import type {
+  AnnotationSide,
+  CodeViewDiffItem,
+  CodeViewLineSelection,
+  CodeViewScrollTarget,
+  DiffLineAnnotation,
+  FileDiffMetadata,
+  SelectedLineRange,
+} from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import {
   Button,
@@ -49,6 +57,8 @@ import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
 import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
+import { DiffCommentAnnotation } from "./diff/comment-annotation.tsx";
+import { buildDiffReviewComment, serializeReviewComment } from "./diff/review-comment.ts";
 import {
   FileContextMenuPopup,
   preferredEditor,
@@ -351,6 +361,15 @@ function ScopeMenu(props: {
   );
 }
 
+/** What a comment's annotation carries: the range it is about, as T3 labels it. */
+interface CommentDraft {
+  readonly rangeLabel: string;
+}
+
+function annotationSide(range: SelectedLineRange): AnnotationSide {
+  return (range.endSide ?? range.side) === "deletions" ? "deletions" : "additions";
+}
+
 export function createDiffPanel(services: SourceControlServices) {
   const { store, threads, navigation, scopes, selections } = services;
 
@@ -401,7 +420,22 @@ export function createDiffPanel(services: SourceControlServices) {
       fileKeys: ReadonlySet<string>;
     }>({ scopeKey: null, fileKeys: EMPTY_KEYS });
     const [codeViewRevision, setCodeViewRevision] = useState(0);
-    const [codeView, setCodeView] = useState<CodeViewHandle<undefined, undefined> | null>(null);
+    const [codeView, setCodeView] = useState<CodeViewHandle<CommentDraft, undefined> | null>(null);
+    // T3's comment on lines (D285): one draft at a time, sent into the composer.
+    const [draft, setDraft] = useState<{
+      fileKey: string;
+      filePath: string;
+      fileDiff: FileDiffMetadata;
+      range: SelectedLineRange;
+      rangeLabel: string;
+    } | null>(null);
+    const [draftText, setDraftText] = useState("");
+    const [sending, setSending] = useState(false);
+    const [selectedLines, setSelectedLines] = useState<CodeViewLineSelection | null>(null);
+    // Without a composer to put a comment in (no chat plugin), lines take none.
+    const canComment = services.context.commands
+      .list()
+      .some((command) => command.name === "chat.composer.insert");
     const [reveal, setReveal] = useState<{ path: string; id: number } | null>(null);
     const [version, setVersion] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
@@ -496,18 +530,98 @@ export function createDiffPanel(services: SourceControlServices) {
       collapsedFiles.scopeKey === collapseScopeKey ? collapsedFiles.fileKeys : defaultCollapsed;
     const allCollapsed = areAllDiffFilesCollapsed(diffFileKeys, collapsedKeys);
     const fileTreeEntries = diffFileTreeEntries(renderableFiles);
-    const items: CodeViewDiffItem<undefined>[] = renderableFileEntries.map(
+    const items: CodeViewDiffItem<CommentDraft>[] = renderableFileEntries.map(
       ({ fileDiff, fileKey, fileVersion }) => {
         const collapsed = collapsedKeys.has(fileKey);
+        const annotations: DiffLineAnnotation<CommentDraft>[] =
+          draft?.fileKey === fileKey
+            ? [
+                {
+                  side: annotationSide(draft.range),
+                  lineNumber: draft.range.end,
+                  metadata: { rangeLabel: draft.rangeLabel },
+                },
+              ]
+            : [];
         return {
           id: fileKey,
           type: "diff",
           fileDiff,
           collapsed,
-          version: fnv1a32(`${fileVersion}:${collapsed ? "1" : "0"}`),
+          annotations,
+          version: fnv1a32(
+            `${fileVersion}:${collapsed ? "1" : "0"}:${
+              draft?.fileKey === fileKey ? `${draft.range.start}-${draft.range.end}` : ""
+            }`,
+          ),
         };
       },
     );
+    const closeDraft = () => {
+      setDraft(null);
+      setDraftText("");
+      setSelectedLines(null);
+    };
+    /** Opens a comment under the lines chosen in the gutter. */
+    const beginComment = (
+      range: SelectedLineRange | null,
+      item: CodeViewDiffItem<CommentDraft>,
+    ) => {
+      if (range === null) return;
+      const filePath = resolveFileDiffPath(item.fileDiff);
+      const comment = buildDiffReviewComment({
+        sectionId: reviewSectionId,
+        sectionTitle: scopeTitle,
+        filePath,
+        fileDiff: item.fileDiff,
+        range,
+        text: "",
+      });
+      if (comment === null) return;
+      setDraftText("");
+      setDraft({
+        fileKey: item.id,
+        filePath,
+        fileDiff: item.fileDiff,
+        range,
+        rangeLabel: comment.rangeLabel,
+      });
+    };
+    /** Puts the comment into the composer as T3 sends a review comment to a provider. */
+    const sendComment = (text: string) => {
+      if (draft === null) return;
+      const comment = buildDiffReviewComment({
+        sectionId: reviewSectionId,
+        sectionTitle: scopeTitle,
+        filePath: draft.filePath,
+        fileDiff: draft.fileDiff,
+        range: draft.range,
+        text,
+      });
+      if (comment === null) return;
+      setSending(true);
+      void services.context.commands
+        .execute("chat.composer.insert", { text: serializeReviewComment(comment) })
+        .then(
+          (answer) => {
+            if ((answer as { inserted?: boolean }).inserted === true) {
+              closeDraft();
+              return;
+            }
+            services.toasts?.show({
+              type: "info",
+              title: "No message box to add the comment to",
+            });
+          },
+          (failure: unknown) =>
+            services.toasts?.show({
+              type: "error",
+              title: "Could not add the comment to the chat",
+              description: (failure as Error).message,
+            }),
+        )
+        .finally(() => setSending(false));
+    };
 
     const toggleFile = (fileKey: string) =>
       setCollapsedFiles((current) => {
@@ -825,10 +939,11 @@ export function createDiffPanel(services: SourceControlServices) {
             >
               <ContextMenu>
                 <ContextMenuTrigger className="h-full min-h-0" render={<div />}>
-                  <StyledDiffCodeView<undefined>
+                  <StyledDiffCodeView<CommentDraft>
                     className="h-full min-h-0 overflow-auto"
                     items={items}
                     key={codeViewMountKey}
+                    onSelectedLinesChange={setSelectedLines}
                     options={{
                       diffStyle: settings.layout === "split" ? "split" : "unified",
                       lineDiffType: "none",
@@ -837,7 +952,25 @@ export function createDiffPanel(services: SourceControlServices) {
                       preferredHighlighter: PREFERRED_HIGHLIGHTER,
                       themeType: resolvedTheme,
                       stickyHeaders: true,
+                      // The gutter's "+" (or a dragged range) opens a comment, one at a time.
+                      enableGutterUtility: canComment && draft === null,
+                      enableLineSelection: canComment && draft === null,
+                      onGutterUtilityClick: (range, context) =>
+                        beginComment(range, context.item as CodeViewDiffItem<CommentDraft>),
                     }}
+                    renderAnnotation={(annotation) => (
+                      <div className="py-1">
+                        <DiffCommentAnnotation
+                          onCancel={closeDraft}
+                          onComment={sendComment}
+                          onTextChange={setDraftText}
+                          pending={sending}
+                          rangeLabel={annotation.metadata.rangeLabel}
+                          text={draftText}
+                        />
+                      </div>
+                    )}
+                    selectedLines={selectedLines}
                     renderHeaderFilenameSuffix={(item) =>
                       item.type === "diff" ? (
                         <DiffFilePathCopyButton

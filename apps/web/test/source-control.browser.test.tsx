@@ -82,10 +82,18 @@ const status = (fields: Partial<ProjectStatus> = {}): ProjectStatus => ({
 });
 
 /** A plugin context whose config holds the `jhin.diff` section a device sets. */
-function deviceConfig(values: Partial<DiffSettings> = {}) {
+function deviceConfig(
+  values: Partial<DiffSettings> = {},
+  /** Client commands the context runs, e.g. the chat's `chat.composer.insert`. */
+  commands: Record<string, (input: unknown) => unknown> = {},
+) {
   let current: Record<string, unknown> = { ...values };
   const listeners = new Set<() => void>();
   const context = {
+    commands: {
+      list: () => Object.keys(commands).map((name) => ({ name })),
+      execute: async (name: string, input: unknown) => commands[name]!(input),
+    },
     config: {
       get: (section: string) => {
         if (section !== DIFF_SECTION) throw new Error(`No section ${section}`);
@@ -713,6 +721,64 @@ describe("the diff panel", () => {
     });
     // An editor that failed to open is not remembered as the preferred one.
     expect(localStorage.getItem("jhin.lastEditor")).toBeNull();
+  });
+
+  it("sends a comment on lines into the composer, as T3 sends a review comment", async () => {
+    const inserted: string[] = [];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": (input) => {
+          inserted.push((input as { text: string }).text);
+          return { inserted: true };
+        },
+      },
+    );
+    const { value } = services(viewWith(status()), { "git.diff": diff }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    const plus = [...document.querySelectorAll("diffs-container")]
+      .flatMap((host) => [...(host.shadowRoot?.querySelectorAll("[data-utility-button]") ?? [])])
+      .find((button) => (button as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
+    expect(plus).toBeTruthy();
+    await userEvent.click(page.elementLocator(plus!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await expect.element(box).toBeVisible();
+    await userEvent.fill(box, "Why three?");
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await expect.element(box).not.toBeInTheDocument();
+    expect(inserted).toEqual([
+      [
+        '<review_comment sectionId="jhin.source-control.git:branch" sectionTitle="Changes" filePath="src/app.ts" rangeLabel="+2" startIndex="2" endIndex="2">',
+        "Why three?",
+        "",
+        "```diff",
+        "@@ -0,0 +2,1 @@",
+        "+const two = 3;",
+        "```",
+        "</review_comment>",
+      ].join("\n"),
+    ]);
+  });
+
+  it("offers no comments without a composer to put them in", async () => {
+    const { value } = services(
+      viewWith(status()),
+      { "git.diff": diff },
+      deviceConfig({ filesCollapsed: false }),
+    );
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    const visible = [...document.querySelectorAll("diffs-container")]
+      .flatMap((host) => [...(host.shadowRoot?.querySelectorAll("[data-utility-button]") ?? [])])
+      .filter((button) => (button as HTMLElement).offsetParent !== null);
+    expect(visible).toEqual([]);
   });
 
   it("says so when the project is no repository or has no changes", async () => {

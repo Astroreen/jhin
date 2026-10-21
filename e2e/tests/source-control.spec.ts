@@ -223,4 +223,20 @@ test("D280–D284: the diff panel renders with @pierre/diffs, splits, lists file
     .click();
   await page.getByRole("option", { name: "Automatic" }).click();
   await expect(panel.getByLabel("Comparing feature/toolbar against main")).toBeVisible();
+
+  // A comment on a line goes into the composer as T3 sends a review comment (D285).
+  await panel.getByRole("button", { name: "Stacked diff view" }).click();
+  await panel.getByRole("button", { name: "Hide file tree" }).click();
+  await panel.getByRole("button", { name: "Expand src/greet.ts" }).click();
+  await panel.getByText('export const bye = () => "Bye";').last().hover();
+  await panel.locator("[data-utility-button]").filter({ visible: true }).first().click();
+  const box = panel.getByRole("textbox", { name: /^Comment on lines/ });
+  await box.fill("Say goodbye politely");
+  await shot(page, info, "source-control-diff-comment");
+  await panel.getByRole("button", { name: "Comment", exact: true }).click();
+  await expect(box).toBeHidden();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await expect(message).toContainText('filePath="src/greet.ts"');
+  await expect(message).toContainText("Say goodbye politely");
+  await shot(page, info, "source-control-diff-comment-sent");
 });

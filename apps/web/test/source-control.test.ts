@@ -50,6 +50,10 @@ import {
   resolveDiffPathForWorkspace,
 } from "../src/plugins/source-control/diff/editors.tsx";
 import {
+  buildDiffReviewComment,
+  serializeReviewComment,
+} from "../src/plugins/source-control/diff/review-comment.ts";
+import {
   createDiffScopes,
   createDiffSelections,
   gitScopeProvider,
@@ -606,6 +610,66 @@ describe("reading a patch for the diff panel", () => {
       { type: "add", path: "docs/a/" },
       { type: "add", path: "docs/a/b.md" },
     ]);
+  });
+});
+
+describe("a comment on lines, as T3 sends it", () => {
+  it("escapes its attributes and fences a diff holding backticks", () => {
+    expect(
+      serializeReviewComment({
+        sectionId: "turn:1",
+        sectionTitle: 'Turn "1" <a&b>',
+        filePath: "docs/a.md",
+        startIndex: 0,
+        endIndex: 1,
+        rangeLabel: "+1 to +2",
+        text: "Use a code block",
+        diff: "@@ -0,0 +1,2 @@\n+```ts\n+```",
+      }),
+    ).toBe(
+      [
+        '<review_comment sectionId="turn:1" sectionTitle="Turn &quot;1&quot; &lt;a&amp;b&gt;" filePath="docs/a.md" rangeLabel="+1 to +2" startIndex="0" endIndex="1">',
+        "Use a code block",
+        "",
+        "````diff",
+        "@@ -0,0 +1,2 @@",
+        "+```ts",
+        "+```",
+        "````",
+        "</review_comment>",
+      ].join("\n"),
+    );
+  });
+
+  it("labels a range of a file's diff by its lines", () => {
+    const parsed = getRenderablePatch(
+      [
+        "diff --git a/a.ts b/a.ts",
+        "--- a/a.ts",
+        "+++ b/a.ts",
+        "@@ -1,3 +1,3 @@",
+        " one",
+        "-two",
+        "+TWO",
+        " three",
+        "",
+      ].join("\n"),
+      "test",
+    );
+    const fileDiff = parsed?.kind === "files" ? parsed.files[0]! : undefined;
+    const comment = buildDiffReviewComment({
+      sectionId: "s",
+      sectionTitle: "Changes",
+      filePath: "a.ts",
+      fileDiff: fileDiff!,
+      range: { start: 2, side: "deletions", end: 2, endSide: "additions" },
+      text: "  why?  ",
+    });
+    expect(comment).toMatchObject({
+      rangeLabel: "2",
+      text: "why?",
+      diff: "@@ -2,1 +2,1 @@\n-two\n+TWO",
+    });
   });
 });
 
