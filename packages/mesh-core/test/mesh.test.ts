@@ -698,6 +698,25 @@ describe("relays (D499)", () => {
     });
   });
 
+  it("relays for a neighbor only within memberPermissions, at every hop", async () => {
+    const network = createMemoryNetwork();
+    network.block("mem://a", "mem://c");
+    const a = startNode(network, "a");
+    // b, between a and c, lets members only read threads.
+    const b = startNode(network, "b", { memberPermissions: ["threads.read"] });
+    const c = startNode(network, "c");
+    c.mesh.share("source-control");
+    await b.mesh.join(a.address, a.mesh.invite().code);
+    await c.mesh.join(b.address, b.mesh.invite().code);
+    const all = [a, b, c];
+    await until(all, () => all.every((x) => all.every((y) => view(x, y)?.reachable === true)));
+    await c.log.append("source-control", [{ type: "source-control.status.changed", payload: 1 }]);
+    await expect(followRelay(a, "relay/c/source-control").ready).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      details: { missing: ["mesh.call", "events.read"] },
+    });
+  });
+
   it("relays at most maxRelays streams at once", async () => {
     const network = createMemoryNetwork();
     const a = startNode(network, "a", { maxRelays: 1 });

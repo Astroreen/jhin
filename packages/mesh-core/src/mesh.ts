@@ -318,7 +318,19 @@ export function createMesh(options: MeshOptions): Mesh {
     const relayed = relaysFor(nodeId);
     return {
       sourceOf(stream: string): ServedStream | undefined {
-        if (stream.startsWith(RELAY_PREFIX)) return { source: relayed, permissions: [] };
+        if (stream.startsWith(RELAY_PREFIX)) {
+          // A neighbor's relay needs what a local client's does (D502), within memberPermissions.
+          const inner = parseRelayStream(stream)?.stream;
+          const needs =
+            inner === undefined
+              ? []
+              : (options.streams?.sourceOf(inner)?.permissions ??
+                options.streams?.guardOf?.(inner) ?? ["events.read"]);
+          const missing = memberLacks(["mesh.call", ...needs]);
+          return missing.length === 0
+            ? { source: relayed, permissions: [] }
+            : { source: refusing(stream, missing), permissions: [] };
+        }
         if (!isShared(stream)) return undefined;
         const served = options.streams?.sourceOf(stream);
         if (served === undefined) return undefined;
