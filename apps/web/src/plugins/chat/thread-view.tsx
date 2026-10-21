@@ -42,6 +42,7 @@ import {
 import { ChatHeader } from "./header.tsx";
 import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
 import { useAgents, useChat } from "./services.ts";
+import { ThreadFindBar, useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
 import { AttachmentLoaderContext, TimelineView } from "./timeline.tsx";
@@ -134,6 +135,16 @@ export function ThreadView(props: {
   const composer = useHeight<HTMLDivElement>();
   const { scroller, onScroll, showPill, scrollToEnd } = useStickToEnd(count);
   const handle = useRef<ComposerHandleApi>(null);
+  // T3's find in the thread (D801): mod+f opens its bar over the messages.
+  const find = useThreadFind(scroller, `${targetKey(target)}|${threadId}`);
+  useEffect(() => {
+    chat.threadFind.current = { open: find.open };
+    const subscription = chat.keybindings?.setContext("threadOpen", true);
+    return () => {
+      chat.threadFind.current = undefined;
+      subscription?.dispose();
+    };
+  }, [chat, find.open]);
 
   // The thread's settings follow its record when they change elsewhere.
   const recordSelection = thread === undefined ? undefined : JSON.stringify(selectionOf(thread));
@@ -373,6 +384,7 @@ export function ThreadView(props: {
       />
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <ThreadFindBar {...find.bar} />
           {(unconfirmed.message === undefined || count === 0) && shownError === undefined ? null : (
             <div className="pointer-events-none absolute top-0 inset-x-0 z-20 flex flex-col gap-2 pt-3">
               {/* Shown once the thread's stream has answered: until then nothing is known. */}
@@ -441,7 +453,8 @@ export function ThreadView(props: {
             // Scrollable by keyboard too.
             tabIndex={0}
           >
-            <div className="h-6" />
+            {/* The find bar's room, so it covers no message (T3's THREAD_FIND_BAR_RESERVED_HEIGHT). */}
+            <div className={find.bar.open ? "h-14" : "h-6"} />
             <div className="chat-content-lane overflow-x-clip">
               {timeline.deleted ? (
                 <div className="py-24 text-center text-sm text-muted-foreground" role="status">

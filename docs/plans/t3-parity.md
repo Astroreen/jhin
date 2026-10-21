@@ -1488,6 +1488,26 @@ Reference: T3 Code at `eb7b35ac` (D53).
   client command `chat.thread.resume` ("Resume thread") does the same for
   the open thread. T3 also resumes a turn that failed on a usage limit; Jhin
   has no usage-limit failures yet (Deferred).
+- **D801. Find in a thread**, T3's `chat.find` (`ThreadFindBar.tsx`,
+  `threadFindHighlights.ts`). The client command `chat.find` ("Find in
+  thread") opens a find bar over the open thread's messages; `mod+f` runs it
+  while a thread is open and focus is not in a terminal or the right panel
+  (`threadOpen && !terminalFocus && !previewFocus`), so elsewhere the
+  browser's own find stays. The bar is T3's: a "Find in thread" search
+  field, the count ("2/5", "0/0" in red when nothing matches), "Previous
+  match", "Next match" and "Close find"; Enter goes to the next match,
+  Shift+Enter to the previous, and each `mod+f` focuses the field and
+  selects its text again. Matching folds case as T3 does, never spans two
+  blocks and passes over buttons, icons and what is hidden from assistive
+  technology. Matches are painted with the CSS Custom Highlight API in T3's
+  colours (the current one darker) and found again as the thread's text
+  changes; the current match scrolls into view. T3 searches on its server,
+  because its timeline is virtualized and pages its history; Jhin's
+  timeline renders every turn, so the find runs over the page's text and
+  adds no node command. Another thread opens with the bar closed. Text
+  inside a finished turn's folded work is not rendered until it is
+  unfolded, so it is not found (T3 opens the fold holding the current
+  match; Deferred).
 
 ## Not ported (out of scope)
 
@@ -1535,9 +1555,7 @@ Reference: T3 Code at `eb7b35ac` (D53).
   a merge-back's handoff in an agent's history (it reaches the agent as the
   text of the turn that delivers it, and the stored event keeps the user's
   text, so a runtime replaying history, as Claude's transcript does for a new
-  session, sees only the user's text), T3's in-thread find (`mod+f`), T3's
-  "Resume thread" for a stopped turn ("Continue where you left off.", which
-  belongs with the composer, W6), a search index on disk (the node reads
+  session, sees only the user's text), a search index on disk (the node reads
   each thread's texts once per run and one thread after another on the first
   search, D227), searching again while a query stays typed (T3 asks again
   after 30 s; here the next change of the query or of the nodes does) and
@@ -1575,6 +1593,9 @@ Reference: T3 Code at `eb7b35ac` (D53).
 
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
   offers: Jhin has no usage-limit failures to tell apart yet.
+- Find in a thread (D801): matches inside a finished turn's folded work,
+  which T3 finds and opens the fold for; here they are found once the fold
+  is open.
 - Steering (W1): moving Claude's foreground subagents to the background
   before a steer (T3 does, so a steer does not cancel them; here the steer's
   `priority: "now"` may stop them), restarting a turn with the new message

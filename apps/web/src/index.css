@@ -42,3 +42,20 @@
     transform: scaleX(0.9);
   }
 }
+
+/* Matches of the find in a thread, from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/index.css (D801). */
+
+::highlight(jhin-thread-find) {
+  color: oklch(0.216164 0.028283 77.423);
+  background-color: oklch(0.915 0.11 85);
+
+  @variant dark {
+    color: oklch(0.970151 0 0);
+    background-color: oklch(0.55 0.1 85);
+  }
+}
+
+::highlight(jhin-thread-find-active) {
+  color: oklch(0.216164 0.028283 77.423);
+  background-color: oklch(0.774202 0.151946 74.331);
+}

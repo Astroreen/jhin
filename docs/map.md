@@ -124,7 +124,7 @@ A config field asks for a control a plugin contributes with
 | `scheduler`        | the Settings → Scheduled tasks page (`scheduled-tasks` section, `scheduler.task.actions` slot)                                                                                                                                                                                                                                                      | `orchestration.md#w11-scheduled-tasks-and-webhooks`                                       |
 
 The `chat` plugin also has T3's "Resume thread" for a stopped turn
-(`chat.thread.resume`). → `t3-parity.md#steering-and-history-leftovers-w19`
+(`chat.thread.resume`) and its find in a thread (`chat.find`, mod+f). → `t3-parity.md#steering-and-history-leftovers-w19`
 
 The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 (built, served only by the app's node): window chrome, native menu items
