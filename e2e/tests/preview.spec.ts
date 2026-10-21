@@ -142,6 +142,11 @@ test("D950: a server a terminal started shows under Local servers and opens", as
       data: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}\r`,
     });
 
+    // The card's indicator shows once the terminal's process table has the server's
+    // process: from then on the panel's first scan finds it.
+    await expect(
+      page.getByRole("button", { name: "1 terminal process running. Open terminal" }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Toggle right panel" }).click();
     const panel = page.getByRole("complementary", { name: "Right panel" });
     const servers = panel.getByRole("region", { name: "Local servers" });
