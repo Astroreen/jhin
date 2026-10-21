@@ -141,6 +141,7 @@ jobs:
           # electron-builder's notarization reads the API key from a file.
           if [[ -n "$APPLE_API_KEY_TEXT" ]]; then
             key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            trap 'rm -f "$key"' EXIT
             printf '%s' "$APPLE_API_KEY_TEXT" > "$key"
             export APPLE_API_KEY="$key"
           fi

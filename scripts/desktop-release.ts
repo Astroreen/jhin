@@ -233,3 +233,20 @@ export function catalogVersion(workspace: string, name: string): string {
   }
   throw new Error(`${name} is not in the workspace catalog`);
 }
+
+/** A version to package: a stable `x.y.z` or a nightly, never one that picks the wrong feed. */
+export function packageVersion(version: string): string {
+  return NIGHTLY_VERSION.test(version) ? version : releaseVersion(version);
+}
+
+/** The environment without signing secrets: installing runs third-party scripts (D944). */
+export function withoutSecrets(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const secrets = new Set([...SIGNING_SECRETS.mac, ...SIGNING_SECRETS.win, "APPLE_API_KEY_TEXT"]);
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !secrets.has(name)));
+}
+
+/** Quotes an argument for cmd.exe; Jhin's paths and arguments hold no `"` or `%`. */
+export function quote(arg: string): string {
+  if (/["%]/.test(arg)) throw new Error(`Cannot pass ${arg} through cmd.exe`);
+  return /[\s&|<>^()]/.test(arg) ? `"${arg}"` : arg;
+}

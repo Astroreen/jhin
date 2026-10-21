@@ -28,8 +28,11 @@ import {
   builderConfig,
   catalogVersion,
   packageOptions,
+  packageVersion,
+  quote,
   signing,
   SIGNING_SECRETS,
+  withoutSecrets,
 } from "./desktop-release.ts";
 import { lockedPins } from "./packing.ts";
 import { closure, type Manifest, readJson, ROOT, workspacePackages } from "./workspace-packages.ts";
@@ -40,12 +43,6 @@ const windows = process.platform === "win32";
 
 function step(text: string): void {
   process.stdout.write(`\n== ${text}\n`);
-}
-
-/** Quotes an argument for cmd.exe; Jhin's paths and arguments hold no `"` or `%`. */
-function quote(arg: string): string {
-  if (/["%]/.test(arg)) throw new Error(`Cannot pass ${arg} through cmd.exe`);
-  return /[\s&|<>^()]/.test(arg) ? `"${arg}"` : arg;
 }
 
 /** Runs a command; only electron-builder is given the signing secrets. */
@@ -71,12 +68,6 @@ function run(
 const catalog = (name: string) =>
   catalogVersion(Fs.readFileSync(Path.join(ROOT, "pnpm-workspace.yaml"), "utf8"), name);
 
-/** The environment without signing secrets: installing runs third-party scripts (D944). */
-function withoutSecrets(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const secrets = new Set([...SIGNING_SECRETS.mac, ...SIGNING_SECRETS.win]);
-  return Object.fromEntries(Object.entries(env).filter(([name]) => !secrets.has(name)));
-}
-
 function main(): void {
   const { values } = parseArgs({
     options: {
@@ -90,7 +81,7 @@ function main(): void {
   });
   const { platform, arch } = packageOptions(values, process);
   const desktop = readJson<Manifest & { description: string }>(Path.join(DESKTOP, "package.json"));
-  const version = values.version ?? desktop.version!;
+  const version = packageVersion(values.version ?? desktop.version!);
 
   const sign = signing(platform, process.env);
   if (sign.missing.length > 0) {

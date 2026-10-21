@@ -5,10 +5,13 @@ import {
   catalogVersion,
   nightlyVersion,
   packageOptions,
+  packageVersion,
+  quote,
   releaseVersion,
   SIGNING_SECRETS,
   signing,
   updateChannel,
+  withoutSecrets,
 } from "./desktop-release.ts";
 
 const all = (names: readonly string[]) => Object.fromEntries(names.map((name) => [name, "x"]));
@@ -183,5 +186,32 @@ describe("catalogVersion", () => {
     expect(() => catalogVersion(workspace, "electron-builder")).toThrow(
       "not in the workspace catalog",
     );
+  });
+});
+
+describe("packaging inputs", () => {
+  it("packages stable and nightly versions only", () => {
+    expect(packageVersion("1.2.3")).toBe("1.2.3");
+    expect(packageVersion("1.2.3-nightly.20261021.4")).toBe("1.2.3-nightly.20261021.4");
+    expect(() => packageVersion("1.2.3-nightly")).toThrow("Invalid release version");
+    expect(() => packageVersion("latest")).toThrow("Invalid release version");
+  });
+
+  it("keeps every signing secret from commands other than electron-builder", () => {
+    const env = {
+      ...all(SIGNING_SECRETS.mac),
+      ...all(SIGNING_SECRETS.win),
+      APPLE_API_KEY_TEXT: "x",
+      PATH: "/bin",
+    };
+    expect(withoutSecrets(env)).toEqual({ PATH: "/bin" });
+  });
+
+  it("quotes cmd.exe arguments and refuses what it cannot quote", () => {
+    expect(quote("pnpm")).toBe("pnpm");
+    expect(quote("C:\\Program Files\\x")).toBe('"C:\\Program Files\\x"');
+    expect(quote("a&b")).toBe('"a&b"');
+    expect(() => quote('say "hi"')).toThrow("cmd.exe");
+    expect(() => quote("%PATH%")).toThrow("cmd.exe");
   });
 });
