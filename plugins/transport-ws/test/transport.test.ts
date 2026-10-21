@@ -615,6 +615,23 @@ describe("pairing (security.md D419–D422)", () => {
     expect((await fetch(`${own}/auth/session`, { headers: { cookie } })).status).toBe(401);
   });
 
+  it("never lets a session outlive the token it was opened with", async () => {
+    const node = await startNode();
+    const short = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "short",
+      permissions: ["app.*"],
+      ttlDays: 1,
+    })) as { token: string; expiresAt: number };
+    const opened = (await (
+      await post(`${httpUrl(node)}/auth/session`, { credential: short.token })
+    ).json()) as { expiresAt: number; id: string };
+    expect(opened.expiresAt).toBeLessThanOrEqual(short.expiresAt);
+    const { clients } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+      clients: { id: string; method: string }[];
+    };
+    expect(clients.find((client) => client.id === opened.id)?.method).toBe("issued");
+  });
+
   it("turns the owner's token from #token= into a session too", async () => {
     const node = await startNode();
     const opened = await post(`${httpUrl(node)}/auth/session`, { credential: node.token });

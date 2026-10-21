@@ -188,15 +188,24 @@ export default definePlugin({
         };
       },
     });
-    /** A device token for a code that was just used up (D420); its label wins, as in T3. */
-    const issuePaired = (permissions: readonly string[], label: string) => {
+    /**
+     * A device token for a code that was just used up (D420; its label wins,
+     * as in T3), or for a token traded for the page's session (D421): that
+     * one is `issued` and never outlives the token it came from.
+     */
+    const issuePaired = (
+      permissions: readonly string[],
+      label: string,
+      from?: { readonly expiresAt?: number },
+    ) => {
       const now = Date.now();
+      const longest = now + DEFAULT_TTL_DAYS * DAY_MS;
       const { record, token: issued } = clients.issue({
         label,
         permissions,
-        method: "pairing",
+        method: from === undefined ? "pairing" : "issued",
         now,
-        expiresAt: now + DEFAULT_TTL_DAYS * DAY_MS,
+        expiresAt: from?.expiresAt === undefined ? longest : Math.min(longest, from.expiresAt),
       });
       context.log.warn("device paired", { client: record.id, label, permissions });
       return {
@@ -307,7 +316,7 @@ export default definePlugin({
             const principal = await verifier.verify({ token: credential });
             return principal === undefined
               ? undefined
-              : issuePaired(principal.permissions, "Browser");
+              : issuePaired(principal.permissions, "Browser", principal);
           },
           verify: (given) => verifier.verify({ token: given }),
           closeSession(given) {

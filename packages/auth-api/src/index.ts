@@ -45,7 +45,13 @@ export function readCookie(header: string | undefined, name: string): string | u
   for (const part of (header ?? "").split(";")) {
     const index = part.indexOf("=");
     if (index > 0 && part.slice(0, index).trim() === name) {
-      return decodeURIComponent(part.slice(index + 1).trim());
+      const raw = part.slice(index + 1).trim();
+      // The header is the client's: a malformed escape is no value, never a throw.
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return undefined;
+      }
     }
   }
   return undefined;

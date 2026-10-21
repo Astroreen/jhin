@@ -97,9 +97,10 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
   const attempts = new Map<string, number>();
 
   /** False (and answered with 429) once a client tried too often this minute. */
-  const admit = (request: IncomingMessage, response: ServerResponse): boolean => {
+  const admit = (route: string, request: IncomingMessage, response: ServerResponse): boolean => {
     const minute = Math.floor(Date.now() / 60_000);
-    const key = `${http.clientAddress(request)}:${minute}`;
+    // One bucket per route: a signed-in page never spends a pairing device's attempts.
+    const key = `${route}:${http.clientAddress(request)}:${minute}`;
     const count = (attempts.get(key) ?? 0) + 1;
     attempts.set(key, count);
     for (const old of attempts.keys()) if (!old.endsWith(`:${minute}`)) attempts.delete(old);
@@ -134,7 +135,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
   );
   store.add(
     http.route("POST", "/auth/pair", async (request, response) => {
-      if (!admit(request, response)) return;
+      if (!admit("pair", request, response)) return;
       const parsed = PairRequest.safeParse(await readJson(request).catch(() => undefined));
       if (!parsed.success) {
         send(response, 400, { code: "INVALID", message: "Expected { code, label? }" }, CORS);
@@ -163,7 +164,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
 
   store.add(
     http.route("POST", "/auth/session", async (request, response) => {
-      if (!admit(request, response)) return;
+      if (!admit("session", request, response)) return;
       if (!ownPage(http, request)) {
         send(response, 403, {
           code: "ORIGIN_NOT_ALLOWED",

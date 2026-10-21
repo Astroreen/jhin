@@ -199,8 +199,12 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   `POST`/`DELETE` are refused (403) from any page but the node's own. The
   WebSocket upgrade from the page then authenticates by the cookie when no
   token is offered, and such an upgrade needs the node's own or a listed
-  origin even while the list is empty (D418). The endpoints and pairing
-  commands need `http.server@^1.2`, optional for `jhin.auth-token`.
+  origin even while the list is empty (D418). The endpoints need
+  `http.server@^1.2`, optional for `jhin.auth-token`; without it the pairing
+  commands still create codes, with no `url`. A token traded for the
+  session gives an `issued` token that never outlives it. Each endpoint has
+  its own rate-limit bucket per client address (behind a proxy, set
+  `jhin.http.trustProxy` so clients are told apart).
 - **D422. The pairing URL is T3's: `<base>/pair#token=<CODE>`.** The code is
   in the fragment, so it never reaches a server log; the web client accepts
   `#token=` on any path, and also an owner or device token there (as
