@@ -3,7 +3,7 @@
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
-import type { EditorDefinition } from "@jhin/host-api";
+import type { EditorDefinition, FileManagerRevealKind } from "@jhin/host-api";
 
 /** What to start: a program and its arguments. */
 export interface Launch {
@@ -229,6 +229,37 @@ export function fileManagerCommand(host: Host = nodeHost): string | undefined {
       return graphical && resolveCommand("xdg-open", host) !== undefined ? "xdg-open" : undefined;
     }
   }
+}
+
+/** T3's reveal kind of the node's file manager (D922); none without one. */
+export function fileManagerRevealKind(host: Host = nodeHost): FileManagerRevealKind | undefined {
+  if (fileManagerCommand(host) === undefined) return undefined;
+  return host.platform === "darwin"
+    ? "finder"
+    : host.platform === "win32"
+      ? "file-explorer"
+      : "files";
+}
+
+/**
+ * Shows a file in the file manager, never running it (T3's reveal launch): selected
+ * in Finder or File Explorer; Linux file managers have no portable "select this
+ * file" flag, so the containing folder opens. None for a path Explorer cannot take.
+ */
+export function revealLaunch(
+  command: string,
+  path: string,
+  host: Host = nodeHost,
+): Launch | undefined {
+  if (host.platform === "darwin") return { command, args: ["-R", path] };
+  // Explorer reads `/select,"<path>"` as one raw argument, and selects nothing for a
+  // path with forward slashes. A `"` would end the quotes and pass the rest to it as
+  // switches; no Windows file name holds one, so such a path is refused.
+  if (host.platform === "win32") {
+    if (path.includes('"')) return undefined;
+    return { command, args: [`/select,"${path.replaceAll("/", "\\")}"`], verbatim: true };
+  }
+  return { command, args: [Path.dirname(path)] };
 }
 
 /** An editor's arguments for a target, in its launch style. */

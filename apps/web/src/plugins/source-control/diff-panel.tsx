@@ -389,6 +389,7 @@ export function createDiffPanel(services: SourceControlServices) {
   }) {
     const { target, projectId, threadId, status } = props;
     const editors = services.editors.useEditors(target);
+    const revealKind = services.editors.useRevealKind(target);
     const [menuPath, setMenuPath] = useState<string | null>(null);
     /** A diff's path within the project's folder; none outside it (D287). */
     const workspacePath = (filePath: string) =>
@@ -1099,9 +1100,17 @@ export function createDiffPanel(services: SourceControlServices) {
                 </ContextMenuTrigger>
                 <FileContextMenuPopup
                   editors={editors}
+                  revealKind={revealKind}
                   onOpen={(editor) => {
                     if (menuPath !== null) {
                       void services.editors.open(target, projectId, menuPath, editor);
+                    }
+                  }}
+                  onReveal={(fileManager) => {
+                    if (menuPath !== null) {
+                      void services.editors.open(target, projectId, menuPath, fileManager, {
+                        reveal: true,
+                      });
                     }
                   }}
                 />

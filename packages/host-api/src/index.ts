@@ -172,6 +172,12 @@ export interface EditorInfo {
   readonly label: string;
 }
 
+/**
+ * What a node's file manager is, for T3's "Reveal in …" wording (D922):
+ * Finder on macOS, File Explorer on Windows, the desktop's Files elsewhere.
+ */
+export type FileManagerRevealKind = "finder" | "file-explorer" | "files";
+
 /** Error codes of `editors.open`. */
 export type EditorErrorCode =
   | "PROJECT_NOT_FOUND"
