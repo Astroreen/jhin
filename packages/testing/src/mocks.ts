@@ -33,7 +33,7 @@ export function memoryStoragePlugin(): TestPlugin & { readonly storage: MemorySt
   return {
     storage,
     manifest: testManifest("mock.storage", {
-      provides: { [KV_CAPABILITY]: "1.0.0", [EVENTLOG_CAPABILITY]: "1.1.0" },
+      provides: { [KV_CAPABILITY]: "1.0.0", [EVENTLOG_CAPABILITY]: "1.2.0" },
     }),
     definition: definePlugin({
       activate(context) {

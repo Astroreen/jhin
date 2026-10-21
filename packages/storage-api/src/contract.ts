@@ -233,9 +233,14 @@ export function describeStorageContract(name: string, open: () => Promise<Storag
         ]);
       });
 
-      it("trims a stream, keeping its newest event, its head and its numbering (1.1)", async () => {
+      it("trims a stream, keeping its newest event, its head and its numbering (1.2)", async (context) => {
         const { log } = await open();
-        const trim = log.trim!.bind(log);
+        if (log.trim === undefined) {
+          // A provider older than 1.2 has nothing to trim with.
+          context.skip();
+          return;
+        }
+        const trim = log.trim.bind(log);
         const payloads = [1, 2, 3, 4, 5].map((payload) => ({ type: "app.a", payload }));
         await log.append("s", payloads);
         await log.append("other", [{ type: "app.a", payload: 1 }]);

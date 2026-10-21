@@ -149,6 +149,7 @@ describe("checkpoints in the view", () => {
 /** A node: answers `git.status` from `answer`, records subscriptions to its stream. */
 function fakeNode(answer: (params: unknown) => Promise<unknown>) {
   const subscriptions: {
+    disposed: boolean;
     after: number | undefined;
     onEvent: (event: StoredEvent) => void;
     onError: ((error: unknown) => void) | undefined;
@@ -162,9 +163,10 @@ function fakeNode(answer: (params: unknown) => Promise<unknown>) {
       onEvent: (event: StoredEvent) => void,
     ) {
       if (stream !== SOURCE_CONTROL_STREAM) throw new Error(`unexpected stream ${stream}`);
-      subscriptions.push({ after: options.after, onEvent, onError: options.onError });
+      const entry = { disposed: false, after: options.after, onEvent, onError: options.onError };
+      subscriptions.push(entry);
       for (const resolve of waiting.splice(0)) resolve();
-      return { lastSequence: 0, dispose: () => undefined };
+      return { lastSequence: 0, dispose: () => void (entry.disposed = true) };
     },
   } as unknown as RpcClient;
   const connection: NodeConnection = {
@@ -195,9 +197,9 @@ function fakeNode(answer: (params: unknown) => Promise<unknown>) {
     call: async <T>(target: NodeTarget, method: string, params?: unknown) => {
       calls.push({ target, method, params });
       const result = await answer(params);
-      // The stream goes on from the head the answer reflects.
+      // The stream goes on from the head the answer reflects (what it skipped is trimmed).
       const head = (result as { head?: unknown } | null)?.head;
-      if (typeof head === "number") sequence = Math.max(sequence, head);
+      if (typeof head === "number") sequence = head;
       return result as T;
     },
     open: async () => "",
@@ -218,7 +220,8 @@ function fakeNode(answer: (params: unknown) => Promise<unknown>) {
           }),
     append(type: string, payload: unknown, skip = 0) {
       sequence += 1 + skip;
-      for (const { onEvent } of subscriptions) {
+      for (const { onEvent, disposed } of subscriptions) {
+        if (disposed) continue;
         onEvent({
           stream: SOURCE_CONTROL_STREAM,
           sequence,
@@ -315,7 +318,12 @@ describe("the source control store", () => {
     expect((await reloaded).projects.get("app")?.ahead).toBe(8);
     await node.subscribed(2);
     expect(node.subscriptions.map((entry) => entry.after)).toEqual([4, 8]);
+    // The subscription that saw the gap is gone; only the new one follows.
+    expect(node.subscriptions.map((entry) => entry.disposed)).toEqual([true, false]);
     expect(node.calls).toHaveLength(2);
+    const followed = feed.next();
+    node.append(SourceControlEvents.statusChanged, status({ ahead: 11 }));
+    expect((await followed).projects.get("app")?.ahead).toBe(11);
     feed.subscription.dispose();
     store.dispose();
   });

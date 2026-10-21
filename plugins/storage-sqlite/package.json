@@ -49,7 +49,7 @@
     "side": "server",
     "provides": {
       "storage.kv": "1.0.0",
-      "storage.eventlog": "1.1.0"
+      "storage.eventlog": "1.2.0"
     },
     "requires": {
       "host.paths": "^1"

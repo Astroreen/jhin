@@ -4,7 +4,7 @@ Status: **in progress**. Workstream W17 of `t3-roadmap.md`: the streams of a
 mesh member reach a client connected to another node, so the source control
 and the terminals of threads on members work like local ones, and the event
 log streams that only grow (`source-control`, `mesh/outbox`) are trimmed.
-Decisions D495–D509.
+Decisions D495–D505.
 
 It continues `foundation.md` (D26 history sync, D47 the client reaching a
 member through its connection), `source-control.md` (D114, D118) and
@@ -25,7 +25,7 @@ terminals of threads on mesh members (terminal).
 
 ### Trimming the event log
 
-- **D496. `storage.eventlog@1.1` can trim a stream.** `trim(stream,
+- **D496. `storage.eventlog@1.2` can trim a stream.** `trim(stream,
   through)` forgets the events with `sequence <= through`, except the
   newest, which always stays, and resolves how many it forgot. Nothing else
   moves: the head, the sequences of what is kept, `expectedHead` and
@@ -35,8 +35,9 @@ terminals of threads on mesh members (terminal).
   `after + 1`). Keeping the newest event keeps the head in the data itself
   (`node:sqlite` takes it from `max(sequence)`), so trimming needs no schema
   change. The method is optional in the TypeScript contract, as it is in the
-  capability: a 1.0 provider has none, and callers trim with `trim?.()`. The
-  memory store and `jhin.storage-sqlite` provide 1.1, and the contract suite
+  capability: an older provider has none, and callers trim with `trim?.()`. The
+  memory store and `jhin.storage-sqlite` provide 1.2 (1.1 is `t3-parity.md` D208,
+  records written with an append), and the contract suite
   (`@jhin/storage-api/contract`) covers it.
 - **D497. Only streams that are followed from a snapshot are trimmed.**
   `jhin.source-control` keeps the newest 1000 events of its `source-control`

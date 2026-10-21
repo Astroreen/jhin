@@ -55,7 +55,11 @@ export interface AppendOptions {
   readonly records?: readonly RecordWrite[];
 }
 
-/** `storage.eventlog@1`: append-only streams with gap-free per-stream sequences. */
+/**
+ * `storage.eventlog@1`: append-only streams with per-stream sequences that
+ * only grow by one. 1.2 can `trim` a stream's oldest events (D496), so a
+ * reader resuming before the first kept one sees a gap.
+ */
 export interface EventLog {
   /**
    * Appends atomically: either every event is stored or none is. An empty
@@ -83,11 +87,11 @@ export interface EventLog {
    */
   subscribe(stream: string, listener: (event: StoredEvent) => void): Disposable;
   /**
-   * `storage.eventlog@1.1` (D496): forgets the events of `stream` with
+   * `storage.eventlog@1.2` (D496): forgets the events of `stream` with
    * `sequence <= through`, except the newest, which always stays, and
    * resolves how many it forgot. The head and the sequences of what is kept
    * do not change; a `read` after an older sequence starts at the first kept
-   * event. A 1.0 provider has no `trim`.
+   * event. A provider older than 1.2 has no `trim`.
    */
   trim?(stream: string, through: number): Promise<number>;
 }
@@ -146,7 +150,7 @@ export function assertCount(
 
 /**
  * Trims `stream` down to its newest `count` events (D497). Resolves how many
- * were forgotten; 0 on a `storage.eventlog@1.0` provider, which cannot trim.
+ * were forgotten; 0 on a provider older than `storage.eventlog@1.2`, which cannot trim.
  */
 export async function keepNewest(log: EventLog, stream: string, count: number): Promise<number> {
   if (log.trim === undefined) return 0;
