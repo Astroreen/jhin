@@ -202,13 +202,14 @@ describe("the prompt editor (D303)", () => {
     const opened: string[] = [];
     const skill = { name: "deploy", description: "Ship it to production", path: "/s/SKILL.md" };
     mount(
-      "[a.ts](src/a.ts) $deploy $gone [#12](https://github.com/acme/app/pull/12) [Fix](jhin://n/threads/t)",
+      "[a.ts](src/a.ts) $deploy $gone [#12](https://github.com/acme/app/pull/12) [Fix](jhin://n/threads/t) [Far](jhin://far/threads/u)",
       {
         chips: {
           skills: [skill],
           previewFile: (path) => opened.push(`file ${path}`),
           viewInstructions: (picked) => opened.push(`skill ${picked.name}`),
           openUrl: (url) => opened.push(`url ${url}`),
+          canOpenThread: (href) => href.startsWith("jhin://n/"),
           openThread: (href) => opened.push(`thread ${href}`) > 0,
         },
       },
@@ -230,6 +231,9 @@ describe("the prompt editor (D303)", () => {
 
     await page.getByRole("button", { name: "Open pull request #12" }).click();
     await page.getByRole("button", { name: "Thread, Fix" }).click();
+    // A thread no node here reaches is no button (D1005).
+    await expect.element(page.getByText("Far", { exact: true })).toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Thread, Far" })).not.toBeInTheDocument();
     expect(opened).toEqual([
       "file src/a.ts",
       "skill deploy",

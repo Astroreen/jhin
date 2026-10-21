@@ -1379,8 +1379,14 @@ export function Composer(props: ComposerProps) {
   // They are followed only while `@` is typed, as T3's useThreadShells(isPathTrigger).
   const pathTrigger = detectComposerTrigger(prompt, cursor)?.kind === "path";
   const catalog = useCatalog(chat.threads, pathTrigger ? props.target : undefined);
-  const members = useMeshMembers(chat.mesh, pathTrigger ? props.target.node : undefined);
-  const nodeId = props.target.remote ?? members?.find((member) => member.self)?.nodeId ?? undefined;
+  // A thread chip opens its thread wherever in the mesh it is: the members are followed then too.
+  const threadChip = prompt.includes("](jhin://");
+  const members = useMeshMembers(
+    chat.mesh,
+    pathTrigger || threadChip ? props.target.node : undefined,
+  );
+  const selfNodeId = members?.find((member) => member.self)?.nodeId ?? undefined;
+  const nodeId = props.target.remote ?? selfNodeId;
   const menu = useComposerMenu({
     call: (method, params) => chat.threads.call(props.target, method, params),
     projectId: props.context?.project?.id,
@@ -1401,6 +1407,7 @@ export function Composer(props: ComposerProps) {
     threadId: props.context?.thread?.id,
     agentId: agent?.agentId,
     nodeId,
+    selfNodeId,
     skills: menu.skills,
   });
   /**

@@ -21,7 +21,7 @@ import {
 } from "@jhin/ui";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { BoxIcon, GitPullRequestIcon, MessagesSquareIcon } from "lucide-react";
-import { createContext, type ReactNode, use, useState } from "react";
+import { createContext, type ReactNode, use, useRef, useState } from "react";
 
 import { skillDisplayName } from "../../lib/composer-menu.ts";
 import { FILE_TEXT_PREVIEW_MAX_BYTES, filePreviewKind } from "../../lib/file-preview.ts";
@@ -38,7 +38,9 @@ export interface ComposerChipActions {
   readonly previewFile?: ((path: string) => void) | undefined;
   /** Opens a skill's instructions (T3's "View instructions"). */
   readonly viewInstructions?: ((skill: AgentSkill) => void) | undefined;
-  /** Opens a linked thread, when it is one this composer's node can show. */
+  /** Whether a linked thread's `jhin://` address is one this composer can open. */
+  readonly canOpenThread?: ((href: string) => boolean) | undefined;
+  /** Opens a linked thread; false when its address names no node this composer reaches. */
   readonly openThread?: ((href: string) => boolean) | undefined;
   readonly openUrl?: ((url: string) => void) | undefined;
 }
@@ -140,34 +142,77 @@ export function ReferenceNodeView({ node }: NodeViewProps) {
   const label = String(node.attrs["label"] ?? "");
   const href = String(node.attrs["href"] ?? "");
   const thread = kind === "thread";
+  // A chip that cannot open is no button: a thread of a node out of reach, a link of no web page.
   const open = thread
-    ? actions.openThread === undefined
-      ? undefined
-      : () => actions.openThread?.(href)
-    : actions.openUrl === undefined
-      ? undefined
-      : () => actions.openUrl?.(href);
+    ? actions.openThread !== undefined && actions.canOpenThread?.(href) === true
+      ? () => actions.openThread?.(href)
+      : undefined
+    : actions.openUrl !== undefined && /^https?:\/\//i.test(href)
+      ? () => actions.openUrl?.(href)
+      : undefined;
+  const content = (
+    <>
+      {thread ? <MessagesSquareIcon /> : <GitPullRequestIcon />}
+      <ContextChipLabel>{label}</ContextChipLabel>
+    </>
+  );
   return (
     <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME} contentEditable={false}>
       <Tooltip>
         <TooltipTrigger
           render={
-            <ContextChip
-              aria-label={thread ? `Thread, ${label}` : `Open pull request ${label}`}
-              kind={thread ? "thread" : "pull-request"}
-              onClick={open}
-              render={<button type="button" />}
-              spellCheck={false}
-            >
-              {thread ? <MessagesSquareIcon /> : <GitPullRequestIcon />}
-              <ContextChipLabel>{label}</ContextChipLabel>
-            </ContextChip>
+            open === undefined ? (
+              <ContextChip
+                aria-label={thread ? `Thread, ${label}` : `Pull request ${label}`}
+                kind={thread ? "thread" : "pull-request"}
+                spellCheck={false}
+                tabIndex={0}
+              >
+                {content}
+              </ContextChip>
+            ) : (
+              <ContextChip
+                aria-label={thread ? `Thread, ${label}` : `Open pull request ${label}`}
+                kind={thread ? "thread" : "pull-request"}
+                onClick={open}
+                render={<button type="button" />}
+                spellCheck={false}
+              >
+                {content}
+              </ContextChip>
+            )
           }
         />
-        <TooltipPopup side="top">{thread ? "Open thread" : href}</TooltipPopup>
+        <TooltipPopup side="top">
+          {thread ? (open === undefined ? "Thread no longer available" : "Open thread") : href}
+        </TooltipPopup>
       </Tooltip>
     </NodeViewWrapper>
   );
+}
+
+/**
+ * Where a thread's `jhin://<node>/threads/<id>` address leads from a composer (D1005): its own
+ * node, the node the client is connected to, or another member of the mesh as that node's
+ * remote (D504); nowhere while the ids are not known.
+ */
+export function threadRoute(
+  href: string,
+  from: {
+    readonly target: NodeTarget;
+    readonly nodeId: string | undefined;
+    readonly selfNodeId: string | undefined;
+  },
+): (NodeTarget & { thread: string }) | undefined {
+  const match = /^jhin:\/\/([^/]+)\/threads\/([^/?#]+)$/.exec(href);
+  if (match === null) return undefined;
+  const node = decodeURIComponent(match[1]!);
+  const thread = decodeURIComponent(match[2]!);
+  if (node === from.nodeId) return { ...from.target, thread };
+  if (from.selfNodeId === undefined) return undefined;
+  return node === from.selfNodeId
+    ? { node: from.target.node, thread }
+    : { node: from.target.node, remote: node, thread };
 }
 
 /** What `projects.read-file` and `agents.skill.read` answer. */
@@ -192,34 +237,51 @@ export function useComposerChipActions(options: {
   readonly agentId: string | undefined;
   /** The id of the composer's node, which a thread's `jhin://` address names. */
   readonly nodeId: string | undefined;
+  /** The id of the node the client is connected to; another one is reached as its remote. */
+  readonly selfNodeId: string | undefined;
   readonly skills: readonly AgentSkill[];
 }): { actions: ComposerChipActions; dialog: ReactNode } {
   const chat = useChat();
   const [shown, setShown] = useState<
     { name: string; sizeBytes: number; file: Blob; origin: string } | undefined
   >();
+  /** The latest preview asked for: an earlier one that answers late is not shown over it. */
+  const latest = useRef(0);
   const { target, projectId } = options;
   const open = (origin: string, name: string, method: string, input: Record<string, unknown>) => {
     const media = ["image", "video", "audio", "pdf"].includes(filePreviewKind({ name }));
-    // One byte past the MiB tells the dialog the text was cut.
-    const maxBytes = media ? MEDIA_PREVIEW_MAX_BYTES : FILE_TEXT_PREVIEW_MAX_BYTES + 1;
-    chat.threads.call<FileHead>(target, method, { ...input, maxBytes }).then(
+    // Media whole or not at all, refused on the node before it is read; text its first MiB, one
+    // byte past it telling the dialog the text was cut.
+    const limit = media
+      ? { maxBytes: MEDIA_PREVIEW_MAX_BYTES, whole: true }
+      : { maxBytes: FILE_TEXT_PREVIEW_MAX_BYTES + 1 };
+    const request = ++latest.current;
+    chat.threads.call<FileHead>(target, method, { ...input, ...limit }).then(
       (head) => {
-        if (media && head.truncated) {
-          chat.toasts?.show({ type: "error", title: `${name} is too large to preview` });
-          return;
-        }
-        const bytes = Uint8Array.from(atob(head.data), (character) => character.charCodeAt(0));
-        setShown({ name, sizeBytes: head.sizeBytes, file: new Blob([bytes]), origin });
+        if (request !== latest.current) return;
+        setShown({
+          name,
+          sizeBytes: head.sizeBytes,
+          file: new Blob([decodeBase64(head.data)]),
+          origin,
+        });
       },
-      (error: unknown) =>
-        chat.toasts?.show({
-          type: "error",
-          title: `Could not open ${name}`,
-          description: error instanceof Error ? error.message : String(error),
-        }),
+      (error: unknown) => {
+        if (request !== latest.current) return;
+        chat.toasts?.show(
+          (error as { code?: unknown } | null)?.code === "FILE_TOO_LARGE"
+            ? { type: "error", title: `${name} is too large to preview` }
+            : {
+                type: "error",
+                title: `Could not open ${name}`,
+                description: error instanceof Error ? error.message : String(error),
+              },
+        );
+      },
     );
   };
+  const routeOf = (href: string) =>
+    threadRoute(href, { target, nodeId: options.nodeId, selfNodeId: options.selfNodeId });
   const actions: ComposerChipActions = {
     skills: options.skills,
     previewFile:
@@ -240,16 +302,11 @@ export function useComposerChipActions(options: {
               ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
               name: skill.name,
             }),
+    canOpenThread: (href) => routeOf(href) !== undefined,
     openThread: (href) => {
-      const match = /^jhin:\/\/([^/]+)\/threads\/([^/?#]+)$/.exec(href);
-      if (match === null || options.nodeId === undefined || match[1] !== options.nodeId) {
-        return false;
-      }
-      chat.navigation.navigate({
-        node: target.node,
-        ...(target.remote === undefined ? {} : { remote: target.remote }),
-        thread: decodeURIComponent(match[2]!),
-      });
+      const route = routeOf(href);
+      if (route === undefined) return false;
+      chat.navigation.navigate(route);
       return true;
     },
     openUrl: (url) => {
@@ -268,4 +325,15 @@ export function useComposerChipActions(options: {
       />
     );
   return { actions, dialog };
+}
+
+/** Base64 to bytes: the browser's own decoder where it has one, else in one pass. */
+function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
+  const native = (Uint8Array as { fromBase64?: (text: string) => Uint8Array<ArrayBuffer> })
+    .fromBase64;
+  if (native !== undefined) return native(data);
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }

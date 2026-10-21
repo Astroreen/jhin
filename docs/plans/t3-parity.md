@@ -1768,35 +1768,42 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   document and the markdown it writes stay as before (D303); the view
   renders a moment after the document, so the atom's own element carries
   its `data-mention`, `data-skill` or `data-reference`.
-- **D1003. A file chip** is T3's mention chip: the file's Pierre icon
-  (D923) and its basename, its path in a tooltip, and pressed ("Preview
-  <path>") its preview in D854's dialog under "Workspace", where T3 opens its
+- **D1003. A file chip** is T3's mention chip: the file's Pierre icon (D923)
+  and its basename, its path in a tooltip, and pressed ("Preview <path>")
+  its preview in D854's dialog under "Workspace", where T3 opens its
   right-hand file panel. The file is read by the new node command
-  `projects.read-file` (`{ projectId, threadId?, path, maxBytes? }` →
-  `{ path, sizeBytes, data, truncated }`, base64, under `projects.read`): a
-  file inside the thread's worktree or else the project's folder, never one a
-  link leads out of; text reads its first MiB as D854 does, media up to
-  D855's 50 MB and "is too large to preview" past it. A folder (a path ending
-  in `/`) shows its folder icon and opens nothing.
+  `projects.read-file` (`{ projectId, threadId?, path, maxBytes?, whole? }`
+  → `{ path, sizeBytes, data, truncated }`, base64, under `projects.read`):
+  a file inside the thread's worktree or else the project's folder. A path
+  out of the folder is refused before anything is looked up, so the answer
+  never tells whether a file outside exists; a link that leads out is
+  refused too, and the file is opened once, never through a link at its end.
+  Text reads its first MiB as D854 does; media goes whole up to D855's 50 MB
+  (`whole`: one past the limit is refused, `FILE_TOO_LARGE`, before it is
+  read) and is "too large to preview" past it. Only the latest preview asked
+  for shows. A folder (a path ending in `/`) shows its folder icon and opens
+  nothing.
 - **D1004. A skill chip** is T3's: lucide's box, the skill's display name
   (else its name in title case, `skillDisplayName`), and pressed a popover
   with the name, its description or "No description is available for this
   skill.", and "View instructions" when the agent offers the skill. That
   opens its SKILL.md in the same dialog under "Skill", read by the new
-  command `agents.skill.read` (`{ projectId, agentId?, name, maxBytes? }`,
-  under `threads.read`), which reads only the file the agent names for one of
-  its skills. The composer asks the agent's skills (`agents.commands`) while
-  the prompt holds a skill chip, not only while `$` or `/` is typed.
+  command `agents.skill.read` (`{ projectId, agentId?, name, maxBytes?,
+  whole? }`, under `projects.read`, since a user's skills are outside
+  projects): it reads only the path the agent's runtime gives for one of its
+  skills, which is trusted as the agent's own, and says when the skill or
+  its file is missing. The composer asks the agent's skills
+  (`agents.commands`) while the prompt holds a skill chip, not only while
+  `$` or `/` is typed.
 - **D1005. A pull request or thread chip** is T3's too: a pull request with
   its glyph, its URL in a tooltip, opened in the browser when pressed; a
-  thread with T3's `MessagesSquare` and "Open thread", which opens it when
-  its `jhin://` address names this composer's node. The state of a pull
-  request and the thread's current title come with their context records.
-
-### Sidebar leftovers (W26)
-
-W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
-
+  thread with T3's `MessagesSquare` and "Open thread", which opens it
+  wherever its `jhin://` address leads: the composer's node, the node the
+  client is connected to, or another member of the mesh as that node's
+  remote (D504). A chip that cannot open (an address of no node in reach, a
+  link to no web page) is no button, and a thread one says "Thread no longer
+  available". The state of a pull request and the thread's current title
+  come with their context records.
 - **D962. The selection menu's "Custom…" snooze, as T3's.** The "Snooze
   (N)" submenu ends with a separator and "Custom…", which asks in the same
   "Custom snooze" dialog as a single thread and snoozes every selected

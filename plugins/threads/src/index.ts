@@ -567,15 +567,33 @@ const AgentInfo = z.object({
   role: z.string().optional(),
 });
 
-/** The first `maxBytes` of a file as base64, or undefined when it is not a file. */
+/**
+ * The first `maxBytes` of a file as base64, or undefined when it is not a file. The file is opened
+ * once, never through a link at its end, and its handle is what is checked and read. `whole`
+ * refuses a file past `maxBytes` (`FILE_TOO_LARGE`) before reading any of it.
+ */
 async function readFileHead(
   path: string,
   maxBytes: number,
+  whole: boolean,
 ): Promise<{ path: string; sizeBytes: number; data: string; truncated: boolean } | undefined> {
-  const stat = await Fs.promises.stat(path);
-  if (!stat.isFile()) return undefined;
-  const file = await Fs.promises.open(path, "r");
+  let file: Fs.promises.FileHandle;
   try {
+    file = await Fs.promises.open(path, Fs.constants.O_RDONLY | (Fs.constants.O_NOFOLLOW ?? 0));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ELOOP" || code === "EISDIR") return undefined;
+    throw error;
+  }
+  try {
+    const stat = await file.stat();
+    if (!stat.isFile()) return undefined;
+    if (whole && stat.size > maxBytes) {
+      throw new ThreadsError("FILE_TOO_LARGE", `The file is larger than ${maxBytes} bytes`, {
+        path,
+        sizeBytes: stat.size,
+      });
+    }
     const buffer = Buffer.alloc(Math.min(maxBytes, stat.size));
     const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
     return {
@@ -588,6 +606,20 @@ async function readFileHead(
     await file.close();
   }
 }
+
+/** How much of a file to read: its start, or with `whole` all of it or nothing. */
+const ReadLimit = {
+  maxBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_READ_FILE_BYTES)
+    .default(1024 * 1024),
+  whole: z
+    .boolean()
+    .default(false)
+    .describe("All of the file or nothing: one past maxBytes is refused before it is read"),
+};
 
 const FileHead = z.object({
   path: z.string(),
@@ -1967,16 +1999,11 @@ export default definePlugin({
         /** Its worktree, when it has one, is the folder the path is in. */
         threadId: z.string().optional(),
         path: z.string().trim().min(1).max(4096),
-        maxBytes: z
-          .number()
-          .int()
-          .positive()
-          .max(MAX_READ_FILE_BYTES)
-          .default(1024 * 1024),
+        ...ReadLimit,
       }),
       output: FileHead,
       permissions: ["projects.read"],
-      handler: async ({ projectId, threadId, path, maxBytes }) => {
+      handler: async ({ projectId, threadId, path, maxBytes, whole }) => {
         const project = await getProject(projectId);
         const thread = threadId === undefined ? undefined : await getThread(threadId);
         if (thread !== undefined && thread.projectId !== projectId) {
@@ -1992,6 +2019,10 @@ export default definePlugin({
           });
         const outside = (relative: string) =>
           relative === ".." || relative.startsWith(`..${Path.sep}`) || Path.isAbsolute(relative);
+        // A path out of the folder is refused before anything is looked up there, so the
+        // answer never says whether a file outside exists.
+        const lexical = Path.relative(root, Path.resolve(root, path));
+        if (lexical === "" || outside(lexical)) throw refuse();
         // A link inside the project must not lead the read out of it.
         const realRoot = await Fs.promises.realpath(root);
         const real = await Fs.promises.realpath(Path.resolve(root, path)).catch(() => undefined);
@@ -2000,7 +2031,7 @@ export default definePlugin({
         }
         const relative = Path.relative(realRoot, real);
         if (relative === "" || outside(relative)) throw refuse();
-        const head = await readFileHead(real, maxBytes);
+        const head = await readFileHead(real, maxBytes, whole);
         if (head === undefined) throw refuse();
         return head;
       },
@@ -2162,16 +2193,12 @@ export default definePlugin({
         projectId: z.string(),
         agentId: z.string().optional(),
         name: z.string().min(1),
-        maxBytes: z
-          .number()
-          .int()
-          .positive()
-          .max(MAX_READ_FILE_BYTES)
-          .default(1024 * 1024),
+        ...ReadLimit,
       }),
       output: FileHead,
-      permissions: ["threads.read"],
-      handler: async ({ projectId, agentId, name, maxBytes }) => {
+      // It reads outside projects too (a user's skills): what the agent itself may read.
+      permissions: ["projects.read"],
+      handler: async ({ projectId, agentId, name, maxBytes, whole }) => {
         const project = await getProject(projectId);
         const runtime = agentId === undefined ? await defaultRuntime() : registry.get(agentId);
         if (runtime === undefined) {
@@ -2181,14 +2208,18 @@ export default definePlugin({
         }
         const found = (await runtime.commands?.({ cwd: project.path }))?.skills ?? [];
         const skill = found.find((candidate) => candidate.name === name);
-        const head =
-          skill === undefined
-            ? undefined
-            : await readFileHead(skill.path, maxBytes).catch(() => undefined);
-        if (head === undefined) {
-          throw new ThreadsError("SKILL_NOT_FOUND", `No instructions for the skill ${name}`, {
-            name,
+        if (skill === undefined) {
+          throw new ThreadsError("SKILL_NOT_FOUND", `The agent offers no skill ${name}`, { name });
+        }
+        // The path is the runtime's, trusted as the agent's own (D1004); its errors are its own.
+        const head = await readFileHead(skill.path, maxBytes, whole).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          throw new ThreadsError("FILE_NOT_FOUND", `${skill.path} does not exist`, {
+            path: skill.path,
           });
+        });
+        if (head === undefined) {
+          throw new ThreadsError("SKILL_NOT_FOUND", `${skill.path} is not a file`, { name });
         }
         return head;
       },
