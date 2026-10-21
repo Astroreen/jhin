@@ -32,6 +32,7 @@ import {
   quote,
   signing,
   SIGNING_SECRETS,
+  UPDATE_REPOSITORY,
   withoutSecrets,
 } from "./desktop-release.ts";
 import { lockedPins } from "./packing.ts";
@@ -127,7 +128,7 @@ function main(): void {
           version,
           description: desktop.description,
           author: "Jhin <noreply@github.com>",
-          homepage: "https://github.com/Astroreen/jhin",
+          homepage: `https://github.com/${UPDATE_REPOSITORY}`,
           license: "Apache-2.0",
           type: "module",
           main: "dist/main.js",

@@ -8,7 +8,7 @@
 #     apps/desktop/package.json's version (`latest*.yml`) from a commit on main;
 #   - "nightly" publishes the prerelease v<version>-nightly.<date>.<run> (`nightly*.yml`);
 #   - "dry-run" (the default, and every pull request that changes packaging)
-#     builds without a feed and publishes nothing.
+#     builds as a release would, feed files included, and publishes nothing.
 # Each platform signs only when all its secrets are set (scripts/desktop-release.ts,
 # SIGNING_SECRETS). A stable release fails on macOS and Windows without them,
 # unless "allow_unsigned" is chosen: an unsigned macOS app cannot update itself.
@@ -29,8 +29,14 @@ on:
       - .github/workflows/release-desktop.yml
       - scripts/desktop-release.ts
       - scripts/package-desktop.ts
-      - apps/desktop/package.json
-      - apps/desktop/resources/**
+      - scripts/pack.ts
+      - scripts/packing.ts
+      - scripts/workspace-packages.ts
+      - apps/desktop/**
+      - apps/jhin/package.json
+      - plugins/desktop/package.json
+      - pnpm-workspace.yaml
+      - pnpm-lock.yaml
   workflow_dispatch:
     inputs:
       channel:
@@ -120,7 +126,8 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.version }}
-          REPOSITORY: ${{ needs.meta.outputs.channel != 'dry-run' && github.repository || '' }}
+          # Dry runs too: they write the feed files a release would publish.
+          REPOSITORY: ${{ github.repository }}
           REQUIRE_SIGNING: ${{ needs.meta.outputs.channel == 'stable' && !inputs.allow_unsigned }}
           # macOS: a Developer ID Application certificate and an App Store Connect API key.
           CSC_LINK: ${{ needs.meta.outputs.channel != 'dry-run' && matrix.platform == 'mac' && secrets.CSC_LINK || '' }}

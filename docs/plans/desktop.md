@@ -262,7 +262,7 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   since a suffixed one would be a GitHub prerelease the stable feed never
   offers. A manual "nightly" publishes the prerelease
   `v<version>-nightly.<date>.<run>`, also only from `main`. A manual "dry-run" (the default), and
-  every pull request that changes packaging, builds without a feed and keeps
+  every pull request that changes packaging, builds as a release would (feed files included), unsigned, and keeps
   the installers as workflow artifacts. The last job creates the GitHub
   release with T3's generated notes and uploads the installers, their
   blockmaps and the feed files; a re-run uploads into the release that
