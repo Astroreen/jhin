@@ -30,7 +30,7 @@ import { createSettingsStore } from "./settings.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updates/channels.ts";
 import { UpdateController } from "./updates/controller.ts";
 import { createElectronUpdater, hasPackagedFeed } from "./updates/electron-updater.ts";
-import { createMainWindow, syncWindowAppearance, zoomMainWindow } from "./window.ts";
+import { createMainWindow, loadNode, syncWindowAppearance, zoomMainWindow } from "./window.ts";
 
 const APP_NAME = "Jhin";
 const require = Module.createRequire(import.meta.url);
@@ -54,6 +54,8 @@ const nodePaths = {
 
 let mainWindow: BrowserWindow | undefined;
 let node: RunningLocalNode | undefined;
+/** The node last started, which the window shows; kept while `node` is cleared to quit. */
+let shownNode: RunningLocalNode | undefined;
 let nodeOrigin: string | undefined;
 let quitting = false;
 let menuContributions: DesktopMenuContribution[] = [];
@@ -163,7 +165,7 @@ async function main(): Promise<void> {
     },
     afterFailedInstall: async () => {
       quitting = false;
-      await startNode();
+      await restartNodeInWindow();
     },
     log,
   });
@@ -265,6 +267,7 @@ async function main(): Promise<void> {
       try {
         const started = await startLocalNode(nodePaths);
         node = started;
+        shownNode = started;
         nodeOrigin = new URL(started.url).origin;
         started.onExit((output) => void nodeStopped(output));
         log("local node running", { url: started.url, home: started.home });
@@ -304,10 +307,12 @@ async function main(): Promise<void> {
       app.quit();
       return;
     }
+    await restartNodeInWindow();
+  }
+  /** Starts the node again and points the window at it: it may listen elsewhere now. */
+  async function restartNodeInWindow(): Promise<void> {
     const restarted = await startNode();
-    if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
-      void mainWindow.loadURL(`${restarted.url}#token=${encodeURIComponent(restarted.token)}`);
-    }
+    if (mainWindow !== undefined && !mainWindow.isDestroyed()) loadNode(mainWindow, restarted);
   }
   const openWindow = () => {
     if (node === undefined) return;
@@ -316,8 +321,7 @@ async function main(): Promise<void> {
       platform: process.platform,
       preload: Path.join(import.meta.dirname, "preload.cjs"),
       icon: undefined,
-      url: node.url,
-      token: node.token,
+      node: () => shownNode!,
       settings,
       log,
     });

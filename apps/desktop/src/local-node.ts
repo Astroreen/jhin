@@ -70,8 +70,20 @@ export function startLocalNode(
       if (url === undefined || !/^logs: /m.test(output)) return;
       child.stderr.off("data", onData);
       child.off("exit", onEarlyExit);
+      // jhin.auth-token writes its token before the node reports itself ready.
       const tokenFile = Path.join(home, "data", "jhin.auth-token", "token");
-      const token = Fs.existsSync(tokenFile) ? Fs.readFileSync(tokenFile, "utf8").trim() : "";
+      let token = "";
+      try {
+        token = Fs.readFileSync(tokenFile, "utf8").trim();
+      } catch {
+        // Missing: reported below.
+      }
+      if (token === "") {
+        stopping = true;
+        child.kill("SIGTERM");
+        reject(new Error(`The local node has no access token at ${tokenFile}:\n${output.trim()}`));
+        return;
+      }
       resolve({
         url,
         token,

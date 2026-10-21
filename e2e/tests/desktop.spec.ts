@@ -1,3 +1,4 @@
+import * as ChildProcess from "node:child_process";
 import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as Http from "node:http";
@@ -374,4 +375,58 @@ test("Check for Updates... in the menu answers in T3's native dialog", async () 
     title: "You're up to date!",
     message: "Jhin 0.1.0 is currently the newest version available.",
   });
+});
+
+test("a crashed page and a stopped node come back with the node's token", async () => {
+  const { app, home } = await launch();
+  // Answers the "local node stopped" dialog with Restart, and records it.
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = ((options: { title?: string }) => {
+      Object.assign(globalThis, { stoppedDialog: options.title });
+      return Promise.resolve({ response: 0, checkboxChecked: false });
+    }) as typeof dialog.showMessageBox;
+  });
+  // Playwright gives up on a page that crashed, so the main process watches the
+  // window: `reloaded` resolves once its page loaded again and connected to the
+  // node, which it can only do with the node's token.
+  const armReload = () =>
+    app.evaluate(({ BrowserWindow }) => {
+      const contents = BrowserWindow.getAllWindows()[0]!.webContents;
+      Object.assign(globalThis, {
+        reloaded: new Promise<boolean>((resolve) =>
+          contents.once("did-finish-load", () => {
+            const connected = () =>
+              contents
+                .executeJavaScript(
+                  `new Promise((resolve) => { const check = () => document.querySelector('[aria-label="Go to threads"]') && !document.body.innerText.includes("No node connected.") ? resolve(true) : requestAnimationFrame(check); check(); })`,
+                )
+                .then(resolve);
+            void connected();
+          }),
+        ),
+      });
+    });
+  const reloaded = () =>
+    app.evaluate(() => (globalThis as unknown as { reloaded: Promise<boolean> }).reloaded);
+
+  // The renderer crashes: the app reloads the node's page, token included (D522).
+  await armReload();
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]!.webContents.forcefullyCrashRenderer(),
+  );
+  expect(await reloaded()).toBe(true);
+
+  // The node exits by itself: Restart starts it again and the page follows it (D512).
+  await armReload();
+  const pids = ChildProcess.execFileSync("pgrep", ["-f", "--", `--home ${home}`], {
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .map(Number);
+  for (const pid of pids) process.kill(pid, "SIGKILL");
+  expect(await reloaded()).toBe(true);
+  expect(await app.evaluate(() => (globalThis as { stoppedDialog?: string }).stoppedDialog)).toBe(
+    "The local node stopped",
+  );
 });

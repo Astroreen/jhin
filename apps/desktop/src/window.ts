@@ -85,9 +85,11 @@ export interface MainWindowOptions {
   readonly platform: NodeJS.Platform;
   readonly preload: string;
   readonly icon: string | undefined;
-  /** The node's web client and its token (D513). */
-  readonly url: string;
-  readonly token: string;
+  /**
+   * The node's web client and its token (D513), as they are now: a node
+   * restarted after it stopped may listen elsewhere.
+   */
+  node(): { readonly url: string; readonly token: string };
   readonly settings: SettingsStore;
   log(message: string, fields?: Record<string, unknown>): void;
 }
@@ -95,7 +97,6 @@ export interface MainWindowOptions {
 /** The main window: T3's chrome, kept bounds, context menu, links and recovery. */
 export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   const { platform, settings } = options;
-  const origin = new URL(options.url).origin;
   const dark = nativeTheme.shouldUseDarkColors;
   const saved = settings.get();
   let displays: Electron.Rectangle[] = [];
@@ -197,7 +198,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     return { action: "deny" };
   });
   contents.on("will-navigate", (event, url) => {
-    if (URL.canParse(url) && new URL(url).origin === origin) return;
+    if (URL.canParse(url) && new URL(url).origin === new URL(options.node().url).origin) return;
     event.preventDefault();
     if (parseSafeExternalUrl(url) !== undefined) void shell.openExternal(url);
   });
@@ -237,7 +238,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     if (!recover) return;
     recoveries.push(now);
     setTimeout(() => {
-      if (!window.isDestroyed()) void window.loadURL(options.url);
+      if (!window.isDestroyed()) loadNode(window, options.node());
     }, RENDERER_RECOVERY_RELOAD_DELAY_MS);
   });
 
@@ -253,8 +254,16 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   window.once("ready-to-show", reveal);
   if (platform === "linux") contents.once("did-finish-load", reveal);
 
-  void window.loadURL(`${options.url}#token=${encodeURIComponent(options.token)}`);
+  loadNode(window, options.node());
   return window;
+}
+
+/** Loads a node's web client with its token in the fragment, as `jhin serve --ui` users open it (D513). */
+export function loadNode(
+  window: BrowserWindow,
+  node: { readonly url: string; readonly token: string },
+): void {
+  void window.loadURL(`${node.url}#token=${encodeURIComponent(node.token)}`);
 }
 
 /** Half a zoom level a step, on the main window's page only (D516). */
