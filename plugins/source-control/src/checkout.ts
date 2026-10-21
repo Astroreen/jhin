@@ -54,6 +54,15 @@ function normalizeUrl(url: string): string {
     .replace(/\/+$/, "");
 }
 
+/**
+ * Whether a pull request's URL (`https://<host>/<owner>/<name>/pull/<n>`) is
+ * one of the repository a remote URL names: a URL reference may name another.
+ */
+export function isPullRequestOf(remoteUrl: string, pullRequestUrl: string): boolean {
+  const repository = pullRequestUrl.split(/\/pull\/\d+/)[0];
+  return repository !== undefined && normalizeUrl(repository) === normalizeUrl(remoteUrl);
+}
+
 /** The fork's clone URL on the pull request's host, over SSH when the primary remote uses it. */
 async function forkUrl(git: Git, target: CheckoutTarget): Promise<string> {
   const host = new URL(target.pr.url).host;
@@ -139,12 +148,18 @@ const branchExists = async (git: Git, branch: string) =>
 async function headCommit(
   git: Git,
   target: CheckoutTarget,
+  warn: (message: string, fields: Record<string, unknown>) => void,
 ): Promise<{ commit: string; ref?: string }> {
   try {
     const ref = await fetchHead(git, await headRemote(git, target), target.pr.headBranch);
     return { commit: (await git(["rev-parse", "--verify", `${ref}^{commit}`])).stdout.trim(), ref };
-  } catch {
-    // A head branch that is gone: the pull request's own ref, without an upstream.
+  } catch (error) {
+    // T3 falls back on any failure too: the pull request's own ref, without an upstream.
+    warn("could not fetch the pull request's head branch, using refs/pull", {
+      number: target.pr.number,
+      headBranch: target.pr.headBranch,
+      error: (error as Error).message,
+    });
     return { commit: await fetchPullRequestHead(git, target.pr.number) };
   }
 }
@@ -186,7 +201,7 @@ export async function checkoutLocal(
     );
   }
   try {
-    const { commit, ref } = await headCommit(git, target);
+    const { commit, ref } = await headCommit(git, target, warn);
     if (await branchExists(git, local)) {
       await assertBehind(git, local, commit, pr.number);
       await git(["switch", "--quiet", "--", local]);
@@ -223,11 +238,16 @@ function worktreeBranchOf(target: CheckoutTarget): string {
  * `materializePullRequestHeadBranch`): created there, or moved forward when it
  * is behind; one with commits of its own is refused.
  */
-async function materialize(git: Git, target: CheckoutTarget, local: string): Promise<void> {
+async function materialize(
+  git: Git,
+  target: CheckoutTarget,
+  local: string,
+  warn: (message: string, fields: Record<string, unknown>) => void,
+): Promise<void> {
   const { pr } = target;
   let commit: string;
   try {
-    ({ commit } = await headCommit(git, target));
+    ({ commit } = await headCommit(git, target, warn));
   } catch {
     throw new SourceControlError(
       "GIT_FAILED",
@@ -300,7 +320,7 @@ export async function checkoutWorktree(
       isOnPullRequestHead: onHead,
     };
   }
-  await materialize(git, target, local);
+  await materialize(git, target, local, options.warn);
   const path = worktreePath(options.root, options.repository, local);
   await recreateWorktree(git, path, local);
   await configureUpstream(options.createGit(path), target, local, options.warn);

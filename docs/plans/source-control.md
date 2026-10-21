@@ -578,12 +578,15 @@ with screenshots).
   pullRequest, branch, worktreePath, isOnPullRequestHead }`). A reference is a
   number, `#42`, a URL or a head branch, read by the forge's new optional
   `resolve` (GitHub: `gh pr view --json … -- <reference>`); one starting with
-  `-` is refused (`PULL_REQUEST_INVALID`), a forge without `resolve` answers
+  `-` is refused (`PULL_REQUEST_INVALID`), and so is a URL of another
+  repository's pull request (its refs are not this one's; T3 would check that
+  repository's out). A forge without `resolve` answers
   `ACTION_UNAVAILABLE`. The head is fetched from the primary remote
   (`origin`, else the first) or from the fork's remote (one whose configured
   URL is the fork's, else a new one named after its owner, `-1`… when
-  taken); a head branch that is gone falls back to `refs/pull/<n>/head`,
-  without an upstream. `local` checks the head branch out in the project's
+  taken); when that fetch fails (a head branch that is gone, for one) it
+  falls back to `refs/pull/<n>/head` without an upstream, as T3 does, and
+  logs a warning. `local` checks the head branch out in the project's
   checkout (a fork whose head is named like its base as `<owner>/<head>`),
   created or fast-forwarded to the head and tracking it; git failures answer
   T3's "The pull request could not be checked out with git.". Where T3

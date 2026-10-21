@@ -82,7 +82,12 @@ import { githubForge, remoteHost } from "./github.ts";
 import type { Viewers } from "./github.ts";
 import { createLinks, type LinkTarget } from "./links.ts";
 import { createWatcher } from "./watcher.ts";
-import { checkoutLocal, checkoutWorktree, normalizeReference } from "./checkout.ts";
+import {
+  checkoutLocal,
+  checkoutWorktree,
+  isPullRequestOf,
+  normalizeReference,
+} from "./checkout.ts";
 import { followTurns } from "./turns.ts";
 import {
   createWorktree,
@@ -1941,13 +1946,23 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       if (normalized === "") {
         throw new SourceControlError("PULL_REQUEST_INVALID", "Name a pull request");
       }
+      let found;
       try {
-        return await resolve(normalized);
+        found = await resolve(normalized);
       } catch (error) {
         throw new SourceControlError("PULL_REQUEST_FAILED", (error as Error).message, {
           reference: normalized,
         });
       }
+      // A URL may name another repository's pull request: its refs are not this one's.
+      if (repo.forge?.url !== undefined && !isPullRequestOf(repo.forge.url, found.pr.url)) {
+        throw new SourceControlError(
+          "PULL_REQUEST_INVALID",
+          `${found.pr.url} is not a pull request of this project's repository.`,
+          { reference: normalized },
+        );
+      }
+      return found;
     };
     return { repo, git, root, lookUp };
   };

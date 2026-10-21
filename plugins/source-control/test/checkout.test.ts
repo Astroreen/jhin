@@ -4,7 +4,13 @@ import * as Path from "node:path";
 import type { PreparedPullRequest, PullRequest } from "@jhin/source-control-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { checkoutLocal, checkoutWorktree, normalizeReference } from "../src/checkout.ts";
+import {
+  checkoutLocal,
+  checkoutWorktree,
+  isPullRequestOf,
+  normalizeReference,
+} from "../src/checkout.ts";
+import { githubForge } from "../src/github.ts";
 import type { CheckoutTarget } from "../src/forge.ts";
 import { createGit } from "../src/git.ts";
 import { fakeGh, ghPullRequest, git, node, repository, temp, write } from "./support.ts";
@@ -44,6 +50,33 @@ function withPullRequest() {
 const warn = () => undefined;
 
 describe("checking a pull request out (D902)", () => {
+  it("tells a pull request of the remote's repository from another's", () => {
+    const url = "https://github.com/acme/demo/pull/7";
+    expect(isPullRequestOf("https://github.com/acme/demo.git", url)).toBe(true);
+    expect(isPullRequestOf("git@github.com:Acme/demo.git", url)).toBe(true);
+    expect(isPullRequestOf("ssh://git@github.com/acme/demo", url)).toBe(true);
+    expect(isPullRequestOf("https://github.com/acme/other.git", url)).toBe(false);
+  });
+
+  it("reads a fork's head repository from gh", async () => {
+    const gh = fakeGh();
+    gh.view(
+      7,
+      ghPullRequest({
+        isCrossRepository: true,
+        headRepositoryOwner: { login: "someone" },
+        headRepository: { name: "demo-fork" },
+      }),
+    );
+    const target = await githubForge(() => "gh", repository(), new Map()).resolve!("7");
+    expect(target).toMatchObject({
+      crossRepository: true,
+      headOwner: "someone",
+      headRepository: "someone/demo-fork",
+      pr: { number: 7, headBranch: "feature" },
+    });
+  });
+
   it("normalizes a reference as T3 does", () => {
     expect(normalizeReference(" #42 ")).toBe("42");
     expect(normalizeReference("42")).toBe("42");
@@ -288,6 +321,25 @@ describe("git.pr.resolve and git.pr.checkout", () => {
     await expect(
       sc.client.call("git.pr.resolve", { projectId, reference: "-R other/repo" }),
     ).rejects.toMatchObject({ code: "PULL_REQUEST_INVALID" });
+
+    // Another repository's pull request, by URL.
+    gh.view(9, ghPullRequest({ number: 9, url: "https://github.com/other/repo/pull/9" }));
+    await expect(
+      sc.client.call("git.pr.checkout", {
+        projectId,
+        reference: "https://github.com/other/repo/pull/9",
+        mode: "local",
+      }),
+    ).rejects.toThrow(
+      "https://github.com/other/repo/pull/9 is not a pull request of this project's repository.",
+    );
+
+    // A forge that cannot check pull requests out yet.
+    const gitlab = repository();
+    git(gitlab, "remote", "add", "origin", "https://gitlab.com/acme/demo.git");
+    await expect(
+      sc.client.call("git.pr.resolve", { projectId: await sc.project(gitlab), reference: "7" }),
+    ).rejects.toMatchObject({ code: "ACTION_UNAVAILABLE" });
 
     const plain = await sc.project(repository());
     await expect(
