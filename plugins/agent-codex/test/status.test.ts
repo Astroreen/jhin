@@ -281,6 +281,44 @@ describe("jhin.agent-codex: status", () => {
     expect(fake.received("skills/list")).toHaveLength(2);
   });
 
+  it("adds the config's custom models after Codex's, with the options of its models", async () => {
+    const efforts = {
+      defaultReasoningEffort: "medium",
+      supportedReasoningEfforts: [{ reasoningEffort: "medium" }, { reasoningEffort: "high" }],
+    };
+    const { codex, fake } = runtime(
+      { models: [[model("gpt-6.1-sol", efforts), model("gpt-6-luna")]] },
+      { customModels: ["gpt-7", { slug: "gpt-6.1-sol", name: "Sol" }, { slug: "gpt-7" }] },
+    );
+    await codex.status!();
+    expect(codex.models?.map(({ id, name }) => ({ id, name }))).toEqual([
+      { id: "gpt-6.1-sol", name: "Sol" },
+      { id: "gpt-6-luna", name: "GPT-6-Luna" },
+      { id: "gpt-7", name: "gpt-7" },
+    ]);
+    expect(codex.models?.[2]?.options).toEqual(codex.models?.[0]?.options);
+    const turn = codex.startTurn({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      input: { text: "hi" },
+      history: [],
+      cwd: process.cwd(),
+      model: "gpt-7",
+      modelOptions: [{ id: "reasoningEffort", value: "high" }],
+    });
+    for await (const _ of turn.items) void _;
+    expect(fake.received("turn/start")[0]?.params).toMatchObject({
+      model: "gpt-7",
+      effort: "high",
+    });
+    codex.dispose();
+  });
+
+  it("offers the custom models before Codex listed any", () => {
+    const { codex } = runtime({}, { customModels: ["gpt-7"] });
+    expect(codex.models?.at(-1)).toEqual({ id: "gpt-7", name: "gpt-7" });
+  });
+
   it("falls back to Codex's own default, and the config's wins", async () => {
     const first = runtime({ models: [[model("a"), model("b", { isDefault: true })]] });
     await first.codex.status!();
