@@ -429,6 +429,8 @@ export const sourceControlPlugin = builtin(
               id,
               store.subscribe(target, () => notifyWork(target)),
             );
+            // What the node's view holds already (followed by another part before) counts now.
+            notifyWork(target);
           }
           for (const [id, subscription] of followed) {
             if (ids.has(id)) continue;
