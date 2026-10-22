@@ -205,10 +205,48 @@ describe("health views (D731)", () => {
     );
     await render(<HealthPage node="a" view={view} warningId="w1" />);
     await userEvent.click(page.getByRole("button", { name: "Dismiss" }));
-    // The button is enabled again once the call has returned.
-    await expect.element(page.getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    // No event will mark it: the page does, and offers no second Dismiss.
+    await expect.element(page.getByText("Dismissed")).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
     expect(toasts).toEqual([
       expect.objectContaining({ type: "success", title: "Warning dismissed" }),
     ]);
+  });
+
+  it("makes one more read for the changes that came while a read was under way", async () => {
+    const answers: ((value: unknown) => void)[] = [];
+    const listeners = new Set<() => void>();
+    let snapshot = new Map([["a", { status: "ready", value: healthOf() } as NodeHealth]]);
+    const { view } = viewOf({}, () => new Promise((resolve) => answers.push(resolve)));
+    Object.assign(view.store, {
+      snapshot: () => snapshot,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return toDisposable(() => listeners.delete(listener));
+      },
+    });
+    Object.assign(view.connections, {
+      get: () => ({
+        label: "a",
+        client: { call: () => new Promise((resolve) => answers.push(resolve)) },
+      }),
+    });
+    const change = async () => {
+      snapshot = new Map([["a", { status: "ready", value: healthOf() } as NodeHealth]]);
+      await act(async () => {
+        for (const listener of listeners) listener();
+      });
+    };
+    await render(<HealthPage node="a" view={view} />);
+    expect(answers).toHaveLength(1);
+    // Three changes while the first read is under way: no read yet.
+    await change();
+    await change();
+    await change();
+    expect(answers).toHaveLength(1);
+    await act(async () => answers[0]!({ windowHours: 24, groups: [] }));
+    await expect.element(page.getByRole("region", { name: "Ceremony and progress" })).toBeVisible();
+    // One more read for all three.
+    expect(answers).toHaveLength(2);
   });
 });

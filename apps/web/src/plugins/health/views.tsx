@@ -179,23 +179,6 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
   // themselves change with every message, so the page says when it read them.
   const [round, setRound] = useState(0);
   const ready = feed?.status === "ready";
-  // The health the last read was made for; none until the node is ready.
-  const seen = useRef(ready ? health : undefined);
-  useEffect(() => {
-    if (!ready) {
-      seen.current = undefined;
-      return;
-    }
-    // The first read once ready (on mount, or loading → ready) is the one
-    // `enabled` starts: only a later change reads again.
-    if (seen.current === undefined) {
-      seen.current = health;
-      return;
-    }
-    if (seen.current === health) return;
-    seen.current = health;
-    setRound((value) => value + 1);
-  }, [health, ready]);
   const status = useCall<{ windowHours: number; groups: GroupStatus[] }>(
     view,
     node,
@@ -204,6 +187,33 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
     `${node}|${round}`,
     { scope: node, enabled: ready },
   );
+  // Whether the read of this round has answered: changes while one is under
+  // way make one more read when it does, not one read each.
+  const answered = status?.key === `${node}|${round}`;
+  // The health the last read was made for; none until the node is ready.
+  const seen = useRef(ready ? health : undefined);
+  const stale = useRef(false);
+  useEffect(() => {
+    if (!ready) {
+      seen.current = undefined;
+      stale.current = false;
+      return;
+    }
+    // The first read once ready (on mount, or loading → ready) is the one
+    // `enabled` starts: only a later change reads again.
+    if (seen.current === undefined) {
+      seen.current = health;
+      return;
+    }
+    if (seen.current !== health) {
+      seen.current = health;
+      stale.current = true;
+    }
+    if (stale.current && answered) {
+      stale.current = false;
+      setRound((value) => value + 1);
+    }
+  }, [health, ready, answered]);
   if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
   if (status === undefined) return <PageEmpty text="Reading the sensors…" title="Health" />;
   if (status.error !== undefined) return <PageEmpty text={status.error} title="Health" />;
@@ -303,6 +313,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     { scope: `${node}|${warningId}`, enabled: warning !== undefined },
   );
   const [dismissing, setDismissing] = useState(false);
+  // Dismissed from here while the stream was not live: no event will say so.
+  const [dismissedHere, setDismissedHere] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     // Set on every mount: StrictMode mounts, cleans up and mounts again.
@@ -331,6 +343,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       await connection.client.call("health.warnings.dismiss", { warningId });
       // The stream marks it dismissed; when the stream is down now, the answer says so.
       if (view.store.snapshot().get(node)?.status !== "ready") {
+        if (mounted.current) setDismissedHere(true);
         view.toasts?.show({ type: "success", title: "Warning dismissed" });
       }
     } catch (error) {
@@ -344,6 +357,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     }
   };
   const { analysis } = warning;
+  const open = warning.status === "open" && !dismissedHere;
   return (
     <section
       aria-label="Health warning"
@@ -351,9 +365,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     >
       <header className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">{detectorLabel(warning)}</h1>
-        <Badge variant={warning.status === "open" ? "warning" : "secondary"}>
-          {warning.status === "open" ? "Open" : "Dismissed"}
-        </Badge>
+        <Badge variant={open ? "warning" : "secondary"}>{open ? "Open" : "Dismissed"}</Badge>
       </header>
       {feed?.status === "error" ? (
         <p className="text-xs text-destructive">
@@ -397,7 +409,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
           </>
         )}
       </section>
-      {warning.status === "open" ? (
+      {open ? (
         <div>
           <Button disabled={dismissing} onClick={() => void dismiss()} variant="outline">
             Dismiss
