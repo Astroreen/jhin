@@ -160,8 +160,9 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 - `apps/jhin` — the CLI `jhin` (published as `jhin-ai`): `serve`, `inspect`,
   and every command as a subcommand.
 - `apps/web` — the web client.
-- `apps/desktop` — the Electron desktop app: runs `jhin serve --ui` (restarted with backoff, D1201) and shows
-  the web client (`plans/desktop.md`).
+- `apps/desktop` — the Electron desktop app: runs `jhin serve --ui`
+  (restarted with backoff, D1201) and shows the web client
+  (`plans/desktop.md`).
 - `packages/desktop-api` — the desktop bridge's contract (`window.jhinDesktop`,
   update state, `desktop.shell@1`), with its channel names apart for the
   preload (`plans/desktop.md#D521`).

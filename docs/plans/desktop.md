@@ -328,15 +328,18 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
   (`apps/desktop/src/backend/DesktopBackendManager.ts`), not D512's dialog:
   after 500 ms, doubled for each start that fails since, at most 10 s, with
   no limit on attempts; a node that comes up starts the count over, and one
-  that dies while a restart is starting it counts as a failed start. One
-  restart is pending at a time; it leaves alone a node another path started
-  meanwhile (a failed update's restart); a quit cancels it (and stops a node
-  a restart is starting, D522); and the window loads the restarted node as
-  it loads the first, or opens on it if none was open. Meanwhile the page shows the web client's own
-  disconnected state. The first start keeps D512's dialog, since no window
-  is open yet. `apps/desktop/src/node-restart.ts` holds the policy, unit
-  tested with a scheduler the test runs by hand; the desktop e2e kills the
-  node and sees the page come back without a dialog.
+  that dies while a restart is starting it counts as a failed start. As in
+  T3, a node that comes up and then dies every time restarts every 500 ms:
+  its last 20 lines of output, which D512's dialog showed, go to the app's
+  log with each exit. One restart is pending at a time; it leaves alone a
+  node another path started or is starting (a failed update's restart); a
+  quit cancels it (and stops a node a restart is starting, D522); and the
+  window loads the restarted node as it loads the first, or opens on it if
+  none was open. Meanwhile the page shows the web client's own disconnected
+  state. The first start keeps D512's dialog, since no window is open yet.
+  `apps/desktop/src/node-restart.ts` holds the policy, unit tested with a
+  scheduler the test runs by hand; the desktop e2e kills the node and sees
+  the page come back without a dialog.
 
 ## Deferred
 

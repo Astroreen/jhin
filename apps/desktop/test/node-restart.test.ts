@@ -30,23 +30,32 @@ function manualSchedule() {
 /** A start whose outcome the test decides, and a promise of its settling. */
 function controlledStart() {
   let settle: { resolve: () => void; reject: (error: Error) => void } | undefined;
+  let started: Promise<void> | undefined;
   let calls = 0;
+  /** Settles once the restarter's own handlers of the start ran. */
+  const settled = () =>
+    started!.then(
+      () => undefined,
+      () => undefined,
+    );
   return {
-    start: () =>
-      new Promise<void>((resolve, reject) => {
+    start: () => {
+      started = new Promise<void>((resolve, reject) => {
         calls += 1;
         settle = { resolve, reject };
-      }),
+      });
+      return started;
+    },
     get calls() {
       return calls;
     },
     succeed: async () => {
       settle!.resolve();
-      await Promise.resolve();
+      await settled();
     },
     fail: async () => {
       settle!.reject(new Error("port 7777 is taken"));
-      await Promise.resolve();
+      await settled();
     },
   };
 }
@@ -135,5 +144,29 @@ describe("NodeRestarter (D1201)", () => {
     expect(clock.delays).toEqual([500, 1_000]);
     clock.fire();
     expect(node.calls).toBe(2);
+  });
+
+  it("schedules nothing for an exit during a start the app stopped meanwhile", async () => {
+    const clock = manualSchedule();
+    const node = controlledStart();
+    const restarter = new NodeRestarter({ start: node.start, schedule: clock.schedule });
+    restarter.exited("killed");
+    clock.fire();
+    restarter.exited("died while starting");
+    restarter.stop();
+    await node.succeed();
+    expect(clock.delays).toEqual([500]);
+  });
+
+  it("retries once when the node died during a start that then failed", async () => {
+    const clock = manualSchedule();
+    const node = controlledStart();
+    const restarter = new NodeRestarter({ start: node.start, schedule: clock.schedule });
+    restarter.exited("killed");
+    clock.fire();
+    restarter.exited("died while starting");
+    await node.fail();
+    expect(clock.delays).toEqual([500, 1_000]);
+    expect(restarter.restarting).toBe(true);
   });
 });

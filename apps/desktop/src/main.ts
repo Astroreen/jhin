@@ -362,8 +362,9 @@ async function main(): Promise<void> {
   // A node that exits by itself comes back with T3's backoff, no dialog (D1201).
   const restarter = new NodeRestarter({
     start: async () => {
-      // Quitting, or another path (a failed update's restart) brought the node back meanwhile.
-      if (quitting || node !== undefined) return;
+      // Quitting, or another path (a failed update's restart) brought the node back or is
+      // starting it meanwhile: one node per home and port.
+      if (quitting || node !== undefined || starting !== undefined) return;
       const restarted = await launchNode();
       if (mainWindow !== undefined && !mainWindow.isDestroyed()) loadNode(mainWindow, restarted);
     },
@@ -372,8 +373,10 @@ async function main(): Promise<void> {
   function nodeStopped(output: string): void {
     if (quitting) return;
     node = undefined;
-    const lastLine = output.trim().split("\n").at(-1) ?? "";
-    restarter.exited(lastLine === "" ? "exited" : lastLine);
+    // What D512's dialog showed goes to the app's log, so a node that keeps dying says why.
+    const tail = output.trim().split("\n").slice(-20);
+    log("local node exited", { output: tail.join("\n") });
+    restarter.exited(tail.at(-1) || "exited");
   }
   /** Starts the node again and points the window at it: it may listen elsewhere now. */
   async function restartNodeInWindow(): Promise<void> {
