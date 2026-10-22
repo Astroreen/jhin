@@ -374,3 +374,48 @@ test("D1172–D1173: the Threads section keeps threads with a PR, and per projec
     value: { autoSettleKeepPullRequests: true, projects: {} },
   });
 });
+
+test("D1126: T3's worktree branch naming settings, each field shown for its mode", async ({
+  page,
+}, info) => {
+  node = await startNode({});
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  await page.getByRole("combobox", { name: "Config section" }).click();
+  await page.getByRole("option", { name: /^Source control/ }).click();
+  const section = page.getByRole("region", { name: "Source control" });
+
+  const mode = section.getByRole("combobox", { name: "Worktree branch naming" });
+  await expect(mode).toHaveText("Static prefix");
+  // The default shows as the empty field's placeholder.
+  await expect(section.getByRole("textbox", { name: "Branch prefix" })).toHaveAttribute(
+    "placeholder",
+    "jhin",
+  );
+  await expect(section.getByRole("textbox", { name: "Branch naming instructions" })).toHaveCount(0);
+  await mode.click();
+  await expect(page.getByRole("option", { name: "Semantic prefix" })).toBeVisible();
+  await page.getByRole("option", { name: "Custom instructions" }).click();
+  await expect(section.getByRole("textbox", { name: "Branch prefix" })).toHaveCount(0);
+  await section
+    .getByRole("textbox", { name: "Branch naming instructions" })
+    .fill("Use julius/ followed by the issue ID.");
+  const shot = info.outputPath("branch-naming-settings.png");
+  await page.screenshot({ path: shot, fullPage: true });
+  await info.attach("branch-naming-settings", { path: shot, contentType: "image/png" });
+
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByRole("list", { name: "Outcome" })).toContainText("applied");
+  expect(
+    await node.client().call("host.config.get", { section: "jhin.source-control" }),
+  ).toMatchObject({
+    value: {
+      branchNamingMode: "custom",
+      branchNameInstructions: "Use julius/ followed by the issue ID.",
+    },
+  });
+});

@@ -106,7 +106,7 @@ import {
 import { followTurns } from "./turns.ts";
 import {
   createWorktree,
-  firstMessageOf,
+  firstMessageInputOf,
   isManagedWorktree,
   isTemporaryBranch,
   listWorktrees,
@@ -229,6 +229,41 @@ export const Config = z
         "How long the writer agent may take; past it the message is written without a model",
       advanced: true,
     }),
+    // T3's branch naming settings (D1126), with T3's words.
+    branchNamingMode: z
+      .union([
+        z.literal("static").meta({ title: "Static prefix" }),
+        z.literal("semantic").meta({ title: "Semantic prefix" }),
+        z.literal("custom").meta({ title: "Custom instructions" }),
+      ])
+      .default("static")
+      .meta({
+        title: "Worktree branch naming",
+        description:
+          "Choose how new worktree branches are named from your first message. Semantic prefix: the model chooses a prefix that describes the work, such as feat/add-search, fix/login-timeout, or refactor/auth.",
+      }),
+    branchNamePrefix: z
+      .string()
+      .trim()
+      .default("jhin")
+      .meta({
+        title: "Branch prefix",
+        description:
+          "For example, jhin or jhin/ produces jhin/add-search. Leave empty for no prefix.",
+        when: { branchNamingMode: "static" },
+        clearWhenEmpty: "persist",
+      }),
+    branchNameInstructions: z
+      .string()
+      .trim()
+      .default("")
+      .meta({
+        title: "Branch naming instructions",
+        description:
+          "Appended to the naming prompt. The model returns the complete branch name; no prefix or suffix is added.",
+        when: { branchNamingMode: "custom" },
+        examples: ["Use julius/ followed by the issue ID and a short description."],
+      }),
     writerAgent: z.string().optional().meta({
       title: "Writer agent",
       description:
@@ -1760,16 +1795,24 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       events.push(...page);
       if (page.length < 1000) break;
     }
-    const text = firstMessageOf(events, input.turnId);
-    if (text === undefined) return;
+    const first = firstMessageInputOf(events, input.turnId);
+    if (first === undefined) return;
+    const { branchNamingMode, branchNamePrefix, branchNameInstructions } = config();
+    const naming = {
+      mode: branchNamingMode,
+      prefix: branchNamePrefix,
+      instructions: branchNameInstructions,
+    };
     const fragment = await writerFor(input.projectId, input.threadId).branchName({
-      message: text,
+      message: first.text,
+      attachments: first.attachments,
+      naming,
     });
     // A plugin stopped while its writer ran leaves the repository alone, and so does a
     // branch switched or renamed meanwhile.
     if (fragment === undefined || stopped) return;
     if ((await git(["branch", "--show-current"])).stdout.trim() !== branch) return;
-    const renamed = await renameTemporaryBranch(git, branch, fragment);
+    const renamed = await renameTemporaryBranch(git, branch, fragment, naming);
     context.log.info("renamed a worktree's temporary branch", {
       threadId: input.threadId,
       from: branch,

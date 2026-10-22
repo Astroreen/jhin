@@ -41,8 +41,30 @@ export interface Writer {
     branch?: string;
   }>;
   pullRequest(input: PullRequestInput): Promise<{ title: string; body: string }>;
-  /** A branch fragment for the work a thread's first message asks for, if a model gave one. */
-  branchName(input: { readonly message: string }): Promise<string | undefined>;
+  /**
+   * A branch name for the work a thread's first message asks for, if a model
+   * gave one: a fragment, a fragment with a prefix of its own (`semantic`) or
+   * the complete name (`custom`), as `naming` asks (D1126).
+   */
+  branchName(input: BranchNameInput): Promise<string | undefined>;
+}
+
+/** T3's branch naming settings (D1126). */
+interface BranchNaming {
+  readonly mode: "static" | "semantic" | "custom";
+  readonly prefix: string;
+  readonly instructions: string;
+}
+
+interface BranchNameInput {
+  readonly message: string;
+  /** What was sent with the message: named in the prompt (D1127). */
+  readonly attachments?: readonly {
+    readonly name: string;
+    readonly mimeType: string;
+    readonly sizeBytes?: number;
+  }[];
+  readonly naming?: BranchNaming;
 }
 
 const section = (text: string, max: number) =>
@@ -107,19 +129,39 @@ function pullRequestPrompt(input: PullRequestInput): string {
   ].join("\n");
 }
 
-/** T3's branch name prompt in its default ("static") naming mode: the fragment alone. */
-function branchNamePrompt(input: { readonly message: string }): string {
+/** T3's branch name prompt (`buildBranchNamePrompt`) for each naming mode (D1126, D1127). */
+function branchNamePrompt(input: BranchNameInput): string {
+  const mode = input.naming?.mode;
+  const instructions = mode === "custom" ? input.naming?.instructions.trim() : undefined;
+  const attachments = (input.attachments ?? []).map((attachment) =>
+    // An inline image has no recorded size: none is claimed for it.
+    attachment.sizeBytes === undefined
+      ? `- ${attachment.name} (${attachment.mimeType})`
+      : `- ${attachment.name} (${attachment.mimeType}, ${attachment.sizeBytes} bytes)`,
+  );
   return [
     "You generate concise git branch names.",
     "Return a JSON object with key: branch.",
     "Rules:",
     "- Branch should describe the requested work from the user message.",
     "- Return a valid Git branch name without spaces.",
-    "- Keep it short and specific (2-6 words), in lowercase with hyphen-separated words.",
-    "- Return only the descriptive branch fragment, without a prefix or namespace. The application adds the configured prefix.",
+    ...(mode === "custom"
+      ? [
+          "- Return the complete branch name, following the user's naming instructions. No prefix or suffix will be added.",
+        ]
+      : [
+          "- Keep it short and specific (2-6 words), in lowercase with hyphen-separated words.",
+          mode === "semantic"
+            ? "- Include a semantic prefix and a slash in the branch name, for example feat/add-search, fix/login-error, refactor/auth, docs/setup, or chore/update-deps. Choose the prefix that best describes the work."
+            : "- Return only the descriptive branch fragment, without a prefix or namespace. The application adds the configured prefix.",
+        ]),
     "",
     "User message:",
     section(input.message, 8_000),
+    ...(instructions ? ["", "Additional instructions:", section(instructions, 20_000)] : []),
+    ...(attachments.length > 0
+      ? ["", "Attachment metadata:", section(attachments.join("\n"), 4_000)]
+      : []),
   ].join("\n");
 }
 

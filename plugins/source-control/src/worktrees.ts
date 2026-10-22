@@ -79,14 +79,47 @@ export function firstMessageOf(
   events: readonly { readonly type: string; readonly payload: unknown }[],
   turnId: string,
 ): string | undefined {
+  return firstMessageInputOf(events, turnId)?.text;
+}
+
+/** The first message's text and what was sent with it (D1127), as `firstMessageOf` finds it. */
+export function firstMessageInputOf(
+  events: readonly { readonly type: string; readonly payload: unknown }[],
+  turnId: string,
+):
+  | {
+      text: string;
+      attachments: { name: string; mimeType: string; sizeBytes?: number }[];
+    }
+  | undefined {
   const visible = visibleThreadEvents(events as Parameters<typeof visibleThreadEvents>[0]);
   const first = visible.find((event) => event.type === ThreadEvents.turnStarted)?.payload as
-    | { turnId?: string; input?: { text?: string } }
+    | {
+        turnId?: string;
+        input?: {
+          text?: string;
+          attachments?: { name?: string; mimeType?: string; sizeBytes?: number }[];
+        };
+      }
     | undefined;
   const typed = first?.input?.text;
   // A context reference names the branch by its label (D1006).
   const text = typed === undefined ? undefined : contextReferencesAsLabels(typed).trim();
-  return first?.turnId === turnId && text ? text : undefined;
+  if (first?.turnId !== turnId || !text) return undefined;
+  const attachments = (first.input?.attachments ?? []).flatMap((attachment) =>
+    typeof attachment.name === "string" && typeof attachment.mimeType === "string"
+      ? [
+          {
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            ...(typeof attachment.sizeBytes === "number"
+              ? { sizeBytes: attachment.sizeBytes }
+              : {}),
+          },
+        ]
+      : [],
+  );
+  return { text, attachments };
 }
 
 /** T3's `sanitizeBranchFragment`: lowercase, `[a-z0-9/_-]`, at most 64 characters. */
@@ -136,21 +169,67 @@ export function availableBranchName(existing: readonly string[], wanted: string)
   return resolved;
 }
 
+/** T3's `formatGeneratedBranchName`: a prefix's parts sanitized, joined to the fragment. */
+function branchPrefixOf(prefix: string): string {
+  return prefix
+    .split("/")
+    .map((part) =>
+      part
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, ""),
+    )
+    .filter(Boolean)
+    .join("/");
+}
+
 /**
- * Renames a temporary branch to `jhin/<fragment>` (`jhin-<fragment>` when the
- * temporary one was flat), clear of the branches there are; returns the new name.
+ * Renames a new worktree's temporary branch to the name a writer gave (D901,
+ * D1126): `custom` takes it as it is (T3's `exactName`); `semantic` takes the
+ * sanitized name; `static` puts the prefix before the sanitized fragment, with
+ * `-` when the prefix is a branch itself. The fragment modes walk around taken names.
  */
 export async function renameTemporaryBranch(
   git: Git,
   oldBranch: string,
-  fragment: string,
+  name: string,
+  naming: { readonly mode: "static" | "semantic" | "custom"; readonly prefix: string } = {
+    mode: "static",
+    prefix: BRANCH_PREFIX,
+  },
 ): Promise<string> {
-  const separator = oldBranch.charAt(BRANCH_PREFIX.length);
-  const wanted = `${BRANCH_PREFIX}${separator}${sanitizeBranchFragment(fragment)}`;
+  let target: string;
+  // The other branches there are, once for every mode.
   const existing = (await git(["for-each-ref", "--format=%(refname:short)", "refs/heads/"])).stdout
     .split("\n")
-    .filter((name) => name !== "" && name !== oldBranch);
-  const target = availableBranchName(existing, wanted);
+    .filter((entry) => entry !== "" && entry !== oldBranch);
+  if (naming.mode === "custom") {
+    // T3's exactName: no suffix walks around a taken name; it is refused, saying why.
+    target = name.trim();
+    // Taken, or in the way of a branch (`a/b` beside `a`, or `a` beside `a/b`).
+    if (availableBranchName(existing, target) !== target) {
+      throw new SourceControlError(
+        "BRANCH_EXISTS",
+        existing.includes(target)
+          ? `Branch '${target}' already exists: the custom branch name is used as given`
+          : `Branch '${target}' is in the way of an existing branch: the custom branch name is used as given`,
+        { branch: target },
+      );
+    }
+  } else {
+    const fragment = sanitizeBranchFragment(name);
+    const prefix = naming.mode === "static" ? branchPrefixOf(naming.prefix) : "";
+    // A prefix that is a branch has no folder for others: T3's flat `t3-<hex>` case.
+    const wanted =
+      prefix === ""
+        ? fragment
+        : existing.includes(prefix) ||
+            // The flat temporary `jhin-<8 hex>` (a branch `jhin` was in the way when it was made).
+            (isTemporaryBranch(oldBranch) && oldBranch === `${prefix}-${oldBranch.slice(-8)}`)
+          ? `${prefix}-${fragment}`
+          : `${prefix}/${fragment}`;
+    target = availableBranchName(existing, wanted);
+  }
   if (!(await validBranch(git, target))) {
     throw new SourceControlError("BRANCH_INVALID", `${target} is not a valid branch name`, {
       branch: target,

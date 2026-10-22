@@ -18,6 +18,7 @@ import type { AgentRuntime } from "@jhin/agent-api";
 import { createGit } from "../src/git.ts";
 import {
   availableBranchName,
+  firstMessageInputOf,
   firstMessageOf,
   isTemporaryBranch,
   parseWorktreeList,
@@ -257,6 +258,41 @@ describe("jhin.source-control: worktrees", () => {
     await sc.until(branchOf(second.id, "jhin/fix-the-login-error-1"));
     // The folder keeps its temporary name, as in T3.
     expect(Path.basename(second.worktreePath!)).toMatch(/^jhin-[0-9a-f]{8}$/);
+  });
+
+  /** The branch a new worktree thread's first message names, as the node's settings say. */
+  async function namedBranch(sc: Node, projectId: string, message: string) {
+    const thread = await sc.client.call<Thread>("threads.create", {
+      projectId,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await turn(sc, thread.id, message);
+    const event = await sc.until(
+      (item) =>
+        item.type === "source-control.thread.changed" &&
+        (item.payload as ThreadBranch).threadId === thread.id &&
+        !isTemporaryBranch((item.payload as ThreadBranch).branch ?? "jhin/00000000"),
+    );
+    return (event.payload as ThreadBranch).branch;
+  }
+
+  it("puts the static prefix before the fragment, or none (D1126)", async () => {
+    const sc = await node({ watch: false, branchNamePrefix: "Team Two/" });
+    const projectId = await sc.project(repository());
+    // T3's static prefix, its parts sanitized (their case kept).
+    expect(await namedBranch(sc, projectId, '{"branch": "Fix login"}')).toBe("Team-Two/fix-login");
+    sc.configure({ branchNamePrefix: "" });
+    expect(await namedBranch(sc, projectId, '{"branch": "Fix logout"}')).toBe("fix-logout");
+  });
+
+  it("takes the model's own prefix, or the complete name as it comes (D1126)", async () => {
+    const sc = await node({ watch: false, branchNamingMode: "semantic" });
+    const projectId = await sc.project(repository());
+    expect(await namedBranch(sc, projectId, '{"branch": "feat/Add search"}')).toBe(
+      "feat/add-search",
+    );
+    sc.configure({ branchNamingMode: "custom", branchNameInstructions: "Use JIRA ids." });
+    expect(await namedBranch(sc, projectId, '{"branch": "JIRA-12_Exact"}')).toBe("JIRA-12_Exact");
   });
 
   it("lets go of a worktree no thread works in any more", async () => {
@@ -651,5 +687,128 @@ describe("naming a temporary branch (D901)", () => {
     expect(await writer("no JSON here").branchName({ message: "x" })).toBeUndefined();
     expect(await writer('{"branch": " "}').branchName({ message: "x" })).toBeUndefined();
     expect(await plainWriter.branchName({ message: "x" })).toBeUndefined();
+  });
+
+  it("asks for a branch as each naming mode wants it, with the attachments (D1126, D1127)", async () => {
+    const prompts: string[] = [];
+    const writer = agentWriter({
+      runtime: async () => ({
+        agentId: "answer",
+        startTurn: ({ input }) => {
+          prompts.push(input.text);
+          return {
+            items: (async function* () {
+              yield { kind: "message.completed" as const, itemId: "m", text: '{"branch":"x"}' };
+            })(),
+            interrupt: () => undefined,
+          };
+        },
+      }),
+      warn: () => undefined,
+    });
+    const naming = (mode: "static" | "semantic" | "custom") => ({
+      mode,
+      prefix: "jhin",
+      instructions: "Use JIRA ids.",
+    });
+    await writer.branchName({
+      message: "fix the button",
+      attachments: [{ name: "shot.png", mimeType: "image/png", sizeBytes: 42 }],
+      naming: naming("static"),
+    });
+    await writer.branchName({ message: "m", naming: naming("semantic") });
+    await writer.branchName({ message: "m", naming: naming("custom") });
+    const [fixed, semantic, custom] = prompts;
+    expect(fixed).toContain("The application adds the configured prefix.");
+    expect(fixed).toContain("Attachment metadata:\n- shot.png (image/png, 42 bytes)");
+    expect(fixed).not.toContain("Additional instructions:");
+    expect(semantic).toContain("Include a semantic prefix and a slash in the branch name");
+    expect(custom).toContain("Return the complete branch name");
+    expect(custom).toContain("Additional instructions:\nUse JIRA ids.");
+  });
+
+  it("reads the first message's attachments for the branch name prompt (D1127)", async () => {
+    const events = [
+      {
+        type: "agent.turn.started",
+        payload: {
+          turnId: "t1",
+          input: {
+            text: "fix the button",
+            attachments: [
+              { kind: "file", id: "a", name: "shot.png", mimeType: "image/png", sizeBytes: 42 },
+              { kind: "image", name: "inline.png", mimeType: "image/png", dataUrl: "data:," },
+            ],
+          },
+        },
+      },
+    ];
+    const first = firstMessageInputOf(events, "t1")!;
+    expect(first).toEqual({
+      text: "fix the button",
+      attachments: [
+        { name: "shot.png", mimeType: "image/png", sizeBytes: 42 },
+        { name: "inline.png", mimeType: "image/png" },
+      ],
+    });
+    // As the rename hands them on: the prompt names both, sizes where known.
+    const prompts: string[] = [];
+    await agentWriter({
+      runtime: async () => ({
+        agentId: "answer",
+        startTurn: ({ input }) => {
+          prompts.push(input.text);
+          return {
+            items: (async function* () {
+              yield { kind: "message.completed" as const, itemId: "m", text: '{"branch":"x"}' };
+            })(),
+            interrupt: () => undefined,
+          };
+        },
+      }),
+      warn: () => undefined,
+    }).branchName({ message: first.text, attachments: first.attachments });
+    expect(prompts[0]).toContain(
+      "Attachment metadata:\n- shot.png (image/png, 42 bytes)\n- inline.png (image/png)",
+    );
+  });
+
+  it("renames to an exact name in custom mode and joins a prefix that is a branch with a dash", async () => {
+    const dir = repository();
+    const run = createGit("git", dir);
+    git(dir, "branch", "jhin/0a1b2c3d");
+    expect(
+      await renameTemporaryBranch(run, "jhin/0a1b2c3d", "  Team/ABC-1_x ", {
+        mode: "custom",
+        prefix: "",
+      }),
+    ).toBe("Team/ABC-1_x");
+    git(dir, "branch", "team");
+    git(dir, "branch", "jhin/1a1b2c3d");
+    expect(
+      await renameTemporaryBranch(run, "jhin/1a1b2c3d", "Fix", { mode: "static", prefix: "team" }),
+    ).toBe("team-fix");
+    // A nested prefix whose first part is a branch steps around it, part by part.
+    git(dir, "branch", "jhin/2a1b2c3d");
+    expect(
+      await renameTemporaryBranch(run, "jhin/2a1b2c3d", "Fix", {
+        mode: "static",
+        prefix: "team/ui",
+      }),
+    ).toBe("team-1/ui/fix");
+    // A custom name that is taken is refused, saying so; the temporary branch stays.
+    git(dir, "branch", "jhin/3a1b2c3d");
+    await expect(
+      renameTemporaryBranch(run, "jhin/3a1b2c3d", "Team/ABC-1_x", { mode: "custom", prefix: "" }),
+    ).rejects.toThrow("Branch 'Team/ABC-1_x' already exists");
+    // And one a branch is in the way of: `team` is a branch, so `team/x` cannot be one.
+    await expect(
+      renameTemporaryBranch(run, "jhin/3a1b2c3d", "team/x", { mode: "custom", prefix: "" }),
+    ).rejects.toThrow("Branch 'team/x' is in the way of an existing branch");
+    // And one git would not take as a branch.
+    await expect(
+      renameTemporaryBranch(run, "jhin/3a1b2c3d", "two words", { mode: "custom", prefix: "" }),
+    ).rejects.toThrow("two words is not a valid branch name");
+    expect(git(dir, "branch", "--list", "jhin/3a1b2c3d").trim()).toBe("jhin/3a1b2c3d");
   });
 });
