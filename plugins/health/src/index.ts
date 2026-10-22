@@ -33,7 +33,7 @@ import {
 import { MISSIONS_STREAM } from "@jhin/missions-api";
 import { SOURCE_CONTROL_STREAM } from "@jhin/source-control-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, describePermissions, z, type Invocation } from "@jhin/sdk";
+import { definePlugin, describePermissions, holdsPermission, z, type Invocation } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog, type Json, type StoredEvent } from "@jhin/storage-api";
 
 import { mergeByTime } from "./merge.ts";
@@ -66,6 +66,16 @@ function git(cwd: string, args: string[], timeout = 5_000): Promise<string | und
       resolve(error === null ? stdout.trim() : undefined),
     );
   });
+}
+
+/** What reading a stream behind a warning takes, as its own plugin guards it. */
+function streamPermission(stream: string): string | undefined {
+  if (stream === MISSIONS_STREAM) return "missions.read";
+  if (stream === MESSAGES_STREAM) return "agents.read";
+  if (stream === SOURCE_CONTROL_STREAM) return "git.read";
+  if (stream === HEALTH_STREAM) return HEALTH_READ_PERMISSION;
+  if (stream.startsWith("thread/")) return "threads.read";
+  return undefined;
 }
 
 export default definePlugin({
@@ -296,6 +306,10 @@ export default definePlugin({
         analysis = { status: "none", at: at() };
       } else {
         let timer: ReturnType<typeof setTimeout> | undefined;
+        const forget = () => {
+          clearTimeout(timer);
+          if (timer !== undefined) timers.delete(timer);
+        };
         try {
           const minutes = config().analysisTimeoutMinutes;
           const result = (await Promise.race([
@@ -309,6 +323,7 @@ export default definePlugin({
                 () => reject(new Error(`no answer within ${minutes} minutes`)),
                 minutes * 60_000,
               );
+              timers.add(timer);
             }),
           ])) as { status: string; answer?: string };
           if (result.status !== "answered") {
@@ -330,7 +345,7 @@ export default definePlugin({
             at: at(),
           };
         } finally {
-          clearTimeout(timer);
+          forget();
         }
       }
       if (!active) return;
@@ -343,6 +358,8 @@ export default definePlugin({
       );
     };
 
+    /** The timeouts of asks under way, cleared on deactivation. */
+    const timers = new Set<ReturnType<typeof setTimeout>>();
     /** Detectors run after the events of a tick, one run at a time. */
     let evaluating: Promise<void> = Promise.resolve();
     let scheduled = false;
@@ -364,6 +381,9 @@ export default definePlugin({
     }
     context.onDeactivate(async () => {
       active = false;
+      // An ask that never answers leaves no timer behind a reload.
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
       await evaluating;
     });
 
@@ -620,14 +640,31 @@ export default definePlugin({
       input: z.object({ warningId: z.string() }),
       output: z.object({
         warning: Warning,
-        events: z.array(EventRef.extend({ payload: z.unknown(), missing: z.boolean().optional() })),
+        events: z.array(
+          EventRef.extend({
+            payload: z.unknown(),
+            missing: z.boolean().optional(),
+            /** The permission the caller lacks to read this event's stream; no payload then. */
+            withheld: z.string().optional(),
+          }),
+        ),
       }),
       ...read,
-      handler: async ({ warningId }) => {
+      handler: async ({ warningId }, invocation) => {
         await sync();
         const warning = getWarning(warningId);
+        const grants = invocation.caller?.permissions;
         const events = await Promise.all(
           warning.evidence.map(async (ref) => {
+            // A record is read with what its own stream takes: health.read is
+            // not a way around agents.read, missions.read or threads.read.
+            const needed = streamPermission(ref.stream);
+            if (
+              grants !== undefined &&
+              (needed === undefined || !holdsPermission(grants, needed))
+            ) {
+              return { ...ref, payload: null, withheld: needed ?? "*" };
+            }
             const [event] = await log.read(ref.stream, { after: ref.sequence - 1, limit: 1 });
             // A trimmed stream (D496) keeps the reference, not the event.
             return event?.sequence === ref.sequence

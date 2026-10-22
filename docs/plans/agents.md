@@ -1012,7 +1012,11 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   last good thresholds.
 - **D730. Permissions.** `health.read` reads status, warnings, ideas and the
   stream; `health.write` dismisses warnings and names corrected ideas, the
-  owner's. Agents get `health.read` only.
+  owner's. Agents get `health.read` only. `health.read` is no way around the
+  permissions of the streams behind a warning: `health.warnings.get` returns
+  an event's record only to a caller who may read its stream (`agents.read`,
+  `missions.read`, `threads.read`, `git.read`), and names what it lacks
+  (`withheld`) otherwise.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 

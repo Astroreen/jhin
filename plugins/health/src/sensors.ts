@@ -276,7 +276,8 @@ export class Sensors {
   /** Forgets what left the window. */
   private prune(config: HealthConfig, now: number): void {
     const start = now - config.windowHours * 3_600_000;
-    if (this.signals.length > 0 && this.signals[0]!.time < start) {
+    // Not in time order: a thread followed later replays its older events after newer ones.
+    if (this.signals.some((signal) => signal.time < start)) {
       this.signals = this.signals.filter((signal) => signal.time >= start);
     }
     const inWindow = (ref: EventRef) => Date.parse(ref.at) >= start;

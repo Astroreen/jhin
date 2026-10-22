@@ -231,6 +231,18 @@ describe("jhin.health", () => {
       "Please add more proof.",
     ]);
 
+    // An agent holds health.read, not agents.read: the drill-down withholds the bodies.
+    const agentView = (await kernel.commands.execute(
+      "health.warnings.get",
+      { warningId: warning.warningId },
+      { caller: { id: "agent", permissions: ["health.read"] } },
+    )) as { events: { payload: unknown; withheld?: string }[] };
+    expect(agentView.events.map((event) => [event.payload, event.withheld])).toEqual([
+      [null, "agents.read"],
+      [null, "agents.read"],
+      [null, "agents.read"],
+    ]);
+
     const status = await client.call<{ groups: GroupStatus[] }>("health.status", {});
     expect(status.groups.find((group) => group.group.kind === "mission")).toMatchObject({
       ceremony: 3,
