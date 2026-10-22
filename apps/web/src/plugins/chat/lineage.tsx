@@ -181,6 +181,7 @@ export function runningSubagents(thread: ThreadRecord, threads: readonly ThreadR
     (child) =>
       child.parentThreadId === thread.id &&
       child.relationshipToParent === "subagent" &&
+      child.archivedAt === undefined &&
       child.lastTurn?.status === "running",
   ).length;
 }

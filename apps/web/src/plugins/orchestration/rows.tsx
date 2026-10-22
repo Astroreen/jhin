@@ -317,7 +317,11 @@ export function summarizeSubagentStatuses(statuses: readonly RowStatus[]): strin
     .join(" · ");
 }
 
-/** T3's subagentGroupTiming: the first start to the last end, open while any runs. */
+/**
+ * T3's subagentGroupTiming: the first start to the last end, open while any runs. A
+ * settled group whose end is not known for every member shows no time, rather than one
+ * that stopped counting.
+ */
 export function subagentGroupTiming(members: readonly Pick<SubagentMember, "status" | "run">[]): {
   status: RowStatus;
   startedAt?: string;
@@ -334,10 +338,11 @@ export function subagentGroupTiming(members: readonly Pick<SubagentMember, "stat
     else endUnknown = true;
   }
   const live = members.some(({ status }) => isLive(status));
+  if (!live && (endUnknown || end === undefined)) return { status: "completed" };
   return {
     status: live ? "running" : "completed",
     ...(start === undefined ? {} : { startedAt: new Date(start).toISOString() }),
-    ...(live || endUnknown || end === undefined ? {} : { endedAt: new Date(end).toISOString() }),
+    ...(live || end === undefined ? {} : { endedAt: new Date(end).toISOString() }),
   };
 }
 

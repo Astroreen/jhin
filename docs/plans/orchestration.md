@@ -521,8 +521,9 @@ The reference is D861's tag: `MessagesTimeline.tsx` (`V2SubagentGroup`,
 - **D1163. "Lineage · N running".** The Lineage section's title counts
   the thread's subagent threads (`relationshipToParent: "subagent"`, a
   delegated task, a workflow's agent or a runtime's subagent) whose turn
-  runs, as T3 counts its active subagent edges; waiting ones are not
-  counted, as in T3. The count comes from the node's catalog, so it needs no
+  runs and that are not archived, as T3 counts its active subagent edges
+  (a workflow's agents among them, also while their workflow row is
+  folded); waiting ones are not counted, as in T3. The count comes from the node's catalog, so it needs no
   record of the orchestration plugin.
 
 ### A runtime's subagents in the background, and stopping them (W32)

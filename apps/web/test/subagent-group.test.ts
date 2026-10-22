@@ -80,6 +80,8 @@ describe("the subagent marks in a row (D1161)", () => {
     expect(subagentRun(marks[3]!, marks).map((mark) => mark.sequence)).toEqual([4]);
     // A client older than D1161 gives no group: the mark stands alone.
     expect(subagentRun(marks[0]!, undefined)).toEqual([marks[0]]);
+    // A group that does not name the mark (a partial one) leaves it alone, not hidden.
+    expect(subagentRun(marks[2]!, [marks[0]!, marks[1]!])).toEqual([marks[2]]);
   });
 
   it("summarizes the statuses and the elapsed time as T3's group does", () => {
@@ -106,6 +108,13 @@ describe("the subagent marks in a row (D1161)", () => {
       { status: "completed", run: { startedAt: "2026-10-22T10:00:00.000Z", endedAt: "x" } },
     ]);
     expect(live).toEqual({ status: "running", startedAt: "2026-10-22T10:00:00.000Z" });
+    // Settled, but one member's end is unknown (no record of its task): no time at all.
+    expect(
+      subagentGroupTiming([
+        { status: "unknown", run: undefined },
+        { status: "completed", run: { startedAt: "2026-10-22T10:00:00.000Z", endedAt: "x" } },
+      ]),
+    ).toEqual({ status: "completed" });
   });
 });
 
@@ -204,7 +213,7 @@ describe("a subagent's hover card (D1162)", () => {
 });
 
 describe("Lineage · N running (D1163)", () => {
-  it("counts the thread's subagents whose turn runs, not waiting ones nor forks", () => {
+  it("counts the thread's subagents whose turn runs, not waiting, archived ones nor forks", () => {
     const turn = (status: "running" | "waiting" | "completed") => ({
       lastTurn: { turnId: "u", status, at: "x", agentId: "a" },
     });
@@ -217,6 +226,12 @@ describe("Lineage · N running (D1163)", () => {
       thread("d", { parentThreadId: "p", relationshipToParent: "subagent", ...turn("completed") }),
       thread("e", { forkedFrom: { threadId: "p", turnId: "u" }, ...turn("running") }),
       thread("f", { parentThreadId: "x", relationshipToParent: "subagent", ...turn("running") }),
+      thread("g", {
+        parentThreadId: "p",
+        relationshipToParent: "subagent",
+        archivedAt: "x",
+        ...turn("running"),
+      }),
     ];
     expect(runningSubagents(parent, threads)).toBe(2);
   });

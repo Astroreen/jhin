@@ -620,15 +620,17 @@ export function adjacentExtensions(
 ): ReadonlyMap<number, readonly StoredEvent[]> {
   const byEvent = new Map<number, readonly StoredEvent[]>();
   let group: StoredEvent[] = [];
+  const close = () => {
+    const done: readonly StoredEvent[] = group;
+    for (const event of done) byEvent.set(event.sequence, done);
+    group = [];
+  };
   for (const block of blocks) {
     if (block.kind === "work") continue;
-    if (block.kind !== "extension") {
-      group = [];
-      continue;
-    }
-    group.push(block.item.event);
-    byEvent.set(block.item.event.sequence, group);
+    if (block.kind !== "extension") close();
+    else group.push(block.item.event);
   }
+  close();
   return byEvent;
 }
 
