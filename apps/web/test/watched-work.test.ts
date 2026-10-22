@@ -96,9 +96,15 @@ describe("source control's thread work (D1131)", () => {
     expect(told).toBe(3);
     expect(work.tasks(a, "t")).toHaveLength(1);
 
+    // A node that connects watching nothing changes nothing for any thread: not told.
+    nodes.set(["a", "b"]);
+    expect(followers("b")).toBe(1);
+    expect(told).toBe(3);
+
     work.dispose();
     expect(followers("a")).toBe(0);
-    nodes.set(["a", "b"]);
+    nodes.set(["a", "b", "c"]);
     expect(followers("b")).toBe(0);
+    expect(followers("c")).toBe(0);
   });
 });

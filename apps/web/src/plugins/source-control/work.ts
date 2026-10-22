@@ -35,7 +35,8 @@ export function createWatchedWork(
   const notify = (target: NodeTarget) => {
     const key = targetKey(target);
     const now = watchedNow(target);
-    if (watchedOf.get(key) === now) return;
+    // A node first followed with nothing watched tells nothing: nothing changed for its threads.
+    if ((watchedOf.get(key) ?? "") === now) return;
     watchedOf.set(key, now);
     tell();
   };
