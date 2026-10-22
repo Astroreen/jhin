@@ -531,7 +531,8 @@ export const previewPanelPlugin = builtin(
         const connection = useExternal(connections, () => connections.get(target.node));
         const tab =
           state === undefined ? undefined : tabs.find((entry) => entry.tabId === state.tabId);
-        const loaded = feed?.loaded() ?? false;
+        // Part of what the view reads: a feed that (re)loads without a new list re-renders too.
+        const loaded = useExternal(feed ?? emptyFeed, () => feed?.loaded() ?? false);
         // A floating tab that closed takes its player with it (T3's ChatView).
         useEffect(() => {
           if (state !== undefined && loaded && tab === undefined) players.close(key);

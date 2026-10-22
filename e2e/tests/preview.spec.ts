@@ -352,7 +352,7 @@ test("D403: the user opens a page from the address bar and sizes it like a devic
 test("D1202: a tab floats over the chat, moves, and goes back to the right panel", async ({
   page,
 }, info) => {
-  await startThread(page, "float please");
+  const threadId = await startThread(page, "float please");
   await page.getByRole("button", { name: "Toggle right panel" }).click();
   const panel = page.getByRole("complementary", { name: "Right panel" });
   const address = panel.getByRole("textbox", { name: "Address" });
@@ -400,5 +400,30 @@ test("D1202: a tab floats over the chat, moves, and goes back to the right panel
   await expect(player).toBeVisible();
   await handle.hover();
   await player.getByRole("button", { name: "Close floating preview" }).click();
+  await expect(player).toBeHidden();
+
+  // The palette's commands do the same: preview.float floats the tab the panel shows.
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const runCommand = async (title: string) => {
+    await page.getByRole("button", { name: "Command palette", exact: true }).click();
+    await palette.getByRole("combobox", { name: "Search commands" }).fill(title);
+    await palette.getByRole("option", { name: title }).first().click();
+    await expect(palette).toBeHidden();
+  };
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  await expect(panel.getByRole("tab", { name: "Second page" })).toBeVisible();
+  await runCommand("Float preview over chat");
+  await expect(panel).toBeHidden();
+  await expect(player).toBeVisible();
+  await runCommand("Close floating preview");
+  await expect(player).toBeHidden();
+
+  // A floating tab that closes takes its player with it.
+  await runCommand("Float preview over chat");
+  await expect(player).toBeVisible();
+  const { tabs } = await node
+    .client()
+    .call<{ tabs: { tabId: string }[] }>("preview.list", { threadId });
+  await node.client().call("preview.tab.close", { threadId, tabId: tabs[0]!.tabId });
   await expect(player).toBeHidden();
 });

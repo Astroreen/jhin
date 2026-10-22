@@ -419,7 +419,9 @@ and `closePreviewPanel` and `shouldRenderPreviewMiniPlayer` in
   pressed state and "Close floating preview", disabled on an unreachable
   page): the tab floats and the right panel closes. Closing the right panel
   with its toggle floats the tab it showed too, as T3's `closePreviewPanel`
-  does. One tab floats per thread (`<target>|<thread>`), kept in the
+  does: whenever the panel shows a tab, an unreachable one included (only
+  the toggle in the chrome row is disabled for it), and with no way to only
+  dismiss the panel, which T3 offers none of either. One tab floats per thread (`<target>|<thread>`), kept in the
   plugin's state in memory as T3 keeps it in a store; its position and
   width outlive a change of the floating tab, and a gesture that outlives
   its tab is ignored. The player is T3's: at the page's aspect ratio
@@ -439,7 +441,8 @@ and `closePreviewPanel` and `shouldRenderPreviewMiniPlayer` in
   is its `jhin.preview.mini-player`, loaded as a chunk of its own when a tab
   first floats. The client commands `preview.float` (an optional `tabId`,
   else the tab the panel shows) and `preview.float.close` act on the thread
-  on screen.
+  on screen. The e2e drives the buttons, the pill, both commands through
+  the palette, and a floating tab closed on the node.
 
 ### Cookie import (W34)
 
