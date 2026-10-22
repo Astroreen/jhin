@@ -169,4 +169,31 @@ describe("health views (D731)", () => {
     await expect.element(page.getByText("No node here reports health.")).toBeVisible();
     await expect.element(page.getByText("No warnings.")).not.toBeInTheDocument();
   });
+
+  it("reads the overview once when its node turns ready", async () => {
+    const asked: string[] = [];
+    let feed: NodeHealth = { status: "loading", value: healthOf() };
+    const listeners = new Set<() => void>();
+    const { view } = viewOf({ a: feed }, async (method) => {
+      asked.push(method);
+      return { windowHours: 24, groups: [] };
+    });
+    let snapshot = new Map([["a", feed]]);
+    Object.assign(view.store, {
+      snapshot: () => snapshot,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return toDisposable(() => listeners.delete(listener));
+      },
+    });
+    await render(<HealthPage node="a" view={view} />);
+    expect(asked).toEqual([]);
+    feed = { status: "ready", value: healthOf(warning) };
+    snapshot = new Map([["a", feed]]);
+    await act(async () => {
+      for (const listener of listeners) listener();
+    });
+    await expect.element(page.getByRole("region", { name: "Ceremony and progress" })).toBeVisible();
+    expect(asked).toEqual(["health.status"]);
+  });
 });

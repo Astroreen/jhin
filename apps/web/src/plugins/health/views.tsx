@@ -179,20 +179,31 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
   // Read again on every change of the node's health and on Refresh; the counts
   // themselves change with every message, so the page says when it read them.
   const [round, setRound] = useState(0);
-  const seen = useRef(health);
+  const ready = feed?.status === "ready";
+  // The health the last read was made for; none until the node is ready.
+  const seen = useRef(ready ? health : undefined);
   useEffect(() => {
-    // Not on mount: the first read is already under way.
+    if (!ready) {
+      seen.current = undefined;
+      return;
+    }
+    // The first read once ready (on mount, or loading → ready) is the one
+    // `enabled` starts: only a later change reads again.
+    if (seen.current === undefined) {
+      seen.current = health;
+      return;
+    }
     if (seen.current === health) return;
     seen.current = health;
     setRound((value) => value + 1);
-  }, [health]);
+  }, [health, ready]);
   const status = useCall<{ windowHours: number; groups: GroupStatus[] }>(
     view,
     node,
     "health.status",
     {},
     `${node}|${round}`,
-    { scope: node, enabled: feed?.status === "ready" },
+    { scope: node, enabled: ready },
   );
   if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
   if (status === undefined) return <PageEmpty text="Reading the sensors…" title="Health" />;
