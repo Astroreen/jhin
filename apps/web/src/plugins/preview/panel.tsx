@@ -981,6 +981,15 @@ function Unreachable(props: { url: string; description: string; onReload: () => 
   );
 }
 
+/** A file's name as the node takes it: 255 characters at most, its extension kept. */
+function uploadName(name: string): string {
+  if (name === "") return "file";
+  if (name.length <= 255) return name;
+  const dot = name.lastIndexOf(".");
+  const extension = dot > 0 && name.length - dot <= 16 ? name.slice(dot) : "";
+  return name.slice(0, 255 - extension.length) + extension;
+}
+
 /** A file's bytes in base64, converted in chunks so a large file fits the call stack. */
 async function base64Of(file: Blob): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -995,9 +1004,15 @@ async function base64Of(file: Blob): Promise<string> {
 function FileChooserDialog(props: {
   multiple: boolean;
   accept: string;
-  onAnswer: (files: readonly File[]) => void;
+  onAnswer: (files: readonly File[]) => Promise<void>;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  // One answer at a time: a second click while the first is sent would find no picker.
+  const [sending, setSending] = useState(false);
+  const answer = (files: readonly File[]) => {
+    setSending(true);
+    void props.onAnswer(files).finally(() => setSending(false));
+  };
   return (
     <div
       aria-label="Choose files for the page"
@@ -1014,17 +1029,17 @@ function FileChooserDialog(props: {
         onChange={(event) => {
           const files = [...(event.currentTarget.files ?? [])];
           event.currentTarget.value = "";
-          if (files.length > 0) props.onAnswer(files);
+          if (files.length > 0) answer(files);
         }}
         ref={input}
         tabIndex={-1}
         type="file"
       />
       <div className="flex justify-end gap-2">
-        <Button onClick={() => props.onAnswer([])} size="sm" variant="outline">
+        <Button disabled={sending} onClick={() => answer([])} size="sm" variant="outline">
           Cancel
         </Button>
-        <Button onClick={() => input.current?.click()} size="sm">
+        <Button disabled={sending} onClick={() => input.current?.click()} size="sm">
           Choose {props.multiple ? "files" : "file"}
         </Button>
       </div>
@@ -1180,17 +1195,16 @@ function TabView(props: {
         `The page takes at most ${PREVIEW_UPLOAD_MAX_BYTES / 1024 / 1024} MiB of files at once.`,
       );
     }
-    await services.call("preview.tab.upload", {
-      ...ids,
-      viewer,
-      files: await Promise.all(
-        files.map(async (file) => ({
-          name: file.name || "file",
-          ...(file.type === "" ? {} : { mimeType: file.type }),
-          data: await base64Of(file),
-        })),
-      ),
-    });
+    // One file at a time, so only one file's copies are in memory while it converts.
+    const encoded = [];
+    for (const file of files) {
+      encoded.push({
+        name: uploadName(file.name),
+        ...(file.type === "" ? {} : { mimeType: file.type }),
+        data: await base64Of(file),
+      });
+    }
+    await services.call("preview.tab.upload", { ...ids, viewer, files: encoded });
   };
 
   const loading = status.state === "loading" || (status.state !== "idle" && !painted);
@@ -1284,7 +1298,7 @@ function TabView(props: {
             accept={tab.fileChooser.accept}
             multiple={tab.fileChooser.multiple}
             onAnswer={(files) =>
-              void uploadFiles(files).catch((error: unknown) =>
+              uploadFiles(files).catch((error: unknown) =>
                 services.onError("Could not send the files to the page", error),
               )
             }

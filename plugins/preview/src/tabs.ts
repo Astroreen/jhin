@@ -77,8 +77,28 @@ const FRAME_ACK_MS = 100;
 const FRAME_QUALITY = 70;
 const READ_OPERATIONS = new Set(["status", "snapshot", "waitFor"]);
 const VIEWER_NAVIGATION = { waitUntil: "commit", timeout: Ops.DEFAULT_TIMEOUT_MS } as const;
-/** T3's EDITABLE_AT_POINT_SCRIPT: whether a tap there should raise a soft keyboard (D1203). */
-const EDITABLE_AT_POINT_SCRIPT = `(x, y) => {
+/** The few DOM shapes `editableAtPoint` reads; the plugin has no DOM types. */
+interface PageElement {
+  readonly tagName: string;
+  readonly shadowRoot: { elementFromPoint(x: number, y: number): PageElement | null } | null;
+  readonly control?: PageElement | null;
+  readonly isContentEditable?: boolean;
+  readonly disabled?: boolean;
+  readonly readOnly?: boolean;
+  readonly type?: string;
+}
+
+/**
+ * T3's EDITABLE_AT_POINT_SCRIPT, run in the page: whether a tap there should raise a soft
+ * keyboard (D1203). The point comes in as an argument, never as source.
+ */
+function editableAtPoint(point: { x: number; y: number }): boolean {
+  const { x, y } = point;
+  const document = (
+    globalThis as unknown as {
+      document: { elementFromPoint(x: number, y: number): PageElement | null };
+    }
+  ).document;
   let element = document.elementFromPoint(x, y);
   while (element && element.shadowRoot) {
     const inner = element.shadowRoot.elementFromPoint(x, y);
@@ -91,9 +111,20 @@ const EDITABLE_AT_POINT_SCRIPT = `(x, y) => {
   if (element.isContentEditable) return true;
   if (element.tagName === "TEXTAREA") return !element.disabled && !element.readOnly;
   if (element.tagName !== "INPUT") return false;
-  const nonText = ["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"];
-  return !nonText.includes(element.type) && !element.disabled && !element.readOnly;
-}`;
+  const nonText = [
+    "button",
+    "checkbox",
+    "color",
+    "file",
+    "hidden",
+    "image",
+    "radio",
+    "range",
+    "reset",
+    "submit",
+  ];
+  return !nonText.includes(element.type ?? "") && !element.disabled && !element.readOnly;
+}
 
 interface Recording {
   readonly encoder: Page;
@@ -419,8 +450,14 @@ export function createTabs(options: TabsOptions) {
       void reportLoaded(tab);
     });
     page.on("framenavigated", (frame) => {
+      if (frame !== page.mainFrame()) return;
+      // A new document has no picker the old one opened (D1203).
+      if (tab.fileChooser !== null) {
+        tab.fileChooser = null;
+        changed(tab);
+      }
       // Same-document navigations (single-page routes) fire no load event.
-      if (frame === page.mainFrame() && !tab.loading) void reportLoaded(tab);
+      if (!tab.loading) void reportLoaded(tab);
     });
     page.on("requestfailed", (request) => {
       const errorText = request.failure()?.errorText ?? "";
@@ -1504,10 +1541,11 @@ export function createTabs(options: TabsOptions) {
         if (!chooser.isMultiple() && input.files.length > 1) {
           throw new PreviewError("PREVIEW_EXECUTION", "This file picker accepts one file.");
         }
-        // Taken at once, so a second upload meanwhile finds no picker; given back if the files
-        // did not reach it, so the user can try again.
+        // Taken at once, so a second upload meanwhile finds no picker. Cancelling sets no
+        // files, as T3's does: the picker just closes.
         tab.fileChooser = null;
         changed(tab);
+        if (input.files.length === 0) return summary(tab);
         try {
           await chooser.setFiles(
             input.files.map((file) => ({
@@ -1517,7 +1555,13 @@ export function createTabs(options: TabsOptions) {
             })),
           );
         } catch (error) {
-          if (tab.fileChooser === null && !tab.page.isClosed()) {
+          // Given back only while its input is still on the page, so a retry can work; a stale
+          // picker (the page navigated, the input went) stays closed and the dialog with it.
+          const attached = await chooser
+            .element()
+            .evaluate((element) => element.isConnected)
+            .catch(() => false);
+          if (attached && tab.fileChooser === null && !tab.page.isClosed()) {
             tab.fileChooser = chooser;
             changed(tab);
           }
@@ -1544,10 +1588,8 @@ export function createTabs(options: TabsOptions) {
             reason: "humanControl",
           });
         }
-        const editable = await tab.page.evaluate(
-          `(${EDITABLE_AT_POINT_SCRIPT})(${input.x}, ${input.y})`,
-        );
-        return { x: input.x, y: input.y, editable: editable === true };
+        const editable = await tab.page.evaluate(editableAtPoint, { x: input.x, y: input.y });
+        return { x: input.x, y: input.y, editable };
       });
     },
 

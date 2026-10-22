@@ -567,8 +567,12 @@ probe of `ServerBrowser.ts`.
   that retitles itself on the files gets its new title in the tab, as
   after a click. Both commands need the viewer to hold control. The picker
   is taken when an upload starts, so a second one finds none, and given
-  back when the files do not reach the page, so the user can try again;
-  file data that is not base64 is refused. The gestures are a pure state
+  back when the files do not reach the page while its input is still
+  there, so the user can try again; Cancel sets no files and just closes
+  it, as T3's does, and a new document closes the old one's. File data
+  that is not base64 is refused. The client converts the files one at a
+  time, keeps a name to 255 characters with its extension, and disables
+  the dialog while its answer is sent. The gestures are a pure state
   machine (`apps/web/src/plugins/preview/touch.ts`, unit tested) the
   surface runs.
 

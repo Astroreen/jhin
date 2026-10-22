@@ -89,4 +89,14 @@ describe("touch on the browser page (D1203)", () => {
     expect(touch.down({ ...at(10, 10), point: undefined })).toEqual([]);
     expect(touch.up({ ...at(10, 10), point: undefined })).toEqual([]);
   });
+
+  it("forgets the probe of a touch lifted outside the page", () => {
+    const touch = createTouchGestures(() => 0);
+    touch.down(at(10, 10));
+    expect(touch.up({ ...at(10, 10), point: undefined })).toEqual([]);
+    expect(touch.answered({ x: 10, y: 10, editable: true })).toEqual([]);
+    // Nor does the answer it got focus the next tap elsewhere.
+    touch.down(at(200, 200));
+    expect(touch.up(at(200, 200))).toEqual([{ type: "tap", point: { x: 200, y: 200 } }]);
+  });
 });

@@ -134,7 +134,11 @@ export function createTouchGestures(now: () => number = () => performance.now())
         probe = null;
         return [];
       }
-      if (pointer.point === undefined) return [];
+      if (pointer.point === undefined) {
+        // Lifted outside the page: no tap, and no late answer to act on.
+        probe = null;
+        return [];
+      }
       const actions: TouchAction[] = [];
       // iOS requires focus during the tap; late probe replies only raise Android's keyboard.
       if (pending?.editable === true) actions.push({ type: "focus" });
