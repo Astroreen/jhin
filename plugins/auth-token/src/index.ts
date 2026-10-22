@@ -27,6 +27,7 @@ import {
 
 import { ClientRecord, createClientStore } from "./clients.ts";
 import { serveAuthHttp } from "./http.ts";
+import type { ClientMetadata } from "./metadata.ts";
 import { createPairingStore, type PairingStore } from "./pairing.ts";
 
 /** The single owner of a node (D22): every permission. */
@@ -44,6 +45,32 @@ const MAX_TTL_DAYS = 3650;
 const Grants = z
   .array(z.string().refine(isGrant, "must be a permission, a pattern such as git.* or *"))
   .min(1);
+
+/** An http(s) address, perhaps under a path; never credentials, a query or a fragment. */
+const PlainUrl = z.string().refine((value) => {
+  if (!URL.canParse(value)) return false;
+  const url = new URL(value);
+  return (
+    /^https?:$/.test(url.protocol) &&
+    url.username === "" &&
+    url.password === "" &&
+    url.search === "" &&
+    url.hash === ""
+  );
+}, "must be an http(s) address, without credentials, query or fragment");
+
+const CONFIG_SECTION = "jhin.auth-token";
+const AuthConfig = z
+  .object({
+    clientUrl: PlainUrl.optional().meta({
+      title: "Client page address",
+      description:
+        "Where a jhin client page is served, e.g. https://jhin.example.com. Pairing links then also open there and pair with this node.",
+      advanced: true,
+    }),
+  })
+  .default({})
+  .meta({ title: "Pairing", description: "How other devices pair with this node." });
 
 const Client = ClientRecord.omit({ secretHash: true }).extend({
   /** The token the caller itself connected with. */
@@ -79,6 +106,7 @@ function sameToken(given: string, expected: string): boolean {
 
 export default definePlugin({
   activate(context) {
+    context.config.define(CONFIG_SECTION, AuthConfig);
     const dataDir = context.services
       .get<HostPaths>(HOST_PATHS_CAPABILITY)
       .dataDir(context.plugin.id);
@@ -120,6 +148,8 @@ export default definePlugin({
       },
     };
     context.services.provide(AUTH_VERIFIER_CAPABILITY, verifier);
+    /** Tells the transports the list of clients changed (security.md D1188). */
+    const changed = () => context.events.emit(AuthEvents.clientsChanged, {});
     // T3's "View access" and "Manage access" (security.md D961).
     describePermissions(context, {
       "auth.read": {
@@ -161,6 +191,7 @@ export default definePlugin({
         context.log.warn("access token rotated", { file });
         // Codes and page sessions made with the old owner token end with it.
         pairing.revokeBy(OWNER_PRINCIPAL_ID);
+        changed();
         revoke(
           clients
             .list()
@@ -192,6 +223,7 @@ export default definePlugin({
         }
       }
       const gone = clients.remove([...doomed]);
+      if (gone.length > 0) changed();
       for (const record of gone) {
         context.log.warn("device token revoked", { client: record.id, label: record.label });
         // Codes it made end with it: they carry its grants.
@@ -233,6 +265,7 @@ export default definePlugin({
           ...(days === null ? {} : { expiresAt: Math.ceil(now + days * DAY_MS) }),
         });
         context.log.warn("device token issued", { client: record.id, label, permissions });
+        changed();
         return {
           id: record.id,
           token: issued,
@@ -249,6 +282,7 @@ export default definePlugin({
       permissions: readonly string[],
       label: string,
       from?: { readonly id: string; readonly expiresAt?: number },
+      metadata?: ClientMetadata,
     ) => {
       const now = Date.now();
       const longest = now + DEFAULT_TTL_DAYS * DAY_MS;
@@ -259,7 +293,9 @@ export default definePlugin({
         now,
         expiresAt: from?.expiresAt === undefined ? longest : Math.min(longest, from.expiresAt),
         ...(from === undefined ? {} : { parent: from.id }),
+        ...(metadata === undefined ? {} : { metadata }),
       });
+      changed();
       if (from === undefined) {
         context.log.warn("device paired", { client: record.id, label, permissions });
       } else {
@@ -299,25 +335,20 @@ export default definePlugin({
         permissions: Grants.optional(),
         ttlMinutes: z.number().positive().max(MAX_PAIRING_MINUTES).optional(),
         /** Where the device reaches this node, e.g. https://jhin.example.com; defaults to its HTTP address. */
-        baseUrl: z
-          .string()
-          .refine((value) => {
-            if (!URL.canParse(value)) return false;
-            const url = new URL(value);
-            // A node's address, perhaps under a path; never credentials, a query or a fragment.
-            return (
-              /^https?:$/.test(url.protocol) &&
-              url.username === "" &&
-              url.password === "" &&
-              url.search === "" &&
-              url.hash === ""
-            );
-          }, "must be the node's http(s) address, without credentials, query or fragment")
-          .optional(),
+        baseUrl: PlainUrl.optional(),
+        /**
+         * Where a `jhin client` page is served (security.md D1190); defaults to
+         * `jhin.auth-token.clientUrl`. Adds `clientLink`, T3's hosted link.
+         */
+        clientUrl: PlainUrl.optional(),
       }),
-      output: PairingLink.extend({ code: z.string(), url: z.string().optional() }),
+      output: PairingLink.extend({
+        code: z.string(),
+        url: z.string().optional(),
+        clientLink: z.string().optional(),
+      }),
       permissions: ["auth.write"],
-      handler: ({ label, permissions, ttlMinutes, baseUrl }, invocation) => {
+      handler: ({ label, permissions, ttlMinutes, baseUrl, clientUrl }, invocation) => {
         const granted = permissions ?? [...(invocation.caller?.permissions ?? ["*"])];
         const missing = notHeld(invocation, granted);
         if (missing.length > 0) {
@@ -335,14 +366,24 @@ export default definePlugin({
           now,
           expiresAt: now + (ttlMinutes ?? DEFAULT_PAIRING_MINUTES) * 60_000,
         });
-        const base = baseUrl ?? http?.url;
+        const base = (baseUrl ?? http?.url)?.replace(/\/+$/, "");
+        const client = (
+          clientUrl ?? context.config.get<z.output<typeof AuthConfig>>(CONFIG_SECTION).clientUrl
+        )?.replace(/\/+$/, "");
         context.log.warn("pairing code created", { link: link.id, label, permissions: granted });
+        changed();
+        // T3's `buildHostedPairingUrl`: the node in the query, the code in the fragment (D1190).
+        const query = new URLSearchParams(base === undefined ? [] : [["host", base]]);
+        if (label !== undefined) query.set("label", label);
         return {
           ...link,
           permissions: [...link.permissions],
           code,
           // The code rides in the fragment, which never reaches a server (D422).
-          ...(base === undefined ? {} : { url: `${base.replace(/\/+$/, "")}/pair#token=${code}` }),
+          ...(base === undefined ? {} : { url: `${base}/pair#token=${code}` }),
+          ...(client === undefined || base === undefined
+            ? {}
+            : { clientLink: `${client}/pair?${query.toString()}#token=${code}` }),
         };
       },
     });
@@ -364,7 +405,11 @@ export default definePlugin({
       input: z.object({ id: z.string().min(1) }),
       output: z.object({ revoked: z.boolean() }),
       permissions: ["auth.write"],
-      handler: ({ id }) => ({ revoked: pairing.revoke(id) }),
+      handler: ({ id }) => {
+        const revoked = pairing.revoke(id);
+        if (revoked) changed();
+        return { revoked };
+      },
     });
 
     if (http !== undefined) {
@@ -379,21 +424,26 @@ export default definePlugin({
               context.state.set("attempts", created);
               return created;
             })(),
-          pair(code, label) {
+          pair(code, label, metadata) {
             return pairing.redeem(code, Date.now(), (link) =>
-              issuePaired(link.permissions, link.label ?? label ?? "Paired device"),
+              issuePaired(
+                link.permissions,
+                link.label ?? label ?? "Paired device",
+                undefined,
+                metadata,
+              ),
             );
           },
-          async openSession(credential) {
+          async openSession(credential, metadata) {
             const paired = pairing.redeem(credential, Date.now(), (link) =>
-              issuePaired(link.permissions, link.label ?? "Browser"),
+              issuePaired(link.permissions, link.label ?? "Browser", undefined, metadata),
             );
             if (paired !== undefined) return paired;
             // A token (e.g. the owner's from `#token=`) opens a session with its own grants.
             const principal = await verifier.verify({ token: credential });
             return principal === undefined
               ? undefined
-              : issuePaired(principal.permissions, "Browser", principal);
+              : issuePaired(principal.permissions, "Browser", principal, metadata);
           },
           verify: (given) => verifier.verify({ token: given }),
           closeSession(given) {

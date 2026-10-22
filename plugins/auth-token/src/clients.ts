@@ -4,6 +4,8 @@ import * as Path from "node:path";
 
 import { z } from "@jhin/sdk";
 
+import { ClientMetadata } from "./metadata.ts";
+
 /** Device tokens are `jhd1.<id>.<secret>` (security.md D411). */
 const DEVICE_TOKEN_PREFIX = "jhd1.";
 
@@ -21,6 +23,8 @@ export const ClientRecord = z.object({
   secretHash: z.string(),
   /** The principal whose token opened it (a page session, D421): revoked with that one. */
   parent: z.string().optional(),
+  /** What the device said about itself when it paired (security.md D1187). */
+  metadata: ClientMetadata.optional(),
 });
 export type ClientRecord = z.infer<typeof ClientRecord>;
 
@@ -45,6 +49,7 @@ export interface ClientStore {
     method: ClientRecord["method"];
     expiresAt?: number;
     parent?: string;
+    metadata?: ClientMetadata;
     now: number;
   }): { record: ClientRecord; token: string };
   /** The record a token belongs to, if the token is one of ours and still valid at `now`. */
@@ -95,7 +100,7 @@ export function createClientStore(
   return {
     list: () => records,
     get: (id) => records.find((record) => record.id === id),
-    issue({ label, permissions, method, expiresAt, now, parent }) {
+    issue({ label, permissions, method, expiresAt, now, parent, metadata }) {
       const id = Crypto.randomBytes(9).toString("base64url");
       const secret = Crypto.randomBytes(32).toString("base64url");
       const record: ClientRecord = {
@@ -106,6 +111,7 @@ export function createClientStore(
         createdAt: now,
         ...(expiresAt === undefined ? {} : { expiresAt }),
         ...(parent === undefined ? {} : { parent }),
+        ...(metadata === undefined ? {} : { metadata }),
         secretHash: hash(secret),
       };
       // Expired tokens go with the next write; nothing can use them any more.

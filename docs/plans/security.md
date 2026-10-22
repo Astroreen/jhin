@@ -527,8 +527,8 @@ The threat model comes first; the decisions after it implement it.
   the device says about itself and is shown as such: it helps the owner
   recognise a device, never decides access. It stays in `clients.json`,
   read only with `auth.read`. Tokens issued by `auth.tokens.issue` carry
-  none. "Authorized clients" shows it as T3 does: "<browser> on <os>",
-  the device type's icon and the address.
+  none. "Authorized clients" shows it as T3 does, one line of what is
+  known: "Tablet · iOS · Safari · 192.168.1.20".
 - **D1188. Live updates of the authorized clients list.** T3 streams
   `clientUpserted` / `clientRemoved`. `jhin.auth-token` emits the kernel
   event `auth.clients.changed {ids}` after every change of `clients.json`
@@ -690,7 +690,11 @@ A stack, one slice a PR:
   Tailscale fails (repeating what it said, and how to remove a mapping
   left behind), and `probeNode` is tested against real listeners.
 - **PR 5c — clients** (D1187, D1188, D1190): device metadata, the live
-  `auth/clients` stream, pairing links for a `jhin client` page.
+  `auth/clients` stream, pairing links for a `jhin client` page. **Done
+  when:** tests record a paired device's metadata (presented values win),
+  tell `auth.read` subscribers of every change and refuse others, build
+  T3's client-page link, and Playwright sees the open settings page follow
+  a pairing made elsewhere and a `jhin client` page pair by its link.
 - **PR 5d — MCP OAuth** (D1191–D1196).
 
 ## Deferred
@@ -711,11 +715,6 @@ A stack, one slice a PR:
 - `host.config.get` and `host.config.patch` convert every section's schema
   (`config.jsonSchema()`) to pick one; a kernel call for one section's
   schema, or a cache cleared on `kernel.config.changed`, would avoid it.
-- Pairing links for a `jhin client` page (T3's hosted-app link
-  `…/pair?host=<node>#token=<CODE>`): today the link names the node's own
-  address only.
-- A paired device's metadata (T3's device type, OS, browser, IP) in the
-  list of authorized clients; Jhin keeps a label only.
 
 - The secret store (W28): Windows keeps the store's key in the key file
   (no Credential Manager yet, D1024); an existing store cannot move its key
@@ -758,15 +757,15 @@ A stack, one slice a PR:
   token.
 - MCP OAuth (T3's `/oauth/mcp/*`): MCP clients use the owner token or an
   issued device token.
-- Live updates of the list of authorized clients (T3 streams
-  `clientUpserted` / `clientRemoved`): `jhin.auth-token` cannot guard a
-  stream of its own through `rpc.streams`, because the transport that
-  provides it depends on `auth.verifier` (an optional edge that closes a
-  cycle is dropped, D14). The settings page reads the list again after its
-  own changes.
+- Live updates of the authorized clients list (D1188) say only that the
+  list changed; T3's per-session "Connected" dot is not ported: a client's
+  `lastSeenAt` changes with no event, so "Connected …" updates with the next
+  change or reload, and a device that paired but has not connected yet
+  reads "Not connected yet.".
 - `auth.permissions.list` reads commands only: a stream guarded with a
-  permission no command needs is not offered (the token plugin cannot see
-  `rpc.streams`, as above).
+  permission no command needs is not offered (the token plugin cannot
+  depend on `rpc.streams`: the transport that provides it depends on
+  `auth.verifier`, D1188).
 - An unreadable `clients.json` is moved aside to `clients.json.corrupt` and
   no device token works until new ones are issued; nothing repairs it.
 - `lastSeenAt` is kept in memory and written with the next change of

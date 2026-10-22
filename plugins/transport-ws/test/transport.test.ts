@@ -835,3 +835,136 @@ describe("pairing (security.md D419–D422)", () => {
     expect(refused.status).toBe(401);
   });
 });
+
+describe("clients and links (security.md D1187, D1188, D1190)", () => {
+  const httpUrl = (node: Node) => node.url.replace(/^ws/, "http").replace(/\/rpc$/, "");
+  const post = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  const IPHONE =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+
+  it("records what a paired device says about itself, and lists it", async () => {
+    const node = await startNode();
+    const phone = (await node.kernel.commands.execute("auth.pairing.create", {
+      label: "Phone",
+    })) as { code: string };
+    const paired = (await (
+      await post(`${httpUrl(node)}/auth/pair`, { code: phone.code }, { "user-agent": IPHONE })
+    ).json()) as { id: string };
+    const tablet = (await node.kernel.commands.execute("auth.pairing.create", {})) as {
+      code: string;
+    };
+    const presented = (await (
+      await post(
+        `${httpUrl(node)}/auth/pair`,
+        { code: tablet.code, deviceType: "tablet", os: "Android" },
+        { "user-agent": "curl/8.0" },
+      )
+    ).json()) as { id: string };
+    const session = (await (
+      await post(
+        `${httpUrl(node)}/auth/session`,
+        { credential: node.token },
+        {
+          "user-agent":
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
+        },
+      )
+    ).json()) as { id: string };
+    const issued = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "ci",
+      permissions: ["app.*"],
+    })) as { id: string };
+
+    const { clients: listed } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+      clients: { id: string; metadata?: Record<string, unknown> }[];
+    };
+    const byId = new Map(listed.map((client) => [client.id, client.metadata]));
+    expect(byId.get(paired.id)).toEqual({
+      deviceType: "mobile",
+      os: "iOS",
+      browser: "Safari",
+      userAgent: IPHONE,
+      ipAddress: "127.0.0.1",
+    });
+    // What the device presents wins over what its User-Agent suggests (T3).
+    expect(byId.get(presented.id)).toMatchObject({ deviceType: "tablet", os: "Android" });
+    expect(byId.get(session.id)).toMatchObject({
+      deviceType: "desktop",
+      os: "Linux",
+      browser: "Chrome",
+    });
+    // An issued token carries none.
+    expect(byId.get(issued.id)).toBeUndefined();
+  });
+
+  it("tells subscribers holding auth.read that the clients changed, and nobody else", async () => {
+    const node = await startNode();
+    const owner = connect(node.url, node.token);
+    const changes: StoredEvent[] = [];
+    let changed: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      owner.subscribe("auth/clients", { onReady: () => resolve() }, (event) => {
+        changes.push(event);
+        changed();
+      });
+    });
+    await ready;
+    const next = () => new Promise<void>((resolve) => (changed = resolve));
+
+    let seen = next();
+    const { code } = (await node.kernel.commands.execute("auth.pairing.create", {})) as {
+      code: string;
+    };
+    await seen;
+    seen = next();
+    const paired = (await (await post(`${httpUrl(node)}/auth/pair`, { code })).json()) as {
+      id: string;
+    };
+    await seen;
+    seen = next();
+    await node.kernel.commands.execute("auth.clients.revoke", { id: paired.id });
+    await seen;
+    expect(changes.map((event) => event.type)).toEqual([
+      "auth.clients.changed",
+      "auth.clients.changed",
+      "auth.clients.changed",
+    ]);
+    expect(JSON.stringify(changes)).not.toContain(code);
+
+    const narrow = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "narrow",
+      permissions: ["app.read"],
+    })) as { token: string };
+    const refused = await new Promise<unknown>((resolve) => {
+      connect(node.url, narrow.token).subscribe("auth/clients", { onError: resolve }, () => {});
+    });
+    expect(refused).toMatchObject({ code: "PERMISSION_DENIED" });
+  });
+
+  it("adds T3's client-page link when the node knows where a jhin client page is", async () => {
+    const node = await startNode();
+    const plain = (await node.kernel.commands.execute("auth.pairing.create", {})) as {
+      clientLink?: string;
+    };
+    expect(plain.clientLink).toBeUndefined();
+    const linked = (await node.kernel.commands.execute("auth.pairing.create", {
+      label: "Living room iPad",
+      baseUrl: "https://studio.tail1234.ts.net/",
+      clientUrl: "https://jhin.example.com/app/",
+    })) as { code: string; url: string; clientLink: string };
+    expect(linked.url).toBe(`https://studio.tail1234.ts.net/pair#token=${linked.code}`);
+    expect(linked.clientLink).toBe(
+      `https://jhin.example.com/app/pair?host=${encodeURIComponent("https://studio.tail1234.ts.net")}&label=Living+room+iPad#token=${linked.code}`,
+    );
+    await expect(
+      node.kernel.commands.execute("auth.pairing.create", {
+        clientUrl: "https://jhin.example.com/?x=1",
+      }),
+    ).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
+  });
+});

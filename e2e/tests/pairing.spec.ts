@@ -193,3 +193,74 @@ test("revokes the other clients after asking", async ({ page }) => {
   await expect(list.getByText("Spare two")).toHaveCount(0);
   await expect(list.getByText("This device")).toBeVisible();
 });
+
+test("follows the node's clients live and shows what each device is (D1187, D1188)", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await openAuthorizedClients(page);
+  const list = page.getByRole("list", { name: /^Authorized clients of / });
+  await expect(list).toBeVisible();
+
+  // Changes made elsewhere (the CLI, another device) reach the open page.
+  const { code } = await node
+    .client()
+    .call<{ code: string }>("auth.pairing.create", { label: "Kitchen iPad" });
+  await expect(list.getByRole("listitem").filter({ hasText: "Kitchen iPad" })).toContainText(
+    "Not connected yet.",
+  );
+  const paired = await fetch(`${node.ui}auth/pair`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "user-agent":
+        "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    },
+    body: JSON.stringify({ code }),
+  });
+  const { id } = (await paired.json()) as { id: string };
+  const row = list.getByRole("listitem").filter({ hasText: "Kitchen iPad" });
+  await expect(row).toContainText("Tablet · iOS · Safari · 127.0.0.1");
+  await page.screenshot({ path: info.outputPath("authorized-clients-device.png") });
+
+  await node.client().call("auth.clients.revoke", { id });
+  await expect(list.getByText("Kitchen iPad")).toHaveCount(0);
+});
+
+test("pairs a jhin client page by the link the node gives for it (D1190)", async ({
+  page,
+  browser,
+}, info) => {
+  const clientPage = await startNode({ mode: "client" });
+  const linked = await startNode({ config: { "jhin.auth-token": { clientUrl: clientPage.ui } } });
+  try {
+    await page.goto(`${linked.ui}#token=${linked.token}`);
+    await openAuthorizedClients(page);
+    await page.getByRole("button", { name: "Create link" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("textbox", { name: "Client label (optional)" }).fill("Travel laptop");
+    await dialog.getByRole("button", { name: "Create link" }).click();
+    const link = await dialog.getByRole("textbox", { name: "Client page link" }).inputValue();
+    expect(link.startsWith(`${clientPage.ui}pair?host=`)).toBe(true);
+    expect(link).toMatch(/#token=[23456789A-HJ-NP-Z]{12}$/);
+    await page.screenshot({ path: info.outputPath("pairing-client-link.png") });
+    await dialog.getByRole("button", { name: "Done" }).click();
+
+    // The client page, served by no node, pairs with the node the link names.
+    const context = await browser.newContext();
+    const other = await context.newPage();
+    await other.goto(link);
+    await expect(other).not.toHaveURL(/token=|host=/);
+    await expect(other.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+    const { clients } = await linked
+      .client()
+      .call<{ clients: { label: string; method: string }[] }>("auth.clients.list");
+    expect(clients).toContainEqual(
+      expect.objectContaining({ label: "Travel laptop", method: "pairing" }),
+    );
+    await context.close();
+  } finally {
+    await linked.stop();
+    await clientPage.stop();
+  }
+});

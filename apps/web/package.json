@@ -22,6 +22,7 @@
     "@dnd-kit/sortable": "catalog:",
     "@dnd-kit/utilities": "catalog:",
     "@jhin/agent-api": "workspace:*",
+    "@jhin/auth-api": "workspace:*",
     "@jhin/client-api": "workspace:*",
     "@jhin/health-api": "workspace:*",
     "@jhin/host-api": "workspace:*",

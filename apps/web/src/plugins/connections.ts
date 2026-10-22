@@ -12,6 +12,7 @@ import {
   openSession,
   pageBase,
   pairWithCode,
+  rpcUrl,
 } from "../lib/session.ts";
 
 const WebSocketUrl = z
@@ -50,19 +51,38 @@ function sameOriginUrl(): string {
 /**
  * A token or pairing code in the URL fragment (`#token=…`, T3's pairing link
  * `/pair#token=<CODE>`) is for this page's own node; the fragment never
- * reaches the server and is removed at once (D422).
+ * reaches the server and is removed at once (D422). A `jhin client` page's
+ * link (T3's hosted link, `/pair?host=<node>&label=<name>#token=<CODE>`,
+ * security.md D1190) names the node in `host`: removed with it.
  */
-function takeTokenFromUrl(): string | undefined {
+function takeTokenFromUrl(): { token: string; host?: string; label?: string } | undefined {
   const params = new URLSearchParams(location.hash.slice(1));
   const token = params.get("token");
   if (token === null) return undefined;
   params.delete("token");
   const rest = params.toString();
+  const query = new URLSearchParams(location.search);
+  const onPairPath = /\/pair\/?$/.test(location.pathname);
+  const host = onPairPath ? (query.get("host")?.trim() ?? "") : "";
+  const label = onPairPath ? (query.get("label")?.trim() ?? "") : "";
+  if (onPairPath) {
+    query.delete("host");
+    query.delete("label");
+  }
+  const search = query.toString();
   // The pairing page has done its work: the client opens at its root.
   // `/pair`, or `/jhin/pair` behind a proxy path: the client opens at that base.
   const path = location.pathname.replace(/\/pair\/?$/, "/");
-  history.replaceState(null, "", `${path}${location.search}${rest === "" ? "" : `#${rest}`}`);
-  return token;
+  history.replaceState(
+    null,
+    "",
+    `${path}${search === "" ? "" : `?${search}`}${rest === "" ? "" : `#${rest}`}`,
+  );
+  return {
+    token,
+    ...(host === "" ? {} : { host }),
+    ...(label === "" ? {} : { label }),
+  };
 }
 
 const sameSaved = (a: Saved, b: Saved) =>
@@ -130,6 +150,23 @@ export const connectionsPlugin = builtin(
       const labelOf = (url: string, label?: string) =>
         label ?? (URL.canParse(url) ? new URL(url).host : url);
 
+      const pairNode = async ({
+        url,
+        code,
+        label,
+      }: {
+        url: string;
+        code: string;
+        label?: string;
+      }) => {
+        WebSocketUrl.parse(url);
+        const { token } = await pairWithCode(url, code, `Browser on ${location.host}`);
+        if (disposed) throw new Error("This client stopped while pairing");
+        const kept = keep(Saved.parse({ url, token, label: labelOf(url, label) }));
+        refused = undefined;
+        return kept;
+      };
+
       const connections: Connections = {
         list: () => snapshot,
         get: (id) => snapshot.find((node) => node.id === id),
@@ -139,14 +176,7 @@ export const connectionsPlugin = builtin(
           refused = undefined;
           return kept;
         },
-        async pair({ url, code, label }) {
-          WebSocketUrl.parse(url);
-          const { token } = await pairWithCode(url, code, `Browser on ${location.host}`);
-          if (disposed) throw new Error("This client stopped while pairing");
-          const kept = keep(Saved.parse({ url, token, label: labelOf(url, label) }));
-          refused = undefined;
-          return kept;
-        },
+        pair: (input) => pairNode(input),
         rename(id, label) {
           const node = nodes.get(id);
           const trimmed = label.trim();
@@ -207,8 +237,27 @@ export const connectionsPlugin = builtin(
       // session; without one, a session it opened before still counts.
       const own = sameOriginUrl();
       let refused: string | undefined;
-      const credential = takeTokenFromUrl();
+      const fromUrl = takeTokenFromUrl();
+      const credential = fromUrl?.host === undefined ? fromUrl?.token : undefined;
       const meetOwnNode = async () => {
+        if (fromUrl?.host !== undefined) {
+          // A `jhin client` link (D1190): the code pairs with the node it names.
+          const url = rpcUrl(fromUrl.host);
+          if (looksLikePairingCode(fromUrl.token)) {
+            await pairNode({
+              url,
+              code: fromUrl.token,
+              ...(fromUrl.label === undefined ? {} : { label: fromUrl.label }),
+            });
+          } else {
+            connections.add({
+              url,
+              token: fromUrl.token,
+              ...(fromUrl.label === undefined ? {} : { label: fromUrl.label }),
+            });
+          }
+          return;
+        }
         if (credential !== undefined) {
           const session = await currentSession();
           if (disposed) return;

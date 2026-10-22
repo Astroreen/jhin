@@ -32,7 +32,15 @@ export const AuthEvents = {
   tokenRotated: "auth.token.rotated",
   /** `{ principal }`: a device token was revoked; its connections are dropped. */
   clientRevoked: "auth.client.revoked",
+  /**
+   * `{}`: device tokens or open pairing codes changed (security.md D1188);
+   * the transport turns it into the live stream `auth/clients`. Never carries a secret.
+   */
+  clientsChanged: "auth.clients.changed",
 } as const;
+
+/** The live stream that says the authorized clients changed (security.md D1188); needs `auth.read`. */
+export const AUTH_CLIENTS_STREAM = "auth/clients";
 
 /**
  * The httpOnly cookie that holds the device token of the node's own web page
