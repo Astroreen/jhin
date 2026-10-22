@@ -366,6 +366,16 @@ finishes out of the Deferred lists and leaves the rest there.
   the notification on wake and the sidebar's "Waiting" state, review comments
   as chips, settling a thread when its pull request merges; the diff panel's
   file preview and pop-out mode.
+  Done: `source-control.md` D1121–D1134 (#211, #213, #219, #221, #224,
+  #226): setup scripts with their progress card, branch naming, the cleanup
+  rules and sweep, the sidebar's "Waiting" state (a wake notifies as any
+  turn, D1132), settling on linked pull requests, and submodules. Left in
+  `source-control.md`'s Deferred lists: the right panel of a thread's pull
+  requests and the chat header rows, review comments as chips, watching on
+  forges other than GitHub, "Roll back" from an item inspector, the diff
+  panel's file preview and pop-out mode, "Waiting" for a mesh member's
+  thread, T3's per-project settings and `t3.json`, and the submodule items
+  of D1134.
 - **W31:** Claude Code's slash commands and skills in the composer; Codex's
   subagent threads, usage limits with their reset time, ChatGPT sign-in,
   MCP elicitations, `/goal`, fork and rollback; OpenCode's fork, rollback
