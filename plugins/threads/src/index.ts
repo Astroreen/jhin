@@ -1425,6 +1425,11 @@ export default definePlugin({
             type: ThreadEvents.contextCompacted,
             payload: { turnId, ...(item.trigger === undefined ? {} : { trigger: item.trigger }) },
           };
+        case "goal.updated":
+          return {
+            type: ThreadEvents.goalUpdated,
+            payload: { turnId, goal: item.goal === null ? null : { ...item.goal } },
+          };
       }
     }
 

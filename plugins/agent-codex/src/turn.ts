@@ -9,6 +9,7 @@ import {
   ThreadEvents,
   UsageLimitError,
   historyTranscript,
+  type AgentGoal,
   type AgentItem,
   type AgentRequest,
   type AgentResponse,
@@ -45,6 +46,7 @@ import { CodexEnded, CodexRpcError, CodexSpawnError, codexEnvironment } from "./
 import { SessionTakenOver, type Lease, type McpAttachment, type Sessions } from "./session.ts";
 import { codexErrorInfoCode, isUsageLimitCode } from "./usage-limits.ts";
 import { describeElicitation, readElicitation, toElicitationResponse } from "./elicitation.ts";
+import { describeGoal, goalFromCodex, parseGoalCommand } from "./goal.ts";
 
 /** The turn ended while it still waited on Codex (a stop's grace ran out). */
 class TurnEnded extends Error {}
@@ -157,6 +159,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const NOTHING_TO_RESUME = /\bno rollout found for thread\b/i;
 /** The turns kept in a thread's record: a rollback further back starts a new Codex thread. */
 const MAX_RECORDED_TURNS = 500;
+/** How long a run waits for Codex's next goal turn (T3's CODEX_GOAL_CONTINUATION_GRACE). */
+const GOAL_CONTINUATION_GRACE_MS = 5_000;
 /**
  * How long a stopped turn waits for Codex's `turn/completed` after the interrupt (T3 waits
  * 10 s for an interrupted lineage); then the turn ends and its app-server with it.
@@ -261,6 +265,21 @@ export function codexTurn(
   let failedByCodex = false;
   /** Sends `turn/interrupt` once the turn id is known. */
   let stopRequested = false;
+
+  // --- Goals (D1149) ------------------------------------------------------------------
+  /** This turn set or resumed a goal: it lasts through the goal turns Codex starts itself. */
+  let goalRun = false;
+  /** The thread's goal as Codex last said, once it said. */
+  let goal: AgentGoal | null | undefined;
+  /** Codex completed a goal turn and the goal is still active: its next turn is awaited. */
+  let awaitingGoalTurn = false;
+  let goalGrace: ReturnType<typeof setTimeout> | undefined;
+  const goalUpdated = (next: AgentGoal | null) => {
+    goal = next;
+    out.push({ kind: "goal.updated", goal: next });
+    // The goal stopped between its turns: the run is over.
+    if (goalRun && awaitingGoalTurn && next?.status !== "active") finish({ ended: true });
+  };
 
   // --- Requests ------------------------------------------------------------------
   /** Opens a request and waits for its answer: `undefined` when the turn stops first. */
@@ -602,10 +621,28 @@ export function codexTurn(
               : undefined;
         return;
       }
+      case "thread/goal/updated":
+        goalUpdated(goalFromCodex(params["goal"]));
+        return;
+      case "thread/goal/cleared":
+        goalUpdated(null);
+        return;
       case "turn/completed": {
         const turn = isRecord(params["turn"]) ? params["turn"] : {};
         const status = turn["status"];
         const error = isRecord(turn["error"]) ? turn["error"] : undefined;
+        // An active goal goes on in a turn Codex starts itself (T3's goal hold): the run waits
+        // for it, at most T3's grace.
+        if (status === "completed" && goalRun && goal?.status === "active" && !interrupted) {
+          settleRetry();
+          awaitingGoalTurn = true;
+          clearTimeout(goalGrace);
+          goalGrace = setTimeout(() => {
+            if (awaitingGoalTurn) finish({ ended: true });
+          }, GOAL_CONTINUATION_GRACE_MS);
+          goalGrace.unref?.();
+          return;
+        }
         // Codex ended the turn, whatever its status: the app-server stays for the next.
         // A turn Codex failed stays failed, also when a stop came after; a stop hides
         // only the interruption itself.
@@ -843,6 +880,19 @@ export function codexTurn(
       return;
     }
     const turn = frameTurn(frame);
+    if (
+      awaitingGoalTurn &&
+      frame.kind === "notification" &&
+      frame.method === "turn/started" &&
+      turn !== undefined &&
+      (thread === undefined || thread === codexThreadId)
+    ) {
+      // The goal's next turn: this run follows it.
+      awaitingGoalTurn = false;
+      clearTimeout(goalGrace);
+      turnId = turn;
+      return;
+    }
     if (turn !== undefined && turn !== turnId) {
       if (frame.kind === "request")
         frame.answer(Promise.reject(new Error("Not the running turn.")));
@@ -1143,6 +1193,50 @@ export function codexTurn(
         keep = true;
         return;
       }
+      const command =
+        (request.input.attachments ?? []).length === 0
+          ? parseGoalCommand(request.input.text)
+          : null;
+      let goalText: string | undefined;
+      if (command !== null) {
+        // T3's runGoalCommand: what only reads or pauses the goal is answered without a turn.
+        const connection = current.session.connection;
+        const goalRequest = async (method: string, params: Record<string, unknown>) =>
+          (await untilEnded(
+            connection.request(method, { threadId: codexThreadId, ...params }),
+          )) as Record<string, unknown> | null;
+        const reply = (text: string) => {
+          out.push({ kind: "message.completed", itemId: `${request.turnId}:goal`, text });
+          keep = true;
+        };
+        const existing = goalFromCodex((await goalRequest("thread/goal/get", {}))?.["goal"]);
+        goal = existing;
+        if (command.type === "show") {
+          return reply(existing === null ? "No goal is set." : describeGoal(existing));
+        }
+        if (command.type === "clear") {
+          const cleared = (await goalRequest("thread/goal/clear", {}))?.["cleared"] === true;
+          goalUpdated(null);
+          return reply(cleared ? "Goal cleared." : "No goal to clear.");
+        }
+        if (existing === null && command.type !== "set") return reply("No goal is set.");
+        if (command.type === "pause") {
+          const paused = await goalRequest("thread/goal/set", { status: "paused" });
+          goalUpdated(goalFromCodex(paused?.["goal"]));
+          return reply("Goal paused. Send /goal resume to continue.");
+        }
+        if (command.type === "set") {
+          if (existing !== null) await goalRequest("thread/goal/clear", {});
+          // Paused until this turn runs, so Codex does not start one first.
+          const set = await goalRequest("thread/goal/set", {
+            objective: command.objective,
+            status: "paused",
+          });
+          goalUpdated(goalFromCodex(set?.["goal"]));
+          goalText = command.objective;
+        } else goalText = "";
+        goalRun = true;
+      }
       let id: unknown;
       const compacting = isCompact(request.input);
       if (compacting) {
@@ -1165,7 +1259,13 @@ export function codexTurn(
             "turn/start",
             turnStartParams({
               threadId: codexThreadId!,
-              input: userInput(text),
+              input: userInput(
+                goalText === undefined
+                  ? text
+                  : preface === undefined
+                    ? goalText
+                    : `${preface}${goalText}`,
+              ),
               cwd: request.cwd,
               model,
               runtimeMode,
@@ -1183,6 +1283,16 @@ export function codexTurn(
       }
       if (typeof id !== "string") throw new Error("Codex started no turn.");
       turnId = id;
+      if (goalRun) {
+        // The goal's first turn runs with this turn's settings; now Codex may go on with it.
+        const activated = (await untilEnded(
+          current.session.connection.request("thread/goal/set", {
+            threadId: codexThreadId,
+            status: interrupted ? "paused" : "active",
+          }),
+        )) as { goal?: unknown } | null;
+        goalUpdated(goalFromCodex(activated?.goal));
+      }
       // A compaction hands Codex no message: the thread's turns still go to it with the next.
       if (!compacting) current.session.delivered = true;
       // Every turn is recorded with the Codex turn it ran as, so a rollback can revert it and a
@@ -1243,6 +1353,19 @@ export function codexTurn(
       void done.finally(() => clearTimeout(grace));
       for (const resolve of answers.values()) resolve(undefined);
       answers.clear();
+      // A stop pauses the goal, so Codex does not go on with it out of sight (T3's goal stop).
+      if (goalRun && lease !== undefined && codexThreadId !== undefined) {
+        lease.session.connection
+          .request("thread/goal/set", { threadId: codexThreadId, status: "paused" })
+          .catch((error: unknown) =>
+            deps.log?.("codex did not pause the goal", { error: String(error) }),
+          );
+      }
+      if (awaitingGoalTurn) {
+        clearTimeout(goalGrace);
+        finish({ ended: true });
+        return;
+      }
       // Still starting: nothing to tell Codex, the turn ends now and a late app-server is
       // let go of.
       if (lease === undefined) {

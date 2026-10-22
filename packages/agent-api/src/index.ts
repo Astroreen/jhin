@@ -239,7 +239,27 @@ export type AgentItem =
    * compact boundary, Codex's context compaction): what it knew of the
    * conversation is now a summary. Refocus follows it (agents.md D709).
    */
-  | { readonly kind: "context.compacted"; readonly trigger?: "auto" | "manual" };
+  | { readonly kind: "context.compacted"; readonly trigger?: "auto" | "manual" }
+  /**
+   * Since 1.10: the thread's goal changed (Codex's `/goal`, providers.md D1149); `null` once
+   * it is cleared.
+   */
+  | { readonly kind: "goal.updated"; readonly goal: AgentGoal | null };
+
+/** A goal the agent keeps working toward across turns (T3's OrchestrationV2ProviderGoal). */
+export interface AgentGoal {
+  readonly objective: string;
+  readonly status:
+    | "active"
+    | "paused"
+    | "blocked"
+    | "usage_limited"
+    | "budget_limited"
+    | "complete";
+  readonly tokensUsed?: number;
+  readonly tokenBudget?: number;
+  readonly timeUsedSeconds?: number;
+}
 
 /** The kinds of items a subagent's thread shows (D877); a runtime's others stay in the turn. */
 export const SUBAGENT_WORK_KINDS = [
@@ -411,7 +431,7 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -514,6 +534,8 @@ export const ThreadEvents = {
   usageUpdated: "agent.usage.updated",
   /** `{ turnId, trigger? }`: the agent compacted its context (since 1.6, agents.md D709). */
   contextCompacted: "agent.context.compacted",
+  /** `{ turnId, goal }`: the thread's goal, `null` once cleared (since 1.10, providers.md D1149). */
+  goalUpdated: "agent.goal.updated",
   turnCompleted: "agent.turn.completed",
   turnInterrupted: "agent.turn.interrupted",
   /** `{ turnId, error?, failure? }`; `failure` (since 1.8, `AgentTurnFailure`) says why. */

@@ -3,6 +3,7 @@
 import {
   ThreadEvents,
   type AgentRequest,
+  type AgentGoal,
   type AgentResponse,
   type AgentTurnFailure,
   type MessageContext,
@@ -169,6 +170,8 @@ export interface Timeline {
   readonly queue?: ThreadQueue;
   /** A fork: its parent, and the turn it was forked after (D225). */
   readonly forkedFrom?: { readonly threadId: string; readonly turnId: string };
+  /** The goal the agent works toward (Codex's `/goal`, providers.md D1150); none when cleared. */
+  readonly goal?: AgentGoal;
 }
 
 interface Payload {
@@ -188,6 +191,7 @@ interface Payload {
   readonly text?: string;
   readonly error?: string;
   readonly failure?: AgentTurnFailure;
+  readonly goal?: AgentGoal | null;
   readonly reason?: string;
   readonly status?: string;
   readonly output?: string;
@@ -244,6 +248,7 @@ export function createTimeline() {
   let deleted = false;
   let queue = EMPTY_QUEUE;
   let forkedFrom: Timeline["forkedFrom"];
+  let goal: AgentGoal | undefined;
   let timeline: Timeline = { turns: [], deleted: false, queue };
 
   const find = (turn: MutableTurn, key: string): TimelineItem | undefined => {
@@ -266,6 +271,7 @@ export function createTimeline() {
     const wasDeleted = deleted;
     const queued = queue;
     const wasForked = forkedFrom;
+    const hadGoal = goal;
     let dropped = false;
     for (const event of events) {
       if (event.sequence <= sequence) continue;
@@ -288,6 +294,10 @@ export function createTimeline() {
         if (payload.threadId !== undefined && payload.turnId !== undefined) {
           forkedFrom = { threadId: payload.threadId, turnId: payload.turnId };
         }
+        continue;
+      }
+      if (event.type === ThreadEvents.goalUpdated) {
+        goal = payload.goal ?? undefined;
         continue;
       }
       if (event.type === ThreadEvents.threadRolledBack) {
@@ -512,7 +522,8 @@ export function createTimeline() {
       deleted === wasDeleted &&
       queue === queued &&
       !dropped &&
-      forkedFrom === wasForked
+      forkedFrom === wasForked &&
+      goal === hadGoal
     ) {
       return timeline;
     }
@@ -533,6 +544,7 @@ export function createTimeline() {
       deleted,
       queue,
       ...(forkedFrom === undefined ? {} : { forkedFrom }),
+      ...(goal === undefined ? {} : { goal }),
     };
     return timeline;
   }

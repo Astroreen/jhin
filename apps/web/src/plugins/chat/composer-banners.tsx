@@ -5,6 +5,7 @@
 // trigger.
 // A chunk of its own, loaded with the first of them to show.
 import type {
+  AgentGoal,
   AgentResponse,
   ApprovalDecision,
   AgentUsageLimits,
@@ -31,12 +32,14 @@ import {
   ListOrderedIcon,
   PencilIcon,
   ShieldIcon,
+  TargetIcon,
   TrendingDownIcon,
   TrendingUpIcon,
 } from "lucide-react";
 import { Fragment, useId, useRef, useState, type ComponentProps } from "react";
 
 import type { TimestampFormat } from "../../lib/format.ts";
+import { presentGoal } from "../../lib/goal.ts";
 import {
   elapsedShare,
   formatResetsIn,
@@ -769,6 +772,59 @@ export function UsageLimitsBanner(props: {
             </ComposerBanner.Body>
           </ComposerBanner.Scroll>
         </ComposerBanner.Children>
+      </ComposerBanner.Root>
+    </ComposerBanner.Attachment>
+  );
+}
+
+/** The thread's goal (D1150), T3's goalBannerItem: Resume and Clear send `/goal …`. */
+export function GoalBanner(props: {
+  readonly goal: AgentGoal;
+  readonly working: boolean;
+  readonly busy: boolean;
+  onCommand(text: string): void;
+}) {
+  const presentation = presentGoal(props.goal, props.working);
+  const title =
+    presentation.usage === null
+      ? presentation.title
+      : `${presentation.title} · ${presentation.usage}`;
+  return (
+    <ComposerBanner.Attachment>
+      <ComposerBanner.Root aria-label="Goal" density="comfortable" role="region">
+        <ComposerBanner.Row layout="inline">
+          <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
+            <TargetIcon />
+          </ComposerBanner.Icon>
+          <ComposerBanner.Content className="whitespace-nowrap">
+            <span className="min-w-0 shrink-0 truncate font-medium leading-7 sm:leading-6">
+              {title}
+            </span>
+            <span className="min-w-0 truncate text-muted-foreground">{presentation.objective}</span>
+          </ComposerBanner.Content>
+          {props.working ? null : (
+            <ComposerBanner.Actions>
+              {presentation.canResume ? (
+                <Button
+                  disabled={props.busy}
+                  onClick={() => props.onCommand("/goal resume")}
+                  size="xs"
+                  variant="ghost"
+                >
+                  Resume
+                </Button>
+              ) : null}
+              <Button
+                disabled={props.busy}
+                onClick={() => props.onCommand("/goal clear")}
+                size="xs"
+                variant="ghost"
+              >
+                Clear
+              </Button>
+            </ComposerBanner.Actions>
+          )}
+        </ComposerBanner.Row>
       </ComposerBanner.Root>
     </ComposerBanner.Attachment>
   );

@@ -80,7 +80,11 @@ describe("jhin.agent-codex: usage limits (D1142)", () => {
       agentId: CODEX_AGENT_ID,
     });
     // T3's server lists it first for a provider with limits; the client answers it.
-    expect(offered.commands.map((command) => command.name)).toEqual(["usage-limits", "compact"]);
+    expect(offered.commands.map((command) => command.name)).toEqual([
+      "usage-limits",
+      "compact",
+      "goal",
+    ]);
   });
 
   it("has none to show for an API key, and says when Codex could not read them", async () => {

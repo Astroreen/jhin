@@ -50,6 +50,7 @@ import {
   launchAppServer,
   type AppServerConnection,
 } from "./rpc.ts";
+import { GOAL_COMMAND } from "./goal.ts";
 import { createSessions, type Launcher, type Sessions } from "./session.ts";
 import {
   CODEX_AGENT_ID,
@@ -559,7 +560,8 @@ export function createCodexRuntime(options: {
     runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     interactionModes: ["default", "plan"],
     steering: true,
-    // T3 lists /compact for Codex (D884) and the skills Codex finds in the folder (D885).
+    // T3 lists /compact (D884) and /goal (D1149) for Codex, and the skills Codex finds in the
+    // folder (D885).
     async commands({ cwd }) {
       const key = `${probeKey()}|${cwd}`;
       let entry = skillProbes.get(key);
@@ -580,7 +582,7 @@ export function createCodexRuntime(options: {
         options.log?.("codex did not list its skills", { cwd, error: String(error) });
         return [];
       });
-      return { commands: [COMPACT_COMMAND], skills };
+      return { commands: [COMPACT_COMMAND, GOAL_COMMAND], skills };
     },
     status,
     usageLimits,

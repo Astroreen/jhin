@@ -7,6 +7,7 @@ import {
   serializeAssistantCitation,
 } from "@jhin/agent-api";
 import type {
+  AgentGoal,
   AgentResponse,
   AgentUsageLimits,
   AssistantCitation,
@@ -187,6 +188,7 @@ const PlanFollowUpBanner = lazyChunk(
   () => bannersChunk().then((module) => module.PlanFollowUpBanner),
   quiet,
 );
+const GoalBanner = lazyChunk(() => bannersChunk().then((module) => module.GoalBanner), quiet);
 const UsageLimitsBanner = lazyChunk(
   () => bannersChunk().then((module) => module.UsageLimitsBanner),
   said("the usage limits"),
@@ -707,6 +709,8 @@ export interface ComposerProps {
     context?: MessageContext,
   ): Promise<boolean>;
   onStop(): void;
+  /** The thread's goal (Codex's `/goal`, providers.md D1150), shown above the composer. */
+  readonly goal?: AgentGoal | undefined;
   /**
    * Present when the thread can be resumed (D800): its latest turn was
    * stopped, or its queue is held. An empty composer offers "Resume thread".
@@ -1569,6 +1573,16 @@ export function Composer(props: ComposerProps) {
             limits={usagePanel.limits}
             now={usagePanel.now}
             onDismiss={() => setUsagePanel(undefined)}
+          />
+        ) : props.goal !== undefined ? (
+          <GoalBanner
+            busy={busy}
+            goal={props.goal}
+            onCommand={(command) => {
+              setBusy(true);
+              void props.onSend(command, []).finally(() => setBusy(false));
+            }}
+            working={props.running}
           />
         ) : null}
         <ComposerSurface.Host>
