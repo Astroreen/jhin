@@ -504,9 +504,10 @@ export const submodulesNeedForce = (path: string) =>
 
 /** Whether a worktree has a submodule checked out, which git removes only forced. */
 export async function hasCheckedOutSubmodules(git: Git, path: string): Promise<boolean> {
+  // Only a missing file means none: another error asks git all the same.
   const exists = await Fs.stat(Path.join(path, ".gitmodules")).then(
     () => true,
-    () => false,
+    (error: NodeJS.ErrnoException) => error.code !== "ENOENT",
   );
   if (!exists) return false;
   const status = await git(["-C", path, "submodule", "status"], { ok: [0, 1, 128] });
