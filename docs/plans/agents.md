@@ -1277,8 +1277,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   a person committing meanwhile): each turn counts what landed between its
   start and its end (D723).
 - A7: following a node's stream again after it failed: the inbox's and
-  health's per-node feed (`lib/node-feeds.ts`, D731) shows the error until
-  the connection is replaced, as the inbox did before.
+  health's per-node feed (`lib/node-feeds.ts`, D731) keeps what it showed,
+  marked not live, until the connection is replaced.
 - A7: commits made outside a turn (by hand, by a workflow) and pull requests
   merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's

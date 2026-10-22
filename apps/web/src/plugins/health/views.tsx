@@ -169,7 +169,13 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
   // Read again on every change of the node's health and on Refresh; the counts
   // themselves change with every message, so the page says when it read them.
   const [round, setRound] = useState(0);
-  useEffect(() => setRound((value) => value + 1), [health]);
+  const seen = useRef(health);
+  useEffect(() => {
+    // Not on mount: the first read is already under way.
+    if (seen.current === health) return;
+    seen.current = health;
+    setRound((value) => value + 1);
+  }, [health]);
   const status = useCall<{ windowHours: number; groups: GroupStatus[] }>(
     view,
     node,
@@ -281,16 +287,28 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     },
     [],
   );
-  if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
+  // A feed that failed after it was read keeps what it showed (`node-feeds`).
   if (warning === undefined) {
+    if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
     return <PageEmpty text="The node no longer has this warning." title="No such warning" />;
   }
   const dismiss = async () => {
     const connection = view.connections.get(node);
-    if (connection === undefined) return;
+    if (connection === undefined) {
+      view.toasts?.show({
+        type: "error",
+        title: "Couldn't dismiss the warning",
+        description: "This node is not connected.",
+      });
+      return;
+    }
     setDismissing(true);
     try {
       await connection.client.call("health.warnings.dismiss", { warningId });
+      // The stream marks it dismissed; when the stream is down, the answer says so.
+      if (feed?.status !== "ready") {
+        view.toasts?.show({ type: "success", title: "Warning dismissed" });
+      }
     } catch (error) {
       view.toasts?.show({
         type: "error",
@@ -313,6 +331,11 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
           {warning.status === "open" ? "Open" : "Dismissed"}
         </Badge>
       </header>
+      {feed?.status === "error" ? (
+        <p className="text-xs text-destructive">
+          Not live: {feed.error ?? "the node's health stream failed"}. Reconnect to update it.
+        </p>
+      ) : null}
       <p className="max-w-3xl text-sm">{warning.summary}</p>
       <dl className="grid max-w-3xl grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <dt>Group</dt>
@@ -332,8 +355,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
           <p className="text-sm text-muted-foreground">Waiting for the analyst…</p>
         ) : analysis.status === "none" ? (
           <p className="text-sm text-muted-foreground">
-            No agent has this work's context: name one in the node's `jhin.health` config, under
-            `analysts`.
+            No agent has this work's context: in the node's `jhin.health` config, map this project's
+            id (or `*` for every project) to an agent's address under `analysts`.
           </p>
         ) : (
           <>

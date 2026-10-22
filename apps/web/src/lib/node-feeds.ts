@@ -83,10 +83,11 @@ export function createNodeFeeds<S>(
       if (stopped) return;
       const code = String((error as { code?: unknown } | null)?.code);
       const message = error instanceof Error ? error.message : String(error);
-      set(id, () =>
+      // A feed that failed after it was read keeps what it showed, marked not live.
+      set(id, (feed) =>
         NOT_THERE.has(code)
           ? { status: "unsupported", value: source.empty }
-          : { status: "error", value: source.empty, error: message },
+          : { status: "error", value: feed.value, error: message },
       );
     };
     void source
