@@ -775,7 +775,9 @@ with screenshots).
 - **D1122. A thread's new worktree runs the setup script**, as T3's
   `ThreadLaunchService` with `ProjectSetupScriptRunner` does: `threads.create`
   with a `worktree` workspace passes its `threadId` to `git.worktree.create`
-  (additive), which then tracks the thread's setup. Once the worktree is made
+  (additive), which then tracks the thread's setup; an id of a thread that
+  exists already, or whose setup still runs, is refused (`WORKTREE_INVALID`),
+  so no caller takes another thread's setup or terminal over. Once the worktree is made
   the script is typed into a terminal of the thread (`terminal.sessions@1`,
   terminal id `setup-<script id>`, in the worktree), wrapped as T3
   wraps it (posix, fish or PowerShell, after `$SHELL`) so a sentinel with a

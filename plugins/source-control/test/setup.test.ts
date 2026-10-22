@@ -383,6 +383,16 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     ).toBeNull();
   });
 
+  it("sets up only a thread that is still to be made", async () => {
+    const sc = await node({ watch: false }, { terminals: true });
+    const projectId = await projectWithScript(sc, { command: "true" });
+    const existing = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    await expect(
+      sc.client.call("git.worktree.create", { projectId, baseRef: "main", threadId: existing.id }),
+    ).rejects.toMatchObject({ code: "WORKTREE_INVALID" });
+    expect(sc.terminals!.opened).toEqual([]);
+  });
+
   it("lets only a caller that may run a shell save a script (D1121)", async () => {
     const sc = await node({ watch: false });
     const projectId = await sc.project(repository());

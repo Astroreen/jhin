@@ -1413,6 +1413,21 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     options: Parameters<SourceControl["createWorktree"]>[1],
   ) {
     const { threadId } = options;
+    // Only a thread that is still to be made gets a setup: an existing one (or one
+    // being set up) is never taken over through this id.
+    if (threadId !== undefined) {
+      const existing = await context.commands.execute("threads.get", { threadId }).then(
+        () => true,
+        () => false,
+      );
+      if (existing || setups.get(threadId)?.phase === "running") {
+        throw new SourceControlError(
+          "WORKTREE_INVALID",
+          `Thread ${threadId} exists already: only a new thread's worktree is set up`,
+          { threadId },
+        );
+      }
+    }
     // A new thread's worktree: its setup is tracked from here (D1122, T3's launch).
     if (threadId !== undefined) {
       setups.begin({
