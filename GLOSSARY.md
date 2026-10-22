@@ -306,7 +306,9 @@ Words about Jhin:
 - **Waiting** — a thread whose turn is over but that waits on background
   work, such as a watched pull request (T3 Code's pending background tasks):
   the sidebar says "Waiting" and keeps it with the threads at work. Plugins
-  report that work as **thread work** (`client.thread-work@1`).
+  report that work as **thread work** (`client.thread-work@1`). Not a turn
+  that waits for the user (its `waiting` status), which the sidebar names
+  Approval or Input.
 - **Worktree cleanup** — the node removing the worktrees its rules allow
   (a deleted thread's, an inactive, settled, merged or unchanged one) in a
   sweep every hour, keeping their branches and threads (T3 Code's storage
