@@ -991,7 +991,7 @@ Each workstream lists its PRs here as they merge.
   `missions` stream (D653–D656); with A1's `thread.transcript` seam (D614).
 - A4 #91: `jhin.context` (D661–D670), and the lore brief on a generation's
   start in `jhin.agents` (D671).
-- A5 #PR: the teams contract in `@jhin/agent-api` (`teams.ts`: the team
+- A5 #185: the teams contract in `@jhin/agent-api` (`teams.ts`: the team
   spec and its config layer, the roster, aliases, `teams.bundles@1`, the
   `teams` stream and the schemas of `teams.*`). D681–D690 recorded; the
   server side and the Civilization-mode views follow.
