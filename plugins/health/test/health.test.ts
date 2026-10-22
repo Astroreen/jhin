@@ -45,6 +45,10 @@ const REVIEWER = "jhin://node-a/agents/reviewer";
 const OWNER = "jhin://node-a/owner";
 const SILENT = "jhin://node-a/agents/silent";
 const BROKEN = "jhin://node-a/agents/broken";
+const ONCE = "jhin://node-a/agents/once";
+/** Who waits for the next ask health makes: a fact, not a wait. */
+const askWaiters: ((ask: Asked) => void)[] = [];
+const nextAsk = () => new Promise<Asked>((resolve) => askWaiters.push(resolve));
 
 /** The next event of `type` appended to `stream`: wait for facts, never for time. */
 function nextAppended(log: EventLog, stream: string, type: string): Promise<StoredEvent> {
@@ -98,8 +102,13 @@ async function start(
               output: z.object({ status: z.string(), answer: z.string() }),
               handler: (input) => {
                 asked.push(input);
-                // An analyst that never answers, and one whose ask fails.
+                for (const waiter of askWaiters.splice(0)) waiter(input);
+                // An analyst that never answers, one whose ask fails, and one
+                // that answers only from its second ask on.
                 if (input.to === SILENT) return new Promise<never>(() => {});
+                if (input.to === ONCE && asked.filter((ask) => ask.to === ONCE).length === 1) {
+                  return new Promise<never>(() => {});
+                }
                 if (input.to === BROKEN) throw new Error("the analyst is gone");
                 return { status: "answered", answer: `${input.to} says: stop re-proving` };
               },
@@ -470,5 +479,45 @@ describe("jhin.health", () => {
     );
     await deliver(OWNER, BUILDER, "three", "t1");
     expect(((await again) as { warning: Warning }).warning.measures).toMatchObject({ ceremony: 2 });
+  });
+
+  it("asks again after a restart cut an ask short before it reached the analyst", async () => {
+    const { kernel, log, deliver, asked, restart } = await node({
+      ceremony: { ratio: 1, minCeremony: 1 },
+      analysts: { "*": ONCE },
+    });
+    const first = nextAsk();
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(OWNER, BUILDER, "status?", "t1");
+    await raised;
+    await first;
+    const analysed = nextAppended(log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await restart();
+    expect(((await analysed).payload as { analysis: Analysis }).analysis).toMatchObject({
+      status: "answered",
+      analyst: ONCE,
+    });
+    expect(asked.filter((ask) => ask.to === ONCE)).toHaveLength(2);
+  });
+
+  it("does not ask twice when the cut-short ask had reached the analyst", async () => {
+    const { kernel, log, deliver, asked, restart } = await node({
+      ceremony: { ratio: 1, minCeremony: 1 },
+      analysts: { "*": ONCE },
+    });
+    const first = nextAsk();
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(OWNER, BUILDER, "status?", "t1");
+    const { warning } = (await raised) as { warning: Warning };
+    const ask = await first;
+    // The ask was delivered (jhin.agents records it, D627) before the restart.
+    await deliver(OWNER, ONCE, ask.question, "t-once", ask.messageId, "ask");
+    const analysed = nextAppended(log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await restart();
+    expect((await analysed).payload as { warningId: string; analysis: Analysis }).toMatchObject({
+      warningId: warning.warningId,
+      analysis: { status: "failed", analyst: ONCE, error: expect.stringMatching(/cut short/) },
+    });
+    expect(asked.filter((item) => item.to === ONCE)).toHaveLength(1);
   });
 });

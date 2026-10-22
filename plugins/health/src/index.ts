@@ -141,12 +141,12 @@ export default definePlugin({
      * What they hold is replayed merged in time order, so every event is
      * attributed with the missions as they were then, on a restart as live
      * (D722). Events that arrive while they are read wait, so none is handled
-     * twice or skipped. A stream that cannot be read is logged and followed
-     * again on the next try.
+     * twice or skipped. A stream that cannot be read is logged and left
+     * unfollowed, so the next try reads it again; returns the error, if any.
      */
-    const follow = async (sources: readonly Source[]) => {
+    const follow = async (sources: readonly Source[]): Promise<unknown> => {
       const fresh = sources.filter((source) => !heads.has(source.stream));
-      if (fresh.length === 0) return;
+      if (fresh.length === 0) return undefined;
       for (const source of fresh) heads.set(source.stream, 0);
       let waiting: { source: Source; event: StoredEvent }[] | undefined = [];
       const subscriptions = fresh.map((source) =>
@@ -173,6 +173,7 @@ export default definePlugin({
         const held = waiting;
         waiting = undefined;
         for (const { source, event } of held) deliver(source, event);
+        return undefined;
       } catch (error) {
         waiting = undefined;
         for (const subscription of subscriptions) subscription.dispose();
@@ -181,6 +182,7 @@ export default definePlugin({
           streams: fresh.map((source) => source.stream),
           error: String(error),
         });
+        return error;
       }
     };
     /** A thread a slice links is followed for its approvals and queue (D722). */
@@ -191,6 +193,21 @@ export default definePlugin({
       }));
       void follow(sources);
     };
+
+    /**
+     * Resolves once the node has started, so the agents plugin can take an
+     * ask made while plugins still activate; at once after a plugin reload.
+     */
+    const nodeStarted = new Promise<void>((resolve) => {
+      if (context.state.get<boolean>("kernelStarted") === true) return resolve();
+      const started = context.subscriptions.add(
+        context.events.on("kernel.started", () => {
+          started.dispose();
+          context.state.set("kernelStarted", true);
+          resolve();
+        }),
+      );
+    });
 
     // --- Warnings --------------------------------------------------------------------
     /**
@@ -264,6 +281,7 @@ export default definePlugin({
      * activation asks again for every open warning without an analysis.
      */
     const analyse = async (warning: Warning) => {
+      await nodeStarted;
       const at = now;
       const analyst = analystOf(warning);
       let analysis: Analysis;
@@ -340,7 +358,10 @@ export default definePlugin({
     });
 
     /** Whether a delivered message is health's own ask to an analyst (D725). */
-    const ownAsk = (event: StoredEvent) => {
+    /** The warnings health already asked about, from the delivered asks (D725). */
+    const askedBefore = new Set<string>();
+    /** The warning a delivered message is health's own ask about, if it is one. */
+    const ownAsk = (event: StoredEvent): string | undefined => {
       const payload = event.payload as {
         message?: { messageId?: string; kind?: string; from?: string };
         delivery?: { nodeId?: string };
@@ -348,20 +369,23 @@ export default definePlugin({
       const message = payload?.message;
       const warningId =
         message?.messageId === undefined ? undefined : OWN_ASK.exec(message.messageId)?.[1];
-      if (warningId === undefined || health.warnings[warningId] === undefined) return false;
+      if (warningId === undefined || health.warnings[warningId] === undefined) return undefined;
       // Health asks as this node's owner (D725), whom an agent cannot send as
       // (D622): an agent that copies the id is still counted.
       const from = message?.from === undefined ? undefined : parseMessageAddress(message.from);
-      return (
+      const own =
         message?.kind === "ask" &&
         from?.kind === "owner" &&
         payload?.delivery?.nodeId !== undefined &&
-        from.nodeId === payload.delivery.nodeId
-      );
+        from.nodeId === payload.delivery.nodeId;
+      return own ? warningId : undefined;
     };
     // Every stream at once, in time order: health first among equals, so an
     // idea corrected or a warning raised is known before the events after it.
-    await follow([
+    // Without them health would count nothing, silently: activation fails
+    // instead, and the host reports it. Thread streams are tried again on the
+    // next change of a slice's threads.
+    const unread = await follow([
       { stream: HEALTH_STREAM, handle: (event) => applyHealth([event]) },
       {
         stream: MISSIONS_STREAM,
@@ -372,19 +396,42 @@ export default definePlugin({
       {
         stream: MESSAGES_STREAM,
         handle: (event) => {
-          if (event.type === MessageEvents.delivered && !ownAsk(event)) {
-            sensors.ingestMessage(event);
-          }
+          if (event.type !== MessageEvents.delivered) return;
+          const asked = ownAsk(event);
+          if (asked === undefined) sensors.ingestMessage(event);
+          else askedBefore.add(asked);
         },
       },
       { stream: SOURCE_CONTROL_STREAM, handle: (event) => sensors.ingestSourceControl(event) },
     ]);
+    if (unread !== undefined) throw unread;
     followThreads();
     evaluateSoon();
-    // Asks a deactivation cut short, or never made, are made now.
-    for (const warning of warningsOf(health)) {
-      if (warning.status === "open" && warning.analysis === undefined) void analyse(warning);
-    }
+    // An open warning without an analysis: never asked (asked now), or asked
+    // and cut short by a deactivation. That ask reached the analyst and its
+    // answer is in the analyst's thread; asking again would ask it twice.
+    const askAgain = () => {
+      for (const warning of warningsOf(health)) {
+        if (warning.status !== "open" || warning.analysis !== undefined) continue;
+        if (!askedBefore.has(warning.warningId)) {
+          void analyse(warning);
+          continue;
+        }
+        const analyst = analystOf(warning);
+        void append(HealthEvents.warningAnalysed, {
+          warningId: warning.warningId,
+          analysis: {
+            status: "failed",
+            ...(analyst === undefined ? {} : { analyst: analyst.address, reason: analyst.reason }),
+            error: "The ask was cut short by a restart; its answer is in the analyst's thread.",
+            at: now(),
+          } satisfies Analysis,
+        }).catch((error: unknown) =>
+          context.log.warn("a warning's analysis could not be recorded", { error: String(error) }),
+        );
+      }
+    };
+    askAgain();
 
     // --- Progress no stream holds: the commits of a turn (D723) ---------------------
     /** Where each running turn of a linked thread started, kept across a reload. */

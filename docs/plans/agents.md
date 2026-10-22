@@ -968,8 +968,14 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   (`health.warning.analysed`: `answered`, `failed` with the error or after
   `analysisTimeoutMinutes`, or `none` when no agent has the context). An ask
   past its timeout is not cancelled (commands have no abort); its late answer
-  is dropped. An ask cut short by a deactivation records nothing; on activation every open
-  warning without an analysis is asked again. Agents hold `health.read` over MCP
+  is dropped. An ask cut short by a deactivation records nothing. On activation an open
+  warning without an analysis is asked again, unless its ask had already
+  been delivered (`agents/messages`): then its analysis is recorded `failed`,
+  pointing to the analyst's thread, so no analyst is asked twice. Asks wait
+  for `kernel.started`, so the agents plugin can take them. The core streams
+  (`health`, `missions`, `agents/messages`, `source-control`) must be read on
+  activation, or it fails; a slice's thread that cannot be read is tried again
+  on the next change of the slices' threads. Agents hold `health.read` over MCP
   (`AGENT_PERMISSIONS`), so the analyst can open the drill-down itself.
 - **D726. Who has the context.** In order: the address configured for the
   project in `jhin.health.analysts` (or for `*`); the team's lead once A5
