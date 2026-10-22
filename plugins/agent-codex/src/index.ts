@@ -267,7 +267,8 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
     if (!status.available) {
       return { status: { ...status, ...(version === undefined ? {} : { version }) } };
     }
-    // Read beside the models, as T3's probe does (`Effect.all`): a slow read holds up neither.
+    // Read beside the models, as T3's probe does (`Effect.all`): the probe takes the longer of
+    // the two, and a read that hangs is given up after RATE_LIMITS_TIMEOUT_MS.
     const usageRead = readUsageLimits(running, account);
     const listed: ListedModel[] = [];
     let cursor: string | undefined;

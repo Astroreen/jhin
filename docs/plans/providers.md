@@ -768,7 +768,7 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   (T3's `mergeCodexRateLimits`: a part names only what changed, a model's own
   allowance such as Spark is ignored); a new probe starts over from its read,
   keeping an update newer than it; the updates are forgotten once the config names another Codex (binary, home, arguments or environment). The read runs beside the model listing,
-  as T3's probe runs them, so a slow one holds up neither. `agents.usage-limits`
+  as T3's probe runs them: the probe takes the longer of the two, and a read that hangs is given up after 5 s. `agents.usage-limits`
   reads them again when what it knows (the last read or update, the newer)
   is older than a minute, the read failed, or a window it would show has
   reset since (T3 answers from its provider snapshot, refreshed on its own

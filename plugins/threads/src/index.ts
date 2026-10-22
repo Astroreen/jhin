@@ -2470,7 +2470,10 @@ export default definePlugin({
         const found = await runtime.commands({ cwd: project.path });
         const commands = [
           ...usage,
-          ...found.commands.filter((command) => command.name !== USAGE_LIMITS_COMMAND.name),
+          // Only an agent with limits has its own `/usage-limits` replaced by the client's.
+          ...found.commands.filter(
+            (command) => usage.length === 0 || command.name !== USAGE_LIMITS_COMMAND.name,
+          ),
         ];
         return structuredClone({ commands, skills: [...found.skills] }) as {
           commands: AgentSlashCommand[];
