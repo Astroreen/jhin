@@ -101,9 +101,10 @@ describe("a thread's status in the sidebar (D70)", () => {
       ),
     ).toBe("input");
     // As T3 orders them: the watch's Waiting before a failed turn's Failed.
-    expect(
-      sidebarThreadStatus(thread("t", ago(1), { lastTurn: turn("failed", ago(1)) }), true),
-    ).toBe("waiting");
+    const failed = thread("t", ago(1), { lastTurn: turn("failed", ago(1)) });
+    expect(sidebarThreadStatus(failed, true)).toBe("waiting");
+    // The watch over, the failure shows again.
+    expect(sidebarThreadStatus(failed, false)).toBe("failed");
     expect(sidebarTopStatus("waiting", true)).toBe("waiting");
     // It fades back like a working one, and leaves the inbox for the Working section.
     expect(shouldRecede({ status: "waiting", unread: true, active: false })).toBe(true);
