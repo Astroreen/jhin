@@ -439,6 +439,13 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
 
   it("registers clients statelessly within T3's bounds", async () => {
     const { base } = await startNode();
+    const huge = await fetch(`${base}/oauth/mcp/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ client_name: "x".repeat(20_000), redirect_uris: [REDIRECT] }),
+    });
+    expect(huge.status).toBe(413);
+    expect(await huge.json()).toMatchObject({ error: "invalid_request" });
     const many = await register(base, {
       redirect_uris: Array.from({ length: 6 }, (_, index) => `http://localhost:${index + 1}/cb`),
     });

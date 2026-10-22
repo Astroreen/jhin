@@ -53,19 +53,35 @@ const CORS = {
   "access-control-allow-headers": "content-type, mcp-protocol-version",
 };
 
+class BodyTooLarge extends Error {}
+
+/** A 413 for a body past `MAX_BODY`; the connection closes once it is sent. */
+function tooLarge(request: IncomingMessage, response: ServerResponse): void {
+  response.on("finish", () => request.destroy());
+  json(
+    response,
+    413,
+    { error: "invalid_request", error_description: "The request body is too large." },
+    { connection: "close" },
+  );
+}
+
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
-    request.on("data", (chunk: Buffer) => {
+    const onData = (chunk: Buffer) => {
       size += chunk.length;
       if (size > MAX_BODY) {
-        reject(new Error("too large"));
-        request.destroy();
+        // Stop reading, answer, and close after the answer: the client hears why.
+        request.off("data", onData);
+        request.pause();
+        reject(new BodyTooLarge());
         return;
       }
       chunks.push(chunk);
-    });
+    };
+    request.on("data", onData);
     request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     request.on("error", reject);
   });
@@ -201,7 +217,8 @@ export default definePlugin({
       let body: unknown;
       try {
         body = JSON.parse(await readBody(request));
-      } catch {
+      } catch (error) {
+        if (error instanceof BodyTooLarge) return tooLarge(request, response);
         json(response, 400, {
           error: "invalid_client_metadata",
           error_description: "Expected JSON client metadata.",
@@ -290,7 +307,8 @@ export default definePlugin({
       let params: Record<string, string>;
       try {
         params = await readParams(request);
-      } catch {
+      } catch (error) {
+        if (error instanceof BodyTooLarge) return tooLarge(request, response);
         response.writeHead(400, pageHeaders()).end(renderErrorPage("The request was malformed."));
         return;
       }
@@ -341,7 +359,8 @@ export default definePlugin({
       let params: Record<string, string>;
       try {
         params = await readParams(request);
-      } catch {
+      } catch (error) {
+        if (error instanceof BodyTooLarge) return tooLarge(request, response);
         json(response, 400, { error: "invalid_request", error_description: "Malformed body." });
         return;
       }
