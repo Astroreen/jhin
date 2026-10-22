@@ -250,6 +250,84 @@ describe("messages between agents (A2)", () => {
     ).rejects.toMatchObject({ code: "ASK_NOT_FOUND" });
   });
 
+  it("keeps the owner's conversation with an agent, answers included (C1, D1061)", async () => {
+    const { client, kernel } = await node({
+      agents: { builder, lead },
+      capture: { answer: (request) => `answer to: ${request.input.text.split("\n\n")[1]}` },
+    });
+    const asked = await client.call<Asked>("agents.ask", {
+      to: address("lead"),
+      question: "Where are we?",
+    });
+    const sent = await client.call<Sent>("agents.send", { to: address("lead"), body: "Go on." });
+    const { generation } = await client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      { agentId: "lead" },
+    );
+    const asAgent = (agentThread: string) => ({
+      caller: { id: "jhin.agent-claude:x", permissions: ["agents.message", "agents.read"] },
+      threadId: agentThread,
+    });
+    const escalated = (await kernel.commands.execute(
+      "agents.ask",
+      { to: owner, question: "May I drop slice 4?" },
+      asAgent(generation.threadId),
+    )) as Asked;
+    // Someone else's message to the owner is not part of it.
+    await client.call("agents.send", { to: owner, from: address("builder"), body: "Hi." });
+
+    interface Conversation {
+      head: number;
+      owner: string;
+      with: string;
+      entries: { message: AgentMessage; answer?: string; answeredBy?: string; inbox?: string }[];
+    }
+    const read = () => client.call<Conversation>("agents.conversation", { with: address("lead") });
+    const before = await read();
+    expect(before).toMatchObject({ owner, with: address("lead") });
+    expect(before.entries.map((entry) => entry.message.messageId)).toEqual([
+      asked.message.messageId,
+      sent.message.messageId,
+      escalated.message.messageId,
+    ]);
+    expect(before.entries[0]).toMatchObject({
+      answer: "answer to: Where are we?",
+      answeredBy: address("lead"),
+    });
+    expect(before.entries[2]).toMatchObject({ inbox: "open" });
+    expect(before.entries[2]!.answer).toBeUndefined();
+
+    const reply = await client.call<{ message: AgentMessage }>("agents.inbox.answer", {
+      messageId: escalated.message.messageId,
+      answer: "Yes.",
+    });
+    const after = await read();
+    expect(after.head).toBeGreaterThan(before.head);
+    expect(after.entries[2]).toMatchObject({
+      inbox: "answered",
+      answer: "Yes.",
+      answeredBy: owner,
+    });
+    expect(after.entries.at(-1)?.message).toMatchObject({
+      messageId: reply.message.messageId,
+      kind: "answer",
+      inReplyTo: escalated.message.messageId,
+    });
+    // It shows the owner's inbox: a caller without agents.inbox, as an agent is, may not read it.
+    await expect(
+      kernel.commands.execute(
+        "agents.conversation",
+        { with: address("lead") },
+        { caller: { id: "jhin.agent-claude:x", permissions: ["agents.message", "agents.read"] } },
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    const last = await client.call<Conversation>("agents.conversation", {
+      with: address("lead"),
+      limit: 1,
+    });
+    expect(last.entries.map((entry) => entry.message.messageId)).toEqual([reply.message.messageId]);
+  });
+
   it("lets a caller send only as who it is (D622) and refuses what cannot take messages", async () => {
     const { client, kernel } = await node({ agents: { builder, lead } });
     const { generation } = await client.call<{ generation: { threadId: string } }>(

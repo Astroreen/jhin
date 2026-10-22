@@ -20,6 +20,7 @@ import {
   threadStream,
   type AgentGeneration,
   type AgentMessage,
+  type ConversationEntry,
   type InboxItem,
   type MessageDelivery,
   type MessageOrigin,
@@ -331,7 +332,7 @@ export function registerMessaging(
       );
     });
 
-  const answered = (message: AgentMessage, answeredBy: string) =>
+  const answered = (message: AgentMessage, answeredBy: string, answer: string) =>
     log.append(MESSAGES_STREAM, [
       {
         type: MessageEvents.answered,
@@ -340,6 +341,8 @@ export function registerMessaging(
           traceId: message.traceId,
           answeredBy,
           answeredAt: now(),
+          // The conversation shows the answer after a reload (C1, D1061).
+          answer,
         },
       },
     ]);
@@ -431,7 +434,7 @@ export function registerMessaging(
           threadId: delivery.threadId,
         });
       }
-      await answered(message, to);
+      await answered(message, to, answer);
       return { message, status: "answered" as const, answer, answeredBy: to, delivery };
     },
   });
@@ -475,6 +478,61 @@ export function registerMessaging(
     },
   });
 
+  context.commands.register({
+    name: "agents.conversation",
+    description:
+      "The messages between this node's owner and an agent (or an alias such as lead@team), oldest first: the owner's messages and asks with their answers, and what the agent sent or asked the owner with the state of its inbox item",
+    ...MessageCommands["agents.conversation"],
+    permissions: [INBOX_PERMISSION, "agents.read"],
+    handler: async ({ with: given, limit }) => {
+      const other = await addressOf(given);
+      partyOf(other, "to");
+      const owner = ownerAddress(nodeId);
+      const head = await log.head(MESSAGES_STREAM);
+      const { items } = await inbox();
+      const entries: ConversationEntry[] = [];
+      const asks = new Map<string, number>();
+      // Every message is recorded where it is delivered (D627): the owner's
+      // on the agent's node, the agent's to the owner here.
+      for (const event of await log.read(MESSAGES_STREAM)) {
+        if (event.sequence > head) break;
+        if (event.type === MessageEvents.delivered) {
+          const { message } = event.payload as unknown as Delivered;
+          const between =
+            (message.from === owner && message.to === other) ||
+            (message.from === other && message.to === owner);
+          if (!between) continue;
+          const item = message.to === owner ? items.get(message.messageId) : undefined;
+          if (message.kind === "ask") asks.set(message.messageId, entries.length);
+          entries.push({
+            message,
+            ...(item === undefined ? {} : { inbox: item.status }),
+            ...(item?.answer === undefined
+              ? {}
+              : { answer: item.answer, answeredBy: owner, answeredAt: item.answeredAt }),
+          });
+        } else if (event.type === MessageEvents.answered) {
+          const payload = event.payload as {
+            messageId: string;
+            answeredBy: string;
+            answeredAt: string;
+            answer?: string;
+          };
+          const at = asks.get(payload.messageId);
+          if (at === undefined) continue;
+          // An event recorded before D1061 has no text: the ask is answered all the same.
+          entries[at] = {
+            ...entries[at]!,
+            ...(payload.answer === undefined ? {} : { answer: payload.answer }),
+            answeredBy: payload.answeredBy,
+            answeredAt: payload.answeredAt,
+          };
+        }
+      }
+      return { head, owner, with: other, entries: entries.slice(-(limit ?? 200)) };
+    },
+  });
+
   /** Answers one item at a time, so an item is answered once. */
   let answering: Promise<unknown> = Promise.resolve();
   context.commands.register({
@@ -514,7 +572,7 @@ export function registerMessaging(
             } as unknown as Json,
           },
         ]);
-        if (item.message.kind === "ask") await answered(item.message, item.message.to);
+        if (item.message.kind === "ask") await answered(item.message, item.message.to, answer);
         return {
           item: { ...item, status: "answered" as const, answer, answeredAt },
           message: sent.message,

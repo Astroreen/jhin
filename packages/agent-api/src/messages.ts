@@ -107,7 +107,10 @@ export const INBOX_STREAM = "agents/inbox";
 export const MessageEvents = {
   /** `agents/messages`: `{ message: AgentMessage, delivery?: MessageDelivery }`; no delivery for the owner. */
   delivered: "agents.message.delivered",
-  /** `agents/messages`: `{ messageId, traceId, answeredBy, answeredAt }` once an ask is answered. */
+  /**
+   * `agents/messages`: `{ messageId, traceId, answeredBy, answeredAt, answer? }` once an ask
+   * is answered; `answer` is its text (C1, D1061), absent in events recorded before it.
+   */
   answered: "agents.message.answered",
   /** `agents/inbox`: `InboxItem`, a message or an ask to the owner. */
   received: "agents.inbox.received",
@@ -126,6 +129,22 @@ export const InboxItem = z.object({
   answeredAt: z.string().optional(),
 });
 export type InboxItem = z.output<typeof InboxItem>;
+
+/**
+ * One message between the owner and another party, as `agents.conversation`
+ * returns it (C1, D1061): an ask carries its answer once it has one; a message
+ * to the owner carries the state of its inbox item.
+ */
+export const ConversationEntry = z.object({
+  message: AgentMessage,
+  /** An ask's answer: the answering turn's last message (D624) or the owner's (D626). */
+  answer: z.string().optional(),
+  answeredBy: z.string().optional(),
+  answeredAt: z.string().optional(),
+  /** For a message to the owner: whether its inbox item is still open (D626). */
+  inbox: z.enum(["open", "answered"]).optional(),
+});
+export type ConversationEntry = z.output<typeof ConversationEntry>;
 
 /** Error codes of `agents.send`, `agents.ask` and `agents.inbox.*`, beside `AgentErrorCode`. */
 export type MessageErrorCode =
@@ -212,6 +231,29 @@ export const MessageCommands = {
     }),
     /** Oldest first, and the head of the `agents/inbox` stream they reflect. */
     output: z.object({ head: z.number(), items: z.array(InboxItem) }),
+  },
+  "agents.conversation": {
+    input: z.object({
+      with: Address,
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(1000)
+        .optional()
+        .meta({ description: "The newest entries to return; 200 by default" }),
+    }),
+    /**
+     * The messages between this node's owner and `with`, oldest first, and the
+     * head of the `agents/messages` stream they reflect.
+     */
+    output: z.object({
+      head: z.number(),
+      owner: z.string(),
+      /** `with` as a full address, an alias resolved. */
+      with: z.string(),
+      entries: z.array(ConversationEntry),
+    }),
   },
   "agents.inbox.answer": {
     input: z.object({

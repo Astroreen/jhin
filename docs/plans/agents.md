@@ -1223,6 +1223,24 @@ landed.
   defining, editing …" and "A5: the conversation with the lead in
   `civilization.lead`".
 
+Decisions (C1):
+
+- **D1061. `agents.conversation` reads the owner's conversation with an
+  agent.** `agents.conversation {with, limit?}` (an address or an alias such
+  as `lead@workshop`) returns the messages between this node's owner and
+  `with`, oldest first, the newest `limit` (200 by default), and the head of
+  `agents/messages` they reflect, so a client lists it again on the stream's
+  next event. It is folded from what the node already records (D627): the
+  owner's messages and asks as delivered on the agent's node, the agent's
+  messages and asks to the owner as delivered here, each of those with its
+  inbox item's state (`inbox: open | answered`, D626). An ask carries its
+  answer: `agents.message.answered` now records the answer's text (`answer`,
+  additive; older events have none), the answering turn's (D624) or the
+  owner's (D626). It needs `agents.inbox` and `agents.read`: it shows the
+  owner's inbox, so agents never read it (D628). Only this node's records
+  count: with the agent on another node, the owner's messages to it are
+  recorded there and missing here ([Deferred](#deferred)).
+
 ### C2. Missions from the client (D1081–D1100)
 
 - **Editing the intent chain**: the project intent, missions (outcome,
@@ -1281,6 +1299,11 @@ landed.
 - A1: starting a generation (`agents.rotate`), defining, editing or
   removing an agent from Civilization mode's views. Defining and editing go
   through the settings page (D604); the commands do the rest.
+- C1: `agents.conversation` folds the node's whole `agents/messages` stream
+  on each call (D1061); an index of messages by party once it grows.
+- C1: the owner's conversation with an agent on another node: the owner's
+  messages are recorded on the agent's node (D627), so `agents.conversation`
+  here misses them (D1061). Reading both nodes, through `mesh.call`, joins it.
 - A1: agents of a mesh member reached through another node (`remote` in
   the route): the roster follows the client's open connections only (D617),
   as D747 does.
@@ -1496,3 +1519,6 @@ Each workstream lists its PRs here as they merge.
   in W10's workflow scripts, and `context.compacted` from Claude Code, Codex
   and the fake agent (`agent.runtime@1.6`, `agent.registry` 1.3)
   (D701–D712).
+- C1 #192: `agents.conversation`, the owner's conversation with an agent
+  folded from `agents/messages` and the inbox, and the answer's text on
+  `agents.message.answered` (D1061).
