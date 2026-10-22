@@ -71,18 +71,11 @@ export const isTemporaryBranch = (branch: string) =>
   new RegExp(`^${BRANCH_PREFIX}[-/][0-9a-f]{8}$`).test(branch.trim().toLowerCase());
 
 /**
- * The text of a thread's first message when `turnId` is the thread's own first
- * turn that a rollback did not drop: a fork's first turn follows its parent's,
- * and a message of attachments alone names nothing.
+ * A thread's first message, its text and what was sent with it (D1127), when
+ * `turnId` is the thread's own first turn that a rollback did not drop: a
+ * fork's first turn follows its parent's, and a message of attachments alone
+ * names nothing.
  */
-export function firstMessageOf(
-  events: readonly { readonly type: string; readonly payload: unknown }[],
-  turnId: string,
-): string | undefined {
-  return firstMessageInputOf(events, turnId)?.text;
-}
-
-/** The first message's text and what was sent with it (D1127), as `firstMessageOf` finds it. */
 export function firstMessageInputOf(
   events: readonly { readonly type: string; readonly payload: unknown }[],
   turnId: string,

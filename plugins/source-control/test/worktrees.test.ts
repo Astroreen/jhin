@@ -19,7 +19,6 @@ import { createGit } from "../src/git.ts";
 import {
   availableBranchName,
   firstMessageInputOf,
-  firstMessageOf,
   isTemporaryBranch,
   parseWorktreeList,
   renameTemporaryBranch,
@@ -641,19 +640,19 @@ describe("naming a temporary branch (D901)", () => {
       payload: { turnId, input: { text } },
     });
     const events = [started("t1", " Fix login "), started("t2", "More")];
-    expect(firstMessageOf(events, "t1")).toBe("Fix login");
+    expect(firstMessageInputOf(events, "t1")?.text).toBe("Fix login");
     // A later turn, and a fork whose first event is its parent's turn.
-    expect(firstMessageOf(events, "t2")).toBeUndefined();
+    expect(firstMessageInputOf(events, "t2")?.text).toBeUndefined();
     // Attachments alone name nothing.
-    expect(firstMessageOf([started("t1", "  ")], "t1")).toBeUndefined();
-    expect(firstMessageOf([], "t1")).toBeUndefined();
+    expect(firstMessageInputOf([started("t1", "  ")], "t1")?.text).toBeUndefined();
+    expect(firstMessageInputOf([], "t1")?.text).toBeUndefined();
     // A rolled back first turn: the next one is the first that counts.
     const rolledBack = [
       started("t1", "Dropped"),
       { type: "threads.thread.rolled-back", payload: { turnIds: ["t1"] } },
       started("t2", "Fix login"),
     ];
-    expect(firstMessageOf(rolledBack, "t2")).toBe("Fix login");
+    expect(firstMessageInputOf(rolledBack, "t2")?.text).toBe("Fix login");
   });
 
   it("steps around branches that are in a name's way, part by part", () => {
