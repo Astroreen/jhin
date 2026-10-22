@@ -1560,3 +1560,7 @@ Each workstream lists its PRs here as they merge.
 - C1 #192: `agents.conversation`, the owner's conversation with an agent
   folded from `agents/messages` and the inbox, and the answer's text on
   `agents.message.answered` (D1061).
+- C2 #194: planning from the mission view (`jhin.missions-view`): New
+  mission, Edit intent, Edit mission, Add slice and Edit slice through the
+  `missions.*` and `slices.*` commands, assignees by their agent's title
+  (D1081–D1085).
