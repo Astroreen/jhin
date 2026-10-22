@@ -1,5 +1,12 @@
 import type { NodeTarget, Route } from "@jhin/client-api";
-import type { MissionStatus, SliceStatus, SliceThread, Step } from "@jhin/missions-api";
+import type {
+  Mission,
+  MissionStatus,
+  Slice,
+  SliceStatus,
+  SliceThread,
+  Step,
+} from "@jhin/missions-api";
 
 /** The route panels the mission view owns in `civilization.views` (D653). */
 const MISSION_PANEL = "mission";
@@ -131,4 +138,116 @@ export function statusVariant(
 /** Open missions first (active, then planned), closed ones after; oldest first within. */
 export function missionRank(status: MissionStatus): number {
   return { active: 0, planned: 1, done: 2, dropped: 3 }[status];
+}
+
+/** Beside a mission (D1087): the orchestrator's panel, and whatever else a plugin puts there. */
+export const MISSION_ASIDE_SLOT = "civilization.mission.aside";
+
+/** What a contribution beside a mission is given: the mission as the view folds it. */
+export interface MissionAsideProps {
+  /** The view's node, and the connection it is reached through. */
+  readonly target: NodeTarget;
+  readonly mission: Mission;
+  readonly slices: readonly Slice[];
+  /** The node's id, for `missionProgress` (D702); undefined until known. */
+  readonly nodeId: string | undefined;
+  /** Assignee titles by address (D1082). */
+  readonly titles: ReadonlyMap<string, string>;
+}
+
+/** A mission's orchestrator run as `missions.orchestration` and the `orchestration` stream carry it (D1086). */
+export interface OrchestratorRun {
+  readonly workflowId: string;
+  readonly parentThreadId: string;
+  readonly status: string;
+  readonly currentPhase?: string;
+  readonly logs: readonly string[];
+  readonly result?: unknown;
+  readonly error?: string;
+  readonly updatedAt: string;
+}
+
+/** The run's state as the owner reads it (D1088): a stopped run is paused, a finished one waits for the lead. */
+export function runLabel(run: OrchestratorRun | null | undefined): string {
+  if (run === null || run === undefined) return "Not running";
+  switch (run.status) {
+    case "running":
+      return "Running";
+    case "stopped":
+      return "Paused";
+    case "completed":
+      return "Waiting for the lead";
+    case "failed":
+      return "Failed";
+    default:
+      return run.status;
+  }
+}
+
+const REASONS: Readonly<Record<string, string>> = {
+  unassigned: "no assignee",
+  blocked: "blocked",
+  orphaned: "a dependency was dropped",
+  elsewhere: "assignee on another node",
+  "handoff-failed": "handoff failed",
+};
+
+interface RunResult {
+  readonly outcome?: string;
+  readonly wave?: number;
+  readonly steps?: readonly { id: string }[];
+  readonly projectSteps?: readonly { id: string }[];
+  readonly decisions?: readonly { sliceId: string; reason: string }[];
+  readonly note?: string;
+}
+
+const stepList = (steps: readonly { id: string }[] | undefined) =>
+  steps === undefined || steps.length === 0
+    ? "its steps"
+    : steps.map((step) => step.id).join(" → ");
+
+/**
+ * What a mission's run waits for (D1088), from the run and where the mission
+ * is (`missionProgress`, D702): the proofs of its working slices while it runs,
+ * the lead once it ended with an outcome (D707), the owner while paused.
+ */
+export function waitsFor(
+  run: OrchestratorRun | null | undefined,
+  progress: { readonly ready: readonly string[]; readonly working: readonly string[] },
+  titleOf: (sliceId: string) => string,
+): string {
+  const titles = (ids: readonly string[]) => ids.map(titleOf).join(", ");
+  if (run === null || run === undefined) return "Nothing runs this mission.";
+  switch (run.status) {
+    case "running":
+      if (progress.ready.length > 0) return `Handing off ${titles(progress.ready)}.`;
+      if (progress.working.length > 0) return `The proof of ${titles(progress.working)}.`;
+      return "The mission to move.";
+    case "stopped":
+      return "The owner: paused. Handed slices go on; resume to hand off the next ones.";
+    case "failed":
+      return `The owner: the run failed${run.error === undefined ? "." : `: ${run.error}`}`;
+    case "completed": {
+      const result = (run.result ?? {}) as RunResult;
+      switch (result.outcome) {
+        case "decide": {
+          const decisions = result.decisions ?? [];
+          if (decisions.length === 0) return `The lead's decision: ${result.note ?? "plan slices"}`;
+          return `The lead's decision on ${decisions
+            .map((item) => `${titleOf(item.sliceId)} (${REASONS[item.reason] ?? item.reason})`)
+            .join(", ")}.`;
+        }
+        case "wave-done":
+          return `The lead: run ${stepList(result.steps)} after wave ${result.wave ?? "?"}, then orchestrate again.`;
+        case "slices-done":
+          return `The lead: run ${stepList([...(result.steps ?? []), ...(result.projectSteps ?? [])])}, then set the mission done.`;
+        case "closed":
+          return "Nothing: the mission is closed.";
+        default:
+          return "The lead.";
+      }
+    }
+    default:
+      return "The lead.";
+  }
 }

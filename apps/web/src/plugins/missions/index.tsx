@@ -9,10 +9,16 @@ import {
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import { definePlugin } from "@jhin/sdk";
-import { UI_SLOTS_CAPABILITY, type SlotRegistry } from "@jhin/ui";
+import {
+  UI_DIALOGS_CAPABILITY,
+  UI_SLOTS_CAPABILITY,
+  type Dialogs,
+  type SlotRegistry,
+} from "@jhin/ui";
 
 import { builtin } from "../../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { MISSION_ASIDE_SLOT, type MissionAsideProps } from "./route.ts";
 import type { MissionsStore } from "./store.ts";
 import type { MissionsServices } from "./view.tsx";
 
@@ -38,7 +44,7 @@ export const missionsViewPlugin = builtin(
       [CONNECTIONS_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
     },
-    optional: { [MESH_CAPABILITY]: "^1" },
+    optional: { [MESH_CAPABILITY]: "^1", [UI_DIALOGS_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
@@ -84,6 +90,25 @@ export const missionsViewPlugin = builtin(
         slots.contribute("civilization.views", {
           id: "jhin.missions.view",
           component: Main,
+        }),
+      );
+      // The orchestrator beside a mission (C2: D1087), a chunk of its own.
+      const orchestrator = {
+        connections,
+        threads: shared.threads,
+        dialogs: context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY),
+      };
+      const Orchestrator = lazyChunk(
+        () =>
+          import("./orchestrator.tsx").then((module) => (props: MissionAsideProps) => (
+            <module.OrchestratorPanel {...props} services={orchestrator} />
+          )),
+        said("Couldn't load the orchestrator."),
+      );
+      context.subscriptions.add(
+        slots.contribute(MISSION_ASIDE_SLOT, {
+          id: "jhin.orchestrator.panel",
+          component: Orchestrator,
         }),
       );
     },

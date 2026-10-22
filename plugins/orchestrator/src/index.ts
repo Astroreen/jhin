@@ -1,6 +1,12 @@
 import * as Crypto from "node:crypto";
 
-import { MESSAGE_PERMISSION, ThreadEvents, parseAgentAddress, threadStream } from "@jhin/agent-api";
+import {
+  MESSAGE_PERMISSION,
+  ORCHESTRATION_STREAM,
+  ThreadEvents,
+  parseAgentAddress,
+  threadStream,
+} from "@jhin/agent-api";
 import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
 import {
   EMPTY_MISSIONS,
@@ -106,6 +112,21 @@ const ThreadView = z
     lastTurn: z.object({ agentId: z.string() }).loose().optional(),
   })
   .loose();
+
+/** What the client shows of a mission's run (D1086): W10's workflow, without its agents. */
+const OrchestratorRun = z.object({
+  workflowId: z.string(),
+  parentThreadId: z.string(),
+  status: z.string(),
+  currentPhase: z.string().optional(),
+  /** Its last five log lines. */
+  logs: z.array(z.string()),
+  result: z.json().optional(),
+  error: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  endedAt: z.string().optional(),
+});
 
 export default definePlugin({
   async activate(context) {
@@ -416,6 +437,34 @@ export default definePlugin({
         );
         await kv.set(NAMESPACE, key, { workflowId: started.workflowId });
         return { ...started, existing: false };
+      },
+    });
+
+    // --- A mission's run, for the owner's client (C2: D1086) ----------------------
+    context.commands.register({
+      name: "missions.orchestration",
+      description:
+        "The orchestrator run of a mission, the last one missions.orchestrate started: its workflow, the thread it runs from, its status, last log lines and result. With the head of the `orchestration` stream it reflects, to follow the run from there",
+      input: z.object({ missionId: z.string() }),
+      output: z.object({
+        /** The `orchestration` stream's head, read before the run: follow it after this. */
+        head: z.number(),
+        run: OrchestratorRun.nullable(),
+      }),
+      permissions: ["missions.read", "threads.read"],
+      handler: async ({ missionId }) => {
+        await sync();
+        getMission(missionId);
+        const streamHead = await log.head(ORCHESTRATION_STREAM);
+        const last = (await kv.get(NAMESPACE, `run/${missionId}`)) as
+          | { workflowId?: string }
+          | undefined;
+        if (last?.workflowId === undefined) return { head: streamHead, run: null };
+        const runs = await run<z.input<typeof OrchestratorRun>[]>("workflows.list", {});
+        const found = runs.find((item) => item.workflowId === last.workflowId);
+        if (found === undefined) return { head: streamHead, run: null };
+        const view = OrchestratorRun.parse(found);
+        return { head: streamHead, run: { ...view, logs: view.logs.slice(-5) } };
       },
     });
 

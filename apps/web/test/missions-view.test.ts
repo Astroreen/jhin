@@ -17,8 +17,11 @@ import {
   parseSteps,
   placeOf,
   routeOf,
+  runLabel,
   sameSteps,
   threadTarget,
+  waitsFor,
+  type OrchestratorRun,
   type MissionPlace,
 } from "../src/plugins/missions/route.ts";
 import {
@@ -192,6 +195,58 @@ describe("what an edit dialog sends (D1083, D1085)", () => {
       "dropped",
     ]);
     expect(sliceStatusOptions(slice({ status: "done" }))).toContain("done");
+  });
+});
+
+describe("the orchestrator beside a mission (D1088)", () => {
+  const run = (fields: Partial<OrchestratorRun>): OrchestratorRun => ({
+    workflowId: "w1",
+    parentThreadId: "lead",
+    status: "running",
+    logs: [],
+    updatedAt: "2026-10-22T10:00:00.000Z",
+    ...fields,
+  });
+  const titles = new Map([
+    ["s1", "Walls"],
+    ["s2", "Door"],
+  ]);
+  const titleOf = (id: string) => titles.get(id) ?? id;
+  const idle = { ready: [], working: [] };
+
+  it("reads a stopped run as paused and a finished one as waiting for the lead", () => {
+    expect(runLabel(null)).toBe("Not running");
+    expect(runLabel(run({}))).toBe("Running");
+    expect(runLabel(run({ status: "stopped" }))).toBe("Paused");
+    expect(runLabel(run({ status: "completed" }))).toBe("Waiting for the lead");
+  });
+
+  it("says what the run waits for: proofs while it runs, the lead after it ends", () => {
+    expect(waitsFor(null, idle, titleOf)).toBe("Nothing runs this mission.");
+    expect(waitsFor(run({}), { ready: [], working: ["s1"] }, titleOf)).toBe("The proof of Walls.");
+    expect(
+      waitsFor(
+        run({
+          status: "completed",
+          result: { outcome: "decide", decisions: [{ sliceId: "s2", reason: "unassigned" }] },
+        }),
+        idle,
+        titleOf,
+      ),
+    ).toBe("The lead's decision on Door (no assignee).");
+    expect(
+      waitsFor(
+        run({
+          status: "completed",
+          result: { outcome: "wave-done", wave: 1, steps: [{ id: "merge" }] },
+        }),
+        idle,
+        titleOf,
+      ),
+    ).toBe("The lead: run merge after wave 1, then orchestrate again.");
+    expect(waitsFor(run({ status: "failed", error: "node stopped" }), idle, titleOf)).toBe(
+      "The owner: the run failed: node stopped",
+    );
   });
 });
 

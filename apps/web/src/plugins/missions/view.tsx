@@ -62,6 +62,7 @@ import { useDirectory, type Directory } from "./directory.ts";
 import { IntentDialog, MissionDialog, SliceDialog, type Call } from "./edit.tsx";
 import {
   assigneeLabel,
+  MISSION_ASIDE_SLOT,
   missionRank,
   placeOf,
   routeOf,
@@ -69,6 +70,7 @@ import {
   STATUS_LABELS,
   statusVariant,
   threadTarget,
+  type MissionAsideProps,
   type MissionPlace,
 } from "./route.ts";
 import type { MissionsStore, MissionsView } from "./store.ts";
@@ -491,6 +493,7 @@ export function MissionsMain({ services }: { services: MissionsServices }) {
       <MissionPage
         call={call}
         directory={directory}
+        target={target}
         intent={state.intents[mission.projectId]}
         mission={mission}
         project={project ?? mission.projectId}
@@ -537,6 +540,7 @@ function EditButton(props: { label: string; onClick: () => void; add?: boolean }
 }
 
 function MissionPage(props: {
+  target: NodeTarget;
   mission: Mission;
   project: string;
   intent: ProjectIntent | undefined;
@@ -545,82 +549,102 @@ function MissionPage(props: {
   call: Call;
   open: (place: MissionPlace) => void;
 }) {
-  const { mission, project, intent, slices, directory, call, open } = props;
+  const { target, mission, project, intent, slices, directory, call, open } = props;
+  const aside = useSlot(MISSION_ASIDE_SLOT).length > 0;
   const [editing, setEditing] = useState<"intent" | "mission" | "slice" | undefined>();
   const close = () => setEditing(undefined);
   const waves = wavesOf(slices);
   const closed = mission.status === "done" || mission.status === "dropped";
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-6 px-4 py-6">
-        <Section
-          action={<EditButton label="Edit intent" onClick={() => setEditing("intent")} />}
-          label="Project intent"
-          title="Intent"
-        >
-          <Prose empty="No intent yet." text={intent?.intent ?? ""} />
-        </Section>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              {mission.title}
-            </h1>
-            <StatusBadge status={mission.status} />
-            <span className="ms-auto">
-              <EditButton label="Edit mission" onClick={() => setEditing("mission")} />
-            </span>
+      <div
+        className={`mx-auto flex w-full flex-col gap-6 px-4 py-6 xl:flex-row-reverse xl:items-start ${aside ? "max-w-[calc(var(--chat-content-max-width)+20rem)]" : "max-w-(--chat-content-max-width)"}`}
+      >
+        {/* Beside the mission (D1087): the orchestrator, and any other contribution. */}
+        {aside ? (
+          <div className="flex shrink-0 flex-col gap-3 xl:sticky xl:top-0 xl:w-72">
+            <Slot<MissionAsideProps>
+              name={MISSION_ASIDE_SLOT}
+              props={{
+                target,
+                mission,
+                slices,
+                nodeId: directory.nodeId,
+                titles: directory.titles,
+              }}
+            />
           </div>
-          <Section title="Outcome">
-            <Prose empty="No outcome yet." text={mission.outcome} />
+        ) : null}
+        <div className="flex min-w-0 flex-1 flex-col gap-6">
+          <Section
+            action={<EditButton label="Edit intent" onClick={() => setEditing("intent")} />}
+            label="Project intent"
+            title="Intent"
+          >
+            <Prose empty="No intent yet." text={intent?.intent ?? ""} />
+          </Section>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">
+                {mission.title}
+              </h1>
+              <StatusBadge status={mission.status} />
+              <span className="ms-auto">
+                <EditButton label="Edit mission" onClick={() => setEditing("mission")} />
+              </span>
+            </div>
+            <Section title="Outcome">
+              <Prose empty="No outcome yet." text={mission.outcome} />
+            </Section>
+          </div>
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Fact label="Slice process">
+              <Steps steps={mission.process.slice} />
+            </Fact>
+            <Fact label="Mission process">
+              <Steps steps={mission.process.mission} />
+            </Fact>
+          </dl>
+          <Section
+            action={
+              closed ? undefined : (
+                <EditButton add label="Add slice" onClick={() => setEditing("slice")} />
+              )
+            }
+            title="Waves"
+          >
+            {waves.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No slices yet.</p>
+            ) : (
+              <ol className="flex flex-col gap-4">
+                {waves.map(({ wave, slices: members }) => (
+                  <li key={wave}>
+                    <section aria-label={`Wave ${wave}`} className="flex flex-col gap-1.5">
+                      <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        Wave {wave}
+                        <span className="text-muted-foreground/60">
+                          {members.filter((slice) => slice.status === "done").length}/
+                          {members.length} done
+                        </span>
+                      </h3>
+                      <ul className="flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card/40">
+                        {members.map((slice) => (
+                          <li className="border-b border-border/40 last:border-b-0" key={slice.id}>
+                            <SliceRow
+                              onOpen={() => open({ kind: "slice", sliceId: slice.id })}
+                              slice={slice}
+                              titles={directory.titles}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  </li>
+                ))}
+              </ol>
+            )}
           </Section>
         </div>
-        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Fact label="Slice process">
-            <Steps steps={mission.process.slice} />
-          </Fact>
-          <Fact label="Mission process">
-            <Steps steps={mission.process.mission} />
-          </Fact>
-        </dl>
-        <Section
-          action={
-            closed ? undefined : (
-              <EditButton add label="Add slice" onClick={() => setEditing("slice")} />
-            )
-          }
-          title="Waves"
-        >
-          {waves.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No slices yet.</p>
-          ) : (
-            <ol className="flex flex-col gap-4">
-              {waves.map(({ wave, slices: members }) => (
-                <li key={wave}>
-                  <section aria-label={`Wave ${wave}`} className="flex flex-col gap-1.5">
-                    <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                      Wave {wave}
-                      <span className="text-muted-foreground/60">
-                        {members.filter((slice) => slice.status === "done").length}/{members.length}{" "}
-                        done
-                      </span>
-                    </h3>
-                    <ul className="flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card/40">
-                      {members.map((slice) => (
-                        <li className="border-b border-border/40 last:border-b-0" key={slice.id}>
-                          <SliceRow
-                            onOpen={() => open({ kind: "slice", sliceId: slice.id })}
-                            slice={slice}
-                            titles={directory.titles}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                </li>
-              ))}
-            </ol>
-          )}
-        </Section>
       </div>
       {editing === "intent" ? (
         <IntentDialog
