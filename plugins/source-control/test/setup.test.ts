@@ -73,6 +73,15 @@ describe("setup script wrapper", () => {
     expect(completionShellOf("win32", "/bin/bash")).toBe("powershell");
   });
 
+  it("wraps for fish and PowerShell with their own exit status and quoting", () => {
+    const fish = wrapCommandForCompletion("make", "fish", "DONE:", { NAME: "it's" });
+    expect(fish).toBe("begin\rset -lx NAME 'it\\'s'; make\rend; printf '\\nDONE:%s\\n' $status");
+    const pwsh = wrapCommandForCompletion("make", "powershell", "DONE:", { NAME: "it's" });
+    expect(pwsh).toContain("$env:NAME = 'it''s'; make");
+    expect(pwsh).toContain('Write-Host "DONE:$__jc"');
+    expect(pwsh).toContain("$LASTEXITCODE");
+  });
+
   it("sets the script's variables inside its block and prints the sentinel with its code", () => {
     const line = wrapCommandForCompletion('echo "$NAME"\nexit 4', "posix", "DONE:", {
       NAME: "it's here",

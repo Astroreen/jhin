@@ -2060,6 +2060,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       if (run?.holdsAgent === true) {
         const outcome = await run.exited.catch(() => null);
         if (setupRuns.get(input.threadId) === run) setupRuns.delete(input.threadId);
+        // Cancelled while the turn waited: the setup is over as cancelled, and stays so.
+        if (setups.get(input.threadId)?.phase !== "running") return input;
         if (outcome !== "cancelled" && outcome !== 0) {
           const message = `Setup script exited with ${outcome ?? "no exit code"}.`;
           setups.finish(input.threadId, "failed", message);
