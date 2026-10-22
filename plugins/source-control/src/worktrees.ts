@@ -428,8 +428,9 @@ function notCheckedOut(output: string, otherwise = ""): string {
 /** A URL's credentials (`https://user:token@host`) never reach the setup card. */
 export const redactUrls = (text: string) =>
   text
-    // Up to the last `@` before the host, so a password with `@` in it goes whole.
-    .replace(/(\w+:\/\/)[^\s/]*@/g, "$1***@")
+    // Up to the last `@` before the next space, so a password with `@` or `/` in it goes
+    // whole (masking a path's `@` too is the safe side).
+    .replace(/(\w+:\/\/)[^\s'"]*@/g, "$1***@")
     .replace(
       /([?&](?:(?:access_|private_|api_)?(?:token|password|key|secret)|auth|sig)=)[^&\s'"]+/gi,
       "$1***",
@@ -481,6 +482,8 @@ export async function removeWorktree(
       { timeoutMs: WORKTREE_TIMEOUT_MS },
     );
   } catch (error) {
+    // git's own words: every git of this plugin runs with `LC_ALL=C` (git.ts), whatever the
+    // user's locale.
     if (options.force !== true && /containing submodules/.test((error as Error).message)) {
       throw new SourceControlError(
         "GIT_FAILED",
