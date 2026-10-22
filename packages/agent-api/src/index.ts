@@ -12,6 +12,7 @@ export const AGENT_REGISTRY_CAPABILITY = "agent.registry";
 export * from "./modes.ts";
 export * from "./agents.ts";
 export * from "./messages.ts";
+export * from "./teams.ts";
 export * from "./orchestration.ts";
 export * from "./context.ts";
 export * from "./citations.ts";

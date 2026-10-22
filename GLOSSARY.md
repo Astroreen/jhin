@@ -150,6 +150,15 @@ Words about Jhin:
   is a message that waits for its **answer** (`docs/plans/agents.md#D621`).
 - **Inbox** — the messages and asks to a node's owner, open until the owner
   answers them, shown in Civilization mode.
+- **Team** — agents that work together (OpenRig's _rig_), named by a **team
+  spec** in the `jhin.teams` config section: its members (each a defined agent
+  `<team>-<member>` on its node), its **lead** (the member the owner talks
+  to) and its **culture** (Markdown on how it works together). `teams.up` puts
+  it on its nodes and keeps its **roster** there; a member's **alias**
+  `builder@workshop` stands for its full address (`docs/plans/agents.md#D681`).
+- **Team bundle** — a team spec with its files (culture, lore, starter
+  knowledge) as a plugin package: installed where plugins are, it registers
+  its team with `teams.bundles@1` (`docs/plans/agents.md#D686`).
 - **Side turn** — a turn that answers an ask to an earlier generation in a
   fork of its thread, leaving the generation and the agent's current one as
   they were. The earlier generations an agent can be asked this way are its
