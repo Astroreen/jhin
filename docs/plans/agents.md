@@ -1663,3 +1663,7 @@ Each workstream lists its PRs here as they merge.
 - C3 #193: the civilization scenario in `e2e/tests/civilization.spec.ts`
   on the fake runtime, through commands, with `e2e/tests/support/streams.ts`
   (D1101–D1104); what it exposed went to Deferred.
+- C2 #197: the orchestrator beside a mission: `missions.orchestration`
+  (`jhin.orchestrator`), the `civilization.mission.aside` slot and
+  `jhin.orchestrator.panel` with next, waits for, and start, pause and stop
+  (D1086–D1090).
