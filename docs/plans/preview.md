@@ -403,6 +403,84 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   (T3's More menu), and a profile this device no longer has shows as
   "Removed profile".
 
+### Cookie import (W34)
+
+The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/*`,
+`packages/contracts/src/browserImport.ts` and
+`apps/web/src/components/settings/BrowserImportWizard.tsx`.
+
+- **D1204. The node imports the cookies of its machine's browsers into a
+  profile, as T3's desktop does into a session.** T3 reads the browsers of
+  the machine its Electron app runs on; Jhin's profiles live on the node
+  (D952), so the node reads the browsers of its own machine
+  (`plugins/preview/src/browser-import/`, plain TypeScript after T3's
+  Effect modules). T3's sources, their folders and platforms: Chrome, Edge,
+  Brave, Vivaldi, Opera, Arc and Helium (Chromium; macOS, Linux but Arc,
+  and Windows only for Helium, since App-Bound Encryption keeps the others'
+  cookies from any other process), Firefox (all three, with Linux's Snap
+  home) and Safari (macOS). A source's profiles come from Chromium's
+  `Local State` (only single plain folder names) or a scan, Firefox's
+  `profiles.ini` (`[ProfileN]` only, relative paths kept inside the root)
+  or a scan, and Safari's `SafariTabs.db`; each with its cookie count. A
+  source is unavailable for T3's reasons (`unsupportedPlatform`,
+  `notInstalled` when no profile has a cookie database, `browserRunning`
+  by Chromium's `SingletonLock` or Firefox's `lock` and an fcntl probe of
+  `.parentlock`, `needsFullDiskAccess` when Safari's jar refuses an open).
+  Databases are read from a `VACUUM INTO` copy in a temporary folder
+  (`node:sqlite`). Chromium values are decrypted as T3 does: AES-128-CBC
+  `v10`/`v11` with OSCrypt's keys (macOS: the "Safe Storage" secret from
+  the login keychain, read with `security find-generic-password`, since the
+  node has no keyring binding; Linux: "peanuts" for `v10`, the libsecret
+  secret of the browser's `application` for `v11`, read with `secret-tool
+  lookup` where T3 ships a libsecret helper, and the empty-passphrase
+  retry), the domain hash of schema 24+, Windows' DPAPI-wrapped AES-GCM key
+  through PowerShell; partitioned (CHIPS) and undecryptable cookies are
+  skipped and counted. Firefox reads only the default container, with its
+  expiry unit and SameSite rules by schema; Safari's `binarycookies` are
+  parsed with T3's bounds checks. Cookies go into the target profile's
+  context with Playwright's `addCookies`: a host-only cookie as its bare
+  host (Chromium keeps it host-only, as `__Host-` cookies need), a domain
+  cookie with its dot, its path, expiry (seconds, capped at Playwright's
+  9999-12-31), Secure, HttpOnly and SameSite (`unspecified` left out). A
+  profile no tab runs is started for the import as its first tab would
+  start it (`Chromium.withProfile`) and runs on until the browser closes
+  (D394), so session cookies last as long as a tab's own; persistent ones
+  reach the profile's folder at the latest when it closes. Chromium drops
+  a cookie it refuses (SameSite=None without Secure) without an error, so
+  the written cookies are read back: only one the profile holds counts as
+  imported, the rest are skipped with their domains (at most 20, as T3).
+  Commands: `preview.import.sources {}` → `{ sources }` (T3's
+  `BrowserImportSource`) and `preview.import.cookies { sourceId,
+  sourceProfileDirectory, targetProfileId }` → `{ imported, skipped,
+  skippedDomains }`; a failure is `PREVIEW_IMPORT_FAILED` with T3's reason
+  in `details.reason` and T3's message ("Importing cookies from firefox
+  failed: unknownSourceProfile."). `sourceProfileDirectory` is honoured only
+  when the source lists it right then, so no `..` or absolute path reaches
+  another database; incognito is refused (`sessionUnavailable`). Both
+  commands hand over the machine user's sessions, so they take
+  `preview.control` (the panel's, D393) and a new `preview.import` ("Import
+  browser cookies"): the owner's `*` holds both, a device token only when
+  it is granted `preview.import` or `preview.*`, an agent's never.
+
+- **D1205. Settings → Browser imports as T3's "Import from".** "Add
+  profile" opens T3's menu: "Blank profile" (D953's), "You've reached the
+  profile limit" at 24, and "Import from" with the browsers of every
+  connected node (`preview.import.sources` when the menu opens; a group
+  per node, "Import from <node>", once there are several), as D953 clears
+  on every node; a browser that is not installed or not supported there is
+  not listed. Choosing one opens T3's wizard for that node: "Quit <browser>
+  to import", Full Disk Access, "Import from <browser>" with the source
+  profiles and their cookie counts ("From") and "New profile" or an
+  existing profile ("Into"), "Importing cookies", "Imported N cookies" /
+  "Skipped N cookies" / "No cookies found" with the skipped domains, and
+  "Couldn't import from <browser>" with T3's copy ("T3 Code" reads "Jhin")
+  and "Try again" for the reasons T3 retries. The node's browsers are read
+  and its profile written; a new profile is added to this device's list,
+  named after the browser, only once cookies landed in it, and its cookies
+  are cleared on the node again when the list is full by then
+  (`profileLimitReached`). The Full Disk Access step cannot open the
+  node's System Settings, so "Continue" checks the node again.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -418,8 +496,17 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
 - T3's desktop runtime (an Electron webview per tab, its DevTools, separate
   windows and picture-in-picture, annotation of elements, "Open in
   {environment}'s browser"): with the desktop app (W18).
-- Importing cookies into a profile from the machine's browsers (T3's "Import
-  from" in Add profile).
+- Of the cookie import (D1204, D1205): opening the node's System Settings
+  at Full Disk Access and watching for the grant (T3's `SafariPermission`
+  and `checkSystemPermission`; a browser client cannot reach the node's
+  Mac); asking the macOS keychain in the node's own name (T3's in-process
+  `@napi-rs/keyring`, so the prompt names the app rather than `security`);
+  T3's libsecret helper with its exit codes (`secret-tool` tells a locked
+  keyring only by its message); KWallet keys of Chromium browsers started
+  with `--password-store=kwallet*` (T3 reads libsecret only); and flushing
+  a running profile's cookies to disk at once (T3's `flushStore`;
+  Playwright has no call, so Chromium writes them on its own schedule or
+  when the profile closes).
 - A test of the pinned browser's progress answer itself: it needs the
   install a test leaves running to be awaitable once it settles.
 - T3's host setup hints for the pinned browser (the AppArmor profile, the

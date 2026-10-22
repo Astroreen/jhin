@@ -261,6 +261,19 @@ export class Chromium {
   }
 
   /**
+   * Runs `use` with a profile's context (D1204): the running one, or one started
+   * as the profile's first tab would start it, which then runs on as if a tab had
+   * started it, until the browser closes (D394), so its session cookies last as
+   * long as a tab's own would.
+   */
+  async withProfile<T>(
+    profileId: string,
+    use: (context: BrowserContext) => Promise<T>,
+  ): Promise<T> {
+    return use(await this.#profile(profileId));
+  }
+
+  /**
    * Forgets a profile's cookies and storage (T3's "Clear profile"): its tabs
    * close with its context, and its folder goes. Incognito has nothing kept.
    */

@@ -27,6 +27,8 @@ export interface NodeOptions {
   readonly config?: Record<string, unknown>;
   /** Runs before the node starts, e.g. to install user plugins into `<home>/plugins`. */
   readonly setup?: (home: string) => void;
+  /** Environment variables of the node's process over this one's (a fake `HOME`). */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export function writeConfig(home: string, config: Record<string, unknown>): void {
@@ -126,7 +128,10 @@ export async function startNode(options: NodeOptions = {}): Promise<RunningNode>
     "--cwd",
     home,
   ];
-  const child = ChildProcess.spawn(process.execPath, args, { stdio: ["ignore", "ignore", "pipe"] });
+  const child = ChildProcess.spawn(process.execPath, args, {
+    stdio: ["ignore", "ignore", "pipe"],
+    env: { ...process.env, ...options.env },
+  });
   const wanted = mode === "serve" ? /rpc: (ws:\/\/\S+)/ : /ui: (http:\/\/\S+)/;
   const stderr = await new Promise<string>((resolve, reject) => {
     let text = "";
