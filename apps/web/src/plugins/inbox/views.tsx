@@ -111,7 +111,7 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
   const [answer, setAnswer] = useState("");
   const [sending, setSending] = useState(false);
   const state = nodes.get(node);
-  const item: InboxItem | undefined = state?.items.find(
+  const item: InboxItem | undefined = state?.value.find(
     (entry) => entry.message.messageId === messageId,
   );
   if (state === undefined || state.status === "loading") {

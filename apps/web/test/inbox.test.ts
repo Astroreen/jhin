@@ -105,12 +105,12 @@ describe("the owner's inbox (D630)", () => {
     );
     const store = createInboxStore(node.connections, quiet, () => {});
     await drain();
-    expect(store.snapshot().get("a")).toMatchObject({ status: "unsupported", items: [] });
+    expect(store.snapshot().get("a")).toMatchObject({ status: "unsupported", value: [] });
     store.dispose();
   });
 
   it("ignores events that are not an open item's", () => {
-    const state = { status: "ready" as const, items: [] };
+    const state: readonly InboxItem[] = [];
     expect(applyInboxEvent(state, { type: MessageEvents.received, payload: null })).toBe(state);
     expect(
       applyInboxEvent(state, { type: MessageEvents.inboxAnswered, payload: { messageId: "x" } }),

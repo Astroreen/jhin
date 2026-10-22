@@ -1,0 +1,139 @@
+// A record of every open connection kept current from one of its streams:
+// what the inbox (agents.md D630) and health (D731) follow on each node.
+import type { Connections, NodeConnection } from "@jhin/client-api";
+import { toDisposable, type Disposable } from "@jhin/sdk";
+
+/** One node's state of a feed. */
+export interface NodeFeed<S> {
+  /** `unsupported`: the node lacks the command, or this client may not read it. */
+  readonly status: "loading" | "ready" | "unsupported" | "error";
+  readonly value: S;
+  readonly error?: string;
+}
+
+export interface NodeFeeds<S> {
+  /** Every connection's feed, by connection id: the same map until one changes. */
+  snapshot(): ReadonlyMap<string, NodeFeed<S>>;
+  subscribe(listener: () => void): Disposable;
+}
+
+export interface NodeFeedSource<S> {
+  /** What a feed holds before its node answers, and when it cannot. */
+  readonly empty: S;
+  /** The stream to follow after the head `load` returns. */
+  readonly stream: string;
+  /** Reads a node's state and the head of `stream` it reflects. */
+  load(client: NodeConnection["client"]): Promise<{ head: number; state: S }>;
+  /** Applies one event of the stream; the same state when nothing changed. */
+  apply(state: S, event: { type: string; payload: unknown }): S;
+  /** Hears every event that came after the load, with the states around it. */
+  seen?(
+    connection: NodeConnection,
+    event: { type: string; payload: unknown },
+    before: S,
+    after: S,
+  ): void;
+}
+
+const NOT_THERE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_DENIED"]);
+
+/** Follows `source` on every open connection for as long as it is not disposed. */
+export function createNodeFeeds<S>(
+  connections: Connections,
+  log: { warn(message: string, fields?: Record<string, unknown>): void },
+  source: NodeFeedSource<S>,
+): NodeFeeds<S> & Disposable {
+  const states = new Map<string, NodeFeed<S>>();
+  const feeds = new Map<string, { client: NodeConnection["client"]; stop: () => void }>();
+  const listeners = new Set<() => void>();
+  let snapshot: ReadonlyMap<string, NodeFeed<S>> = new Map();
+  const changed = () => {
+    snapshot = new Map(states);
+    for (const listener of Array.from(listeners)) {
+      try {
+        listener();
+      } catch (error) {
+        log.warn("a feed listener failed", { stream: source.stream, error: String(error) });
+      }
+    }
+  };
+  const set = (id: string, update: (feed: NodeFeed<S>) => NodeFeed<S>) => {
+    const known = states.get(id);
+    if (known === undefined) return;
+    const next = update(known);
+    if (next === known) return;
+    states.set(id, next);
+    changed();
+  };
+
+  const start = (connection: NodeConnection) => {
+    const { id, client } = connection;
+    const subscriptions: Disposable[] = [];
+    let stopped = false;
+    feeds.set(id, {
+      client,
+      stop: () => {
+        stopped = true;
+        for (const subscription of subscriptions) subscription.dispose();
+      },
+    });
+    states.set(id, { status: "loading", value: source.empty });
+    changed();
+    const failed = (error: unknown) => {
+      if (stopped) return;
+      const code = String((error as { code?: unknown } | null)?.code);
+      const message = error instanceof Error ? error.message : String(error);
+      set(id, () =>
+        NOT_THERE.has(code)
+          ? { status: "unsupported", value: source.empty }
+          : { status: "error", value: source.empty, error: message },
+      );
+    };
+    void source
+      .load(client)
+      .then(({ head, state }) => {
+        if (stopped) return;
+        set(id, () => ({ status: "ready", value: state }));
+        subscriptions.push(
+          client.subscribe(source.stream, { after: head, onError: failed }, (event) => {
+            if (stopped) return;
+            const before = states.get(id)?.value ?? source.empty;
+            const after = source.apply(before, event);
+            if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
+            source.seen?.(connection, event, before, after);
+          }),
+        );
+      })
+      .catch(failed);
+  };
+
+  const stop = (id: string) => {
+    feeds.get(id)?.stop();
+    feeds.delete(id);
+    if (states.delete(id)) changed();
+  };
+  const sync = () => {
+    const open = connections.list().filter((connection) => connection.state === "open");
+    for (const [id, feed] of feeds) {
+      const connection = open.find((item) => item.id === id);
+      // What a closed or replaced connection showed is not live any more.
+      if (connection === undefined || connection.client !== feed.client) stop(id);
+    }
+    for (const connection of open) if (!feeds.has(connection.id)) start(connection);
+  };
+  const watching = connections.subscribe(sync);
+  sync();
+
+  return {
+    snapshot: () => snapshot,
+    subscribe(listener) {
+      listeners.add(listener);
+      return toDisposable(() => listeners.delete(listener));
+    },
+    dispose() {
+      watching.dispose();
+      listeners.clear();
+      for (const id of Array.from(feeds.keys())) stop(id);
+    },
+  };
+}

@@ -1051,6 +1051,22 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   agents included, as an agent writes any message. So are a warning's
   summary and group (a mission's title, an idea's phrase and its carriers'
   addresses): what health concludes is health's to read.
+  agents included, as an agent writes any message.
+- **D731. Health in Civilization mode is the client plugin `jhin.health`.**
+  It follows `health.catalog` and the `health` stream of every open
+  connection (the same per-node feed as the inbox, `lib/node-feeds.ts`), so a
+  new warning is told in any mode the way an ask is (`lib/tell-owner.tsx`: a
+  toast with focus, else a system notification, as `jhin.notifications`
+  allows); both open it. The open warnings of every node, newest first, and
+  an entry to the overview fill `civilization.sidebar.health`
+  (`jhin.health.list`). The route panel `health` renders in
+  `civilization.views` (`jhin.health.page`): without a `section` the overview
+  of ceremony and progress per group (`health.status`), with a warning id as
+  `section` the warning: what crossed which threshold, its measures, the
+  analyst's answer, Dismiss, and the events behind it
+  (`health.warnings.get`), each opening to its stream, sequence and record.
+  `civilization.health.open {node, warningId?}` opens it. The views are a
+  chunk of their own, loaded once Civilization mode shows them (D440).
 
 ### A8. Modes and the Civilization shell (D742–D760)
 

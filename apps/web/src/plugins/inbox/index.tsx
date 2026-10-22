@@ -21,6 +21,7 @@ import { MessageCircleQuestionIcon } from "lucide-react";
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { tellOwner } from "../../lib/tell-owner.tsx";
 import { INBOX_PANEL, inboxRoute, senderLabel } from "./route.ts";
 import { createInboxStore } from "./store.ts";
 import type { InboxView } from "./views.tsx";
@@ -39,9 +40,6 @@ const Page = lazyChunk(() => viewsChunk().then((module) => module.InboxPage), {
     <ChunkFailed retry={retry}>Couldn't load this message.</ChunkFailed>
   ),
 });
-
-/** What `jhin.notifications` says about telling the user things (its own section). */
-const NOTIFICATIONS_SECTION = "jhin.notifications";
 
 /**
  * `jhin.inbox`: what agents sent and asked the owner, on every connected node
@@ -65,53 +63,22 @@ export const inboxPlugin = builtin(
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
 
-      const notifications = () => {
-        try {
-          return context.config.get<{ mode?: string; inApp?: boolean }>(NOTIFICATIONS_SECTION);
-        } catch {
-          return {};
-        }
-      };
       const open = (node: string, messageId: string) =>
         navigation.navigate(inboxRoute(node, messageId));
       /** A new item: a toast while the page has focus, else a system notification (D630). */
       const arrived = (connection: NodeConnection, item: InboxItem) => {
         const { message } = item;
-        const title =
-          message.kind === "ask"
-            ? `${senderLabel(message.from)} asks you`
-            : `${senderLabel(message.from)} wrote to you`;
-        const body = message.body.trim().split("\n")[0] ?? "";
-        const { mode, inApp } = notifications();
-        if (document.visibilityState === "visible" && document.hasFocus()) {
-          if (inApp === false) return;
-          toasts?.show({
-            type: "warning",
-            title,
-            description: body,
-            data: {
-              hideCopyButton: true,
-              leadingIcon: <MessageCircleQuestionIcon className="size-4" />,
-            },
-            action: {
-              label: "Open inbox",
-              onClick: () => open(connection.id, message.messageId),
-            },
-          });
-          return;
-        }
-        if (
-          (mode === "notifications" || mode === "notifications-and-sound") &&
-          typeof Notification !== "undefined" &&
-          Notification.permission === "granted"
-        ) {
-          const notification = new Notification(title, { body, tag: message.messageId });
-          notification.addEventListener("click", () => {
-            notification.close();
-            window.focus();
-            open(connection.id, message.messageId);
-          });
-        }
+        tellOwner(context.config, toasts, {
+          title:
+            message.kind === "ask"
+              ? `${senderLabel(message.from)} asks you`
+              : `${senderLabel(message.from)} wrote to you`,
+          body: message.body.trim().split("\n")[0] ?? "",
+          tag: message.messageId,
+          icon: <MessageCircleQuestionIcon className="size-4" />,
+          actionLabel: "Open inbox",
+          open: () => open(connection.id, message.messageId),
+        });
       };
       const store = createInboxStore(connections, context.log, arrived);
       context.subscriptions.add(store);

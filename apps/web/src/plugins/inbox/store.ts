@@ -3,45 +3,34 @@
 // the `agents/inbox` stream.
 import { INBOX_STREAM, MessageEvents, type InboxItem } from "@jhin/agent-api";
 import type { Connections, NodeConnection } from "@jhin/client-api";
-import { toDisposable, type Disposable } from "@jhin/sdk";
+import type { Disposable } from "@jhin/sdk";
+
+import { createNodeFeeds, type NodeFeed, type NodeFeeds } from "../../lib/node-feeds.ts";
 
 /** One node's open items, oldest first. */
-export interface NodeInbox {
-  /** `unsupported`: the node has no `agents.inbox.list`, or this client may not read it. */
-  readonly status: "loading" | "ready" | "unsupported" | "error";
-  readonly items: readonly InboxItem[];
-  readonly error?: string;
-}
-
-const LOADING: NodeInbox = { status: "loading", items: [] };
-const UNSUPPORTED: NodeInbox = { status: "unsupported", items: [] };
-const NO_INBOX = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_DENIED"]);
+export type NodeInbox = NodeFeed<readonly InboxItem[]>;
 
 /** Applies one event of a node's `agents/inbox` stream: open items come and go. */
 export function applyInboxEvent(
-  state: NodeInbox,
+  items: readonly InboxItem[],
   event: { type: string; payload: unknown },
-): NodeInbox {
+): readonly InboxItem[] {
   if (event.type === MessageEvents.received) {
     const item = event.payload as InboxItem | null;
     const id = item?.message?.messageId;
-    if (typeof id !== "string" || item!.status !== "open") return state;
-    if (state.items.some((known) => known.message.messageId === id)) return state;
-    return { ...state, items: [...state.items, item!] };
+    if (typeof id !== "string" || item!.status !== "open") return items;
+    if (items.some((known) => known.message.messageId === id)) return items;
+    return [...items, item!];
   }
   if (event.type === MessageEvents.inboxAnswered) {
     const id = (event.payload as { messageId?: unknown } | null)?.messageId;
-    if (!state.items.some((item) => item.message.messageId === id)) return state;
-    return { ...state, items: state.items.filter((item) => item.message.messageId !== id) };
+    if (!items.some((item) => item.message.messageId === id)) return items;
+    return items.filter((item) => item.message.messageId !== id);
   }
-  return state;
+  return items;
 }
 
-export interface InboxStore {
-  /** Every connection's inbox, by connection id: the same map until one changes. */
-  snapshot(): ReadonlyMap<string, NodeInbox>;
-  subscribe(listener: () => void): Disposable;
-}
+export type InboxStore = NodeFeeds<readonly InboxItem[]>;
 
 /**
  * Follows the inbox of every open connection for as long as the plugin runs,
@@ -54,99 +43,22 @@ export function createInboxStore(
   log: { warn(message: string, fields?: Record<string, unknown>): void },
   arrived: (connection: NodeConnection, item: InboxItem) => void,
 ): InboxStore & Disposable {
-  const states = new Map<string, NodeInbox>();
-  const feeds = new Map<string, { client: NodeConnection["client"]; stop: () => void }>();
-  const listeners = new Set<() => void>();
-  let snapshot: ReadonlyMap<string, NodeInbox> = new Map();
-  const changed = () => {
-    snapshot = new Map(states);
-    for (const listener of Array.from(listeners)) {
-      try {
-        listener();
-      } catch (error) {
-        log.warn("an inbox listener failed", { error: String(error) });
-      }
-    }
-  };
-  const set = (id: string, update: (state: NodeInbox) => NodeInbox) => {
-    const known = states.get(id);
-    if (known === undefined) return;
-    const next = update(known);
-    if (next === known) return;
-    states.set(id, next);
-    changed();
-  };
-
-  const start = (connection: NodeConnection) => {
-    const { id, client } = connection;
-    const subscriptions: Disposable[] = [];
-    let stopped = false;
-    feeds.set(id, {
-      client,
-      stop: () => {
-        stopped = true;
-        for (const subscription of subscriptions) subscription.dispose();
-      },
-    });
-    states.set(id, LOADING);
-    changed();
-    const failed = (error: unknown) => {
-      if (stopped) return;
-      const code = String((error as { code?: unknown } | null)?.code);
-      const message = error instanceof Error ? error.message : String(error);
-      set(id, () =>
-        NO_INBOX.has(code) ? UNSUPPORTED : { status: "error", items: [], error: message },
+  return createNodeFeeds<readonly InboxItem[]>(connections, log, {
+    empty: [],
+    stream: INBOX_STREAM,
+    load: async (client) => {
+      const { head, items } = await client.call<{ head: number; items: InboxItem[] }>(
+        "agents.inbox.list",
+        {},
       );
-    };
-    void client
-      .call<{ head: number; items: InboxItem[] }>("agents.inbox.list", {})
-      .then(({ head, items }) => {
-        if (stopped) return;
-        set(id, () => ({ status: "ready", items }));
-        subscriptions.push(
-          client.subscribe(INBOX_STREAM, { after: head, onError: failed }, (event) => {
-            if (stopped) return;
-            const before = states.get(id);
-            set(id, (state) => applyInboxEvent(state, event));
-            const after = states.get(id);
-            if (event.type === MessageEvents.received && after !== before) {
-              arrived(connection, after!.items.at(-1)!);
-            }
-          }),
-        );
-      })
-      .catch(failed);
-  };
-
-  const stop = (id: string) => {
-    feeds.get(id)?.stop();
-    feeds.delete(id);
-    if (states.delete(id)) changed();
-  };
-  const sync = () => {
-    const open = connections.list().filter((connection) => connection.state === "open");
-    for (const [id, feed] of feeds) {
-      const connection = open.find((item) => item.id === id);
-      // What a closed or replaced connection showed is not live any more.
-      if (connection === undefined || connection.client !== feed.client) stop(id);
-    }
-    for (const connection of open) if (!feeds.has(connection.id)) start(connection);
-  };
-  const watching = connections.subscribe(sync);
-  sync();
-
-  return {
-    snapshot: () => snapshot,
-    subscribe(listener) {
-      listeners.add(listener);
-      return toDisposable(() => listeners.delete(listener));
+      return { head, state: items };
     },
-    dispose() {
-      watching.dispose();
-      listeners.clear();
-      for (const id of Array.from(feeds.keys())) stop(id);
+    apply: applyInboxEvent,
+    seen: (connection, event, before, after) => {
+      if (event.type === MessageEvents.received && after !== before)
+        arrived(connection, after.at(-1)!);
     },
-  };
+  });
 }
 
 /** The open items of every node, oldest first, with the connection each is on. */
@@ -154,6 +66,6 @@ export function openItems(
   nodes: ReadonlyMap<string, NodeInbox>,
 ): { readonly node: string; readonly item: InboxItem }[] {
   return [...nodes]
-    .flatMap(([node, state]) => state.items.map((item) => ({ node, item })))
+    .flatMap(([node, feed]) => feed.value.map((item) => ({ node, item })))
     .toSorted((a, b) => a.item.message.sentAt.localeCompare(b.item.message.sentAt));
 }
