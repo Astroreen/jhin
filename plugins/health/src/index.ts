@@ -101,6 +101,8 @@ export default definePlugin({
     let health: HealthState = EMPTY_HEALTH;
     let healthHead = 0;
     const sensors = new Sensors();
+    /** Health's asks delivered on this node, by message id, until their first reply or the dismissal of their warning. */
+    const asksDelivered = new Map<string, { warningId: string; to: string }>();
     const applyHealth = (events: readonly StoredEvent[]) => {
       for (const event of events) {
         if (event.stream !== HEALTH_STREAM || event.sequence <= healthHead) continue;
@@ -114,6 +116,12 @@ export default definePlugin({
         } else if (event.type === HealthEvents.progressRecorded) {
           const progress = (event.payload as { progress?: Progress }).progress;
           if (progress !== undefined) sensors.ingestProgress(progress, event);
+        } else if (event.type === HealthEvents.warningDismissed) {
+          // A dismissed warning's asks wait for no reply any more.
+          const warningId = (event.payload as { warningId?: string } | null)?.warningId;
+          for (const [messageId, ask] of asksDelivered) {
+            if (ask.warningId === warningId) asksDelivered.delete(messageId);
+          }
         }
       }
     };
@@ -517,8 +525,6 @@ export default definePlugin({
       asksDelivered.delete(message!.inReplyTo!);
       return true;
     };
-    /** Health's asks delivered on this node, by message id, until their first reply. */
-    const asksDelivered = new Map<string, { warningId: string; to: string }>();
     /** The warnings health already asked about, from the delivered asks (D725). */
     const askedBefore = new Set<string>();
     /** The warning a delivered message is health's own ask about, if it is one. */

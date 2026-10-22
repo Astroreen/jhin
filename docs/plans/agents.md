@@ -952,7 +952,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   it made (the count is kept on the record): a large rebase or import is not
   more progress, and empty commits buy no room under the ceremony threshold.
   Health runs `git` itself: `source-control.git@1` offers no read of `HEAD`
-  or count of commits to depend on. The hooks never fail a turn: the start reads `HEAD` once (2 s at most),
+  or count of commits to depend on, and its `TurnCheckpoint` records what the
+  turn changed in the working tree (files, insertions, deletions), not the
+  commits it made. The hooks never fail a turn: the start reads `HEAD` once (2 s at most),
   the end counts off the turn's path and then emits the kernel event
   `health.commits.counted { turnId, count }`; a directory without git counts
   nothing.
