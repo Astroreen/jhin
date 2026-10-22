@@ -259,7 +259,8 @@ async function pair(
       baseUrl,
     })) as PairingLink;
     if (options.get("json") === true) {
-      print(link);
+      // The notes too: a Tailscale mapping outlives this run and says how to remove it.
+      print({ ...link, ...(notes.length > 0 ? { notes } : {}) });
       return 0;
     }
     let nodeLabel = new URL(origin).host;

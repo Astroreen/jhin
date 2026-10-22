@@ -242,7 +242,9 @@ export function parsePairFlags(
         "--tailscale publishes the node running from this home; it takes no --url or --base-url",
     };
   }
-  const servePort = Number(option("tailscale-serve-port") ?? DEFAULT_TAILSCALE_SERVE_PORT);
+  const portText = option("tailscale-serve-port") ?? String(DEFAULT_TAILSCALE_SERVE_PORT);
+  // Digits only: `1e3` or `0x1bb` would publish on a port nobody typed.
+  const servePort = /^\d{1,5}$/.test(portText) ? Number(portText) : Number.NaN;
   if (!Number.isInteger(servePort) || servePort < 1 || servePort > 65_535) {
     return { error: `--tailscale-serve-port takes a port; got ${option("tailscale-serve-port")}` };
   }

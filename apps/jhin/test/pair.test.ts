@@ -186,6 +186,11 @@ describe("jhin pair's flags (security.md D1185, D1189)", () => {
     expect(refusal(false, "--tailscale", "--tailscale-serve-port", "70000")).toContain(
       "takes a port",
     );
+    for (const port of ["1e3", "0x1bb", "+443", " 443"]) {
+      expect(refusal(false, "--tailscale", "--tailscale-serve-port", port)).toContain(
+        "takes a port",
+      );
+    }
     expect(refusal(false, "--tailscale", "--tailscale-serve-port")).toContain("needs a value");
     expect(refusal(false, "--tailscale-serve-port", "8443")).toContain("needs --tailscale");
     expect(refusal(false, "--tailscale", "yes")).toContain("takes no value");

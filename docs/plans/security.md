@@ -744,6 +744,9 @@ A stack, one slice a PR:
   It was checked by hand once (PR 5b): the mapping answered with the node's
   instance, and `POST /auth/session` from the tailnet page's own origin got
   its `Secure` cookie, so Tailscale Serve keeps the `Host` D418 checks.
+  `<home>/cli/tailscale-serve.json` is read, merged and renamed without a
+  lock: two `jhin pair --tailscale` runs at once may lose one target, which
+  only makes a later run refuse to repair that mapping.
 - DPoP-bound tokens and T3's WebSocket tickets: a device token is a bearer
   token.
 - MCP OAuth (T3's `/oauth/mcp/*`): MCP clients use the owner token or an
