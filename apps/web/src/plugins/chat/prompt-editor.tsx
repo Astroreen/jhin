@@ -1881,6 +1881,8 @@ function exitCodeBlockOnTrailingBlankLines(view: EditorView): boolean {
  * prompt deleted nothing, and the Enter after it sent the prompt.
  */
 function readPendingSelection(view: EditorView): void {
+  // A chip's node selection maps to other DOM positions: only a text selection can be stale.
+  if (!(view.state.selection instanceof TextSelection)) return;
   const selection = view.dom.ownerDocument.getSelection();
   const { anchorNode, focusNode } = selection ?? {};
   if (!selection || !anchorNode || !focusNode) return;

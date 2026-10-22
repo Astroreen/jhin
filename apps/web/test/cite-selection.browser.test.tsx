@@ -69,4 +69,12 @@ describe("Cite on a selection in an agent's answer (D1012)", () => {
       page.getByRole("button", { name: "Cite selection in composer", exact: true }).query(),
     ).not.toBeNull();
   });
+
+  it("offers nothing for a collapsed selection at mount", () => {
+    const scroller = viewport();
+    const node = scroller.querySelector("p")!.firstChild as Text;
+    document.getSelection()!.collapse(node, 3);
+    mount(scroller);
+    expect(page.getByRole("button", { name: /Cite selection/ }).query()).toBeNull();
+  });
 });

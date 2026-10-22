@@ -2002,13 +2002,15 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   `selectionchange`, which the browser fires after the change. A key that
   came first (a script or an assistive tool selected the prompt, then
   Delete) acted on the old caret: at the end of the text, Delete was
-  swallowed, and the Enter after it sent the prompt instead of an empty
-  composer's action. This was the "implements the plan in build mode"
-  flake of `e2e/tests/composer.spec.ts` (Playwright's `fill("")` selects
+  swallowed, and the Enter after it sent the stale text. This was the
+  "implements the plan in build mode" flake of
+  `e2e/tests/composer.spec.ts` (Playwright's `fill("")` selects
   from a script, then presses Delete): its trace shows the keydown of
   Delete before the `selectionchange`, and no `beforeinput` after it. The
   prompt editor's key handler now hands a selection ProseMirror has not
-  seen to ProseMirror's own `selectionchange` handler first. Proof:
+  seen to ProseMirror's own `selectionchange` handler first; only a text
+  selection is compared (a chip's node selection is ProseMirror's own).
+  Proof:
   `apps/web/test/prompt-editor.browser.test.tsx` ("acts on a selection made
   just before a key"); the test under 4× CPU throttling failed 3 of 20 runs
   before and none of 20 after.
