@@ -859,6 +859,9 @@ describe("submodule warnings", () => {
     expect(redactUrls("fatal: clone of 'git@github.com:acme/lib.git' failed")).toBe(
       "fatal: clone of 'git@github.com:acme/lib.git' failed",
     );
+    expect(
+      redactUrls("fatal: 'https://host/x.git?client_secret=a&x-access-token=b&ref=main' failed"),
+    ).toBe("fatal: 'https://host/x.git?client_secret=***&x-access-token=***&ref=main' failed");
     expect(redactUrls("fatal: repository '/tmp/lib' not found")).toBe(
       "fatal: repository '/tmp/lib' not found",
     );

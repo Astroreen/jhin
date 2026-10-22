@@ -433,8 +433,9 @@ export const redactUrls = (text: string) =>
     .replace(/(\w+:\/\/)[^\s'"]*@/g, "$1***@")
     // scp-style `user:token@host:path`: a secret before the `@` (a bare `git@host:` has none).
     .replace(/(^|[\s'"])[^\s'"@/:]+:[^\s'"@]+@(?=[\w.-]+:)/g, "$1***@")
+    // Any query key that names a secret, whatever its prefix or suffix.
     .replace(
-      /([?&](?:(?:access_|private_|api_)?(?:token|password|key|secret)|auth|sig)=)[^&\s'"]+/gi,
+      /([?&][\w.-]*(?:token|secret|password|key|sig|auth|session|credential)[\w.-]*=)[^&\s'"]+/gi,
       "$1***",
     );
 
