@@ -1311,8 +1311,8 @@ C3 decisions:
   team of three fake agents (lead, builder, reviewer) from a `jhin.teams`
   spec in config, `teams.up`, the intent, a mission with two waves of
   slices, `missions.orchestrate` from the lead's generation, proofs, an ask
-  to the owner answered through the inbox and a ceremony warning, until the
-  mission is set done, the lead's decision (D651) sent for it (D1102). It follows the `missions`,
+  to the owner answered through the inbox and a ceremony warning (the builder
+  reporting to the owner again and again), until the mission is set done, the lead's decision (D651) sent for it (D1102). It follows the `missions`,
   `orchestration`, `agents/messages`, `agents/inbox` and `health` streams from their start
   (`e2e/tests/support/streams.ts`) and waits for the record it expects; it
   never waits for time.

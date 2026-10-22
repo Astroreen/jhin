@@ -191,7 +191,7 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
     handedWalls.threads![0]!.threadId,
   );
 
-  // 6. The reviewer keeps asking the builder for more proof of the walls:
+  // 6. The builder keeps reporting the proven walls to the owner again:
   // ceremony, and no progress, until the mission's health warns. Health takes
   // each event as the log appends it, so once the roof's handoff is in the
   // log, `health.status` counts it: the count starts exact.
@@ -218,13 +218,16 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
     event.type === "health.warning.raised" &&
     payloadOf(event).warning.detector === "ceremony" &&
     payloadOf(event).warning.group.missionId === mission.id;
-  // Each message counts once, as it is sent: the mission reaches its limit
-  // with the last one and not before, and a warning needs the limit (D722).
+  // A message to the owner starts no turn and queues nothing in a slice's
+  // thread, so it is the only ceremony the node adds meanwhile; it counts for
+  // the builder's open slice, the roof. Each counts once, as it is sent: the
+  // mission reaches its limit with the last one and not before, and a warning
+  // needs the limit (D722).
   for (let count = group.ceremony; count < limit; count++) {
     await client.call("agents.send", {
-      from: address.reviewer,
-      to: address.builder,
-      body: "Prove the walls again, please.",
+      from: address.builder,
+      to: owner,
+      body: "The walls are proven. Proven once more.",
     });
     expect(await missionStatus()).toMatchObject({ ceremony: count + 1, progress: group.progress });
   }
