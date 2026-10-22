@@ -672,8 +672,7 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 
 ### Deferred
 
-- Goals (`/goal`) and `/feedback` in the composer; reverting, forking and
-  rolling back a Codex thread (W2, W3).
+- Goals (`/goal`) and `/feedback` in the composer.
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Background terminals Codex keeps after a turn.
@@ -827,6 +826,24 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   option of the form (`allow_session` for the session, `_meta.persist`), a
   required field Jhin cannot fill or a URL to open declined without asking.
   The fake agent's `/access <app>` asks one, for the end-to-end test.
+- **D1147. A rollback reverts the Codex thread**, T3's `revertCodexThread`:
+  the thread's record (`storage.kv`, D312) now keeps every turn with the Codex
+  turn it ran as (at most 500, oldest dropped first). A turn whose history no
+  longer shows recorded turns (`t3-parity.md` D220) resumes the Codex thread
+  and sends `thread/revert` with `beforeTurnId` the oldest dropped one, so
+  Codex forgets them and gets no transcript; the record keeps the turns still
+  shown. A Codex that refuses (legacy history, T3's "cannot revert") gets a
+  new Codex thread with the thread's transcript, as before. A record from
+  before this (no turns) cannot tell what was dropped and resumes as it did.
+- **D1148. A fork forks the Codex thread**, T3's `forkThread`: a fork's first
+  Codex turn, on a thread with no record, finds the fork's marker
+  (`threads.thread.forked`) and the last Codex turn of the parent it
+  inherited, and sends `thread/fork` (`lastTurnId` that turn, with the turn's
+  settings) instead of `thread/start`; the fork's record starts with the
+  inherited turns, so a rollback in the fork reverts into them (D1147). Only
+  turns after Codex's last one go as a transcript. A parent without a record
+  or a Codex that refuses starts a new thread with the whole transcript, as
+  before.
 
 ### Deferred
 
@@ -841,6 +858,9 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   failure item); Codex sends its rate-limit update before the error in
   practice.
 - Live updates of an open `/usage-limits` banner: it is read when sent.
+- A revert Codex took for a turn that then failed to start is not recorded:
+  the next turn sends it again, Codex refuses the unknown turn and the thread
+  starts over with the transcript (D1147).
 - Codex subagents that outlive their turn (T3 follows a child's lifecycle
   after the parent's turn ended): Jhin ends them with the turn (D1145), and
   their later frames are dropped. A subagent's own user messages and its
