@@ -1288,11 +1288,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       : [];
     for (const { key, value } of deletedRecords) {
       const parsed = DeletedWorktree.safeParse(value);
-      // A record this plugin cannot read decides nothing.
-      if (!parsed.success) {
-        await kv.delete(NAMESPACE, key);
-        continue;
-      }
+      // A record this version cannot read decides nothing, and is kept for one that can.
+      if (!parsed.success) continue;
       const record = parsed.data;
       const project = projectPath.get(record.projectId);
       // Taken by a thread again, gone, or of a project that went: nothing to decide.
@@ -1347,7 +1344,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         // T3's blockedSinceCheck: under the project's worktree lock, the threads there
         // are read again, so one that started a turn or came in since is not robbed.
         const blocked = await exclusive(candidate.projectId, async () => {
-          const now = (await worktreeUsers()).get(candidate.path) ?? [];
+          const users = await worktreeUsers({ strict: true }).catch(() => undefined);
+          if (users === undefined) return "Threads could not be read.";
+          const now = users.get(candidate.path) ?? [];
           const expected = candidate.threads.map((thread) => thread.id);
           if (now.length !== expected.length || now.some((id) => !expected.includes(id))) {
             return "Threads changed since the check.";
@@ -1674,11 +1673,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const realPath = (value: string) => Fs.realpath(value).catch(() => Path.resolve(value));
 
   /** The threads working in each worktree, by real path, as the threads plugin has them now. */
-  async function worktreeUsers(): Promise<Map<string, string[]>> {
+  async function worktreeUsers(options: { strict?: boolean } = {}): Promise<Map<string, string[]>> {
     // A worktree an agent's generation works in is in use as well (D745).
-    const listed = (await context.commands
-      .execute("threads.list", { includeGenerations: true })
-      .catch(() => [])) as {
+    const listing = context.commands.execute("threads.list", { includeGenerations: true });
+    // Strict: a list that cannot be read is an error, never "nobody works there".
+    const listed = (await (options.strict === true ? listing : listing.catch(() => []))) as {
       id: string;
       worktreePath?: string;
     }[];
