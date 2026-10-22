@@ -1,6 +1,8 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): packages/tailscale/src/tailscale.ts and
 // resolveTailscalePairingBase / resolveTailscaleLocalTarget in apps/server/src/cli/pair.ts.
 import * as ChildProcess from "node:child_process";
+import * as Fs from "node:fs";
+import * as Path from "node:path";
 
 import {
   DEFAULT_TAILSCALE_SERVE_PORT,
@@ -26,7 +28,7 @@ const PROBE_ATTEMPTS = 5;
 export type TailscaleRunner = (
   args: readonly string[],
   timeoutMs: number,
-) => Promise<{ readonly code: number; readonly stdout: string }>;
+) => Promise<{ readonly code: number; readonly stdout: string; readonly stderr?: string }>;
 
 const runTailscale: TailscaleRunner = (args, timeoutMs) =>
   new Promise((resolve, reject) => {
@@ -34,22 +36,26 @@ const runTailscale: TailscaleRunner = (args, timeoutMs) =>
       process.platform === "win32" ? "tailscale.exe" : "tailscale",
       [...args],
       { encoding: "utf8", timeout: timeoutMs, maxBuffer: MAX_OUTPUT },
-      (error, stdout) => {
-        if (error !== null && typeof error.code !== "number") reject(error);
-        else resolve({ code: error === null ? 0 : (error.code as number), stdout });
+      (error, stdout, stderr) => {
+        if (error !== null && typeof error.code !== "number" && !error.killed) reject(error);
+        else {
+          resolve({
+            code: error === null ? 0 : typeof error.code === "number" ? error.code : -1,
+            stdout,
+            stderr,
+          });
+        }
       },
     );
   });
 
-const LOOPBACK_TARGET = /^https?:\/\/(127\.\d+\.\d+\.\d+|localhost|\[::1\])(:\d+)?\/?$/u;
-
 /**
  * Whether `tailscale serve status --json` leaves HTTPS port `port` to us: no
- * handler at all, or only web handlers proxying to loopback addresses (which
- * the probe found not answering: a node's old port). A TCP forward, a file or
- * text handler, or a proxy elsewhere is someone else's.
+ * handler at all, or only web handlers proxying to targets `jhin pair` made
+ * itself (`ours`, a node's old address). A TCP forward, a file or text
+ * handler, a funneled port, or any proxy someone else made is never taken.
  */
-export function replaceable(statusJson: string, port: number): boolean {
+export function replaceable(statusJson: string, port: number, ours: readonly string[]): boolean {
   let status: {
     AllowFunnel?: Record<string, unknown>;
     TCP?: Record<string, { TCPForward?: unknown; HTTPS?: unknown; HTTP?: unknown }>;
@@ -74,13 +80,56 @@ export function replaceable(statusJson: string, port: number): boolean {
   const handlers = Object.entries(status.Web ?? {})
     .filter(([host]) => host.endsWith(`:${port}`))
     .flatMap(([, web]) => Object.values(web.Handlers ?? {}));
-  return handlers.every(
-    (handler) =>
-      Object.keys(handler).every((key) => key === "Proxy") &&
-      typeof handler["Proxy"] === "string" &&
-      LOOPBACK_TARGET.test(handler["Proxy"]),
+  // A port that is taken but shows no handler is not known to be ours.
+  return (
+    handlers.length > 0 &&
+    handlers.every(
+      (handler) =>
+        Object.keys(handler).every((key) => key === "Proxy") &&
+        typeof handler["Proxy"] === "string" &&
+        ours.includes(handler["Proxy"]),
+    )
   );
 }
+
+/** The proxy targets `jhin pair --tailscale` mapped, so it repairs only its own (D1189). */
+export interface OwnMappings {
+  targets(): readonly string[];
+  remember(target: string): void;
+}
+
+/** Own mappings kept in a file of the home (0600), written whole. */
+export function fileMappings(file: string): OwnMappings {
+  const read = (): string[] => {
+    try {
+      const parsed = JSON.parse(Fs.readFileSync(file, "utf8")) as { targets?: unknown };
+      return Array.isArray(parsed.targets)
+        ? parsed.targets.filter((target): target is string => typeof target === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  };
+  return {
+    targets: read,
+    remember(target) {
+      const targets = [...new Set([...read(), target])];
+      Fs.mkdirSync(Path.dirname(file), { recursive: true });
+      const temporary = `${file}.${process.pid}.tmp`;
+      Fs.writeFileSync(temporary, `${JSON.stringify({ targets })}\n`, { mode: 0o600 });
+      Fs.renameSync(temporary, file);
+    },
+  };
+}
+
+/** One short line of what `tailscale` said, for an error the user can act on. */
+const said = (stderr: string | undefined) => {
+  const line = stderr
+    ?.split("\n")
+    .find((text) => text.trim() !== "")
+    ?.trim();
+  return line === undefined ? "" : ` Tailscale said: ${line.slice(0, 300)}`;
+};
 
 /** `Self.DNSName` of `tailscale status --json`, without its trailing dot. */
 export function parseMagicDnsName(statusJson: string): string | undefined {
@@ -110,6 +159,7 @@ export function tailscaleBaseUrl(magicDnsName: string, servePort: number): strin
 export async function publishOverTailscale(input: {
   readonly node: RuntimeState;
   readonly servePort: number;
+  readonly mappings: OwnMappings;
   readonly run?: TailscaleRunner;
   readonly probe?: (baseUrl: string) => Promise<Probe>;
   /** Between probes of a fresh mapping; a second by default. */
@@ -158,8 +208,7 @@ export async function publishOverTailscale(input: {
   }
 
   // Nothing that answers as this node is there. Only an empty port, or a
-  // mapping that proxies to a loopback address that no longer answers (a
-  // node's old port), is taken over: a TCP forward or any other handler stays.
+  // mapping `jhin pair` made itself (a node's old address), is taken over.
   let serveStatus: { code: number; stdout: string };
   try {
     serveStatus = await run(["serve", "status", "--json"], STATUS_TIMEOUT_MS);
@@ -167,7 +216,7 @@ export async function publishOverTailscale(input: {
     throw unavailable;
   }
   if (serveStatus.code !== 0) throw unavailable;
-  if (!replaceable(serveStatus.stdout, input.servePort)) {
+  if (!replaceable(serveStatus.stdout, input.servePort, input.mappings.targets())) {
     throw new PairError(
       "TAILSCALE_PORT_OCCUPIED",
       `HTTPS port ${port} on the tailnet already serves something that is not this Jhin node. Pass --tailscale-serve-port to publish this one on another port.`,
@@ -176,7 +225,7 @@ export async function publishOverTailscale(input: {
 
   // Where Tailscale Serve sends requests: the node as this machine reaches it.
   const target = localUrl(input.node.url);
-  let served: { code: number };
+  let served: { code: number; stderr?: string };
   try {
     served = await run(["serve", "--bg", `--https=${port}`, target], SERVE_TIMEOUT_MS);
   } catch {
@@ -185,9 +234,10 @@ export async function publishOverTailscale(input: {
   if (served.code !== 0) {
     throw new PairError(
       "TAILSCALE_SERVE_FAILED",
-      `tailscale serve failed for HTTPS port ${port}. Run \`tailscale serve --https=${port} --bg ${target}\` by hand to see why.`,
+      `tailscale serve failed for HTTPS port ${port}. Run \`tailscale serve --https=${port} --bg ${target}\` by hand to see why.${said(served.stderr)}`,
     );
   }
+  input.mappings.remember(target);
   notes.push(
     `Tailscale Serve now maps ${baseUrl} to this node and persists across restarts. Remove it with \`tailscale serve --https=${port} off\`.`,
     TRUST_PROXY_NOTE,

@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
 import { renderTerminalQrCode } from "@jhin/qr-code";
 
+import { parseArgv } from "../src/args.ts";
 import {
   discoverNode,
   formatPairOutput,
@@ -160,20 +161,8 @@ describe("jhin pair against a running node", () => {
 });
 
 describe("jhin pair's flags (security.md D1185, D1189)", () => {
-  /** The options as `jhin`'s argv parser gives them: the last value, or `true` without one. */
-  const flags = (...argv: string[]) => {
-    const options = new Map<string, string | true>();
-    for (let index = 0; index < argv.length; index += 1) {
-      const key = argv[index]!.slice(2);
-      const next = argv[index + 1];
-      if (next === undefined || next.startsWith("--")) options.set(key, true);
-      else {
-        options.set(key, next);
-        index += 1;
-      }
-    }
-    return { argv, options };
-  };
+  /** The options as `jhin` parses them (`args.ts`). */
+  const flags = (...argv: string[]) => ({ argv, options: parseArgv(argv).options });
   const refusal = (hasUrl: boolean, ...argv: string[]) => {
     const { options } = flags(...argv);
     const parsed = parsePairFlags(argv, options, hasUrl);

@@ -1,10 +1,14 @@
+import * as Fs from "node:fs";
 import * as Http from "node:http";
 import type { AddressInfo } from "node:net";
+import * as Os from "node:os";
+import * as Path from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
 import { probeNode, type Probe, type RuntimeState } from "../src/pair.ts";
 import {
+  fileMappings,
   parseMagicDnsName,
   publishOverTailscale,
   replaceable,
@@ -54,6 +58,11 @@ function probes(...answers: Probe[]) {
 
 const pause = async () => {};
 
+function memoryMappings(...targets: string[]) {
+  const kept = [...targets];
+  return { targets: () => kept, remember: (target: string) => void kept.push(target) };
+}
+
 describe("Tailscale Serve for jhin pair", () => {
   it("reads the MagicDNS name and builds T3's HTTPS base", () => {
     expect(parseMagicDnsName(STATUS)).toBe("studio.tail1234.ts.net");
@@ -73,6 +82,7 @@ describe("Tailscale Serve for jhin pair", () => {
       { kind: "node", instance: "this-node" },
     );
     const published = await publishOverTailscale({
+      mappings: memoryMappings(),
       node,
       servePort: 443,
       run: tailscale.run,
@@ -97,6 +107,7 @@ describe("Tailscale Serve for jhin pair", () => {
     const tailscale = fakeTailscale();
     const { probe } = probes({ kind: "node", instance: "this-node" });
     const published = await publishOverTailscale({
+      mappings: memoryMappings(),
       node,
       servePort: 8443,
       run: tailscale.run,
@@ -112,6 +123,7 @@ describe("Tailscale Serve for jhin pair", () => {
     const other = fakeTailscale();
     await expect(
       publishOverTailscale({
+        mappings: memoryMappings(),
         node,
         servePort: 443,
         run: other.run,
@@ -121,6 +133,7 @@ describe("Tailscale Serve for jhin pair", () => {
     ).rejects.toThrow("already fronts a different Jhin node");
     await expect(
       publishOverTailscale({
+        mappings: memoryMappings(),
         node,
         servePort: 443,
         run: other.run,
@@ -135,6 +148,7 @@ describe("Tailscale Serve for jhin pair", () => {
     const options = { node, servePort: 443, probe: probes({ kind: "unreachable" }).probe, pause };
     await expect(
       publishOverTailscale({
+        mappings: memoryMappings(),
         ...options,
         run: async () => {
           throw new Error("ENOENT");
@@ -143,12 +157,17 @@ describe("Tailscale Serve for jhin pair", () => {
     ).rejects.toThrow("Could not talk to Tailscale. Is tailscaled running?");
     await expect(
       publishOverTailscale({
+        mappings: memoryMappings(),
         ...options,
         run: fakeTailscale({ status: { code: 0, stdout: "{}" } }).run,
       }),
     ).rejects.toThrow("This machine has no MagicDNS name.");
     await expect(
-      publishOverTailscale({ ...options, run: fakeTailscale({ serve: 1 }).run }),
+      publishOverTailscale({
+        mappings: memoryMappings(),
+        ...options,
+        run: fakeTailscale({ serve: 1 }).run,
+      }),
     ).rejects.toThrow(
       "tailscale serve failed for HTTPS port 443. Run `tailscale serve --https=443 --bg http://127.0.0.1:7777` by hand to see why.",
     );
@@ -156,6 +175,7 @@ describe("Tailscale Serve for jhin pair", () => {
 
   it("notes when the fresh endpoint has not answered yet", async () => {
     const published = await publishOverTailscale({
+      mappings: memoryMappings(),
       node,
       servePort: 443,
       run: fakeTailscale().run,
@@ -173,20 +193,26 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
       Web: { "studio.tail1234.ts.net:443": { Handlers: { "/": handlers } } },
     });
 
-  it("takes an empty port or a stale loopback proxy, and nothing else", () => {
-    expect(replaceable("{}", 443)).toBe(true);
-    expect(replaceable("", 443)).toBe(true);
-    expect(replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 443)).toBe(
+  it("takes an empty port or a mapping jhin pair made, and nothing else", () => {
+    const ours = ["http://127.0.0.1:7777"];
+    expect(replaceable("{}", 443, ours)).toBe(true);
+    expect(replaceable("", 443, ours)).toBe(true);
+    expect(
+      replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 443, ours),
+    ).toBe(true);
+    expect(replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 8443, [])).toBe(
       true,
     );
-    expect(replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 8443)).toBe(
-      true,
-    );
-    expect(replaceable(status({ TCPForward: "127.0.0.1:22" }, {}), 443)).toBe(false);
-    expect(replaceable(status({ HTTPS: true }, { Proxy: "http://10.0.0.5:80" }), 443)).toBe(false);
-    expect(replaceable(status({ HTTPS: true }, { Path: "/srv/www" }), 443)).toBe(false);
-    expect(replaceable(status({ HTTPS: true }, { Text: "hello" }), 443)).toBe(false);
-    expect(replaceable("{not json", 443)).toBe(false);
+    // Someone's stopped dev server on loopback is not ours to take.
+    expect(
+      replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:3000" }), 443, ours),
+    ).toBe(false);
+    expect(replaceable(status({ TCPForward: "127.0.0.1:22" }, {}), 443, ours)).toBe(false);
+    expect(replaceable(status({ HTTPS: true }, { Path: "/srv/www" }), 443, ours)).toBe(false);
+    expect(replaceable(status({ HTTPS: true }, { Text: "hello" }), 443, ours)).toBe(false);
+    // A taken port without handlers is not known to be ours.
+    expect(replaceable(JSON.stringify({ TCP: { "443": { HTTPS: true } } }), 443, ours)).toBe(false);
+    expect(replaceable("{not json", 443, ours)).toBe(false);
     // A funneled port is public: never re-pointed at the node.
     expect(
       replaceable(
@@ -195,8 +221,42 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
           AllowFunnel: { "studio.tail1234.ts.net:443": true },
         }),
         443,
+        ours,
       ),
     ).toBe(false);
+  });
+
+  it("remembers what it mapped, in a 0600 file of the home", () => {
+    const file = Path.join(Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-ts-")), "cli", "map.json");
+    const mappings = fileMappings(file);
+    expect(mappings.targets()).toEqual([]);
+    mappings.remember("http://127.0.0.1:7777");
+    mappings.remember("http://127.0.0.1:7777");
+    expect(fileMappings(file).targets()).toEqual(["http://127.0.0.1:7777"]);
+    expect(Fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it("repeats what tailscale said when serve fails", async () => {
+    await expect(
+      publishOverTailscale({
+        mappings: memoryMappings(),
+        node,
+        servePort: 443,
+        run: async (args) =>
+          args[0] === "status"
+            ? { code: 0, stdout: STATUS }
+            : args[1] === "status"
+              ? { code: 0, stdout: "{}" }
+              : {
+                  code: 1,
+                  stdout: "",
+                  stderr:
+                    "\nServe is not enabled on your tailnet.\nTo enable, visit: https://login.tailscale.com/f/serve\n",
+                },
+        probe: probes({ kind: "unreachable" }).probe,
+        pause,
+      }),
+    ).rejects.toThrow("Tailscale said: Serve is not enabled on your tailnet.");
   });
 
   it("leaves an occupied port alone, even when its backend is down", async () => {
@@ -205,6 +265,7 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
     });
     await expect(
       publishOverTailscale({
+        mappings: memoryMappings(),
         node,
         servePort: 443,
         run: tailscale.run,
@@ -218,6 +279,7 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
   it("never hands out a link when something else answers the fresh mapping", async () => {
     await expect(
       publishOverTailscale({
+        mappings: memoryMappings(),
         node,
         servePort: 443,
         run: fakeTailscale().run,
@@ -227,6 +289,7 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
     ).rejects.toThrow("answers as something that is not this Jhin node");
     await expect(
       publishOverTailscale({
+        mappings: memoryMappings(),
         node,
         servePort: 443,
         run: fakeTailscale().run,

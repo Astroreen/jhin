@@ -10,6 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CommandInfo } from "@jhin/sdk";
 
+import { parseArgv } from "./args.ts";
 import {
   PairError,
   discoverNode,
@@ -19,7 +20,7 @@ import {
   reachableBaseUrl,
   type PairingLink,
 } from "./pair.ts";
-import { publishOverTailscale } from "./tailscale.ts";
+import { fileMappings, publishOverTailscale } from "./tailscale.ts";
 
 const require = Module.createRequire(import.meta.url);
 
@@ -78,38 +79,6 @@ Global options:
 
 function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
-}
-
-interface Args {
-  readonly positionals: readonly string[];
-  /** Every `--key value`, `--key=value` or bare `--flag` (true), in order. */
-  readonly options: ReadonlyMap<string, string | true>;
-}
-
-function parseArgv(argv: readonly string[]): Args {
-  const positionals: string[] = [];
-  const options = new Map<string, string | true>();
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index]!;
-    if (!token.startsWith("--")) {
-      positionals.push(token);
-      continue;
-    }
-    const body = token.slice(2);
-    const equals = body.indexOf("=");
-    if (equals >= 0) {
-      options.set(body.slice(0, equals), body.slice(equals + 1));
-      continue;
-    }
-    const next = argv[index + 1];
-    if (next === undefined || next.startsWith("--")) {
-      options.set(body, true);
-    } else {
-      options.set(body, next);
-      index += 1;
-    }
-  }
-  return { positionals, options };
 }
 
 const GLOBAL_OPTIONS = new Set([
@@ -264,7 +233,13 @@ async function pair(
       const node = await discoverNode(remote.home);
       url = node.url;
       if (tailscale) {
-        const published = await publishOverTailscale({ node, servePort });
+        const published = await publishOverTailscale({
+          node,
+          servePort,
+          mappings: fileMappings(
+            Path.join(resolveHome(remote.home).root, "cli", "tailscale-serve.json"),
+          ),
+        });
         baseUrl = published.baseUrl;
         notes.push(...published.notes);
       }
