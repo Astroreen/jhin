@@ -186,6 +186,8 @@ describe("health views (D731)", () => {
     );
     await expect.element(page.getByText("No node here reports health.")).toBeVisible();
     await expect.element(page.getByText("No warnings.")).not.toBeInTheDocument();
+    // Nothing was read, so nothing is "out of date".
+    await expect.element(page.getByText(/Not live/)).not.toBeInTheDocument();
   });
 
   it("reads the overview once when its node turns ready", async () => {
@@ -340,6 +342,8 @@ describe("health views (D731)", () => {
     );
     await expect.element(page.getByText("No node here reports health.")).toBeVisible();
     await expect.element(page.getByText("No warnings.")).not.toBeInTheDocument();
+    // Nothing was read, so nothing is "out of date".
+    await expect.element(page.getByText(/Not live/)).not.toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: /Ceremony and progress/ }))
       .not.toBeInTheDocument();

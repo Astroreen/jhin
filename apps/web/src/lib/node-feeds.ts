@@ -32,7 +32,10 @@ export interface NodeFeeds<S> {
 
 /** The connections whose feed was read and then failed: what they show may be out of date. */
 export function notLive<S>(nodes: ReadonlyMap<string, NodeFeed<S>>): string[] {
-  return [...nodes].filter(([, feed]) => feed.status === "error").map(([node]) => node);
+  // A feed never read shows nothing that could be out of date.
+  return [...nodes]
+    .filter(([, feed]) => feed.status === "error" && feed.read === true)
+    .map(([node]) => node);
 }
 
 export interface NodeFeedSource<S> {
