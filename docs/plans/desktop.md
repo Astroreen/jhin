@@ -320,7 +320,7 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   older ones on GitHub) instead of the tooltip; a press still runs the
   action. Stable keeps the tooltip.
 
-### Restarts, the preview, devices and releases (W34)
+### Restarts, the preview and devices (W34)
 
 Workstream W34 of `t3-roadmap.md` continues this plan and `preview.md` with
 the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
