@@ -463,6 +463,10 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
         threadId: "with-lib",
       });
       expect(stage(snapshot, "checkout")?.status).toBe("done");
+      // A clean worktree with checked-out submodules is removed without force.
+      await sc.client.call("threads.delete", { threadId: "with-lib" });
+      await sc.client.call("git.worktree.remove", { projectId, path: thread.worktreePath });
+      expect(Fs.existsSync(thread.worktreePath)).toBe(false);
 
       sc.configure({ worktreeSubmodules: "none" });
       const empty = await sc.client.call<{ worktreePath: string }>("threads.create", {
@@ -478,7 +482,7 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
           }),
           "checkout",
         ),
-      ).toMatchObject({ status: "warning", detail: "submodules left empty" });
+      ).toMatchObject({ status: "done", detail: "submodules left empty" });
 
       // Top level only: a submodule's own submodule stays empty.
       const inner = repository();

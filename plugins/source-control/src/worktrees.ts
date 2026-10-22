@@ -375,7 +375,7 @@ async function populateSubmodules(
   git: Git,
   path: string,
   mode: "recursive" | "top-level" | "none",
-): Promise<["done", undefined] | ["warning", string]> {
+): Promise<["done", string | undefined] | ["warning", string]> {
   // Only a missing `.gitmodules` means none; another error reading it is said.
   const hasSubmodules = await Fs.stat(Path.join(path, ".gitmodules")).then(
     () => true,
@@ -385,7 +385,8 @@ async function populateSubmodules(
     return ["warning", `submodules not checked out: ${hasSubmodules.message}`];
   }
   if (!hasSubmodules) return ["done", undefined];
-  if (mode === "none") return ["warning", "submodules left empty"];
+  // Skipped as asked: no warning, only what was left (a setup script may fill them).
+  if (mode === "none") return ["done", "submodules left empty"];
   let updated: { code: number; stderr: string };
   try {
     updated = await git(
@@ -452,13 +453,26 @@ export async function removeWorktree(
     await git(["worktree", "prune"]);
     return;
   }
+  // git refuses a worktree with checked-out submodules unless forced (D1134): one
+  // whose files, its submodules' included, are all committed goes as a clean one does.
+  const clean =
+    options.force !== true &&
+    (await Fs.stat(Path.join(path, ".gitmodules")).then(
+      () => true,
+      () => false,
+    )) &&
+    (
+      await git(["-C", path, "status", "--porcelain", "--ignore-submodules=none"], {
+        ok: [0, 128],
+      })
+    ).stdout.trim() === "";
   await git(
     [
       "-c",
       "status.showUntrackedFiles=normal",
       "worktree",
       "remove",
-      ...(options.force === true ? ["--force"] : []),
+      ...(options.force === true || clean ? ["--force"] : []),
       "--",
       path,
     ],
