@@ -105,7 +105,7 @@ test("D1065, D1066: the owner defines, edits, renews and removes an agent", asyn
   await form.getByRole("textbox", { name: "Title" }).fill("Reviewer");
   await form.getByRole("textbox", { name: "Role" }).fill("Reviews slices");
   await form.getByRole("combobox", { name: "Runtime" }).click();
-  await page.getByRole("option", { name: /fake/i }).first().click();
+  await page.getByRole("option", { name: "Fake agent", exact: true }).click();
   await form.getByRole("textbox", { name: "Skills" }).fill("review, tdd");
   await page.screenshot({ path: info.outputPath("agent-new.png") });
   await form.getByRole("button", { name: "Define agent" }).click();

@@ -206,7 +206,10 @@ export function Roster({ view }: { view: AgentsView }) {
   const failed = shown.some((connection) => nodes.get(connection.id)?.status === "error");
   // A new agent goes to the route's node, else the first that has agents (D1065).
   const route = useExternal(view.navigation, view.navigation.current);
-  const target = shown.find((connection) => connection.id === route.node) ?? shown[0];
+  const target =
+    shown.find((connection) => connection.id === route.node) ??
+    shown.find((connection) => (nodes.get(connection.id)?.agents.length ?? 0) > 0) ??
+    shown[0];
   const add =
     target === undefined ? null : (
       <SidebarMenu>

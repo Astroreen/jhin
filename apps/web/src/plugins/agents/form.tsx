@@ -21,12 +21,45 @@ import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { defineInput, draftOf, draftProblem, updateInput, type AgentDraft } from "./definition.ts";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 import { agentRoute } from "./route.ts";
+import type { AgentsStore } from "./store.ts";
 import { storeOf, type AgentsView } from "./views.tsx";
+
+/**
+ * Resolves once the store has the agent, or cannot get it (its node's feed
+ * failed or is gone): the page it opens then shows what the store knows.
+ */
+function known(store: AgentsStore, node: string, agentId: string): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    let following: { dispose(): void } | undefined;
+    const check = () => {
+      if (done) return;
+      const state = store.snapshot().get(node);
+      const settled =
+        state === undefined ||
+        state.status === "error" ||
+        state.status === "unsupported" ||
+        state.agents.some((agent) => agent.agentId === agentId);
+      if (!settled) return;
+      done = true;
+      following?.dispose();
+      resolve();
+    };
+    following = store.subscribe(check);
+    if (done) following.dispose();
+    else check();
+  });
+}
 
 /** The choice that stands for an unset field in a select. */
 const UNSET = "-";
 
-function Field(props: { label: string; hint?: string; children: (id: string) => ReactNode }) {
+function Field(props: {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: (id: string) => ReactNode;
+}) {
   const id = useId();
   return (
     <div className="flex flex-col gap-1.5">
@@ -34,6 +67,11 @@ function Field(props: { label: string; hint?: string; children: (id: string) => 
       {props.children(id)}
       {props.hint === undefined ? null : (
         <p className="text-xs text-muted-foreground">{props.hint}</p>
+      )}
+      {props.error === undefined ? null : (
+        <p className="text-xs text-destructive-foreground" role="alert">
+          {props.error}
+        </p>
       )}
     </div>
   );
@@ -70,6 +108,7 @@ function Form(props: { view: AgentsView; node: string; agent: AgentRecord | unde
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [runtimes, setRuntimes] = useState<readonly AgentInfo[] | undefined>();
+  const [runtimesError, setRuntimesError] = useState<string | undefined>();
   const catalog = useCatalog(view.threads, { node });
   const projects = catalog?.projects ?? [];
 
@@ -80,20 +119,25 @@ function Form(props: { view: AgentsView; node: string; agent: AgentRecord | unde
       .call<AgentInfo[]>({ node }, "agents.list", {})
       .then((list) => {
         if (!current) return;
-        const own = list.filter((item) => (item as { kind?: string }).kind !== "defined");
+        const own = list.filter((item) => item.kind !== "defined");
         setRuntimes(own);
         // A new agent runs on the node's default runtime unless the owner picks another.
+        if (!isNew) return;
         setDraft((now) =>
           now.runtime !== ""
             ? now
             : { ...now, runtime: (own.find((item) => item.default) ?? own[0])?.agentId ?? "" },
         );
       })
-      .catch(() => current && setRuntimes([]));
+      .catch((failure: unknown) => {
+        if (!current) return;
+        setRuntimes([]);
+        setRuntimesError(failure instanceof Error ? failure.message : String(failure));
+      });
     return () => {
       current = false;
     };
-  }, [view.threads, node]);
+  }, [view.threads, node, isNew]);
 
   const runtime = runtimes?.find((item) => item.agentId === draft.runtime);
   const set = (patch: Partial<AgentDraft>) => setDraft((now) => ({ ...now, ...patch }));
@@ -111,6 +155,8 @@ function Form(props: { view: AgentsView; node: string; agent: AgentRecord | unde
       if (isNew) {
         const input = defineInput(draft);
         await view.threads.call({ node }, "agents.define", input);
+        // The page reads the store, which learns of the agent from the stream.
+        await known(storeOf(view), node, input.agentId);
         view.navigation.navigate(agentRoute(node, input.agentId));
       } else {
         const input = updateInput(agent, draft);
@@ -176,12 +222,20 @@ function Form(props: { view: AgentsView; node: string; agent: AgentRecord | unde
           )}
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Runtime">
+          <Field
+            label="Runtime"
+            {...(runtimesError === undefined
+              ? {}
+              : { error: `Couldn't list the node's runtimes: ${runtimesError}` })}
+          >
             {(id) => (
               <Select
                 onValueChange={(value) => {
                   if (typeof value === "string" && value !== draft.runtime) {
-                    set({ runtime: value, model: "" });
+                    // A model the new runtime does not offer would not run.
+                    const next = runtimes?.find((item) => item.agentId === value);
+                    const keeps = next?.models.some((model) => model.id === draft.model);
+                    set({ runtime: value, model: keeps === true ? draft.model : "" });
                   }
                 }}
                 value={draft.runtime === "" ? null : draft.runtime}

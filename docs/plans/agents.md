@@ -1275,9 +1275,11 @@ Decisions (C1):
   (`jhin.agents.form`) on the route panel `agent-definition`, the agent's id
   as `section` to edit it, none for a new one; `civilization.agent.define
   {node, agentId?}` opens it, and the roster ends with **New agent** (for the
-  route's node, else the first with agents). It holds the id (new only),
+  route's node, else the first with agents); a new agent's page opens once
+  the roster has it. It holds the id (new only),
   title, role, runtime (the node's runtimes from `agents.list`, its default
-  chosen first), model (the runtime's, or its default), home project (a
+  chosen first; a list that fails says so), model (the runtime's, or its
+  default; kept across a change of runtime only when the new one offers it), home project (a
   project of the node, or the scratch project), skills and instructions. A
   new agent is `agents.define` on the node layer; an edit is `agents.update`
   with only the changed fields, an emptied one in `unset`, so D604 writes it

@@ -245,6 +245,29 @@ describe("an agent's definition from the client (C1, D1065)", () => {
       model: "m",
       unset: ["skills"],
     });
+  });
+
+  it("unsets an emptied title, project or instructions, and sets a new runtime", () => {
+    const full = { ...record, title: "Builder", projectId: "p1", instructions: "Be brief." };
+    const draft = draftOf(full);
+    expect(draft).toMatchObject({ title: "Builder", project: "p1", instructions: "Be brief." });
+    expect(
+      updateInput(full, { ...draft, title: " ", project: "", instructions: "", runtime: "other" }),
+    ).toEqual({
+      agentId: "builder",
+      runtime: "other",
+      unset: ["title", "instructions", "project"],
+    });
+    // Whitespace around a field is not a change.
+    expect(updateInput(full, { ...draft, role: " Builds " })).toBeUndefined();
+  });
+
+  it("opens the form of a new agent or of one to edit", () => {
+    expect(agentFormRoute("a")).toEqual({
+      node: "a",
+      mode: "civilization",
+      panel: "agent-definition",
+    });
     expect(agentFormRoute("a", "builder")).toEqual({
       node: "a",
       mode: "civilization",

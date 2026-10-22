@@ -742,6 +742,8 @@ export interface AgentInfo {
   readonly default: boolean;
   /** Its turns take messages while they run (a steer); absent from older nodes. */
   readonly steering?: boolean;
+  /** A runtime, or an agent defined on one (A1, D610); absent from older nodes. */
+  readonly kind?: "runtime" | "defined";
 }
 
 /**
