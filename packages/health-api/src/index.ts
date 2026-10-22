@@ -228,17 +228,19 @@ export const HealthConfig = z
   });
 export type HealthConfig = z.output<typeof HealthConfig>;
 
-/** Everything of one node's `health` stream, folded. */
+/**
+ * Everything of one node's `health` stream, folded. Commits recorded on it
+ * (`health.progress.recorded`) are counted by the sensors over the window,
+ * not kept here, so the fold does not grow with every turn.
+ */
 export interface HealthState {
   /** By warning id. */
   readonly warnings: Readonly<Record<string, Warning>>;
   /** By idea id. */
   readonly ideas: Readonly<Record<string, Idea>>;
-  /** Commits and merges, oldest first. */
-  readonly progress: readonly Progress[];
 }
 
-export const EMPTY_HEALTH: HealthState = { warnings: {}, ideas: {}, progress: [] };
+export const EMPTY_HEALTH: HealthState = { warnings: {}, ideas: {} };
 
 /** Applies one event of the `health` stream; unknown types are skipped. */
 export function applyHealthEvent(
@@ -252,7 +254,6 @@ export function applyHealthEvent(
     dismissedAt?: string;
     dismissedAfter?: Record<string, number>;
     idea?: Idea;
-    progress?: Progress;
   };
   switch (event.type) {
     case HealthEvents.warningRaised:
@@ -284,9 +285,6 @@ export function applyHealthEvent(
     case HealthEvents.ideaCorrected:
       if (payload.idea === undefined) return state;
       return { ...state, ideas: { ...state.ideas, [payload.idea.ideaId]: payload.idea } };
-    case HealthEvents.progressRecorded:
-      if (payload.progress === undefined) return state;
-      return { ...state, progress: [...state.progress, payload.progress] };
     default:
       return state;
   }

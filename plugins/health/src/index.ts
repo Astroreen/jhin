@@ -705,7 +705,8 @@ export default definePlugin({
           warningId,
           dismissedAt: now(),
           // What it saw: an exact cut for counting again (D724).
-          dismissedAfter: Object.fromEntries(heads),
+          // Health's own stream is ahead of its subscription: its fold knows best.
+          dismissedAfter: { ...Object.fromEntries(heads), [HEALTH_STREAM]: healthHead },
           ...by(invocation),
         });
         return getWarning(warningId);

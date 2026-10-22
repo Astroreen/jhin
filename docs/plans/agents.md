@@ -952,7 +952,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   nothing.
 - **D724. A warning per detector and subject; the narrowest group warns.**
   A detector raises a warning (`health.warning.raised` on the stream and the
-  same kernel event, for server plugins that tell the owner elsewhere) once
+  same kernel event, for server plugins that tell the owner elsewhere, such
+  as a chat integration) once
   for its subject (a group, a slice, an idea) while that warning is open.
   The owner dismisses it (`health.warnings.dismiss`); a dismissal starts the
   count of its subject again, so it warns again only when what came after the
