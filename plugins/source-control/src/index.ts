@@ -541,9 +541,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const removingThreads = new Set<string>();
   const removeThread = async (threadId: string) => {
     await loadThreads();
+    // Going away for the whole removal: a settle already on its way decides nothing.
     removingThreads.add(threadId);
     try {
       await links.remove(threadId);
+      await turns.remove(threadId);
+      if (!threads.delete(threadId)) return;
+      lastTurns.delete(threadId);
+      await kv.delete(NAMESPACE, `thread/${threadId}`);
+      await append(SourceControlEvents.threadRemoved, { threadId });
     } finally {
       removingThreads.delete(threadId);
       heldThreads.delete(threadId);
@@ -551,11 +557,6 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       const told = `${JSON.stringify([threadId]).slice(0, -1)},`;
       for (const key of Array.from(announced)) if (key.startsWith(told)) announced.delete(key);
     }
-    await turns.remove(threadId);
-    if (!threads.delete(threadId)) return;
-    lastTurns.delete(threadId);
-    await kv.delete(NAMESPACE, `thread/${threadId}`);
-    await append(SourceControlEvents.threadRemoved, { threadId });
   };
 
   // --- Checkpoints (D243–D246) ------------------------------------------------------
@@ -959,6 +960,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   /** A linked pull request changed: its thread may settle on its links (D1133). */
   const settleOnLinks = async (threadId: string) => {
     const decided = await linkSettlement(threadId);
+    // Removed meanwhile: its links are gone because it is, not because they closed.
+    if (removingThreads.has(threadId)) return;
     if (decided === "hold") {
       noteHold(threadId);
     } else if (decided === undefined) {
