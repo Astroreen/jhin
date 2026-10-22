@@ -111,6 +111,10 @@ Words about Jhin:
   event log owned by one node.
 - **Turn** — one exchange in a thread: a user message and the agent's response.
   Every turn carries an `agentId`.
+- **Calling thread** — the thread whose agent makes a command call
+  (`Invocation.threadId`: bound to an agent's MCP credential, or named by the
+  `x-jhin-thread` header); commands that act as it default to it, such as
+  delegating a task or binding a scheduled task (`bindToCurrentThread`).
 - **Rollback** — dropping a thread's turns after a turn (`threads.rollback`):
   the log keeps their events and records a `threads.thread.rolled-back`
   event; what shows a thread (agents' history, the timeline, forks, search)

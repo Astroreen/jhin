@@ -749,9 +749,11 @@ Round 3 of `t3-roadmap.md` (D1161–D1180). The reference is D53's tag:
   worktree of `main` from origin when not (a `workspaceStrategy` given wins),
   and the calling thread's agent, model, model options and modes for what it
   leaves out, as T3's runs inherit them. `scheduler.tasks.update` takes
-  `bindToCurrentThread` too: true moves the task into the calling thread,
-  false out of any, and the workspace follows as T3's does. Without a calling
-  thread (the settings page, the CLI) nothing changes: `threadId` binds.
+  `bindToCurrentThread` too: true moves the task into the calling thread
+  (refused without one, or for another project), false out of any thread,
+  also without a calling thread, as T3's; the workspace follows as T3's does
+  (a `workspaceStrategy` given wins). Otherwise a call without a calling
+  thread (the settings page, the CLI) changes nothing: `threadId` binds.
 - **D1178. A task keeps its model options.** A task has `modelOptions`
   (T3's `modelSelection.options`; `[{ id, value }]`, at most 20, as D870),
   given on create and update (null clears them) or inherited (D1177), and a

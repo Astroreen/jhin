@@ -568,3 +568,85 @@ describe("jhin.scheduler: a task created from an agent's thread (D1177, D1178)",
     expect(cleared.modelOptions).toBeUndefined();
   });
 });
+
+describe("jhin.scheduler: moving a task between threads (D1177, D1178)", () => {
+  const asThread = (kernel: Node["kernel"], threadId: string) => (name: string, input: unknown) =>
+    kernel.commands.execute(name, input, { threadId }) as Promise<ScheduledTask>;
+  const schedule = { type: "interval", everyMs: 60 * MINUTE };
+
+  it("refuses to move a task into no thread, another project's thread, or with threadId too", async () => {
+    const { kernel, client } = await node();
+    const task = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "x",
+      schedule,
+    });
+    await expect(
+      client.call("scheduler.tasks.update", { id: task.id, bindToCurrentThread: true }),
+    ).rejects.toMatchObject({
+      message: "bindToCurrentThread needs an agent running inside a Jhin thread.",
+    });
+    const folder = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-elsewhere-"));
+    onTestFinished(() => Fs.rmSync(folder, { recursive: true, force: true }));
+    const other = await client.call<{ id: string }>("projects.create", { path: folder });
+    const elsewhere = await client.call<{ id: string }>("threads.create", { projectId: other.id });
+    await expect(
+      asThread(kernel, elsewhere.id)("scheduler.tasks.update", {
+        id: task.id,
+        bindToCurrentThread: true,
+      }),
+    ).rejects.toMatchObject({
+      message: "bindToCurrentThread binds to this thread, which belongs to a different project.",
+    });
+    await expect(
+      client.call("scheduler.tasks.update", {
+        id: task.id,
+        threadId: null,
+        bindToCurrentThread: false,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    // Unbinding needs no calling thread, as T3's; a workspace given wins over T3's default.
+    expect(
+      await client.call<ScheduledTask>("scheduler.tasks.update", {
+        id: task.id,
+        bindToCurrentThread: false,
+        workspaceStrategy: { type: "root" },
+      }),
+    ).toMatchObject({ threadId: null, workspaceStrategy: { type: "root" } });
+  });
+
+  it("inherits the caller's options only for its own agent and model", async () => {
+    const { kernel, client } = await node();
+    const caller = await client.call<{ id: string }>("threads.create", {
+      agentId: "jhin.agent-fake",
+      model: "echo",
+      modelOptions: [{ id: "effort", value: "high" }],
+    });
+    const call = asThread(kernel, caller.id);
+    const otherModel = await call("scheduler.tasks.create", {
+      prompt: "x",
+      schedule,
+      model: "plain",
+      bindToCurrentThread: false,
+      workspaceStrategy: { type: "root" },
+    });
+    expect(otherModel).toMatchObject({ agentId: "jhin.agent-fake", model: "plain" });
+    expect(otherModel.modelOptions).toBeUndefined();
+    expect(otherModel.workspaceStrategy).toEqual({ type: "root" });
+    const otherAgent = await call("scheduler.tasks.create", {
+      prompt: "x",
+      schedule,
+      agentId: "jhin.agent-other",
+    });
+    expect(otherAgent.agentId).toBe("jhin.agent-other");
+    expect(otherAgent.model).toBeUndefined();
+    expect(otherAgent.modelOptions).toBeUndefined();
+    // Its own agent and model: the options come along; another agent named alone drops them.
+    const same = await call("scheduler.tasks.create", { prompt: "x", schedule });
+    expect(same.modelOptions).toEqual([{ id: "effort", value: "high" }]);
+    const moved = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: same.id,
+      agentId: "jhin.agent-other",
+    });
+    expect(moved.modelOptions).toBeUndefined();
+  });
+});

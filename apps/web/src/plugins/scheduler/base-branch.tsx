@@ -18,7 +18,7 @@ import {
   Switch,
 } from "@jhin/ui";
 import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
 
@@ -55,15 +55,25 @@ export function BaseBranchPicker(props: {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const originSwitch = useId();
+  const latest = useRef(0);
   const { loadBranches } = props;
-  const load = () => {
+  /**
+   * Reads the refs; only the latest read counts. Only the first read can fall back to
+   * the text field: a later one that fails keeps the refs already shown.
+   */
+  const load = (first: boolean) => {
+    const read = (latest.current += 1);
     void loadBranches().then(
-      (list) => setBranches(list),
-      () => setBranches("unavailable"),
+      (list) => {
+        if (read === latest.current) setBranches(list);
+      },
+      () => {
+        if (read === latest.current && first) setBranches("unavailable");
+      },
     );
   };
   // Read once for the project, so a project without refs shows the text field at once.
-  useEffect(load, [loadBranches]);
+  useEffect(() => load(true), [loadBranches]);
   if (branches === "unavailable") {
     return (
       <div className="flex items-center gap-3">
@@ -99,7 +109,7 @@ export function BaseBranchPicker(props: {
       onInputValueChange={(value: string) => setQuery(value)}
       onOpenChange={(next: boolean) => {
         setOpen(next);
-        if (next) load();
+        if (next) load(false);
         else setQuery("");
       }}
       onValueChange={(item: string | null) => {
