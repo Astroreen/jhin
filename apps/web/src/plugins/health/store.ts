@@ -42,11 +42,15 @@ export function createHealthStore(
         state: {
           warnings: Object.fromEntries(warnings.map((warning) => [warning.warningId, warning])),
           ideas: Object.fromEntries(ideas.map((idea) => [idea.ideaId, idea])),
+          // The client holds no progress: the catalog has none, and the counts
+          // come from `health.status`.
           progress: [],
         },
       };
     },
-    apply: applyHealthEvent,
+    // Progress events are skipped too, so `progress` never holds half a list.
+    apply: (state, event) =>
+      event.type === HealthEvents.progressRecorded ? state : applyHealthEvent(state, event),
     seen: (connection, event, before) => {
       const warning = (event.payload as { warning?: Warning } | null)?.warning;
       // A warning told once: a replayed raise of a known warning is not news.

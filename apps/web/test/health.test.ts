@@ -111,6 +111,22 @@ describe("health in Civilization mode (D731)", () => {
     ]);
 
     push({ type: HealthEvents.warningDismissed, payload: { warningId: "w2", dismissedAt: "x" } });
+    // The client holds no progress: a commit leaves the state as it was.
+    const before = store.snapshot().get("a")!.value;
+    push({
+      type: HealthEvents.progressRecorded,
+      payload: {
+        progress: {
+          kind: "commit",
+          count: 1,
+          threadId: "t1",
+          projectId: "p1",
+          ref: "abc",
+          at: "x",
+        },
+      },
+    });
+    expect(store.snapshot().get("a")!.value).toBe(before);
     expect(openWarnings(store.snapshot()).map((entry) => entry.warning.warningId)).toEqual(["w1"]);
 
     // A closed connection's warnings are not live any more, nor is its stream.
