@@ -95,6 +95,21 @@ export function createBrowserImport(machine: ImportHost = nodeImportHost): Brows
     },
 
     async readCookies(input) {
+      try {
+        return await readCookies(input);
+      } catch (cause) {
+        // A folder that went away or refuses a read while the source is resolved
+        // stops the import with a reason, as a failed read does.
+        if (cause instanceof PreviewError && cause.code === "PREVIEW_IMPORT_FAILED") throw cause;
+        throw importFailed(input.sourceId, "readFailed", cause);
+      }
+    },
+  };
+
+  async function readCookies(
+    input: Pick<PreviewImportCookiesInput, "sourceId" | "sourceProfileDirectory">,
+  ): Promise<CookieReadResult> {
+    {
       const context = sourcePathContext(host);
       const definition = BROWSER_IMPORT_SOURCES.find(
         (candidate) => candidate.id === input.sourceId,
@@ -149,8 +164,8 @@ export function createBrowserImport(machine: ImportHost = nodeImportHost): Brows
           cause,
         );
       }
-    },
-  };
+    }
+  }
 }
 
 type PlaywrightCookie = Parameters<BrowserContext["addCookies"]>[0][number];
@@ -192,8 +207,18 @@ const cookieHost = (url: string): string => {
   }
 };
 
+/**
+ * What a written cookie is found again by. The domain is compared without case
+ * or a leading dot, so a cookie the profile stored in another spelling of its
+ * domain is not taken for a refused one.
+ */
 const cookieKey = (cookie: { name: string; domain?: string; path?: string; value: string }) =>
-  JSON.stringify([cookie.name, cookie.domain, cookie.path, cookie.value]);
+  JSON.stringify([
+    cookie.name,
+    (cookie.domain ?? "").toLowerCase().replace(/^\./, ""),
+    cookie.path ?? "/",
+    cookie.value,
+  ]);
 
 /** A context or browser that went away fails every write: the profile is gone, not the cookie. */
 const isClosed = (error: unknown): boolean =>

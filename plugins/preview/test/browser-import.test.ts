@@ -48,6 +48,27 @@ const cookie = (fields: Partial<ImportedCookie>): ImportedCookie => ({
   ...fields,
 });
 
+describe("readCookies failing while the source is resolved", () => {
+  it("answers PREVIEW_IMPORT_FAILED with a reason, not the raw error", async () => {
+    const machine = machineWithFirefox([]);
+    const browserImport = createBrowserImport({
+      ...machine,
+      addresses: async () => {
+        throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+      },
+    });
+    await expect(
+      browserImport.readCookies({
+        sourceId: "firefox",
+        sourceProfileDirectory: "abcd.default-release",
+      }),
+    ).rejects.toMatchObject({
+      code: "PREVIEW_IMPORT_FAILED",
+      details: { reason: "readFailed", sourceId: "firefox" },
+    });
+  });
+});
+
 describe("listSources and readCookies", () => {
   it("lists the machine's browsers and reads only a profile the source reported", async () => {
     const host = machineWithFirefox([
@@ -294,5 +315,30 @@ describe("a Firefox profile imported into a profile (D1204, real Chromium)", () 
     await page.goto(`${origin}/`);
     expect(await page.title()).toBe("login=alice; visit=1");
     await second.close();
+  });
+
+  it("counts host-only, __Host- and domain cookies the profile holds as imported", async () => {
+    const chromium = new Chromium({ profilesDir: profiles.path });
+    try {
+      const result = await chromium.withProfile("scopes", async (context) => {
+        const written = await writeCookies(context, {
+          cookies: [
+            cookie({ name: "plain", url: `http://${host}/`, secure: false }),
+            cookie({ name: "__Host-id", url: `https://${host}/`, secure: true, path: "/" }),
+            cookie({ name: "wide", url: "https://example.test/", domain: ".example.test" }),
+          ],
+          undecryptable: 0,
+          undecryptableHosts: [],
+        });
+        const held = await context.cookies();
+        return { written, held };
+      });
+      expect(result.written).toEqual({ imported: 3, skipped: 0, skippedDomains: [] });
+      // Host-only stays host-only: the bare host, no leading dot.
+      expect(result.held.find((item) => item.name === "__Host-id")?.domain).toBe(host);
+      expect(result.held.find((item) => item.name === "wide")?.domain).toBe(".example.test");
+    } finally {
+      await chromium.close();
+    }
   });
 });

@@ -457,7 +457,17 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   DPAPI call are killed after 5 minutes (no command takes an abort signal
   yet), an unanswered prompt failing as `needsKeychainApproval`, and an
   import that asks for a key already being asked for waits for the same
-  prompt instead of opening another. Commands: `preview.import.sources {}` → `{ sources }` (T3's
+  prompt instead of opening another, under its own deadline (the prompt is
+  killed once no import waits for it; a run with input, DPAPI's, is never
+  shared). The web client calls each node over its own connection, which
+  sets no deadline, so the wizard waits as long as the prompt. A call
+  relayed with `mesh.call` is cut off after 30 s (`MESH_TIMEOUT`,
+  foundation.md) while the prompt and the import go on: that caller sees a
+  timeout although the cookies may still land, and imports again to see
+  the result (an import that answers at once and is followed is deferred).
+  Any other failure while the source is resolved (a folder that went away
+  or refuses a read) is `readFailed`. The read-back compares domains
+  without case or a leading dot. Commands: `preview.import.sources {}` → `{ sources }` (T3's
   `BrowserImportSource`) and `preview.import.cookies { sourceId,
   sourceProfileDirectory, targetProfileId }` → `{ imported, skipped,
   skippedDomains }`; a failure is `PREVIEW_IMPORT_FAILED` with T3's reason
@@ -514,7 +524,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   with `--password-store=kwallet*` (T3 reads libsecret only); and flushing
   a running profile's cookies to disk at once (T3's `flushStore`;
   Playwright has no call, so Chromium writes them on its own schedule or
-  when the profile closes).
+  when the profile closes); an import that answers at once and is followed
+  to its end, for callers relayed through the mesh, whose calls end after
+  30 s.
 - A test of the pinned browser's progress answer itself: it needs the
   install a test leaves running to be awaitable once it settles.
 - T3's host setup hints for the pinned browser (the AppArmor profile, the

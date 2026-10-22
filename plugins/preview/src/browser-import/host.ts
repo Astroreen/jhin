@@ -83,30 +83,83 @@ export function runProgram(
         stderr: Buffer.concat(stderr).toString("utf8"),
       }),
     );
+    // A program that exits before reading its input fails the write with EPIPE: its
+    // exit code reports that, and an unhandled stream error would end the node.
+    child.stdin?.on("error", () => undefined);
     if (options.stdin !== undefined) child.stdin?.end(options.stdin);
   });
 }
 
+const abortError = (reason: unknown): Error =>
+  Object.assign(new Error("The operation was aborted", { cause: reason }), { name: "AbortError" });
+
 /**
  * The host with identical runs going on at once shared: a second import while a
  * Keychain prompt is open waits for the same `security`, it does not start
- * another prompt. A run's own signal is the first caller's.
+ * another prompt. Each caller waits under its own signal; the program is killed
+ * only once every caller waiting for it has given up. A run with input on stdin
+ * (DPAPI's wrapped key) is never shared, so no secret is kept as a key.
  */
 export function sharingRuns(host: ImportHost): ImportHost {
-  const running = new Map<string, Promise<RunResult>>();
+  const running = new Map<
+    string,
+    { readonly result: Promise<RunResult>; readonly stop: AbortController; waiting: number }
+  >();
   return {
     ...host,
     run(command, args, options) {
-      const key = JSON.stringify([command, args, options?.stdin ?? null]);
-      const current = running.get(key);
-      if (current !== undefined) return current;
-      const started = host.run(command, args, options);
-      running.set(key, started);
-      const forget = () => {
-        if (running.get(key) === started) running.delete(key);
-      };
-      started.then(forget, forget);
-      return started;
+      if (options?.stdin !== undefined) return host.run(command, args, options);
+      const key = JSON.stringify([command, args]);
+      let entry = running.get(key);
+      if (entry === undefined) {
+        const stop = new AbortController();
+        const result = host.run(command, args, { signal: stop.signal });
+        const started = { result, stop, waiting: 0 };
+        running.set(key, started);
+        const forget = () => {
+          if (running.get(key) === started) running.delete(key);
+        };
+        result.then(forget, forget);
+        entry = started;
+      }
+      const shared = entry;
+      shared.waiting += 1;
+      const signal = options?.signal;
+      return new Promise<RunResult>((resolve, reject) => {
+        let left = false;
+        const leave = () => {
+          if (left) return;
+          left = true;
+          signal?.removeEventListener("abort", onAbort);
+          shared.waiting -= 1;
+        };
+        const onAbort = () => {
+          leave();
+          // Nobody waits any more: the prompt goes too.
+          if (shared.waiting === 0) {
+            if (running.get(key) === shared) running.delete(key);
+            shared.stop.abort(signal?.reason);
+          }
+          reject(abortError(signal?.reason));
+        };
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        signal?.addEventListener("abort", onAbort, { once: true });
+        shared.result.then(
+          (value) => {
+            if (left) return;
+            leave();
+            resolve(value);
+          },
+          (error: unknown) => {
+            if (left) return;
+            leave();
+            reject(error);
+          },
+        );
+      });
     },
   };
 }
