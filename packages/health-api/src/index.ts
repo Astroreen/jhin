@@ -15,7 +15,7 @@ export const HealthEvents = {
   warningRaised: "health.warning.raised",
   /** `{ warningId, analysis: Analysis }`: what the agent with the context said (D725). */
   warningAnalysed: "health.warning.analysed",
-  /** `{ warningId, dismissedAt, by? }`: the owner has seen it (D724). */
+  /** `{ warningId, dismissedAt, dismissedAfter?, by? }`: the owner has seen it (D724). */
   warningDismissed: "health.warning.dismissed",
   /** `{ idea: Idea }`: a wrong idea, named when it was corrected (D727). */
   ideaCorrected: "health.idea.corrected",
@@ -123,6 +123,11 @@ export const Warning = z.object({
   raisedAt: z.string(),
   status: z.enum(["open", "dismissed"]),
   dismissedAt: z.string().optional(),
+  /**
+   * The last event of each followed stream when it was dismissed, by stream:
+   * the subject counts again only from the events after them (D724).
+   */
+  dismissedAfter: z.record(z.string(), z.number()).optional(),
   analysis: Analysis.optional(),
 });
 export type Warning = z.infer<typeof Warning>;
@@ -241,6 +246,7 @@ export function applyHealthEvent(
     warningId?: string;
     analysis?: Analysis;
     dismissedAt?: string;
+    dismissedAfter?: Record<string, number>;
     idea?: Idea;
     progress?: Progress;
   };
@@ -265,6 +271,9 @@ export function applyHealthEvent(
               ...warning,
               status: "dismissed",
               ...(payload.dismissedAt === undefined ? {} : { dismissedAt: payload.dismissedAt }),
+              ...(payload.dismissedAfter === undefined
+                ? {}
+                : { dismissedAfter: payload.dismissedAfter }),
             };
       return { ...state, warnings: { ...state.warnings, [warning.warningId]: next } };
     }

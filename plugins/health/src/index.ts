@@ -541,6 +541,8 @@ export default definePlugin({
         await append(HealthEvents.warningDismissed, {
           warningId,
           dismissedAt: now(),
+          // What it saw: an exact cut for counting again (D724).
+          dismissedAfter: Object.fromEntries(heads),
           ...by(invocation),
         });
         return getWarning(warningId);

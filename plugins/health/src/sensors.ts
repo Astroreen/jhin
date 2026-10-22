@@ -242,15 +242,15 @@ export class Sensors {
     }
   }
 
-  /** Counts per group of the signals after `since` (a group's own start, else the window's). */
-  private tally(start: number, since: (key: string) => number = () => start) {
+  /** Counts per group of the signals in the window that `keep` keeps for that group. */
+  private tally(keep: (key: string, ref: EventRef) => boolean = () => true) {
     const byGroup = new Map<
       string,
       { ceremony: number; progress: number; byKind: Record<string, number>; refs: EventRef[] }
     >();
     for (const signal of this.signals) {
       for (const key of signal.groups) {
-        if (signal.time < since(key)) continue;
+        if (!keep(key, signal.ref)) continue;
         const entry = byGroup.get(key) ?? { ceremony: 0, progress: 0, byKind: {}, refs: [] };
         if (isCeremony(signal.kind)) entry.ceremony += 1;
         else entry.progress += 1;
@@ -269,11 +269,12 @@ export class Sensors {
 
   /** Ceremony and progress of every group over the window, by kind. */
   status(config: HealthConfig, now: number) {
-    return this.tally(this.prune(config, now));
+    this.prune(config, now);
+    return this.tally();
   }
 
-  /** Forgets what left the window; returns the window's start. */
-  private prune(config: HealthConfig, now: number): number {
+  /** Forgets what left the window. */
+  private prune(config: HealthConfig, now: number): void {
     const start = now - config.windowHours * 3_600_000;
     if (this.signals.length > 0 && this.signals[0]!.time < start) {
       this.signals = this.signals.filter((signal) => signal.time >= start);
@@ -289,7 +290,6 @@ export class Sensors {
       if (kept.length === 0) this.occurrences.delete(ideaId);
       else if (kept.length !== found.length) this.occurrences.set(ideaId, kept);
     }
-    return start;
   }
 
   /**
@@ -299,22 +299,27 @@ export class Sensors {
    * alone crosses the threshold.
    */
   evaluate(config: HealthConfig, health: HealthState, now: number): Finding[] {
-    const start = this.prune(config, now);
+    this.prune(config, now);
     // The latest warning of a subject decides: open waits, dismissed resets.
-    const latest = new Map<string, Pick<Warning, "status" | "dismissedAt" | "raisedAt">>();
+    const latest = new Map<string, Warning>();
     for (const warning of Object.values(health.warnings)) {
       const key = `${warning.detector}|${warning.subject}`;
       const known = latest.get(key);
       if (known === undefined || known.raisedAt < warning.raisedAt) latest.set(key, warning);
     }
-    const since = (detector: Detector, subject: string) => {
-      const dismissedAt = latest.get(`${detector}|${subject}`)?.dismissedAt;
-      return dismissedAt === undefined ? start : Math.max(start, Date.parse(dismissedAt));
+    /**
+     * What a subject counts: after a dismissal, only the events past the last
+     * one of each stream the dismissal saw (`dismissedAfter`), an exact cut
+     * where the clock's milliseconds are not.
+     */
+    const after = (detector: Detector, subject: string): ((ref: EventRef) => boolean) => {
+      const warning = latest.get(`${detector}|${subject}`);
+      if (warning?.status !== "dismissed") return () => true;
+      const seen = warning.dismissedAfter;
+      if (seen !== undefined) return (ref) => ref.sequence > (seen[ref.stream] ?? 0);
+      const since = Date.parse(warning.dismissedAt ?? warning.raisedAt);
+      return (ref) => Date.parse(ref.at) >= since;
     };
-    // From the dismissal on, its millisecond included: the clock does not order
-    // two writers within one, and a dismissal counting one event too many is safe.
-    const after = (detector: Detector, subject: string) => (ref: EventRef) =>
-      Date.parse(ref.at) >= since(detector, subject);
 
     const findings: Finding[] = [];
     // Ceremony against progress, per group (D722). The narrowest group that
@@ -323,14 +328,14 @@ export class Sensors {
     const { ratio, minCeremony } = config.ceremony;
     const limitOf = (progress: number) => Math.max(minCeremony, ratio * Math.max(progress, 1));
     const quiet = new Set<string>();
-    for (const entry of this.tally(start)) {
+    for (const entry of this.tally()) {
       if (entry.group.kind === "node" || entry.ceremony < limitOf(entry.progress)) continue;
       quiet.add("node");
       if (entry.group.kind === "mission") {
         quiet.add(groupKey({ kind: "project", projectId: entry.group.projectId }));
       }
     }
-    for (const entry of this.tally(start, (key) => since("ceremony", key))) {
+    for (const entry of this.tally((key, ref) => after("ceremony", key)(ref))) {
       const limit = limitOf(entry.progress);
       if (entry.ceremony < limit || quiet.has(entry.key)) continue;
       findings.push({
