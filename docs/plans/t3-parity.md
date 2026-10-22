@@ -1967,6 +1967,36 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   own (`custom-snooze-dialog.tsx`); a failed load fails the snooze with "Couldn't load the custom
   snooze dialog.", which its caller shows.
 
+### Entry chunk headroom and the build-mode flake (W29)
+
+W29 of `t3-roadmap.md` (round 2), D1041–D1060.
+
+- **D1041. What the first paint does not use loads on use, so the entry
+  chunk has room again.** The entry chunk had grown back to 491 kB of D440's
+  500 kB (a sourcemap of a production build, attributed per source file).
+  Its budget stays; four parts that only show on occasion became chunks of
+  their own, each through `lazyChunk` with D440's failure handling:
+  the composer's banners and a trigger's menu (`chat/composer-banners.tsx`:
+  the approval, the questions, the queue, "Plan ready" and the `/`, `@`, `$`
+  menu, with `banner.tsx` and `command-menu.tsx`; 32 kB), the command
+  palette's body (`command-palette-body.tsx`: its items, search and list;
+  12 kB), the add-project form (`lib/add-project-form.tsx`; 5 kB) and the
+  notifications settings section (`notifications-settings.tsx`; 2 kB).
+  The banners chunk is fetched once the first composer has mounted, and
+  the palette's once the page has painted, so a request, a menu or the
+  first ⌘K rarely waits for them; until it is in, its place stays
+  empty. A failed load says "Couldn't load this approval." ("these
+  questions", "the queue") with "Try again", while a trigger's menu and
+  "Plan ready" stay out (the menu's keys still work); the palette says
+  "Couldn't load the command palette.", the add-project dialog "Couldn't
+  load this dialog." and the section "Couldn't load this section.". The
+  palette, dialog and section load when they first open. The entry chunk
+  went from 491,185 to 434,030 bytes minified (`vp build` of
+  `apps/web`); `e2e/tests/web.spec.ts` still checks 500 kB. What is left
+  is first-paint code: the sidebar (67 kB with `@dnd-kit`'s 42 kB, which its
+  rows use as they render), the thread view, timeline and composer, and the
+  kernel.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -1978,6 +2008,11 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
 
 ## Deferred
 
+- A browser test that fails the load of a real D1041 chunk (the approval
+  banner, the palette) and checks its message and "Try again" in place;
+  `lazy-chunk.browser.test.tsx` covers the helper only. Placeholders of a
+  banner's height or the palette's input while their chunk loads (they
+  show nothing for that moment).
 - Applying Fast Mode and Ultracode to a live Claude Code session through
   `applyFlagSettings` (T3 does): a change of them starts it again (D298).
 - The editor's parts T3 has and this port left out (D303):

@@ -19,12 +19,6 @@ import {
 } from "@jhin/client-api";
 import { definePlugin, toDisposable, z, type Disposable } from "@jhin/sdk";
 import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-  Switch,
   UI_SETTINGS_CAPABILITY,
   UI_TOASTS_CAPABILITY,
   type SettingsPages,
@@ -37,20 +31,20 @@ import {
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
-import { useState } from "react";
 
 import { builtin } from "../lib/builtin.ts";
-import { useConfig } from "../lib/hooks.ts";
-import { SettingsRow, SettingsSection } from "../lib/settings-layout.tsx";
+import { ChunkFailed, lazyChunk } from "../lib/lazy-chunk.tsx";
 
-const SECTION = "jhin.notifications";
+/** The `jhin.notifications` settings section. */
+export const NOTIFICATIONS_SECTION = "jhin.notifications";
+const SECTION = NOTIFICATIONS_SECTION;
 const NotificationSettings = z.object({
   /** System notifications and/or a sound when a thread needs you while this page is in the background. */
   mode: z.enum(["off", "notifications", "sound", "notifications-and-sound"]).default("off"),
   /** A toast when another thread finishes, fails or needs you while this page has focus. */
   inApp: z.boolean().default(true),
 });
-type NotificationSettings = z.output<typeof NotificationSettings>;
+export type NotificationSettings = z.output<typeof NotificationSettings>;
 
 type Kind = "completion" | "approval" | "input" | "failed";
 
@@ -300,95 +294,19 @@ export const notificationsPlugin = builtin(
         },
       });
 
-      function NotificationsSettings() {
-        const current = useConfig<NotificationSettings>(context, SECTION);
-        const [message, setMessage] = useState<string | undefined>();
-        const [requesting, setRequesting] = useState(false);
-        const choose = async (mode: NotificationSettings["mode"]) => {
-          setMessage(undefined);
-          if (mode === "notifications" || mode === "notifications-and-sound") {
-            if (typeof Notification === "undefined" || !window.isSecureContext) {
-              setMessage(
-                "Notifications need a supported browser over HTTPS (or localhost). Sound only is still available.",
-              );
-              return;
-            }
-            setRequesting(true);
-            try {
-              const permission = await Notification.requestPermission();
-              if (permission !== "granted") {
-                setMessage(
-                  "Allow notifications in your browser or system settings, then choose this option again. Sound only is still available.",
-                );
-                return;
-              }
-            } catch {
-              setMessage(
-                "Notifications are unavailable in this browser. Sound only is still available.",
-              );
-              return;
-            } finally {
-              setRequesting(false);
-            }
-          }
-          if (mode !== "off") playSound("completion");
-          deviceSettings.patch(SECTION, { mode });
-        };
-        const labels: Record<NotificationSettings["mode"], string> = {
-          off: "Off",
-          notifications: "Notifications only",
-          sound: "Sound only",
-          "notifications-and-sound": "Notifications with sound",
-        };
-        return (
-          <SettingsSection title="Notifications">
-            <SettingsRow
-              control={
-                <Select
-                  disabled={requesting}
-                  onValueChange={(value) => void choose(value as NotificationSettings["mode"])}
-                  value={current.mode}
-                >
-                  <SelectTrigger
-                    aria-label="Thread notifications"
-                    className="w-full sm:w-56"
-                    size="sm"
-                  >
-                    <SelectValue>{labels[current.mode]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {Object.entries(labels).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-              }
-              description={
-                message ??
-                "System alerts when a thread finishes, fails, or needs input or approval. Applies to this device while Jhin is open in the background."
-              }
-              title="Thread notifications"
-            />
-            <SettingsRow
-              control={
-                <Switch
-                  aria-label="In-app notifications"
-                  checked={current.inApp}
-                  onCheckedChange={(inApp) => deviceSettings.patch(SECTION, { inApp })}
-                />
-              }
-              description="Show a toast when another thread finishes, fails, or needs input or approval while this page has focus."
-              title="In-app notifications"
-            />
-            {/* What a choice came to, for screen readers too. */}
-            <p aria-live="polite" className="sr-only" role="status">
-              {message ?? ""}
-            </p>
-          </SettingsSection>
-        );
-      }
+      // The settings section is a chunk of its own, loaded when it first opens (D440, D1041).
+      const NotificationsSettings = lazyChunk(
+        () =>
+          import("./notifications-settings.tsx").then((module) =>
+            module.createNotificationsSettings(context, deviceSettings, playSound),
+          ),
+        {
+          loading: () => null,
+          failed: (_props, retry) => (
+            <ChunkFailed retry={retry}>Couldn't load this section.</ChunkFailed>
+          ),
+        },
+      );
 
       if (pages !== undefined) {
         context.subscriptions.add(

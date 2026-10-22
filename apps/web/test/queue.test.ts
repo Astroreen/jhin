@@ -3,7 +3,7 @@ import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createTimeline, turnBlocks } from "../src/lib/timeline.ts";
-import { dropTarget } from "../src/plugins/chat/composer.tsx";
+import { dropTarget } from "../src/plugins/chat/composer-banners.tsx";
 import { dispatchMode, RESUME_TEXT, resumeThread, sendMessage } from "../src/plugins/chat/send.ts";
 
 function stream(...entries: [type: string, payload: unknown][]): StoredEvent[] {
