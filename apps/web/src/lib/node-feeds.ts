@@ -95,7 +95,15 @@ export function createNodeFeeds<S>(
       set(id, (feed) =>
         feed.status === "loading" && NOT_THERE.has(code)
           ? { status: "unsupported", value: source.empty }
-          : { status: "error", value: feed.value, error: message },
+          : {
+              status: "error",
+              value: feed.value,
+              // A permission taken back is not a dropped stream: say which.
+              error:
+                code === "PERMISSION_DENIED"
+                  ? `this client may no longer read it (${message})`
+                  : message,
+            },
       );
     };
     void source

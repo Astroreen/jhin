@@ -268,4 +268,22 @@ describe("health views (D731)", () => {
     // One more read for all three.
     expect(answers).toHaveLength(2);
   });
+
+  it("keeps the last counts, marked, when a refresh fails", async () => {
+    let fail = false;
+    const { view } = viewOf({ a: { status: "ready", value: healthOf() } }, async () => {
+      if (fail) throw new Error("node busy");
+      return {
+        windowHours: 24,
+        groups: [{ group: { kind: "node" }, ceremony: 3, progress: 1, byKind: { message: 3 } }],
+      };
+    });
+    await render(<HealthPage node="a" view={view} />);
+    const overview = page.getByRole("region", { name: "Ceremony and progress" });
+    await expect.element(overview.getByRole("cell", { name: "The node" })).toBeVisible();
+    fail = true;
+    await userEvent.click(overview.getByRole("button", { name: "Refresh" }));
+    await expect.element(overview.getByText(/The last refresh failed: node busy/)).toBeVisible();
+    await expect.element(overview.getByRole("cell", { name: "The node" })).toBeVisible();
+  });
 });

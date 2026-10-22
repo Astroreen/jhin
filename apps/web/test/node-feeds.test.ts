@@ -105,7 +105,7 @@ describe("node feeds (D630, D731)", () => {
     expect(feeds.snapshot().get("a")).toEqual({
       status: "error",
       value: ["x", "y", "z"],
-      error: "stream gone",
+      error: "this client may no longer read it (stream gone)",
     });
     feeds.dispose();
   });

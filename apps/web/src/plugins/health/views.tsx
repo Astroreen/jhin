@@ -144,27 +144,39 @@ function useCall<T>(
     key: string;
     scope: string;
     at: Date;
+    /** The last answer of this scope, kept when a later read fails. */
     value?: T;
     error?: string;
   }>();
+  // The call is named by what it calls, not only by the caller's key.
+  const call = `${node}|${command}|${JSON.stringify(input)}|${key}`;
   useEffect(() => {
     if (!enabled) return;
     let live = true;
     const connection = view.connections.get(node);
-    const call =
+    const answer =
       connection === undefined
         ? Promise.reject(new Error("This node is not connected."))
         : connection.client.call<T>(command, input);
-    call.then(
+    answer.then(
       (value) => live && setResult({ key, scope, at: new Date(), value }),
       (error: unknown) =>
-        live && setResult({ key, scope, at: new Date(), error: errorText(error) }),
+        live &&
+        setResult((previous) => ({
+          key,
+          scope,
+          at: new Date(),
+          error: errorText(error),
+          ...(previous?.scope === scope && previous.value !== undefined
+            ? { value: previous.value }
+            : {}),
+        })),
     );
     return () => {
       live = false;
     };
-    // `key` names everything the call depends on.
-  }, [key, enabled]);
+    // `call` names everything the call depends on.
+  }, [call, enabled]);
   return result?.key === key || result?.scope === scope ? result : undefined;
 }
 
@@ -216,10 +228,13 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
   }, [health, ready, answered]);
   if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
   if (status === undefined) return <PageEmpty text="Reading the sensors…" title="Health" />;
-  if (status.error !== undefined) return <PageEmpty text={status.error} title="Health" />;
-  const { windowHours } = status.value!;
+  // A read that failed after a good one keeps the table, marked.
+  if (status.value === undefined) {
+    return <PageEmpty text={status.error ?? "No answer."} title="Health" />;
+  }
+  const { windowHours } = status.value;
   // Narrowest first, as warnings are (D724).
-  const groups = status.value!.groups.toSorted(
+  const groups = status.value.groups.toSorted(
     (a, b) =>
       RANK[a.group.kind] - RANK[b.group.kind] ||
       groupLabel(a.group).localeCompare(groupLabel(b.group)),
@@ -242,6 +257,11 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
           Refresh
         </Button>
       </header>
+      {status.error === undefined ? null : (
+        <p className="text-xs text-destructive">
+          The last refresh failed: {status.error}. These are the counts read before.
+        </p>
+      )}
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing counted yet.</p>
       ) : (
