@@ -67,6 +67,24 @@ export function localEndpoint(url: string): string {
 const allowed = (caller: Principal, permissions: readonly string[]) =>
   missingPermissions(caller.permissions, permissions).length === 0;
 
+/**
+ * Where an MCP client finds how to sign in (security.md D1191): the
+ * request's own origin, so loopback, a proxy and Tailscale Serve each name
+ * theirs. `jhin.mcp-oauth` answers there; without it the client keeps to tokens.
+ */
+function resourceMetadataUrl(http: HttpServer, request: IncomingMessage): string {
+  const secure =
+    request.headers["x-forwarded-proto"] === "https" ||
+    (request.socket as { encrypted?: boolean }).encrypted === true;
+  const requested = http.requestedHost(request);
+  // The header is the client's: only a host and a port go into the answer.
+  const host =
+    requested !== undefined && /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d+)?$/i.test(requested)
+      ? requested
+      : new URL(http.url).host;
+  return `${secure ? "https" : "http"}://${host}/.well-known/oauth-protected-resource${MCP_PATH}`;
+}
+
 function bearer(request: IncomingMessage): string | undefined {
   const header = request.headers.authorization;
   return header?.startsWith("Bearer ") === true ? header.slice("Bearer ".length).trim() : undefined;
@@ -124,7 +142,10 @@ export default definePlugin({
         const authenticated = await authenticate(token);
         if (authenticated === undefined) {
           response
-            .writeHead(401, { "content-type": "application/json", "www-authenticate": "Bearer" })
+            .writeHead(401, {
+              "content-type": "application/json",
+              "www-authenticate": `Bearer resource_metadata="${resourceMetadataUrl(http, request)}"`,
+            })
             .end(JSON.stringify({ error: "unauthenticated" }));
           return;
         }

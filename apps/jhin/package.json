@@ -36,6 +36,7 @@
     "@jhin/plugin-health": "workspace:*",
     "@jhin/plugin-html-render": "workspace:*",
     "@jhin/plugin-http": "workspace:*",
+    "@jhin/plugin-mcp-oauth": "workspace:*",
     "@jhin/plugin-mcp-server": "workspace:*",
     "@jhin/plugin-mesh": "workspace:*",
     "@jhin/plugin-missions": "workspace:*",
@@ -91,6 +92,7 @@
     "@jhin/plugin-context",
     "@jhin/plugin-orchestrator",
     "@jhin/plugin-mcp-server",
+    "@jhin/plugin-mcp-oauth",
     "@jhin/plugin-mesh"
   ],
   "jhinUi": [

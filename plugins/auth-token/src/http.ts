@@ -1,10 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { readCookie, sessionCookieName, type Principal } from "@jhin/auth-api";
+import {
+  deriveClientMetadata,
+  readCookie,
+  sessionCookieName,
+  type ClientMetadata,
+  type Principal,
+} from "@jhin/auth-api";
 import type { HttpServer } from "@jhin/http-api";
 import { DisposableStore, z, type Disposable, type Logger } from "@jhin/sdk";
 
-import { DeviceType, deriveClientMetadata, type ClientMetadata } from "./metadata.ts";
+import { DeviceType } from "./metadata.ts";
 
 // The pairing endpoints follow T3 Code's (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/auth/http.ts — a one-time code becomes a token over HTTP,

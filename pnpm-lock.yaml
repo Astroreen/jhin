@@ -285,6 +285,9 @@ importers:
       '@jhin/plugin-http':
         specifier: workspace:*
         version: link:../../plugins/http
+      '@jhin/plugin-mcp-oauth':
+        specifier: workspace:*
+        version: link:../../plugins/mcp-oauth
       '@jhin/plugin-mcp-server':
         specifier: workspace:*
         version: link:../../plugins/mcp-server
@@ -1096,6 +1099,31 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+    devDependencies:
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+
+  plugins/mcp-oauth:
+    dependencies:
+      '@jhin/auth-api':
+        specifier: workspace:*
+        version: link:../../packages/auth-api
+      '@jhin/http-api':
+        specifier: workspace:*
+        version: link:../../packages/http-api
+      '@jhin/mcp-api':
+        specifier: workspace:*
+        version: link:../../packages/mcp-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/secrets-api':
+        specifier: workspace:*
+        version: link:../../packages/secrets-api
     devDependencies:
       '@jhin/testing':
         specifier: workspace:*

@@ -96,7 +96,8 @@ wording and the Device panel), pairing (`plugins/auth-token`:
 pairing codes, the pairing and session endpoints, a device's metadata; the web client's pairing
 links, saved nodes in IndexedDB, Authorized clients settings and QR code
 component; `packages/qr-code`: the terminal rendering of a QR code;
-`apps/jhin`: `jhin pair`, its output, notes and Tailscale Serve flow), secrets (`packages/secrets-api`, `plugins/secrets`: the secret
+`apps/jhin`: `jhin pair`, its output, notes and Tailscale Serve flow;
+`plugins/mcp-oauth`: MCP client sign-in with OAuth, its rules, pages and wording), secrets (`packages/secrets-api`, `plugins/secrets`: the secret
 store's shape, secret requests and their card, one-use secretRefs, their
 statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/desktop`,
 `packages/desktop-api`: the window and its chrome, the application and context

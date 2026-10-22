@@ -165,3 +165,19 @@ describe("the secret store (security.md D1023)", () => {
     expect(store.hasRef(fresh)).toBe(true);
   });
 });
+
+describe("the node's own random secrets (security.md D1192)", () => {
+  it("are made once, kept sealed and the same after reopening", async () => {
+    const dir = tempDir();
+    const store = await openStore({ dir, keychain: undefined });
+    const key = store.getOrCreateRandom("jhin.mcp-oauth/signing-key", 32);
+    expect(Buffer.from(key, "base64url")).toHaveLength(32);
+    expect(store.getOrCreateRandom("jhin.mcp-oauth/signing-key", 32)).toBe(key);
+    expect(store.getOrCreateRandom("jhin.other/key", 32)).not.toBe(key);
+    expect(Fs.readFileSync(Path.join(dir, "store.json"), "utf8")).not.toContain(key);
+    const reopened = await openStore({ dir, keychain: undefined });
+    expect(reopened.getOrCreateRandom("jhin.mcp-oauth/signing-key", 32)).toBe(key);
+    expect(() => store.getOrCreateRandom("no-plugin", 32)).toThrow();
+    expect(() => store.getOrCreateRandom("jhin.x/short", 8)).toThrow();
+  });
+});
