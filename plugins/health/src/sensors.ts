@@ -12,6 +12,7 @@ import {
   MAX_EVIDENCE,
   groupKey,
   isCeremony,
+  carriesIdea,
   normalizeIdea,
   type Detector,
   type EventRef,
@@ -133,7 +134,7 @@ export class Sensors {
       if (event.at < idea.correctedAt) continue;
       if (idea.projectId !== undefined && !slices.some((s) => s.projectId === idea.projectId))
         continue;
-      if (!haystack.includes(normalizeIdea(idea.idea))) continue;
+      if (!carriesIdea(haystack, normalizeIdea(idea.idea))) continue;
       const list = this.occurrences.get(idea.ideaId) ?? [];
       list.push({ ref: refOf(event), carrier });
       this.occurrences.set(idea.ideaId, list);
@@ -347,7 +348,17 @@ export class Sensors {
         quiet.add(groupKey({ kind: "project", projectId: entry.group.projectId }));
       }
     }
-    for (const entry of this.tally((key, ref) => after("ceremony", key)(ref))) {
+    // One rule per group, made once per run, not per signal.
+    const rules = new Map<string, (ref: EventRef) => boolean>();
+    const rule = (key: string) => {
+      let made = rules.get(key);
+      if (made === undefined) {
+        made = after("ceremony", key);
+        rules.set(key, made);
+      }
+      return made;
+    };
+    for (const entry of this.tally((key, ref) => rule(key)(ref))) {
       const limit = limitOf(entry.progress);
       if (entry.ceremony < limit || quiet.has(entry.key)) continue;
       findings.push({

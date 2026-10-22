@@ -995,7 +995,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   correction?, projectId? }`), the vaccine. Each later message of a sender
   other than an owner, and each slice title or spec an agent writes later
   (not the owner or the owner's devices, `client:<id>`), that
-  contains the phrase (case-insensitive, whitespace collapsed) is an
+  contains the phrase as whole words (case-insensitive, punctuation and
+  whitespace collapsed; a phrase of two words at least) is an
   occurrence; a project's idea counts only in its own slices and their
   messages. `mindVirus.minOccurrences` occurrences within the window raise a warning naming
   the carriers; the analyst is asked to trace the written source and every

@@ -296,9 +296,22 @@ export function applyHealthEvent(
 export const warningsOf = (state: HealthState): Warning[] =>
   Object.values(state.warnings).toSorted((a, b) => b.raisedAt.localeCompare(a.raisedAt));
 
-/** How a phrase is matched by the mind-virus detector: lower case, whitespace collapsed. */
+/**
+ * How a phrase is matched by the mind-virus detector (D727): lower case,
+ * punctuation and whitespace collapsed to single spaces, so whole words match.
+ */
 export const normalizeIdea = (text: string): string =>
-  text.toLowerCase().replace(/\s+/g, " ").trim();
+  text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/** A corrected idea is a phrase of two words at least: one word matches too much (D727). */
+export const MIN_IDEA_WORDS = 2;
+
+/** Whether `text` carries `idea`, both normalized: as whole words, not inside other words. */
+export const carriesIdea = (text: string, idea: string): boolean =>
+  ` ${text} `.includes(` ${idea} `);
 
 /** The status of the sensors of one group over the window (`health.status`). */
 export const GroupStatus = z.object({

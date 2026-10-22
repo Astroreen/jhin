@@ -626,4 +626,14 @@ describe("jhin.health", () => {
     expect(warning.summary).toContain("jhin.agent-fake:t1");
     expect(warning.summary).not.toContain("owner");
   });
+
+  it("takes a corrected idea of two words at least, so one word does not match everything", async () => {
+    const { client } = await node();
+    await expect(client.call("health.ideas.correct", { idea: "fix" })).rejects.toMatchObject({
+      code: "COMMAND_INPUT_INVALID",
+    });
+    await expect(client.call("health.ideas.correct", { idea: "fix it" })).resolves.toMatchObject({
+      idea: "fix it",
+    });
+  });
 });

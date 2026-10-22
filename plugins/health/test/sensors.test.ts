@@ -1,5 +1,5 @@
 import { ThreadEvents } from "@jhin/agent-api";
-import { HealthConfig, EMPTY_HEALTH } from "@jhin/health-api";
+import { EMPTY_HEALTH, HealthConfig, carriesIdea, normalizeIdea } from "@jhin/health-api";
 import { MissionEvents, type Slice } from "@jhin/missions-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
@@ -97,5 +97,12 @@ describe("health's sensors (D722)", () => {
     expect(
       sensors.evaluate(config, health, NOW).find((f) => f.subject === "mission:m1")?.measures,
     ).toMatchObject({ ceremony: 2 });
+  });
+
+  it("finds an idea as whole words only", () => {
+    const idea = normalizeIdea("Retry the flaky test!");
+    expect(carriesIdea(normalizeIdea("ok, retry the FLAKY test, then"), idea)).toBe(true);
+    expect(carriesIdea(normalizeIdea("we retry the flaky tests"), idea)).toBe(false);
+    expect(carriesIdea(normalizeIdea("prefix: retry the flaky test"), idea)).toBe(true);
   });
 });

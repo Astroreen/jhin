@@ -22,6 +22,8 @@ import {
   HealthConfig,
   HealthEvents,
   Idea,
+  MIN_IDEA_WORDS,
+  normalizeIdea,
   Warning,
   applyHealthEvent,
   warningsOf,
@@ -701,7 +703,13 @@ export default definePlugin({
       description:
         "Names a wrong idea that was corrected, by a phrase that carries it: when it comes back in messages or slice specs, health warns about a mind virus",
       input: z.object({
-        idea: z.string().trim().min(3).max(500),
+        idea: z
+          .string()
+          .trim()
+          .max(500)
+          .refine((idea) => normalizeIdea(idea).split(" ").length >= MIN_IDEA_WORDS, {
+            message: `Name the idea by a phrase of ${MIN_IDEA_WORDS} words at least`,
+          }),
         correction: z.string().max(2_000).optional(),
         projectId: z.string().optional(),
       }),
