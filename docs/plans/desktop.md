@@ -53,8 +53,9 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
   same node with the same threads, as T3's app and server share `~/.t3`. The
   shell waits for the node to print its `ui:` line, reads the node's token
   from the home, and on quit stops the node with `SIGTERM` and waits for it
-  to exit. A node that fails to start or exits while the app runs is shown in
-  a native dialog with its last output, offering to restart it or quit.
+  to exit. A node that fails to start is shown in a native dialog with its
+  last output, offering to try again or quit; one that exits while the app
+  runs comes back by itself (D1201).
 
 - **D513. The window loads the node's own address** with the token in the
   fragment (`http://127.0.0.1:7777/#token=…`), exactly as a browser opens
@@ -318,6 +319,23 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   older ones on GitHub) instead of the tooltip; a press still runs the
   action. Stable keeps the tooltip.
 
+### Restarts, the preview and devices (W34)
+
+Workstream W34 of `t3-roadmap.md` continues this plan and `preview.md` with
+the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
+
+- **D1201. A node that exits by itself restarts with T3's backoff**
+  (`apps/desktop/src/backend/DesktopBackendManager.ts`), not D512's dialog:
+  after 500 ms, doubled for each start that fails since, at most 10 s, with
+  no limit on attempts; a node that comes up starts the count over. One
+  restart is pending at a time, a quit cancels it (and stops a node a
+  restart is starting, D522), and the window loads the restarted node as it
+  loads the first. Meanwhile the page shows the web client's own
+  disconnected state. The first start keeps D512's dialog, since no window
+  is open yet. `apps/desktop/src/node-restart.ts` holds the policy, unit
+  tested with a scheduler the test runs by hand; the desktop e2e kills the
+  node and sees the page come back without a dialog.
+
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
@@ -363,8 +381,6 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
 - Attaching to a node of the same home that already runs (`jhin serve`), and
   choosing another port when 7777 is taken by something else (D513 keeps the
   origin stable, so the choice must be kept).
-- Restarting a node that exits by itself with a backoff, as T3's backend
-  manager does, instead of D512's dialog.
 - The trackpad
   scroll-end and window-fullscreen events beyond macOS's controls inset.
 - The browser preview and devices in the app (W12), WSL and SSH backends,

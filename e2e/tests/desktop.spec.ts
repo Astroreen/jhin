@@ -484,7 +484,7 @@ test("Check for Updates... in the menu answers in T3's native dialog", async () 
 
 test("a crashed page and a stopped node come back with the node's token", async () => {
   const { app, home } = await launch();
-  // Answers the "local node stopped" dialog with Restart, and records it.
+  // Records any dialog: a stopped node comes back by itself, without one (D1201).
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = ((options: { title?: string }) => {
       Object.assign(globalThis, { stoppedDialog: options.title });
@@ -521,7 +521,8 @@ test("a crashed page and a stopped node come back with the node's token", async 
   );
   expect(await reloaded()).toBe(true);
 
-  // The node exits by itself: Restart starts it again and the page follows it (D512).
+  // The node exits by itself: the app starts it again after T3's delay and the
+  // page follows it (D512, D1201).
   await armReload();
   const pids = ChildProcess.execFileSync("pgrep", ["-f", "--", `--home ${home}`], {
     encoding: "utf8",
@@ -531,7 +532,7 @@ test("a crashed page and a stopped node come back with the node's token", async 
     .map(Number);
   for (const pid of pids) process.kill(pid, "SIGKILL");
   expect(await reloaded()).toBe(true);
-  expect(await app.evaluate(() => (globalThis as { stoppedDialog?: string }).stoppedDialog)).toBe(
-    "The local node stopped",
-  );
+  expect(
+    await app.evaluate(() => (globalThis as { stoppedDialog?: string }).stoppedDialog),
+  ).toBeUndefined();
 });
