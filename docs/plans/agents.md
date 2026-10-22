@@ -1071,7 +1071,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   again and tells what came meanwhile, at most once a minute: a drop or a
   failed read within that minute marks the feed not live, keeping its items
   where the inbox used to empty itself, and it is read again once the minute
-  is over. A permission taken back is not retried.
+  is over. A first load that fails (a node busy at start) is tried again the
+  same way, telling nothing of it as new. A permission taken back, or a node
+  without the feed, is not retried.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 

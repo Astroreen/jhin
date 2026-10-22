@@ -133,22 +133,24 @@ export function createNodeFeeds<S>(
       lastRetry = clock();
       rereads.set(id, []);
       for (const subscription of subscriptions.splice(0)) subscription.dispose();
-      follow(true);
+      // Only a feed read before tells what came meanwhile; a first read tells nothing.
+      follow(everRead);
     };
     const failed = (error: unknown) => {
       if (stopped) return;
       rereads.delete(id);
       const code = String((error as { code?: unknown } | null)?.code);
       const message = error instanceof Error ? error.message : String(error);
-      // Read once at least: a feed that never loaded has nothing to read again.
-      const wasRead = everRead;
+      // A node that has no such feed (or may not read it) is not asked again
+      // until it is; anything else, a first load included, is retried.
+      const absent = !everRead && NOT_THERE.has(code);
       // A stream that dropped is read and followed again, so a hiccup does not
       // silence what is told; the feed stays as it is meanwhile, not flashing
       // "not live". At most once a minute, so a flapping stream does not loop
       // on the node: a drop (or a failed read) within that minute marks the
       // feed not live and reads it again once the minute is over. A
       // permission taken back is not retried.
-      const retrying = wasRead && code !== "PERMISSION_DENIED";
+      const retrying = !absent && code !== "PERMISSION_DENIED";
       const wait = lastRetry + RETRY_GAP_MS - clock();
       if (retrying && wait <= 0) {
         retry();

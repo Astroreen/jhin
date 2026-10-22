@@ -364,4 +364,33 @@ describe("node feeds (D630, D731)", () => {
     });
     feeds.dispose();
   });
+
+  it("tries a first load that failed again, telling nothing of it as new", async () => {
+    const reads: (() => Promise<unknown>)[] = [
+      () => Promise.reject(new Error("node busy")),
+      async () => ({ head: 1, items: ["x"] }),
+    ];
+    const client = {
+      call: () => reads.shift()!(),
+      subscribe: () => toDisposable(() => {}),
+    };
+    const { connections } = fakeConnections(client as never);
+    const told: string[] = [];
+    const feeds = createNodeFeeds(connections, quiet, {
+      ...source,
+      reread: (_connection, before, after) => {
+        for (const item of after) if (!before.includes(item)) told.push(item);
+      },
+    });
+    await new Promise<void>((resolve) => {
+      const subscription = feeds.subscribe(() => {
+        if (feeds.snapshot().get("a")?.status !== "ready") return;
+        subscription.dispose();
+        resolve();
+      });
+    });
+    expect(feeds.snapshot().get("a")?.value).toEqual(["x"]);
+    expect(told).toEqual([]);
+    feeds.dispose();
+  });
 });
