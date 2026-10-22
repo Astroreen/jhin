@@ -3,6 +3,7 @@ import type { Connections, NodeConnection } from "@jhin/client-api";
 import { toDisposable } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { NodeFeeds } from "../src/lib/node-feeds.ts";
 import { senderLabel } from "../src/plugins/inbox/route.ts";
 import { applyInboxEvent, createInboxStore, openItems } from "../src/plugins/inbox/store.ts";
 
@@ -60,7 +61,21 @@ function fakeNode(list: () => Promise<unknown>) {
   };
 }
 
-const drain = () => new Promise<void>((resolve) => setImmediate(resolve));
+/** Resolves once node `id` has answered (ready, unsupported or failed): a fact, not a wait. */
+function settled(store: NodeFeeds<unknown>, id = "a"): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      const status = store.snapshot().get(id)?.status;
+      if (status === undefined || status === "loading") return false;
+      resolve();
+      return true;
+    };
+    if (done()) return;
+    const subscription = store.subscribe(() => {
+      if (done()) subscription.dispose();
+    });
+  });
+}
 const quiet = { warn() {} };
 
 describe("the owner's inbox (D630)", () => {
@@ -72,7 +87,7 @@ describe("the owner's inbox (D630)", () => {
     const store = createInboxStore(node.connections, quiet, (_connection, arrived) =>
       told.push(arrived.message.messageId),
     );
-    await drain();
+    await settled(store);
     expect(store.snapshot().get("a")).toMatchObject({ status: "ready" });
     expect(node.streams.get(INBOX_STREAM)?.after).toBe(4);
     expect(told).toEqual([]);
@@ -104,7 +119,7 @@ describe("the owner's inbox (D630)", () => {
       Promise.reject(Object.assign(new Error("denied"), { code: "PERMISSION_DENIED" })),
     );
     const store = createInboxStore(node.connections, quiet, () => {});
-    await drain();
+    await settled(store);
     expect(store.snapshot().get("a")).toMatchObject({ status: "unsupported", value: [] });
     store.dispose();
   });

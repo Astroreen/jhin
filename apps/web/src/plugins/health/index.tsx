@@ -73,7 +73,16 @@ export const healthPlugin = builtin(
           tag: warning.warningId,
           icon: <HeartPulseIcon className="size-4" />,
           actionLabel: "Open health",
-          open: () => open(connection.id, warning.warningId),
+          // Through the command, as the palette, CLI and MCP open it.
+          open: () =>
+            void context.commands
+              .execute("civilization.health.open", {
+                node: connection.id,
+                warningId: warning.warningId,
+              })
+              .catch((error: unknown) =>
+                context.log.warn("opening a health warning failed", { error: String(error) }),
+              ),
         });
       const store = createHealthStore(connections, context.log, raised);
       context.subscriptions.add(store);

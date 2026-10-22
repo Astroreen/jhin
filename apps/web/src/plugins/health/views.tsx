@@ -16,7 +16,7 @@ import {
   type Toasts,
 } from "@jhin/ui";
 import { ActivityIcon, HeartPulseIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
 import { HEALTH_PANEL, detectorLabel, groupLabel, healthRoute } from "./route.ts";
@@ -95,16 +95,19 @@ function PageEmpty({ title, text }: { title: string; text: string }) {
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Calls a command of a node once per key, with its answer or error. */
+/** Calls a command of a node once per key, with its answer or error and when it answered. */
 function useCall<T>(view: HealthView, node: string, command: string, input: unknown, key: string) {
-  const [result, setResult] = useState<{ key: string; value?: T; error?: string }>();
+  const [result, setResult] = useState<{ key: string; at: Date; value?: T; error?: string }>();
   useEffect(() => {
-    const connection = view.connections.get(node);
-    if (connection === undefined) return;
     let live = true;
-    connection.client.call<T>(command, input).then(
-      (value) => live && setResult({ key, value }),
-      (error: unknown) => live && setResult({ key, error: errorText(error) }),
+    const connection = view.connections.get(node);
+    const call =
+      connection === undefined
+        ? Promise.reject(new Error("This node is not connected."))
+        : connection.client.call<T>(command, input);
+    call.then(
+      (value) => live && setResult({ key, at: new Date(), value }),
+      (error: unknown) => live && setResult({ key, at: new Date(), error: errorText(error) }),
     );
     return () => {
       live = false;
@@ -120,13 +123,17 @@ const RANK = { mission: 0, team: 1, project: 2, node: 3 } as const;
 /** Ceremony against progress per group, over the window (D722). */
 function Overview({ view, node }: { view: HealthView; node: string }) {
   const nodes = useExternal(view.store, view.store.snapshot);
-  const head = Object.keys(nodes.get(node)?.value.warnings ?? {}).length;
+  const health = nodes.get(node)?.value;
+  // Read again on every change of the node's health and on Refresh; the counts
+  // themselves change with every message, so the page says when it read them.
+  const [round, setRound] = useState(0);
+  useEffect(() => setRound((value) => value + 1), [health]);
   const status = useCall<{ windowHours: number; groups: GroupStatus[] }>(
     view,
     node,
     "health.status",
     {},
-    `${node}|${head}`,
+    `${node}|${round}`,
   );
   if (status === undefined) return <PageEmpty text="Reading the sensors…" title="Health" />;
   if (status.error !== undefined) return <PageEmpty text={status.error} title="Health" />;
@@ -142,12 +149,18 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
       aria-label="Ceremony and progress"
       className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6"
     >
-      <header>
-        <h1 className="text-lg font-semibold">Ceremony and progress</h1>
-        <p className="text-sm text-muted-foreground">
-          The last {windowHours} hours. Ceremony: messages, asks, approvals, proof edits, queue
-          changes. Progress: slices done, commits, merged pull requests.
-        </p>
+      <header className="flex items-start gap-4">
+        <div className="flex-1">
+          <h1 className="text-lg font-semibold">Ceremony and progress</h1>
+          <p className="text-sm text-muted-foreground">
+            The last {windowHours} hours, as of {status.at.toLocaleTimeString()}. Ceremony:
+            messages, asks, approvals, proof edits, queue changes. Progress: slices done, commits,
+            merged pull requests.
+          </p>
+        </div>
+        <Button onClick={() => setRound((value) => value + 1)} size="sm" variant="outline">
+          Refresh
+        </Button>
       </header>
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing counted yet.</p>
@@ -217,6 +230,13 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     `${node}|${warningId}|${warning?.evidence.length ?? 0}`,
   );
   const [dismissing, setDismissing] = useState(false);
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
   if (feed === undefined || feed.status === "loading") {
     return <PageEmpty text="Reading the warnings…" title="Health" />;
   }
@@ -236,7 +256,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
         description: errorText(error),
       });
     } finally {
-      setDismissing(false);
+      if (mounted.current) setDismissing(false);
     }
   };
   const { analysis } = warning;
@@ -270,7 +290,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
           <p className="text-sm text-muted-foreground">Waiting for the analyst…</p>
         ) : analysis.status === "none" ? (
           <p className="text-sm text-muted-foreground">
-            No agent has this work's context: set an analyst in the Health settings.
+            No agent has this work's context: name one under Health → Analysts
+            (`jhin.health.analysts`) in Settings.
           </p>
         ) : (
           <>

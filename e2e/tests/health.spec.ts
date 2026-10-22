@@ -51,9 +51,11 @@ test("D722, D724, D725, D731: ceremony without progress raises a warning the lea
   await client.call("agents.send", { to: lead.address, body: "Is the floor done?" });
   await client.call("agents.send", { to: lead.address, body: "Please prove it again." });
 
-  const entry = health.getByRole("button", { name: /Ceremony outgrows progress/ });
-  await expect(entry).toBeVisible();
-  await entry.click();
+  await expect(health.getByRole("button", { name: /Ceremony outgrows progress/ })).toBeVisible();
+  // The owner is told (D731): the toast's action opens the warning through
+  // `civilization.health.open`.
+  await expect(page.getByText("Ceremony outgrows progress: Mission Doghouse")).toBeVisible();
+  await page.getByRole("button", { name: "Open health" }).click();
   const warning = page.getByRole("region", { name: "Health warning" });
   await expect(warning.getByRole("heading", { name: "Ceremony outgrows progress" })).toBeVisible();
   await expect(

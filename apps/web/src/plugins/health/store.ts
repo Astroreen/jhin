@@ -47,9 +47,14 @@ export function createHealthStore(
       };
     },
     apply: applyHealthEvent,
-    seen: (connection, event) => {
+    seen: (connection, event, before) => {
       const warning = (event.payload as { warning?: Warning } | null)?.warning;
-      if (event.type === HealthEvents.warningRaised && warning !== undefined) {
+      // A warning told once: a replayed raise of a known warning is not news.
+      if (
+        event.type === HealthEvents.warningRaised &&
+        warning !== undefined &&
+        before.warnings[warning.warningId] === undefined
+      ) {
         raised(connection, warning);
       }
     },
