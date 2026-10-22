@@ -8,6 +8,7 @@ import { agentsViewPlugin } from "./plugins/agents/index.tsx";
 import { civilizationPlugin } from "./plugins/civilization.tsx";
 import { inboxPlugin } from "./plugins/inbox/index.tsx";
 import { missionsViewPlugin } from "./plugins/missions/index.tsx";
+import { teamsViewPlugin } from "./plugins/teams/index.tsx";
 import { commandPalettePlugin } from "./plugins/command-palette.tsx";
 import { connectionsPlugin } from "./plugins/connections.ts";
 import { deviceSyncPlugin } from "./plugins/device-sync.ts";
@@ -184,6 +185,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     inboxPlugin,
     missionsViewPlugin,
     agentsViewPlugin,
+    teamsViewPlugin,
   ];
 }
 

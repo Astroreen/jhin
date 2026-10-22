@@ -767,6 +767,18 @@ commands) is `packages/agent-api/src/teams.ts`.
   `teams.write`. A member on another node is put there with the caller's
   grants (D416), so a member node without `teams.write` refuses.
 
+- **D691. Teams in Civilization mode** are the client plugin
+  `jhin.teams-view`, a chunk of its own (D440). `jhin.teams.sidebar` fills
+  `civilization.sidebar.teams` with the teams of the route's node (title,
+  agent count, up or stopped), from `teams.list`, listed again on each event
+  of the `teams` stream. A team's page is the route panel `team` with the
+  team id as `section`, in `civilization.views` (`jhin.teams.view`): its
+  agents (alias, role, runtime and model, node, the lead marked) with their
+  status from `teams.get`, its culture, **Start team** (`teams.up`) or
+  **Stop team** (`teams.down`), and a message to the lead (`agents.send` to
+  its alias, D688). `civilization.team.open {node, teamId}` opens it.
+  Nothing of it goes into Threads mode (D741).
+
 ### A6. Orchestration and refocus (D701–D720)
 
 - An **orchestrator workflow** walks a mission's process: it knows which
@@ -977,6 +989,12 @@ commands) is `packages/agent-api/src/teams.ts`.
 - A5: installing a plugin, and so a bundle, from npm with a command. Today the
   unpacked package goes into a plugin location (D686).
 - A5: a bundle's skills installed for its members; skills stay names (D613).
+- A5: members' statuses followed live on the team page; it asks `teams.get`
+  when it opens and when the team changes (D691). A1's roster (D614) owns
+  live status.
+- A5: the conversation with the lead in `civilization.lead`: the team page
+  sends the lead a message (D691); reading its answers is the lead's
+  generation, read through A1's agent page.
 - A8: mode places that survive a page reload (D744 keeps them for the page's
   life); a mode per window or per node.
 - A8: offering Civilization mode for a mesh member reached through another node
@@ -1051,6 +1069,9 @@ Each workstream lists its PRs here as they merge.
   `mesh.call`; aliases in `agents.send` and `agents.ask` (`jhin.agents`);
   agents hold `teams.read` (D681–D690). A bundle fixture in
   `plugins/teams/test/fixtures/workshop` is the example of a bundle.
+- A5 #PR3: `jhin.teams-view`, teams in Civilization mode: the Teams
+  section, a team's page with its agents, culture, Start and Stop team and a
+  message to the lead, `civilization.team.open` (D691).
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
