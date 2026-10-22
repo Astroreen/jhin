@@ -14,7 +14,7 @@ import {
   type Warning,
 } from "@jhin/health-api";
 import type { Mission, Slice } from "@jhin/missions-api";
-import { LIVE_STREAMS_CAPABILITY, createLiveStreams } from "@jhin/rpc";
+import { LIVE_STREAMS_CAPABILITY, createLiveStreams, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z, type PluginContext } from "@jhin/sdk";
 import { SOURCE_CONTROL_STREAM, SourceControlEvents } from "@jhin/source-control-api";
 import type { EventLog, Json, StoredEvent } from "@jhin/storage-api";
@@ -88,10 +88,19 @@ async function start(
       { manifest: manifest("missions"), definition: missions },
       // `agents.ask` as jhin.agents answers it: the analyst's last message (A2, D624).
       {
-        manifest: testManifest("test.agents", { side: "server" }),
+        manifest: testManifest("test.agents", {
+          side: "server",
+          optional: { [LIVE_STREAMS_CAPABILITY]: "^1.1" },
+        }),
         definition: definePlugin({
           activate(context) {
             probe = context;
+            // Guards the messages as jhin.agents does (D628).
+            context.subscriptions.add(
+              context.services
+                .tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY)!
+                .guard(MESSAGES_STREAM, ["agents.read"]),
+            );
             context.commands.register({
               name: "agents.ask",
               description: "Answers as the analyst would",
@@ -647,6 +656,23 @@ describe("jhin.health", () => {
     expect(((await analysed).payload as { analysis: Analysis }).analysis).toMatchObject({
       status: "answered",
       analyst: BUILDER,
+    });
+  });
+
+  it("asks an analyst named in the config later for a warning nobody could analyse", async () => {
+    const thresholds = { ceremony: { ratio: 1, minCeremony: 1 } };
+    const { kernel, log, deliver } = await node(thresholds);
+    const none = nextAppended(log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await deliver(OWNER, "jhin://node-a/agents/stranger", "hello");
+    expect(((await none).payload as { analysis: Analysis }).analysis.status).toBe("none");
+    const answered = nextAppended(log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    kernel.config.setLayer("project", {
+      "jhin.health": { ...thresholds, analysts: { "*": REVIEWER } },
+    });
+    expect(((await answered).payload as { analysis: Analysis }).analysis).toMatchObject({
+      status: "answered",
+      analyst: REVIEWER,
+      reason: "config",
     });
   });
 });

@@ -982,7 +982,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `analysisTimeoutMinutes`, or `none` when no agent has the context). An ask
   past its timeout is not cancelled (commands have no abort); its late answer
   is dropped. An ask cut short by a deactivation records nothing. On activation an open
-  warning without an analysis is asked again, unless its ask had already
+  warning without an analysis, or analysed by nobody (`none`), is asked again
+  (also when the `jhin.health` config changes, so an analyst named later or
+  health turned on is asked), unless its ask had already
   been delivered (`agents/messages`): then its analysis is recorded `failed`,
   pointing to the analyst's thread, so no analyst is asked twice. Asks wait
   for `agents.ask` to be registered (or for `kernel.started`), so a node
@@ -1028,9 +1030,10 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   stream; `health.write` dismisses warnings and names corrected ideas, the
   owner's. Agents get `health.read` only. `health.read` is no way around the
   permissions of the streams behind a warning: `health.warnings.get` returns
-  an event's record only to a caller who may read its stream (`agents.read`,
-  `missions.read`, `threads.read`, `git.read`), and names what it lacks
-  (`withheld`) otherwise. The analyst's answer is health's own record and is
+  an event's record only to a caller who holds what its stream's own guard
+  asks (`rpc.streams` `guardOf`, e.g. `agents.read`, `missions.read`,
+  `threads.read`; `events.read` for an unguarded stream), and names what it
+  lacks (`withheld`) otherwise. The analyst's answer is health's own record and is
   read with `health.read`: the analyst writes it for whoever watches health,
   agents included, as an agent writes any message.
 
@@ -1238,6 +1241,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
 - A7: the commits of a thread's first turn, made before a slice links the
   thread: the turn-start hook records a start only for linked threads
   (D723).
+- A7: commits of turns that overlap in one checkout (two linked threads, or
+  a person committing meanwhile): each turn counts what landed between its
+  start and its end (D723).
 - A7: commits made outside a turn (by hand, by a workflow) and pull requests
   merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's

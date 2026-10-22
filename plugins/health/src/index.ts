@@ -34,8 +34,14 @@ import {
 } from "@jhin/health-api";
 import { MISSIONS_STREAM } from "@jhin/missions-api";
 import { SOURCE_CONTROL_STREAM } from "@jhin/source-control-api";
-import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, describePermissions, holdsPermission, z, type Invocation } from "@jhin/sdk";
+import { LIVE_STREAMS_CAPABILITY, UNGUARDED_STREAM_PERMISSION, type LiveStreams } from "@jhin/rpc";
+import {
+  definePlugin,
+  describePermissions,
+  missingPermissions,
+  z,
+  type Invocation,
+} from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog, type Json, type StoredEvent } from "@jhin/storage-api";
 
 import { mergeByTime } from "./merge.ts";
@@ -68,16 +74,6 @@ function git(cwd: string, args: string[], timeout = 5_000): Promise<string | und
       resolve(error === null ? stdout.trim() : undefined),
     );
   });
-}
-
-/** What reading a stream behind a warning takes, as its own plugin guards it. */
-function streamPermission(stream: string): string | undefined {
-  if (stream === MISSIONS_STREAM) return "missions.read";
-  if (stream === MESSAGES_STREAM) return "agents.read";
-  if (stream === SOURCE_CONTROL_STREAM) return "git.read";
-  if (stream === HEALTH_STREAM) return HEALTH_READ_PERMISSION;
-  if (stream.startsWith("thread/")) return "threads.read";
-  return undefined;
 }
 
 export default definePlugin({
@@ -483,7 +479,9 @@ export default definePlugin({
     // answer is in the analyst's thread; asking again would ask it twice.
     const askAgain = () => {
       for (const warning of warningsOf(health)) {
-        if (warning.status !== "open" || warning.analysis !== undefined) continue;
+        // Unanalysed, or analysed by nobody: a config change may name an analyst now.
+        const unasked = warning.analysis === undefined || warning.analysis.status === "none";
+        if (warning.status !== "open" || !unasked) continue;
         if (!askedBefore.has(warning.warningId)) {
           void analyse(warning);
           continue;
@@ -503,6 +501,8 @@ export default definePlugin({
       }
     };
     askAgain();
+    // Health turned on, or an analyst named: open warnings nobody analysed are asked.
+    context.subscriptions.add(context.config.onDidChange(HEALTH_CONFIG_SECTION, askAgain));
 
     // --- Progress no stream holds: the commits of a turn (D723) ---------------------
     /** Where each running turn of a linked thread started, kept across a reload. */
@@ -682,14 +682,13 @@ export default definePlugin({
         const grants = invocation.caller?.permissions;
         const events = await Promise.all(
           warning.evidence.map(async (ref) => {
-            // A record is read with what its own stream takes: health.read is
-            // not a way around agents.read, missions.read or threads.read.
-            const needed = streamPermission(ref.stream);
-            if (
-              grants !== undefined &&
-              (needed === undefined || !holdsPermission(grants, needed))
-            ) {
-              return { ...ref, payload: null, withheld: needed ?? "*" };
+            // A record is read with what its own stream takes, as the plugin
+            // that owns it guards it (security.md D415): health.read is no way
+            // around agents.read, missions.read or threads.read.
+            const needed = live?.guardOf?.(ref.stream) ?? [UNGUARDED_STREAM_PERMISSION];
+            const missing = grants === undefined ? [] : missingPermissions(grants, needed);
+            if (missing.length > 0) {
+              return { ...ref, payload: null, withheld: missing.join(", ") };
             }
             const [event] = await log.read(ref.stream, { after: ref.sequence - 1, limit: 1 });
             // A trimmed stream (D496) keeps the reference, not the event.
