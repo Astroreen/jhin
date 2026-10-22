@@ -1034,6 +1034,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       });
       // Its links could not be read: nothing to decide on now, the next lookup asks again.
       if (decided === "unread") continue;
+      // Removed while its links were read: nothing to settle or note.
+      if (removingThreads.has(thread.threadId) || !threads.has(thread.threadId)) continue;
       if (decided === "hold") {
         noteHold(thread.threadId);
         continue;

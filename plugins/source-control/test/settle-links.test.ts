@@ -165,4 +165,23 @@ describe("jhin.source-control: settling a thread on its linked pull requests (D1
     await sc.client.call("git.pr.link", { threadId, url: url(7) });
     await settling;
   });
+
+  it("falls back to its branch's pull request when every link is left out", async () => {
+    const gh = fakeGh();
+    gh.view(8, merged(8, "2001-01-01T00:00:00Z"));
+    const sc = await node();
+    const projectId = await sc.project(githubRepository());
+    const threadId = (await sc.client.call<{ id: string }>("threads.create", { projectId })).id;
+    // Merged before it was linked: left out, so it neither holds nor settles the thread.
+    const leftOut = sc.logged("no linked pull request settles the thread");
+    await sc.client.call("git.pr.link", { threadId, url: url(8) });
+    await leftOut;
+    // The branch's own pull request merges: it decides, as without links.
+    const settling = sc.next("threads", settled(threadId));
+    gh.pullRequest("feature", [
+      ghPullRequest({ number: 14, state: "MERGED", mergedAt: "2099-05-01T00:00:00Z" }),
+    ]);
+    await sc.status(projectId, true);
+    await settling;
+  });
 });
