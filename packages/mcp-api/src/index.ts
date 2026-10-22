@@ -35,6 +35,8 @@ export const AGENT_PERMISSIONS: readonly string[] = [
   "agents.message",
   // A lead finds other teams' leads (agents.md D688, D690); never `teams.write`.
   "teams.read",
+  // Health warnings and the events behind them, for the agent asked to analyse one (agents.md D725).
+  "health.read",
 ];
 
 /** Who a credential acts as, and for which thread's agent (docs/plans/providers.md, D340). */

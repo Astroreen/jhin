@@ -13,7 +13,10 @@ bash scripts/t3/serve.sh >"$log" 2>&1 &
 grep -m1 -q "jhin: open" < <(tail -n +1 -f --pid=$! "$log") || { cat "$log"; exit 1; }
 url="$(grep -m1 -o 'http://[^#]*' <(grep "jhin: open" "$log"))"
 
-curl -fsS "$url" | grep -q "<title>Jhin</title>"
+# The whole page first: `curl | grep -q` under pipefail fails when grep stops
+# reading at the match while curl is still writing (curl exits 23).
+page="$(curl -fsS "$url")"
+[[ "$page" == *"<title>Jhin</title>"* ]] || { echo "smoke: $url does not serve the web client" >&2; exit 1; }
 echo "smoke: $url serves the web client"
 
 second="$(bash scripts/t3/serve.sh 2>&1 || true)"

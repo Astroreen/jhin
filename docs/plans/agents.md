@@ -899,6 +899,159 @@ Decisions:
   wrong ideas ([mind virus](../lore/mind-viruses.md)) are the first two
   named detectors.
 
+Decisions are recorded here as they are taken. The contract (the `health`
+stream, warnings, ideas, groups, config) is `packages/health-api`; the
+sensors and detectors are `plugins/health/src/sensors.ts`.
+
+- **D721. One `health` stream per node, folded.** Sensors read the log the
+  other plugins already write; nothing is counted twice into a second store.
+  What health concludes is an event of the node's `health` stream
+  (`health.warning.raised`, `.analysed`, `.dismissed`,
+  `health.idea.corrected`, `health.progress.recorded`), and the state is its
+  fold (`applyHealthEvent`), on the node and in clients alike, as D641 does
+  for missions. `health.catalog` returns the head to follow it from;
+  following it takes `health.read`. The counts themselves are not stored: on
+  start the plugin reads the streams again and keeps the window in memory.
+- **D722. Ceremony and progress are read from the streams that hold them.**
+  Ceremony: a message, ask or answer delivered (`agents/messages`, D627), a
+  proof recorded again on a done slice (`missions`, D642/D646), and, on the
+  threads slices link (D647), an approval asked (`agent.request.opened` of
+  kind `approval`) and a queue change (`threads.queue.updated`). Progress: a
+  slice becoming done (`missions`), a linked thread's pull request merging
+  (`git.pr.linked`/`git.pr.updated` with state `merged` on `source-control`,
+  once per thread and pull request) and turns that commit (D723). An event counts for
+  the missions of the slices whose thread it is on; a message without one
+  counts for one slice: the open slice of its recipient, else of its sender,
+  changed last (one message is not multiplied over an agent's missions);
+  every event counts for the node. A slice becoming done again after it was reopened counts again: the
+  rework is progress, while a proof recorded again on a done slice is a
+  proof edit, ceremony. A project counts what its missions count.
+  Attribution is the missions as they were when the event happened: on start
+  the streams are replayed merged in time order, so a restart counts as the
+  live node did. A thread no slice links any more is no longer followed;
+  linked again, it is read on from where it was left, so nothing is counted
+  twice. `health.status` returns the counts per group and per kind
+  over the window. Health's own asks to an analyst (message id
+  `health.<warningId>.<time>` (the ask's time in ms), naming a warning health raised before) are
+  no ceremony: an ask from this node's owner, whom no agent can send as
+  (D622), whose id names a warning health raised before. An agent that
+  copies such an id is counted like any other. The analyst's first reply to
+  an ask health delivered (`inReplyTo` its message, from the warning's
+  analyst) is health's conversation too: no ceremony, and no carrier of the idea it was asked to trace. The
+  analyst's answer ends its turn (D624) and is not a delivered message.
+- **D723. Commits are the one progress no stream holds.** Every turn records
+  its `HEAD` before it starts (turn-start hook,
+  kernel-scoped state, so a plugin reload keeps it; a start older than a day
+  is forgotten), since its thread may be linked to a slice during the turn;
+  at its end, on a thread a slice links by then, it appends
+  `health.progress.recorded` with the
+  commits since on the first-parent line (`git rev-list --count
+  --first-parent`), only when the start is an ancestor of the new `HEAD`: a
+  reset, rebase or branch switch inside the turn is no progress of its own.
+  A turn that commits counts as one piece of progress, however many commits
+  it made (the count is kept on the record): a large rebase or import is not
+  more progress, and empty commits buy no room under the ceremony threshold.
+  Health runs `git` itself: `source-control.git@1` offers no read of `HEAD`
+  or count of commits to depend on, and its `TurnCheckpoint` records what the
+  turn changed in the working tree (files, insertions, deletions), not the
+  commits it made. The hooks never fail a turn: the start reads `HEAD` once (2 s at most),
+  the end counts off the turn's path and then emits the kernel event
+  `health.commits.counted { turnId, count }`; a directory without git counts
+  nothing.
+- **D724. A warning per detector and subject; the narrowest group warns.**
+  A detector raises a warning (`health.warning.raised` on the stream and the
+  same kernel event, for server plugins that tell the owner elsewhere, such
+  as a chat integration). The owner is told by the client, which follows the
+  stream: `jhin.health` in the web client toasts or notifies each new warning
+  the way the inbox tells an ask (D630, D731). A warning is raised once
+  for its subject (a group, a slice, an idea) while that warning is open.
+  The owner dismisses it (`health.warnings.dismiss`); a dismissal starts the
+  count of its subject again, so it warns again only when what came after the
+  dismissal alone crosses the threshold. The dismissal records the log's head
+  of each followed stream (`dismissedAfter`), also of events not delivered to
+  health yet, and the count goes on
+  from the events after them: an exact cut, where the clock's milliseconds
+  would not order a dismissal against events of the same millisecond. A
+  stream it did not follow yet (a slice's thread linked later) counts from the
+  dismissal's time. Every detector counts over the
+  window (`windowHours`). Of ceremony warnings the narrowest group crossing
+  warns: while a mission crosses over the window, dismissed or not, its
+  project and the node stay quiet, so one cause makes one warning; once it no
+  longer crosses, they count again. A warning keeps the
+  last 50 events behind it (`EventRef`: stream, sequence, type, time, kind);
+  `health.warnings.get` reads them back from the log for the drill-down, a
+  trimmed one marked `missing`.
+- **D725. The analyst is asked with `agents.ask`.** On a new warning health
+  asks its analyst (D726) through `agents.ask` (A2, D624) as this node's
+  owner, with the warning, its measures, its last events and what to look at
+  (the lore of bureaucracy or of mind viruses), and records the answer
+  (`health.warning.analysed`, the answer cut at 8000 characters: `answered`; `failed` with the error, when the ask is not answered (an ask
+  that only waits, `pending`), or after
+  `analysisTimeoutMinutes`, or `none` when no agent has the context). An ask
+  past its timeout is not cancelled (commands have no abort); its late answer
+  is dropped. An ask cut short by a deactivation records nothing. On activation an open
+  warning without an analysis, or analysed by nobody (`none`), is asked again
+  (also when the `jhin.health` config changes, so an analyst named later or
+  health turned on is asked; an ask under way is asked once, and looked at
+  again when it ends), unless its ask had already
+  been delivered (`agents/messages`): then its analysis is recorded `failed`,
+  pointing to the analyst's thread, so no analyst is asked twice. Asks wait
+  for `agents.ask` to be registered (or for `kernel.started`), so a node
+  starting, or health enabled on a running node, asks once the agents plugin
+  can take it. The core streams
+  (`health`, `missions`, `agents/messages`, `source-control`) must be read on
+  activation, or it fails; a slice's thread that cannot be read is tried again
+  on the next change of the slices' threads. Agents hold `health.read` over MCP
+  (`AGENT_PERMISSIONS`), so the analyst can open the drill-down itself.
+- **D726. Who has the context.** In order: the agent address configured for
+  the project in `jhin.health.analysts` (or for `*`; an address that is no
+  agent's, such as the owner's, is skipped with a warning in the log); else
+  the lead of the team (A5, `teams.list`) holding most of the group's slices
+  that are not dropped, by their assignees; else the agent assigned the most
+  of them, a tie going to the first address in order. A node-wide warning
+  without a configured analyst has none. Never a random agent.
+- **D727. A mind virus is a corrected idea coming back.** The owner names a
+  wrong idea by a phrase when correcting it (`health.ideas.correct { idea,
+  correction?, projectId? }`), the vaccine; the project must exist, the same
+  phrase for the same project is the same idea, and one named by mistake is
+  withdrawn (`health.ideas.withdraw`). Each later message of a sender
+  other than an owner, and each slice title or spec an agent writes later
+  (not the owner or the owner's devices, `client:<id>`), that
+  contains the phrase as whole words (case-insensitive, punctuation and
+  whitespace collapsed; a phrase of two words at least) is an
+  occurrence; a project's idea counts only in its own slices and their
+  messages. `mindVirus.minOccurrences` occurrences within the window raise a warning naming
+  the carriers; the analyst is asked to trace the written source and every
+  copy ([mind virus](../lore/mind-viruses.md)). The agent health asked to
+  trace an idea is no carrier of it: quoting the phrase is that work. Copies written before the
+  correction are the analyst's to find, not the detector's.
+- **D728. A recursive proof loop is proof edits on a done slice.** Every
+  `missions.slice.proved` of a slice already done is a proof edit (D646 keeps
+  them visible); `proofLoop.maxEdits` of them on one slice within the window
+  raise a warning
+  for its mission, with those edits as evidence
+  ([bureaucracy](../lore/bureaucracy.md)).
+- **D729. Thresholds are config.** The `jhin.health` section: `enabled`,
+  `windowHours` (24), `ceremony.ratio` (10) and `ceremony.minCeremony` (30):
+  a group warns when its ceremony in the window reaches both the minimum and
+  ratio × progress (no progress counts as 1); `proofLoop.maxEdits` (2),
+  `mindVirus.minOccurrences` (2), `analysisTimeoutMinutes` (30, a day at most) and
+  `analysts`. A shorter window forgets what falls out of it; a longer one
+  counts from what was kept, so it fills as new events come. An invalid layer keeps the
+  last good thresholds.
+- **D730. Permissions.** `health.read` reads status, warnings, ideas and the
+  stream; `health.write` dismisses warnings and names corrected ideas, the
+  owner's. Agents get `health.read` only. `health.read` is no way around the
+  permissions of the streams behind a warning: `health.warnings.get` returns
+  an event's record only to a caller who holds what its stream's own guard
+  asks (`rpc.streams` `guardOf`, e.g. `agents.read`, `missions.read`,
+  `threads.read`; `events.read` for an unguarded stream), and names what it
+  lacks (`withheld`) otherwise. The analyst's answer is health's own record and is
+  read with `health.read`: the analyst writes it for whoever watches health,
+  agents included, as an agent writes any message. So are a warning's
+  summary and group (a mission's title, an idea's phrase and its carriers'
+  addresses): what health concludes is health's to read.
+
 ### A8. Modes and the Civilization shell (D742–D760)
 
 - A client capability for **modes** (`client.modes@1` or similar): a mode
@@ -1083,6 +1236,32 @@ Decisions:
 - A5: the conversation with the lead in `civilization.lead`: the team page
   sends the lead a message (D691); reading its answers is the lead's
   generation, read through A1's agent page.
+- A7: the team group (D722): a team counting what its agents' messages and
+  slices count, beside missions and projects; its lead is already the
+  analyst (D726).
+- A7: health for a mesh: each node counts its own streams; a team across
+  nodes needs the counts of every node, through `mesh.call` or shared
+  streams.
+- A7: detecting a repeated wrong idea nobody named yet (phrases recurring
+  across agents' notes and messages); D727 needs the correction first.
+- A7: an agent naming a corrected idea (`health.write` for an epidemiology
+  team, see the item above) and tracing copies written before the correction.
+- A7: warnings that clear themselves when the measure drops back under the
+  threshold; today the owner dismisses them (D724).
+- A7: queue activity of threads no slice links (an agent's other
+  generations); D722 follows only the threads slices link.
+- A7: linking a late answer back to its warning. An ask past
+  `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
+  answer that comes later stays in the analyst's thread, and the warning is
+  not asked again.
+- A7: reading a turn's commits through `source-control.git@1` once it offers
+  a read of `HEAD` and a count of commits; health runs `git` itself until
+  then (D723).
+- A7: commits of turns that overlap in one checkout (two linked threads, or
+  a person committing meanwhile): each turn counts what landed between its
+  start and its end (D723).
+- A7: commits made outside a turn (by hand, by a workflow) and pull requests
+  merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's
   life); a mode per window or per node.
 - A8: offering Civilization mode for a mesh member reached through another node
@@ -1176,6 +1355,13 @@ Each workstream lists its PRs here as they merge.
 - A5 #188: `jhin.teams-view`, teams in Civilization mode: the Teams
   section, a team's page with its agents, culture, Start and Stop team and a
   message to the lead, `civilization.team.open` (D691).
+- A7 #189: `@jhin/health-api` (the `health` stream, warnings, ideas, the
+  `jhin.health` config) and the `jhin.health` plugin: sensors of ceremony
+  against progress per mission, project and node, the ceremony, recursive
+  proof loop and mind-virus detectors, the analyst asked with `agents.ask`,
+  `health.*` commands; agents read health over MCP (D721–D730). The owner's
+  notification of a warning is the client's (#190, D731). The Health
+  view in Civilization mode follows.
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
