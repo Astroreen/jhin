@@ -7,6 +7,7 @@
 import type { NodeTarget } from "@jhin/client-api";
 import {
   PREVIEW_UPLOAD_MAX_BYTES,
+  PREVIEW_UPLOAD_MAX_FILES,
   PREVIEW_VIEWPORT_MAX_AREA,
   PREVIEW_VIEWPORT_PRESETS,
   PREVIEW_ZOOM_LEVELS,
@@ -1189,6 +1190,9 @@ function TabView(props: {
 
   /** Answers the page's file picker with the chosen files, or cancels it with none (D1203). */
   const uploadFiles = async (files: readonly File[]) => {
+    if (files.length > PREVIEW_UPLOAD_MAX_FILES) {
+      throw new Error(`The page takes at most ${PREVIEW_UPLOAD_MAX_FILES} files at once.`);
+    }
     const total = files.reduce((sum, file) => sum + file.size, 0);
     if (total > PREVIEW_UPLOAD_MAX_BYTES) {
       throw new Error(

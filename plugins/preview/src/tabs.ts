@@ -77,6 +77,9 @@ const FRAME_ACK_MS = 100;
 const FRAME_QUALITY = 70;
 const READ_OPERATIONS = new Set(["status", "snapshot", "waitFor"]);
 const VIEWER_NAVIGATION = { waitUntil: "commit", timeout: Ops.DEFAULT_TIMEOUT_MS } as const;
+/** How long a probe waits for the page before it answers "not text" (D1203). */
+const PROBE_TIMEOUT_MS = 2_000;
+
 /** The few DOM shapes `editableAtPoint` reads; the plugin has no DOM types. */
 interface PageElement {
   readonly tagName: string;
@@ -1590,7 +1593,15 @@ export function createTabs(options: TabsOptions) {
         }
         // A page with a dialog open runs no script until it is answered: nothing to type into.
         if (tab.dialog !== null) return { x: input.x, y: input.y, editable: false };
-        const editable = await tab.page.evaluate(editableAtPoint, { x: input.x, y: input.y });
+        // A busy or navigating page answers "not text" after a moment: the tap still clicks,
+        // only the keyboard stays down.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const editable = await Promise.race([
+          tab.page.evaluate(editableAtPoint, { x: input.x, y: input.y }).catch(() => false),
+          new Promise<false>((resolve) => {
+            timer = setTimeout(() => resolve(false), PROBE_TIMEOUT_MS);
+          }),
+        ]).finally(() => clearTimeout(timer));
         return { x: input.x, y: input.y, editable };
       });
     },
