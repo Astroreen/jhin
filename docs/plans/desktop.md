@@ -359,8 +359,11 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
   new `feeds` job merges them back into `latest-mac.yml` and `latest.yml`
   (the nightly ones likewise) with T3's merge
   (`scripts/update-manifests.ts`, from T3's `scripts/lib/update-manifest.ts`
-  and `merge-update-manifests.ts`, with T3's tests). It refuses a feed
-  without its other arch, or with different versions or conflicting entries.
+  and `merge-update-manifests.ts`, with T3's tests). Unlike T3's, a
+  file entry's other keys (electron-builder's `blockMapSize`) are carried
+  through. The job fails when one of the four feeds of the channel is
+  missing, when a merged feed lacks one of its arches, or on different
+  versions or conflicting entries.
   The job runs on dry runs too, so a pull request proves the files a
   release publishes; the release job uploads the installers with the
   merged feeds. Signing is unchanged (D944): the arm64 Windows and the x64

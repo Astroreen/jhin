@@ -1,9 +1,10 @@
 // The cases follow T3 Code's scripts/merge-update-manifests.test.ts (MIT, see THIRD_PARTY_NOTICES.md).
+import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   mergePlatformUpdateManifests,
@@ -11,6 +12,20 @@ import {
   parsePlatformUpdateManifest,
   serializePlatformUpdateManifest,
 } from "./update-manifests.ts";
+
+const folders: string[] = [];
+afterEach(() => {
+  for (const folder of folders.splice(0)) Fs.rmSync(folder, { recursive: true, force: true });
+});
+const temporary = () => {
+  const folder = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-manifests-"));
+  folders.push(folder);
+  return folder;
+};
+
+/** A feed file as electron-builder 26 writes it, `blockMapSize` included. */
+const feed = (arch: string, ext: string, date: string, sha = `${arch}sha`) =>
+  `version: 1.2.0\nfiles:\n  - url: Jhin-1.2.0-${arch}.${ext}\n    sha512: ${sha}\n    size: 7\n    blockMapSize: 3\npath: Jhin-1.2.0-${arch}.${ext}\nsha512: ${sha}\nreleaseDate: '${date}'\n`;
 
 describe("merge-update-manifests", () => {
   it("merges arm64 and x64 macOS update manifests into one multi-arch manifest", () => {
@@ -188,7 +203,7 @@ releaseDate: '2026-03-07T10:36:07.540Z'
   });
 
   it("merges two feed files on disk into a third, as the release job runs it", () => {
-    const folder = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-manifests-"));
+    const folder = temporary();
     const write = (name: string, arch: string, date: string) => {
       const file = Path.join(folder, name);
       Fs.writeFileSync(
@@ -215,5 +230,63 @@ releaseDate: '2026-03-07T10:36:07.540Z'
         "",
       ].join("\n"),
     );
+  });
+
+  it("carries a file entry's other keys through, and refuses entries that disagree", () => {
+    const x64 = parsePlatformUpdateManifest(
+      "win",
+      feed("x64", "exe", "2026-10-22T10:00:00.000Z"),
+      "x64.yml",
+    );
+    const arm64 = parsePlatformUpdateManifest(
+      "win",
+      feed("arm64", "exe", "2026-10-22T11:00:00.000Z"),
+      "arm64.yml",
+    );
+    const merged = mergePlatformUpdateManifests("win", x64, arm64);
+    expect(merged.files.map((file) => file.extras)).toEqual([
+      { blockMapSize: 3 },
+      { blockMapSize: 3 },
+    ]);
+    expect(serializePlatformUpdateManifest("win", merged)).toContain("    blockMapSize: 3\n");
+
+    const other = parsePlatformUpdateManifest(
+      "win",
+      feed("x64", "exe", "2026-10-22T11:00:00.000Z", "othersha"),
+      "other.yml",
+    );
+    expect(() => mergePlatformUpdateManifests("win", x64, other)).toThrow(
+      /conflicting file entry for Jhin-1\.2\.0-x64\.exe/,
+    );
+    const withName = (name: string) =>
+      parsePlatformUpdateManifest(
+        "mac",
+        `${feed("x64", "zip", "2026-10-22T10:00:00.000Z").replace("releaseDate", `releaseName: '${name}'\nreleaseDate`)}`,
+        "mac.yml",
+      );
+    expect(() => mergePlatformUpdateManifests("mac", withName("a"), withName("b"))).toThrow(
+      /conflicting 'releaseName' values/,
+    );
+  });
+
+  it("merges in place from the command line, as the feeds job runs it", () => {
+    const folder = temporary();
+    const arm64 = Path.join(folder, "latest-mac.yml");
+    const x64 = Path.join(folder, "latest-mac-x64.yml");
+    Fs.writeFileSync(arm64, feed("arm64", "zip", "2026-10-22T10:00:00.000Z"));
+    Fs.writeFileSync(x64, feed("x64", "zip", "2026-10-22T11:00:00.000Z"));
+    const script = Path.join(import.meta.dirname, "update-manifests.ts");
+    ChildProcess.execFileSync(process.execPath, [script, "--platform", "mac", arm64, x64]);
+    const merged = parsePlatformUpdateManifest("mac", Fs.readFileSync(arm64, "utf8"), arm64);
+    expect(merged.files.map((file) => file.url)).toEqual([
+      "Jhin-1.2.0-arm64.zip",
+      "Jhin-1.2.0-x64.zip",
+    ]);
+
+    const usage = ChildProcess.spawnSync(process.execPath, [script, "--platform", "linux", arm64], {
+      encoding: "utf8",
+    });
+    expect(usage.status).toBe(2);
+    expect(usage.stderr).toContain("usage: node scripts/update-manifests.ts");
   });
 });

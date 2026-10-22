@@ -254,8 +254,16 @@ jobs:
             echo "== $feed"
             cat "$feed"
           done
-          for feed in feeds/*-mac.yml feeds/latest.yml feeds/nightly.yml; do
-            [[ -f "$feed" ]] || continue
+          # Every feed the matrix promises is there, of one channel, before its arches are checked.
+          channel=latest
+          if [[ -f feeds/nightly.yml || -f feeds/nightly-mac.yml ]]; then channel=nightly; fi
+          for feed in "$channel.yml" "$channel-mac.yml" "$channel-linux.yml" "$channel-linux-arm64.yml"; do
+            test -f "feeds/$feed" || { echo "missing feeds/$feed" >&2; exit 1; }
+          done
+          test "$(ls feeds/*.yml | wc -l)" -eq 4 || { echo "unexpected feed files" >&2; ls feeds >&2; exit 1; }
+          # The per-build check made sure each feed's installers were uploaded beside it; the
+          # merge only unions those entries, so here each merged feed must hold both arches.
+          for feed in "feeds/$channel-mac.yml" "feeds/$channel.yml"; do
             for arch in arm64 x64; do
               grep -q -- "-$arch\." "$feed" || { echo "$feed lacks the $arch build" >&2; exit 1; }
             done
