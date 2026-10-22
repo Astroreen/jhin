@@ -370,15 +370,14 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     setDismissing(true);
     try {
       await connection.client.call("health.warnings.dismiss", { warningId });
-      // The stream marks it dismissed; when the stream is down now, the answer says so.
-      if (view.store.snapshot().get(node)?.status !== "ready") {
-        // No event will say so: the feed learns it here, page and sidebar alike.
-        view.store.apply(node, {
-          type: HealthEvents.warningDismissed,
-          payload: { warningId, dismissedAt: new Date().toISOString() },
-        });
-        view.toasts?.show({ type: "success", title: "Warning dismissed" });
-      }
+      // The answer says so at once, whether or not the stream's event follows.
+      view.toasts?.show({ type: "success", title: "Warning dismissed" });
+      // When the stream is down no event will mark it: the feed learns it here,
+      // page and sidebar alike. A live feed is left to its stream.
+      view.store.apply(node, {
+        type: HealthEvents.warningDismissed,
+        payload: { warningId, dismissedAt: new Date().toISOString() },
+      });
     } catch (error) {
       view.toasts?.show({
         type: "error",
