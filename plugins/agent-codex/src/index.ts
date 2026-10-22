@@ -82,6 +82,8 @@ const UNAVAILABLE_TTL_MS = 10_000;
 const MODEL_WAIT_MS = 3_000;
 /** A probe that takes longer reports Codex as unavailable (T3's CODEX_AUTH_PROBE_TIMEOUT_MS). */
 const PROBE_TIMEOUT_MS = 20_000;
+/** How old a usage read `/usage-limits` answers from before it reads them again. */
+const USAGE_TTL_MS = 60_000;
 /** A usage read that takes longer is reported as failed (T3's RATE_LIMITS_PROBE_TIMEOUT_MS). */
 const RATE_LIMITS_TIMEOUT_MS = 5_000;
 
@@ -446,36 +448,37 @@ export function createCodexRuntime(options: {
     current()?.defaultModel ??
     models()[0]?.id ??
     BUNDLED_MODELS[0]!.id;
+  /** Probes Codex again (once at a time per config): its status, models and usage. */
+  const refresh = (key: string) => {
+    let running = probing.get(key);
+    if (running === undefined) {
+      running = probe(launch, options.config())
+        .then((result) => {
+          probed = { at: Date.now(), key, probe: result };
+          // A new read holds what the updates before it said; one that came while it was
+          // read (it merged onto the older snapshot) is newer and stays.
+          const readAt = result.usageLimits?.checkedAt;
+          if (
+            result.rateLimits !== undefined &&
+            readAt !== undefined &&
+            liveRateLimits !== undefined &&
+            Date.parse(liveRateLimits.at) <= Date.parse(readAt)
+          ) {
+            liveRateLimits = undefined;
+          }
+          return result;
+        })
+        .finally(() => probing.delete(key));
+      probing.set(key, running);
+    }
+    return running;
+  };
   const status = async (): Promise<AgentRuntimeStatus> => {
     const key = probeKey();
-    const refresh = () => {
-      let running = probing.get(key);
-      if (running === undefined) {
-        running = probe(launch, options.config())
-          .then((result) => {
-            probed = { at: Date.now(), key, probe: result };
-            // A new read holds what the updates before it said; one that came while it was
-            // read (it merged onto the older snapshot) is newer and stays.
-            const readAt = result.usageLimits?.checkedAt;
-            if (
-              result.rateLimits !== undefined &&
-              readAt !== undefined &&
-              liveRateLimits !== undefined &&
-              Date.parse(liveRateLimits.at) <= Date.parse(readAt)
-            ) {
-              liveRateLimits = undefined;
-            }
-            return result;
-          })
-          .finally(() => probing.delete(key));
-        probing.set(key, running);
-      }
-      return running;
-    };
-    if (probed === undefined || probed.key !== key) return (await refresh()).status;
+    if (probed === undefined || probed.key !== key) return (await refresh(key)).status;
     // A stale answer is given at once while a new probe runs (D95).
     const ttl = probed.probe.status.available ? STATUS_TTL_MS : UNAVAILABLE_TTL_MS;
-    if (Date.now() - probed.at >= ttl) void refresh().catch(() => undefined);
+    if (Date.now() - probed.at >= ttl) void refresh(key).catch(() => undefined);
     return probed.probe.status;
   };
 
@@ -483,7 +486,16 @@ export function createCodexRuntime(options: {
   const rateLimits = () => liveRateLimits?.snapshot ?? current()?.rateLimits;
   /** The usage limits as Codex last reported them (D1142): the probe's, then its updates. */
   const usageLimits = async (): Promise<AgentUsageLimits | undefined> => {
-    await status();
+    // `/usage-limits` reads them again when the last read is older than a minute or failed,
+    // instead of answering from the status cache (D1142).
+    const key = probeKey();
+    const last = probed?.key === key ? probed : undefined;
+    const stale =
+      last === undefined ||
+      Date.now() - last.at >= USAGE_TTL_MS ||
+      last.probe.usageLimits?.unavailable?.reason === "probeFailed";
+    if (stale && liveRateLimits === undefined) await refresh(key).catch(() => undefined);
+    else await status();
     const read = current()?.usageLimits;
     if (liveRateLimits === undefined) return read;
     return {
@@ -567,7 +579,11 @@ export function createCodexRuntime(options: {
           : {}),
         version: VERSION,
         home: expandHome(config.homePath),
-        usageLimitResetAt: () => codexUsageLimitResetAt(rateLimits()),
+        // A reset time already past is no time to retry after (a probe read before it reset).
+        usageLimitResetAt: () => {
+          const at = codexUsageLimitResetAt(rateLimits());
+          return at !== undefined && Date.parse(at) > Date.now() ? at : undefined;
+        },
         ...(options.log === undefined ? {} : { log: options.log }),
       });
       turns.set(turn, { threadId: request.threadId, done: turn.done });

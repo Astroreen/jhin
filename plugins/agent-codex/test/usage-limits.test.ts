@@ -165,6 +165,47 @@ describe("jhin.agent-codex: usage limits (D1142)", () => {
     ]);
   });
 
+  it("reads them again after a failed read, and gives no reset time already past", async () => {
+    const PAST = Math.floor(Date.parse("2020-01-01T00:00:00Z") / 1000);
+    const fake = fakeCodex({
+      rateLimits: {
+        rateLimits: {
+          limitId: "codex",
+          primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: PAST },
+        },
+      },
+      errors: { "account/rateLimits/read": [{ code: -32000, message: "busy" }, null] },
+      turns: [
+        [
+          {
+            notify: "error",
+            params: {
+              threadId: "$thread",
+              turnId: "$turn",
+              willRetry: false,
+              error: { message: "Usage limit", codexErrorInfo: "usageLimitExceeded" },
+            },
+          },
+          { complete: "failed" },
+        ],
+      ],
+    });
+    const { client } = await node(fake);
+    expect(await client.call("agents.usage-limits", { agentId: CODEX_AGENT_ID })).toMatchObject({
+      usageLimits: { unavailable: { reason: "probeFailed" } },
+    });
+    // A failed read is not kept: the next one reads again.
+    expect(await client.call("agents.usage-limits", { agentId: CODEX_AGENT_ID })).toMatchObject({
+      usageLimits: { windows: [{ id: "primary", usedPercent: 100 }] },
+    });
+    expect(fake.received("account/rateLimits/read")).toHaveLength(2);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const failed = until(client, thread.id, "agent.turn.failed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    const [payload] = payloads(await failed, "agent.turn.failed");
+    expect(payload!["failure"]).toEqual({ class: "usage_limit" });
+  });
+
   it("follows T3's window rules", () => {
     // Free and Go plans have one monthly allowance when Codex names no duration.
     expect(codexRateLimitsToWindows({ planType: "free", primary: { usedPercent: 5 } })).toEqual([

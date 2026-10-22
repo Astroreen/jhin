@@ -765,14 +765,18 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   -32601).", "Codex did not answer the usage request."). Every app-server's
   `account/rateLimits/updated` merges onto the last snapshot field by field
   (T3's `mergeCodexRateLimits`: a part names only what changed, a model's own
-  allowance such as Spark is ignored); a new probe starts over from its read.
+  allowance such as Spark is ignored); a new probe starts over from its read,
+  keeping an update newer than it. `agents.usage-limits` reads them again
+  when the last read is older than a minute or failed (T3 answers from its
+  provider snapshot, refreshed on its own schedule).
 - **D1143. A turn that hits a usage limit fails as one.** A runtime throws
   `UsageLimitError` (`@jhin/agent-api`, with `resetAt`); the threads plugin
   records its `failure` (`{ class: "usage_limit", resetAt? }`) with
   `agent.turn.failed`. Codex's `usageLimitExceeded` and `rateLimitExceeded`
   (`codexErrorInfo` of the turn's error or of its last `error` notification,
   T3's classes) are such failures, with T3's `codexUsageLimitResetAt`: the
-  latest reset of every exhausted window, none when one has no reset time.
+  latest reset of every exhausted window, none when one has no reset time or
+  the time is already past (a read from before the window reset).
   The timeline shows T3's row for it, a warning instead of "Turn failed":
   "Usage limit reached. Retry after {time}." (T3's `formatUpcomingTimestamp`:
   "8:09 PM", "tomorrow at 9:30 AM"), Retry still offered.
