@@ -405,6 +405,15 @@ the message, the inbox, events and the schemas of `agents.send`,
   `civilization.inbox.open {node, messageId}` opens it. A node whose inbox
   this client may not read shows none. Nothing of it goes into Threads mode
   (D741).
+  Changed with A7 (#190, D731), since the inbox follows its nodes through the
+  feed it shares with health (`lib/node-feeds.ts`):
+  - A dropped inbox stream is read again, at once and then at most once a
+    minute. The re-read tells up to the three newest items that came
+    meanwhile.
+  - A feed that stays failed keeps its items, marked not live, where the
+    inbox used to empty itself.
+  - With no focus and no system notification sent, a toast is left on the
+    page.
 
 ### A3. Missions and slices (D641–D660)
 
@@ -1277,6 +1286,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
   answer that comes later stays in the analyst's thread, and the warning is
   not asked again.
+- A7: a feed whose read permission was taken back recovering by itself when
+  it is granted again; today it stays not live until the connection is
+  replaced (D731).
 - A7: a growing pause between retries of a feed whose node keeps failing:
   today it is read again once a minute for as long as its connection is
   open (D731).

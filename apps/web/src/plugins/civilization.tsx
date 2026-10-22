@@ -15,8 +15,8 @@ import { LandmarkIcon } from "lucide-react";
 import { hasAgents } from "../lib/agents-presence.ts";
 import { builtin } from "../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../lib/lazy-chunk.tsx";
-import type { CivilizationShell } from "./civilization-shell.tsx";
 import { CIVILIZATION_MODE } from "../lib/modes.ts";
+import type { CivilizationShell } from "./civilization-shell.tsx";
 
 // The shell is a chunk of its own (D440), loaded once Civilization mode shows.
 const shellChunk = () => import("./civilization-shell.tsx");
