@@ -947,8 +947,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   count of its subject again, so it warns again only when what came after the
   dismissal alone crosses the threshold. Every detector counts over the
   window (`windowHours`). Of ceremony warnings the narrowest group crossing
-  warns: while a mission crosses, its project and the node stay quiet, so
-  one cause makes one warning; once it no longer crosses, they count again. A warning keeps the
+  warns: while a mission crosses over the window, dismissed or not, its
+  project and the node stay quiet, so one cause makes one warning; once it no
+  longer crosses, they count again. A warning keeps the
   last 50 events behind it (`EventRef`: stream, sequence, type, time, kind);
   `health.warnings.get` reads them back from the log for the drill-down, a
   trimmed one marked `missing`.

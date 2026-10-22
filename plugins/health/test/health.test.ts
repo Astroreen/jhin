@@ -402,6 +402,10 @@ describe("jhin.health", () => {
     // Only what came after the dismissal: three and four, not one and two.
     expect(next.measures).toMatchObject({ ceremony: 2 });
     expect(next.warningId).not.toBe(warning.warningId);
+    // The same cause again, and still one warning: the mission's, not its project's or the node's.
+    expect(next.subject).toBe(warning.subject);
+    const open = await client.call<Warning[]>("health.warnings.list", { status: "all" });
+    expect(open.map((item) => item.group.kind)).toEqual(["mission", "mission"]);
   });
 
   it("keeps the last good thresholds while a config layer is invalid", async () => {

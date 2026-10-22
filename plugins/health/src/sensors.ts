@@ -318,20 +318,21 @@ export class Sensors {
 
     const findings: Finding[] = [];
     // Ceremony against progress, per group (D722). The narrowest group that
-    // crosses warns; its project and the node stay quiet while it crosses (D724).
-    const rank = { mission: 0, team: 1, project: 2, node: 3 } as const;
+    // crosses warns. Its project and the node stay quiet while it crosses over
+    // the window, dismissed or not, so one cause makes one warning (D724).
+    const { ratio, minCeremony } = config.ceremony;
+    const limitOf = (progress: number) => Math.max(minCeremony, ratio * Math.max(progress, 1));
     const quiet = new Set<string>();
-    const entries = this.tally(start, (key) => since("ceremony", key)).toSorted(
-      (a, b) => rank[a.group.kind] - rank[b.group.kind],
-    );
-    for (const entry of entries) {
-      const { ratio, minCeremony } = config.ceremony;
-      const limit = Math.max(minCeremony, ratio * Math.max(entry.progress, 1));
-      if (entry.ceremony < limit || quiet.has(entry.key)) continue;
+    for (const entry of this.tally(start)) {
+      if (entry.group.kind === "node" || entry.ceremony < limitOf(entry.progress)) continue;
       quiet.add("node");
       if (entry.group.kind === "mission") {
         quiet.add(groupKey({ kind: "project", projectId: entry.group.projectId }));
       }
+    }
+    for (const entry of this.tally(start, (key) => since("ceremony", key))) {
+      const limit = limitOf(entry.progress);
+      if (entry.ceremony < limit || quiet.has(entry.key)) continue;
       findings.push({
         detector: "ceremony",
         subject: entry.key,
