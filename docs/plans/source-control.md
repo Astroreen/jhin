@@ -929,7 +929,10 @@ with screenshots).
   `autoSettleOnMerge`, the user's last message, pins and snoozes), read as
   soon as a link's state changes. A link made after its pull request had
   merged or closed records work the thread did (an agent asked to merge
-  it), so it is left out. Unlinking a pull request asks again. A link
+  it), so it is left out; the forge's close time is compared with the
+  node's link time as T3 does, so clocks apart by more than a merge's
+  moment can misplace a link made right around it (the thread then settles
+  by hand). Unlinking a pull request asks again. A link
   not read yet holds the thread, as in T3, unless no forge of this node reads
   its host at all (then it can tell nothing and holds nothing). A thread
   without links that count (none, or all left out, including one merged or
