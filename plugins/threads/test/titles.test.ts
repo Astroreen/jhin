@@ -1,10 +1,16 @@
 // Regenerating a thread's title (docs/plans/t3-parity.md, D1174, D1175).
 import type { AgentItem, AgentRuntime } from "@jhin/agent-api";
-import { memoryStoragePlugin } from "@jhin/testing";
-import { describe, expect, it } from "vite-plus/test";
+import { AGENT_REGISTRY_CAPABILITY, type AgentRegistry } from "@jhin/agent-api";
+import { definePlugin } from "@jhin/sdk";
+import { memoryStoragePlugin, testManifest } from "@jhin/testing";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { formatThreadTitleContext, limitTitleMessage } from "../src/title.ts";
 import { node, watch } from "./support.ts";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 interface Thread {
   id: string;
@@ -104,6 +110,96 @@ describe("jhin.threads: regenerating a title (D1174, D1175)", () => {
     const read = await second.client.call<{ thread: Thread }>("threads.get", {
       threadId: thread.id,
     });
+    expect(read.thread.titleRegeneration).toBeUndefined();
+  });
+});
+
+describe("jhin.threads: who writes a title, and when it fails (D1174)", () => {
+  /** A thread of the fake agent with one turn, on a node that also has `writer`. */
+  async function withWriter(writer: AgentRuntime, config: Record<string, unknown> = {}) {
+    // Beside the fake agent, through the registry as any runtime plugin registers.
+    const writerPlugin = {
+      manifest: testManifest(`test.${writer.agentId}`, {
+        requires: { [AGENT_REGISTRY_CAPABILITY]: "^1" },
+      }),
+      definition: definePlugin({
+        activate(context) {
+          context.subscriptions.add(
+            context.services.get<AgentRegistry>(AGENT_REGISTRY_CAPABILITY).register(writer),
+          );
+        },
+      }),
+    };
+    const started = await node({ plugins: [writerPlugin], config: { "jhin.threads": config } });
+    const thread = await started.client.call<Thread>("threads.create", {
+      agentId: "jhin.agent-fake",
+    });
+    const events = watch(started.client, thread.id);
+    await started.client.call("threads.send", { threadId: thread.id, text: "tidy the logs" });
+    await events.until("agent.turn.completed");
+    return { ...started, thread };
+  }
+
+  it("asks titleAgent before the thread's own agent", async () => {
+    const writer = heldWriter();
+    const { client, thread } = await withWriter(writer.runtime, { titleAgent: "acme.writer" });
+    const pending = client.call("threads.title.regenerate", { threadId: thread.id });
+    await writer.askedOnce;
+    writer.release('{"title":"Log cleanup"}');
+    expect(await pending).toEqual({ title: "Log cleanup", changed: true });
+    // Without it, the thread's agent (the fake) writes it.
+    const own = await withWriter(heldWriter().runtime);
+    expect(await own.client.call("threads.title.regenerate", { threadId: own.thread.id })).toEqual({
+      title: "About tidy the logs",
+      changed: true,
+    });
+  });
+
+  it("keeps a title the user gave while the writer worked", async () => {
+    const writer = heldWriter();
+    const { client, thread } = await withWriter(writer.runtime, { titleAgent: "acme.writer" });
+    const pending = client.call("threads.title.regenerate", { threadId: thread.id });
+    await writer.askedOnce;
+    await client.call("threads.update", { threadId: thread.id, title: "Mine" });
+    writer.release('{"title":"Theirs"}');
+    expect(await pending).toEqual({ title: "Mine", changed: false });
+  });
+
+  it("refuses when the writer fails or runs out of time", async () => {
+    const failing: AgentRuntime = {
+      agentId: "acme.broken",
+      startTurn: () => ({
+        items: (async function* (): AsyncGenerator<AgentItem> {
+          throw new Error("no model");
+        })(),
+        interrupt() {},
+      }),
+    };
+    const broken = await withWriter(failing, { titleAgent: "acme.broken" });
+    await expect(
+      broken.client.call("threads.title.regenerate", { threadId: broken.thread.id }),
+    ).rejects.toMatchObject({
+      code: "TITLE_UNAVAILABLE",
+      message: expect.stringContaining("no model"),
+    });
+
+    const writer = heldWriter();
+    const slow = await withWriter(writer.runtime, {
+      titleAgent: "acme.writer",
+      titleTimeoutSeconds: 30,
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const pending = slow.client.call("threads.title.regenerate", { threadId: slow.thread.id });
+    await writer.askedOnce;
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(pending).rejects.toMatchObject({
+      code: "TITLE_UNAVAILABLE",
+      message: expect.stringContaining("took too long"),
+    });
+    const read = await slow.client.call<{ thread: Thread }>("threads.get", {
+      threadId: slow.thread.id,
+    });
+    expect(read.thread).toMatchObject({ title: "tidy the logs" });
     expect(read.thread.titleRegeneration).toBeUndefined();
   });
 });

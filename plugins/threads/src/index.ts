@@ -2800,6 +2800,7 @@ export default definePlugin({
           });
         }
         let title: string | undefined;
+        let applied = false;
         try {
           const config = context.config.get<Config>(CONFIG_SECTION);
           const contents = formatThreadTitleContext(
@@ -2814,6 +2815,13 @@ export default definePlugin({
           // The prompt carries the thread's text: the turn runs in a folder of its own.
           const cwd = await Fs.promises.mkdtemp(Path.join(Os.tmpdir(), "jhin-title-"));
           let timer: ReturnType<typeof setTimeout> | undefined;
+          let giveUp!: () => void;
+          // Past its time, or when the plugin stops, the writer's turn is interrupted.
+          const reached = new Promise<void>((resolve) => {
+            giveUp = resolve;
+            timer = setTimeout(resolve, config.titleTimeoutSeconds * 1000);
+          });
+          const stopping = context.subscriptions.add(toDisposable(() => giveUp()));
           let answer: string;
           try {
             answer = await askAgent(
@@ -2825,10 +2833,11 @@ export default definePlugin({
                 label: "jhin.threads.title",
               },
               {
-                reached: new Promise<void>((resolve) => {
-                  timer = setTimeout(resolve, config.titleTimeoutSeconds * 1000);
-                }),
-                dispose: () => clearTimeout(timer),
+                reached,
+                dispose: () => {
+                  clearTimeout(timer);
+                  stopping.dispose();
+                },
               },
             );
           } catch (error) {
@@ -2846,18 +2855,19 @@ export default definePlugin({
             next === "" ||
             next === DEFAULT_THREAD_TITLE ||
             next === before.title.trim();
-          await updateThread(threadId, ({ titleRegeneration: _done, ...rest }) =>
-            unchanged ? rest : { ...rest, title: next },
-          ).catch((error: unknown) =>
+          // A title the user gave meanwhile wins over the writer's.
+          await updateThread(threadId, ({ titleRegeneration: _done, ...rest }) => {
+            if (unchanged || rest.title !== before.title) return rest;
+            applied = true;
+            return { ...rest, title: next };
+          }).catch((error: unknown) =>
             context.log.warn("could not record a regenerated title", {
               threadId,
               error: String(error),
             }),
           );
         }
-        const changed =
-          title !== "" && title !== DEFAULT_THREAD_TITLE && title !== before.title.trim();
-        return { title: changed ? title : before.title, changed };
+        return { title: (await getThread(threadId)).title, changed: applied };
       },
     });
 

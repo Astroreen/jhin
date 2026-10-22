@@ -154,5 +154,5 @@ Examples of the distinction:
 - A QR-sharing overhaul that ends with CI and merge work remains about QR sharing, not the PR lifecycle.
 
 Thread contents:
-${contents.length <= 8_000 ? contents : `${OMITTED}${contents.slice(-8_000)}`}`;
+${contents}`;
 }
