@@ -623,7 +623,7 @@ describe("jhin.health", () => {
     expect(asked.filter((item) => item.to === ONCE)).toHaveLength(1);
   });
 
-  it("asks no analyst while health is turned off, also after a restart", async () => {
+  it("asks no analyst and records nothing while health is turned off, also after a restart", async () => {
     const { kernel, deliver, asked, restart, log } = await node({
       ceremony: { ratio: 1, minCeremony: 1 },
       analysts: { "*": ONCE },
@@ -632,7 +632,9 @@ describe("jhin.health", () => {
     const raised = nextEvent(kernel, HealthEvents.warningRaised);
     await deliver(OWNER, BUILDER, "status?", "t1");
     await raised;
-    await first;
+    const ask = await first;
+    // The ask was delivered: a restart with health on would record it cut short.
+    await deliver(OWNER, ONCE, ask.question, "t-ask", ask.messageId, "ask");
     // Turned off, then restarted: the open warning without an analysis is not asked again.
     const again = await restart({ enabled: false, analysts: { "*": ONCE } });
     await again.client.call("health.status", {});

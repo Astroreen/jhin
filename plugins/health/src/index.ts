@@ -591,6 +591,8 @@ export default definePlugin({
     // and cut short by a deactivation. That ask reached the analyst and its
     // answer is in the analyst's thread; asking again would ask it twice.
     const askAgain = () => {
+      // Health turned off asks nobody and records nothing (D725).
+      if (!config().enabled) return;
       for (const warning of warningsOf(health)) {
         // Unanalysed, or analysed by nobody: a config change may name an analyst now.
         const unasked = warning.analysis === undefined || warning.analysis.status === "none";
