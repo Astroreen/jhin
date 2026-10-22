@@ -43,6 +43,7 @@ import { jhinToolsInstructions } from "@jhin/mcp-api";
 import { CodexEnded, CodexRpcError, CodexSpawnError, codexEnvironment } from "./rpc.ts";
 import { SessionTakenOver, type Lease, type McpAttachment, type Sessions } from "./session.ts";
 import { codexErrorInfoCode, isUsageLimitCode } from "./usage-limits.ts";
+import { describeElicitation, readElicitation, toElicitationResponse } from "./elicitation.ts";
 
 /** The turn ended while it still waited on Codex (a stop's grace ran out). */
 class TurnEnded extends Error {}
@@ -755,6 +756,34 @@ export function codexTurn(
         allow("file-change", decision);
         decide(callId, decision);
         return { decision: reviewDecision(decision) };
+      }
+      case "mcpServer/elicitation/request": {
+        // An app asks for access through an MCP server (T3's CodexMcpElicitation, D1146).
+        const payload = readElicitation(params);
+        // One Jhin cannot answer (a URL to open, a form it cannot fill) is declined, as T3 does.
+        if (payload === undefined || toElicitationResponse(payload, "accept").action !== "accept") {
+          deps.log?.("declined an MCP elicitation Jhin cannot answer", {
+            server: payload?.serverName,
+            mode: payload?.mode,
+          });
+          return { action: "decline" };
+        }
+        const described = describeElicitation(payload);
+        const decision = await approval(`mcp-elicitation:${payload.serverName}`, {
+          kind: "approval",
+          tool: {
+            name: "mcpElicitation",
+            kind: "mcp",
+            title: described.appName,
+            detail: payload.message,
+          },
+          access: { app: described.appName },
+          decisions: described.decisions,
+        });
+        return toElicitationResponse(
+          payload,
+          described.decisions.includes(decision) ? decision : "accept",
+        );
       }
       case "item/tool/requestUserInput": {
         const itemId = String(params["itemId"]);

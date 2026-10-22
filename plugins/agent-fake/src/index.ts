@@ -31,6 +31,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/think …" reasons first, then answers;
  * - "/tool <command>" runs a pretend command and reports its output;
  * - "/approve <command>" asks for approval before running it;
+ * - "/access <app>" asks for an app's access (T3's MCP elicitation, no session allowance);
  * - "/ask" asks a question and answers with the choice;
  * - "/edit" asks for an answer prefilled with two lines (`initialAnswer`) and quotes it back;
  * - "/plan" publishes a three-step plan and completes it;
@@ -217,6 +218,32 @@ export function fakeTurn(
       } else {
         yield* say(`Did not run ${command}`);
       }
+      return;
+    }
+    if (text.startsWith("/access")) {
+      // An app asking for access, as Codex's MCP elicitation (providers.md D1146).
+      const app = text.replace(/^\/access\s*/, "").trim() || "GitHub";
+      const requestId = nextId();
+      const answered = awaitAnswer(requestId);
+      yield {
+        kind: "request.opened",
+        requestId,
+        request: {
+          kind: "approval",
+          tool: {
+            name: "mcpElicitation",
+            kind: "mcp",
+            title: app,
+            detail: `Allow ChatGPT to use ${app}?`,
+          },
+          access: { app },
+          decisions: ["cancel", "decline", "accept"],
+        },
+      };
+      const response = await answered;
+      if (interrupted || response === undefined) return;
+      const decision = response.kind === "approval" ? response.decision : "decline";
+      yield* say(decision === "accept" ? `${app} allowed` : `${app} not allowed`);
       return;
     }
     if (text.startsWith("/edit")) {

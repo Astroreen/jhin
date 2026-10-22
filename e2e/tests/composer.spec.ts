@@ -522,6 +522,32 @@ test("shows the agent's usage limits on /usage-limits, and a usage-limit failure
   await info.attach("usage limit failure", { path: failed, contentType: "image/png" });
 });
 
+test("asks for an app's access as T3's App access approval, without a session allowance", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/access GitHub");
+  await message.press("Enter");
+  const approval = page.getByRole("group", { name: "App access approval" });
+  await expect(approval).toContainText("GitHub");
+  await expect(approval.getByLabel("App access request")).toHaveText(
+    "Allow ChatGPT to use GitHub?",
+  );
+  await page.getByRole("button", { name: "More approval options" }).click();
+  await expect(page.getByRole("menuitem", { name: "Cancel" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Always allow this session" })).toHaveCount(0);
+  const shot = info.outputPath("app-access.png");
+  await page.screenshot({ path: shot });
+  await info.attach("app access approval", { path: shot, contentType: "image/png" });
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Approve" }).click();
+  await expect(
+    page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "Agent" }),
+  ).toHaveText("GitHub allowed");
+});
+
 test("highlights a code block in the prompt, picks its language and indents with Tab", async ({
   page,
 }, info) => {
