@@ -345,7 +345,9 @@ describe("health views (D731)", () => {
         <HealthList view={view} />
       </SidebarProvider>,
     );
-    await expect.element(page.getByText("No node here reports health.")).toBeVisible();
+    // Failing is not lacking health: the node may answer on the next try.
+    await expect.element(page.getByText("Health could not be read yet.")).toBeVisible();
+    await expect.element(page.getByText("No node here reports health.")).not.toBeInTheDocument();
     await expect.element(page.getByText("No warnings.")).not.toBeInTheDocument();
     // Nothing was read, so nothing is "out of date".
     await expect.element(page.getByText(/Not live/)).not.toBeInTheDocument();

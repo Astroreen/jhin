@@ -71,7 +71,9 @@ export function HealthList({ view }: { view: HealthView }) {
         <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">
           {[...nodes.values()].some((feed) => feed.status === "loading")
             ? "Reading health…"
-            : "No node here reports health."}
+            : [...nodes.values()].some((feed) => feed.status === "error")
+              ? "Health could not be read yet."
+              : "No node here reports health."}
         </p>
       )}
       {warnings.length === 0
