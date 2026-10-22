@@ -28,6 +28,10 @@ async function setup(...args: Parameters<typeof connected>) {
 }
 
 const b64 = (id: string) => Buffer.from(id).toString("base64url");
+/** The turns a session's record keeps, each with its prompt's id (D1153). */
+const took = (session: string, ...turnIds: string[]) => ({
+  turns: turnIds.map((turnId) => ({ turnId, messageId: `msg_jhin_turn_${session}:${turnId}` })),
+});
 const kinds = (items: readonly AgentItem[]) => items.map((item) => item.kind);
 const ids = (play: Play) => ({ sessionID: play.sessionId, assistantMessageID: "msg_a1" });
 
@@ -66,7 +70,11 @@ describe("jhin.agent-opencode: a turn", () => {
       model: { providerID: "anthropic", id: "claude-sonnet-5-5" },
       permissions: [{ action: "*", resource: "*", effect: "allow" }],
     });
-    expect(sessions.records.get(THREAD)).toEqual({ id: "ses_1", turnId: "turn-1" });
+    expect(sessions.records.get(THREAD)).toEqual({
+      id: "ses_1",
+      turnId: "turn-1",
+      ...took("ses_1", "turn-1"),
+    });
     expect(fake.calls("POST", "/prompt")[0]!.body).toEqual({
       id: "msg_jhin_turn_ses_1:turn-1",
       text: "hello",
@@ -85,10 +93,35 @@ describe("jhin.agent-opencode: a turn", () => {
     });
   });
 
-  it("starts a new session with the transcript when a rollback dropped its last turn", async () => {
+  it("reverts the session before the turns a rollback dropped (D1153)", async () => {
+    const { fake, runtime, sessions } = await setup({
+      scripts: [answer("One"), answer("Two"), answer("Three")],
+    });
+    await drain(runtime.startTurn(request()));
+    await drain(runtime.startTurn(request({ turnId: "turn-2" })));
+    // turn-2 was rolled back: the thread shows turn-1 only, OpenCode's session holds both.
+    await drain(
+      runtime.startTurn(
+        request({ turnId: "turn-3", history: request({ turnId: "turn-2" }).history }),
+      ),
+    );
+    expect(fake.calls("POST", "/revert/stage").map((call) => call.body)).toEqual([
+      { messageID: "msg_jhin_turn_ses_1:turn-2", files: false },
+    ]);
+    expect(fake.calls("POST", "/revert/commit")).toHaveLength(1);
+    expect(fake.calls("POST", "/api/session")).toHaveLength(1);
+    expect(fake.calls("POST", "/prompt")[2]!.body?.["text"]).toBe("hello");
+    expect(sessions.records.get(THREAD)).toEqual({
+      id: "ses_1",
+      turnId: "turn-3",
+      ...took("ses_1", "turn-1", "turn-3"),
+    });
+  });
+
+  it("starts a new session with the transcript when OpenCode cannot revert, or nothing is kept", async () => {
     const { fake, runtime, sessions } = await setup({ scripts: [answer("One"), answer("Two")] });
     await drain(runtime.startTurn(request()));
-    expect(sessions.records.get(THREAD)).toEqual({ id: "ses_1", turnId: "turn-1" });
+    fake.failReverts();
     // turn-1 was rolled back: the thread no longer shows it, but OpenCode's session holds it.
     const history = [
       {
@@ -97,9 +130,39 @@ describe("jhin.agent-opencode: a turn", () => {
       },
     ] as unknown as StoredEvent[];
     await drain(runtime.startTurn(request({ turnId: "turn-2", history })));
+    // The refused stage is cleared, so OpenCode does not commit it on a later prompt.
+    expect(fake.calls("DELETE", "/ses_1/revert")).toHaveLength(1);
     expect(fake.calls("POST", "/api/session")).toHaveLength(2);
     expect(fake.calls("POST", "/prompt")[1]!.body?.["text"]).toContain("User: kept");
-    expect(sessions.records.get(THREAD)).toEqual({ id: "ses_2", turnId: "turn-2" });
+    expect(sessions.records.get(THREAD)).toEqual({
+      id: "ses_2",
+      turnId: "turn-2",
+      ...took("ses_2", "turn-2"),
+    });
+  });
+
+  it("forks the parent's session at the turn a fork was made at (D1154)", async () => {
+    const { fake, runtime, sessions } = await setup({
+      scripts: [answer("One"), answer("Two"), answer("Fork")],
+    });
+    await drain(runtime.startTurn(request()));
+    await drain(runtime.startTurn(request({ turnId: "turn-2" })));
+    // A fork at turn-1: it inherits turn-1 and its marker names the parent.
+    const history = [
+      ...request({ turnId: "turn-2" }).history,
+      { type: "threads.thread.forked", payload: { threadId: THREAD, turnId: "turn-1" } },
+    ] as unknown as StoredEvent[];
+    await drain(runtime.startTurn(request({ threadId: "fork-thread", turnId: "turn-9", history })));
+    expect(fake.calls("POST", "/fork").map((call) => [call.path, call.body])).toEqual([
+      ["/api/session/ses_1/fork", { before: "msg_jhin_turn_ses_1:turn-2" }],
+    ]);
+    expect(fake.calls("POST", "/prompt").at(-1)!.path).toBe("/api/session/ses_2/prompt");
+    expect(fake.calls("POST", "/prompt").at(-1)!.body?.["text"]).toBe("hello");
+    expect(sessions.records.get("fork-thread")).toEqual({
+      id: "ses_2",
+      turnId: "turn-9",
+      turns: [{ turnId: "turn-1" }, { turnId: "turn-9", messageId: "msg_jhin_turn_ses_2:turn-9" }],
+    });
   });
 
   it("hands OpenCode the turns another agent ran before it joined", async () => {
@@ -533,7 +596,11 @@ describe("jhin.agent-opencode: a turn", () => {
     await drain(runtime.startTurn(request({ turnId: "turn-2", history })));
     expect(fake.calls("POST", "/api/session")).toHaveLength(1);
     expect(fake.calls("POST", "/prompt")[1]!.body?.["text"]).toContain("User: first");
-    expect(sessions.records.get(THREAD)).toEqual({ id: "ses_1", turnId: "turn-2" });
+    expect(sessions.records.get(THREAD)).toEqual({
+      id: "ses_1",
+      turnId: "turn-2",
+      ...took("ses_1", "turn-2"),
+    });
   });
 });
 
@@ -672,6 +739,7 @@ describe("jhin.agent-opencode: approvals and questions", () => {
     expect(sessions.records.get(THREAD)).toEqual({
       id: "ses_1",
       turnId: "turn-1",
+      ...took("ses_1", "turn-1"),
       grants: [{ action: "shell", resource: "rm *", effect: "allow" }],
     });
     expect(fake.calls("PATCH", "/ses_1")[0]!.body).toEqual({
@@ -991,6 +1059,47 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
     expect(env.sessions.records.get(THREAD)).toMatchObject({ id: "ses_1", unsettled: true });
   });
 
+  it("asks again what the session asked while its stream was down (D1155)", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const { fake, runtime } = await setup({
+      scripts: [
+        async (play) => {
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          started();
+          // Answered after the reconnect: OpenCode goes on with the command.
+          const reply = await play.next("POST", "/permission/per_1/reply");
+          if (reply.body?.["decision"] === "once") {
+            play.emit("session.execution.succeeded", { sessionID: play.sessionId });
+          }
+        },
+      ],
+    });
+    const done = drain(runtime.startTurn(request({ runtimeMode: "approval-required" })), () => ({
+      kind: "approval",
+      decision: "accept",
+    }));
+    await running;
+    fake.record("ses_1", { id: "msg_jhin_turn_ses_1:turn-1", type: "user" });
+    // Asked while the stream was down: only the session's list has it.
+    fake.pending("ses_1", {
+      permissions: [
+        { id: "per_1", sessionID: "ses_1", action: "shell", resources: ["rm -rf build"] },
+      ],
+    });
+    fake.dropStreams();
+    const items = await done;
+    expect(items.filter((item) => item.kind === "request.opened")).toEqual([
+      {
+        kind: "request.opened",
+        requestId: "per_1",
+        request: expect.objectContaining({ kind: "approval" }),
+      },
+    ]);
+    expect(fake.calls("GET", "/ses_1/permission")).toHaveLength(1);
+    expect(fake.calls("GET", "/ses_1/form")).toHaveLength(1);
+  });
+
   it("reads back a turn that ended while its event stream was down", async () => {
     let started!: () => void;
     const running = new Promise<void>((resolve) => (started = resolve));
@@ -1058,7 +1167,11 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
       },
       { kind: "tool.completed", itemId: "call_1", status: "completed", output: "README.md" },
     ]);
-    expect(sessions.records.get(THREAD)).toEqual({ id: "ses_1", turnId: "turn-1" });
+    expect(sessions.records.get(THREAD)).toEqual({
+      id: "ses_1",
+      turnId: "turn-1",
+      ...took("ses_1", "turn-1"),
+    });
   });
 
   it.each([
@@ -1191,6 +1304,7 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
       id: "ses_1",
       unsettled: true,
       turnId: "turn-1",
+      ...took("ses_1", "turn-1"),
     });
 
     // OpenCode still runs the lost turn: the next turn stops it and asks to send again.
@@ -1203,11 +1317,16 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
       id: "ses_1",
       unsettled: true,
       turnId: "turn-1",
+      ...took("ses_1", "turn-1"),
     });
 
     // Stopped now: the one after runs, on a stream opened again.
     const items = await drain(runtime.startTurn(request({ turnId: "turn-3" })));
     expect(items.at(-2)).toMatchObject({ kind: "message.completed", text: "Back" });
-    expect(sessions.records.get(THREAD)).toEqual({ id: "ses_1", turnId: "turn-3" });
+    expect(sessions.records.get(THREAD)).toEqual({
+      id: "ses_1",
+      turnId: "turn-3",
+      ...took("ses_1", "turn-1", "turn-3"),
+    });
   });
 });
