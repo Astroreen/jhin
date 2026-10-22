@@ -46,7 +46,7 @@ test("D742–D750: switches to Civilization mode and back, each at its last plac
 
   await switcher(page).getByRole("button", { name: "Civilization" }).click();
   await expect(page).toHaveURL(/[#&]m=civilization/);
-  await expect(page.getByText("No lead yet")).toBeVisible();
+  await expect(page.getByText("No team yet")).toBeVisible();
   for (const section of ["Projects", "Inbox", "Missions", "Teams", "Agents", "Health"]) {
     await expect(page.getByRole("region", { name: section })).toBeVisible();
   }
@@ -58,7 +58,7 @@ test("D742–D750: switches to Civilization mode and back, each at its last plac
   await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeVisible();
   await expect(page).toHaveURL(/[#&]m=civilization/);
   await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(page.getByText("No lead yet")).toBeVisible();
+  await expect(page.getByText("No team yet")).toBeVisible();
 
   // The palette and the shortcut run the same command as the switcher.
   await page.getByRole("button", { name: "Command palette", exact: true }).click();
@@ -69,7 +69,7 @@ test("D742–D750: switches to Civilization mode and back, each at its last plac
   await expect(page).not.toHaveURL(/[#&]m=/);
 
   await page.keyboard.press("ControlOrMeta+Alt+m");
-  await expect(page.getByText("No lead yet")).toBeVisible();
+  await expect(page.getByText("No team yet")).toBeVisible();
   await page.keyboard.press("ControlOrMeta+Alt+m");
   await expect(page.getByRole("button", { name: "Start a thread" })).toBeVisible();
 });
@@ -103,7 +103,7 @@ test("D742, D744: a half-typed message survives a round trip through Civilizatio
   await message.fill("half typed");
 
   await switcher(page).getByRole("button", { name: "Civilization" }).click();
-  await expect(page.getByText("No lead yet")).toBeVisible();
+  await expect(page.getByText("No team yet")).toBeVisible();
   await expect(message).toHaveCount(0);
   await switcher(page).getByRole("button", { name: "Threads" }).click();
   await expect(message).toHaveText("half typed");

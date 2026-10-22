@@ -1240,6 +1240,37 @@ Decisions (C1):
   owner's inbox, so agents never read it (D628). Only this node's records
   count: with the agent on another node, the owner's messages to it are
   recorded there and missing here ([Deferred](#deferred)).
+- **D1062. The Lead view** is the contribution `jhin.teams.lead` of
+  `jhin.teams-view` to `civilization.lead`, a chunk of its own (D440): the
+  lead is a team's (D681), so the teams plugin owns talking to it. It talks
+  to the route's team: the route has no panel and names the team as
+  `section` (`#m=civilization&s=workshop`), and a named team that is gone
+  or invalid is "No such team", never another lead; without one, the first
+  team that is up, else the first. With several teams a picker (`Team`) switches
+  between them; `civilization.lead.open {node, teamId?}` opens it. The
+  conversation is `agents.conversation` with the lead's alias, read again on
+  each event of `agents/messages` after its head (D1061); a read that a
+  newer one overtook is dropped, failure included, and a feed that failed
+  shows Retry. A team that is not
+  up shows **Start team** (`teams.up`) and a closed composer; a node without
+  teams says "No team yet" where the shell said "No lead yet".
+- **D1063. The owner asks the lead.** The composer (`Message to the lead`,
+  Enter sends, Shift+Enter breaks the line) calls `agents.ask` with the
+  lead's alias: the answer is the last message of the lead's turn (D624),
+  recorded with the ask (D1061), so it arrives even when the page was closed
+  meanwhile. The page names the ask (`messageId`), so it says the lead is
+  working on an answer only for the asks it still waits on; any other ask
+  without an answer (a silent turn, a stopped team, an ask before a reload)
+  says "No answer from the lead". A silent turn is a toast; an ask that did
+  not reach the lead is a toast and gives its text back to an empty
+  composer. What the lead
+  sends the owner shows as the lead's text; what it asks the owner (an
+  escalation, D688) is a card with its inbox state and **Answer**, which
+  opens the item in the inbox (`civilization.inbox.open`): answering stays
+  the inbox's (D630), in one place.
+- **D1064. The Lead view is the one composer of Civilization mode.** The
+  team page's message to the lead (D691) gives way to **Talk to the lead**,
+  which opens the Lead view on that team.
 
 ### C2. Missions from the client (D1081–D1100)
 
@@ -1445,6 +1476,12 @@ with its report as a "C3 run" note here.
   through the settings page (D604); the commands do the rest.
 - C1: `agents.conversation` folds the node's whole `agents/messages` stream
   on each call (D1061); an index of messages by party once it grows.
+- C1: telling the lead something without waiting for an answer
+  (`agents.send`) from the Lead view: it asks (D1063); the lead replies to a
+  message only when it chooses to send one.
+- C1: a lead's message (not an ask) to the owner stays an open inbox item
+  until it is answered there; the Lead view shows it without closing it
+  (dismissing an item is A2's, D626).
 - C1: the owner's conversation with an agent on another node: the owner's
   messages are recorded on the agent's node (D627), so `agents.conversation`
   here misses them (D1061). Reading both nodes, through `mesh.call`, joins it.
@@ -1516,9 +1553,6 @@ with its report as a "C3 run" note here.
 - A5: members' statuses followed live on the team page; it asks `teams.get`
   when it opens and when the team changes (D691). A1's roster (D614) owns
   live status.
-- A5: the conversation with the lead in `civilization.lead`: the team page
-  sends the lead a message (D691); reading its answers is the lead's
-  generation, read through A1's agent page.
 - A7: the team group (D722): a team counting what its agents' messages and
   slices count, beside missions and projects; its lead is already the
   analyst (D726).
@@ -1706,3 +1740,7 @@ Each workstream lists its PRs here as they merge.
   (D1105), found by the C3 run.
 - C3 #200: the orchestrator's handoffs are sent as the lead's thread, not as
   the owner (D1106), found by the C3 run.
+- C1 #195: the Lead view, `jhin.teams.lead` in `civilization.lead`: the
+  conversation with a team's lead, the composer asking it, its escalations
+  with the way to the inbox, Start team, `civilization.lead.open`; the team
+  page opens it instead of a message box of its own (D1062–D1064).

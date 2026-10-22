@@ -14,7 +14,7 @@ import {
 
 import { builtin } from "../../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
-import { teamRoute } from "./route.ts";
+import { leadRoute, teamRoute } from "./route.ts";
 import type { TeamsStore } from "./store.ts";
 import type { TeamsServices } from "./view.tsx";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
@@ -52,7 +52,13 @@ export const teamsViewPlugin = builtin(
       const viewChunk = () =>
         import("./view.tsx").then((module) => {
           store ??= context.subscriptions.add(module.createTeamsStore(connections, context.log));
-          const services: TeamsServices = { navigation, connections, toasts, store };
+          const services: TeamsServices = {
+            navigation,
+            connections,
+            toasts,
+            store,
+            commands: context.commands,
+          };
           return { module, services };
         });
       const Sidebar = lazyChunk(
@@ -68,6 +74,15 @@ export const teamsViewPlugin = builtin(
             <module.TeamsMain services={services} />
           )),
         said("Couldn't load the team."),
+      );
+
+      // The conversation with the lead is a chunk of its own beside the views (D1062).
+      const Lead = lazyChunk(
+        () =>
+          Promise.all([viewChunk(), import("./lead.tsx")]).then(([{ services }, lead]) => () => (
+            <lead.LeadConsole services={services} />
+          )),
+        said("Couldn't load the conversation with the lead."),
       );
 
       // Opening a team is a command, so the palette, CLI and MCP reach it (rule 6).
@@ -86,6 +101,26 @@ export const teamsViewPlugin = builtin(
             return {};
           },
         }),
+      );
+      context.subscriptions.add(
+        context.commands.register({
+          name: "civilization.lead.open",
+          title: "Talk to the lead",
+          description:
+            "Opens the conversation with a team's lead in Civilization mode; the first team that is up by default (D1062)",
+          input: z.object({
+            node: z.string().min(1).meta({ description: "The connection the team is on" }),
+            teamId: z.string().min(1).optional(),
+          }),
+          output: z.object({}),
+          handler: ({ node, teamId }) => {
+            navigation.navigate(leadRoute({ node, mode: CIVILIZATION_MODE }, teamId));
+            return {};
+          },
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute("civilization.lead", { id: "jhin.teams.lead", component: Lead }),
       );
       context.subscriptions.add(
         slots.contribute("civilization.sidebar.teams", {
