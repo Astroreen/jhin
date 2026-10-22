@@ -1051,7 +1051,6 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   agents included, as an agent writes any message. So are a warning's
   summary and group (a mission's title, an idea's phrase and its carriers'
   addresses): what health concludes is health's to read.
-  agents included, as an agent writes any message.
 - **D731. Health in Civilization mode is the client plugin `jhin.health`.**
   It follows `health.catalog` and the `health` stream of every open
   connection (the same per-node feed as the inbox, `lib/node-feeds.ts`), so a
