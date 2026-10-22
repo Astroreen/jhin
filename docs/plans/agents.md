@@ -413,7 +413,10 @@ the message, the inbox, events and the schemas of `agents.send`,
   - A feed that stays failed keeps its items, marked not live, where the
     inbox used to empty itself.
   - With no focus and no system notification sent, a toast is left on the
-    page.
+    page (unless `inApp` is off), where before nothing was told. This is
+    deliberate: an ask nobody is told about is the inbox failing silently,
+    and the item stays in the sidebar either way. The toast may be stale
+    when the owner returns (the item answered meanwhile); that is accepted.
 
 ### A3. Missions and slices (D641–D660)
 
