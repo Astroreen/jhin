@@ -317,9 +317,13 @@ export class Sensors {
       const warning = latest.get(`${detector}|${subject}`);
       if (warning?.status !== "dismissed") return () => true;
       const seen = warning.dismissedAfter;
-      if (seen !== undefined) return (ref) => ref.sequence > (seen[ref.stream] ?? 0);
       const since = Date.parse(warning.dismissedAt ?? warning.raisedAt);
-      return (ref) => Date.parse(ref.at) >= since;
+      // A stream the dismissal did not follow yet (a thread linked later) has
+      // no cut: its events count from the dismissal's time.
+      return (ref) => {
+        const cut = seen?.[ref.stream];
+        return cut === undefined ? Date.parse(ref.at) >= since : ref.sequence > cut;
+      };
     };
 
     const findings: Finding[] = [];

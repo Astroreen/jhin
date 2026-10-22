@@ -956,7 +956,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   dismissal alone crosses the threshold. The dismissal records the last event
   of each followed stream it saw (`dismissedAfter`), and the count goes on
   from the events after them: an exact cut, where the clock's milliseconds
-  would not order a dismissal against events of the same millisecond. Every detector counts over the
+  would not order a dismissal against events of the same millisecond. A
+  stream it did not follow yet (a slice's thread linked later) counts from the
+  dismissal's time. Every detector counts over the
   window (`windowHours`). Of ceremony warnings the narrowest group crossing
   warns: while a mission crosses over the window, dismissed or not, its
   project and the node stay quiet, so one cause makes one warning; once it no

@@ -47,4 +47,55 @@ describe("health's sensors (D722)", () => {
     expect(mission).toMatchObject({ ceremony: 1, byKind: { queue: 1 } });
     expect(sensors.evaluate(config, EMPTY_HEALTH, NOW)).toEqual([]);
   });
+
+  it("counts a thread followed after a dismissal from the dismissal's time, not from its start", () => {
+    const sensors = new Sensors();
+    const slice = {
+      id: "s1",
+      missionId: "m1",
+      projectId: "p1",
+      title: "Floor",
+      spec: "",
+      wave: 1,
+      dependsOn: [],
+      status: "active",
+      threads: [{ threadId: "t1" }],
+      createdAt: hoursAgo(5),
+      updatedAt: hoursAgo(5),
+    } satisfies Slice;
+    sensors.ingestMission(event("missions", 1, MissionEvents.sliceCreated, hoursAgo(5), { slice }));
+    const queue = (sequence: number, at: string) =>
+      sensors.ingestThread("t1", event("thread/t1", sequence, ThreadEvents.queueUpdated, at, {}));
+    // Two queue changes before the dismissal, of a thread the dismissal had not followed yet.
+    queue(1, hoursAgo(4));
+    queue(2, hoursAgo(3));
+    const health = {
+      ...EMPTY_HEALTH,
+      warnings: {
+        w1: {
+          warningId: "w1",
+          detector: "ceremony" as const,
+          subject: "mission:m1",
+          group: { kind: "mission" as const, projectId: "p1", missionId: "m1" },
+          summary: "",
+          measures: {},
+          evidence: [],
+          raisedAt: hoursAgo(2.5),
+          status: "dismissed" as const,
+          dismissedAt: hoursAgo(2),
+          dismissedAfter: { missions: 1 },
+        },
+      },
+    };
+    const config = HealthConfig.parse({ ceremony: { ratio: 1, minCeremony: 2 } });
+    // Only one change since the dismissal: under the threshold.
+    queue(3, hoursAgo(1));
+    expect(sensors.evaluate(config, health, NOW).filter((f) => f.subject === "mission:m1")).toEqual(
+      [],
+    );
+    queue(4, hoursAgo(0.5));
+    expect(
+      sensors.evaluate(config, health, NOW).find((f) => f.subject === "mission:m1")?.measures,
+    ).toMatchObject({ ceremony: 2 });
+  });
 });
