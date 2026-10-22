@@ -150,10 +150,10 @@ export const MESSAGE_PERMISSION = "agents.message";
 /** Permission to read and answer the owner's inbox (D628); agents never hold it. */
 export const INBOX_PERMISSION = "agents.inbox";
 
-const Address = z
-  .string()
-  .min(1)
-  .meta({ description: "An agent's address, an owner's or a thread's (jhin://<node>/...)" });
+const Address = z.string().min(1).meta({
+  description:
+    "An agent's address, an owner's or a thread's (jhin://<node>/...), or a team member's alias (builder@workshop)",
+});
 const From = z.string().min(1).optional().meta({
   description:
     "Who sends it; the caller by default: the calling thread's agent, or the owner (D622)",

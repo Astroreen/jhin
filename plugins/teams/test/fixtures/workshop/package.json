@@ -1,0 +1,18 @@
+{
+  "name": "jhin-team-workshop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A two-agent dev team as a Jhin team bundle (docs/plans/agents.md#D686)",
+  "type": "module",
+  "jhin": {
+    "id": "team.workshop",
+    "version": "1.0.0",
+    "apiVersion": 1,
+    "name": "Workshop team",
+    "side": "server",
+    "entry": "index.js",
+    "requires": {
+      "teams.bundles": "^1"
+    }
+  }
+}
