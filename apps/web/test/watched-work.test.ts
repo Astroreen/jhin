@@ -37,7 +37,9 @@ function fakeConnections(ids: string[]) {
   const listeners = new Set<() => void>();
   const connections: Pick<Connections, "list" | "subscribe"> = {
     list: () =>
-      current.map((id) => ({ id, state: closed.has(id) ? "closed" : "open" }) as NodeConnection),
+      current.map(
+        (id) => ({ id, state: closed.has(id) ? "connecting" : "open" }) as NodeConnection,
+      ),
     subscribe(listener) {
       listeners.add(listener);
       return { dispose: () => listeners.delete(listener) };
@@ -49,6 +51,7 @@ function fakeConnections(ids: string[]) {
       current = next;
       for (const listener of Array.from(listeners)) listener();
     },
+    /** Not open any more: closed, or connecting again. */
     close(id: string) {
       closed = new Set([...closed, id]);
       for (const listener of Array.from(listeners)) listener();
@@ -107,7 +110,7 @@ describe("source control's thread work (D1131)", () => {
     expect(followers("b")).toBe(1);
     expect(told).toBe(3);
 
-    // A connection that closes, still listed, is a node gone too.
+    // A connection that drops and is connecting again, still listed, is a node gone too.
     nodes.close("a");
     expect(told).toBe(4);
     expect(followers("a")).toBe(0);

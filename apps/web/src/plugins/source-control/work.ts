@@ -41,11 +41,12 @@ export function createWatchedWork(
     tell();
   };
   const follow = () => {
-    // A closed connection is no connected node: its last view is not news.
+    // Only an open connection is a connected node: a closed or reconnecting one's last
+    // view is not news.
     const ids = new Set(
       connections
         .list()
-        .filter((connection) => connection.state !== "closed")
+        .filter((connection) => connection.state === "open")
         .map((connection) => connection.id),
     );
     for (const id of ids) {
