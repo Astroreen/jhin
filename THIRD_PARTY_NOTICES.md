@@ -42,7 +42,8 @@ of delegated work and their Lineage rows in `plugins/orchestration`, the
 subagent bar `plugins/chat/subagent-bar.tsx`, the thread's automations
 `plugins/scheduler/automations.tsx`), the
 threads plugin's merge-back handoff and search snippets
-(`plugins/threads/src/history.ts`), source control (`plugins/source-control`:
+(`plugins/threads/src/history.ts`) and the context and prompt of a
+regenerated title (`plugins/threads/src/title.ts`), source control (`plugins/source-control`:
 reading git status and diffs, pull requests and their checks through the
 GitHub CLI, git actions: committing, pushing, creating pull requests, naming
 feature branches and the prompts that write commit messages and pull

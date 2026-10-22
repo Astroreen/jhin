@@ -2010,6 +2010,48 @@ the sidebar's settling. The reference is D53's tag:
   thread is settled now) reads its thread's project's settings. The node
   config form edits the record like any other.
 
+### Regenerating titles (W32)
+
+W32 of `t3-roadmap.md` (round 3, D1161–D1180). The reference is D53's tag:
+`apps/server/src/orchestration-v2/ThreadTitleRegenerationService.ts`,
+`packages/provider-core/src/server/threadTitleContext.ts`
+(`formatThreadTitleContext`), `textGenerationPrompts.ts`
+(`regenerateThreadTitlePrompt`), `Sidebar.logic.ts`
+(`buildBulkTitleRegenerationContextMenuItem`) and
+`threadActionMenu.logic.ts`.
+
+- **D1174. An agent writes a thread's new title, as T3's text generation
+  does.** `threads.title.regenerate { threadId }` hands T3's regeneration
+  prompt (its wording, "Jhin thread" for "T3 Code thread") with the
+  thread's contents (T3's `formatThreadTitleContext`: the first and the
+  latest user messages and the latest answers, 8 000 characters at most,
+  "[Earlier content truncated]" when cut) and the previous title to a
+  writer turn, as source control's writer runs one (D262: no history,
+  every request declined, an empty folder of its own). The writer is
+  `jhin.threads.titleAgent`, else the thread's agent, else the node's
+  default; `titleTimeoutSeconds` (120) bounds it. The helper that runs such
+  a turn, `askAgent`, and `parseJsonObject` move to `@jhin/agent-api`, and
+  source control's writer uses them. The answer's `title` (trimmed, one
+  line, at most 200 characters) renames the thread; an empty one, "New
+  thread" or the title it has changes nothing (`{ title, changed: false }`).
+  No writer, a failure, no JSON or the time running out refuse
+  `TITLE_UNAVAILABLE`, and the title stays.
+- **D1175. A title being written shows, on every client.** While it runs
+  the thread's record has `titleRegeneration { requestedAt }` (T3's
+  `titleRegeneration`); a second request for the thread is refused
+  (`TITLE_REGENERATING`). It is cleared when the writer answers, and a node
+  restarted meanwhile clears what it left.
+- **D1176. T3's menu items.** The thread menu has "Regenerate title" after
+  "Rename thread" ("Regenerating…", disabled, while it runs), through the
+  client command `thread.regenerate-title`; a failure is T3's toast "Failed
+  to regenerate thread title". The selection menu has "Regenerate titles
+  (N)" after "Snooze (N)", N the selected threads not being retitled
+  ("Regenerating… (N)", disabled, when every one is), through
+  `sidebar.selection.regenerate-titles`; a failure is "Failed to regenerate
+  thread titles" and leaves those threads selected. A thread whose title is
+  being written has T3's faded title (`opacity-55`), `aria-busy` and the
+  hidden status "Regenerating title".
+
 ### Entry chunk headroom and the build-mode flake (W29)
 
 W29 of `t3-roadmap.md` (round 2), D1041–D1060.
@@ -2138,10 +2180,10 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   each thread's texts once per run and one thread after another on the first
   search, D227) and searching again while a query stays typed (T3 asks again
   after 30 s; here the next change of the query or of the nodes does).
-- Sidebar (T3's layout, D70, D75–D79): the selection menu's "Regenerate
-  titles (N)" (no title regeneration yet); T3's scope picker for a
-  project's settle settings (D1173 edits them as a record of the node
-  config, by project id);
+- Sidebar (T3's layout, D70, D75–D79): T3's scope picker for a project's
+  settle settings (D1173 edits them as a record of the node config, by
+  project id); a test of the selection's partial failure when regenerating
+  titles (D1176);
   dragging a selection into the chat as context. The card's branch, diff
   and pull request are `source-control.md`'s D117 and its terminal
   indicator `terminal.md`'s D148, all in the `sidebar.thread.indicators`

@@ -194,6 +194,16 @@ export function threadActions(services: ThreadActionServices) {
         return false;
       }
     },
+    /** Has an agent write the thread a new title (t3-parity.md D1176); true once it did. */
+    async regenerateTitle(target: NodeTarget, thread: ThreadRecord): Promise<boolean> {
+      try {
+        await threads.call(target, "threads.title.regenerate", { threadId: thread.id });
+        return true;
+      } catch (error) {
+        fail("Failed to regenerate thread title", error);
+        return false;
+      }
+    },
     /** Archives a thread after asking when the settings say so; true once it is archived. */
     async archive(target: NodeTarget, thread: ThreadRecord): Promise<boolean> {
       if (

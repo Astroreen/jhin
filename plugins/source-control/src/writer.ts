@@ -1,3 +1,4 @@
+// The writer turn itself is @jhin/agent-api's askAgent (t3-parity.md D1174).
 // The prompts follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // packages/provider-core/src/server/textGenerationPrompts.ts (buildCommitMessagePrompt,
 // buildPrContentPrompt, buildBranchNamePrompt).
@@ -6,7 +7,9 @@ import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import type { AgentRuntime } from "@jhin/agent-api";
+import { askAgent, parseJsonObject, type AgentRuntime, type Deadline } from "@jhin/agent-api";
+
+export { parseJsonObject };
 
 interface CommitMessageInput {
   readonly branch: string | null;
@@ -120,27 +123,6 @@ function branchNamePrompt(input: { readonly message: string }): string {
   ].join("\n");
 }
 
-/** The first JSON object in an answer, fenced or not. */
-export function parseJsonObject(text: string): Record<string, unknown> | undefined {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1];
-  for (const candidate of [
-    fenced,
-    text,
-    text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1),
-  ]) {
-    if (candidate === undefined || candidate.trim() === "") continue;
-    try {
-      const parsed: unknown = JSON.parse(candidate.trim());
-      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      // Try the next candidate.
-    }
-  }
-  return undefined;
-}
-
 /** The files a `git diff --stat` names, without its totals line. */
 const statFiles = (stat: string) =>
   stat
@@ -177,67 +159,6 @@ export const plainWriter: Writer = {
   },
 };
 
-/** When a writer's turn has taken too long: a promise that resolves then, and how to drop it. */
-export interface Deadline {
-  readonly reached: Promise<void>;
-  dispose(): void;
-}
-
-/**
- * Asks an agent runtime for the JSON the prompts describe, in a turn of its
- * own that reads nothing of any thread; every tool call it asks for is
- * declined. A turn still running at `deadline` is interrupted and fails.
- */
-async function ask(
-  runtime: AgentRuntime,
-  cwd: string,
-  prompt: string,
-  deadline: Deadline | undefined,
-): Promise<string> {
-  let turn: ReturnType<AgentRuntime["startTurn"]>;
-  try {
-    turn = runtime.startTurn({
-      threadId: `jhin.source-control.writer-${randomUUID()}`,
-      turnId: randomUUID(),
-      input: { text: prompt },
-      history: [],
-      cwd,
-      runtimeMode: "approval-required",
-      interactionMode: "default",
-    });
-  } catch (error) {
-    // Its deadline's timer goes with it.
-    deadline?.dispose();
-    throw error;
-  }
-  const consume = async () => {
-    let text = "";
-    for await (const item of turn.items) {
-      if (item.kind === "message.completed") text = item.text;
-      if (item.kind !== "request.opened") continue;
-      turn.respond?.(
-        item.requestId,
-        item.request.kind === "approval"
-          ? { kind: "approval", decision: "decline" }
-          : { kind: "user-input", answers: {} },
-      );
-    }
-    return text;
-  };
-  if (deadline === undefined) return consume();
-  try {
-    return await Promise.race([
-      consume(),
-      deadline.reached.then((): never => {
-        turn.interrupt();
-        throw new Error("the writer took too long");
-      }),
-    ]);
-  } finally {
-    deadline.dispose();
-  }
-}
-
 /**
  * A writer asking `runtime()` (an agent of the node) and falling back to
  * `plainWriter` when there is none or its answer is not what was asked for.
@@ -257,7 +178,11 @@ export function agentWriter(options: {
       const cwd = await Fs.mkdtemp(Path.join(Os.tmpdir(), "jhin-writer-"));
       let answered: string;
       try {
-        answered = await ask(runtime, cwd, prompt, options.deadline?.());
+        answered = await askAgent(
+          runtime,
+          { prompt, cwd, id: randomUUID(), label: "jhin.source-control.writer" },
+          options.deadline?.(),
+        );
       } finally {
         await Fs.rm(cwd, { recursive: true, force: true });
       }
