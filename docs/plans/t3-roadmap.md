@@ -382,7 +382,12 @@ finishes out of the Deferred lists and leaves the rest there.
   subagent work, stopping a provider subagent from the panel, "Lineage · N
   running"; the sidebar's "Keep threads with a PR", per-project settle
   settings and "Regenerate titles (N)"; `bindToCurrentThread` and the task
-  editor's model options and base-branch picker.
+  editor's model options and base-branch picker. Done: D1161–D1179
+  (`orchestration.md` D1161–D1167 and D1177–D1179, #202, #207, #222;
+  `t3-parity.md` D1171–D1176, #212, #217; D1180 unused); what is left is in
+  their Deferred lists (the hover card's progress line, a background
+  subagent's streamed text and progress, T3's scope picker for a project's
+  settle settings, the mode ceiling of a task created from a thread).
 - **W33:** `jhin pair` with a terminal QR code (D425), pairing links for a
   `jhin client` page, device metadata and live updates in the authorized
   clients list, Tailscale Serve, MCP OAuth. T3 Connect stays out of scope.

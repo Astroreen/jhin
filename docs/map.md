@@ -186,6 +186,10 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   control's writer and `threads.title.regenerate` (`jhin.threads`, with the
   client commands `thread.regenerate-title` and
   `sidebar.selection.regenerate-titles`) use it (`plans/t3-parity.md` D1174–D1176).
+- `scheduler.tasks.create`/`.update`'s `bindToCurrentThread` and a task's
+  `modelOptions` (`jhin.scheduler`); the editor's base branch picker
+  (`apps/web/src/plugins/scheduler/base-branch.tsx`)
+  (`plans/orchestration.md` D1177–D1179).
 - `@jhin/agent-api`'s `citations.ts` — a quote of an agent's message in a user's
   (`jhin-citation://`), and what the agent reads of it (`plans/t3-parity.md`
   D1010).
