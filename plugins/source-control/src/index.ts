@@ -1272,7 +1272,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           await links.sync(id);
           // A settle the threads plugin turned down (a turn ran then) is asked again;
           // one it took is not asked twice (`announceSettle` keeps its key).
-          await settleOnLinks(id).catch(() => undefined);
+          // One thread's failure is told and keeps the others' turn.
+          await settleOnLinks(id).catch((error: unknown) =>
+            context.log.warn("settling a thread on its linked pull requests failed", {
+              threadId: id,
+              error: String(error),
+            }),
+          );
         }
       })()
         .catch((error: unknown) =>
