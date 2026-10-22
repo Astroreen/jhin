@@ -647,7 +647,7 @@ The threat model comes first; the decisions after it implement it.
   PKCE challenge, the resource and the approver; a presented code is spent
   even when a later check fails (RFC 6749 §4.1.2). The token endpoint
   issues through `auth.tokens.issue` as the approver with its grants at
-  that moment (a session revoked or narrowed since issues nothing, so D413
+  that moment (a session revoked, expired or narrowed since issues nothing, so D413
   holds): a
   device token (`jhd1`, D411) with method `oauth` (additive), the client's
   name as label, 30 days' life (`expires_in`) and the request's metadata
