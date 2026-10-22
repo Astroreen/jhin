@@ -948,9 +948,9 @@ with screenshots).
   folders empty and the worktree in use; the setup card's "Check out files"
   then ends with a warning ("submodules not checked out: <git's reason>",
   while "Skip" ends it done with "submodules left empty", as the user
-  chose). A clean worktree with checked-out submodules is removed (D255,
-  `git.worktree.remove`) as a clean one is, which git otherwise refuses
-  without `--force`. T3's per-project setting and its
+  chose). A worktree with checked-out submodules is removed only with `force`
+  (D255's deletion and the cleanup pass it), as git holds: their own commits
+  may be pushed nowhere, which a clean status does not show. T3's per-project setting and its
   `t3.json` override, and pull request checkouts (D902), are Deferred. A
   managed worktree made again from its branch (D256) gets its submodules the
   same way; a failure there is logged. Cancelling a setup while its

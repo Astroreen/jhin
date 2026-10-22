@@ -475,9 +475,18 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
       expect(Fs.readFileSync(Path.join(thread.worktreePath, "lib", "README.md"), "utf8")).toBe(
         "one\ntwo\nthree\n",
       );
-      // A clean worktree with checked-out submodules is removed without force.
+      // A worktree with checked-out submodules goes only when forced: their commits
+      // may be pushed nowhere, as git itself holds.
       await sc.client.call("threads.delete", { threadId: "with-lib" });
-      await sc.client.call("git.worktree.remove", { projectId, path: thread.worktreePath });
+      await expect(
+        sc.client.call("git.worktree.remove", { projectId, path: thread.worktreePath }),
+      ).rejects.toThrow();
+      expect(Fs.existsSync(thread.worktreePath)).toBe(true);
+      await sc.client.call("git.worktree.remove", {
+        projectId,
+        path: thread.worktreePath,
+        force: true,
+      });
       expect(Fs.existsSync(thread.worktreePath)).toBe(false);
 
       sc.configure({ worktreeSubmodules: "none" });

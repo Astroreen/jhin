@@ -459,29 +459,15 @@ export async function removeWorktree(
     await git(["worktree", "prune"]);
     return;
   }
-  // git refuses a worktree with checked-out submodules unless forced (D1134): one
-  // whose files, its submodules' included, are all committed goes as a clean one does.
-  let clean = false;
-  if (
-    options.force !== true &&
-    (await Fs.stat(Path.join(path, ".gitmodules")).then(
-      () => true,
-      () => false,
-    ))
-  ) {
-    const status = await git(["-C", path, "status", "--porcelain", "--ignore-submodules=none"], {
-      ok: [0, 128],
-    });
-    // Clean only when git said so: a status that failed proves nothing and forces nothing.
-    clean = status.code === 0 && status.stdout.trim() === "";
-  }
+  // git refuses a worktree with checked-out submodules unless forced (D1134): their
+  // own commits may be pushed nowhere, so only an explicit `force` removes it.
   await git(
     [
       "-c",
       "status.showUntrackedFiles=normal",
       "worktree",
       "remove",
-      ...(options.force === true || clean ? ["--force"] : []),
+      ...(options.force === true ? ["--force"] : []),
       "--",
       path,
     ],
