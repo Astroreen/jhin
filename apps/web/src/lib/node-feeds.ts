@@ -98,22 +98,20 @@ export function createNodeFeeds<S>(
     });
     states.set(id, { status: "loading", value: source.empty });
     changed();
-    /** One more read after a stream that failed once it was read (D731). */
-    let retried = false;
+    /** When this feed last read a dropped stream again (D731). */
     let lastRetry = Number.NEGATIVE_INFINITY;
     const failed = (error: unknown) => {
       if (stopped) return;
       const code = String((error as { code?: unknown } | null)?.code);
       const message = error instanceof Error ? error.message : String(error);
       const wasRead = states.get(id)?.status === "ready";
-      // A stream that dropped is read and followed once more, so one hiccup
-      // does not silence what is told; the feed stays as it is meanwhile, not
-      // flashing "not live". A permission taken back is not retried.
-      // At most one retry a minute: a stream that delivers once and drops
-      // again at once does not loop on the node.
+      // A stream that dropped is read and followed again, so a hiccup does not
+      // silence what is told; the feed stays as it is meanwhile, not flashing
+      // "not live". At most once a minute, so a flapping stream does not loop
+      // on the node: a second drop within it stays not live. A permission
+      // taken back is not retried.
       const rested = Date.now() - lastRetry >= RETRY_GAP_MS;
-      if (wasRead && !retried && rested && code !== "PERMISSION_DENIED") {
-        retried = true;
+      if (wasRead && rested && code !== "PERMISSION_DENIED") {
         lastRetry = Date.now();
         for (const subscription of subscriptions.splice(0)) subscription.dispose();
         follow(true);
@@ -154,8 +152,6 @@ export function createNodeFeeds<S>(
           subscriptions.push(
             client.subscribe(source.stream, { after: head, onError: failed }, (event) => {
               if (stopped) return;
-              // The stream works again: a later drop may be retried once more.
-              retried = false;
               const before = states.get(id)?.value ?? source.empty;
               const after = source.apply(before, event);
               if (after !== before) set(id, (feed) => ({ ...feed, value: after }));

@@ -182,7 +182,7 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
-  it("tells what arrived while the stream was down, and retries again once it delivered", async () => {
+  it("tells what arrived while the stream was down, and retries again a minute later", async () => {
     // Each read answers the next list; the stream is driven by the test.
     const reads = [
       { head: 1, items: ["a"] },
@@ -229,7 +229,7 @@ describe("node feeds (D630, D731)", () => {
     stream.onError!(new Error("dropped"));
     await next;
     expect(told).toEqual(["b"]);
-    // The stream delivers again, and a minute later a drop is retried too.
+    // A minute later a drop is retried too, quiet stream or not.
     stream.listener!({ type: "add", payload: "c" });
     vi.setSystemTime(Date.now() + 60_000);
     next = ready();
