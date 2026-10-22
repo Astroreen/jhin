@@ -7,6 +7,7 @@ import {
   AuthEvents,
   OWNER_PRINCIPAL_ID,
   clientPrincipalId,
+  isPlainHttpUrl,
   type AuthVerifier,
   type Principal,
 } from "@jhin/auth-api";
@@ -47,17 +48,9 @@ const Grants = z
   .min(1);
 
 /** An http(s) address, perhaps under a path; never credentials, a query or a fragment. */
-const PlainUrl = z.string().refine((value) => {
-  if (!URL.canParse(value)) return false;
-  const url = new URL(value);
-  return (
-    /^https?:$/.test(url.protocol) &&
-    url.username === "" &&
-    url.password === "" &&
-    url.search === "" &&
-    url.hash === ""
-  );
-}, "must be an http(s) address, without credentials, query or fragment");
+const PlainUrl = z
+  .string()
+  .refine(isPlainHttpUrl, "must be an http(s) address, without credentials, query or fragment");
 
 const CONFIG_SECTION = "jhin.auth-token";
 const AuthConfig = z
