@@ -242,12 +242,13 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
-  it("ignores what an abandoned subscription still delivers after a re-read", async () => {
+  it("ignores what an abandoned subscription still delivers or reports after a re-read", async () => {
     const reads = [
       { head: 1, items: ["a"] },
       { head: 2, items: ["a", "b"] },
     ];
     const listeners: ((event: Event) => void)[] = [];
+    const onErrors: ((error: unknown) => void)[] = [];
     let onError: ((error: unknown) => void) | undefined;
     const client = {
       call: async () => reads.shift(),
@@ -257,6 +258,7 @@ describe("node feeds (D630, D731)", () => {
         listener: (event: Event) => void,
       ) => {
         listeners.push(listener);
+        onErrors.push(options.onError);
         onError = options.onError;
         return toDisposable(() => {});
       },
@@ -282,6 +284,9 @@ describe("node feeds (D630, D731)", () => {
     // The new one is heard.
     listeners[1]!({ type: "add", payload: "c" });
     expect(feeds.snapshot().get("a")?.value).toEqual(["a", "b", "c"]);
+    // Nor does its late failure count as a new drop.
+    onErrors[0]!(new Error("old stream closing"));
+    expect(feeds.snapshot().get("a")?.status).toBe("ready");
     feeds.dispose();
   });
 
