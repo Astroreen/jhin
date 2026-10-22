@@ -928,7 +928,7 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   the streams are replayed merged in time order, so a restart counts as the
   live node did. `health.status` returns the counts per group and per kind
   over the window. Health's own asks to an analyst (message id
-  `health.<warningId>.<attempt>`, naming a warning health raised before) are
+  `health.<warningId>.<time>` (the ask's time in ms), naming a warning health raised before) are
   no ceremony: an ask from this node's owner, whom no agent can send as
   (D622), whose id names a warning health raised before. An agent that
   copies such an id is counted like any other. The analyst's reply to that

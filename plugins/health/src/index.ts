@@ -42,7 +42,7 @@ import { Sensors, type Finding } from "./sensors.ts";
 export { HEALTH_STREAM };
 
 /**
- * Health's own asks to an analyst (D725) have the id `health.<warningId>.<attempt>`;
+ * Health's own asks to an analyst (D725) have the id `health.<warningId>.<time>` (the ask's time in ms);
  * they are no ceremony. An id only counts as health's when it names a warning
  * health raised before it, whose random id nobody else knows in advance.
  */
