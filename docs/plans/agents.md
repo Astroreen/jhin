@@ -1313,7 +1313,7 @@ C3 decisions:
   slices, `missions.orchestrate` from the lead's generation, proofs, an ask
   to the owner answered through the inbox and a ceremony warning, until the
   mission is set done, the lead's decision (D651) sent for it (D1102). It follows the `missions`,
-  `orchestration`, `agents/inbox` and `health` streams from their start
+  `orchestration`, `agents/messages`, `agents/inbox` and `health` streams from their start
   (`e2e/tests/support/streams.ts`) and waits for the record it expects; it
   never waits for time.
 - **D1102. The fake agents' own acts are commands sent for them.** The fake
