@@ -403,6 +403,47 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   (T3's More menu), and a profile this device no longer has shows as
   "Removed profile".
 
+### The floating mini player (W34)
+
+Workstream W34 of `t3-roadmap.md` continues this plan with decisions from
+its range D1201–D1220 (D1201 is the desktop app's, in `desktop.md`). The
+reference stays T3 Code `eb7b35ac`: `apps/web/src/previewMiniPlayerStore.ts`,
+`components/preview/ThreadPreviewMiniPlayer.tsx`,
+`components/preview/previewMiniPlayerLayout.ts`, the `pictureInPicture`
+toggle of `components/preview/PreviewChromeRow.tsx` and `PreviewView.tsx`,
+and `closePreviewPanel` and `shouldRenderPreviewMiniPlayer` in
+`components/ChatView.tsx` and `ChatView.logic.ts`.
+
+- **D1202. A browser tab floats over its thread's chat, as in T3.** The
+  chrome row gets T3's "Float preview over chat" toggle (its icon, its
+  pressed state and "Close floating preview", disabled on an unreachable
+  page): the tab floats and the right panel closes. Closing the right panel
+  with its toggle floats the tab it showed too, as T3's `closePreviewPanel`
+  does: whenever the panel shows a tab, an unreachable one included (only
+  the toggle in the chrome row is disabled for it), and with no way to only
+  dismiss the panel, which T3 offers none of either. One tab floats per thread (`<target>|<thread>`), kept in the
+  plugin's state in memory as T3 keeps it in a store; its position and
+  width outlive a change of the floating tab, and a gesture that outlives
+  its tab is ignored. The player is T3's: at the page's aspect ratio
+  (`BrowserSurface` gets `followSize={false}` and `onViewport`, so the page
+  keeps the size it had), 320 by 320 at most until resized, in the chat's
+  bottom right corner above the composer until moved, dragged by the pill
+  behind its handle dot (a tap opens the pill on touch), resized by eight
+  edges and corners at a fixed aspect ratio, clamped clear of the composer
+  by T3's layout (`plugins/preview/mini-player-layout.ts`, with T3's
+  tests). The pill holds "Open preview in right panel" and "Close floating
+  preview", and the dot pulses while the tab records. The viewer that holds
+  control drives the page through the player as through the panel. It
+  hides while the right panel shows the same tab, and goes when the tab
+  closes. The thread view gets the slot `chat.thread.overlay`
+  (`ChatThreadOverlayProps`: target, thread, the composer's height), a layer
+  over the messages and composer that lets the pointer through; the player
+  is its `jhin.preview.mini-player`, loaded as a chunk of its own when a tab
+  first floats. The client commands `preview.float` (an optional `tabId`,
+  else the tab the panel shows) and `preview.float.close` act on the thread
+  on screen. The e2e drives the buttons, the pill, both commands through
+  the palette, and a floating tab closed on the node.
+
 ### Cookie import (W34)
 
 The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/*`,
@@ -538,7 +579,15 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   client's 3 s rescans (T3's subscription), and a favicon per local server.
 - Tests of the panel's local server polling (backoff, the hidden-page pause)
   and of the node's shared scan; the e2e covers the path end to end.
-- The floating mini player ("Float preview over chat").
+- Around the floating mini player (D1202): T3's chat canvas that narrows
+  the chat beside a player and keeps it clear of the find bar and the
+  details card; "Pop into separate window" (the browser's
+  picture-in-picture of the frames, T3's `serverPictureInPicture`); a
+  floating device (`jhin.device-panel` shows devices in a panel of its own);
+  the control strip inside the player (control is taken in the panel);
+  moving and resizing the player from the keyboard (T3's are pointer only
+  too); dropping a deleted thread's floating entry, which stays in the
+  plugin's memory for the session (one small record per thread).
 - Touch input and the editable-at-point probe for soft keyboards; human
   uploads through the file chooser (the panel can only cancel it) and saving
   downloads to the client.

@@ -14,6 +14,7 @@ import {
   type ChatTurnFooterProps,
   type ChatTurnHeaderProps,
   type ThreadCreateInput,
+  type ChatThreadOverlayProps,
   type ChatTurnItemProps,
   type NodeTarget,
   type ProjectRecord,
@@ -590,6 +591,21 @@ export function ThreadView(props: {
             <div aria-hidden style={{ height: composer.height }} />
             <div aria-hidden className="h-3 sm:h-4" />
           </div>
+          {thread === undefined || timeline.deleted ? null : (
+            // Over the messages and the composer: T3's floating preview lives here (D1202).
+            <div className="pointer-events-none absolute inset-0 z-40">
+              <Slot
+                name="chat.thread.overlay"
+                props={
+                  {
+                    target,
+                    thread,
+                    composerHeight: composer.height,
+                  } satisfies ChatThreadOverlayProps
+                }
+              />
+            </div>
+          )}
           {showPill ? (
             <div
               className="pointer-events-none absolute inset-x-0 z-30 flex justify-center py-1.5"

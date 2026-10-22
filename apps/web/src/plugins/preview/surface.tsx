@@ -52,6 +52,13 @@ export interface SurfaceProps {
   readonly onFirstFrame?: () => void;
   /** A command failed; the panel shows it. */
   readonly onError?: (error: unknown) => void;
+  /**
+   * Whether the page takes the surface's size in fill mode (the panel's, by default). The
+   * floating mini player shows the page at the size it has instead (T3's `followSize`, D1202).
+   */
+  readonly followSize?: boolean;
+  /** The page's size in CSS pixels, when a frame brings a new one. */
+  readonly onViewport?: (size: { width: number; height: number }) => void;
 }
 
 /** One tab's page: its frames drawn on a canvas, and the controlling viewer's input sent back. */
@@ -81,6 +88,9 @@ export function BrowserSurface(props: SurfaceProps) {
   firstFrame.current = props.onFirstFrame;
   const onError = useRef(props.onError);
   onError.current = props.onError;
+  const onViewport = useRef(props.onViewport);
+  onViewport.current = props.onViewport;
+  const followSize = props.followSize ?? true;
 
   // Input goes out in order, a batch per animation frame.
   const queue = useRef<PreviewInputEvent[]>([]);
@@ -126,7 +136,14 @@ export function BrowserSurface(props: SurfaceProps) {
           canvas.width = bitmap.width;
           canvas.height = bitmap.height;
           canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
-          viewport.current = { width: frame.width, height: frame.height };
+          if (
+            viewport.current.width !== frame.width ||
+            viewport.current.height !== frame.height ||
+            first
+          ) {
+            viewport.current = { width: frame.width, height: frame.height };
+            onViewport.current?.(viewport.current);
+          }
           if (first) {
             first = false;
             setRendered((value) => value + 1);
@@ -168,7 +185,7 @@ export function BrowserSurface(props: SurfaceProps) {
   // --- The panel's size is the page's in fill mode ----------------------------------
   useEffect(() => {
     const box = boxRef.current;
-    if (box === null) return;
+    if (box === null || !followSize) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const report = () => {
       timer = undefined;
@@ -191,7 +208,7 @@ export function BrowserSurface(props: SurfaceProps) {
       if (timer !== undefined) clearTimeout(timer);
     };
     // `send` reads its state through refs.
-  }, [client, threadId, tabId]);
+  }, [client, threadId, tabId, followSize]);
 
   // When control is lost, the hidden input lets go of the focus.
   useEffect(() => {
