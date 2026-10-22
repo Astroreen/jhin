@@ -807,6 +807,10 @@ A stack, one slice a PR:
   origin (a proxy path prefix breaks its form and its `/auth/session`
   call). A pairing code opens a page session to approve with; T3's
   separate "approval code" check is not ported.
+  A registered client id cannot be revoked on its own (registration is
+  stateless, D1192): it grants nothing without an approval, its tokens are
+  revoked under Authorized clients, and only rotating
+  `jhin.mcp-oauth/signing-key` voids every id at once (no command does it).
 - A `jhin client` link (D1190) pairs as the page opens, as T3's hosted
   page does; a confirmation naming the node before it is saved is not
   added.
