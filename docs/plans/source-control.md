@@ -802,8 +802,9 @@ with screenshots).
   and tail; the branch, base, worktree path and script; T3's length limits.
   `fetch` is skipped without `startFromOrigin`; `agent` runs while the first
   turn's start hook holds it. Every change goes out on the live stream
-  `source-control/worktree-setup/<threadId>` (`git.read`), which keeps only
-  the latest snapshot; `git.worktree.setup.get { threadId }` (`git.read`)
+  `source-control/worktree-setup/<threadId>` (`git.read` and
+  `terminals.read`: it carries the script's command and output), which keeps
+  only the latest snapshot; `git.worktree.setup.get { threadId }` (the same)
   answers it or null. Snapshots live in memory: a restart forgets them,
   where T3 records the finished one on the thread (Deferred).
 - **D1124. `git.worktree.setup.cancel { threadId }`** (`git.write`, `{

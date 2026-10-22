@@ -362,6 +362,18 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     ).rejects.toThrow("Setup script exited with no exit code.");
   });
 
+  it("shows a setup only to a caller that may read terminals", async () => {
+    const sc = await node({ watch: false });
+    await expect(
+      sc.as(["git.read"]).call("git.worktree.setup.get", { threadId: "any" }),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    expect(
+      await sc
+        .as(["git.read", "terminals.read"])
+        .call("git.worktree.setup.get", { threadId: "any" }),
+    ).toBeNull();
+  });
+
   it("lets only a caller that may run a shell save a script (D1121)", async () => {
     const sc = await node({ watch: false });
     const projectId = await sc.project(repository());

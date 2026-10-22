@@ -382,6 +382,8 @@ export async function runSetupScript(input: {
     input.terminals.write({ threadId: input.threadId, terminalId, data: `${commandLine}\r` });
   } catch (error) {
     done(null);
+    // Opened for nothing: it goes, or nothing would close it.
+    await input.terminals.close({ threadId: input.threadId, terminalId }).catch(() => undefined);
     throw error;
   }
   return { terminalId, completion };

@@ -1802,7 +1802,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const setupStreams = createMemoryStreams({ log: context.log });
   if (live !== undefined) {
     context.subscriptions.add(
-      live.serve(WORKTREE_SETUP_STREAM_PREFIX, setupStreams, { permissions: ["git.read"] }),
+      // The script's command and output are a terminal's: reading them takes what that takes.
+      live.serve(WORKTREE_SETUP_STREAM_PREFIX, setupStreams, {
+        permissions: ["git.read", "terminals.read"],
+      }),
     );
   }
   const setups = createSetupTracker({
@@ -2621,7 +2624,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       "The setup of a thread's new worktree as it stands (T3's worktree setup snapshot), or null",
     input: z.object({ threadId: z.string().min(1) }),
     output: WorktreeSetupSnapshot.nullable(),
-    permissions: ["git.read"],
+    permissions: ["git.read", "terminals.read"],
     handler: async ({ threadId }) => setups.get(threadId),
   });
 
