@@ -893,3 +893,47 @@ describe("jhin.threads: turn items and requests", () => {
     ).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
   });
 });
+
+describe("jhin.threads: usage limits (providers.md D1141)", () => {
+  it("answers an agent's usage limits, kept to the schema, and refuses an unknown agent", async () => {
+    const limited: AgentRuntime = {
+      agentId: "acme.limited",
+      startTurn: fakeTurn,
+      usageLimits: async () => ({
+        checkedAt: "2030-01-01T00:00:00.000Z",
+        windows: [
+          {
+            id: "a",
+            kind: "session",
+            label: "Session",
+            usedPercent: 104.2,
+            windowDurationMins: 299.6,
+          },
+          // Not a window at all: dropped, not a failed command.
+          { id: "b", kind: "yearly", label: "Yearly", usedPercent: 3 } as never,
+        ],
+        resetCredits: { availableCount: -1 },
+      }),
+    };
+    const plain: AgentRuntime = { agentId: "acme.plain", startTurn: fakeTurn };
+    const { client } = await node({ plugins: [registering(limited), registering(plain)] });
+    expect(await client.call("agents.usage-limits", { agentId: "acme.limited" })).toEqual({
+      usageLimits: {
+        checkedAt: "2030-01-01T00:00:00.000Z",
+        windows: [
+          { id: "a", kind: "session", label: "Session", usedPercent: 100, windowDurationMins: 300 },
+        ],
+      },
+    });
+    expect(await client.call("agents.usage-limits", { agentId: "acme.plain" })).toEqual({
+      usageLimits: null,
+    });
+    const agents = await client.call<{ agentId: string; usageLimits: boolean }[]>("agents.list");
+    expect(
+      Object.fromEntries(agents.map((agent) => [agent.agentId, agent.usageLimits])),
+    ).toMatchObject({ "acme.limited": true, "acme.plain": false });
+    await expect(
+      client.call("agents.usage-limits", { agentId: "acme.none" }),
+    ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+  });
+});

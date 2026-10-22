@@ -39,7 +39,8 @@ describe("usage limits (providers.md D1144)", () => {
     // 3 of 5 hours elapsed: 25% used is under pace, 90% ahead of it.
     expect(paceOf(window(), now)).toBe("under");
     expect(paceOf(window({ usedPercent: 90 }), now)).toBe("ahead");
-    expect(paceOf(window({ windowDurationMins: undefined }), now)).toBeNull();
+    const { windowDurationMins: _unknown, ...noDuration } = window();
+    expect(paceOf(noDuration, now)).toBeNull();
   });
 
   it("says why there are no windows", () => {

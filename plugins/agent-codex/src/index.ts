@@ -454,8 +454,17 @@ export function createCodexRuntime(options: {
         running = probe(launch, options.config())
           .then((result) => {
             probed = { at: Date.now(), key, probe: result };
-            // A new read holds what the updates before it said.
-            if (result.rateLimits !== undefined) liveRateLimits = undefined;
+            // A new read holds what the updates before it said; one that came while it was
+            // read (it merged onto the older snapshot) is newer and stays.
+            const readAt = result.usageLimits?.checkedAt;
+            if (
+              result.rateLimits !== undefined &&
+              readAt !== undefined &&
+              liveRateLimits !== undefined &&
+              Date.parse(liveRateLimits.at) <= Date.parse(readAt)
+            ) {
+              liveRateLimits = undefined;
+            }
             return result;
           })
           .finally(() => probing.delete(key));

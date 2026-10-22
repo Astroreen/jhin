@@ -899,18 +899,30 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     if (props.running) setUsagePanel(undefined);
   }, [props.running]);
-  const openUsageLimits = async (key: string, offered: AgentInfo) => {
-    const { usageLimits } = await chat.threads
-      .call<{ usageLimits: AgentUsageLimits | null }>(props.target, "agents.usage-limits", {
-        agentId: offered.agentId,
-      })
-      .catch(() => ({ usageLimits: null }));
+  /** Opens the banner; false when there is nothing to show (the prompt then stays). */
+  const openUsageLimits = async (key: string, offered: AgentInfo): Promise<boolean> => {
+    let usageLimits: AgentUsageLimits | null;
+    try {
+      ({ usageLimits } = await chat.threads.call<{ usageLimits: AgentUsageLimits | null }>(
+        props.target,
+        "agents.usage-limits",
+        { agentId: offered.agentId },
+      ));
+    } catch (error) {
+      toasts?.show({
+        type: "error",
+        title: "Could not read usage limits",
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
     if (usageLimits === null) {
       setUsagePanel(undefined);
       toasts?.show({ type: "info", title: "Usage limits are unavailable for this provider" });
-      return;
+      return false;
     }
     setUsagePanel({ key, agentName: offered.name, limits: usageLimits, now: Date.now() });
+    return true;
   };
   const runtimeMode = props.selection.runtimeMode ?? "full-access";
   const planSupported = agent?.interactionModes.includes("plan") === true;
@@ -1210,9 +1222,11 @@ export function Composer(props: ComposerProps) {
     // `/usage-limits` sent alone is answered here when the agent has limits (T3); otherwise it
     // goes to the agent untouched.
     if (attachments.length === 0 && isUsageLimitsCommand(typed) && agent?.usageLimits === true) {
-      setPrompt("");
-      setCursor(0);
-      await openUsageLimits(usageKey, agent);
+      // T3 clears the prompt once the panel opened; what was typed stays otherwise.
+      if (await openUsageLimits(usageKey, agent)) {
+        setPrompt("");
+        setCursor(0);
+      }
       return false;
     }
     // `/plan` or `/default` sent alone switch the mode instead (T3).

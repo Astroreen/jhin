@@ -41,6 +41,7 @@ import {
   type AgentSlashCommand,
   type AgentTurn,
   type AgentTurnFailure,
+  type AgentUsageLimits,
   type InteractionMode,
   type MessageContext,
   type MessageContextRecord,
@@ -656,6 +657,35 @@ const UsageWindow = z.object({
   resetsAt: z.string().optional(),
   windowDurationMins: z.number().int().nonnegative().optional(),
 });
+
+/**
+ * What a runtime reported, kept to the schema: a percentage clamped, a duration rounded, a
+ * window or credit summary that still does not fit dropped (a runtime is anyone's plugin).
+ */
+function usageLimitsOf(found: AgentUsageLimits): z.infer<typeof UsageLimits> {
+  const windows = (Array.isArray(found.windows) ? found.windows : []).flatMap((window) => {
+    const parsed = UsageWindow.safeParse({
+      ...window,
+      usedPercent: Number.isFinite(window?.usedPercent)
+        ? Math.max(0, Math.min(100, window.usedPercent))
+        : window?.usedPercent,
+      ...(typeof window?.windowDurationMins === "number"
+        ? { windowDurationMins: Math.max(0, Math.round(window.windowDurationMins)) }
+        : {}),
+    });
+    return parsed.success ? [parsed.data] : [];
+  });
+  const credits = UsageLimits.shape.resetCredits.safeParse(found.resetCredits);
+  const unavailable = UsageLimits.shape.unavailable.safeParse(found.unavailable);
+  return {
+    checkedAt: typeof found.checkedAt === "string" ? found.checkedAt : new Date().toISOString(),
+    windows,
+    ...(credits.success && credits.data !== undefined ? { resetCredits: credits.data } : {}),
+    ...(unavailable.success && unavailable.data !== undefined
+      ? { unavailable: unavailable.data }
+      : {}),
+  };
+}
 
 /** `AgentUsageLimits` (D1141). */
 const UsageLimits = z.object({
@@ -2454,7 +2484,7 @@ export default definePlugin({
         }
         const found = await runtime.usageLimits?.();
         return {
-          usageLimits: found === undefined ? null : UsageLimits.parse(structuredClone(found)),
+          usageLimits: found === undefined ? null : usageLimitsOf(found),
         };
       },
     });
