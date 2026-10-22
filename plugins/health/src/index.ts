@@ -883,22 +883,26 @@ export default definePlugin({
       ...write,
       handler: async ({ warningId }, invocation) => {
         await sync();
-        const warning = getWarning(warningId);
-        if (warning.status === "dismissed") return warning;
-        await append(HealthEvents.warningDismissed, {
-          warningId,
-          dismissedAt: now(),
-          // An exact cut for counting again (D724): the log's own head of every
-          // stream health follows, also of events not delivered to it yet.
-          dismissedAfter: Object.fromEntries(
-            await Promise.all(
-              [...new Set([...heads.keys(), HEALTH_STREAM])].map(
-                async (stream) => [stream, await log.head(stream)] as const,
-              ),
+        getWarning(warningId);
+        // An exact cut for counting again (D724): the log's own head of every
+        // stream health follows now, also of events not delivered to it yet. A
+        // stream not followed now (a thread unlinked) counts from the time.
+        const dismissedAfter = Object.fromEntries(
+          await Promise.all(
+            [...new Set([...followed.keys(), HEALTH_STREAM])].map(
+              async (stream) => [stream, await log.head(stream)] as const,
             ),
           ),
-          ...by(invocation),
-        });
+        );
+        // Decided on the fold right before the write: two dismissals make one.
+        await appendIf(() =>
+          getWarning(warningId).status === "dismissed"
+            ? undefined
+            : {
+                type: HealthEvents.warningDismissed,
+                payload: { warningId, dismissedAt: now(), dismissedAfter, ...by(invocation) },
+              },
+        );
         return getWarning(warningId);
       },
     });

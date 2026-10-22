@@ -366,7 +366,7 @@ describe("jhin.health", () => {
   });
 
   it("warns about a recursive proof loop, and after a dismissal counts the edits since", async () => {
-    const { client, kernel, slice } = await node({ proofLoop: { maxEdits: 2 } });
+    const { client, kernel, log, slice } = await node({ proofLoop: { maxEdits: 2 } });
     const prove = (output: string) =>
       client.call("slices.prove", {
         sliceId: slice.id,
@@ -384,7 +384,16 @@ describe("jhin.health", () => {
     });
     expect(warning.evidence.map((ref) => ref.kind)).toEqual(["proof-edit", "proof-edit"]);
 
-    await client.call("health.warnings.dismiss", { warningId: warning.warningId });
+    // Two dismissals at once record one.
+    await Promise.all([
+      client.call("health.warnings.dismiss", { warningId: warning.warningId }),
+      client.call("health.warnings.dismiss", { warningId: warning.warningId }),
+    ]);
+    expect(
+      (await log.read(HEALTH_STREAM)).filter(
+        (event) => event.type === HealthEvents.warningDismissed,
+      ),
+    ).toHaveLength(1);
     // The edits since the dismissal are counted, not the ones before it.
     await prove("1 passed, polished");
     const again = nextEvent(kernel, HealthEvents.warningRaised);
