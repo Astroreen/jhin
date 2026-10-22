@@ -22,6 +22,7 @@ import {
   HealthConfig,
   HealthEvents,
   Idea,
+  MAX_ANSWER_LENGTH,
   MIN_IDEA_WORDS,
   normalizeIdea,
   Warning,
@@ -105,7 +106,10 @@ export default definePlugin({
         if (event.stream !== HEALTH_STREAM || event.sequence <= healthHead) continue;
         health = applyHealthEvent(health, event);
         healthHead = event.sequence;
-        if (event.type === HealthEvents.ideaCorrected) {
+        if (
+          event.type === HealthEvents.ideaCorrected ||
+          event.type === HealthEvents.ideaWithdrawn
+        ) {
           sensors.setIdeas(Object.values(health.ideas));
         } else if (event.type === HealthEvents.progressRecorded) {
           const progress = (event.payload as { progress?: Progress }).progress;
@@ -396,7 +400,14 @@ export default definePlugin({
             status: "answered",
             analyst: analyst.address,
             reason: analyst.reason,
-            ...(result.answer === undefined ? {} : { answer: result.answer }),
+            ...(result.answer === undefined
+              ? {}
+              : {
+                  answer:
+                    result.answer.length > MAX_ANSWER_LENGTH
+                      ? `${result.answer.slice(0, MAX_ANSWER_LENGTH)}…`
+                      : result.answer,
+                }),
             at: now(),
           };
         } catch (error) {
@@ -804,6 +815,25 @@ export default definePlugin({
       output: Idea,
       ...write,
       handler: async ({ idea, correction, projectId }, invocation) => {
+        // A project named is checked against projects.list when a plugin offers it.
+        if (
+          projectId !== undefined &&
+          context.commands.list().some((c) => c.name === "projects.list")
+        ) {
+          const projects = (await context.commands.execute("projects.list", {})) as {
+            id: string;
+          }[];
+          if (!projects.some((project) => project.id === projectId)) {
+            throw new HealthError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
+          }
+        }
+        // The same phrase corrected again for the same project is the same idea.
+        await sync();
+        const known = Object.values(health.ideas).find(
+          (other) =>
+            normalizeIdea(other.idea) === normalizeIdea(idea) && other.projectId === projectId,
+        );
+        if (known !== undefined) return known;
         const record: Idea = {
           ideaId: Crypto.randomUUID(),
           idea,
@@ -814,6 +844,22 @@ export default definePlugin({
         };
         await append(HealthEvents.ideaCorrected, { idea: record });
         return record;
+      },
+    });
+    context.commands.register({
+      name: "health.ideas.withdraw",
+      description:
+        "Withdraws a corrected idea named by mistake: health no longer watches for it, and its open mind-virus warning stays as it is",
+      input: z.object({ ideaId: z.string() }),
+      output: z.object({ ideaId: z.string() }),
+      ...write,
+      handler: async ({ ideaId }, invocation) => {
+        await sync();
+        if (health.ideas[ideaId] === undefined) {
+          throw new HealthError("IDEA_NOT_FOUND", `No idea ${ideaId}`, { ideaId });
+        }
+        await append(HealthEvents.ideaWithdrawn, { ideaId, ...by(invocation) });
+        return { ideaId };
       },
     });
     context.commands.register({

@@ -704,4 +704,30 @@ describe("jhin.health", () => {
     // was unlinked is read now, and the first is not counted twice (3, not 4).
     expect(await nodeCeremony()).toBe(3);
   });
+
+  it("checks a corrected idea's project, takes the same idea once, and withdraws one named by mistake", async () => {
+    const { client, project, deliver } = await node({ mindVirus: { minOccurrences: 1 } });
+    await expect(
+      client.call("health.ideas.correct", { idea: "retry the flaky test", projectId: "no-such" }),
+    ).rejects.toMatchObject({ code: "PROJECT_NOT_FOUND" });
+    const idea = await client.call<Idea>("health.ideas.correct", {
+      idea: "retry the flaky test",
+      projectId: project.id,
+    });
+    const again = await client.call<Idea>("health.ideas.correct", {
+      idea: "Retry the  FLAKY test.",
+      projectId: project.id,
+    });
+    expect(again.ideaId).toBe(idea.ideaId);
+    await client.call("health.ideas.withdraw", { ideaId: idea.ideaId });
+    expect(await client.call<Idea[]>("health.ideas.list", {})).toEqual([]);
+    await expect(
+      client.call("health.ideas.withdraw", { ideaId: idea.ideaId }),
+    ).rejects.toMatchObject({ code: "IDEA_NOT_FOUND" });
+    // Withdrawn, the phrase is no carrier any more: a message with it raises nothing,
+    // and the status shows only the message's ceremony.
+    await deliver(BUILDER, REVIEWER, "I will retry the flaky test", "t1");
+    const warnings = await client.call<Warning[]>("health.warnings.list", { status: "all" });
+    expect(warnings.filter((warning) => warning.detector === "mind-virus")).toEqual([]);
+  });
 });

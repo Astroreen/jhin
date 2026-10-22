@@ -19,6 +19,8 @@ export const HealthEvents = {
   warningDismissed: "health.warning.dismissed",
   /** `{ idea: Idea }`: a wrong idea, named when it was corrected (D727). */
   ideaCorrected: "health.idea.corrected",
+  /** `{ ideaId, by? }`: a corrected idea named by mistake, no longer watched for (D727). */
+  ideaWithdrawn: "health.idea.withdrawn",
   /** `{ progress: Progress }`: commits a turn of a slice's thread made (D723). */
   progressRecorded: "health.progress.recorded",
 } as const;
@@ -28,7 +30,10 @@ export type HealthEventType = (typeof HealthEvents)[keyof typeof HealthEvents];
 export const COMMITS_COUNTED_EVENT = "health.commits.counted";
 
 /** Error codes of the `health.*` commands. */
-export type HealthErrorCode = "WARNING_NOT_FOUND";
+export type HealthErrorCode = "WARNING_NOT_FOUND" | "IDEA_NOT_FOUND" | "PROJECT_NOT_FOUND";
+
+/** The longest analyst's answer a warning keeps; a longer one is cut (D725). */
+export const MAX_ANSWER_LENGTH = 8_000;
 
 /** Reading health: sensors, warnings, ideas and the `health` stream. */
 export const HEALTH_READ_PERMISSION = "health.read";
@@ -285,6 +290,12 @@ export function applyHealthEvent(
     case HealthEvents.ideaCorrected:
       if (payload.idea === undefined) return state;
       return { ...state, ideas: { ...state.ideas, [payload.idea.ideaId]: payload.idea } };
+    case HealthEvents.ideaWithdrawn: {
+      const ideaId = (event.payload as { ideaId?: string } | null)?.ideaId;
+      if (ideaId === undefined || state.ideas[ideaId] === undefined) return state;
+      const { [ideaId]: _withdrawn, ...ideas } = state.ideas;
+      return { ...state, ideas };
+    }
     default:
       return state;
   }

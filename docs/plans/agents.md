@@ -981,7 +981,7 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   asks its analyst (D726) through `agents.ask` (A2, D624) as this node's
   owner, with the warning, its measures, its last events and what to look at
   (the lore of bureaucracy or of mind viruses), and records the answer
-  (`health.warning.analysed`: `answered`; `failed` with the error, when the ask is not answered (an ask
+  (`health.warning.analysed`, the answer cut at 8000 characters: `answered`; `failed` with the error, when the ask is not answered (an ask
   that only waits, `pending`), or after
   `analysisTimeoutMinutes`, or `none` when no agent has the context). An ask
   past its timeout is not cancelled (commands have no abort); its late answer
@@ -1008,7 +1008,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   configured analyst has none. Never a random agent.
 - **D727. A mind virus is a corrected idea coming back.** The owner names a
   wrong idea by a phrase when correcting it (`health.ideas.correct { idea,
-  correction?, projectId? }`), the vaccine. Each later message of a sender
+  correction?, projectId? }`), the vaccine; the project must exist, the same
+  phrase for the same project is the same idea, and one named by mistake is
+  withdrawn (`health.ideas.withdraw`). Each later message of a sender
   other than an owner, and each slice title or spec an agent writes later
   (not the owner or the owner's devices, `client:<id>`), that
   contains the phrase as whole words (case-insensitive, punctuation and
