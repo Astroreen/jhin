@@ -217,6 +217,15 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
       body: new URLSearchParams({ ...form, decision: "approve" }),
     });
     expect(opaque.status).toBe(403);
+    for (const decision of [undefined, "", "approved"]) {
+      const undecided = await fetch(`${base}/oauth/mcp/authorize`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: base },
+        body: new URLSearchParams({ ...form, ...(decision === undefined ? {} : { decision }) }),
+      });
+      expect(undecided.status).toBe(400);
+    }
     // Another browser session of the same owner cannot reuse this page's value.
     const otherSession = await sessionCookie(base, token);
     const replayed = await fetch(`${base}/oauth/mcp/authorize`, {

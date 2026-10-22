@@ -338,6 +338,13 @@ export default definePlugin({
         redirect(response, oauth.deny(authorization));
         return;
       }
+      // Only an explicit approval issues a code: a missing or mistyped decision does not.
+      if (params["decision"] !== "approve") {
+        response
+          .writeHead(400, pageHeaders())
+          .end(renderErrorPage("The page sent no decision. Open the sign-in link again."));
+        return;
+      }
       const approver = await approverOf(request, authorization);
       if (
         approver.kind !== "ok" ||
