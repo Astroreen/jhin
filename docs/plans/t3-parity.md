@@ -2183,7 +2183,10 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
 - Sidebar (T3's layout, D70, D75–D79): T3's scope picker for a project's
   settle settings (D1173 edits them as a record of the node config, by
   project id); a test of the selection's partial failure when regenerating
-  titles (D1176);
+  titles (D1176), whose toast names only the first error; a title writer
+  stopped with the plugin is reported as having taken too long, and an
+  unknown `titleAgent` falls back to the thread's agent without a warning
+  (D1174);
   dragging a selection into the chat as context. The card's branch, diff
   and pull request are `source-control.md`'s D117 and its terminal
   indicator `terminal.md`'s D148, all in the `sidebar.thread.indicators`
