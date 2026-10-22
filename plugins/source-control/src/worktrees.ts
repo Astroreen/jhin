@@ -416,9 +416,10 @@ function notCheckedOut(output: string, otherwise = ""): string {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+  // Without one, the last line that is not progress, else what the caller knows.
   const reason = (
     lines.find((line) => /^(fatal|error):/.test(line)) ??
-    lines.at(-1) ??
+    lines.findLast((line) => !/^(Cloning into|Submodule '|Submodule path )/.test(line)) ??
     otherwise
   ).replace(/^(fatal|error):\s*/, "");
   return `submodules not checked out${reason === "" ? "" : `: ${redactUrls(reason)}`}`;
