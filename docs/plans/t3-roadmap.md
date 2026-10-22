@@ -217,6 +217,7 @@ unless a workstream needs it.
 | W26 | Pairing, sidebar, terminal and config leftovers         | `security.md`, `t3-parity.md`, `terminal.md`, `config-ui.md` | D961–D980             |
 | W27 | Composer context chips and `initialAnswer`              | `t3-parity.md`, `terminal.md`, `providers.md`                | D1001–D1020           |
 | W28 | Secret store and `secretRef`                            | `security.md`, `orchestration.md`                            | D1021–D1040           |
+| W29 | Entry chunk headroom and the build-mode flake           | `t3-parity.md`                                               | D1041–D1060           |
 
 W23 first had D680–D699, which `agents.md` gives to A4 and A5; it took the
 free block D841–D860 instead. W19 first had D600–D619, which `agents.md`
@@ -228,7 +229,7 @@ A3; it took D901–D920. W22, W25 and W26 first had D660–D679, D720–D739 and
 D740–D759, inside `agents.md`'s D600–D760; they take D921–D940, D941–D960
 and D961–D980. W20 took the
 next block, D981–D1000. A workstream that needs more numbers takes the next
-free block of 20 after D1040 and writes it here.
+free block of 20 after D1060 and writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
@@ -330,3 +331,8 @@ free block of 20 after D1040 and writes it here.
   done stays in the Deferred lists of `security.md` and `orchestration.md`.
   Done: `security.md` D1021–D1033, `orchestration.md` D1034 (#173, #178,
   #180).
+- **W29:** headroom under the web entry chunk's 500 kB budget (D440): what
+  the first paint does not need moves into lazy chunks, the budget stays.
+  The composer.spec flake "implements the plan in build mode" (an Enter
+  that sends already-cleared text) found at its cause and fixed, and the
+  host.test watcher flake checked for the same cause.
