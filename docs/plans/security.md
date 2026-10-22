@@ -636,7 +636,9 @@ The threat model comes first; the decisions after it implement it.
 - **D1194. Scopes are Jhin permissions.** A client asks with `scope`: Jhin
   grants separated by spaces (D410). An absent scope means the permissions
   agents get (`AGENT_PERMISSIONS`, `@jhin/mcp-api`), T3's default of
-  orchestration read and operate; `scopes_supported` lists them. The
+  orchestration read and operate; `scopes_supported` lists them. `*` and
+  `auth.*` are never offered to an MCP client (`invalid_scope`): an agent
+  does not get the owner's whole authority or manage access. The
   approval page lists what is asked with D961's titles; the owner approves
   or denies, never edits the list.
 - **D1195. Codes and tokens.** An authorization code is 32 random bytes,

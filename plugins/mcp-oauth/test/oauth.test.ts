@@ -279,10 +279,11 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
     }).then((response) => response.json())) as { result: { tools: { name: string }[] } };
     const tools = listed.result.tools.map((tool) => tool.name);
-    expect(
-      tools.some((name) => name.includes("app_threads_read") || name.includes("app.threads.read")),
-    ).toBe(true);
-    expect(tools.some((name) => name.includes("auth"))).toBe(false);
+    // MCP tool names are command names with `_` for `.` (`@jhin/mcp-bridge`'s toolName).
+    expect(tools).toContain("app_threads_read");
+    for (const denied of ["auth_tokens_issue", "auth_clients_list", "auth_pairing_create"]) {
+      expect(tools).not.toContain(denied);
+    }
 
     const { clients } = (await kernel.commands.execute("auth.clients.list", {})) as {
       clients: {
@@ -383,6 +384,75 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     expect(new URL(denied.headers.get("location")!).searchParams.get("error")).toBe(
       "access_denied",
     );
+  });
+
+  it("refuses every mismatched exchange, and spends the code on the first", async () => {
+    const { base, token } = await startNode();
+    const { client_id: clientId } = (await (await register(base)).json()) as { client_id: string };
+    const { client_id: otherClient } = (await (
+      await register(base, { client_name: "Other" })
+    ).json()) as { client_id: string };
+    const cookie = await sessionCookie(base, token);
+    const approve = async () => {
+      const html = await (
+        await fetch(authorizeUrl(base, clientId, { scope: "threads.read" }), {
+          headers: { cookie },
+        })
+      ).text();
+      const approved = await fetch(`${base}/oauth/mcp/authorize`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: base },
+        body: new URLSearchParams({ ...formOf(html), decision: "approve" }),
+      });
+      return new URL(approved.headers.get("location")!).searchParams.get("code")!;
+    };
+    const exchange = (code: string, body: Record<string, string>) =>
+      fetch(`${base}/oauth/mcp/token`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          client_id: clientId,
+          redirect_uri: REDIRECT.replace("33418", "40000"),
+          code_verifier: verifier,
+          ...body,
+        }),
+      }).then(async (response) => ({ status: response.status, body: await response.json() }));
+    for (const wrong of [
+      { code_verifier: Crypto.randomBytes(48).toString("base64url") },
+      { redirect_uri: REDIRECT.replace("33418", "40001").replace("callback", "other") },
+      { client_id: otherClient },
+      { resource: "https://other.example/mcp" },
+    ]) {
+      const code = await approve();
+      expect(await exchange(code, wrong)).toMatchObject({
+        status: 400,
+        body: { error: "invalid_grant" },
+      });
+      // Spent by the failed attempt (RFC 6749 §4.1.2).
+      expect(await exchange(code, {})).toMatchObject({ body: { error: "invalid_grant" } });
+    }
+    expect(await exchange("x", { grant_type: "refresh_token" })).toMatchObject({
+      body: { error: "unsupported_grant_type" },
+    });
+    expect(await exchange("x", { client_id: "forged.client" })).toMatchObject({
+      status: 401,
+      body: { error: "invalid_client" },
+    });
+  });
+
+  it("never offers * or auth.* to an MCP client", async () => {
+    const { base } = await startNode();
+    const { client_id: clientId } = (await (await register(base)).json()) as { client_id: string };
+    for (const scope of ["*", "auth.write", "auth.*", "threads.read auth.admin"]) {
+      const refused = await fetch(authorizeUrl(base, clientId, { scope }), { redirect: "manual" });
+      expect(refused.status).toBe(303);
+      expect(new URL(refused.headers.get("location")!).searchParams.get("error")).toBe(
+        "invalid_scope",
+      );
+    }
   });
 
   it("issues nothing when the approver is revoked before the code is exchanged", async () => {

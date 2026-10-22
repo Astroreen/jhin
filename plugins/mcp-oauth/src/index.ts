@@ -177,9 +177,14 @@ export default definePlugin({
     const currentGrants = async (approver: { id: string }) => {
       if (approver.id === OWNER_PRINCIPAL_ID) return ["*"];
       const { clients } = (await context.commands.execute("auth.clients.list", {})) as {
-        clients: { id: string; permissions: string[] }[];
+        clients: { id: string; permissions: string[]; expiresAt?: number }[];
       };
-      return clients.find((client) => clientPrincipalId(client.id) === approver.id)?.permissions;
+      const record = clients.find((client) => clientPrincipalId(client.id) === approver.id);
+      // An approver that expired since grants nothing, as one that was revoked.
+      return record === undefined ||
+        (record.expiresAt !== undefined && record.expiresAt <= Date.now())
+        ? undefined
+        : record.permissions;
     };
 
     const titles = async () => {

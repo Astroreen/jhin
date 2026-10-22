@@ -284,7 +284,12 @@ export function createOAuth(options: {
       }
       const asked = (params["scope"] ?? "").split(/\s+/u).filter((scope) => scope !== "");
       if (!asked.every(isGrant)) {
-        return fail("invalid_scope", "A scope is a Jhin permission, a pattern such as git.* or *.");
+        return fail("invalid_scope", "A scope is a Jhin permission or a pattern such as git.*.");
+      }
+      // An agent never gets the owner's whole authority, nor access management:
+      // `*` and `auth.*` are not offered to an MCP client (D1194).
+      if (asked.some((scope) => scope === "*" || scope === "auth" || scope.startsWith("auth."))) {
+        return fail("invalid_scope", "`*` and auth.* are not granted to MCP clients.");
       }
       return {
         kind: "ok",
