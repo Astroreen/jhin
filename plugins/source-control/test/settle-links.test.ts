@@ -95,10 +95,10 @@ describe("jhin.source-control: settling a thread on its linked pull requests (D1
         headRefName: "pr-11",
       }),
     );
-    const sc = await node();
+    // A merge settles nothing under this rule; a close always does. So only the later,
+    // closed link settling the thread shows that the latest of them decided.
+    const sc = await node({}, { threads: { autoSettleOnMerge: false } });
     const projectId = await sc.project(githubRepository());
-
-    // A merged and a closed link: the later one, closed, settles it.
     const several = (await sc.client.call<{ id: string }>("threads.create", { projectId })).id;
     await sc.client.call("git.pr.link", { threadId: several, url: url(7) });
     await sc.until(read(several, 7));
