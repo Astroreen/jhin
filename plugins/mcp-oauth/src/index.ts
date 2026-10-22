@@ -178,8 +178,10 @@ export default definePlugin({
      * The approver's grants now, not when it approved (D413): a revoked or
      * narrowed session within the code's 60 seconds issues nothing more.
      */
-    const currentGrants = async (approver: { id: string }) => {
-      if (approver.id === OWNER_PRINCIPAL_ID) return ["*"];
+    const currentGrants = async (approver: {
+      id: string;
+    }): Promise<{ permissions: string[]; expiresAt?: number } | undefined> => {
+      if (approver.id === OWNER_PRINCIPAL_ID) return { permissions: ["*"] };
       const { clients } = (await context.commands.execute("auth.clients.list", {})) as {
         clients: { id: string; permissions: string[]; expiresAt?: number }[];
       };
@@ -188,7 +190,10 @@ export default definePlugin({
       return record === undefined ||
         (record.expiresAt !== undefined && record.expiresAt <= Date.now())
         ? undefined
-        : record.permissions;
+        : {
+            permissions: record.permissions,
+            ...(record.expiresAt === undefined ? {} : { expiresAt: record.expiresAt }),
+          };
     };
 
     const titles = async () => {
@@ -396,7 +401,8 @@ export default definePlugin({
         });
         return;
       }
-      const grants = await currentGrants(exchanged.approver);
+      const approverNow = await currentGrants(exchanged.approver);
+      const grants = approverNow?.permissions;
       if (
         grants === undefined ||
         !exchanged.scopes.every((scope) => holdsPermission(grants, scope))
@@ -415,7 +421,11 @@ export default definePlugin({
           {
             label: exchanged.clientName,
             permissions: exchanged.scopes,
-            ttlDays: TOKEN_TTL_DAYS,
+            // Never outlives who approved it, as a page session never outlives its token (D421).
+            ttlDays:
+              approverNow?.expiresAt === undefined
+                ? TOKEN_TTL_DAYS
+                : Math.min(TOKEN_TTL_DAYS, (approverNow.expiresAt - Date.now()) / 86_400_000),
             method: "oauth",
             metadata: deriveClientMetadata({
               userAgent: request.headers["user-agent"],

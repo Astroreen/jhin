@@ -650,7 +650,8 @@ The threat model comes first; the decisions after it implement it.
   that moment (a session revoked, expired or narrowed since issues nothing, so D413
   holds): a
   device token (`jhd1`, D411) with method `oauth` (additive), the client's
-  name as label, 30 days' life (`expires_in`) and the request's metadata
+  name as label, 30 days' life at most and never past the approver's own
+  expiry (`expires_in`) and the request's metadata
   (D1187). It is listed under Authorized clients, revoked there, and
   checked by `/mcp` on every request (D414). `method` and `metadata` are
   the issuer's word, as a device's own metadata is: any caller holding

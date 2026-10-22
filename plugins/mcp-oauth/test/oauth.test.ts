@@ -465,6 +465,41 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     });
   });
 
+  it("issues a token that never outlives who approved it", async () => {
+    const { kernel, base } = await startNode();
+    const { client_id: clientId } = (await (await register(base)).json()) as { client_id: string };
+    const approverToken = (await kernel.commands.execute("auth.tokens.issue", {
+      label: "short",
+      permissions: ["threads.read", "auth.write"],
+      ttlDays: 1,
+    })) as { token: string; expiresAt: number };
+    const cookie = await sessionCookie(base, approverToken.token);
+    const html = await (
+      await fetch(authorizeUrl(base, clientId, { scope: "threads.read" }), { headers: { cookie } })
+    ).text();
+    const approved = await fetch(`${base}/oauth/mcp/authorize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: base },
+      body: new URLSearchParams({ ...formOf(html), decision: "approve" }),
+    });
+    const code = new URL(approved.headers.get("location")!).searchParams.get("code")!;
+    const issued = (await (
+      await fetch(`${base}/oauth/mcp/token`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          client_id: clientId,
+          redirect_uri: REDIRECT.replace("33418", "40000"),
+          code_verifier: verifier,
+        }),
+      })
+    ).json()) as { expires_in: number };
+    expect(issued.expires_in).toBeLessThanOrEqual(86_400);
+  });
+
   it("never offers * or auth.* to an MCP client", async () => {
     const { base } = await startNode();
     const { client_id: clientId } = (await (await register(base)).json()) as { client_id: string };
