@@ -257,19 +257,18 @@ export const connectionsPlugin = builtin(
             );
           }
           const url = rpcUrl(named.toString());
-          if (looksLikePairingCode(fromUrl.token)) {
-            await pairNode({
-              url,
-              code: fromUrl.token,
-              ...(fromUrl.label === undefined ? {} : { label: fromUrl.label }),
-            });
-          } else {
-            connections.add({
-              url,
-              token: fromUrl.token,
-              ...(fromUrl.label === undefined ? {} : { label: fromUrl.label }),
-            });
+          // As T3's hosted link: a one-time pairing code only. A link never
+          // makes this page keep a standing token for a node it names.
+          if (!looksLikePairingCode(fromUrl.token)) {
+            throw new Error(
+              "This pairing link does not carry a pairing code. Request a new pairing link.",
+            );
           }
+          await pairNode({
+            url,
+            code: fromUrl.token,
+            ...(fromUrl.label === undefined ? {} : { label: fromUrl.label }),
+          });
           return;
         }
         if (credential !== undefined) {

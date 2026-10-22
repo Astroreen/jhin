@@ -946,6 +946,42 @@ describe("clients and links (security.md D1187, D1188, D1190)", () => {
     expect(refused).toMatchObject({ code: "PERMISSION_DENIED" });
   });
 
+  it("keeps only the latest change for a subscriber that joins later", async () => {
+    const node = await startNode();
+    for (let index = 0; index < 3; index += 1) {
+      await node.kernel.commands.execute("auth.pairing.create", {});
+    }
+    const late = connect(node.url, node.token);
+    const seen: StoredEvent[] = [];
+    let head = Number.POSITIVE_INFINITY;
+    let marked: () => void = () => {};
+    const next = new Promise<void>((resolve) => (marked = resolve));
+    await new Promise<void>((resolve) => {
+      late.subscribe(
+        "auth/clients",
+        {
+          after: 0,
+          onReady: (at) => {
+            head = at;
+            resolve();
+          },
+        },
+        (event) => {
+          seen.push(event);
+          // The change made after joining is above the head; all kept ones come first.
+          if (event.sequence > head) marked();
+        },
+      );
+    });
+    await node.kernel.commands.execute("auth.pairing.create", {});
+    await next;
+    // Three changes before joining left one event; then the new one.
+    expect(seen.map((event) => event.type)).toEqual([
+      "auth.clients.changed",
+      "auth.clients.changed",
+    ]);
+  });
+
   it("adds T3's client-page link when the node knows where a jhin client page is", async () => {
     const node = await startNode();
     const plain = (await node.kernel.commands.execute("auth.pairing.create", {})) as {

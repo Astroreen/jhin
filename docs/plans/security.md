@@ -568,7 +568,8 @@ The threat model comes first; the decisions after it implement it.
   `<clientUrl>/pair?host=<node base url>#token=<CODE>` (T3's
   `buildHostedPairingUrl`, with `label` in the query when given). The page
   pairs over `POST /auth/pair` (CORS without credentials, D420) and saves
-  the node (D423). The node's address is in the query, so the client page's
+  the node (D423); a link carrying anything but a pairing code is refused,
+  so a link never makes the page keep a standing token. The node's address is in the query, so the client page's
   host may log it; the code stays in the fragment. A link from someone else
   can name their own node: the page then saves that node (shown by its
   address in the node list), whose answers are data, never code: client
