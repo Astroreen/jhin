@@ -68,7 +68,10 @@ export function BaseBranchPicker(props: {
         if (read === latest.current) setBranches(list);
       },
       () => {
-        if (read === latest.current && first) setBranches("unavailable");
+        // Never read yet (the first read was superseded): the text field, not a spinner.
+        if (read === latest.current) {
+          setBranches((known) => (first || known === undefined ? "unavailable" : known));
+        }
       },
     );
   };

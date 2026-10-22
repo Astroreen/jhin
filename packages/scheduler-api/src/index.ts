@@ -222,8 +222,10 @@ export const CreateTaskInput = z.object({
     .string()
     .min(1)
     .nullable()
-    .default(null)
-    .describe("Post every run into this thread; null creates a fresh thread per run."),
+    .optional()
+    .describe(
+      "Post every run into this thread; null creates a fresh thread per run. Omitted: none, or the calling thread (bindToCurrentThread).",
+    ),
   bindToCurrentThread: z
     .boolean()
     .optional()

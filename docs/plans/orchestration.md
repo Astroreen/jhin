@@ -739,8 +739,8 @@ Round 3 of `t3-roadmap.md` (D1161–D1180). The reference is D53's tag:
   invocation's (an agent's MCP call names it, `x-jhin-thread`).
   `scheduler.tasks.create` without `projectId` takes the calling thread's
   project, and binds the task to the calling thread unless
-  `bindToCurrentThread` is false; it binds by default only in that thread's
-  project. `bindToCurrentThread: true` without a calling thread, or for
+  `bindToCurrentThread` is false (or `threadId` is null, a fresh thread per
+  run); it binds by default only in that thread's project. `bindToCurrentThread: true` without a calling thread, or for
   another project, is refused (`INVALID_REQUEST`, T3's "bindToCurrentThread
   needs an agent running inside a Jhin thread." and "… binds to this thread,
   which belongs to a different project."), and with `threadId` too

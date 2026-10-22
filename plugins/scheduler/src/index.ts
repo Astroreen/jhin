@@ -665,11 +665,16 @@ function activateScheduler(context: PluginContext): void {
    * call leaves out. Without a calling thread only `threadId` binds.
    */
   const bindToCaller = async (
-    input: CreateTaskInput,
+    given: CreateTaskInput,
     raw: z.input<typeof CreateTaskInput>,
     callerThreadId: string | undefined,
   ): Promise<CreateTaskInput> => {
-    const namedThread = raw.threadId !== undefined && raw.threadId !== null;
+    let input = given;
+    const namedThread = typeof raw.threadId === "string";
+    // `threadId: null` asks for a fresh thread per run: from a thread, unbound.
+    if (raw.threadId === null && input.bindToCurrentThread === undefined) {
+      input = { ...input, bindToCurrentThread: false };
+    }
     if (input.bindToCurrentThread !== undefined && namedThread) {
       throw invalid("Give threadId or bindToCurrentThread, not both.");
     }
@@ -737,7 +742,8 @@ function activateScheduler(context: PluginContext): void {
     callerId = "",
     callerThreadId?: string,
   ): Promise<ScheduledTask> => {
-    const input = await bindToCaller(CreateTaskInput.parse(raw), raw, callerThreadId);
+    const bound = await bindToCaller(CreateTaskInput.parse(raw), raw, callerThreadId);
+    const input = { ...bound, threadId: bound.threadId ?? null };
     // A retried create names the task it made: its id comes from the caller
     // and the request's id, so another caller's id never finds it.
     const id =

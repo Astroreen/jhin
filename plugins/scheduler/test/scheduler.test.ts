@@ -477,6 +477,14 @@ describe("jhin.scheduler: a task created from an agent's thread (D1177, D1178)",
       runtimeMode: "auto-accept-edits",
     });
 
+    // threadId null asks for a fresh thread per run too.
+    expect(
+      await call("scheduler.tasks.create", {
+        prompt: "Fresh",
+        schedule: { type: "interval", everyMs: 60 * MINUTE },
+        threadId: null,
+      }),
+    ).toMatchObject({ threadId: null, workspaceStrategy: { type: "worktree" } });
     // false: a fresh thread per run, in a new worktree of main, as T3 launches it.
     const fresh = await call("scheduler.tasks.create", {
       prompt: "Fresh each time",
