@@ -673,6 +673,7 @@ export function ThreadView(props: {
                         .call(target, "threads.interrupt", { threadId })
                         .catch((failure: unknown) => setError((failure as Error).message))
                     }
+                    goal={timeline.goal}
                     queue={timeline.queue}
                     queueActions={queueActions}
                     requests={requests}

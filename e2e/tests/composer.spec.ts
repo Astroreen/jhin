@@ -548,6 +548,27 @@ test("asks for an app's access as T3's App access approval, without a session al
   ).toHaveText("GitHub allowed");
 });
 
+test("shows the thread's goal above the composer, and resumes and clears it", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/goal Ship the release");
+  await message.press("Enter");
+  const goal = page.getByRole("region", { name: "Goal" });
+  await expect(goal).toContainText("Goal paused · 12k tokens · 2m 5s");
+  await expect(goal).toContainText("Ship the release");
+  const shot = info.outputPath("goal.png");
+  await page.screenshot({ path: shot });
+  await info.attach("goal", { path: shot, contentType: "image/png" });
+  await goal.getByRole("button", { name: "Resume" }).click();
+  await expect(goal).toContainText("Goal complete · 20k tokens · 2m 5s");
+  await expect(goal.getByRole("button", { name: "Resume" })).toHaveCount(0);
+  await goal.getByRole("button", { name: "Clear" }).click();
+  await expect(goal).toBeHidden();
+});
+
 test("highlights a code block in the prompt, picks its language and indents with Tab", async ({
   page,
 }, info) => {

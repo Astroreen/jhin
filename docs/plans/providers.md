@@ -672,7 +672,7 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 
 ### Deferred
 
-- Goals (`/goal`) and `/feedback` in the composer.
+- `/feedback` in the composer.
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Background terminals Codex keeps after a turn.
@@ -844,6 +844,33 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   turns after Codex's last one go as a transcript. A parent without a record
   or a Codex that refuses starts a new thread with the whole transcript, as
   before.
+- **D1149. `/goal` is Codex's thread goal**, T3's `runGoalCommand` and goal
+  holds: Codex lists `/goal` ("Set a goal Codex keeps working toward until it
+  is done", hint "Objective, or pause, resume, clear"). A message that is
+  `/goal …` alone asks Codex for the goal (`thread/goal/get`) first: `/goal`
+  and `/goal edit` answer "Goal {status}: {objective}" or "No goal is set.",
+  `/goal clear` "Goal cleared." or "No goal to clear.", `/goal pause` "Goal
+  paused. Send /goal resume to continue." (or "No goal is set."), all without
+  a Codex turn. `/goal <objective>` clears an existing goal, sets the new one
+  paused, starts a turn with the objective alone (after a transcript, if
+  Codex needs one) and then sets it active; `/goal resume` starts an empty
+  turn and sets it active. While the goal stays active the Jhin turn follows
+  the turns Codex starts for it by itself (`turn/started` on the thread),
+  waiting at most T3's 5 seconds after each; it ends when Codex's last turn
+  completes with the goal no longer active. A stop pauses the goal. Every
+  change Codex reports (`thread/goal/updated`, `thread/goal/cleared`) is the
+  item `goal.updated` (`agent.runtime@1.10`, additive: `AgentGoal` with T3's
+  statuses `active`, `paused`, `blocked`, `usage_limited`, `budget_limited`,
+  `complete`), recorded as `agent.goal.updated` (`{ turnId, goal }`).
+- **D1150. The goal banner**, T3's `goalBannerItem` and
+  `presentProviderGoal`: the timeline keeps the thread's latest goal, shown
+  above the composer as a region "Goal" with T3's `TargetIcon`, its title
+  ("Goal set" while active and idle, "Pursuing goal" while working, "Goal
+  paused", "Goal blocked", "Goal hit a usage limit", "Goal reached its token
+  budget", "Goal complete"), its usage ("12k tokens · 2m 5s", "1.5m / 2m
+  tokens") and objective; when idle, "Resume" (not for an active or complete
+  goal) and "Clear" send `/goal resume` and `/goal clear`. The fake agent
+  answers `/goal` for the end-to-end test.
 
 ### Deferred
 
@@ -861,6 +888,9 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
 - A revert Codex took for a turn that then failed to start is not recorded:
   the next turn sends it again, Codex refuses the unknown turn and the thread
   starts over with the transcript (D1147).
+- T3's sidebar label "Goal" for a thread pursuing one, its goal checks
+  count, and a goal turn Codex starts after the run settled (T3 stops it and
+  pauses the goal; Jhin drops its frames).
 - Codex subagents that outlive their turn (T3 follows a child's lifecycle
   after the parent's turn ended): Jhin ends them with the turn (D1145), and
   their later frames are dropped. A subagent's own user messages and its

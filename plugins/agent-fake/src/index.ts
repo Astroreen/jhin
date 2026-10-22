@@ -31,6 +31,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/think …" reasons first, then answers;
  * - "/tool <command>" runs a pretend command and reports its output;
  * - "/approve <command>" asks for approval before running it;
+ * - "/goal <objective>" sets a paused goal, "/goal resume" completes it, "/goal clear" clears it;
  * - "/access <app>" asks for an app's access (T3's MCP elicitation, no session allowance);
  * - "/ask" asks a question and answers with the choice;
  * - "/edit" asks for an answer prefilled with two lines (`initialAnswer`) and quotes it back;
@@ -218,6 +219,31 @@ export function fakeTurn(
       } else {
         yield* say(`Did not run ${command}`);
       }
+      return;
+    }
+    if (/^\/goal(\s|$)/.test(text)) {
+      // A goal as Codex keeps one (providers.md D1149): set paused, resumed to complete.
+      const argument = text.replace(/^\/goal\s*/, "").trim();
+      if (argument === "clear") {
+        yield { kind: "goal.updated", goal: null };
+        yield* say("Goal cleared.");
+        return;
+      }
+      const objective = argument === "resume" ? "Ship the release" : argument;
+      if (argument === "resume") {
+        yield { kind: "goal.updated", goal: { objective, status: "active", tokensUsed: 12_400 } };
+        yield* say("Released");
+        yield {
+          kind: "goal.updated",
+          goal: { objective, status: "complete", tokensUsed: 20_100, timeUsedSeconds: 125 },
+        };
+        return;
+      }
+      yield {
+        kind: "goal.updated",
+        goal: { objective, status: "paused", tokensUsed: 12_400, timeUsedSeconds: 125 },
+      };
+      yield* say("Goal paused. Send /goal resume to continue.");
       return;
     }
     if (text.startsWith("/access")) {

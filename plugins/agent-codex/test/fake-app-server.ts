@@ -88,6 +88,8 @@ const send = (message: Record<string, unknown>) =>
   process.stdout.write(`${JSON.stringify(message)}\n`);
 
 let nextId = 1;
+/** The thread's goal (`thread/goal/*`). */
+let goal: Record<string, unknown> | null = null;
 const waiting = new Map<number, (value: unknown) => void>();
 let interrupted: (() => void) | undefined;
 let interruptCame = false;
@@ -222,6 +224,23 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
       return;
     case "thread/resume":
       send({ id, result: { thread: { id: params["threadId"], updatedAt: 0 } } });
+      return;
+    // The thread's goal, kept by this process as Codex keeps it.
+    case "thread/goal/get":
+      send({ id, result: { goal } });
+      return;
+    case "thread/goal/set":
+      goal = {
+        ...(goal ?? { tokensUsed: 0, timeUsedSeconds: 0 }),
+        threadId: params["threadId"],
+        ...(typeof params["objective"] === "string" ? { objective: params["objective"] } : {}),
+        ...(typeof params["status"] === "string" ? { status: params["status"] } : {}),
+      };
+      send({ id, result: { goal } });
+      return;
+    case "thread/goal/clear":
+      send({ id, result: { cleared: goal !== null } });
+      goal = null;
       return;
     case "thread/fork":
       send({ id, result: { thread: { id: `codex-fork-${calls("thread/fork")}` } } });
