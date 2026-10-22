@@ -110,6 +110,19 @@ describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
     expect(Fs.existsSync(thread.worktreePath)).toBe(false);
   });
 
+  it("sweeps when its rules change, with nobody asking", async () => {
+    const dir = repository();
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    const thread = await worktreeThread(sc, projectId);
+    await firstTurn(sc, thread.id);
+    // New rules apply at once, as T3 sweeps when its settings change.
+    const swept = sc.logged("removed a worktree");
+    sc.configure({ worktreeCleanup: { unchanged: true } });
+    await swept;
+    expect(Fs.existsSync(thread.worktreePath)).toBe(false);
+  });
+
   it("keeps local changes as keepWhen counts them", async () => {
     const dir = repository();
     const sc = await node({ watch: false, worktreeCleanup: { onDelete: true } });
