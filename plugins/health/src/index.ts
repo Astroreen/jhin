@@ -18,6 +18,7 @@ import {
   HEALTH_READ_PERMISSION,
   HEALTH_STREAM,
   HEALTH_WRITE_PERMISSION,
+  COMMITS_COUNTED_EVENT,
   HealthConfig,
   HealthEvents,
   Idea,
@@ -59,9 +60,9 @@ class HealthError extends Error {
 }
 
 /** `git` in a directory, or `undefined` when it fails: health never fails a turn (D723). */
-function git(cwd: string, args: string[]): Promise<string | undefined> {
+function git(cwd: string, args: string[], timeout = 5_000): Promise<string | undefined> {
   return new Promise((resolve) => {
-    execFile("git", args, { cwd, timeout: 5_000 }, (error, stdout) =>
+    execFile("git", args, { cwd, timeout }, (error, stdout) =>
       resolve(error === null ? stdout.trim() : undefined),
     );
   });
@@ -340,10 +341,23 @@ export default definePlugin({
 
     /** Whether a delivered message is health's own ask to an analyst (D725). */
     const ownAsk = (event: StoredEvent) => {
-      const messageId = (event.payload as { message?: { messageId?: string } } | null)?.message
-        ?.messageId;
-      const warningId = messageId === undefined ? undefined : OWN_ASK.exec(messageId)?.[1];
-      return warningId !== undefined && health.warnings[warningId] !== undefined;
+      const payload = event.payload as {
+        message?: { messageId?: string; kind?: string; from?: string };
+        delivery?: { nodeId?: string };
+      } | null;
+      const message = payload?.message;
+      const warningId =
+        message?.messageId === undefined ? undefined : OWN_ASK.exec(message.messageId)?.[1];
+      if (warningId === undefined || health.warnings[warningId] === undefined) return false;
+      // Health asks as this node's owner (D725), whom an agent cannot send as
+      // (D622): an agent that copies the id is still counted.
+      const from = message?.from === undefined ? undefined : parseMessageAddress(message.from);
+      return (
+        message?.kind === "ask" &&
+        from?.kind === "owner" &&
+        payload?.delivery?.nodeId !== undefined &&
+        from.nodeId === payload.delivery.nodeId
+      );
     };
     // Every stream at once, in time order: health first among equals, so an
     // idea corrected or a warning raised is known before the events after it.
@@ -377,37 +391,28 @@ export default definePlugin({
     const STARTS = "turn-starts";
     type Starts = Record<string, { head: string; at: number }>;
     const DAY = 24 * 3_600_000;
-    context.subscriptions.add(
-      context.hooks.before<TurnHookInput>(ThreadHooks.turnStart, async (input) => {
-        if (config().enabled && sensors.slicesOfThread(input.threadId).length > 0) {
-          const head = await git(input.cwd, ["rev-parse", "HEAD"]);
-          // A turn that never ended (its node crashed) is forgotten after a day.
-          const starts = Object.fromEntries(
-            Object.entries(context.state.get<Starts>(STARTS) ?? {}).filter(
-              ([, start]) => Date.now() - start.at < DAY,
-            ),
-          );
-          if (head !== undefined) starts[input.turnId] = { head, at: Date.now() };
-          context.state.set(STARTS, starts);
-        }
-        return input;
-      }),
-    );
-    context.subscriptions.add(
-      context.hooks.before<TurnEndHookInput>(ThreadHooks.turnEnd, async (input) => {
-        const { [input.turnId]: start, ...rest } = context.state.get<Starts>(STARTS) ?? {};
-        if (start === undefined) return input;
-        context.state.set(STARTS, rest);
-        const head = await git(input.cwd, ["rev-parse", "HEAD"]);
-        if (head === undefined || head === start.head) return input;
-        // Only commits on top of where the turn started: a reset, rebase or
-        // switch to another branch is no progress of its own.
-        const ancestor = await git(input.cwd, ["merge-base", "--is-ancestor", start.head, head]);
-        if (ancestor === undefined) return input;
-        const count = Number(
+    /**
+     * The commits of an ended turn on top of where it started (D723), then the
+     * kernel event `health.commits.counted { turnId, count }`, also for none.
+     */
+    const countCommits = async (input: TurnEndHookInput) => {
+      const { [input.turnId]: start, ...rest } = context.state.get<Starts>(STARTS) ?? {};
+      if (start === undefined) return;
+      context.state.set(STARTS, rest);
+      let count = 0;
+      const head = await git(input.cwd, ["rev-parse", "HEAD"]);
+      // Only commits on top of where the turn started: a reset, rebase or
+      // switch to another branch is no progress of its own.
+      if (
+        head !== undefined &&
+        head !== start.head &&
+        (await git(input.cwd, ["merge-base", "--is-ancestor", start.head, head])) !== undefined
+      ) {
+        const counted = Number(
           await git(input.cwd, ["rev-list", "--count", "--first-parent", `${start.head}..${head}`]),
         );
-        if (Number.isInteger(count) && count > 0) {
+        if (Number.isInteger(counted) && counted > 0) {
+          count = counted;
           const progress: Progress = {
             kind: "commit",
             count,
@@ -416,11 +421,39 @@ export default definePlugin({
             ref: head,
             at: now(),
           };
-          await append(HealthEvents.progressRecorded, { progress }).catch((error: unknown) =>
-            context.log.warn("commits could not be recorded", { error: String(error) }),
-          );
+          await append(HealthEvents.progressRecorded, { progress });
           evaluateSoon();
         }
+      }
+      context.events.emit(COMMITS_COUNTED_EVENT, { turnId: input.turnId, count });
+    };
+    context.subscriptions.add(
+      context.hooks.before<TurnHookInput>(ThreadHooks.turnStart, async (input) => {
+        try {
+          if (config().enabled && sensors.slicesOfThread(input.threadId).length > 0) {
+            // One quick read before the agent starts; it never fails the turn.
+            const head = await git(input.cwd, ["rev-parse", "HEAD"], 2_000);
+            // A turn that never ended (its node crashed) is forgotten after a day.
+            const starts = Object.fromEntries(
+              Object.entries(context.state.get<Starts>(STARTS) ?? {}).filter(
+                ([, start]) => Date.now() - start.at < DAY,
+              ),
+            );
+            if (head !== undefined) starts[input.turnId] = { head, at: Date.now() };
+            context.state.set(STARTS, starts);
+          }
+        } catch (error) {
+          context.log.warn("a turn's start could not be recorded", { error: String(error) });
+        }
+        return input;
+      }),
+    );
+    context.subscriptions.add(
+      context.hooks.before<TurnEndHookInput>(ThreadHooks.turnEnd, (input) => {
+        // Counted off the turn's path: the turn ends at once, whatever git does.
+        void countCommits(input).catch((error: unknown) =>
+          context.log.warn("commits could not be counted", { error: String(error) }),
+        );
         return input;
       }),
     );

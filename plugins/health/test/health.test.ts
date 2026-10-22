@@ -5,6 +5,7 @@ import * as Path from "node:path";
 
 import { MESSAGES_STREAM, MessageEvents, ThreadHooks } from "@jhin/agent-api";
 import {
+  COMMITS_COUNTED_EVENT,
   HEALTH_STREAM,
   HealthEvents,
   type Analysis,
@@ -42,6 +43,8 @@ afterEach(async () => {
 const BUILDER = "jhin://node-a/agents/builder";
 const REVIEWER = "jhin://node-a/agents/reviewer";
 const OWNER = "jhin://node-a/owner";
+const SILENT = "jhin://node-a/agents/silent";
+const BROKEN = "jhin://node-a/agents/broken";
 
 /** The next event of `type` appended to `stream`: wait for facts, never for time. */
 function nextAppended(log: EventLog, stream: string, type: string): Promise<StoredEvent> {
@@ -95,6 +98,9 @@ async function start(
               output: z.object({ status: z.string(), answer: z.string() }),
               handler: (input) => {
                 asked.push(input);
+                // An analyst that never answers, and one whose ask fails.
+                if (input.to === SILENT) return new Promise<never>(() => {});
+                if (input.to === BROKEN) throw new Error("the analyst is gone");
                 return { status: "answered", answer: `${input.to} says: stop re-proving` };
               },
             });
@@ -145,6 +151,7 @@ async function node(health_: Record<string, unknown> = {}) {
     body: string,
     threadId?: string,
     messageId = `m${messages + 1}`,
+    kind: "message" | "ask" = "message",
   ) => {
     messages += 1;
     return log.append(MESSAGES_STREAM, [
@@ -153,7 +160,7 @@ async function node(health_: Record<string, unknown> = {}) {
         payload: {
           message: {
             messageId,
-            kind: "message",
+            kind,
             from,
             to,
             body,
@@ -220,7 +227,7 @@ describe("jhin.health", () => {
   });
 
   it("counts done slices, merged pull requests and a turn's commits as progress, also after a restart", async () => {
-    const { client, log, slice, probe, restart } = await node();
+    const { client, kernel, log, slice, probe, restart } = await node();
     await client.call("slices.prove", {
       sliceId: slice.id,
       items: [{ kind: "command", command: "vp test run", output: "1 passed" }],
@@ -280,11 +287,13 @@ describe("jhin.health", () => {
     await probe().hooks.run(ThreadHooks.turnStart, rewrite, (input) => input);
     git("reset", "-q", "--hard", "HEAD~2");
     git("commit", "-q", "--allow-empty", "-m", "elsewhere");
+    const counted = nextEvent(kernel, COMMITS_COUNTED_EVENT);
     await probe().hooks.run(
       ThreadHooks.turnEnd,
       { ...rewrite, status: "completed" },
       (input) => input,
     );
+    expect(await counted).toEqual({ turnId: "turn-2", count: 0 });
     const recordedProgress = (await log.read(HEALTH_STREAM)).filter(
       (event) => event.type === HealthEvents.progressRecorded,
     );
@@ -413,5 +422,53 @@ describe("jhin.health", () => {
     kernel.config.setLayer("project", { "jhin.health": { windowHours: -1 } });
     const status = await client.call<{ windowHours: number }>("health.status", {});
     expect(status.windowHours).toBe(12);
+  });
+
+  it("records a failed analysis when the ask fails or outlasts its timeout", async () => {
+    const broken = await node({
+      ceremony: { ratio: 1, minCeremony: 1 },
+      analysts: { "*": BROKEN },
+    });
+    const failed = nextAppended(broken.log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await broken.deliver(OWNER, BUILDER, "status?", "t1");
+    expect(((await failed).payload as { analysis: Analysis }).analysis).toMatchObject({
+      status: "failed",
+      analyst: BROKEN,
+      error: "the analyst is gone",
+    });
+
+    const silent = await node({
+      ceremony: { ratio: 1, minCeremony: 1 },
+      analysts: { "*": SILENT },
+      analysisTimeoutMinutes: 0.0005,
+    });
+    const timedOut = nextAppended(silent.log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await silent.deliver(OWNER, BUILDER, "status?", "t1");
+    expect(((await timedOut).payload as { analysis: Analysis }).analysis).toMatchObject({
+      status: "failed",
+      analyst: SILENT,
+      error: expect.stringMatching(/^no answer within/),
+    });
+  });
+
+  it("takes only the owner's ask with health's id as health's own, not an agent's copy of it", async () => {
+    const { kernel, client, deliver } = await node({ ceremony: { ratio: 1, minCeremony: 2 } });
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(OWNER, BUILDER, "one", "t1");
+    await deliver(OWNER, BUILDER, "two", "t1");
+    const { warning } = (await raised) as { warning: Warning };
+    await client.call("health.warnings.dismiss", { warningId: warning.warningId });
+    const again = nextEvent(kernel, HealthEvents.warningRaised);
+    // An agent copies the id of health's ask: still ceremony, so with one more it warns again.
+    await deliver(
+      REVIEWER,
+      BUILDER,
+      "about the warning",
+      "t1",
+      `health.${warning.warningId}.1`,
+      "ask",
+    );
+    await deliver(OWNER, BUILDER, "three", "t1");
+    expect(((await again) as { warning: Warning }).warning.measures).toMatchObject({ ceremony: 2 });
   });
 });

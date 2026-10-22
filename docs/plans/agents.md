@@ -929,7 +929,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   live node did. `health.status` returns the counts per group and per kind
   over the window. Health's own asks to an analyst (message id
   `health.<warningId>.<attempt>`, naming a warning health raised before) are
-  no ceremony; an id that names no such warning counts like any other. The
+  no ceremony: an ask from this node's owner, whom no agent can send as
+  (D622), whose id names a warning health raised before. An agent that
+  copies such an id is counted like any other. The
   analyst's answer ends its turn (D624) and is not a delivered message.
 - **D723. Commits are the one progress no stream holds.** A turn on a thread
   a slice links records its `HEAD` before it starts (turn-start hook,
@@ -938,7 +940,10 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   commits since on the first-parent line (`git rev-list --count
   --first-parent`), only when the start is an ancestor of the new `HEAD`: a
   reset, rebase or branch switch inside the turn is no progress of its own.
-  The hooks never fail a turn: a directory without git counts nothing.
+  The hooks never fail a turn: the start reads `HEAD` once (2 s at most),
+  the end counts off the turn's path and then emits the kernel event
+  `health.commits.counted { turnId, count }`; a directory without git counts
+  nothing.
 - **D724. A warning per detector and subject; the narrowest group warns.**
   A detector raises a warning (`health.warning.raised` on the stream and the
   same kernel event, for server plugins that tell the owner elsewhere) once
@@ -962,7 +967,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   (the lore of bureaucracy or of mind viruses), and records the answer
   (`health.warning.analysed`: `answered`, `failed` with the error or after
   `analysisTimeoutMinutes`, or `none` when no agent has the context). An ask
-  cut short by a deactivation records nothing; on activation every open
+  past its timeout is not cancelled (commands have no abort); its late answer
+  is dropped. An ask cut short by a deactivation records nothing; on activation every open
   warning without an analysis is asked again. Agents hold `health.read` over MCP
   (`AGENT_PERMISSIONS`), so the analyst can open the drill-down itself.
 - **D726. Who has the context.** In order: the address configured for the

@@ -24,6 +24,9 @@ export const HealthEvents = {
 } as const;
 export type HealthEventType = (typeof HealthEvents)[keyof typeof HealthEvents];
 
+/** Kernel event once an ended turn's commits are counted: `{ turnId, count }`, also 0 (D723). */
+export const COMMITS_COUNTED_EVENT = "health.commits.counted";
+
 /** Error codes of the `health.*` commands. */
 export type HealthErrorCode = "WARNING_NOT_FOUND";
 
