@@ -928,7 +928,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   proof edit, ceremony. A project counts what its missions count.
   Attribution is the missions as they were when the event happened: on start
   the streams are replayed merged in time order, so a restart counts as the
-  live node did. `health.status` returns the counts per group and per kind
+  live node did. A thread no slice links any more is no longer followed;
+  linked again, it is read on from where it was left, so nothing is counted
+  twice. `health.status` returns the counts per group and per kind
   over the window. Health's own asks to an analyst (message id
   `health.<warningId>.<time>` (the ask's time in ms), naming a warning health raised before) are
   no ceremony: an ask from this node's owner, whom no agent can send as
