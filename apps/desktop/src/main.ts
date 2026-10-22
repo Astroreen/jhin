@@ -362,7 +362,8 @@ async function main(): Promise<void> {
   // A node that exits by itself comes back with T3's backoff, no dialog (D1201).
   const restarter = new NodeRestarter({
     start: async () => {
-      if (quitting) return;
+      // Quitting, or another path (a failed update's restart) brought the node back meanwhile.
+      if (quitting || node !== undefined) return;
       const restarted = await launchNode();
       if (mainWindow !== undefined && !mainWindow.isDestroyed()) loadNode(mainWindow, restarted);
     },
@@ -380,7 +381,8 @@ async function main(): Promise<void> {
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) loadNode(mainWindow, restarted);
   }
   const openWindow = () => {
-    if (node === undefined) return;
+    // A node being restarted still has a window: it loads the new node once it is up (D1201).
+    if (shownNode === undefined) return;
     mainWindow = createMainWindow({
       title: APP_NAME,
       platform: process.platform,

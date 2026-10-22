@@ -327,10 +327,12 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
 - **D1201. A node that exits by itself restarts with T3's backoff**
   (`apps/desktop/src/backend/DesktopBackendManager.ts`), not D512's dialog:
   after 500 ms, doubled for each start that fails since, at most 10 s, with
-  no limit on attempts; a node that comes up starts the count over. One
-  restart is pending at a time, a quit cancels it (and stops a node a
-  restart is starting, D522), and the window loads the restarted node as it
-  loads the first. Meanwhile the page shows the web client's own
+  no limit on attempts; a node that comes up starts the count over, and one
+  that dies while a restart is starting it counts as a failed start. One
+  restart is pending at a time; it leaves alone a node another path started
+  meanwhile (a failed update's restart); a quit cancels it (and stops a node
+  a restart is starting, D522); and the window loads the restarted node as
+  it loads the first, or opens on it if none was open. Meanwhile the page shows the web client's own
   disconnected state. The first start keeps D512's dialog, since no window
   is open yet. `apps/desktop/src/node-restart.ts` holds the policy, unit
   tested with a scheduler the test runs by hand; the desktop e2e kills the

@@ -122,4 +122,18 @@ describe("NodeRestarter (D1201)", () => {
     await node.fail();
     expect(clock.delays).toEqual([500]);
   });
+
+  it("restarts again when the node dies while a restart is starting it", async () => {
+    const clock = manualSchedule();
+    const node = controlledStart();
+    const restarter = new NodeRestarter({ start: node.start, schedule: clock.schedule });
+    restarter.exited("killed");
+    clock.fire();
+    restarter.exited("died while starting");
+    expect(clock.delays).toEqual([500]);
+    await node.succeed();
+    expect(clock.delays).toEqual([500, 1_000]);
+    clock.fire();
+    expect(node.calls).toBe(2);
+  });
 });

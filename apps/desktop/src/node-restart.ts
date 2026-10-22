@@ -32,6 +32,8 @@ export class NodeRestarter {
   #attempt = 0;
   #pending: (() => void) | undefined;
   #running = false;
+  /** Why the node exited while a restart was starting it, to restart again once it settles. */
+  #exitedWhileRunning: string | undefined;
   #stopped = false;
 
   constructor(options: NodeRestarterOptions) {
@@ -57,7 +59,9 @@ export class NodeRestarter {
 
   /** The node exited without being asked to: schedule its restart. */
   exited(reason: string): void {
-    this.#scheduleRestart(reason);
+    // The node a restart is starting died before the start settled: restart again after it.
+    if (this.#running) this.#exitedWhileRunning = reason;
+    else this.#scheduleRestart(reason);
   }
 
   /** Cancels a pending restart; nothing is scheduled afterwards. */
@@ -79,10 +83,15 @@ export class NodeRestarter {
       this.#start().then(
         () => {
           this.#running = false;
-          this.#attempt = 0;
+          const exited = this.#exitedWhileRunning;
+          this.#exitedWhileRunning = undefined;
+          // A node that died while it came up counts as a failed start.
+          if (exited === undefined) this.#attempt = 0;
+          else this.#scheduleRestart(exited);
         },
         (error: unknown) => {
           this.#running = false;
+          this.#exitedWhileRunning = undefined;
           this.#scheduleRestart(error instanceof Error ? error.message : String(error));
         },
       );
