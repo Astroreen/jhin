@@ -311,6 +311,50 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     expect(await without.client.call("git.worktree.setup.get", { threadId: "local" })).toBeNull();
   });
 
+  it("types nothing when cancelled while the terminal opens", async () => {
+    const sc = await node({ watch: false }, { terminals: true });
+    const projectId = await projectWithScript(sc, { command: "echo never" });
+    const hold = sc.terminals!.holdOpens();
+    await sc.client.call("threads.create", {
+      projectId,
+      threadId: "opening",
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await hold.waiting;
+    expect(
+      await sc.client.call<{ cancelled: boolean }>("git.worktree.setup.cancel", {
+        threadId: "opening",
+      }),
+    ).toEqual({ cancelled: true });
+    const closing = sc.logged("closed a cancelled setup's terminal");
+    hold.release();
+    await closing;
+    expect(sc.terminals!.typedInto).toEqual([]);
+    expect(sc.terminals!.closed).toEqual(["setup-setup"]);
+  });
+
+  it("fails the first turn when a script that holds the agent cannot start", async () => {
+    const sc = await node({ watch: false }, { terminals: true });
+    const projectId = await projectWithScript(sc, { command: "true", async: false });
+    sc.terminals!.failOpens(new Error("no shell"));
+    const failed = setupUntil(
+      sc,
+      "unstarted",
+      (s) => stage(s, "setup-script")?.status === "failed",
+    );
+    await sc.client.call("threads.create", {
+      projectId,
+      threadId: "unstarted",
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    expect((await failed).stages.find((entry) => entry.id === "setup-script")?.detail).toBe(
+      "no shell",
+    );
+    await expect(
+      sc.client.call("threads.send", { threadId: "unstarted", text: "hello" }),
+    ).rejects.toThrow("Setup script exited with no exit code.");
+  });
+
   it("lets only a caller that may run a shell save a script (D1121)", async () => {
     const sc = await node({ watch: false });
     const projectId = await sc.project(repository());

@@ -791,7 +791,10 @@ with screenshots).
   default) runs beside the agent. The wait counts against the threads
   plugin's `turnHookTimeoutSeconds`. A node without terminals skips the
   stage ("no terminals"). An existing worktree (D252, D903) runs none, and
-  neither does a handoff (D256).
+  neither does a handoff (D256). Creating the worktree runs the project's
+  saved script with `git.write` (or `threads.write` through
+  `threads.create`), as T3 runs it on any launch: the gate is on saving a
+  script (D1121), which takes `terminals.write`.
 - **D1123. The setup's progress is T3's `WorktreeSetupSnapshot`**
   (`@jhin/source-control-api`): `phase` running, done, failed or cancelled;
   stages `fetch`, `checkout`, `setup-script` and `agent` in that order, each
@@ -1163,7 +1166,9 @@ with the node's token, and without one).
   cancel that removes the new worktree and hands the first message to the
   local checkout; the finished setup recorded on the thread (a restart
   forgets it); the card for a thread on a mesh member (its setup stream is
-  not relayed); a bound of its own on a setup that holds the agent (the
+  not relayed); T3's "Retry" of a failed workspace preparation (a failed
+  `async: false` script fails the first turn only; later turns run in the
+  worktree as it is); a bound of its own on a setup that holds the agent (the
   threads plugin's turn hook timeout fails the turn, and the script runs on
   until it exits or is cancelled).
 - Worktrees, from W3 (D240): the

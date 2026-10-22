@@ -1918,7 +1918,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       });
     } catch (error) {
       exitCode.reject(error);
-      forget();
+      // A script that holds the agent and could not start fails the first turn: its hook
+      // reads the run, so the run stays for it.
+      if (!run.holdsAgent) forget();
       throw error;
     }
     if (started === undefined) {
@@ -1927,6 +1929,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       await terminals
         .close({ threadId, terminalId: setupTerminalId(script) })
         .catch(() => undefined);
+      context.log.info("closed a cancelled setup's terminal", { threadId });
       return;
     }
     const terminalId = started.terminalId;

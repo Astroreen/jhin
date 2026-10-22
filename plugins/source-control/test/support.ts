@@ -229,6 +229,12 @@ function recordingLogger(listen: (message: string) => void): Logger {
 interface FakeTerminals {
   readonly opened: OpenTerminalInput[];
   readonly closed: string[];
+  /** What was typed into each terminal, by id. */
+  readonly typedInto: string[];
+  /** Holds every open until the returned function is called; resolves once one waits. */
+  holdOpens(): { waiting: Promise<void>; release(): void };
+  /** Makes every open fail with `error`. */
+  failOpens(error: Error): void;
   /** Resolves once something was typed into `terminalId`. */
   typed(terminalId: string): Promise<void>;
 }
@@ -243,11 +249,19 @@ function fakeTerminals(live: LiveStreams): { sessions: TerminalSessions; seen: F
   live.serve(TERMINAL_STREAM_PREFIX, streams);
   const opened: OpenTerminalInput[] = [];
   const closed: string[] = [];
+  const typedInto: string[] = [];
+  let gate: { reached: () => void; open: Promise<void> } | undefined;
+  let failure: Error | undefined;
   const running = new Map<string, ReturnType<typeof spawn>>();
   const typedWaiters = new Map<string, (() => void)[]>();
   const sessions: TerminalSessions = {
     open: async (input) => {
+      if (failure !== undefined) throw failure;
       opened.push(input);
+      if (gate !== undefined) {
+        gate.reached();
+        await gate.open;
+      }
       return {
         threadId: input.threadId,
         terminalId: input.terminalId,
@@ -273,6 +287,7 @@ function fakeTerminals(live: LiveStreams): { sessions: TerminalSessions; seen: F
         env: { ...process.env, ...input.env },
       });
       running.set(terminalId, child);
+      typedInto.push(terminalId);
       const out = (chunk: Buffer) =>
         streams.append(stream, TerminalEvents.output, { data: chunk.toString("utf8") });
       child.stdout.on("data", out);
@@ -298,6 +313,22 @@ function fakeTerminals(live: LiveStreams): { sessions: TerminalSessions; seen: F
     seen: {
       opened,
       closed,
+      typedInto,
+      holdOpens: () => {
+        const reached = Promise.withResolvers<void>();
+        const open = Promise.withResolvers<void>();
+        gate = { reached: reached.resolve, open: open.promise };
+        return {
+          waiting: reached.promise,
+          release: () => {
+            gate = undefined;
+            open.resolve();
+          },
+        };
+      },
+      failOpens: (error) => {
+        failure = error;
+      },
       typed: (terminalId) =>
         new Promise((resolve) => {
           if (running.has(terminalId)) return resolve();
