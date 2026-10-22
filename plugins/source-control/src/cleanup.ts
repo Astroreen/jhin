@@ -161,7 +161,7 @@ export async function localChangesReason(
         { ok: [0, 1, 128] },
       );
   if (unpushed.code !== 0) return "submodules could not be read";
-  if (unpushed.stdout.trim() !== "") return "has unpushed submodule commits";
+  if (unpushed.stdout.trim() !== "") return "has unpushed submodule commits or stashes";
   if (keepWhen !== "any-local-files") return null;
   const ignored = await git([
     "ls-files",
