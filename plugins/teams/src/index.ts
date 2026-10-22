@@ -473,14 +473,17 @@ export default definePlugin({
       permissions: WRITE_PERMISSIONS,
       handler: async ({ teamId }, invocation) => {
         const spec = specOrThrow(teamId);
-        // Its files may live in the home project (D686). A folder that is not
-        // there, or a caller that may not add it, fails each member's join
-        // below, with its reason; joins run one
-        // at a time, and so does this, so a project is never added twice.
-        await serial(() => ensureHome(spec.project, invocation)).catch((error: unknown) => {
-          const code = (error as { code?: unknown }).code;
-          if (code !== "PROJECT_PATH_INVALID" && code !== "PERMISSION_DENIED") throw error;
-        });
+        // Files in a folder relative to the home project (D686) are read here,
+        // so this node needs the project then, and only then. A folder that is
+        // not there, or a caller that may not add it, fails each member's join
+        // below, with its reason; joins run one at a time, and so does this.
+        const dir = configured()[teamId]?.dir;
+        if (dir !== undefined && !Path.isAbsolute(expandHome(dir))) {
+          await serial(() => ensureHome(spec.project, invocation)).catch((error: unknown) => {
+            const code = (error as { code?: unknown }).code;
+            if (code !== "PROJECT_PATH_INVALID" && code !== "PERMISSION_DENIED") throw error;
+          });
+        }
         const files = readTeamFiles(await filesDir(teamId, spec));
         const culture = spec.culture ?? files.culture;
         const roster = rosterFor(teamId, spec);
