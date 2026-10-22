@@ -276,22 +276,34 @@ describe("jhin.source-control: worktrees", () => {
     return (event.payload as ThreadBranch).branch;
   }
 
-  it("puts the static prefix before the fragment, or none (D1126)", async () => {
+  it("puts the static prefix's sanitized parts before the fragment (D1126)", async () => {
     const sc = await node({ watch: false, branchNamePrefix: "Team Two/" });
     const projectId = await sc.project(repository());
     // T3's static prefix, its parts sanitized (their case kept).
     expect(await namedBranch(sc, projectId, '{"branch": "Fix login"}')).toBe("Team-Two/fix-login");
-    sc.configure({ branchNamePrefix: "" });
+  });
+
+  it("puts no prefix before the fragment when it is empty (D1126)", async () => {
+    const sc = await node({ watch: false, branchNamePrefix: "" });
+    const projectId = await sc.project(repository());
     expect(await namedBranch(sc, projectId, '{"branch": "Fix logout"}')).toBe("fix-logout");
   });
 
-  it("takes the model's own prefix, or the complete name as it comes (D1126)", async () => {
+  it("takes the model's own prefix in semantic mode (D1126)", async () => {
     const sc = await node({ watch: false, branchNamingMode: "semantic" });
     const projectId = await sc.project(repository());
     expect(await namedBranch(sc, projectId, '{"branch": "feat/Add search"}')).toBe(
       "feat/add-search",
     );
-    sc.configure({ branchNamingMode: "custom", branchNameInstructions: "Use JIRA ids." });
+  });
+
+  it("takes the complete name as it comes in custom mode (D1126)", async () => {
+    const sc = await node({
+      watch: false,
+      branchNamingMode: "custom",
+      branchNameInstructions: "Use JIRA ids.",
+    });
+    const projectId = await sc.project(repository());
     expect(await namedBranch(sc, projectId, '{"branch": "JIRA-12_Exact"}')).toBe("JIRA-12_Exact");
   });
 
