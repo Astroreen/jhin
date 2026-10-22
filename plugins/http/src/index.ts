@@ -208,6 +208,21 @@ export default definePlugin({
         }
         return request.headers.host?.toLowerCase();
       },
+      requestOrigin(request) {
+        const peer = request.socket.remoteAddress;
+        const fromProxy =
+          peer !== undefined && (trusted(trust, peer) || /^(127\.|::1$|::ffff:127\.)/.test(peer));
+        const secure =
+          (request.socket as { encrypted?: boolean }).encrypted === true ||
+          (fromProxy && request.headers["x-forwarded-proto"] === "https");
+        const requested = api.requestedHost(request);
+        // The header is the client's: only a host and a port go into an answer.
+        const named =
+          requested !== undefined && /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d+)?$/i.test(requested)
+            ? requested
+            : new URL(url).host;
+        return `${secure ? "https" : "http"}://${named}`;
+      },
       clientAddress: (request) =>
         clientAddress(request.socket.remoteAddress, request.headers, {
           trust,

@@ -2,7 +2,11 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { createTestKernel, mockCapability, type TestKernel } from "@jhin/testing";
+import type { IncomingMessage } from "node:http";
+
+import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
+import { definePlugin } from "@jhin/sdk";
+import { createTestKernel, mockCapability, testManifest, type TestKernel } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import http from "../src/index.ts";
@@ -92,5 +96,50 @@ describe("a home that cannot take runtime.json (security.md D1184)", () => {
     kernels.push(kernel);
     const { url } = (await kernel.commands.execute("http.info", {})) as { url: string };
     expect((await fetch(`${url}/.well-known/jhin`)).status).toBe(200);
+  });
+});
+
+describe("the origin a client asked for (security.md D1191)", () => {
+  it("is the requested host; https only for TLS or a forwarded https from a trusted or loopback peer", async () => {
+    let server: HttpServer | undefined;
+    const kernel = await createTestKernel({
+      plugins: [
+        { manifest, definition: http },
+        {
+          manifest: testManifest("test.origin", {
+            side: "server",
+            requires: { [HTTP_SERVER_CAPABILITY]: "^1.3" },
+          }),
+          definition: definePlugin({
+            activate(context) {
+              server = context.services.get<HttpServer>(HTTP_SERVER_CAPABILITY);
+            },
+          }),
+        },
+      ],
+      config: { node: { "jhin.http": { port: 0 } } },
+    });
+    kernels.push(kernel);
+    const request = (headers: Record<string, string>, remoteAddress: string) =>
+      ({ headers, socket: { remoteAddress } }) as unknown as IncomingMessage;
+    const listening = new URL(server!.url).host;
+    expect(server!.requestOrigin!(request({ host: "node:7777" }, "127.0.0.1"))).toBe(
+      "http://node:7777",
+    );
+    expect(
+      server!.requestOrigin!(
+        request({ host: "studio.ts.net", "x-forwarded-proto": "https" }, "127.0.0.1"),
+      ),
+    ).toBe("https://studio.ts.net");
+    // From a peer that is neither loopback nor trusted, the header is ignored.
+    expect(
+      server!.requestOrigin!(
+        request({ host: "studio.ts.net", "x-forwarded-proto": "https" }, "10.0.0.9"),
+      ),
+    ).toBe("http://studio.ts.net");
+    // A Host that is not a plain host and port falls back to the listening address.
+    expect(server!.requestOrigin!(request({ host: 'evil"/x' }, "127.0.0.1"))).toBe(
+      `http://${listening}`,
+    );
   });
 });

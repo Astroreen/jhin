@@ -57,7 +57,7 @@
       "mcp.server": "1.0.0"
     },
     "requires": {
-      "http.server": "^1",
+      "http.server": "^1.3",
       "auth.verifier": "^1"
     },
     "optional": {

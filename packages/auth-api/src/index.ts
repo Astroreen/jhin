@@ -95,3 +95,9 @@ export function isPlainHttpUrl(value: string): boolean {
     url.hash === ""
   );
 }
+export {
+  DEVICE_TYPES,
+  deriveClientMetadata,
+  type ClientMetadata,
+  type DeviceType,
+} from "./metadata.ts";

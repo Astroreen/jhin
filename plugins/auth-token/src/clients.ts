@@ -14,7 +14,7 @@ export const ClientRecord = z.object({
   label: z.string(),
   permissions: z.array(z.string()),
   /** How the token was given: by pairing a device, or issued by a command. */
-  method: z.enum(["pairing", "issued"]),
+  method: z.enum(["pairing", "issued", "oauth"]),
   createdAt: z.number(),
   /** Absent: never expires. */
   expiresAt: z.number().optional(),

@@ -107,6 +107,13 @@ export interface SecretStore {
    * `SECRET_REF_EXPIRED`) otherwise.
    */
   consumeRef(input: { readonly ref: string; readonly projectId: string }): string;
+  /**
+   * Since 1.1 (security.md D1192, T3's `ServerSecretStore.getOrCreateRandom`):
+   * the node's own random secret `name` (a plugin id, `/`, a name), made of
+   * `bytes` random bytes on first use and kept from then on; base64url.
+   * Throws `SECRET_STORE_UNREADABLE` when the store cannot be opened.
+   */
+  getOrCreateRandom?(name: string, bytes: number): string;
 }
 
 // --- Commands ---------------------------------------------------------------

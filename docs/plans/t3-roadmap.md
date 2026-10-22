@@ -391,6 +391,9 @@ finishes out of the Deferred lists and leaves the rest there.
 - **W33:** `jhin pair` with a terminal QR code (D425), pairing links for a
   `jhin client` page, device metadata and live updates in the authorized
   clients list, Tailscale Serve, MCP OAuth. T3 Connect stays out of scope.
+  **Done** (D1181–D1196, `security.md#pairing-and-remote-access-w33`): #203
+  `jhin pair`, #204 `--tailscale`, #208 clients and `jhin client` links,
+  #214 `jhin.mcp-oauth`; what is left is in `security.md#deferred`.
 - **W34:** the floating mini player, touch input and file uploads, cookie
   import into a profile, the device hub; desktop auto-restart of a crashed
   node with backoff, more release builds, preview and devices inside the

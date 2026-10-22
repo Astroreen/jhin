@@ -2,8 +2,10 @@
 
 Status: **implemented** (workstream W13 of `t3-roadmap.md`, decisions
 D410–D426): PR 1 #48, PR 2 #52, PR 3 #57, PR 4a #65, PR 4b #72. The
-secret store and `secretRef`s (W28, D1021–D1034): #173, #178, #180. What is
-left is under Deferred, `jhin pair` (D425) first.
+secret store and `secretRef`s (W28, D1021–D1034): #173, #178, #180.
+Pairing and remote access (W33, D1181–D1196): `jhin pair` #203, Tailscale
+Serve #204, clients and `jhin client` links #208, MCP OAuth #214. What is
+left is under Deferred.
 
 ## Goal
 
@@ -583,51 +585,82 @@ The threat model comes first; the decisions after it implement it.
 
 ### MCP OAuth (W33)
 
-- **D1191. MCP clients sign in with OAuth, T3's `/oauth/mcp/*`.** An MCP
-  client that finds no token gets `401` with `WWW-Authenticate: Bearer
-  resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`
+- **D1191. MCP clients sign in with OAuth, T3's `/oauth/mcp/*`, in a plugin
+  of its own.** An MCP client that finds no token gets `401` with
+  `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`
   and follows the MCP authorization spec: protected resource metadata,
   authorization server metadata (`/.well-known/oauth-authorization-server`),
   dynamic client registration (`/oauth/mcp/register`), the authorization
   code flow with PKCE `S256` only (`/oauth/mcp/authorize`,
   `/oauth/mcp/token`), public clients only (`token_endpoint_auth_method`
   `none`), no refresh tokens. Every URL comes from the request's origin, so
-  loopback, a proxy and Tailscale Serve each answer with their own.
+  loopback, a proxy and Tailscale Serve each answer with their own:
+  `http.server` 1.3 `requestOrigin` (the requested host; `https` for TLS,
+  or for `X-Forwarded-Proto: https` from a trusted proxy or loopback), the
+  one derivation the 401 header and the metadata share. The
+  endpoints are the plugin `jhin.mcp-oauth` (requires `http.server`,
+  `auth.verifier`, `secrets.store@^1.1`): neither `jhin.auth-token` nor
+  `jhin.mcp-server` can depend on the secret store, whose optional edge to
+  `agent.registry` leads back to them (D14 drops an edge that closes a
+  cycle). Without the plugin (or the store) `/mcp` still answers `401` with
+  the header, and MCP clients keep using tokens.
 - **D1192. Registration is stateless and bounded.** As T3: a client id is
   the client's metadata (name, at most 100 characters; at most 5 redirect
   URIs of at most 512 characters) signed with an HMAC key, so an
-  unauthenticated caller cannot grow the node's state. Redirect URIs are
-  `https:` or `http:` on a loopback name (`localhost`, `127.0.0.1`,
-  `[::1]`), never with credentials or a fragment; a loopback redirect
-  matches on everything but its port (RFC 8252 §7.3), an `https:` one
-  exactly. The signing key is the secret `mcp-oauth-signing-key` in
-  `secrets.store@1` (W28), made on first use; without the store the OAuth
-  endpoints are not served and MCP clients keep using tokens.
-- **D1193. The owner approves in the browser, with the page's session.**
+  unauthenticated caller cannot grow the node's state; requested grant
+  types and auth methods are ignored, every client is public. Redirect
+  URIs are `https:` or `http:` on a loopback name (`localhost`,
+  `127.0.0.1`, `[::1]`), never with credentials or a fragment; a loopback
+  redirect matches on everything but its port (RFC 8252 §7.3), an `https:`
+  one exactly. The key is the store's random secret
+  `jhin.mcp-oauth/signing-key`: `secrets.store` 1.1 adds
+  `getOrCreateRandom(name, bytes)` (T3's `ServerSecretStore`), additive.
+- **D1193. The owner approves in the browser, with the node's session.**
   `GET /oauth/mcp/authorize` validates the request (client id signature,
-  redirect, `code_challenge`, `resource` naming this node's `/mcp`) and
-  shows T3's approval page; errors before the redirect is trusted are shown
-  on the page, never redirected. Approving needs the node's page session
-  (D421) of a caller holding `auth.write`, and a form posted from the node's
-  own origin with a per-request anti-forgery value bound to that session; a
-  caller grants only what it holds (D413). Without a session the page asks
-  the owner to open the node's page first.
+  redirect, `response_type=code`, the PKCE challenge, `resource` naming this
+  node's `/mcp`): an unknown client or redirect is shown on the page (T3's
+  "This sign-in cannot continue"), never redirected; anything else goes back
+  to the verified redirect with `error`, `state` and `iss`. A valid request
+  gets the approval page, rendered by the node itself so a node without
+  the web client (`jhin serve`) approves too, with T3's wording ("Agent
+  sign-in", "Connect <name>", the note naming where approval returns,
+  "Approve", "Deny"). Approving needs the node's page session (the cookie
+  of D421) of a caller holding `auth.write` and every permission asked
+  for, and a form posted with an anti-forgery value (an HMAC of the
+  session, by its token's hash, and the request, so another session of the
+  same owner cannot reuse it), refused from another origin and without an
+  `Origin` unless `Sec-Fetch-Site` says same-origin. The
+  page is `no-store`, `frame-ancestors 'none'`, `same-origin` referrers (with `no-referrer` Chromium posts the form with `Origin: null`). Without a
+  session it offers T3's "Pairing code" field, which opens the session
+  through `POST /auth/session` from the same page, then approves.
 - **D1194. Scopes are Jhin permissions.** A client asks with `scope`: Jhin
   grants separated by spaces (D410). An absent scope means the permissions
   agents get (`AGENT_PERMISSIONS`, `@jhin/mcp-api`), T3's default of
-  orchestration read and operate. `scopes_supported` lists
-  `AGENT_PERMISSIONS`. The approval page lists what is asked with D961's
-  titles; the owner may approve or deny, not edit the list.
-- **D1195. Codes and tokens.** An authorization code is one-use, valid 60
-  seconds (T3), kept as its SHA-256 in memory, and bound to the client id,
-  the redirect URI, the PKCE challenge and the resource; a wrong verifier
-  spends it. The token endpoint returns a device token (`jhd1`, D411) with
-  method `oauth`, the client's name as label and 30 days' life
-  (`expires_in`), so it is listed under Authorized clients, revoked there,
-  and checked by `/mcp` on every request (D414) with nothing new.
-- **D1196. Nothing about OAuth is a UI-only path.** The approval's grants go
-  through the same `issue` as `auth.tokens.issue`; listing and revoking OAuth
-  clients are `auth.clients.list` / `auth.clients.revoke`.
+  orchestration read and operate; `scopes_supported` lists them. `*` and
+  `auth.*` are never offered to an MCP client (`invalid_scope`): an agent
+  does not get the owner's whole authority or manage access. The
+  approval page lists what is asked with D961's titles; the owner approves
+  or denies, never edits the list.
+- **D1195. Codes and tokens.** An authorization code is 32 random bytes,
+  one use, valid 60 seconds (T3), kept as its SHA-256 in the plugin's
+  kernel-scoped state, and bound to the client id, the redirect URI, the
+  PKCE challenge, the resource and the approver; a presented code is spent
+  even when a later check fails (RFC 6749 §4.1.2). The token endpoint
+  issues through `auth.tokens.issue` as the approver with its grants at
+  that moment (a session revoked, expired or narrowed since issues nothing, so D413
+  holds): a
+  device token (`jhd1`, D411) with method `oauth` (additive), the client's
+  name as label, 30 days' life at most and never past the approver's own
+  expiry (`expires_in`) and the request's metadata
+  (D1187). It is listed under Authorized clients, revoked there, and
+  checked by `/mcp` on every request (D414). `method` and `metadata` are
+  the issuer's word, as a device's own metadata is: any caller holding
+  `auth.write` may pass them, and the list shows them, never decides by
+  them.
+- **D1196. Nothing about OAuth is a UI-only path.** Issuing goes through
+  the command `auth.tokens.issue`; listing and revoking OAuth clients are
+  `auth.clients.list` / `auth.clients.revoke`; the HTTP endpoints are the
+  protocol MCP clients speak, as `/auth/pair` is for devices.
 
 ## PR plan
 
@@ -702,7 +735,13 @@ A stack, one slice a PR:
   tell `auth.read` subscribers of every change and refuse others, build
   T3's client-page link, and Playwright sees the open settings page follow
   a pairing made elsewhere and a `jhin client` page pair by its link.
-- **PR 5d — MCP OAuth** (D1191–D1196).
+- **PR 5d — MCP OAuth** (D1191–D1196): `jhin.mcp-oauth`, `secrets.store`
+  1.1 `getOrCreateRandom`, `auth.tokens.issue` method `oauth`. **Done
+  when:** a test over real HTTP registers a client, approves it with a
+  page session opened by a pairing code, refuses a forged or foreign
+  approval, exchanges the code once, calls `/mcp` with the token, sees the
+  client listed and revoked, and never lets a session approve more than it
+  holds.
 
 ## Deferred
 
@@ -762,8 +801,17 @@ A stack, one slice a PR:
   unreachable node mid-run), the mapping's notes are not repeated.
 - DPoP-bound tokens and T3's WebSocket tickets: a device token is a bearer
   token.
-- MCP OAuth (T3's `/oauth/mcp/*`): MCP clients use the owner token or an
-  issued device token.
+- MCP OAuth (D1191–D1196) leaves out T3's access levels (its runtime
+  modes): a client asks for Jhin permissions instead. No refresh tokens: a
+  client signs in again after 30 days. The approval page is the node's own
+  HTML, not a web client route, and assumes the node at the root of its
+  origin (a proxy path prefix breaks its form and its `/auth/session`
+  call). A pairing code opens a page session to approve with; T3's
+  separate "approval code" check is not ported.
+  A registered client id cannot be revoked on its own (registration is
+  stateless, D1192): it grants nothing without an approval, its tokens are
+  revoked under Authorized clients, and only rotating
+  `jhin.mcp-oauth/signing-key` voids every id at once (no command does it).
 - A `jhin client` link (D1190) pairs as the page opens, as T3's hosted
   page does; a confirmation naming the node before it is saved is not
   added.

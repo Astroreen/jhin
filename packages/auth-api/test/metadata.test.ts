@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveClientMetadata } from "../src/metadata.ts";
+import { deriveClientMetadata } from "../src/index.ts";
 
 describe("a device's metadata (security.md D1187)", () => {
   const of = (userAgent: string | undefined, ipAddress?: string) =>

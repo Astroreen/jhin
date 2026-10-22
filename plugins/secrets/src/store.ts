@@ -37,9 +37,16 @@ interface RefEntry {
   readonly savedAt: number;
 }
 
+interface NamedEntry {
+  readonly value: string;
+  readonly savedAt: number;
+}
+
 interface Entries {
   config: Record<string, ConfigEntry>;
   refs: Record<string, RefEntry>;
+  /** The node's own random secrets by name (D1192). */
+  named: Record<string, NamedEntry>;
 }
 
 interface Sealed {
@@ -51,6 +58,7 @@ interface Sealed {
 }
 
 export interface OpenedStore extends SecretStore {
+  getOrCreateRandom(name: string, bytes: number): string;
   status(): SecretsStatus;
   /** Removes the refs older than their time to live (D1030); how many went. */
   sweep(): number;
@@ -77,7 +85,7 @@ function unseal(sealed: Sealed, key: Buffer): Entries {
     decipher.final(),
   ]).toString("utf8");
   const parsed = JSON.parse(text) as Partial<Entries>;
-  return { config: parsed.config ?? {}, refs: parsed.refs ?? {} };
+  return { config: parsed.config ?? {}, refs: parsed.refs ?? {}, named: parsed.named ?? {} };
 }
 
 /** Written to a temporary file, flushed to disk, then renamed over `file`. */
@@ -142,7 +150,7 @@ export async function openStore(options: {
 
   let key: Buffer | undefined;
   let where: Sealed["key"] = "file";
-  let entries: Entries = { config: {}, refs: {} };
+  let entries: Entries = { config: {}, refs: {}, named: {} };
   let readable = true;
 
   if (Fs.existsSync(file)) {
@@ -256,6 +264,17 @@ export async function openStore(options: {
       removeRef(id);
       if (now() - entry.savedAt > SECRET_REF_TTL_MS) throw new SecretsError("SECRET_REF_EXPIRED");
       return entry.value;
+    },
+    getOrCreateRandom(name: string, bytes: number) {
+      if (!readable) throw new SecretsError("SECRET_STORE_UNREADABLE");
+      if (!/^[a-z0-9.-]+\/[a-z0-9.-]+$/.test(name) || !Number.isInteger(bytes) || bytes < 16) {
+        throw new Error(`getOrCreateRandom needs <plugin>/<name> and at least 16 bytes`);
+      }
+      const kept = Object.hasOwn(entries.named, name) ? entries.named[name] : undefined;
+      if (kept !== undefined) return kept.value;
+      const value = Crypto.randomBytes(bytes).toString("base64url");
+      persist({ ...entries, named: { ...entries.named, [name]: { value, savedAt: now() } } });
+      return value;
     },
     status() {
       return {

@@ -28,7 +28,7 @@ import {
 
 import { ClientRecord, createClientStore } from "./clients.ts";
 import { serveAuthHttp } from "./http.ts";
-import type { ClientMetadata } from "./metadata.ts";
+import { ClientMetadata } from "./metadata.ts";
 import { createPairingStore, type PairingStore } from "./pairing.ts";
 
 /** The single owner of a node (D22): every permission. */
@@ -236,10 +236,14 @@ export default definePlugin({
         permissions: Grants,
         /** Days until it stops working; `null` never. Defaults to 30. */
         ttlDays: z.number().positive().max(MAX_TTL_DAYS).nullable().optional(),
+        /** `oauth`: issued to an MCP client its owner approved (security.md D1195). */
+        method: z.enum(["issued", "oauth"]).optional(),
+        /** What the client said about itself (D1187). */
+        metadata: ClientMetadata.optional(),
       }),
       output: z.object({ id: z.string(), token: z.string(), expiresAt: z.number().optional() }),
       permissions: ["auth.write"],
-      handler: ({ label, permissions, ttlDays }, invocation) => {
+      handler: ({ label, permissions, ttlDays, method, metadata }, invocation) => {
         const missing = notHeld(invocation, permissions);
         if (missing.length > 0) {
           throw failure(
@@ -253,11 +257,17 @@ export default definePlugin({
         const { record, token: issued } = clients.issue({
           label,
           permissions,
-          method: "issued",
+          method: method ?? "issued",
           now,
           ...(days === null ? {} : { expiresAt: Math.ceil(now + days * DAY_MS) }),
+          ...(metadata === undefined ? {} : { metadata }),
         });
-        context.log.warn("device token issued", { client: record.id, label, permissions });
+        context.log.warn("device token issued", {
+          client: record.id,
+          label,
+          permissions,
+          method: record.method,
+        });
         changed();
         return {
           id: record.id,

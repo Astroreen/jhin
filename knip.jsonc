@@ -47,6 +47,7 @@
         "@jhin/plugin-agents",
         "@jhin/plugin-teams",
         "@jhin/plugin-mcp-server",
+        "@jhin/plugin-mcp-oauth",
         "@jhin/plugin-web-ui",
         "@jhin/plugin-mesh",
       ],
