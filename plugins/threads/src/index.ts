@@ -2010,54 +2010,61 @@ export default definePlugin({
 
     context.commands.register({
       name: "projects.update",
-      description:
-        "Renames a project, or sets its scripts (T3's project scripts: the first with runOnWorktreeCreate is the setup script of its new worktrees)",
-      input: z
-        .object({
-          projectId: z.string(),
-          name: z.string().trim().min(1).optional(),
-          scripts: z.array(ProjectScript).max(50).optional().meta({
-            description: "Every script of the project, replacing those it had",
-          }),
-        })
-        .refine((input) => input.name !== undefined || input.scripts !== undefined, {
-          message: "Name a new name or the scripts",
-        }),
+      description: "Renames a project",
+      input: z.object({ projectId: z.string(), name: z.string().trim().min(1) }),
       output: Project,
       permissions: ["projects.write"],
       // One change of a project's record at a time, its removal included.
-      handler: ({ projectId, name, scripts }) =>
-        queued(`project/${projectId}`, async () => {
-          if (removedProjects.has(projectId)) {
-            throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
-          }
-          const project = await getProject(projectId);
-          if (project.scratch) {
-            throw new ThreadsError("PROJECT_IS_SCRATCH", "The scratch project cannot be renamed", {
-              projectId,
-            });
-          }
-          if (scripts !== undefined) {
-            const ids = new Set(scripts.map((script) => script.id));
-            if (ids.size !== scripts.length) {
-              throw new ThreadsError("PROJECT_SCRIPTS_INVALID", "Two scripts share an id", {
-                projectId,
-              });
-            }
-          }
-          const next: Project = {
-            ...project,
-            ...(name === undefined ? {} : { name }),
-            ...(scripts === undefined ? {} : { scripts }),
-          };
-          await writeIndexed(
-            `project/${projectId}`,
-            next as unknown as Json,
-            ThreadEvents.projectUpdated,
-          );
-          return next;
-        }),
+      handler: ({ projectId, name }) =>
+        changeProject(projectId, "renamed", (project) => ({ ...project, name })),
     });
+
+    context.commands.register({
+      name: "projects.scripts.set",
+      title: "Set project scripts",
+      description:
+        "Sets a project's scripts (T3's project scripts), replacing those it had: the first with runOnWorktreeCreate runs in each new worktree of a thread. A script is a shell command the node runs, so setting one takes terminals.write too",
+      input: z.object({
+        projectId: z.string(),
+        scripts: z.array(ProjectScript).max(50),
+      }),
+      output: Project,
+      // A saved script is typed into a shell later: what running one takes (D1121).
+      permissions: ["projects.write", "terminals.write"],
+      handler: ({ projectId, scripts }) => {
+        if (new Set(scripts.map((script) => script.id)).size !== scripts.length) {
+          throw new ThreadsError("PROJECT_SCRIPTS_INVALID", "Two scripts share an id", {
+            projectId,
+          });
+        }
+        return changeProject(projectId, "given scripts", (project) => ({ ...project, scripts }));
+      },
+    });
+
+    /** Changes a project's record, one change at a time, its removal included. */
+    const changeProject = (
+      projectId: string,
+      what: string,
+      change: (project: Project) => Project,
+    ) =>
+      queued(`project/${projectId}`, async () => {
+        if (removedProjects.has(projectId)) {
+          throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
+        }
+        const project = await getProject(projectId);
+        if (project.scratch) {
+          throw new ThreadsError("PROJECT_IS_SCRATCH", `The scratch project cannot be ${what}`, {
+            projectId,
+          });
+        }
+        const next = change(project);
+        await writeIndexed(
+          `project/${projectId}`,
+          next as unknown as Json,
+          ThreadEvents.projectUpdated,
+        );
+        return next;
+      });
 
     context.commands.register({
       name: "projects.delete",

@@ -763,9 +763,11 @@ with screenshots).
 - **D1121. A project has T3's scripts**, as T3's `ProjectScript` (`{ id,
   name, command, icon, runOnWorktreeCreate, runOnSettle?, async? }`, icon one
   of play, test, lint, configure, build, debug): `Project.scripts` of the
-  threads plugin, absent until set, set whole by `projects.update {
-  projectId, name?, scripts? }` (additive: `name` became optional, one of
-  the two is required). The setup script is the first with
+  threads plugin, absent until set, set whole by the new `projects.scripts.set
+  { projectId, scripts }`. A script is a shell command the node types into a
+  terminal later, so setting one takes `terminals.write` besides
+  `projects.write` (a token that may not run a shell may not save one);
+  `projects.update` still only renames. The setup script is the first with
   `runOnWorktreeCreate` (T3's `setupProjectScript`). T3's scripts menu in
   the chat header, its "Add action" dialog and the checked-in `t3.json` are
   Deferred, so a script is set through the command (CLI, MCP) for now.
@@ -806,7 +808,9 @@ with screenshots).
   ends "cancelled", running stages skipped; the agent then starts without
   waiting. T3 also removes the new worktree and hands the first message to
   the local checkout ("Work locally"); Jhin's thread keeps its worktree
-  (Deferred). Removing the worktree (D255) cancels its setup.
+  (Deferred). Removing the worktree (D255) cancels its setup; a cancel that
+  comes before the script was typed types nothing; deleting the thread
+  forgets its setup.
 - **D1125. T3's worktree setup card** (`WorktreeSetupCard`, section "Worktree
   setup") shows under the first message of the thread, through the new slot
   `chat.turn.header` (under a turn's message, before its work; props

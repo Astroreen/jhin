@@ -65,6 +65,8 @@ export interface SetupTracker {
   appendTail(threadId: string, id: WorktreeSetupStageId, line: string): void;
   finish(threadId: string, phase: "done" | "failed" | "cancelled", error?: string | null): void;
   get(threadId: string): WorktreeSetupSnapshot | null;
+  /** Drops a thread's setup (its thread was deleted). */
+  forget(threadId: string): void;
 }
 
 /**
@@ -177,6 +179,9 @@ export function createSetupTracker(options: {
       }));
     },
     get: (threadId) => setups.get(threadId) ?? null,
+    forget: (threadId) => {
+      setups.delete(threadId);
+    },
   };
   return tracker;
 }
@@ -269,6 +274,10 @@ export type FollowTerminal = (
   listener: (event: { type: string; payload: unknown }) => void,
 ) => Disposable | undefined;
 
+/** The terminal a project's setup script runs in (T3's `setup-<id>`). */
+export const setupTerminalId = (script: { readonly id: string }) =>
+  `setup-${script.id}`.replace(/[^A-Za-z0-9._:-]/g, "-").slice(0, 128);
+
 export interface StartedScript {
   readonly terminalId: string;
   /** The exit code; null when the terminal exited or closed before the sentinel came. */
@@ -289,8 +298,10 @@ export async function runSetupScript(input: {
   worktreePath: string;
   shell: CompletionShell;
   onLine: (line: string) => void;
-}): Promise<StartedScript> {
-  const terminalId = `setup-${input.script.id}`.replace(/[^A-Za-z0-9._:-]/g, "-").slice(0, 128);
+  /** Still wanted once the terminal is open: false types nothing and answers undefined. */
+  wanted?: () => boolean;
+}): Promise<StartedScript | undefined> {
+  const terminalId = setupTerminalId(input.script);
   const token = Crypto.randomUUID().replaceAll("-", "");
   const sentinel = completionSentinel(token);
   const pattern = completionSentinelPattern(token);
@@ -302,8 +313,16 @@ export async function runSetupScript(input: {
     NO_COLOR: "1",
     FORCE_COLOR: "0",
   });
-  /** The shell echoes typed input; lines ending with these are the wrapper, not output. */
-  const echoed = commandLine.split("\r").filter((line) => line.length > 0);
+  /**
+   * The shell echoes typed input. Its first and last lines are the wrapper's
+   * (behind the prompt); the lines between are the script's own, echoed as
+   * typed or behind a continuation prompt (`> `), and match only whole.
+   */
+  const typed = commandLine.split("\r").filter((line) => line.length > 0);
+  const isEcho = (line: string) =>
+    line.endsWith(typed[0]!) ||
+    line.endsWith(typed.at(-1)!) ||
+    typed.slice(1, -1).some((entry) => line === entry || line === `> ${entry}`);
 
   await input.terminals.open({ threadId: input.threadId, terminalId, cwd: input.worktreePath });
 
@@ -327,11 +346,7 @@ export async function runSetupScript(input: {
       return;
     }
     const cleaned = stripTerminalControl(raw).trimEnd();
-    if (
-      cleaned.length === 0 ||
-      cleaned.includes(sentinel) ||
-      echoed.some((line) => cleaned.endsWith(line))
-    ) {
+    if (cleaned.length === 0 || cleaned.includes(sentinel) || isEcho(cleaned)) {
       return;
     }
     input.onLine(cleaned.slice(0, OUTPUT_LINE_MAX_LENGTH));
@@ -354,6 +369,10 @@ export async function runSetupScript(input: {
       done(null);
     }
   });
+  if (input.wanted?.() === false) {
+    subscription?.dispose();
+    return undefined;
+  }
   if (subscription === undefined) done(null);
   try {
     input.terminals.write({ threadId: input.threadId, terminalId, data: `${commandLine}\r` });

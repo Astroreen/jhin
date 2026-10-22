@@ -120,6 +120,7 @@ import {
   completionShellOf,
   createSetupTracker,
   runSetupScript,
+  setupTerminalId,
   type FollowTerminal,
 } from "./setup.ts";
 import { agentWriter } from "./writer.ts";
@@ -1010,6 +1011,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         return;
       }
       case ThreadEvents.threadDeleted:
+        forgetSetup(id);
         threadDirs.delete(id);
         await syncWorktrees();
         await removeThread(id);
@@ -1840,6 +1842,24 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     worktreePath: string,
     registered: () => void,
   ) {
+    // Known before anything is awaited, so a cancel from now on finds it.
+    const cancelled = Promise.withResolvers<"cancelled">();
+    const exitCode = Promise.withResolvers<number | null>();
+    const run: SetupRun = {
+      worktreePath,
+      terminalId: undefined,
+      holdsAgent: false,
+      exited: Promise.race([cancelled.promise, exitCode.promise]),
+      cancel: () => cancelled.resolve("cancelled"),
+    };
+    // Read by the agent's hook, if at all: a failed start is reported below.
+    run.exited.catch(() => undefined);
+    setupRuns.set(threadId, run);
+    const wanted = () => setups.get(threadId)?.phase === "running";
+    const forget = () => {
+      if (setupRuns.get(threadId) === run) setupRuns.delete(threadId);
+    };
+
     const projects = (await context.commands.execute("projects.list", {})) as {
       id: string;
       path: string;
@@ -1852,7 +1872,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     });
     const script = setupProjectScript(scripts);
     const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
-    if (project === undefined || script === undefined || terminals === undefined) {
+    if (!wanted() || project === undefined || script === undefined || terminals === undefined) {
+      forget();
+      if (!wanted()) return;
       setups.stageStatus(
         threadId,
         "setup-script",
@@ -1862,21 +1884,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       settleSetup(threadId);
       return;
     }
-    const cancelled = Promise.withResolvers<"cancelled">();
-    const exitCode = Promise.withResolvers<number | null>();
-    const run: SetupRun = {
-      worktreePath,
-      terminalId: undefined,
-      holdsAgent: script.async === false,
-      exited: Promise.race([cancelled.promise, exitCode.promise]),
-      cancel: () => cancelled.resolve("cancelled"),
-    };
-    // Read by the agent's hook, if at all: a failed start is reported below.
-    run.exited.catch(() => undefined);
-    setupRuns.set(threadId, run);
+    run.holdsAgent = script.async === false;
     registered();
     setups.stageStatus(threadId, "setup-script", "running");
-    let started: { terminalId: string; completion: Promise<number | null> };
+    let started: { terminalId: string; completion: Promise<number | null> } | undefined;
     try {
       started = await runSetupScript({
         terminals,
@@ -1887,28 +1898,34 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         worktreePath,
         shell: completionShellOf(process.platform, process.env.SHELL),
         onLine: (line) => setups.appendTail(threadId, "setup-script", line),
+        // Checked once the terminal is open, right before the script is typed.
+        wanted,
       });
     } catch (error) {
       exitCode.reject(error);
-      if (setupRuns.get(threadId) === run) setupRuns.delete(threadId);
+      forget();
       throw error;
     }
-    run.terminalId = started.terminalId;
-    // Cancelled while its terminal opened: nothing closed that terminal yet.
-    if (setups.get(threadId)?.phase !== "running") {
-      await terminals.close({ threadId, terminalId: started.terminalId }).catch(() => undefined);
+    if (started === undefined) {
+      // Cancelled while its terminal opened: nothing was typed, and nothing closed it yet.
+      forget();
+      await terminals
+        .close({ threadId, terminalId: setupTerminalId(script) })
+        .catch(() => undefined);
       return;
     }
+    const terminalId = started.terminalId;
+    run.terminalId = terminalId;
     setups.update(threadId, (snapshot) => ({
       ...snapshot,
-      setupScript: { name: script.name, command: script.command, terminalId: started.terminalId },
+      setupScript: { name: script.name, command: script.command, terminalId },
     }));
     started.completion.then(exitCode.resolve, exitCode.reject);
-    // The run stays for the first turn's hook, which reads how it ended.
     const outcome = await run.exited;
     if (outcome === "cancelled") return;
+    // The first turn's hook reads how it ended; once that hook ran, nobody needs the run.
     const agent = setups.get(threadId)?.stages.find((entry) => entry.id === "agent");
-    if (agent?.status === "done" && setupRuns.get(threadId) === run) setupRuns.delete(threadId);
+    if (agent?.status !== "pending") forget();
     setups.stage(threadId, "setup-script", {
       status: outcome === 0 ? "done" : "failed",
       endedAt: new Date().toISOString(),
@@ -1916,9 +1933,17 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     });
     // A script that worked leaves nothing to look at; a failed one keeps its terminal.
     if (outcome === 0) {
-      await terminals.close({ threadId, terminalId: started.terminalId }).catch(() => undefined);
+      await terminals.close({ threadId, terminalId }).catch(() => undefined);
     }
     settleSetup(threadId);
+  }
+
+  /** A deleted thread's setup goes with it: its run, snapshot and stream. */
+  function forgetSetup(threadId: string) {
+    setupRuns.get(threadId)?.cancel();
+    setupRuns.delete(threadId);
+    setups.forget(threadId);
+    setupStreams.delete(worktreeSetupStream(threadId));
   }
 
   async function cancelSetup(threadId: string): Promise<boolean> {
@@ -1956,6 +1981,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
             threadId: input.threadId,
           });
         }
+      }
+      // A script that is over is read no more; one still running stays cancellable.
+      const script = setups
+        .get(input.threadId)
+        ?.stages.find((stage) => stage.id === "setup-script");
+      if (run !== undefined && script?.status !== "running" && script?.status !== "pending") {
+        if (setupRuns.get(input.threadId) === run) setupRuns.delete(input.threadId);
       }
       setups.stageStatus(input.threadId, "agent", "done");
       settleSetup(input.threadId);

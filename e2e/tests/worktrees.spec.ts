@@ -245,7 +245,7 @@ test("D1121–D1125: a new worktree runs the project's setup script and shows it
   git(dir, "commit", "--quiet", "-m", "first");
   const project = await node.client().call<{ id: string }>("projects.create", { path: dir });
   // The script waits for an answer typed into its terminal, then fails.
-  await node.client().call("projects.update", {
+  await node.client().call("projects.scripts.set", {
     projectId: project.id,
     scripts: [
       {
