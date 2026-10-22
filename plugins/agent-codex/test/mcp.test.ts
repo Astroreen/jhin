@@ -132,6 +132,7 @@ describe("jhin.agent-codex: the node's MCP server", () => {
       "missions.read",
       "agents.read",
       "teams.read",
+      "health.read",
     ]);
     // Full access now: a new app-server, whose credential also writes.
     const revoked = mcp.nextRevoke();
