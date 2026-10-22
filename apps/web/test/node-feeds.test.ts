@@ -106,6 +106,9 @@ describe("node feeds (D630, D731)", () => {
     one.stream.onError!(Object.assign(new Error("stream gone"), { code: "PERMISSION_DENIED" }));
     // A change this client made applies to the feed that is not live any more.
     feeds.apply("a", { type: "add", payload: "z" });
+    // Given up: its subscription is closed, and what it still delivers is not heard.
+    expect(one.stream.open).toBe(false);
+    one.stream.listener!({ type: "add", payload: "late" });
     expect(feeds.snapshot().get("a")).toEqual({
       status: "error",
       read: true,

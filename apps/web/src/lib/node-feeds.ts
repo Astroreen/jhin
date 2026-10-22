@@ -196,9 +196,12 @@ export function createNodeFeeds<S>(
       // has the feed (restarted on a build without it), is not retried.
       const retrying = code === undefined || !NOT_THERE.has(code);
       if (!retrying) {
-        // A retry already waiting for the minute is called off as well.
+        // The feed is given up: a retry already waiting for the minute is
+        // called off, and what its subscription still delivers is not heard.
         waitingRetry?.dispose();
         waitingRetry = undefined;
+        generation += 1;
+        for (const subscription of subscriptions.splice(0)) subscription.dispose();
       }
       const wait = lastRetry + RETRY_GAP_MS - clock();
       if (retrying && wait <= 0) {
