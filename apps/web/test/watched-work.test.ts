@@ -33,9 +33,11 @@ function fakeStore() {
 
 function fakeConnections(ids: string[]) {
   let current = ids;
+  let closed = new Set<string>();
   const listeners = new Set<() => void>();
   const connections: Pick<Connections, "list" | "subscribe"> = {
-    list: () => current.map((id) => ({ id }) as NodeConnection),
+    list: () =>
+      current.map((id) => ({ id, state: closed.has(id) ? "closed" : "open" }) as NodeConnection),
     subscribe(listener) {
       listeners.add(listener);
       return { dispose: () => listeners.delete(listener) };
@@ -45,6 +47,10 @@ function fakeConnections(ids: string[]) {
     connections,
     set(next: string[]) {
       current = next;
+      for (const listener of Array.from(listeners)) listener();
+    },
+    close(id: string) {
+      closed = new Set([...closed, id]);
       for (const listener of Array.from(listeners)) listener();
     },
   };
@@ -100,6 +106,12 @@ describe("source control's thread work (D1131)", () => {
     nodes.set(["a", "b"]);
     expect(followers("b")).toBe(1);
     expect(told).toBe(3);
+
+    // A connection that closes, still listed, is a node gone too.
+    nodes.close("a");
+    expect(told).toBe(4);
+    expect(followers("a")).toBe(0);
+    expect(work.tasks(a, "t")).toEqual([]);
 
     work.dispose();
     expect(followers("a")).toBe(0);
