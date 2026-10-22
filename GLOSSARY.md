@@ -263,9 +263,10 @@ Words about Jhin:
 - **Settled** — a thread that needs nothing more, settled by hand or by its
   node: after the days without activity the node is configured with (three
   by default) and with no turn running or waiting for the user, or when its
-  pull request merged or closed. The sidebar lists it on its Settled shelf instead of
-  among the active threads until it is un-settled or runs again (T3 Code's
-  term).
+  pull requests merged or closed: those linked to it, else its branch's
+  (`docs/plans/source-control.md` D1133). The sidebar lists it on its
+  Settled shelf instead of among the active threads until it is un-settled
+  or runs again (T3 Code's term).
 - **Working section** — with T3's "Working section (beta)" device setting
   on, the threads whose turn runs leave the active threads for a section
   below them, and come back on top once the turn ends or asks for
