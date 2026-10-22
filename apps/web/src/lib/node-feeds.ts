@@ -134,6 +134,8 @@ export function createNodeFeeds<S>(
             },
       );
     };
+    /** The current subscription's number: a disposed one's late events are ignored. */
+    let generation = 0;
     const follow = (again = false) =>
       void source
         .load(client)
@@ -149,9 +151,12 @@ export function createNodeFeeds<S>(
               log.warn("a feed's listener failed", { stream: source.stream, error: String(error) });
             }
           }
+          const mine = ++generation;
           subscriptions.push(
             client.subscribe(source.stream, { after: head, onError: failed }, (event) => {
-              if (stopped) return;
+              // A transport may still deliver what it buffered for a subscription
+              // already given up: the re-read holds it, so it is not told twice.
+              if (stopped || mine !== generation) return;
               const before = states.get(id)?.value ?? source.empty;
               const after = source.apply(before, event);
               if (after !== before) set(id, (feed) => ({ ...feed, value: after }));

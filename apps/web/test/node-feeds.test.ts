@@ -239,4 +239,47 @@ describe("node feeds (D630, D731)", () => {
     expect(feeds.snapshot().get("a")?.value).toEqual(["a", "b", "c", "d"]);
     feeds.dispose();
   });
+
+  it("ignores what an abandoned subscription still delivers after a re-read", async () => {
+    const reads = [
+      { head: 1, items: ["a"] },
+      { head: 2, items: ["a", "b"] },
+    ];
+    const listeners: ((event: Event) => void)[] = [];
+    let onError: ((error: unknown) => void) | undefined;
+    const client = {
+      call: async () => reads.shift(),
+      subscribe: (
+        _stream: string,
+        options: { onError: (error: unknown) => void },
+        listener: (event: Event) => void,
+      ) => {
+        listeners.push(listener);
+        onError = options.onError;
+        return toDisposable(() => {});
+      },
+    };
+    const { connections } = fakeConnections(client as never);
+    const feeds = createNodeFeeds(connections, quiet, source);
+    const ready = () =>
+      new Promise<void>((resolve) => {
+        const subscription = feeds.subscribe(() => {
+          if (feeds.snapshot().get("a")?.status !== "ready") return;
+          subscription.dispose();
+          resolve();
+        });
+      });
+    let next = ready();
+    await next;
+    next = ready();
+    onError!(new Error("dropped"));
+    await next;
+    // The old subscription delivers "b" late, which the re-read already holds.
+    listeners[0]!({ type: "add", payload: "b" });
+    expect(feeds.snapshot().get("a")?.value).toEqual(["a", "b"]);
+    // The new one is heard.
+    listeners[1]!({ type: "add", payload: "c" });
+    expect(feeds.snapshot().get("a")?.value).toEqual(["a", "b", "c"]);
+    feeds.dispose();
+  });
 });

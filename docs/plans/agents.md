@@ -1066,7 +1066,11 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   analyst's answer, Dismiss, and the events behind it
   (`health.warnings.get`), each opening to its stream, sequence and record.
   `civilization.health.open {node, warningId?}` opens it. The views are a
-  chunk of their own, loaded once Civilization mode shows them (D440).
+  chunk of their own, loaded once Civilization mode shows them (D440). The
+  inbox shares the feed, so it changed with it: a dropped stream is read again
+  at most once a minute and tells what came meanwhile, and a feed that stays
+  failed keeps its items, marked not live, where the inbox used to empty
+  itself.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 
