@@ -220,7 +220,14 @@ describe("health views (D731)", () => {
     const { view, toasts } = viewOf(
       { a: { status: "error", value: healthOf(warning), error: "stream gone" } },
       async (method) =>
-        method === "health.warnings.dismiss" ? { ...warning } : { warning, events: [] },
+        method === "health.warnings.dismiss"
+          ? {
+              ...warning,
+              status: "dismissed",
+              dismissedAt: "2026-10-22T11:00:00Z",
+              dismissedAfter: { missions: 5 },
+            }
+          : { warning, events: [] },
     );
     await render(<HealthPage node="a" view={view} warningId="w1" />);
     await userEvent.click(page.getByRole("button", { name: "Dismiss" }));
@@ -230,6 +237,12 @@ describe("health views (D731)", () => {
     expect(toasts).toEqual([
       expect.objectContaining({ type: "success", title: "Warning dismissed" }),
     ]);
+    // The feed holds the node's record of the dismissal, not one of this client's clock.
+    expect(view.store.snapshot().get("a")?.value.warnings["w1"]).toMatchObject({
+      status: "dismissed",
+      dismissedAt: "2026-10-22T11:00:00Z",
+      dismissedAfter: { missions: 5 },
+    });
   });
 
   it("makes one more read for the changes that came while a read was under way", async () => {

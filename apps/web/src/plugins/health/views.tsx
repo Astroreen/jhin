@@ -369,14 +369,23 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     }
     setDismissing(true);
     try {
-      await connection.client.call("health.warnings.dismiss", { warningId });
+      const dismissed = await connection.client.call<Warning>("health.warnings.dismiss", {
+        warningId,
+      });
       // The answer says so at once, whether or not the stream's event follows.
       view.toasts?.show({ type: "success", title: "Warning dismissed" });
       // When the stream is down no event will mark it: the feed learns it here,
       // page and sidebar alike. A live feed is left to its stream.
       view.store.apply(node, {
         type: HealthEvents.warningDismissed,
-        payload: { warningId, dismissedAt: new Date().toISOString() },
+        // The node's record, as its event would carry it (D724).
+        payload: {
+          warningId,
+          dismissedAt: dismissed.dismissedAt ?? new Date().toISOString(),
+          ...(dismissed.dismissedAfter === undefined
+            ? {}
+            : { dismissedAfter: dismissed.dismissedAfter }),
+        },
       });
     } catch (error) {
       view.toasts?.show({
@@ -450,13 +459,18 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       ) : null}
       <section aria-label="Events behind it" className="flex max-w-3xl flex-col gap-1">
         <h2 className="text-sm font-medium">Events behind it</h2>
+        {detail?.error === undefined ? null : (
+          <p className="text-sm text-destructive">
+            {detail.value === undefined
+              ? detail.error
+              : `The last read failed: ${detail.error}. These are the events read before.`}
+          </p>
+        )}
         {detail === undefined ? (
           <p className="text-sm text-muted-foreground">Reading the events…</p>
-        ) : detail.error !== undefined ? (
-          <p className="text-sm text-destructive">{detail.error}</p>
-        ) : (
+        ) : detail.value === undefined ? null : (
           <ol className="flex flex-col gap-1">
-            {detail.value!.events.map((event) => (
+            {detail.value.events.map((event) => (
               <li key={`${event.stream}#${event.sequence}`}>
                 <details className="rounded-md border px-2 py-1 text-sm">
                   <summary className="flex cursor-pointer gap-2">
