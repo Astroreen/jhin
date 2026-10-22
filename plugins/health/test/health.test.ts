@@ -730,4 +730,42 @@ describe("jhin.health", () => {
     const warnings = await client.call<Warning[]>("health.warnings.list", { status: "all" });
     expect(warnings.filter((warning) => warning.detector === "mind-virus")).toEqual([]);
   });
+
+  it("counts the commits of a turn whose thread a slice links during the turn", async () => {
+    const { client, kernel, slice, probe } = await node();
+    const repo = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-health-git-"));
+    const git = (...args: string[]) =>
+      ChildProcess.execFileSync("git", args, {
+        cwd: repo,
+        env: {
+          ...process.env,
+          GIT_CONFIG_GLOBAL: "/dev/null",
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+    git("init", "-q");
+    git("commit", "-q", "--allow-empty", "-m", "start");
+    // A fresh thread, not linked when its turn starts.
+    const turn = {
+      threadId: "t9",
+      projectId: slice.projectId,
+      turnId: "turn-9",
+      agentId: "builder",
+      cwd: repo,
+    };
+    await probe().hooks.run(ThreadHooks.turnStart, turn, (input) => input);
+    await client.call("slices.link", { sliceId: slice.id, threadId: "t9" });
+    git("commit", "-q", "--allow-empty", "-m", "work");
+    const counted = nextEvent(kernel, COMMITS_COUNTED_EVENT);
+    await probe().hooks.run(
+      ThreadHooks.turnEnd,
+      { ...turn, status: "completed" },
+      (input) => input,
+    );
+    expect(await counted).toEqual({ turnId: "turn-9", count: 1 });
+  });
 });

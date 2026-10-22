@@ -919,7 +919,7 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   kind `approval`) and a queue change (`threads.queue.updated`). Progress: a
   slice becoming done (`missions`), a linked thread's pull request merging
   (`git.pr.linked`/`git.pr.updated` with state `merged` on `source-control`,
-  once per thread and pull request) and commits (D723). An event counts for
+  once per thread and pull request) and turns that commit (D723). An event counts for
   the missions of the slices whose thread it is on; a message without one
   counts for one slice: the open slice of its recipient, else of its sender,
   changed last (one message is not multiplied over an agent's missions);
@@ -939,10 +939,12 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   ask (`inReplyTo` it, from the warning's analyst) is health's conversation
   too: no ceremony, and no carrier of the idea it was asked to trace. The
   analyst's answer ends its turn (D624) and is not a delivered message.
-- **D723. Commits are the one progress no stream holds.** A turn on a thread
-  a slice links records its `HEAD` before it starts (turn-start hook,
+- **D723. Commits are the one progress no stream holds.** Every turn records
+  its `HEAD` before it starts (turn-start hook,
   kernel-scoped state, so a plugin reload keeps it; a start older than a day
-  is forgotten) and, at its end, appends `health.progress.recorded` with the
+  is forgotten), since its thread may be linked to a slice during the turn;
+  at its end, on a thread a slice links by then, it appends
+  `health.progress.recorded` with the
   commits since on the first-parent line (`git rev-list --count
   --first-parent`), only when the start is an ancestor of the new `HEAD`: a
   reset, rebase or branch switch inside the turn is no progress of its own.
@@ -1246,9 +1248,6 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
   answer that comes later stays in the analyst's thread, and the warning is
   not asked again.
-- A7: the commits of a thread's first turn, made before a slice links the
-  thread: the turn-start hook records a start only for linked threads
-  (D723).
 - A7: commits of turns that overlap in one checkout (two linked threads, or
   a person committing meanwhile): each turn counts what landed between its
   start and its end (D723).

@@ -587,6 +587,11 @@ export default definePlugin({
       if (start === undefined) return;
       context.state.set(STARTS, rest);
       let count = 0;
+      // Only a thread a slice links by the turn's end makes progress of a mission.
+      if (sensors.slicesOfThread(input.threadId).length === 0) {
+        context.events.emit(COMMITS_COUNTED_EVENT, { turnId: input.turnId, count });
+        return;
+      }
       const head = await git(input.cwd, ["rev-parse", "HEAD"]);
       // Only commits on top of where the turn started: a reset, rebase or
       // switch to another branch is no progress of its own.
@@ -617,7 +622,10 @@ export default definePlugin({
     context.subscriptions.add(
       context.hooks.before<TurnHookInput>(ThreadHooks.turnStart, async (input) => {
         try {
-          if (config().enabled && sensors.slicesOfThread(input.threadId).length > 0) {
+          // Every turn's start is read: its thread may be linked to a slice
+          // during the turn (the usual order for a fresh thread); whether it
+          // counts is decided at its end.
+          if (config().enabled) {
             // One quick read before the agent starts; it never fails the turn.
             const head = await git(input.cwd, ["rev-parse", "HEAD"], 2_000);
             // A turn that never ended (its node crashed) is forgotten after a day.
