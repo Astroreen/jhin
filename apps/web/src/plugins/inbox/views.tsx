@@ -20,6 +20,7 @@ import { InboxIcon, MessageCircleQuestionIcon, MessageSquareIcon } from "lucide-
 import { useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
+import { notLive } from "../../lib/node-feeds.ts";
 import { INBOX_PANEL, inboxRoute, senderLabel } from "./route.ts";
 import { openItems, type InboxStore } from "./store.ts";
 
@@ -38,13 +39,25 @@ export function InboxList({ view }: { view: InboxView }) {
   const nodes = useExternal(view.store, view.store.snapshot);
   const route = useExternal(view.navigation, view.navigation.current);
   const items = openItems(nodes);
+  const stale = notLive(nodes);
+  const notice =
+    stale.length === 0 ? null : (
+      <p className="px-2 py-1 text-xs text-destructive">
+        Not live: {stale.map((node) => view.connections.get(node)?.label ?? node).join(", ")}. What
+        shows may be out of date.
+      </p>
+    );
   if (items.length === 0) {
     return (
-      <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">Nothing waits for you.</p>
+      <>
+        {notice}
+        <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">Nothing waits for you.</p>
+      </>
     );
   }
   return (
     <SidebarMenu aria-label="Inbox">
+      {notice}
       {items.map(({ node, item }) => {
         const { message } = item;
         const Icon = message.kind === "ask" ? MessageCircleQuestionIcon : MessageSquareIcon;
@@ -111,7 +124,7 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
   const [answer, setAnswer] = useState("");
   const [sending, setSending] = useState(false);
   const state = nodes.get(node);
-  const item: InboxItem | undefined = state?.items.find(
+  const item: InboxItem | undefined = state?.value.find(
     (entry) => entry.message.messageId === messageId,
   );
   if (state === undefined || state.status === "loading") {
@@ -157,6 +170,15 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
         </Badge>
       </header>
       <Meta message={message} />
+      {state.status === "error" ? (
+        <p className="text-xs text-destructive">
+          Not live: {state.error ?? "the node's inbox stream failed"}. This item may be answered
+          already;{" "}
+          {state.retrying === true
+            ? "the inbox is read again within a minute."
+            : "the inbox is not read again until the connection is."}
+        </p>
+      ) : null}
       <p className="max-w-3xl text-sm whitespace-pre-wrap">{message.body}</p>
       <form
         className="flex max-w-3xl flex-col gap-2"

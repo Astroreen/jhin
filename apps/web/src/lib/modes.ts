@@ -7,6 +7,9 @@ export interface ModePlaces {
   set(id: string, route: Route): void;
 }
 
+/** Civilization mode's id (agents.md D741, `jhin.civilization`): routes into it name it. */
+export const CIVILIZATION_MODE = "civilization";
+
 /**
  * Panels of the route that are the whole app's, in every mode (D748): never a
  * mode's remembered place, so switching back returns to the mode's own page.

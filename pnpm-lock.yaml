@@ -367,6 +367,9 @@ importers:
       '@jhin/client-api':
         specifier: workspace:*
         version: link:../../packages/client-api
+      '@jhin/health-api':
+        specifier: workspace:*
+        version: link:../../packages/health-api
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../../packages/host-api

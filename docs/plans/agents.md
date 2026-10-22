@@ -405,6 +405,18 @@ the message, the inbox, events and the schemas of `agents.send`,
   `civilization.inbox.open {node, messageId}` opens it. A node whose inbox
   this client may not read shows none. Nothing of it goes into Threads mode
   (D741).
+  Changed with A7 (#190, D731), since the inbox follows its nodes through the
+  feed it shares with health (`lib/node-feeds.ts`):
+  - A dropped inbox stream is read again, at once and then at most once a
+    minute. The re-read tells up to the three newest items that came
+    meanwhile.
+  - A feed that stays failed keeps its items, marked not live, where the
+    inbox used to empty itself.
+  - With no focus and no system notification sent, a toast is left on the
+    page (unless `inApp` is off), where before nothing was told. This is
+    deliberate: an ask nobody is told about is the inbox failing silently,
+    and the item stays in the sidebar either way. The toast may be stale
+    when the owner returns (the item answered meanwhile); that is accepted.
 
 ### A3. Missions and slices (D641–D660)
 
@@ -1051,6 +1063,33 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   agents included, as an agent writes any message. So are a warning's
   summary and group (a mission's title, an idea's phrase and its carriers'
   addresses): what health concludes is health's to read.
+- **D731. Health in Civilization mode is the client plugin `jhin.health`.**
+  It follows `health.catalog` and the `health` stream of every open
+  connection (the same per-node feed as the inbox, `lib/node-feeds.ts`), so a
+  new warning is told in any mode the way an ask is (`lib/tell-owner.tsx`: a
+  toast with focus, else a system notification, as `jhin.notifications`
+  allows, else a toast left on the page); both open it. The open warnings of every node, newest first, and
+  an entry to the overview fill `civilization.sidebar.health`
+  (`jhin.health.list`). The route panel `health` renders in
+  `civilization.views` (`jhin.health.page`): without a `section` the overview
+  of ceremony and progress per group (`health.status`), with a warning id as
+  `section` the warning: what crossed which threshold, its measures, the
+  analyst's answer, Dismiss, and the events behind it
+  (`health.warnings.get`), each opening to its stream, sequence and record.
+  `civilization.health.open {node, warningId?}` opens it. The views are a
+  chunk of their own, loaded once Civilization mode shows them (D440). The
+  inbox shares the feed, so it changed with it. A dropped stream is read
+  again and tells what came meanwhile, at most once a minute: a drop or a
+  failed read within that minute marks the feed not live, keeping its items
+  where the inbox used to empty itself, and it is read again once the minute
+  is over. A first load that fails (a node busy at start) is tried again the
+  same way, telling nothing of it as new. A re-read tells at most the three
+  newest of what came meanwhile; the rest is in the sidebar. A permission taken back, or a node
+  without the feed (a node read before that restarted on a build without
+  it included), is not retried; a read feed keeps its items, not live. Nor
+  is a feed that failed ten times in a row with no read between (an error
+  that will not pass, such as an answer failing its schema): it is given up
+  until its connection is replaced.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 
@@ -1254,12 +1293,24 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
   answer that comes later stays in the analyst's thread, and the warning is
   not asked again.
+- A7: a feed whose read permission was taken back, or whose node lost the
+  feed, recovering by itself when it is granted (or installed) again; today it stays not live until the connection is
+  replaced (D731).
+- A7: a growing pause between retries of a feed whose node keeps failing,
+  and telling a lasting error from a passing one by its code: today any
+  error but a missing command or a permission is read again once a minute,
+  up to ten failures in a row (D731).
 - A7: reading a turn's commits through `source-control.git@1` once it offers
   a read of `HEAD` and a count of commits; health runs `git` itself until
   then (D723).
 - A7: commits of turns that overlap in one checkout (two linked threads, or
   a person committing meanwhile): each turn counts what landed between its
   start and its end (D723).
+- A7: telling the owner, after a reconnect (a connection replaced or
+  reopened), the warnings and the inbox items (D630) that arrived while it
+  was down. The new feed loads them into the sidebar without telling them;
+  within one feed, a stream that drops and is read again tells what came
+  meanwhile (D731).
 - A7: commits made outside a turn (by hand, by a workflow) and pull requests
   merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's
@@ -1360,8 +1411,11 @@ Each workstream lists its PRs here as they merge.
   against progress per mission, project and node, the ceremony, recursive
   proof loop and mind-virus detectors, the analyst asked with `agents.ask`,
   `health.*` commands; agents read health over MCP (D721–D730). The owner's
-  notification of a warning is the client's (#190, D731). The Health
-  view in Civilization mode follows.
+  notification of a warning is the client's (#190, D731).
+- A7 #190: `jhin.health` in the web client: warnings in Civilization
+  mode's sidebar, the overview, a warning's page with its analysis and the
+  events behind it, a notification per new warning; the inbox and health
+  share `lib/node-feeds.ts` and `lib/tell-owner.tsx` (D731).
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and

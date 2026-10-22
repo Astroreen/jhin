@@ -15,6 +15,7 @@ import { LandmarkIcon } from "lucide-react";
 import { hasAgents } from "../lib/agents-presence.ts";
 import { builtin } from "../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../lib/lazy-chunk.tsx";
+import { CIVILIZATION_MODE } from "../lib/modes.ts";
 import type { CivilizationShell } from "./civilization-shell.tsx";
 
 // The shell is a chunk of its own (D440), loaded once Civilization mode shows.
@@ -31,9 +32,6 @@ const Sidebar = lazyChunk(() => shellChunk().then((module) => module.Civilizatio
 const Settings = lazyChunk(() => shellChunk().then((module) => module.SettingsButton), quiet);
 const Palette = lazyChunk(() => shellChunk().then((module) => module.PaletteButton), quiet);
 const Main = lazyChunk(() => shellChunk().then((module) => module.CivilizationMain), said);
-
-/** The id of Civilization mode (D741). */
-const CIVILIZATION_MODE = "civilization";
 
 /** The `jhin.civilization` config section (D747). */
 const CIVILIZATION_SECTION = "jhin.civilization";
