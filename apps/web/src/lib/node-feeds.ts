@@ -210,37 +210,41 @@ export function createNodeFeeds<S>(
             }
           }
           const mine = ++generation;
-          subscriptions.push(
-            client.subscribe(
-              source.stream,
-              {
-                after: head,
-                // Only the current subscription's failure counts: one given up
-                // on may still report, and is not a new drop.
-                onError: (error: unknown) => {
-                  if (mine === generation) failed(error);
-                },
+          const subscription = client.subscribe(
+            source.stream,
+            {
+              after: head,
+              // Only the current subscription's failure counts: one given up
+              // on may still report, and is not a new drop.
+              onError: (error: unknown) => {
+                if (mine === generation) failed(error);
               },
-              (event) => {
-                // A transport may still deliver what it buffered for a subscription
-                // already given up: the re-read holds it, so it is not told twice.
-                if (stopped || mine !== generation) return;
-                const before = states.get(id)?.value ?? source.empty;
-                const after = source.apply(before, event);
-                if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
-                // What hears the events (a notification) never breaks the feed.
-                try {
-                  source.seen?.(connection, event, before, after);
-                } catch (error) {
-                  log.warn("a feed's listener failed", {
-                    stream: source.stream,
-                    error: String(error),
-                  });
-                }
-              },
-            ),
+            },
+            (event) => {
+              // A transport may still deliver what it buffered for a subscription
+              // already given up: the re-read holds it, so it is not told twice.
+              if (stopped || mine !== generation) return;
+              const before = states.get(id)?.value ?? source.empty;
+              const after = source.apply(before, event);
+              if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
+              // What hears the events (a notification) never breaks the feed.
+              try {
+                source.seen?.(connection, event, before, after);
+              } catch (error) {
+                log.warn("a feed's listener failed", {
+                  stream: source.stream,
+                  error: String(error),
+                });
+              }
+            },
           );
+          // A transport that fails inside `subscribe` has already started the
+          // next read: this subscription is dead on arrival.
+          if (mine === generation) subscriptions.push(subscription);
+          else subscription.dispose();
         })
+        // One load is under way at a time per feed (a retry starts after the
+        // previous read ended or failed), so a rejection is always this feed's.
         .catch(failed);
     follow();
   };

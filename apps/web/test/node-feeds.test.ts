@@ -395,4 +395,37 @@ describe("node feeds (D630, D731)", () => {
     expect(told).toEqual([]);
     feeds.dispose();
   });
+
+  it("drops a subscription that fails inside subscribe, and follows the next read", async () => {
+    const reads = [
+      { head: 1, items: ["x"] },
+      { head: 2, items: ["x", "y"] },
+    ];
+    const disposed: number[] = [];
+    let subscribed = 0;
+    const client = {
+      call: async () => reads.shift(),
+      subscribe: (_stream: string, options: { onError: (error: unknown) => void }) => {
+        const index = ++subscribed;
+        // The first subscription fails at once, from inside subscribe.
+        if (index === 1) options.onError(new Error("refused"));
+        return toDisposable(() => disposed.push(index));
+      },
+    };
+    const { connections } = fakeConnections(client as never);
+    const feeds = createNodeFeeds(connections, quiet, source);
+    // The first read, its dead subscription, then the re-read and its subscription.
+    await new Promise<void>((resolve) => {
+      const subscription = feeds.subscribe(() => {
+        if (feeds.snapshot().get("a")?.value.length !== 2) return;
+        subscription.dispose();
+        resolve();
+      });
+    });
+    expect(subscribed).toBe(2);
+    expect(disposed).toEqual([1]);
+    expect(feeds.snapshot().get("a")).toMatchObject({ status: "ready", value: ["x", "y"] });
+    feeds.dispose();
+    expect(disposed).toEqual([1, 2]);
+  });
 });
