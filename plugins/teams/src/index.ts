@@ -60,6 +60,16 @@ const NAMESPACE = "jhin.teams";
 /** Changing teams puts agents on nodes, so it takes changing agents too (D690). */
 const WRITE_PERMISSIONS = [TEAMS_WRITE_PERMISSION, "agents.write"];
 
+/**
+ * What a member's node gets of the caller's grants (D416): putting a team up,
+ * and adding the member's home project there when the caller may (D1105).
+ */
+const joinGrants = (invocation: Invocation): string[] => {
+  const held = invocation.caller?.permissions;
+  const mayAdd = held === undefined || held.includes("*") || held.includes("projects.write");
+  return mayAdd ? [...WRITE_PERMISSIONS, "projects.write"] : WRITE_PERMISSIONS;
+};
+
 interface Bundle {
   readonly spec: TeamSpecLayer;
   readonly root: string;
@@ -507,7 +517,7 @@ export default definePlugin({
                     "teams.join",
                     input,
                     invocation,
-                    WRITE_PERMISSIONS,
+                    joinGrants(invocation),
                   );
             members.push({
               member,

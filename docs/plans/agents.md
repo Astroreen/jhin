@@ -1391,7 +1391,9 @@ C3 decisions:
   node does not know stays the agent's `unavailable` (D608). The project is
   added as the caller, so it takes the caller's own `projects.write`: putting
   a team up (D690) grants no more than before, and a caller without it gets
-  the member's `PERMISSION_DENIED`. Files the team keeps in that project
+  the member's `PERMISSION_DENIED`; a member on another node gets
+  `projects.write` with the caller's other grants (D416) when the caller
+  holds it. Files the team keeps in that project
   (`dir`, D686) are read once it is there.
 
 Where C3 stands: the scenario (its first bullet) runs on commands, with every

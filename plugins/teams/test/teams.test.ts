@@ -491,4 +491,32 @@ describe("teams across the mesh (A5)", () => {
     })) as AgentRecord;
     expect(stopped.stoppedAt).toBeDefined();
   });
+
+  it("adds a member's home project on the member's node, with the caller's grant (D1105)", async () => {
+    const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-remote-"));
+    stops.push(async () => Fs.rmSync(home, { recursive: true, force: true }));
+    const network = createMemoryNetwork();
+    const a = await meshNode(network, "a", {
+      "jhin.teams": {
+        teams: {
+          workshop: {
+            lead: "lead",
+            agents: { lead, builder: { ...builder, node: "b", project: home } },
+          },
+        },
+      },
+    });
+    const b = await meshNode(network, "b");
+    await b.join(a);
+
+    const up = (await a.kernel.commands.execute("teams.up", { teamId: "workshop" })) as Up;
+    expect(up.members[1]).toMatchObject({ result: "defined" });
+    const onB = (await b.kernel.commands.execute("projects.list", {})) as { path: string }[];
+    expect(onB.map((project) => project.path)).toContain(home);
+    const onA = (await a.kernel.commands.execute("projects.list", {})) as { path: string }[];
+    expect(onA.map((project) => project.path)).not.toContain(home);
+    expect(
+      await b.kernel.commands.execute("agents.get", { agentId: "workshop-builder" }),
+    ).toMatchObject({ status: "idle" });
+  });
 });
