@@ -676,8 +676,7 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   rolling back a Codex thread (W2, W3).
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
-- Subagent threads (`collabAgentToolCall`, `subAgentActivity`) and their
-  transcripts; background terminals Codex keeps after a turn.
+- Background terminals Codex keeps after a turn.
 - MCP elicitations, app access requests and MCP apps.
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
@@ -797,6 +796,22 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   bars take T3's Codex colour for every agent, as the client names no agent
   ids. The fake agent reports two windows and fails `/limit` on a usage
   limit, for the end-to-end test.
+- **D1145. Codex's subagents are child threads**, as Claude Code's
+  (`orchestration.md` D876–D878), from T3's `registerSubagentThreads`,
+  `registerSubagentActivity` and `updateSubagentStates`: a completed
+  `collabAgentToolCall` with `tool: "spawnAgent"` starts one per
+  `receiverThreadIds` entry (`subagentId` its Codex thread id, the title the
+  first line of its prompt, at most 80 characters, else "Subagent", with its
+  prompt and model), and a `subAgentActivity` of kind `started` one titled
+  after its `agentPath`. The frames of a subagent's own Codex thread go to
+  its child thread: messages, reasoning and tool calls, their ids kept apart
+  from the turn's (`<thread>:<item>`); its approval and question requests are
+  asked in the parent turn, as T3 surfaces them, where they were refused
+  before. It ends with its thread's `turn/completed`, a `subAgentActivity`
+  `completed` or `interrupted`, or the `agentsStates` of a later collab call
+  (`completed`; `interrupted` and `shutdown` as interrupted; `errored` and
+  `notFound` as failed with Codex's message), once; a subagent still open
+  when the turn ends is interrupted with it (D877).
 
 ### Deferred
 
@@ -811,6 +826,10 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   failure item); Codex sends its rate-limit update before the error in
   practice.
 - Live updates of an open `/usage-limits` banner: it is read when sent.
+- Codex subagents that outlive their turn (T3 follows a child's lifecycle
+  after the parent's turn ended): Jhin ends them with the turn (D1145), and
+  their later frames are dropped. A subagent's own user messages and its
+  token usage are not shown.
 
 ## OpenCode (W8)
 
