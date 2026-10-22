@@ -950,8 +950,10 @@ with screenshots).
   while "Skip" ends it done with "submodules left empty", as the user
   chose). A worktree with checked-out submodules is removed only with `force`
   (D255's deletion and the cleanup pass it), as git holds: their own commits
-  may be pushed nowhere, which a clean status does not show. T3's per-project setting and its
-  `t3.json` override, and pull request checkouts (D902), are Deferred. A
+  may be pushed nowhere, which a clean status does not show. Without `force`,
+  `git.worktree.remove` says so ("remove it with force"), not git's own
+  message. A submodule run git ends without a reason (killed at the timeout)
+  says its exit code. T3's per-project setting and its `t3.json` override, and pull request checkouts (D902), are Deferred. A
   managed worktree made again from its branch (D256) gets its submodules the
   same way; a failure there is logged. Cancelling a setup while its
   submodules are still being checked out ends the setup but lets that git

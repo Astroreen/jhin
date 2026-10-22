@@ -3237,7 +3237,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     name: "git.worktree.remove",
     title: "Remove a worktree",
     description:
-      "Removes a worktree of a project's repository that no thread works in (`force`: with its changes; `deleteBranch`: its branch too); one listed but gone from disk is pruned",
+      "Removes a worktree of a project's repository that no thread works in (`force`: with its changes, and with checked-out submodules, which git removes only forced; `deleteBranch`: its branch too); one listed but gone from disk is pruned",
     input: z.object({
       projectId: z.string().min(1),
       path: z.string().min(1),

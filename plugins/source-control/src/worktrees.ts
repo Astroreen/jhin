@@ -405,20 +405,22 @@ async function populateSubmodules(
     return ["warning", notCheckedOut((error as Error).message)];
   }
   if (updated.code === 0) return ["done", undefined];
-  return ["warning", notCheckedOut(updated.stderr)];
+  // Killed at the timeout, git leaves no reason of its own: its exit is said instead.
+  return ["warning", notCheckedOut(updated.stderr, `git stopped with exit code ${updated.code}`)];
 }
 
 /** The warning of a failed submodule step: git's own reason, its credentials masked. */
-function notCheckedOut(output: string): string {
+function notCheckedOut(output: string, otherwise = ""): string {
   // git's reason is its `fatal:` or `error:` line; progress ("Cloning into …") comes first.
   const lines = output
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  const reason = (lines.find((line) => /^(fatal|error):/.test(line)) ?? lines.at(-1) ?? "").replace(
-    /^(fatal|error):\s*/,
-    "",
-  );
+  const reason = (
+    lines.find((line) => /^(fatal|error):/.test(line)) ??
+    lines.at(-1) ??
+    otherwise
+  ).replace(/^(fatal|error):\s*/, "");
   return `submodules not checked out${reason === "" ? "" : `: ${redactUrls(reason)}`}`;
 }
 
@@ -461,18 +463,29 @@ export async function removeWorktree(
   }
   // git refuses a worktree with checked-out submodules unless forced (D1134): their
   // own commits may be pushed nowhere, so only an explicit `force` removes it.
-  await git(
-    [
-      "-c",
-      "status.showUntrackedFiles=normal",
-      "worktree",
-      "remove",
-      ...(options.force === true ? ["--force"] : []),
-      "--",
-      path,
-    ],
-    { timeoutMs: WORKTREE_TIMEOUT_MS },
-  );
+  try {
+    await git(
+      [
+        "-c",
+        "status.showUntrackedFiles=normal",
+        "worktree",
+        "remove",
+        ...(options.force === true ? ["--force"] : []),
+        "--",
+        path,
+      ],
+      { timeoutMs: WORKTREE_TIMEOUT_MS },
+    );
+  } catch (error) {
+    if (options.force !== true && /containing submodules/.test((error as Error).message)) {
+      throw new SourceControlError(
+        "GIT_FAILED",
+        "The worktree has checked-out submodules, whose commits may be pushed nowhere: remove it with force",
+        { path },
+      );
+    }
+    throw error;
+  }
 }
 
 export interface WorktreeEntry {

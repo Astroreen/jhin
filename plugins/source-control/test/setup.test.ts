@@ -480,7 +480,7 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
       await sc.client.call("threads.delete", { threadId: "with-lib" });
       await expect(
         sc.client.call("git.worktree.remove", { projectId, path: thread.worktreePath }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/checked-out submodules, whose commits may be pushed nowhere/);
       expect(Fs.existsSync(thread.worktreePath)).toBe(true);
       await sc.client.call("git.worktree.remove", {
         projectId,
