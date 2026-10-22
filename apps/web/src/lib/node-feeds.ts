@@ -62,12 +62,23 @@ export function createNodeFeeds<S>(
   connections: Connections,
   log: { warn(message: string, fields?: Record<string, unknown>): void },
   source: NodeFeedSource<S>,
-  /**
-   * The time in ms, for the once-a-minute retry: monotonic, so a wall clock
-   * stepped back does not hold a retry off; given by tests.
-   */
-  clock: () => number = () => performance.now(),
+  timing: {
+    /**
+     * The time in ms, for the once-a-minute retry: monotonic, so a wall clock
+     * stepped back does not hold a retry off.
+     */
+    readonly clock?: () => number;
+    /** Runs `run` after `ms`; tests run it when they say. */
+    readonly later?: (ms: number, run: () => void) => Disposable;
+  } = {},
 ): NodeFeeds<S> & Disposable {
+  const clock = timing.clock ?? (() => performance.now());
+  const later =
+    timing.later ??
+    ((ms: number, run: () => void) => {
+      const timer = setTimeout(run, ms);
+      return toDisposable(() => clearTimeout(timer));
+    });
   const states = new Map<string, NodeFeed<S>>();
   /** Changes this client applied to a feed while its stream is read again. */
   const rereads = new Map<string, { type: string; payload: unknown }[]>();
@@ -102,30 +113,47 @@ export function createNodeFeeds<S>(
       stop: () => {
         stopped = true;
         for (const subscription of subscriptions) subscription.dispose();
+        waitingRetry?.dispose();
       },
     });
     states.set(id, { status: "loading", value: source.empty });
     changed();
     /** When this feed last read a dropped stream again (D731). */
     let lastRetry = Number.NEGATIVE_INFINITY;
+    /** Whether this feed was ever read; only such a feed is read again. */
+    let everRead = false;
+    /** A retry waiting for the minute to pass. */
+    let waitingRetry: Disposable | undefined;
+    const retry = () => {
+      lastRetry = clock();
+      rereads.set(id, []);
+      for (const subscription of subscriptions.splice(0)) subscription.dispose();
+      follow(true);
+    };
     const failed = (error: unknown) => {
       if (stopped) return;
       rereads.delete(id);
       const code = String((error as { code?: unknown } | null)?.code);
       const message = error instanceof Error ? error.message : String(error);
-      const wasRead = states.get(id)?.status === "ready";
+      // Read once at least: a feed that never loaded has nothing to read again.
+      const wasRead = everRead;
       // A stream that dropped is read and followed again, so a hiccup does not
       // silence what is told; the feed stays as it is meanwhile, not flashing
       // "not live". At most once a minute, so a flapping stream does not loop
-      // on the node: a second drop within it stays not live. A permission
-      // taken back is not retried.
-      const rested = clock() - lastRetry >= RETRY_GAP_MS;
-      if (wasRead && rested && code !== "PERMISSION_DENIED") {
-        lastRetry = clock();
-        rereads.set(id, []);
-        for (const subscription of subscriptions.splice(0)) subscription.dispose();
-        follow(true);
+      // on the node: a drop (or a failed read) within that minute marks the
+      // feed not live and reads it again once the minute is over. A
+      // permission taken back is not retried.
+      const retrying = wasRead && code !== "PERMISSION_DENIED";
+      const wait = lastRetry + RETRY_GAP_MS - clock();
+      if (retrying && wait <= 0) {
+        retry();
         return;
+      }
+      if (retrying && waitingRetry === undefined) {
+        waitingRetry = later(wait, () => {
+          waitingRetry = undefined;
+          if (!stopped) retry();
+        });
       }
       // A node that never answered has nothing to show; a feed that failed
       // after it was read (even a permission taken back) keeps what it showed,
@@ -159,6 +187,7 @@ export function createNodeFeeds<S>(
             read,
           );
           rereads.delete(id);
+          everRead = true;
           set(id, () => ({ status: "ready", value: state }));
           // What arrived while the stream was down is told now, not lost.
           if (again) {

@@ -114,7 +114,7 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
-  it("reads and follows a dropped stream once more, then stays not live", async () => {
+  it("reads and follows a dropped stream again, and marks a second drop at once not live", async () => {
     const one = fakeClient();
     const { connections } = fakeConnections(one.client);
     const feeds = createNodeFeeds(connections, quiet, source);
@@ -214,7 +214,7 @@ describe("node feeds (D630, D731)", () => {
           for (const item of after) if (!before.includes(item)) told.push(item);
         },
       },
-      () => time,
+      { clock: () => time },
     );
     const ready = () =>
       new Promise<void>((resolve) => {
@@ -290,11 +290,18 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
-  it("keeps a second drop within a minute of the last retry not live", async () => {
+  it("marks a second drop within a minute not live, and reads it again once the minute is over", async () => {
     let time = 0;
+    const waiting: { ms: number; run: () => void }[] = [];
     const one = fakeClient();
     const { connections } = fakeConnections(one.client);
-    const feeds = createNodeFeeds(connections, quiet, source, () => time);
+    const feeds = createNodeFeeds(connections, quiet, source, {
+      clock: () => time,
+      later: (ms, run) => {
+        waiting.push({ ms, run });
+        return toDisposable(() => {});
+      },
+    });
     let ready = changes(feeds);
     one.answer.resolve({ head: 1, items: ["x"] });
     await ready;
@@ -307,11 +314,19 @@ describe("node feeds (D630, D731)", () => {
     });
     one.stream.onError!(new Error("dropped"));
     await ready;
-    // 59.999 s later: within the minute, so no retry.
+    // 59.999 s later: within the minute, so no retry now, one waiting for 1 ms.
     time += 59_999;
     one.stream.onError!(new Error("dropped again"));
     expect(feeds.snapshot().get("a")?.status).toBe("error");
     expect(one.reads.count).toBe(2);
+    expect(waiting.map((retry) => retry.ms)).toEqual([1]);
+    // The minute is over: read again, and live once more.
+    time += 1;
+    ready = changes(feeds);
+    waiting[0]!.run();
+    await ready;
+    expect(feeds.snapshot().get("a")?.status).toBe("ready");
+    expect(one.reads.count).toBe(3);
     feeds.dispose();
   });
 

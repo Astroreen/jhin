@@ -1067,10 +1067,11 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   (`health.warnings.get`), each opening to its stream, sequence and record.
   `civilization.health.open {node, warningId?}` opens it. The views are a
   chunk of their own, loaded once Civilization mode shows them (D440). The
-  inbox shares the feed, so it changed with it: a dropped stream is read again
-  at most once a minute and tells what came meanwhile, and a feed that stays
-  failed keeps its items, marked not live, where the inbox used to empty
-  itself.
+  inbox shares the feed, so it changed with it. A dropped stream is read
+  again and tells what came meanwhile, at most once a minute: a drop or a
+  failed read within that minute marks the feed not live, keeping its items
+  where the inbox used to empty itself, and it is read again once the minute
+  is over. A permission taken back is not retried.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 
@@ -1285,12 +1286,6 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   was down. The new feed loads them into the sidebar without telling them;
   within one feed, a stream that drops and is read again tells what came
   meanwhile (D731).
-- A7: following a node's stream again after two drops within a minute: the
-  inbox's and health's per-node feed (`lib/node-feeds.ts`, D731) reads a
-  dropped stream again, tells what arrived meanwhile, and follows it, at most
-  once a minute. A second drop within that minute, or a permission taken
-  back, keeps what it showed, marked not live, until the connection is
-  replaced.
 - A7: commits made outside a turn (by hand, by a workflow) and pull requests
   merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's
