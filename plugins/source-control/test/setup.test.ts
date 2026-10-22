@@ -10,7 +10,6 @@ import {
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { completionShellOf, runSetupScript, wrapCommandForCompletion } from "../src/setup.ts";
-import { redactUrls } from "../src/worktrees.ts";
 import { git, node, repository, type Node } from "./support.ts";
 
 /** Resolves with the first snapshot of the thread's setup (kept or new) that `match` accepts. */
@@ -65,23 +64,6 @@ async function projectWithScript(sc: Node, script: Record<string, unknown> | und
   }
   return projectId;
 }
-
-describe("submodule warnings", () => {
-  it("never show a URL's credentials", () => {
-    expect(
-      redactUrls("fatal: clone of 'https://bot:ghp_secret@github.com/acme/lib.git' failed"),
-    ).toBe("fatal: clone of 'https://***@github.com/acme/lib.git' failed");
-    expect(redactUrls("fatal: 'https://user:p@ss@host/x.git' failed")).toBe(
-      "fatal: 'https://***@host/x.git' failed",
-    );
-    expect(redactUrls("fatal: 'https://host/x.git?access_token=abc&x=1' failed")).toBe(
-      "fatal: 'https://host/x.git?access_token=***&x=1' failed",
-    );
-    expect(redactUrls("fatal: repository '/tmp/lib' not found")).toBe(
-      "fatal: repository '/tmp/lib' not found",
-    );
-  });
-});
 
 describe("setup script wrapper", () => {
   it("wraps for the shell the terminal starts", () => {

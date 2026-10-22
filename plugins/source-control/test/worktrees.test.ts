@@ -21,6 +21,7 @@ import {
   firstMessageInputOf,
   isTemporaryBranch,
   parseWorktreeList,
+  redactUrls,
   renameTemporaryBranch,
   sanitizeBranchFragment,
 } from "../src/worktrees.ts";
@@ -832,5 +833,22 @@ describe("naming a temporary branch (D901)", () => {
       ).rejects.toThrow("is not a valid branch name");
     }
     expect(git(dir, "branch", "--list", "jhin/3a1b2c3d").trim()).toBe("jhin/3a1b2c3d");
+  });
+});
+
+describe("submodule warnings", () => {
+  it("never show a URL's credentials", () => {
+    expect(
+      redactUrls("fatal: clone of 'https://bot:ghp_secret@github.com/acme/lib.git' failed"),
+    ).toBe("fatal: clone of 'https://***@github.com/acme/lib.git' failed");
+    expect(redactUrls("fatal: 'https://user:p@ss@host/x.git' failed")).toBe(
+      "fatal: 'https://***@host/x.git' failed",
+    );
+    expect(redactUrls("fatal: 'https://host/x.git?access_token=abc&x=1' failed")).toBe(
+      "fatal: 'https://host/x.git?access_token=***&x=1' failed",
+    );
+    expect(redactUrls("fatal: repository '/tmp/lib' not found")).toBe(
+      "fatal: repository '/tmp/lib' not found",
+    );
   });
 });
