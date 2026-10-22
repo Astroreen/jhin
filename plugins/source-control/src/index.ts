@@ -546,6 +546,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       await links.remove(threadId);
     } finally {
       removingThreads.delete(threadId);
+      heldThreads.delete(threadId);
+      unsettledByLinks.delete(threadId);
     }
     await turns.remove(threadId);
     if (!threads.delete(threadId)) return;
@@ -997,8 +999,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           threadId: thread.threadId,
           error: String(error),
         });
-        return "hold" as const;
+        return "unread" as const;
       });
+      // Its links could not be read: nothing to decide on now, the next lookup asks again.
+      if (decided === "unread") continue;
       if (decided === "hold") {
         noteHold(thread.threadId);
         continue;

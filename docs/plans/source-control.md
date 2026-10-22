@@ -933,8 +933,8 @@ with screenshots).
   not read yet holds the thread, as in T3, unless no forge of this node reads
   its host at all (then it can tell nothing and holds nothing). A thread
   without links that count (none, or all left out, including one merged or
-  closed with no readable close time, as T3 leaves them out) settles on its branch's pull
-  request as before.
+  closed with no readable close time, as T3 leaves them out) settles on its
+  branch's pull request as before.
 
 #### Reverting
 
