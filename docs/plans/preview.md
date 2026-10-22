@@ -584,7 +584,10 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   details card; "Pop into separate window" (the browser's
   picture-in-picture of the frames, T3's `serverPictureInPicture`); a
   floating device (`jhin.device-panel` shows devices in a panel of its own);
-  the control strip inside the player (control is taken in the panel).
+  the control strip inside the player (control is taken in the panel);
+  moving and resizing the player from the keyboard (T3's are pointer only
+  too); dropping a deleted thread's floating entry, which stays in the
+  plugin's memory for the session (one small record per thread).
 - Touch input and the editable-at-point probe for soft keyboards; human
   uploads through the file chooser (the panel can only cancel it) and saving
   downloads to the client.

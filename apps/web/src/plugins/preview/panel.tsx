@@ -1129,7 +1129,7 @@ function TabView(props: {
         disabled={!youControl}
         float={{
           floating,
-          disabled: status.state === "failed",
+          disabled: !floating && status.state === "failed",
           onToggle: () => services.float(panelKey, floating ? undefined : tab.tabId),
         }}
         leading={profileBadge}
