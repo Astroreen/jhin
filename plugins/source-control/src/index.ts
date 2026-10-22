@@ -957,8 +957,22 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     context.log.info("a thread waits on its open linked pull requests", { threadId });
   };
 
+  /** Each thread's decision on its links, one at a time: a later one reads after the earlier. */
+  const linkDecisions = new Map<string, Promise<void>>();
   /** A linked pull request changed: its thread may settle on its links (D1133). */
-  const settleOnLinks = async (threadId: string) => {
+  const settleOnLinks = (threadId: string): Promise<void> => {
+    const next = (linkDecisions.get(threadId) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => decideOnLinks(threadId));
+    linkDecisions.set(threadId, next);
+    void next
+      .finally(() => {
+        if (linkDecisions.get(threadId) === next) linkDecisions.delete(threadId);
+      })
+      .catch(() => undefined);
+    return next;
+  };
+  const decideOnLinks = async (threadId: string) => {
     const decided = await linkSettlement(threadId);
     // Removed meanwhile: its links are gone because it is, not because they closed.
     // Asked again after the read, so a removal that ended during it leaves nothing behind.
