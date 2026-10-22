@@ -331,18 +331,22 @@ function NodeClients({ node }: { node: NodeConnection }) {
     },
     [],
   );
+  // Changes come in bursts (create, pair, revoke): only the latest read may land.
+  const latest = useRef(0);
   const load = useCallback(() => {
+    const request = ++latest.current;
     Promise.all([
       node.client.call<{ clients: Client[] }>("auth.clients.list"),
       node.client.call<{ links: PairingLink[] }>("auth.pairing.list"),
     ]).then(
       ([listed, open]) => {
-        if (!mounted.current) return;
+        if (!mounted.current || request !== latest.current) return;
         setClients(listed.clients);
         setLinks(open.links);
         setError(undefined);
       },
-      (failure: unknown) => mounted.current && setError((failure as Error).message),
+      (failure: unknown) =>
+        mounted.current && request === latest.current && setError((failure as Error).message),
     );
   }, [node]);
   useEffect(load, [load]);
@@ -351,7 +355,9 @@ function NodeClients({ node }: { node: NodeConnection }) {
   useEffect(() => {
     const subscription = node.client.subscribe(
       AUTH_CLIENTS_STREAM,
-      // A token without `auth.read` cannot follow it; the lists say why.
+      // Refused only for a token without `auth.read`, whose lists say why. A
+      // dropped connection is no error: the client resubscribes after the
+      // last event it saw, and the stream keeps its latest change for it.
       { onError: () => {} },
       () => load(),
     );

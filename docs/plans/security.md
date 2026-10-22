@@ -531,7 +531,7 @@ The threat model comes first; the decisions after it implement it.
   known: "Tablet · iOS · Safari · 192.168.1.20".
 - **D1188. Live updates of the authorized clients list.** T3 streams
   `clientUpserted` / `clientRemoved`. `jhin.auth-token` emits the kernel
-  event `auth.clients.changed {ids}` after every change of `clients.json`
+  event `auth.clients.changed {}` after every change of `clients.json`
   or of the open pairing codes (never with a secret). The transport that
   provides `rpc.streams` already depends on `auth.verifier` (the cycle of
   security.md Deferred), so `jhin.transport-ws` turns that event into the
@@ -572,7 +572,13 @@ The threat model comes first; the decisions after it implement it.
   host may log it; the code stays in the fragment. A link from someone else
   can name their own node: the page then saves that node (shown by its
   address in the node list), whose answers are data, never code: client
-  plugins load only from the page's own origin (`boot.ts`).
+  plugins load only from the page's own origin (`boot.ts`). As in T3, the
+  page pairs as it opens, without asking first. `host` must be an http(s)
+  address without credentials, query or fragment, else the page says the
+  link names no node. A `host` with plain `http:` sends the code over the
+  network in clear, as the node's own `http:` pairing links do (D1181):
+  pairing over HTTPS (Tailscale Serve, a proxy) avoids it. Without a base
+  address (no `http.server`, no `baseUrl`) there is no `clientLink`.
 
 ### MCP OAuth (W33)
 
@@ -757,6 +763,9 @@ A stack, one slice a PR:
   token.
 - MCP OAuth (T3's `/oauth/mcp/*`): MCP clients use the owner token or an
   issued device token.
+- A `jhin client` link (D1190) pairs as the page opens, as T3's hosted
+  page does; a confirmation naming the node before it is saved is not
+  added.
 - Live updates of the authorized clients list (D1188) say only that the
   list changed; T3's per-session "Connected" dot is not ported: a client's
   `lastSeenAt` changes with no event, so "Connected …" updates with the next

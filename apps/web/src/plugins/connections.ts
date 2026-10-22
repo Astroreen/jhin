@@ -241,8 +241,22 @@ export const connectionsPlugin = builtin(
       const credential = fromUrl?.host === undefined ? fromUrl?.token : undefined;
       const meetOwnNode = async () => {
         if (fromUrl?.host !== undefined) {
-          // A `jhin client` link (D1190): the code pairs with the node it names.
-          const url = rpcUrl(fromUrl.host);
+          // A `jhin client` link (D1190): the code pairs with the node it names,
+          // an http(s) address and nothing more. A refusal shows on the page.
+          const named = URL.canParse(fromUrl.host) ? new URL(fromUrl.host) : undefined;
+          if (
+            named === undefined ||
+            !/^https?:$/.test(named.protocol) ||
+            named.username !== "" ||
+            named.password !== "" ||
+            named.search !== "" ||
+            named.hash !== ""
+          ) {
+            throw new Error(
+              "This pairing link does not name a node address. Request a new pairing link.",
+            );
+          }
+          const url = rpcUrl(named.toString());
           if (looksLikePairingCode(fromUrl.token)) {
             await pairNode({
               url,

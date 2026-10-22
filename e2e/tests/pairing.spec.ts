@@ -258,6 +258,12 @@ test("pairs a jhin client page by the link the node gives for it (D1190)", async
     expect(clients).toContainEqual(
       expect.objectContaining({ label: "Travel laptop", method: "pairing" }),
     );
+    // A link naming no node address is refused on the page, not followed.
+    const hostile = await (await browser.newContext()).newPage();
+    await hostile.goto(
+      `${clientPage.ui}pair?host=${encodeURIComponent("javascript:alert(1)")}#token=ABCDEFGHJKMN`,
+    );
+    await expect(hostile.getByRole("alert")).toContainText("does not name a node address");
     await context.close();
   } finally {
     await linked.stop();
