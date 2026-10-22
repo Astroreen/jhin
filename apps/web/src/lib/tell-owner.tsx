@@ -24,9 +24,9 @@ export interface OwnerNews {
  * Tells the owner `news`: with focus, a toast (and nothing at all when
  * `inApp` is off: no system notification is tried); without focus, a system
  * notification when `jhin.notifications.mode` allows it, else a toast left
- * on the page (D630), which the owner may not see until they return. Returns whether anything was shown: with no
- * toasts in the client and no system notification, nothing was (the caller
- * logs it).
+ * on the page (D630), which the owner may not see until they return.
+ * Returns whether anything was shown: with no toasts in the client and no
+ * system notification, nothing was (the caller logs it).
  */
 export function tellOwner(
   config: PluginContext["config"],

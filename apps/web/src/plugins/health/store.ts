@@ -13,8 +13,8 @@ import type { Connections, NodeConnection } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
 
 import {
-  MAX_TOLD_ON_REREAD,
   createNodeFeeds,
+  newestToTell,
   type NodeFeed,
   type NodeFeeds,
 } from "../../lib/node-feeds.ts";
@@ -30,7 +30,10 @@ export type HealthStore = NodeFeeds<HealthState>;
  */
 export function createHealthStore(
   connections: Connections,
-  log: { warn(message: string, fields?: Record<string, unknown>): void },
+  log: {
+    warn(message: string, fields?: Record<string, unknown>): void;
+    info(message: string, fields?: Record<string, unknown>): void;
+  },
   raised: (connection: NodeConnection, warning: Warning) => void,
 ): HealthStore & Disposable {
   return createNodeFeeds<HealthState>(connections, log, {
@@ -53,14 +56,13 @@ export function createHealthStore(
     // Commits are no part of the fold: the counts come from `health.status`.
     apply: applyHealthEvent,
     reread: (connection, before, after) => {
-      Object.values(after.warnings)
+      const fresh = Object.values(after.warnings)
         .filter(
           (warning) =>
             warning.status === "open" && before.warnings[warning.warningId] === undefined,
         )
-        .toSorted((a, b) => b.raisedAt.localeCompare(a.raisedAt))
-        .slice(0, MAX_TOLD_ON_REREAD)
-        .forEach((warning) => raised(connection, warning));
+        .toSorted((a, b) => b.raisedAt.localeCompare(a.raisedAt));
+      for (const warning of newestToTell(fresh, log, HEALTH_STREAM)) raised(connection, warning);
     },
     seen: (connection, event, before) => {
       const warning = (event.payload as { warning?: Warning } | null)?.warning;

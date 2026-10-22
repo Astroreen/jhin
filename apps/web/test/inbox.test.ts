@@ -83,7 +83,7 @@ function settled(store: NodeFeeds<unknown>, id = "a"): Promise<void> {
     });
   });
 }
-const quiet = { warn() {} };
+const quiet = { warn() {}, info() {} };
 
 describe("the owner's inbox (D630)", () => {
   it("lists the open items, follows the stream after its head and tells only new ones", async () => {

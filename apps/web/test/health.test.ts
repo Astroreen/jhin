@@ -82,7 +82,7 @@ function settled(store: NodeFeeds<unknown>, id = "a"): Promise<void> {
     });
   });
 }
-const quiet = { warn() {} };
+const quiet = { warn() {}, info() {} };
 
 describe("health in Civilization mode (D731)", () => {
   it("reads the catalog, follows the stream after its head and tells only warnings raised since", async () => {
@@ -172,7 +172,12 @@ describe("health in Civilization mode (D731)", () => {
     ];
     const node = fakeNode(async () => catalogs.shift());
     const told: string[] = [];
-    const store = createHealthStore(node.connections, quiet, (_connection, raised) =>
+    const logged: unknown[] = [];
+    const log = {
+      warn() {},
+      info: (message: string, fields?: unknown) => logged.push({ message, fields }),
+    };
+    const store = createHealthStore(node.connections, log, (_connection, raised) =>
       told.push(raised.warningId),
     );
     await settled(store);
@@ -187,6 +192,13 @@ describe("health in Civilization mode (D731)", () => {
     await reread;
     // Four came meanwhile; the three newest are told, the rest are in the sidebar.
     expect(told).toEqual(["w4", "w3", "w2"]);
+    // The one left untold is counted in the log, so the cap is seen.
+    expect(logged).toEqual([
+      {
+        message: "a re-read told only the newest",
+        fields: { stream: HEALTH_STREAM, told: 3, untold: 1 },
+      },
+    ]);
     store.dispose();
   });
 });

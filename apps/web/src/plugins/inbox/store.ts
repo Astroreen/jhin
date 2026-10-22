@@ -6,8 +6,8 @@ import type { Connections, NodeConnection } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
 
 import {
-  MAX_TOLD_ON_REREAD,
   createNodeFeeds,
+  newestToTell,
   type NodeFeed,
   type NodeFeeds,
 } from "../../lib/node-feeds.ts";
@@ -45,7 +45,10 @@ export type InboxStore = NodeFeeds<readonly InboxItem[]>;
  */
 export function createInboxStore(
   connections: Connections,
-  log: { warn(message: string, fields?: Record<string, unknown>): void },
+  log: {
+    warn(message: string, fields?: Record<string, unknown>): void;
+    info(message: string, fields?: Record<string, unknown>): void;
+  },
   arrived: (connection: NodeConnection, item: InboxItem) => void,
 ): InboxStore & Disposable {
   return createNodeFeeds<readonly InboxItem[]>(connections, log, {
@@ -60,13 +63,12 @@ export function createInboxStore(
     },
     apply: applyInboxEvent,
     reread: (connection, before, after) => {
-      after
+      const fresh = after
         .filter(
           (item) => !before.some((known) => known.message.messageId === item.message.messageId),
         )
-        .toSorted((a, b) => b.message.sentAt.localeCompare(a.message.sentAt))
-        .slice(0, MAX_TOLD_ON_REREAD)
-        .forEach((item) => arrived(connection, item));
+        .toSorted((a, b) => b.message.sentAt.localeCompare(a.message.sentAt));
+      for (const item of newestToTell(fresh, log, INBOX_STREAM)) arrived(connection, item);
     },
     seen: (connection, event, before, after) => {
       if (event.type === MessageEvents.received && after !== before)

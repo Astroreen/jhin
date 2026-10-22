@@ -67,7 +67,26 @@ export interface NodeFeedSource<S> {
  * The most a re-read tells, newest first: after a long outage the rest is in
  * the sidebar, not a burst of notifications.
  */
-export const MAX_TOLD_ON_REREAD = 3;
+const MAX_TOLD_ON_REREAD = 3;
+
+/**
+ * What a re-read tells of `fresh` (newest first): at most
+ * `MAX_TOLD_ON_REREAD`, the count of the rest logged, so the cap is seen.
+ */
+export function newestToTell<T>(
+  fresh: readonly T[],
+  log: { info(message: string, fields?: Record<string, unknown>): void },
+  stream: string,
+): readonly T[] {
+  if (fresh.length > MAX_TOLD_ON_REREAD) {
+    log.info("a re-read told only the newest", {
+      stream,
+      told: MAX_TOLD_ON_REREAD,
+      untold: fresh.length - MAX_TOLD_ON_REREAD,
+    });
+  }
+  return fresh.slice(0, MAX_TOLD_ON_REREAD);
+}
 
 /** The least time between two retries of one feed. */
 const RETRY_GAP_MS = 60_000;
