@@ -11,6 +11,9 @@ export interface ModePlaces {
  * Panels of the route that are the whole app's, in every mode (D748): never a
  * mode's remembered place, so switching back returns to the mode's own page.
  */
+/** Civilization mode's id (agents.md D741, `jhin.civilization`): routes into it name it. */
+export const CIVILIZATION_MODE = "civilization";
+
 export const APP_PANELS: ReadonlySet<string> = new Set(["settings", "connect"]);
 
 const sortModes = (modes: readonly Mode[]) =>

@@ -17,6 +17,7 @@ import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { teamRoute } from "./route.ts";
 import type { TeamsStore } from "./store.ts";
 import type { TeamsServices } from "./view.tsx";
+import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 
 const said = (text: string) => ({
   loading: () => null,
@@ -81,7 +82,7 @@ export const teamsViewPlugin = builtin(
           }),
           output: z.object({}),
           handler: ({ node, teamId }) => {
-            navigation.navigate(teamRoute({ node, mode: "civilization" }, teamId));
+            navigation.navigate(teamRoute({ node, mode: CIVILIZATION_MODE }, teamId));
             return {};
           },
         }),

@@ -1,7 +1,6 @@
 import type { Route } from "@jhin/client-api";
+import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 
-/** Civilization mode's id (D741, `jhin.civilization`). */
-const CIVILIZATION_MODE = "civilization";
 /** The route panel of an inbox item (D630). */
 export const INBOX_PANEL = "inbox";
 

@@ -1,6 +1,6 @@
 import type { Connections, NodeConnection } from "@jhin/client-api";
 import { toDisposable } from "@jhin/sdk";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 
 import { createNodeFeeds, type NodeFeeds } from "../src/lib/node-feeds.ts";
 
@@ -201,6 +201,11 @@ describe("node feeds (D630, D731)", () => {
         return toDisposable(() => {});
       },
     };
+    // Only the clock is faked: a retry waits a minute after the last one.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const { connections } = fakeConnections(client as never);
     const told: string[] = [];
     const feeds = createNodeFeeds(connections, quiet, {
@@ -224,8 +229,9 @@ describe("node feeds (D630, D731)", () => {
     stream.onError!(new Error("dropped"));
     await next;
     expect(told).toEqual(["b"]);
-    // The stream delivers again, so a later drop is retried too.
+    // The stream delivers again, and a minute later a drop is retried too.
     stream.listener!({ type: "add", payload: "c" });
+    vi.setSystemTime(Date.now() + 60_000);
     next = ready();
     stream.onError!(new Error("dropped again"));
     await next;

@@ -1,8 +1,7 @@
 import type { HealthGroup, Warning } from "@jhin/health-api";
 import type { Route } from "@jhin/client-api";
+import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 
-/** Civilization mode's id (D741, `jhin.civilization`). */
-const CIVILIZATION_MODE = "civilization";
 /** The route panel of health (agents.md D731). */
 export const HEALTH_PANEL = "health";
 

@@ -51,6 +51,9 @@ export interface NodeFeedSource<S> {
   reread?(connection: NodeConnection, before: S, after: S): void;
 }
 
+/** The least time between two retries of one feed. */
+const RETRY_GAP_MS = 60_000;
+
 const NOT_THERE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_DENIED"]);
 
 /** Follows `source` on every open connection for as long as it is not disposed. */
@@ -97,6 +100,7 @@ export function createNodeFeeds<S>(
     changed();
     /** One more read after a stream that failed once it was read (D731). */
     let retried = false;
+    let lastRetry = Number.NEGATIVE_INFINITY;
     const failed = (error: unknown) => {
       if (stopped) return;
       const code = String((error as { code?: unknown } | null)?.code);
@@ -105,8 +109,12 @@ export function createNodeFeeds<S>(
       // A stream that dropped is read and followed once more, so one hiccup
       // does not silence what is told; the feed stays as it is meanwhile, not
       // flashing "not live". A permission taken back is not retried.
-      if (wasRead && !retried && code !== "PERMISSION_DENIED") {
+      // At most one retry a minute: a stream that delivers once and drops
+      // again at once does not loop on the node.
+      const rested = Date.now() - lastRetry >= RETRY_GAP_MS;
+      if (wasRead && !retried && rested && code !== "PERMISSION_DENIED") {
         retried = true;
+        lastRetry = Date.now();
         for (const subscription of subscriptions.splice(0)) subscription.dispose();
         follow(true);
         return;
