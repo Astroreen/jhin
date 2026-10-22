@@ -1,6 +1,7 @@
 import type { ScheduledTask } from "@jhin/scheduler-api";
 import { describe, expect, it } from "vite-plus/test";
 
+import { baseBranchLabel } from "../src/plugins/scheduler/base-branch.tsx";
 import {
   EMPTY_DRAFT,
   agentFromDraft,
@@ -174,5 +175,15 @@ describe("a task's workspace and model in the editor (D983, D984)", () => {
       title: "Checkout path is required",
       description: "Enter the path of the checkout to run in.",
     });
+  });
+});
+
+describe("the base branch picker's trigger (D1179)", () => {
+  it("reads as T3's: a local branch from origin is origin's", () => {
+    expect(baseBranchLabel("main", true, false)).toBe("From origin/main");
+    expect(baseBranchLabel("main", false, false)).toBe("From main");
+    expect(baseBranchLabel("origin/main", true, true)).toBe("From origin/main");
+    expect(baseBranchLabel("feature", true, undefined)).toBe("From feature");
+    expect(baseBranchLabel("", true, undefined)).toBe("Select ref");
   });
 });

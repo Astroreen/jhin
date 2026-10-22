@@ -160,10 +160,17 @@ export const WorkspaceStrategy = z.discriminatedUnion("type", [
 ]);
 export type WorkspaceStrategy = z.output<typeof WorkspaceStrategy>;
 
+/** A value chosen for one of a model's options (D1178, as `tasks.delegate` takes them, D870). */
+const ModelOptions = z
+  .array(z.object({ id: z.string().min(1), value: z.union([z.string(), z.boolean()]) }))
+  .max(20);
+
 /** Agent settings of the threads an unbound task creates. */
 const AgentSettings = {
   agentId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
+  /** The model's options a run's new thread starts with (D1178). */
+  modelOptions: ModelOptions.optional(),
   runtimeMode: z.enum(RUNTIME_MODES).optional(),
   interactionMode: z.enum(INTERACTION_MODES).optional(),
   /** Where a run's new thread works (D983); a bound thread keeps its own. */
@@ -217,6 +224,12 @@ export const CreateTaskInput = z.object({
     .nullable()
     .default(null)
     .describe("Post every run into this thread; null creates a fresh thread per run."),
+  bindToCurrentThread: z
+    .boolean()
+    .optional()
+    .describe(
+      "From an agent's thread: true (the default in its project) posts each run into this thread; false creates a fresh thread per run.",
+    ),
   ...AgentSettings,
   clientRequestId: z
     .string()
@@ -234,7 +247,15 @@ export const UpdateTaskInput = z.object({
   schedule: ScheduleInput.optional(),
   enabled: z.boolean().optional().describe("false pauses the task without deleting it."),
   threadId: z.string().min(1).nullable().optional(),
+  bindToCurrentThread: z
+    .boolean()
+    .optional()
+    .describe(
+      "From an agent's thread: true moves the task into this thread, false makes it create a fresh thread per run.",
+    ),
   ...AgentSettings,
+  /** null clears them (D1178). */
+  modelOptions: ModelOptions.nullable().optional(),
   /** null clears it: the task's runs take the node's default agent and model again (D984). */
   agentId: z.string().min(1).nullable().optional(),
   model: z.string().min(1).nullable().optional(),

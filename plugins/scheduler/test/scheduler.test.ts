@@ -6,7 +6,7 @@ import type { ScheduledTask } from "@jhin/scheduler-api";
 import { connectInMemory } from "@jhin/testing";
 import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 
-import { fakeClock, heldThreads, node, prompts } from "./support.ts";
+import { fakeClock, heldThreads, node, prompts, type Node } from "./support.ts";
 
 /** A local time: Friday 2026-10-23 is weekday 5. */
 const local = (day: number, hour: number, minute = 0) => new Date(2026, 9, day, hour, minute);
@@ -446,5 +446,125 @@ describe("jhin.scheduler: a run's workspace (D983)", () => {
     });
     expect(cleared.agentId).toBeUndefined();
     expect(cleared.model).toBeUndefined();
+  });
+});
+
+describe("jhin.scheduler: a task created from an agent's thread (D1177, D1178)", () => {
+  /** Runs a scheduler command as the agent of `threadId` calls it over MCP. */
+  const asThread = (kernel: Node["kernel"], threadId: string) => (name: string, input: unknown) =>
+    kernel.commands.execute(name, input, { threadId }) as Promise<ScheduledTask>;
+
+  it("binds to the calling thread in its project and takes its settings, as T3 does", async () => {
+    const { kernel, client } = await node();
+    const caller = await client.call<{ id: string; projectId: string }>("threads.create", {
+      agentId: "jhin.agent-fake",
+      model: "echo",
+      modelOptions: [{ id: "effort", value: "high" }],
+      runtimeMode: "auto-accept-edits",
+    });
+    const call = asThread(kernel, caller.id);
+    const bound = await call("scheduler.tasks.create", {
+      prompt: "Check in",
+      schedule: { type: "interval", everyMs: 60 * MINUTE },
+    });
+    expect(bound).toMatchObject({
+      projectId: caller.projectId,
+      threadId: caller.id,
+      workspaceStrategy: { type: "root" },
+      agentId: "jhin.agent-fake",
+      model: "echo",
+      modelOptions: [{ id: "effort", value: "high" }],
+      runtimeMode: "auto-accept-edits",
+    });
+
+    // false: a fresh thread per run, in a new worktree of main, as T3 launches it.
+    const fresh = await call("scheduler.tasks.create", {
+      prompt: "Fresh each time",
+      schedule: { type: "interval", everyMs: 60 * MINUTE },
+      bindToCurrentThread: false,
+    });
+    expect(fresh).toMatchObject({
+      threadId: null,
+      workspaceStrategy: { type: "worktree", baseRef: "main", startFromOrigin: true },
+    });
+
+    // Moved into the thread and out again.
+    expect(
+      await call("scheduler.tasks.update", { id: fresh.id, bindToCurrentThread: true }),
+    ).toMatchObject({ threadId: caller.id, workspaceStrategy: { type: "root" } });
+    expect(
+      await call("scheduler.tasks.update", { id: fresh.id, bindToCurrentThread: false }),
+    ).toMatchObject({ threadId: null, workspaceStrategy: { type: "worktree" } });
+  });
+
+  it("refuses to bind without a calling thread, to another project, or with threadId too", async () => {
+    const { kernel, client } = await node();
+    const schedule = { type: "interval", everyMs: 60 * MINUTE };
+    await expect(
+      client.call("scheduler.tasks.create", { prompt: "x", schedule, bindToCurrentThread: true }),
+    ).rejects.toMatchObject({
+      code: "INVALID_REQUEST",
+      message: "bindToCurrentThread needs an agent running inside a Jhin thread.",
+    });
+    const caller = await client.call<{ id: string }>("threads.create", {});
+    const folder = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-other-"));
+    onTestFinished(() => Fs.rmSync(folder, { recursive: true, force: true }));
+    const other = await client.call<{ id: string }>("projects.create", { path: folder });
+    const call = asThread(kernel, caller.id);
+    await expect(
+      call("scheduler.tasks.create", {
+        prompt: "x",
+        schedule,
+        projectId: other.id,
+        bindToCurrentThread: true,
+      }),
+    ).rejects.toMatchObject({
+      message: "bindToCurrentThread binds to this thread, which belongs to a different project.",
+    });
+    // Another project unbinds by default.
+    expect(
+      await call("scheduler.tasks.create", { prompt: "x", schedule, projectId: other.id }),
+    ).toMatchObject({ projectId: other.id, threadId: null });
+    await expect(
+      call("scheduler.tasks.create", {
+        prompt: "x",
+        schedule,
+        threadId: caller.id,
+        bindToCurrentThread: false,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+  });
+
+  it("starts a run's thread with the task's model options, and drops them with another model", async () => {
+    const { client } = await node();
+    const created = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "/options",
+      schedule: { type: "interval", everyMs: 60 * MINUTE },
+      agentId: "jhin.agent-fake",
+      model: "echo",
+      modelOptions: [{ id: "effort", value: "low" }],
+    });
+    const { threadId } = await client.call<{ threadId: string }>("scheduler.tasks.run", {
+      id: created.id,
+    });
+    const { thread } = await client.call<{ thread: { modelOptions?: unknown } }>("threads.get", {
+      threadId,
+    });
+    expect(thread.modelOptions).toEqual([{ id: "effort", value: "low" }]);
+    const other = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      model: "plain",
+    });
+    expect(other.modelOptions).toBeUndefined();
+    const set = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      modelOptions: [{ id: "fastMode", value: true }],
+    });
+    expect(set.modelOptions).toEqual([{ id: "fastMode", value: true }]);
+    const cleared = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      modelOptions: null,
+    });
+    expect(cleared.modelOptions).toBeUndefined();
   });
 });

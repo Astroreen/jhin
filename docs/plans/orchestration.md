@@ -726,13 +726,53 @@ the rest of it is unchanged since D53's tag.
   The settings page's editor keeps T3's write-only Secret field: the person
   typing it is its owner.
 
+### Binding to the calling thread, model options and the base branch (W32)
+
+Round 3 of `t3-roadmap.md` (D1161–D1180). The reference is D53's tag:
+`apps/server/src/mcp/OrchestratorMcpService.ts` (`scheduleTask`,
+`updateScheduledTask`, `scheduledTaskWorkspaceStrategy`),
+`packages/contracts/src/orchestratorMcp.ts`,
+`apps/web/src/components/settings/ScheduledTasksSettings.tsx` (the editor's
+`baseModelSelection`) and `WorktreeBaseBranchPicker.tsx`.
+
+- **D1177. `bindToCurrentThread`, T3's.** The calling thread is the
+  invocation's (an agent's MCP call names it, `x-jhin-thread`).
+  `scheduler.tasks.create` without `projectId` takes the calling thread's
+  project, and binds the task to the calling thread unless
+  `bindToCurrentThread` is false; it binds by default only in that thread's
+  project. `bindToCurrentThread: true` without a calling thread, or for
+  another project, is refused (`INVALID_REQUEST`, T3's "bindToCurrentThread
+  needs an agent running inside a Jhin thread." and "… binds to this thread,
+  which belongs to a different project."), and with `threadId` too
+  (`INVALID_REQUEST`: one of them). A task the call creates from a thread
+  takes T3's workspace for it: the project checkout when bound, a new
+  worktree of `main` from origin when not (a `workspaceStrategy` given wins),
+  and the calling thread's agent, model, model options and modes for what it
+  leaves out, as T3's runs inherit them. `scheduler.tasks.update` takes
+  `bindToCurrentThread` too: true moves the task into the calling thread,
+  false out of any, and the workspace follows as T3's does. Without a calling
+  thread (the settings page, the CLI) nothing changes: `threadId` binds.
+- **D1178. A task keeps its model options.** A task has `modelOptions`
+  (T3's `modelSelection.options`; `[{ id, value }]`, at most 20, as D870),
+  given on create and update (null clears them) or inherited (D1177), and a
+  run's new thread starts with them (the threads plugin keeps those its
+  model declares, D297). The editor shows no picker for them, as T3's does
+  not: it keeps them while the task's agent and model stay, and drops them
+  when another model is chosen (T3's `baseModelSelection`).
+- **D1179. The base branch is T3's picker.** "Base branch" is T3's
+  `WorktreeBaseBranchPicker`: a button with the branch icon and the branch
+  ("main" until one is chosen), opening a searchable list of the project's
+  refs (`git.branches`, read when it opens; "current", "remote" and
+  "default" badges) with "Start from origin" at its foot. A project whose
+  refs cannot be read (no repository, no source control) keeps the text
+  field.
+
 ### Deferred
 
 - One shared `WorkspaceStrategy` contract: threads, orchestration and
   `@jhin/scheduler-api` each define T3's three strategies.
-- The task editor's model options (effort and the like), T3's base branch
-  picker in place of a text field, and "Edit" of the thread's automations
-  opening that task's editor (the route has no task yet).
+- "Edit" of the thread's automations opening that task's editor (the route
+  has no task yet).
 - Tasks of mesh members on the settings page: it shows the nodes the client
   is connected to.
 - Component tests of the page. Its one end-to-end spec covers create, pause,
@@ -750,7 +790,7 @@ the rest of it is unchanged since D53's tag.
 - A public webhook URL through a relay, held deliveries while the node is
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.
-- Inheriting the calling thread's project and binding a task to it by
-  default (`bindToCurrentThread`): an MCP call does not say which thread it
-  comes from until the node's MCP server is attached to Claude Code (W9).
+- T3's ceiling on a task's modes from the calling agent's own (its
+  `limits`): a task created from a thread takes the thread's modes (D1177),
+  and one given wider modes keeps them.
 - Metrics of deliveries (T3 counts them per outcome).

@@ -1,3 +1,4 @@
+import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
@@ -136,4 +137,69 @@ test("D981: the thread details list the thread's automations, pause and run them
 
   await automations.getByRole("button", { name: "Manage scheduled tasks" }).click();
   await expect(page.getByRole("heading", { name: "Scheduled tasks" }).first()).toBeVisible();
+});
+
+test("D1179: a task's base branch is picked from the project's refs", async ({ page }, info) => {
+  node = await startNode();
+  const repo = Path.join(node.home, "app");
+  Fs.mkdirSync(repo, { recursive: true });
+  const git = (...args: string[]) =>
+    ChildProcess.execFileSync("git", args, {
+      cwd: repo,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Test",
+        GIT_AUTHOR_EMAIL: "test@example.com",
+        GIT_COMMITTER_NAME: "Test",
+        GIT_COMMITTER_EMAIL: "test@example.com",
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_GLOBAL: "/dev/null",
+      },
+    });
+  git("init", "--quiet", "--initial-branch=main");
+  Fs.writeFileSync(Path.join(repo, "README.md"), "app\n");
+  git("add", ".");
+  git("commit", "--quiet", "-m", "first");
+  git("branch", "release");
+  const project = await node.client().call<{ id: string }>("projects.create", { path: repo });
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Scheduled tasks" })
+    .click();
+  const section = page.getByRole("region", { name: "Scheduled tasks" });
+  await section.getByRole("button", { name: "New task" }).click();
+  const dialog = page.getByRole("dialog", { name: "New task" });
+  await dialog.getByRole("combobox", { name: "Project" }).click();
+  await page.getByRole("option", { name: "app" }).click();
+  // T3's trigger: a local branch from origin reads as origin's.
+  const base = dialog.getByRole("combobox", { name: "Base branch" });
+  await expect(base).toHaveText("From origin/main");
+  await base.click();
+  await expect(page.getByRole("option", { name: /^release/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /^main/ })).toContainText("current");
+  await shoot(page, info, "scheduler-base-branch");
+  await page.getByRole("option", { name: /^release/ }).click();
+  await expect(base).toHaveText("From origin/release");
+
+  await dialog.getByRole("textbox", { name: "Name" }).fill("Nightly");
+  await dialog.getByRole("textbox", { name: "Prompt" }).fill("Build the release");
+  await dialog.getByRole("button", { name: "Every interval" }).click();
+  await dialog.getByRole("spinbutton", { name: "Run every" }).fill("60");
+  await dialog.getByRole("button", { name: "Create task" }).click();
+  await expect(dialog).toBeHidden();
+  const tasks = await node
+    .client()
+    .call<{ tasks: { projectId: string; workspaceStrategy?: unknown }[] }>(
+      "scheduler.tasks.list",
+      {},
+    );
+  expect(tasks.tasks).toContainEqual(
+    expect.objectContaining({
+      projectId: project.id,
+      workspaceStrategy: { type: "worktree", baseRef: "release", startFromOrigin: true },
+    }),
+  );
 });

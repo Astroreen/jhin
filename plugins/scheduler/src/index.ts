@@ -27,6 +27,7 @@ import {
   type Schedule,
   type ScheduleInput,
   type SchedulerService,
+  type WorkspaceStrategy,
 } from "@jhin/scheduler-api";
 import {
   definePlugin,
@@ -327,6 +328,7 @@ function activateScheduler(context: PluginContext): void {
     const settings = {
       ...(task.agentId === undefined ? {} : { agentId: task.agentId }),
       ...(task.model === undefined ? {} : { model: task.model }),
+      ...(task.modelOptions === undefined ? {} : { modelOptions: task.modelOptions }),
       ...(task.runtimeMode === undefined ? {} : { runtimeMode: task.runtimeMode }),
       ...(task.interactionMode === undefined ? {} : { interactionMode: task.interactionMode }),
     };
@@ -637,6 +639,75 @@ function activateScheduler(context: PluginContext): void {
     return task;
   };
 
+  /** What a task takes from the thread an agent calls from (D1177). */
+  interface CallingThread {
+    readonly id: string;
+    readonly projectId: string;
+    readonly agentId?: string;
+    readonly model?: string;
+    readonly modelOptions?: { id: string; value: string | boolean }[];
+    readonly runtimeMode?: CreateTaskInput["runtimeMode"];
+    readonly interactionMode?: CreateTaskInput["interactionMode"];
+  }
+  const callingThread = async (threadId: string): Promise<CallingThread> =>
+    (await execute<{ thread: CallingThread }>("threads.get", { threadId })).thread;
+  const invalid = (message: string) => new SchedulerError("INVALID_REQUEST", message, {});
+  const NEEDS_THREAD = "bindToCurrentThread needs an agent running inside a Jhin thread.";
+  const OTHER_PROJECT =
+    "bindToCurrentThread binds to this thread, which belongs to a different project.";
+  /** T3's scheduledTaskWorkspaceStrategy: the checkout when bound, else a worktree of main. */
+  const workspaceFor = (bound: boolean): WorkspaceStrategy =>
+    bound ? { type: "root" } : { type: "worktree", baseRef: "main", startFromOrigin: true };
+
+  /**
+   * A create from an agent's thread (D1177): the thread's project, bound to it
+   * by default, with T3's workspace and the thread's agent settings for what the
+   * call leaves out. Without a calling thread only `threadId` binds.
+   */
+  const bindToCaller = async (
+    input: CreateTaskInput,
+    raw: z.input<typeof CreateTaskInput>,
+    callerThreadId: string | undefined,
+  ): Promise<CreateTaskInput> => {
+    const namedThread = raw.threadId !== undefined && raw.threadId !== null;
+    if (input.bindToCurrentThread !== undefined && namedThread) {
+      throw invalid("Give threadId or bindToCurrentThread, not both.");
+    }
+    if (callerThreadId === undefined || namedThread) {
+      if (input.bindToCurrentThread === true) throw invalid(NEEDS_THREAD);
+      return input;
+    }
+    const caller = await callingThread(callerThreadId);
+    const projectId = input.projectId ?? caller.projectId;
+    const bound = input.bindToCurrentThread ?? projectId === caller.projectId;
+    if (bound && projectId !== caller.projectId) throw invalid(OTHER_PROJECT);
+    const sameAgent = input.agentId === undefined || input.agentId === caller.agentId;
+    return {
+      ...input,
+      projectId,
+      threadId: bound ? caller.id : null,
+      workspaceStrategy: input.workspaceStrategy ?? workspaceFor(bound),
+      ...(input.agentId === undefined && caller.agentId !== undefined
+        ? { agentId: caller.agentId }
+        : {}),
+      ...(input.model === undefined && sameAgent && caller.model !== undefined
+        ? { model: caller.model }
+        : {}),
+      ...(input.modelOptions === undefined &&
+      sameAgent &&
+      (input.model === undefined || input.model === caller.model) &&
+      caller.modelOptions !== undefined
+        ? { modelOptions: caller.modelOptions }
+        : {}),
+      ...(input.runtimeMode === undefined && caller.runtimeMode !== undefined
+        ? { runtimeMode: caller.runtimeMode }
+        : {}),
+      ...(input.interactionMode === undefined && caller.interactionMode !== undefined
+        ? { interactionMode: caller.interactionMode }
+        : {}),
+    };
+  };
+
   const threadProject = async (threadId: string): Promise<string> => {
     const { thread } = await execute<{ thread: { projectId: string } }>("threads.get", {
       threadId,
@@ -664,8 +735,9 @@ function activateScheduler(context: PluginContext): void {
   const create = async (
     raw: z.input<typeof CreateTaskInput>,
     callerId = "",
+    callerThreadId?: string,
   ): Promise<ScheduledTask> => {
-    const input = CreateTaskInput.parse(raw);
+    const input = await bindToCaller(CreateTaskInput.parse(raw), raw, callerThreadId);
     // A retried create names the task it made: its id comes from the caller
     // and the request's id, so another caller's id never finds it.
     const id =
@@ -708,6 +780,7 @@ function activateScheduler(context: PluginContext): void {
         threadId: input.threadId,
         ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
         ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.modelOptions === undefined ? {} : { modelOptions: input.modelOptions }),
         ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
         ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
         ...(input.workspaceStrategy === undefined
@@ -733,8 +806,31 @@ function activateScheduler(context: PluginContext): void {
     });
   };
 
-  const update = async (raw: z.input<typeof UpdateTaskInput>): Promise<ScheduledTask> => {
-    const parsed = UpdateTaskInput.parse(raw);
+  const update = async (
+    raw: z.input<typeof UpdateTaskInput>,
+    callerThreadId?: string,
+  ): Promise<ScheduledTask> => {
+    let parsed = UpdateTaskInput.parse(raw);
+    // Moved into the calling thread, or out of any, with T3's workspace (D1177).
+    if (parsed.bindToCurrentThread !== undefined) {
+      if (parsed.threadId !== undefined) {
+        throw invalid("Give threadId or bindToCurrentThread, not both.");
+      }
+      let threadId: string | null = null;
+      if (parsed.bindToCurrentThread) {
+        if (callerThreadId === undefined) throw invalid(NEEDS_THREAD);
+        const caller = await callingThread(callerThreadId);
+        if (caller.projectId !== (await getTask(parsed.id)).projectId) {
+          throw invalid(OTHER_PROJECT);
+        }
+        threadId = caller.id;
+      }
+      parsed = {
+        ...parsed,
+        threadId,
+        workspaceStrategy: parsed.workspaceStrategy ?? workspaceFor(parsed.bindToCurrentThread),
+      };
+    }
     const projectId =
       parsed.threadId === undefined || parsed.threadId === null
         ? undefined
@@ -779,6 +875,13 @@ function activateScheduler(context: PluginContext): void {
         delete kept.model;
       }
       if (input.model === null) delete kept.model;
+      // Options chosen for another agent or model do not carry over (D297, D1178).
+      const otherModel =
+        (input.agentId !== undefined && input.agentId !== rest.agentId) ||
+        (input.model !== undefined && input.model !== rest.model);
+      if (input.modelOptions === null || (otherModel && input.modelOptions === undefined)) {
+        delete kept.modelOptions;
+      }
       // Another agent without a model of its own takes none of the old agent's.
       if (
         typeof input.agentId === "string" &&
@@ -795,6 +898,9 @@ function activateScheduler(context: PluginContext): void {
           ? {}
           : { agentId: input.agentId }),
         ...(input.model === undefined || input.model === null ? {} : { model: input.model }),
+        ...(input.modelOptions === undefined || input.modelOptions === null
+          ? {}
+          : { modelOptions: input.modelOptions }),
         ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
         ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
         ...(input.workspaceStrategy === undefined
@@ -1267,22 +1373,22 @@ function activateScheduler(context: PluginContext): void {
     name: "scheduler.tasks.create",
     title: "Schedule a recurring task",
     description:
-      "Creates persistent work in the node's scheduler that runs even when no turn is active. Pass schedule as a structured object. Timers: {type:'interval', everyMs:3600000} is hourly; {type:'fixed_time', timeOfDay:'09:00', weekdays:[1,2,3,4,5]} is weekday mornings in the node's time zone; report the returned nextRunAt. Webhooks: {type:'webhook'} runs once per request to the returned webhook.url. The run sees the request ONLY through prompt placeholders: {{body.path}} (e.g. {{body.action}}, {{body.release.tag_name}}), {{headers.name}}, {{query.name}}, {{body}}, or {{request}}. Each value arrives framed as untrusted request data; without a signature, anyone with the URL can trigger a run. For a sender that signs requests, first call secrets_request so the user enters the secret privately (never ask for it in chat or invent one), then set signature with the returned secretRef, e.g. GitHub: {type:'webhook', signature:{header:'x-hub-signature-256', encoding:'hex', prefix:'sha256=', secretRef}}. With threadId every run posts into that thread; without it each run starts a new thread in the project.",
+      "Creates persistent work in the node's scheduler that runs even when no turn is active. Pass schedule as a structured object. Timers: {type:'interval', everyMs:3600000} is hourly; {type:'fixed_time', timeOfDay:'09:00', weekdays:[1,2,3,4,5]} is weekday mornings in the node's time zone; report the returned nextRunAt. Webhooks: {type:'webhook'} runs once per request to the returned webhook.url. The run sees the request ONLY through prompt placeholders: {{body.path}} (e.g. {{body.action}}, {{body.release.tag_name}}), {{headers.name}}, {{query.name}}, {{body}}, or {{request}}. Each value arrives framed as untrusted request data; without a signature, anyone with the URL can trigger a run. For a sender that signs requests, first call secrets_request so the user enters the secret privately (never ask for it in chat or invent one), then set signature with the returned secretRef, e.g. GitHub: {type:'webhook', signature:{header:'x-hub-signature-256', encoding:'hex', prefix:'sha256=', secretRef}}. Omit projectId for this thread's project. In this thread's project, runs post into THIS thread by default (bindToCurrentThread=true), which suits an orchestrator that sees every trigger, delegates work, and can dedupe against what is in flight; use false only when the user wants a fresh top-level thread per run. Elsewhere each run launches a fresh thread. Agent, model and runtime settings inherit from this thread. Without a calling thread, threadId binds every run to that thread; without it each run starts a new thread in the project.",
     input: CreateTaskInput,
     output: ScheduledTask,
     permissions: write,
-    handler: (input, invocation) => create(input, invocation.caller?.id),
+    handler: (input, invocation) => create(input, invocation.caller?.id, invocation.threadId),
   });
 
   context.commands.register({
     name: "scheduler.tasks.update",
     title: "Update a scheduled task",
     description:
-      "Updates a scheduled task. Only the fields given change. Use enabled=false to pause a task without deleting it; threadId moves it between posting into a thread and starting a new thread per run (null). A webhook signature without a secret or secretRef keeps the stored one; a secretRef from secrets_request is consumed by the update.",
+      "Updates a scheduled task. Only the fields given change. Use enabled=false to pause a task without deleting it; threadId moves it between posting into a thread and starting a new thread per run (null); from an agent's thread, set bindToCurrentThread to move the task between posting into this thread and launching a fresh thread per run. A webhook signature without a secret or secretRef keeps the stored one; a secretRef from secrets_request is consumed by the update.",
     input: UpdateTaskInput,
     output: ScheduledTask,
     permissions: write,
-    handler: (input) => update(input),
+    handler: (input, invocation) => update(input, invocation.threadId),
   });
 
   context.commands.register({

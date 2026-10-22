@@ -4,6 +4,7 @@
 // deliveries dialog, with T3's wording.
 import type { AgentInfo, Connections, NodeConnection, ThreadsCatalog } from "@jhin/client-api";
 import type { Delivery, DeliverySummary, ScheduledTask } from "@jhin/scheduler-api";
+import type { Branch } from "@jhin/source-control-api";
 import {
   Badge,
   Button,
@@ -70,6 +71,7 @@ import {
   type WorkspaceMode,
 } from "./labels.ts";
 import { TASK_ACTIONS_SLOT, type TaskActionProps } from "./actions.tsx";
+import { BaseBranchPicker } from "./base-branch.tsx";
 import type { SchedulerStore, SchedulerView } from "./store.ts";
 
 export { createSchedulerStore } from "./store.ts";
@@ -715,6 +717,16 @@ function EditorForm(props: {
       : (modelChoices.find((choice) => choice.key === draft.modelKey)?.label ??
         (agents === undefined ? "Loading models…" : "Unavailable model"));
 
+  /** The project's refs for the base branch (D1179); one function per node and project. */
+  const loadBranches = useCallback(
+    () =>
+      call<{ branches: Branch[] }>(connection, "git.branches", {
+        projectId: selectedProjectId,
+      }).then((answer) => answer.branches),
+    // `call` reads the connection anew each time.
+    [connection, selectedProjectId],
+  );
+
   const submit = async () => {
     if (saving || editingTaskMissing || !connected) return;
     const problem = draftProblem(draft, {
@@ -906,27 +918,19 @@ function EditorForm(props: {
 
           {draft.threadId === "" && draft.workspaceMode === "worktree" ? (
             <Field htmlFor="scheduled-task-base-ref" label="Base branch">
-              <div className="flex items-center gap-3">
-                <Input
-                  className="min-w-0 flex-1"
-                  id="scheduled-task-base-ref"
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, baseRef: event.target.value }))
-                  }
-                  placeholder="main"
-                  value={draft.baseRef}
-                />
-                <Label className="flex shrink-0 items-center gap-2 font-normal">
-                  <Switch
-                    aria-label="Start from origin"
-                    checked={draft.startFromOrigin}
-                    onCheckedChange={(startFromOrigin) =>
-                      setDraft((current) => ({ ...current, startFromOrigin }))
-                    }
-                  />
-                  Start from origin
-                </Label>
-              </div>
+              {/* T3's WorktreeBaseBranchPicker, its refs read for the project (D1179). */}
+              <BaseBranchPicker
+                disabled={saving || !connected}
+                id="scheduled-task-base-ref"
+                key={`${connection}:${selectedProjectId}`}
+                loadBranches={loadBranches}
+                onStartFromOriginChange={(startFromOrigin) =>
+                  setDraft((current) => ({ ...current, startFromOrigin }))
+                }
+                onValueChange={(baseRef) => setDraft((current) => ({ ...current, baseRef }))}
+                startFromOrigin={draft.startFromOrigin}
+                value={draft.baseRef}
+              />
             </Field>
           ) : null}
           {draft.threadId === "" && draft.workspaceMode === "existing_worktree" ? (
