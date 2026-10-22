@@ -1271,6 +1271,12 @@ Each workstream lists its PRs here as they merge.
 - A5 #188: `jhin.teams-view`, teams in Civilization mode: the Teams
   section, a team's page with its agents, culture, Start and Stop team and a
   message to the lead, `civilization.team.open` (D691).
+- A7 #189: `@jhin/health-api` (the `health` stream, warnings, ideas, the
+  `jhin.health` config) and the `jhin.health` plugin: sensors of ceremony
+  against progress per mission, project and node, the ceremony, recursive
+  proof loop and mind-virus detectors, the analyst asked with `agents.ask`,
+  `health.*` commands; agents read health over MCP (D721–D730). The Health
+  view in Civilization mode follows.
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
