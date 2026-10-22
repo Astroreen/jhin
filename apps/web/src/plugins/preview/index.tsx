@@ -261,7 +261,8 @@ export const previewPanelPlugin = builtin(
       context.commands.register({
         name: "preview.toggle",
         title: "Toggle browser preview",
-        description: "Opens or closes the right panel with the thread's browser tabs",
+        description:
+          "Opens or closes the right panel with the thread's browser tabs; closing it floats the tab it showed over the chat, as T3 does",
         input: z.object({}),
         output: z.object({ toggled: z.boolean() }),
         handler: () => ({ toggled: toggle() }),
