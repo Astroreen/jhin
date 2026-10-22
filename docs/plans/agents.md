@@ -1045,7 +1045,7 @@ Each workstream lists its PRs here as they merge.
   spec and its config layer, the roster, aliases, `teams.bundles@1`, the
   `teams` stream and the schemas of `teams.*`). D681–D690 recorded; the
   server side and the Civilization-mode views follow.
-- A5 #PR2: the `jhin.teams` plugin: specs from `jhin.teams` and bundles
+- A5 #186: the `jhin.teams` plugin: specs from `jhin.teams` and bundles
   (`teams.bundles@1`), `teams.list`, `.get`, `.up`, `.down`, `.join`,
   `.resolve` and the `teams` stream, members on other nodes through
   `mesh.call`; aliases in `agents.send` and `agents.ask` (`jhin.agents`);
