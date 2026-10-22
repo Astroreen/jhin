@@ -101,7 +101,12 @@ export function createNodeFeeds<S>(
             const before = states.get(id)?.value ?? source.empty;
             const after = source.apply(before, event);
             if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
-            source.seen?.(connection, event, before, after);
+            // What hears the events (a notification) never breaks the feed.
+            try {
+              source.seen?.(connection, event, before, after);
+            } catch (error) {
+              log.warn("a feed's listener failed", { stream: source.stream, error: String(error) });
+            }
           }),
         );
       })

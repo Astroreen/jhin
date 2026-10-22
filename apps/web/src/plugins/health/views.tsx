@@ -277,7 +277,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     node,
     "health.warnings.get",
     { warningId },
-    `${node}|${warningId}|${warning?.evidence.length ?? 0}`,
+    // The newest event behind it: it moves even once the evidence holds its 50.
+    `${node}|${warningId}|${JSON.stringify(warning?.evidence.at(-1) ?? null)}`,
   );
   const [dismissing, setDismissing] = useState(false);
   const mounted = useRef(true);
