@@ -5,6 +5,7 @@
 // reasoning, tools, plans, usage, approvals, questions, errors) into a turn's items.
 import {
   DEFAULT_RUNTIME_MODE,
+  SUBAGENT_WORK_KINDS,
   UsageLimitError,
   historyTranscript,
   type AgentItem,
@@ -13,6 +14,7 @@ import {
   type AgentTurn,
   type ApprovalDecision,
   type ModelOptionDescriptor,
+  type SubagentWorkItem,
   type TurnRequest,
 } from "@jhin/agent-api";
 
@@ -153,6 +155,41 @@ const ITEM_REQUESTS = new Set([
   "item/tool/requestUserInput",
 ]);
 
+/** Codex's items that start or end a subagent (T3's collab and subagent activity items). */
+const SUBAGENT_ITEMS = new Set(["collabAgentToolCall", "subAgentActivity"]);
+/** What a subagent's thread sends that its child thread shows (D1145). */
+const CHILD_METHODS = new Set([
+  "item/started",
+  "item/completed",
+  "item/agentMessage/delta",
+  "item/reasoning/summaryTextDelta",
+  "item/reasoning/textDelta",
+]);
+const isSubagentWork = (item: AgentItem): item is SubagentWorkItem =>
+  (SUBAGENT_WORK_KINDS as readonly string[]).includes(item.kind);
+const str = (value: unknown) => (typeof value === "string" && value.length > 0 ? value : undefined);
+/** A child thread's title: the first line of what it was asked, else T3's "Subagent". */
+const subagentTitle = (prompt: string) => {
+  const line = prompt.trim().split("\n")[0]?.trim() ?? "";
+  if (line.length === 0) return "Subagent";
+  return line.length > 80 ? `${line.slice(0, 79)}…` : line;
+};
+/** T3's statuses of `agentsStates`, the ones that end a subagent. */
+const subagentEnd = (status: unknown): "completed" | "failed" | "interrupted" | undefined => {
+  switch (status) {
+    case "completed":
+      return "completed";
+    case "interrupted":
+    case "shutdown":
+      return "interrupted";
+    case "errored":
+    case "notFound":
+      return "failed";
+    default:
+      return undefined;
+  }
+};
+
 /** What Codex sends a turn, with its Codex turn id: notifications and server requests. */
 type Frame =
   | { readonly kind: "notification"; readonly method: string; readonly params: unknown }
@@ -229,6 +266,110 @@ export function codexTurn(
         : "decline";
   };
 
+  // --- Subagents (D1145) ------------------------------------------------------------
+  /** Codex threads of the subagents this turn started, by their thread id: still open. */
+  const subagents = new Map<string, { open: boolean }>();
+  /** The subagent whose frame is being read: its items go out as `subagent.item`. */
+  let child: string | undefined;
+  /** An item of the turn, or of the subagent being read (only the kinds its thread shows). */
+  const emit = (item: AgentItem) => {
+    if (child === undefined) return out.push(item);
+    if (isSubagentWork(item)) out.push({ kind: "subagent.item", subagentId: child, item });
+  };
+  const startSubagent = (threadId: string, title: string, prompt: string, model?: string) => {
+    if (subagents.has(threadId)) return;
+    subagents.set(threadId, { open: true });
+    out.push({
+      kind: "subagent.started",
+      subagentId: threadId,
+      title,
+      prompt,
+      ...(model === undefined ? {} : { model }),
+    });
+  };
+  const endSubagent = (
+    threadId: string,
+    status: "completed" | "failed" | "interrupted",
+    error?: string,
+  ) => {
+    const subagent = subagents.get(threadId);
+    if (subagent === undefined || !subagent.open) return;
+    subagent.open = false;
+    out.push({
+      kind: "subagent.ended",
+      subagentId: threadId,
+      status,
+      ...(error === undefined ? {} : { error }),
+    });
+  };
+  /** T3's registerSubagentThreads, registerSubagentActivity and updateSubagentStates. */
+  const subagentItem = (item: CodexItem, completed: boolean) => {
+    if (item.type === "subAgentActivity") {
+      const threadId = str(item["agentThreadId"]);
+      if (threadId === undefined) return;
+      const kind = item["kind"];
+      const path = str(item["agentPath"]);
+      if (kind === "started") startSubagent(threadId, path ?? "Subagent", "");
+      else if (kind === "completed") endSubagent(threadId, "completed");
+      else if (kind === "interrupted") endSubagent(threadId, "interrupted");
+      return;
+    }
+    if (!completed) return;
+    if (item["tool"] === "spawnAgent") {
+      const prompt = str(item["prompt"]) ?? "";
+      const model = str(item["model"]);
+      const receivers = Array.isArray(item["receiverThreadIds"]) ? item["receiverThreadIds"] : [];
+      for (const threadId of receivers) {
+        if (typeof threadId === "string") {
+          startSubagent(threadId, subagentTitle(prompt), prompt, model);
+        }
+      }
+    }
+    const states = isRecord(item["agentsStates"]) ? item["agentsStates"] : {};
+    for (const [threadId, state] of Object.entries(states)) {
+      if (!isRecord(state)) continue;
+      const ended = subagentEnd(state["status"]);
+      if (ended === undefined) continue;
+      const message = str(state["message"]);
+      endSubagent(
+        threadId,
+        ended,
+        ended === "failed" ? (message ?? "The subagent failed.") : undefined,
+      );
+    }
+  };
+  /** A frame of a subagent's own Codex thread: its work, approvals asked through this turn. */
+  const childFrame = (threadId: string, frame: Frame) => {
+    if (frame.kind === "request") {
+      frame.answer(serverRequest(frame.method, isRecord(frame.params) ? frame.params : {}));
+      return;
+    }
+    const params = isRecord(frame.params) ? frame.params : {};
+    if (frame.method === "turn/completed") {
+      const turn = isRecord(params["turn"]) ? params["turn"] : {};
+      const error = isRecord(turn["error"]) ? str(turn["error"]["message"]) : undefined;
+      if (turn["status"] === "failed")
+        endSubagent(threadId, "failed", error ?? "The subagent failed.");
+      else if (turn["status"] === "interrupted") endSubagent(threadId, "interrupted");
+      else endSubagent(threadId, "completed");
+      return;
+    }
+    if (!CHILD_METHODS.has(frame.method)) return;
+    // Its item ids are its thread's: kept apart from this turn's.
+    const scoped = (id: unknown) => `${threadId}:${String(id)}`;
+    const own: Record<string, unknown> = { ...params };
+    if (typeof own["itemId"] === "string") own["itemId"] = scoped(own["itemId"]);
+    if (isRecord(own["item"]) && typeof own["item"]["id"] === "string") {
+      own["item"] = { ...own["item"], id: scoped(own["item"]["id"]) };
+    }
+    child = threadId;
+    try {
+      notification(frame.method, own);
+    } finally {
+      child = undefined;
+    }
+  };
+
   // --- Items -------------------------------------------------------------------------
   const started = new Set<string>();
   const changesById = new Map<string, FileUpdateChange[]>();
@@ -243,14 +384,14 @@ export function codexTurn(
   const delta = (kind: "message" | "reasoning", itemId: string, text: string) => {
     if (text.length === 0) return;
     texts.set(itemId, (texts.get(itemId) ?? "") + text);
-    out.push({ kind: `${kind}.delta`, itemId, text });
+    emit({ kind: `${kind}.delta`, itemId, text });
   };
   const complete = (kind: "message" | "reasoning", itemId: string, final?: string) => {
     if (completedTexts.has(itemId)) return;
     const text = final !== undefined && final.length > 0 ? final : (texts.get(itemId) ?? "");
     if (text.trim().length === 0) return;
     completedTexts.add(itemId);
-    out.push({ kind: `${kind}.completed`, itemId, text });
+    emit({ kind: `${kind}.completed`, itemId, text });
   };
 
   const startTool = (item: CodexItem) => {
@@ -259,15 +400,17 @@ export function codexTurn(
     if (tool === undefined) return;
     started.add(item.id);
     if (item.type === "fileChange") changesById.set(item.id, fileChanges(item));
-    out.push({ kind: "tool.started", itemId: item.id, tool });
+    emit({ kind: "tool.started", itemId: item.id, tool });
   };
 
   const itemStarted = (item: CodexItem) => {
+    if (child === undefined && SUBAGENT_ITEMS.has(item.type)) return subagentItem(item, false);
     if (item.type === "fileChange") changesById.set(item.id, fileChanges(item));
     startTool(item);
   };
 
   const itemCompleted = (item: CodexItem) => {
+    if (child === undefined && SUBAGENT_ITEMS.has(item.type)) return subagentItem(item, true);
     switch (item.type) {
       case "agentMessage":
         complete("message", item.id, typeof item["text"] === "string" ? item["text"] : undefined);
@@ -279,7 +422,7 @@ export function codexTurn(
             ? item["text"]
             : (planTexts.get(item.id) ?? "");
         if (text.trim().length > 0)
-          out.push({ kind: "plan.proposed", itemId: item.id, markdown: text });
+          emit({ kind: "plan.proposed", itemId: item.id, markdown: text });
         return;
       }
       case "reasoning": {
@@ -308,7 +451,7 @@ export function codexTurn(
         if (toolCall(item) === undefined) return;
         startTool(item);
         const outcome = toolOutcome(item);
-        out.push({
+        emit({
           kind: "tool.completed",
           itemId: item.id,
           ...outcome,
@@ -318,7 +461,7 @@ export function codexTurn(
         });
         // The compaction stays a row of the turn and also says the context was compacted (D709).
         if (item.type === "contextCompaction" && outcome.status === "completed") {
-          out.push({
+          emit({
             kind: "context.compacted",
             trigger: isCompact(request.input) ? "manual" : "auto",
           });
@@ -397,7 +540,7 @@ export function codexTurn(
       case "item/commandExecution/outputDelta": {
         const itemId = String(params["itemId"]);
         const text = String(params["delta"] ?? "");
-        if (started.has(itemId) && text.length > 0) out.push({ kind: "tool.output", itemId, text });
+        if (started.has(itemId) && text.length > 0) emit({ kind: "tool.output", itemId, text });
         return;
       }
       case "item/started":
@@ -647,6 +790,7 @@ export function codexTurn(
     // Another Codex thread (a subagent's) or another turn (an earlier one that still
     // sends after its interrupt): not this turn's.
     const thread = frameThread(frame);
+    if (thread !== undefined && subagents.has(thread)) return childFrame(thread, frame);
     if (thread !== undefined && codexThreadId !== undefined && thread !== codexThreadId) {
       if (frame.kind === "request")
         frame.answer(Promise.reject(new Error("Not this thread's turn.")));
