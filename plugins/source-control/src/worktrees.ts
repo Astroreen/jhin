@@ -401,7 +401,10 @@ async function populateSubmodules(
     );
   } catch (error) {
     // Any failure (another exit code, a timeout) leaves the worktree, made already, in use.
-    return ["warning", `submodules not checked out: ${(error as Error).message.split("\n")[0]}`];
+    return [
+      "warning",
+      `submodules not checked out: ${redactUrls((error as Error).message.split("\n")[0] ?? "")}`,
+    ];
   }
   if (updated.code === 0) return ["done", undefined];
   // git's reason is its `fatal:` or `error:` line; progress ("Cloning into …") comes first.
@@ -413,8 +416,11 @@ async function populateSubmodules(
     /^(fatal|error):\s*/,
     "",
   );
-  return ["warning", `submodules not checked out${reason === "" ? "" : `: ${reason}`}`];
+  return ["warning", `submodules not checked out${reason === "" ? "" : `: ${redactUrls(reason)}`}`];
 }
+
+/** A URL's credentials (`https://user:token@host`) never reach the setup card. */
+export const redactUrls = (text: string) => text.replace(/(\w+:\/\/)[^/\s@]+@/g, "$1***@");
 
 /** Checks an existing branch out again at `path` (a managed worktree that went missing). */
 export async function recreateWorktree(git: Git, path: string, branch: string): Promise<void> {
