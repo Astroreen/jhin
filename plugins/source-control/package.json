@@ -38,7 +38,8 @@
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/source-control-api": "workspace:*",
-    "@jhin/storage-api": "workspace:*"
+    "@jhin/storage-api": "workspace:*",
+    "@jhin/terminal-api": "workspace:*"
   },
   "devDependencies": {
     "@jhin/plugin-agent-fake": "workspace:*",
@@ -54,7 +55,7 @@
     "description": "Git status, diffs, branches and checkouts of the node's projects, each thread's branch, checkpoints of its turns and its worktree, git actions (commit, push, create a pull request) and pull requests through the GitHub CLI",
     "side": "server",
     "provides": {
-      "source-control.git": "1.2.0",
+      "source-control.git": "1.3.0",
       "source-control.pull-requests": "1.0.0"
     },
     "requires": {
@@ -65,7 +66,8 @@
     "optional": {
       "rpc.streams": "^1.1",
       "agent.registry": "^1",
-      "mesh.streams": "^1"
+      "mesh.streams": "^1",
+      "terminal.sessions": "^1"
     },
     "entry": "src/index.ts"
   }

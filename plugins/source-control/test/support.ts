@@ -3,7 +3,23 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { LIVE_STREAMS_CAPABILITY, createLiveStreams, type RpcClient } from "@jhin/rpc";
+import { spawn } from "node:child_process";
+
+import {
+  LIVE_STREAMS_CAPABILITY,
+  createLiveStreams,
+  createMemoryStreams,
+  type LiveStreams,
+  type RpcClient,
+} from "@jhin/rpc";
+import {
+  TERMINAL_SESSIONS_CAPABILITY,
+  TERMINAL_STREAM_PREFIX,
+  TerminalEvents,
+  terminalStream,
+  type OpenTerminalInput,
+  type TerminalSessions,
+} from "@jhin/terminal-api";
 import {
   SOURCE_CONTROL_STREAM,
   type ProjectStatus,
@@ -178,6 +194,10 @@ exit 1
 
 export interface Node {
   readonly client: RpcClient;
+  /** A client of the node holding only `permissions` (a narrow device token). */
+  as(permissions: string[]): RpcClient;
+  /** The fake terminals, when the node has them. */
+  readonly terminals?: FakeTerminals;
   /** Every event of the `source-control` stream from now on. */
   readonly events: StoredEvent[];
   /** Resolves with the first event (from now on, or already seen) that `match` accepts. */
@@ -205,13 +225,134 @@ function recordingLogger(listen: (message: string) => void): Logger {
   return logger;
 }
 
+/** What a fake terminal saw: its open and the lines typed into it. */
+interface FakeTerminals {
+  readonly opened: OpenTerminalInput[];
+  readonly closed: string[];
+  /** What was typed into each terminal, by id. */
+  readonly typedInto: string[];
+  /** Holds every open until the returned function is called; resolves once one waits. */
+  holdOpens(): { waiting: Promise<void>; release(): void };
+  /** Makes every open fail with `error`. */
+  failOpens(error: Error): void;
+  /** Resolves once something was typed into `terminalId`. */
+  typed(terminalId: string): Promise<void>;
+}
+
+/**
+ * `terminal.sessions@1` whose terminals run what is typed into them with `sh`
+ * (no PTY, no echo) and serve its output as the terminal plugin does: the
+ * setup script's wrapper and sentinel go through a real shell.
+ */
+function fakeTerminals(live: LiveStreams): { sessions: TerminalSessions; seen: FakeTerminals } {
+  const streams = createMemoryStreams();
+  live.serve(TERMINAL_STREAM_PREFIX, streams);
+  const opened: OpenTerminalInput[] = [];
+  const closed: string[] = [];
+  const typedInto: string[] = [];
+  let gate: { reached: () => void; open: Promise<void> } | undefined;
+  let failure: Error | undefined;
+  const running = new Map<string, ReturnType<typeof spawn>>();
+  const typedWaiters = new Map<string, (() => void)[]>();
+  const sessions: TerminalSessions = {
+    open: async (input) => {
+      if (failure !== undefined) throw failure;
+      opened.push(input);
+      if (gate !== undefined) {
+        gate.reached();
+        await gate.open;
+      }
+      return {
+        threadId: input.threadId,
+        terminalId: input.terminalId,
+        cwd: input.cwd,
+        status: "running",
+        pid: null,
+        exitCode: null,
+        signal: null,
+        cols: 80,
+        rows: 24,
+        hasRunningSubprocess: false,
+        label: "",
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    },
+    write: ({ threadId, terminalId, data }) => {
+      const input = opened.findLast((entry) => entry.terminalId === terminalId)!;
+      const stream = terminalStream(threadId, terminalId);
+      // Its errors go to its output, in order, as a terminal shows them.
+      const child = spawn("sh", ["-c", `exec 2>&1\n${data.replaceAll("\r", "\n")}`], {
+        cwd: input.cwd,
+        env: { ...process.env, ...input.env },
+      });
+      running.set(terminalId, child);
+      typedInto.push(terminalId);
+      const out = (chunk: Buffer) =>
+        streams.append(stream, TerminalEvents.output, { data: chunk.toString("utf8") });
+      child.stdout.on("data", out);
+      for (const resolve of typedWaiters.get(terminalId)?.splice(0) ?? []) resolve();
+    },
+    resize: () => undefined,
+    close: async ({ threadId, terminalId }) => {
+      if (terminalId === undefined) return 0;
+      closed.push(terminalId);
+      running.get(terminalId)?.kill();
+      running.delete(terminalId);
+      streams.append(terminalStream(threadId, terminalId), TerminalEvents.closed, {});
+      return 1;
+    },
+    list: () => [],
+    get: () => undefined,
+  };
+  cleanups.push(() => {
+    for (const child of running.values()) child.kill();
+  });
+  return {
+    sessions,
+    seen: {
+      opened,
+      closed,
+      typedInto,
+      holdOpens: () => {
+        const reached = Promise.withResolvers<void>();
+        const open = Promise.withResolvers<void>();
+        gate = { reached: reached.resolve, open: open.promise };
+        return {
+          waiting: reached.promise,
+          release: () => {
+            gate = undefined;
+            open.resolve();
+          },
+        };
+      },
+      failOpens: (error) => {
+        failure = error;
+      },
+      typed: (terminalId) =>
+        new Promise((resolve) => {
+          if (running.has(terminalId)) return resolve();
+          const list = typedWaiters.get(terminalId) ?? [];
+          list.push(resolve);
+          typedWaiters.set(terminalId, list);
+        }),
+    },
+  };
+}
+
 export async function node(
   config: Record<string, unknown> = {},
-  options: { data?: string; storage?: ReturnType<typeof memoryStoragePlugin> } = {},
+  options: {
+    data?: string;
+    storage?: ReturnType<typeof memoryStoragePlugin>;
+    /** Gives the node fake terminals (`Node.terminals`). */
+    terminals?: boolean;
+  } = {},
 ): Promise<Node> {
   const data = options.data ?? temp("jhin-sc-node-");
   const storage = options.storage ?? memoryStoragePlugin();
   const live = createLiveStreams();
+  const terminals = options.terminals === true ? fakeTerminals(live) : undefined;
   const logWaiters = new Map<string, (() => void)[]>();
   const logger = recordingLogger((message) => {
     for (const resolve of logWaiters.get(message)?.splice(0) ?? []) resolve();
@@ -228,6 +369,9 @@ export async function node(
       }),
       storage,
       mockCapability(LIVE_STREAMS_CAPABILITY, live),
+      ...(terminals === undefined
+        ? []
+        : [mockCapability(TERMINAL_SESSIONS_CAPABILITY, terminals.sessions)]),
       { manifest: manifest("threads"), definition: threads },
       { manifest: manifest("agent-fake"), definition: agent },
       { manifest: manifest("source-control"), definition: sourceControl },
@@ -256,6 +400,16 @@ export async function node(
   return {
     client,
     events,
+    as: (permissions) => {
+      const narrow = connectInMemory(kernel, {
+        log: storage.storage.log,
+        streams: live,
+        caller: { id: "narrow", permissions },
+      }).client;
+      cleanups.push(() => narrow.close());
+      return narrow;
+    },
+    ...(terminals === undefined ? {} : { terminals: terminals.seen }),
     /** Resolves with the first event of `stream` from now on that `match` accepts. */
     next: (stream, match) =>
       new Promise((resolve) => {

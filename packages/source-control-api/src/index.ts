@@ -1,5 +1,9 @@
 import { z, type Disposable } from "@jhin/sdk";
 
+import type { WorktreeSetupSnapshot } from "./worktree-setup.ts";
+
+export * from "./worktree-setup.ts";
+
 /** `source-control.git@1`: git repositories of a node's projects (docs/plans/source-control.md). */
 export const SOURCE_CONTROL_CAPABILITY = "source-control.git";
 
@@ -398,6 +402,8 @@ export type SourceControlErrorCode =
   | "WORKTREE_IN_USE"
   /** A thread's worktree is gone and could not be made again. */
   | "WORKTREE_MISSING"
+  /** A setup script that holds the agent (`async: false`) failed (D1122). */
+  | "WORKTREE_SETUP_FAILED"
   /** A handoff of a thread that works in a worktree already. */
   | "ALREADY_IN_WORKTREE"
   | "THREAD_ARCHIVED"
@@ -455,8 +461,14 @@ export interface SourceControl {
       baseRef: string;
       branch?: string | undefined;
       startFromOrigin?: boolean | undefined;
+      /** The new thread that works there: its setup is tracked and its setup script runs (1.3, D1122). */
+      threadId?: string | undefined;
     },
   ): Promise<CreatedWorktree>;
+  /** A thread's worktree setup as it stands, or null (1.3, D1123). */
+  worktreeSetup?(threadId: string): WorktreeSetupSnapshot | null;
+  /** Stops a thread's running worktree setup; false when none runs (1.3, D1124). */
+  cancelWorktreeSetup?(threadId: string): Promise<boolean>;
   /**
    * Removes a listed worktree no thread works in (`force`: with its changes;
    * `deleteBranch`: its branch too).

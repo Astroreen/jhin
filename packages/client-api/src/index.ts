@@ -583,6 +583,20 @@ export interface ChatTurnFooterProps {
 }
 
 /**
+ * What the `chat.turn.header` slot gives each contribution: one turn of the
+ * open thread, rendered under the turn's message and before its work (T3
+ * Code puts a new worktree's setup card there, under the first message).
+ */
+export interface ChatTurnHeaderProps {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  readonly turnId: string;
+  readonly state: "running" | "completed" | "interrupted" | "failed";
+  /** The thread's first turn. */
+  readonly first: boolean;
+}
+
+/**
  * What the `chat.turn.item` slot gives each contribution: an event another
  * plugin put into the thread's stream (D407), in its place among the turn's
  * output (or in the latest turn, when it names none). A contribution renders

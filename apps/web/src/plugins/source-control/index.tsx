@@ -11,6 +11,7 @@ import {
   type ChatComposerContextProps,
   type ChatHeaderActionProps,
   type ChatTurnFooterProps,
+  type ChatTurnHeaderProps,
   type Connections,
   type DeviceSettings,
   type Keybindings,
@@ -44,6 +45,7 @@ import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
 import { createRunningActions } from "./running.ts";
 import { createChangedFilesFooter } from "./checkpoints.tsx";
+import { createWorktreeSetupHeader } from "./worktree-setup.tsx";
 import { createEditors, pathInside, preferredEditor } from "./diff/editors.tsx";
 import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
 import { turnScopeProvider } from "./diff/turns.ts";
@@ -386,6 +388,12 @@ export const sourceControlPlugin = builtin(
         const route = useExternal(navigation, navigation.current);
         return route.panel === DIFF_PANEL ? <DiffPanel /> : null;
       }
+      context.subscriptions.add(
+        slots.contribute<ChatTurnHeaderProps>("chat.turn.header", {
+          id: "jhin.source-control.worktree-setup",
+          component: createWorktreeSetupHeader(services),
+        }),
+      );
       context.subscriptions.add(
         slots.contribute<ChatTurnFooterProps>("chat.turn.footer", {
           id: "jhin.source-control.changed-files",

@@ -758,6 +758,76 @@ with screenshots).
   wakes nobody. Failed checks wake as before, required or not. Other forges
   say nothing of required checks: every check is the gate, as before.
 
+#### Worktree setup (W30, D1121–D1140)
+
+- **D1121. A project has T3's scripts**, as T3's `ProjectScript` (`{ id,
+  name, command, icon, runOnWorktreeCreate, runOnSettle?, async? }`, icon one
+  of play, test, lint, configure, build, debug): `Project.scripts` of the
+  threads plugin, absent until set, set whole by the new `projects.scripts.set
+  { projectId, scripts }`. A script is a shell command the node types into a
+  terminal later, so setting one takes `terminals.write` besides
+  `projects.write` (a token that may not run a shell may not save one);
+  `projects.update` still only renames. The setup script is the first with
+  `runOnWorktreeCreate` (T3's `setupProjectScript`). T3's scripts menu in
+  the chat header, its "Add action" dialog and the checked-in `t3.json` are
+  Deferred, so a script is set through the command (CLI, MCP) for now.
+- **D1122. A thread's new worktree runs the setup script**, as T3's
+  `ThreadLaunchService` with `ProjectSetupScriptRunner` does: `threads.create`
+  with a `worktree` workspace passes its `threadId` to `git.worktree.create`
+  (additive), which then tracks the thread's setup. Once the worktree is made
+  the script is typed into a terminal of the thread (`terminal.sessions@1`,
+  terminal id `setup-<script id>`, in the worktree), wrapped as T3
+  wraps it (posix, fish or PowerShell, after `$SHELL`) so a sentinel with a
+  random token prints its exit code. The wrapper sets `JHIN_PROJECT_ROOT`
+  and `JHIN_WORKTREE_PATH` (T3's `T3CODE_*`), `COLORTERM`, `NO_COLOR=1` and
+  `FORCE_COLOR=0` inside the script's block, where T3 gives them to the
+  terminal: a terminal opened with its own variables would refuse the
+  drawer's open of it (`TERMINAL_ENV_MISMATCH`). Output lines, stripped of terminal
+  control and of the echoed wrapper, are the stage's tail (T3's last 4, 400
+  characters each). A script that exits 0 closes its terminal; one that
+  fails keeps it for "Open terminal". The first turn's start hook waits for
+  a script with `async: false` (T3's hold of the agent) and fails the turn
+  with "Setup script exited with <code>." when it fails; an `async` one (the
+  default) runs beside the agent. The wait counts against the threads
+  plugin's `turnHookTimeoutSeconds`. A node without terminals skips the
+  stage ("no terminals"). An existing worktree (D252, D903) runs none, and
+  neither does a handoff (D256). Creating the worktree runs the project's
+  saved script with `git.write` (or `threads.write` through
+  `threads.create`), as T3 runs it on any launch: the gate is on saving a
+  script (D1121), which takes `terminals.write`.
+- **D1123. The setup's progress is T3's `WorktreeSetupSnapshot`**
+  (`@jhin/source-control-api`): `phase` running, done, failed or cancelled;
+  stages `fetch`, `checkout`, `setup-script` and `agent` in that order, each
+  pending, running, done, skipped, warning or failed with its times, detail
+  and tail; the branch, base, worktree path and script; T3's length limits.
+  `fetch` is skipped without `startFromOrigin`; `agent` runs while the first
+  turn's start hook holds it. Every change goes out on the live stream
+  `source-control/worktree-setup/<threadId>` (`git.read` and
+  `terminals.read`: it carries the script's command and output), which keeps
+  only the latest snapshot; `git.worktree.setup.get { threadId }` (the same)
+  answers it or null. Snapshots live in memory: a restart forgets them,
+  where T3 records the finished one on the thread (Deferred).
+- **D1124. `git.worktree.setup.cancel { threadId }`** (`git.write`, `{
+  cancelled }`) stops a running setup: its terminal is closed and the setup
+  ends "cancelled", running stages skipped; the agent then starts without
+  waiting. T3 also removes the new worktree and hands the first message to
+  the local checkout ("Work locally"); Jhin's thread keeps its worktree
+  (Deferred). Removing the worktree (D255) cancels its setup; a cancel that
+  comes before the script was typed types nothing; deleting the thread
+  forgets its setup.
+- **D1125. T3's worktree setup card** (`WorktreeSetupCard`, section "Worktree
+  setup") shows under the first message of the thread, through the new slot
+  `chat.turn.header` (under a turn's message, before its work; props
+  `ChatTurnHeaderProps`, `chat.turn.footer`'s with `first` for `latest`): T3's header ("Setting up worktree…", "Worktree
+  ready", "Worktree ready, setup script failed", "Worktree setup failed",
+  "Worktree setup cancelled") with its total time, a row per stage with T3's
+  labels ("Fetch base branch", "Check out files", the script's name for "Run
+  setup script", "Start agent"), icon, detail and time, the tail of a running
+  or failed script, and "Details" (Branch, Base, Path, Setup), "Open
+  terminal" (the setup terminal in the terminal drawer, `terminal.open`) and
+  "Cancel" while it runs. Once the agent has started and the setup is over
+  it collapses to T3's one summary row.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1091,8 +1161,18 @@ with the node's token, and without one).
   inspector (Jhin has no item inspector yet; it comes with that panel), recreating a missing managed worktree before a rollback, and the
   error strings T3 shows for a disconnected environment or a provider without
   rollback.
-- Worktrees, from W3 (D240): T3's setup scripts and their progress card
-  ("Setting up worktree…", "Work locally", cancelling a setup), the
+- Worktree setup (D1121–D1125): T3's scripts menu in the chat header with
+  its "Add action" dialog and keybindings, the checked-in `t3.json`,
+  `runOnSettle` scripts, a script's preview URL; "Work locally" and a
+  cancel that removes the new worktree and hands the first message to the
+  local checkout; the finished setup recorded on the thread (a restart
+  forgets it); the card for a thread on a mesh member (its setup stream is
+  not relayed); T3's "Retry" of a failed workspace preparation (a failed
+  `async: false` script fails the first turn only; later turns run in the
+  worktree as it is); a bound of its own on a setup that holds the agent (the
+  threads plugin's turn hook timeout fails the turn, and the script runs on
+  until it exits or is cancelled).
+- Worktrees, from W3 (D240): the
   attachments of a first message in its branch name prompt (D901), T3's
   branch naming settings (semantic, a custom prefix, custom instructions,
   and with them a way to turn the rename off), the cleanup rules

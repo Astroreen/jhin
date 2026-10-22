@@ -670,6 +670,8 @@ function TurnView(props: {
   onRetry?(): Promise<unknown>;
   projectPath?: string;
   onSavePlan?: SavePlan;
+  /** What goes under the turn's message, before its work (the `chat.turn.header` slot). */
+  header?: ReactNode;
   footer?: ReactNode;
   /** An event of another plugin in the turn (the `chat.turn.item` slot), with those beside it. */
   extension?:
@@ -717,6 +719,7 @@ function TurnView(props: {
   return (
     <div className="flex flex-col" data-turn={turn.turnId}>
       <UserMessage format={format} latest={props.latest} turn={turn} />
+      {props.header}
       {running ? (
         <div className="pb-1.5">
           <div className="border-b border-border/60 pt-1 pb-2">
@@ -868,6 +871,8 @@ export function TimelineView(props: {
   onOpenThread?(threadId: string): void;
   /** A thread's title, where the node's catalog knows it. */
   titleOf?(threadId: string): string | undefined;
+  /** What goes under a turn's message (the `chat.turn.header` slot). */
+  header?: ((turn: TimelineTurn, first: boolean) => ReactNode) | undefined;
   /** What goes under a turn's answer (the `chat.turn.footer` slot). */
   footer?: ((turn: TimelineTurn, latest: boolean) => ReactNode) | undefined;
   /** Events of other plugins in a turn (the `chat.turn.item` slot), with those beside each. */
@@ -919,6 +924,7 @@ export function TimelineView(props: {
               turn={turn}
               {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
               {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
+              header={props.header?.(turn, index === 0)}
               footer={props.footer?.(turn, index === turns.length - 1)}
               extension={
                 props.extension === undefined
