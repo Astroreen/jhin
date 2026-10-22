@@ -365,6 +365,41 @@ export interface ChatDrafts {
   subscribe(listener: () => void): Disposable;
 }
 
+/**
+ * `client.thread-work@1`: work a thread waits on between its turns, as T3
+ * Code's pending background tasks (a watched pull request, a background
+ * subagent). Plugins register sources; the sidebar shows a thread with such
+ * work as "Waiting" (D1131).
+ */
+export const THREAD_WORK_CAPABILITY = "client.thread-work";
+
+/** One piece of a thread's background work (T3's `PendingBackgroundTask`). */
+export interface ThreadWorkTask {
+  readonly taskId: string;
+  /** "Watching pull request #42". */
+  readonly description?: string;
+  /** T3's kinds; `command` work does not hold the thread's completion. */
+  readonly kind: "monitor" | "subagent" | "background_task" | "command";
+}
+
+export interface ThreadWorkSource {
+  tasks(target: NodeTarget, threadId: string): readonly ThreadWorkTask[];
+  /** Called after any of its tasks change. */
+  subscribe(listener: () => void): Disposable;
+}
+
+export interface ThreadWork {
+  register(source: ThreadWorkSource): Disposable;
+  /** Every registered source's tasks for the thread. */
+  tasks(target: NodeTarget, threadId: string): readonly ThreadWorkTask[];
+  /** Called after a source's tasks change or a source comes or goes. */
+  subscribe(listener: () => void): Disposable;
+}
+
+/** T3's `backgroundWorkHoldsCompletion`: work that keeps a finished thread waiting. */
+export const workHoldsCompletion = (tasks: readonly ThreadWorkTask[]): boolean =>
+  tasks.some((task) => task.kind !== "command");
+
 /** `client.visits@1`: when the user last looked at each thread, on this device. */
 export const VISITS_CAPABILITY = "client.visits";
 

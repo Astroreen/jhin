@@ -87,6 +87,36 @@ describe("a thread's status in the sidebar (D70)", () => {
     expect(sidebarThreadStatus(thread("t", ago(1)))).toBe("ready");
   });
 
+  it("says Waiting for a thread that waits on background work between its turns (D1131)", () => {
+    const watched = thread("t", ago(2), { lastTurn: turn("completed", ago(1)) });
+    expect(sidebarThreadStatus(watched, true)).toBe("waiting");
+    // A turn at work, or one asking the user, says so first.
+    expect(
+      sidebarThreadStatus(thread("t", ago(1), { lastTurn: turn("running", ago(1)) }), true),
+    ).toBe("working");
+    expect(
+      sidebarThreadStatus(
+        thread("t", ago(1), { lastTurn: turn("waiting", ago(1), "user-input") }),
+        true,
+      ),
+    ).toBe("input");
+    // As T3 orders them: the watch's Waiting before a failed turn's Failed.
+    expect(
+      sidebarThreadStatus(thread("t", ago(1), { lastTurn: turn("failed", ago(1)) }), true),
+    ).toBe("waiting");
+    expect(sidebarTopStatus("waiting", true)).toBe("waiting");
+    // It fades back like a working one, and leaves the inbox for the Working section.
+    expect(shouldRecede({ status: "waiting", unread: true, active: false })).toBe(true);
+    const a = node({ node: "a" }, [project("p", "app")], [watched, thread("u", ago(3))]);
+    const lists = sidebarThreads([a], {
+      nowMs: NOW,
+      working: true,
+      waiting: (_node, item) => item.id === "t",
+    });
+    expect(ids(lists.working)).toEqual(["t"]);
+    expect(ids(lists.active)).toEqual(["u"]);
+  });
+
   it("shows Done for a turn completed since the last visit, as T3's top status", () => {
     const done = thread("t", ago(2), { lastTurn: turn("completed", ago(1)) });
     expect(isUnread(done, ago(1.5))).toBe(true);

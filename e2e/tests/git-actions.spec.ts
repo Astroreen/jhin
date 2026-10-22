@@ -192,6 +192,12 @@ test("D260–D274: the chat header's git actions commit, push and open a pull re
       "Watching: the agent wakes when checks finish, someone comments, or the branch conflicts",
     ),
   ).toBeVisible();
+  // The watch keeps the thread waiting between its turns, as T3's sidebar says (D1131).
+  await expect(card).toContainText("Waiting");
+  await page.mouse.move(700, 400);
+  await expect(stack).toBeVisible();
+  await shot(page, info, "watched-thread-waiting");
   await page.getByRole("heading", { name: "New thread" }).getByRole("button").click();
-  await expect(page.getByRole("menuitem", { name: "Stop watching #42" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Stop watching #42" }).click();
+  await expect(card).not.toContainText("Waiting");
 });

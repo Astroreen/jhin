@@ -8,6 +8,9 @@ import {
   THREAD_DETAILS_SLOT,
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
+  THREAD_WORK_CAPABILITY,
+  targetKey,
+  type ThreadWork,
   type ChatComposerContextProps,
   type ChatHeaderActionProps,
   type ChatTurnFooterProps,
@@ -22,7 +25,7 @@ import {
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import type { EditorInfo } from "@jhin/host-api";
-import { definePlugin, z } from "@jhin/sdk";
+import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import { DIFF_SCOPES_CAPABILITY } from "@jhin/source-control-api";
 import {
   Toggle,
@@ -82,6 +85,7 @@ export const sourceControlPlugin = builtin(
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
       [SETTINGS_CAPABILITY]: "^1",
+      [THREAD_WORK_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -387,6 +391,81 @@ export const sourceControlPlugin = builtin(
       function DiffPanelSlot() {
         const route = useExternal(navigation, navigation.current);
         return route.panel === DIFF_PANEL ? <DiffPanel /> : null;
+      }
+      // A watched pull request keeps its thread waiting between turns, as T3's
+      // pending background work (D1131).
+      const work = context.services.tryGet<ThreadWork>(THREAD_WORK_CAPABILITY);
+      if (work !== undefined) {
+        /**
+         * Every connected node is followed while it is connected, outside any
+         * render: a node's view is empty until something follows it.
+         */
+        const followed = new Map<string, Disposable>();
+        const workListeners = new Set<() => void>();
+        /** Each node's watched links as last told, so only a change of them is told. */
+        const watchedOf = new Map<string, string>();
+        const watchedNow = (target: NodeTarget) =>
+          Array.from(store.view(target).links)
+            .flatMap(([threadId, list]) =>
+              list
+                .filter((link) => link.watch !== undefined)
+                .map((link) => `${threadId} ${link.key}`),
+            )
+            .toSorted()
+            .join("\n");
+        const notifyWork = (target: NodeTarget) => {
+          const key = targetKey(target);
+          const now = watchedNow(target);
+          if (watchedOf.get(key) === now) return;
+          watchedOf.set(key, now);
+          for (const listener of Array.from(workListeners)) listener();
+        };
+        const followConnections = () => {
+          const ids = new Set(connections.list().map((connection) => connection.id));
+          for (const id of ids) {
+            if (followed.has(id)) continue;
+            const target: NodeTarget = { node: id };
+            followed.set(
+              id,
+              store.subscribe(target, () => notifyWork(target)),
+            );
+          }
+          for (const [id, subscription] of followed) {
+            if (ids.has(id)) continue;
+            subscription.dispose();
+            followed.delete(id);
+            watchedOf.delete(targetKey({ node: id }));
+          }
+        };
+        followConnections();
+        context.subscriptions.add(connections.subscribe(followConnections));
+        context.subscriptions.add({
+          dispose: () => {
+            for (const subscription of followed.values()) subscription.dispose();
+            followed.clear();
+          },
+        });
+        context.subscriptions.add(
+          work.register({
+            tasks: (target, threadId) => {
+              return (store.view(target).links.get(threadId) ?? []).flatMap((link) =>
+                link.watch === undefined
+                  ? []
+                  : [
+                      {
+                        taskId: `pull-request-watch:${link.key}`,
+                        description: `Watching pull request #${link.number}`,
+                        kind: "monitor" as const,
+                      },
+                    ],
+              );
+            },
+            subscribe: (listener) => {
+              workListeners.add(listener);
+              return { dispose: () => workListeners.delete(listener) };
+            },
+          }),
+        );
       }
       context.subscriptions.add(
         slots.contribute<ChatTurnHeaderProps>("chat.turn.header", {
