@@ -229,4 +229,32 @@ describe("worktree cleanup decisions (D1129, T3's cleanWorktrees)", () => {
       keep: "No rules apply.",
     });
   });
+
+  it("says no rule applies to a live thread under the delete rule alone", async () => {
+    expect(await decide(worktree(true), { onDelete: true })).toEqual({ keep: "No rules apply." });
+  });
+
+  it("counts ignored files as local ones, but node_modules, with any local files", async () => {
+    const where = worktree(false);
+    Fs.writeFileSync(Path.join(where.path, ".gitignore"), "");
+    git(where.path, "add", ".gitignore");
+    git(where.path, "commit", "--quiet", "-m", "ignore");
+    git(where.dir, "merge", "--quiet", "--ff-only", "feature");
+    Fs.writeFileSync(Path.join(where.path, ".gitignore"), "node_modules/\n.env\n");
+    git(where.path, "commit", "--quiet", "-am", "ignore more");
+    git(where.dir, "merge", "--quiet", "--ff-only", "feature");
+    Fs.mkdirSync(Path.join(where.path, "node_modules"));
+    Fs.writeFileSync(Path.join(where.path, "node_modules", "x.js"), "");
+    expect(await decide(where, { unchanged: true, keepWhen: "any-local-files" })).toEqual({
+      remove: "No commits beyond the default branch.",
+    });
+    Fs.writeFileSync(Path.join(where.path, ".env"), "SECRET=1\n");
+    expect(await decide(where, { unchanged: true, keepWhen: "any-local-files" })).toEqual({
+      keep: "Has ignored files (.env).",
+    });
+    // The default keeps edits and untracked files only: an ignored .env goes.
+    expect(await decide(where, { unchanged: true })).toEqual({
+      remove: "No commits beyond the default branch.",
+    });
+  });
 });

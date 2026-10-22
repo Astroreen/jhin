@@ -260,7 +260,10 @@ export async function judge(
           : `settled for ${settledDays} of ${rules.settledAfterDays} days`
         : rules.onMerge
           ? "not merged"
-          : "has commits beyond the default branch",
+          : rules.unchanged
+            ? "has commits beyond the default branch"
+            : // Only the delete rule (or none) for a thread that is still there.
+              "no rules apply",
   );
 }
 
