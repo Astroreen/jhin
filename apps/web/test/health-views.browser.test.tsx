@@ -196,4 +196,19 @@ describe("health views (D731)", () => {
     await expect.element(page.getByRole("region", { name: "Ceremony and progress" })).toBeVisible();
     expect(asked).toEqual(["health.status"]);
   });
+
+  it("confirms a dismiss itself while the node's stream is not live", async () => {
+    const { view, toasts } = viewOf(
+      { a: { status: "error", value: healthOf(warning), error: "stream gone" } },
+      async (method) =>
+        method === "health.warnings.dismiss" ? { ...warning } : { warning, events: [] },
+    );
+    await render(<HealthPage node="a" view={view} warningId="w1" />);
+    await userEvent.click(page.getByRole("button", { name: "Dismiss" }));
+    // The button is enabled again once the call has returned.
+    await expect.element(page.getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    expect(toasts).toEqual([
+      expect.objectContaining({ type: "success", title: "Warning dismissed" }),
+    ]);
+  });
 });

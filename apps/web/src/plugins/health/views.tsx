@@ -164,7 +164,6 @@ function useCall<T>(
       live = false;
     };
     // `key` names everything the call depends on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled]);
   return result?.key === key || result?.scope === scope ? result : undefined;
 }
@@ -330,8 +329,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     setDismissing(true);
     try {
       await connection.client.call("health.warnings.dismiss", { warningId });
-      // The stream marks it dismissed; when the stream is down, the answer says so.
-      if (feed?.status !== "ready") {
+      // The stream marks it dismissed; when the stream is down now, the answer says so.
+      if (view.store.snapshot().get(node)?.status !== "ready") {
         view.toasts?.show({ type: "success", title: "Warning dismissed" });
       }
     } catch (error) {

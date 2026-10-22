@@ -101,6 +101,12 @@ export const healthPlugin = builtin(
           }),
           output: z.object({}),
           handler: ({ node, warningId }) => {
+            if (connections.get(node) === undefined) {
+              throw Object.assign(new Error(`No connection ${node}`), {
+                code: "NODE_NOT_CONNECTED",
+                details: { node },
+              });
+            }
             open(node, warningId);
             return {};
           },

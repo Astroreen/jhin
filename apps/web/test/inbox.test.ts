@@ -24,7 +24,10 @@ type Listener = (event: { type: string; payload: unknown }) => void;
 
 /** One open node: its `agents.inbox.list` answer, and its inbox stream to push events into. */
 function fakeNode(list: () => Promise<unknown>) {
-  const streams = new Map<string, { after: number; listener: Listener }>();
+  const streams = new Map<
+    string,
+    { after: number; listener: Listener; onError?: ((error: unknown) => void) | undefined }
+  >();
   const listeners = new Set<() => void>();
   let state: NodeConnection["state"] = "open";
   const connection = {
@@ -37,8 +40,12 @@ function fakeNode(list: () => Promise<unknown>) {
     client: {
       call: (method: string) =>
         method === "agents.inbox.list" ? list() : Promise.reject(new Error(method)),
-      subscribe: (stream: string, options: { after: number }, listener: Listener) => {
-        streams.set(stream, { after: options.after, listener });
+      subscribe: (
+        stream: string,
+        options: { after: number; onError?: (error: unknown) => void },
+        listener: Listener,
+      ) => {
+        streams.set(stream, { after: options.after, listener, onError: options.onError });
         return toDisposable(() => streams.delete(stream));
       },
     },
@@ -121,6 +128,20 @@ describe("the owner's inbox (D630)", () => {
     const store = createInboxStore(node.connections, quiet, () => {});
     await settled(store);
     expect(store.snapshot().get("a")).toMatchObject({ status: "unsupported", value: [] });
+    store.dispose();
+  });
+
+  it("keeps the open items, marked not live, when the stream fails after the list", async () => {
+    const node = fakeNode(() =>
+      Promise.resolve({ head: 1, items: [item("q1", "2026-10-21T10:00:00Z")] }),
+    );
+    const store = createInboxStore(node.connections, quiet, () => {});
+    await settled(store);
+    node.streams.get(INBOX_STREAM)!.onError!(new Error("stream gone"));
+    expect(store.snapshot().get("a")).toMatchObject({ status: "error", error: "stream gone" });
+    expect(openItems(store.snapshot()).map((entry) => entry.item.message.messageId)).toEqual([
+      "q1",
+    ]);
     store.dispose();
   });
 
