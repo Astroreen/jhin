@@ -199,14 +199,15 @@ export function registerWorktreeCleanup(
       if (path === undefined || path === "" || dialogs === undefined) return next(input);
       // Only a worktree this node made, and that no other thread works in (the node's
       // own list, not this client's catalog); one made by hand is never offered.
-      const listed = await threads
-        .call<{ worktrees: { path: string; managed: boolean; threadIds: string[] }[] }>(
-          target,
-          "git.worktree.list",
-          { projectId: thread.projectId },
-        )
-        .then((answer) => answer.worktrees.find((entry) => entry.path === path))
+      const answer = await threads
+        .call<{
+          worktrees: { path: string; managed: boolean; threadIds: string[] }[];
+          cleanupOnDelete?: boolean;
+        }>(target, "git.worktree.list", { projectId: thread.projectId })
         .catch(() => undefined);
+      // The node's cleanup rules remove it once the thread is gone: nothing to ask (D1130).
+      if (answer?.cleanupOnDelete === true) return next(input);
+      const listed = answer?.worktrees.find((entry) => entry.path === path);
       const alone =
         listed !== undefined &&
         listed.managed &&

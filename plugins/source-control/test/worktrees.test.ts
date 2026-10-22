@@ -825,6 +825,12 @@ describe("naming a temporary branch (D901)", () => {
     await expect(
       renameTemporaryBranch(run, "jhin/3a1b2c3d", "two words", { mode: "custom", prefix: "" }),
     ).rejects.toThrow("two words is not a valid branch name");
+    // Names git reads as another ref are no branch names either.
+    for (const name of ["@{-1}", "HEAD", "@"]) {
+      await expect(
+        renameTemporaryBranch(run, "jhin/3a1b2c3d", name, { mode: "custom", prefix: "" }),
+      ).rejects.toThrow("is not a valid branch name");
+    }
     expect(git(dir, "branch", "--list", "jhin/3a1b2c3d").trim()).toBe("jhin/3a1b2c3d");
   });
 });

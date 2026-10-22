@@ -855,6 +855,52 @@ with screenshots).
   writer, not the images, so T3's rule "If images are attached, use them as
   primary context" is left out of the prompt until they do (Deferred).
 
+- **D1128. T3's worktree cleanup rules** in `jhin.source-control`'s
+  `worktreeCleanup` group, all off by default as in T3: `onDelete` ("Delete
+  worktrees with deleted threads"), `afterDays` ("Delete inactive
+  worktrees", days or none), `settledAfterDays` ("Delete settled
+  worktrees", 0 at the next cleanup), `onMerge` ("Delete merged
+  worktrees"), `unchanged` ("Delete unchanged worktrees") and `keepWhen`
+  ("Keep worktrees with local changes": "Any local files", "Uncommitted
+  changes" by default, "Edited tracked files"), with T3's descriptions.
+  T3's per-project override ("Inherit", "Off", "Custom") waits for
+  per-project settings (Deferred).
+- **D1129. A cleanup sweep applies them**, T3's `cleanWorktrees`: when
+  the plugin starts and every hour after, when the group changes, after a thread is deleted while `onDelete`
+  is on, and on `git.worktree.cleanup {}` (`git.write`), which answers T3's
+  report (`entries` of `{ path, threadId?, outcome: removed | kept |
+  failed, reason }` and `counts`). It looks only at managed worktrees (D250)
+  that a thread works in, or that a thread deleted on this node worked in
+  alone while `onDelete` was on (kept in the plugin's store with its project
+  and branch; one deleted with the rule off was the user's to decide, D255). A
+  worktree is kept, saying why in T3's words, when it is gone, shared by
+  several threads, a thread there runs ("thread is running or has pending
+  work") or, for the commit rules (`unchanged`, `onMerge`), has not had its
+  first turn yet ("thread has not started yet"), a terminal of the node
+  works in it ("open terminal"), its branch
+  is no longer the thread's ("repository or branch changed"), or it has
+  local changes as `keepWhen` counts them (T3's `git status
+  --porcelain=v1` and, for any local files, ignored files other than
+  `node_modules`). Otherwise it goes when its thread was deleted
+  (`onDelete`), was inactive for `afterDays` (its last update), has been
+  settled for `settledAfterDays`, has no commits beyond the default branch
+  (`unchanged`, `merge-base --is-ancestor` with `origin/<default>` after a
+  fetch, else the local default branch) or a linked pull request of that
+  branch merged into the default branch with the worktree still at its head
+  commit, or with its commits in it (`onMerge`, T3's
+  `storageCleanupPullRequestMerged`; the head commit is the pull request's
+  `headSha`, which GitHub and GitLab tell; without it only the commits in
+  the default branch count, so work made after the merge never goes).
+  Removal is `git worktree remove --force`, under the project's worktree
+  lock and after the threads there are read again (T3's
+  `blockedSinceCheck`: one that came in or started a turn since keeps it); the
+  branch and the thread stay, and a thread's next turn makes the worktree
+  again from its branch (D256), as in T3.
+- **D1130. With `onDelete` on, deleting a thread asks nothing** (T3's
+  `useThreadActions`): `git.worktree.list` answers `cleanupOnDelete`
+  (additive) and the client hook of D255 skips "Delete the worktree too?",
+  the sweep removing the worktree instead.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1203,8 +1249,11 @@ with the node's token, and without one).
   T3 has a text area (the config form has no multi-line text yet), the
   settings are the node's (T3 also keeps them per project), and the images
   themselves do not reach the writer, only their names.
-- Worktrees, from W3 (D240): the cleanup rules
-  (keep when, after days, on merge, on delete without asking), submodules,
+- Worktree cleanup (D1128–D1130): T3's per-project "Automatic worktree
+  cleanup" (Inherit, Off, Custom), its "Last run" report in the settings,
+  folders under the worktrees directory no thread ever used (T3's orphan
+  report), and the checks for a subagent chain sharing a worktree.
+- Worktrees, from W3 (D240): submodules,
   one worktree per model of a multi-model send, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
   `git.worktree.handoff` takes a `threadId`), a handoff's continuation
   prompt (W1's queue), deleting a removed worktree's branch from the client's

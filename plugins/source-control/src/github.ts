@@ -25,10 +25,10 @@ const GH_ENV = {
 };
 const GH_TIMEOUT_MS = 20_000;
 const FIELDS =
-  "number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup";
+  "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup";
 /** A listed pull request: no checks, which would make a long list slow to read. */
 const LIST_FIELDS =
-  "number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt";
+  "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt";
 /** What tells a fork's pull request apart from one of this repository (D277). */
 const HEAD_FIELDS = `${FIELDS},isCrossRepository,headRepositoryOwner`;
 
@@ -112,6 +112,7 @@ interface RawPullRequest {
   readonly state?: unknown;
   readonly isDraft?: unknown;
   readonly headRefName?: unknown;
+  readonly headRefOid?: unknown;
   readonly baseRefName?: unknown;
   readonly updatedAt?: unknown;
   readonly mergedAt?: unknown;
@@ -140,6 +141,9 @@ function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
     isDraft: raw.isDraft === true,
     headBranch: typeof raw.headRefName === "string" ? raw.headRefName : "",
     baseBranch: typeof raw.baseRefName === "string" ? raw.baseRefName : "",
+    ...(typeof raw.headRefOid === "string" && raw.headRefOid !== ""
+      ? { headSha: raw.headRefOid }
+      : {}),
     ...(typeof raw.updatedAt === "string" ? { updatedAt: raw.updatedAt } : {}),
     // gh gives an open pull request the zero time (0001-01-01): only a closed one has times.
     ...(state !== "open" &&

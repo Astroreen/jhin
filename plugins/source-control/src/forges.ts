@@ -102,6 +102,7 @@ function gitlabRequest(raw: Record<string, unknown>): ForgePullRequest | undefin
       isDraft: raw["draft"] === true || raw["work_in_progress"] === true,
       headBranch: text(raw["source_branch"]) ?? "",
       baseBranch: text(raw["target_branch"]) ?? "",
+      ...(text(raw["sha"]) === undefined ? {} : { headSha: text(raw["sha"])! }),
       ...(updated ? { updatedAt: updated } : {}),
       ...(merged ? { mergedAt: merged } : {}),
       ...(closed ? { closedAt: closed } : {}),

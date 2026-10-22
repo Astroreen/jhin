@@ -413,7 +413,7 @@ describe("git.pr.search", () => {
       [9, "merged"],
     ]);
     expect(gh.calls()).toContain(
-      "pr list --state all --limit 99 --search cache sort:updated-desc --json number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt",
+      "pr list --state all --limit 99 --search cache sort:updated-desc --json number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt",
     );
     await sc.client.call("git.pr.search", { projectId });
     expect(gh.calls().at(-1)).toMatch(

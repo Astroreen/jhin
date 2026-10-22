@@ -233,8 +233,11 @@ export async function renameTemporaryBranch(
 }
 
 async function validBranch(git: Git, name: string): Promise<boolean> {
-  if (name.startsWith("-")) return false;
-  return (await git(["check-ref-format", "--branch", name], { ok: [0, 1, 128] })).code === 0;
+  // `--branch` also takes `@{-1}`-style names and HEAD, which name another ref, not a new one.
+  if (name.startsWith("-") || name === "HEAD" || name.includes("@{") || name === "@") return false;
+  const checked = await git(["check-ref-format", "--branch", name], { ok: [0, 1, 128] });
+  // It answers the name it would use: one it expanded to another is no branch of its own.
+  return checked.code === 0 && checked.stdout.trim() === name;
 }
 
 /**

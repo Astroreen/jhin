@@ -117,6 +117,17 @@ import {
 } from "./worktrees.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
 import {
+  CleanupReport,
+  WorktreeCleanupConfig,
+  cleanupEnabled,
+  exists,
+  judge,
+  localChangesReason,
+  sentence,
+  type CleanupCandidate,
+  type CleanupEntry,
+} from "./cleanup.ts";
+import {
   completionShellOf,
   createSetupTracker,
   runSetupScript,
@@ -264,6 +275,8 @@ export const Config = z
         when: { branchNamingMode: "custom" },
         examples: ["Use julius/ followed by the issue ID and a short description."],
       }),
+    // T3's worktree cleanup rules (D1128), all off by default.
+    worktreeCleanup: WorktreeCleanupConfig,
     writerAgent: z.string().optional().meta({
       title: "Writer agent",
       description:
@@ -342,7 +355,7 @@ const sameStatus = (a: ProjectStatus | undefined, b: ProjectStatus) =>
   JSON.stringify({ ...a, checkedAt: "" }) === JSON.stringify({ ...b, checkedAt: "" });
 
 const isCommandMissing = (error: unknown) =>
-  (error as { code?: unknown }).code === "COMMAND_NOT_FOUND";
+  (error as { code?: unknown } | null)?.code === "COMMAND_NOT_FOUND";
 
 export function activateSourceControl(context: PluginContext): SourceControl {
   const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
@@ -1047,9 +1060,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       }
       case ThreadEvents.threadDeleted:
         forgetSetup(id);
+        // Bookkeeping for the cleanup never keeps the thread's own removal from running.
+        await noteDeletedWorktree(id).catch((error: unknown) =>
+          context.log.warn("could not note a deleted thread's worktree", {
+            threadId: id,
+            error: String(error),
+          }),
+        );
         threadDirs.delete(id);
         await syncWorktrees();
         await removeThread(id);
+        // Once the thread is gone everywhere, its worktree's sweep runs (D1129).
+        if (config().worktreeCleanup.onDelete) cleanInBackground();
         return;
     }
   };
@@ -1131,8 +1153,306 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     watchTimer.unref?.();
   };
   scheduleWatch();
+  // --- Worktree cleanup (D1128–D1130) ----------------------------------------------------
+
+  /** A deleted thread's worktree that it worked in alone, until a sweep decides it. */
+  const DeletedWorktree = z.object({
+    /** Its real path, as the live worktrees are compared. */
+    path: z.string(),
+    projectId: z.string(),
+    threadId: z.string(),
+    branch: z.string(),
+  });
+  type DeletedWorktree = z.output<typeof DeletedWorktree>;
+  const DELETED_PREFIX = "cleanup/deleted/";
+
+  async function noteDeletedWorktree(threadId: string) {
+    // Only under the delete rule: without it the user decided at the deletion
+    // (D255's question), and a later rule must not overturn that choice.
+    if (!config().worktreeCleanup.onDelete) return;
+    const dir = threadDirs.get(threadId);
+    const branch = threads.get(threadId)?.branch;
+    if (dir?.worktreePath === undefined || branch == null) return;
+    const root = await realPath(worktreesRoot(config().worktreesDirectory, hostPaths.home));
+    if (!isManagedWorktree(root, dir.worktreePath)) return;
+    for (const [other, entry] of threadDirs) {
+      if (other !== threadId && entry.worktreePath === dir.worktreePath) return;
+    }
+    const record: DeletedWorktree = {
+      path: await realPath(dir.worktreePath),
+      projectId: dir.projectId,
+      threadId,
+      branch,
+    };
+    await kv.set(NAMESPACE, `${DELETED_PREFIX}${threadId}`, record as unknown as Json);
+  }
+
+  let cleaning: Promise<CleanupReport> | undefined;
+  /** Sweeps run one at a time; one asked for meanwhile runs after it. */
+  let cleanAgain = false;
+  function requestCleanup(): Promise<CleanupReport> {
+    if (cleaning !== undefined) {
+      cleanAgain = true;
+      return cleaning;
+    }
+    // A sweep that fails rejects: the command says so; a sweep nobody asked for logs it.
+    cleaning = sweepWorktrees().finally(() => {
+      cleaning = undefined;
+      if (cleanAgain && !stopped) {
+        cleanAgain = false;
+        cleanInBackground();
+      }
+    });
+    return cleaning;
+  }
+
+  /** A sweep the node starts by itself: a failure is logged. */
+  function cleanInBackground() {
+    requestCleanup().catch((error: unknown) =>
+      context.log.warn("cleaning up worktrees failed", { error: String(error) }),
+    );
+  }
+
+  const timeOr = (value: string, fallback: number) => {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? fallback : parsed;
+  };
+
+  /** T3's `cleanWorktrees`: decides each managed worktree a thread works or worked in. */
+  async function sweepWorktrees(): Promise<CleanupReport> {
+    const rules = config().worktreeCleanup;
+    const entries: CleanupEntry[] = [];
+    const report = () => ({
+      entries,
+      counts: {
+        removed: entries.filter((entry) => entry.outcome === "removed").length,
+        kept: entries.filter((entry) => entry.outcome === "kept").length,
+        failed: entries.filter((entry) => entry.outcome === "failed").length,
+      },
+    });
+    if (!cleanupEnabled(rules) || stopped) return report();
+    const root = await realPath(worktreesRoot(config().worktreesDirectory, hostPaths.home));
+    const projects = (await context.commands.execute("projects.list", {})) as {
+      id: string;
+      path: string;
+    }[];
+    const projectPath = new Map(projects.map((project) => [project.id, project.path]));
+    const listed = (await context.commands.execute("threads.list", {
+      includeGenerations: true,
+    })) as {
+      id: string;
+      projectId: string;
+      worktreePath?: string;
+      updatedAt?: string;
+      createdAt: string;
+      settledAt?: string;
+      lastTurn?: { status: string };
+    }[];
+    const groups = new Map<string, typeof listed>();
+    for (const thread of listed) {
+      if (thread.worktreePath === undefined) continue;
+      const key = await realPath(thread.worktreePath);
+      if (!isManagedWorktree(root, key)) continue;
+      groups.set(key, [...(groups.get(key) ?? []), thread]);
+    }
+    const candidates: CleanupCandidate[] = [];
+    const deletedKeys = new Map<string, string>();
+    for (const [path, group] of groups) {
+      const first = group[0]!;
+      const branch = threads.get(first.id)?.branch;
+      const project = projectPath.get(first.projectId);
+      if (branch == null || project === undefined) continue;
+      const linked = await links.list(first.id);
+      candidates.push({
+        path,
+        projectId: first.projectId,
+        projectPath: project,
+        branch,
+        threadId: first.id,
+        deleted: false,
+        mergedInto: linked.flatMap((link) =>
+          link.snapshot?.state === "merged" && link.snapshot.headBranch === branch
+            ? [
+                {
+                  base: link.snapshot.baseBranch,
+                  ...(link.snapshot.headSha === undefined
+                    ? {}
+                    : { headSha: link.snapshot.headSha }),
+                },
+              ]
+            : [],
+        ),
+        threads: group.map((thread) => ({
+          id: thread.id,
+          running: thread.lastTurn?.status === "running" || thread.lastTurn?.status === "waiting",
+          started: thread.lastTurn !== undefined,
+          // A time that does not parse counts as now: the worktree reads as just used.
+          activeAt: timeOr(thread.updatedAt ?? thread.createdAt, Date.now()),
+          ...(Number.isNaN(Date.parse(thread.settledAt ?? ""))
+            ? {}
+            : { settledAt: Date.parse(thread.settledAt!) }),
+        })),
+      });
+    }
+    // Without the delete rule they decide nothing: kept for when it is turned on, not reported.
+    const deletedRecords = rules.onDelete
+      ? await kv.list(NAMESPACE, { prefix: DELETED_PREFIX })
+      : [];
+    for (const { key, value } of deletedRecords) {
+      const parsed = DeletedWorktree.safeParse(value);
+      // A record this version cannot read decides nothing, and is kept for one that can.
+      if (!parsed.success) continue;
+      const record = parsed.data;
+      const project = projectPath.get(record.projectId);
+      // Taken by a thread again, gone, or of a project that went: nothing to decide.
+      // …or no longer under the worktrees directory (its setting changed): not this node's to remove.
+      if (
+        groups.has(await realPath(record.path)) ||
+        project === undefined ||
+        !isManagedWorktree(root, record.path) ||
+        !(await exists(record.path))
+      ) {
+        await kv.delete(NAMESPACE, key);
+        continue;
+      }
+      deletedKeys.set(record.path, key);
+      candidates.push({
+        path: record.path,
+        projectId: record.projectId,
+        projectPath: project,
+        branch: record.branch,
+        threadId: record.threadId,
+        deleted: true,
+        mergedInto: [],
+        threads: [],
+      });
+    }
+    const defaults = new Map<string, Promise<{ commit: string; branch: string } | undefined>>();
+    /** The folders running terminals work in, as real paths like the worktrees'. */
+    const terminalFolders = async () =>
+      Promise.all(
+        (context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY)?.list() ?? [])
+          .filter((terminal) => terminal.status === "running")
+          .map((terminal) => realPath(terminal.cwd)),
+      );
+    const swept = await terminalFolders();
+    const inside = (folder: string, path: string) =>
+      path === folder || path.startsWith(`${folder}${Path.sep}`);
+    for (const candidate of candidates) {
+      if (stopped) break;
+      const entry = { path: candidate.path, threadId: candidate.threadId };
+      try {
+        if (!(await exists(candidate.path))) continue;
+        const verdict = await judge(candidate, rules, {
+          now: Date.now(),
+          git: (cwd) => createGit(config().gitPath, cwd),
+          defaults,
+          hasTerminal: (path) => swept.some((folder) => inside(path, folder)),
+        });
+        if ("keep" in verdict) {
+          entries.push({ ...entry, outcome: "kept", reason: verdict.keep });
+          continue;
+        }
+        // T3's blockedSinceCheck: under the project's worktree lock, the threads there
+        // are read again, so one that started a turn or came in since is not robbed.
+        const blocked = await exclusive(candidate.projectId, async () => {
+          const users = await worktreeUsers({ strict: true }).catch(() => undefined);
+          if (users === undefined) return "Threads could not be read.";
+          const now = users.get(candidate.path) ?? [];
+          const expected = candidate.threads.map((thread) => thread.id);
+          if (now.length !== expected.length || now.some((id) => !expected.includes(id))) {
+            return "Threads changed since the check.";
+          }
+          if ((await terminalFolders()).some((folder) => inside(candidate.path, folder))) {
+            return "Open terminal.";
+          }
+          const worktreeGit = createGit(config().gitPath, candidate.path);
+          const current = (
+            await worktreeGit(["symbolic-ref", "--quiet", "HEAD"], { ok: [0, 1, 128] })
+          ).stdout
+            .trim()
+            .replace(/^refs\/heads\//, "");
+          if (current !== candidate.branch) return "Repository or branch changed.";
+          const changes = await localChangesReason(worktreeGit, rules.keepWhen);
+          if (changes !== null) return sentence(changes);
+          for (const threadId of now) {
+            const answer = (await context.commands
+              .execute("threads.get", { threadId })
+              .catch(() => undefined)) as
+              | { thread?: { lastTurn?: { status: string } } }
+              | undefined;
+            // A thread that cannot be read now is not known to be idle: keep the worktree.
+            if (answer?.thread === undefined) return "Thread could not be read.";
+            const status = answer.thread.lastTurn?.status;
+            if (status === "running" || status === "waiting") {
+              return "Thread is running or has pending work.";
+            }
+          }
+          const projectGit = createGit(config().gitPath, candidate.projectPath);
+          await projectGit(["worktree", "remove", "--force", "--", candidate.path], {
+            timeoutMs: 300_000,
+          });
+          return undefined;
+        });
+        if (blocked !== undefined) {
+          entries.push({ ...entry, outcome: "kept", reason: blocked });
+          continue;
+        }
+        const key = deletedKeys.get(candidate.path);
+        if (key !== undefined) await kv.delete(NAMESPACE, key);
+        context.log.info("removed a worktree", { path: candidate.path, reason: verdict.remove });
+        entries.push({ ...entry, outcome: "removed", reason: verdict.remove });
+      } catch (error) {
+        entries.push({ ...entry, outcome: "failed", reason: (error as Error).message });
+      }
+    }
+    if (entries.some((entry) => entry.outcome === "removed")) await syncWorktrees();
+    return report();
+  }
+
+  let cleanupTimer: ReturnType<typeof setInterval> | undefined = setInterval(
+    () => cleanInBackground(),
+    3_600_000,
+  );
+  cleanupTimer.unref?.();
+  // As T3 sweeps when it starts: a node restarted more often than hourly still cleans up.
+  // It reads `projects.list` and `threads.list`: at once when they answer already (a
+  // reload, or the plugin enabled into a running kernel), else once every plugin is up.
+  // A failure is logged and the hourly sweep tries again.
+  const startupSweep = () => {
+    if (cleanupEnabled(config().worktreeCleanup)) cleanInBackground();
+  };
+  const answering = () => {
+    const names = new Set(context.commands.list().map((command) => command.name));
+    return names.has("projects.list") && names.has("threads.list");
+  };
+  if (context.state.get<boolean>("kernelStarted") === true || answering()) {
+    queueMicrotask(startupSweep);
+  } else {
+    const started = context.subscriptions.add(
+      context.events.on("kernel.started", () => {
+        started.dispose();
+        context.state.set("kernelStarted", true);
+        startupSweep();
+      }),
+    );
+  }
+  let lastRules = JSON.stringify(config().worktreeCleanup);
+  context.subscriptions.add({
+    dispose() {
+      if (cleanupTimer !== undefined) clearInterval(cleanupTimer);
+      cleanupTimer = undefined;
+    },
+  });
+
   context.subscriptions.add(
     context.config.onDidChange(CONFIG_SECTION, () => {
+      // New rules apply at once, as T3 sweeps when its settings change.
+      const rules = JSON.stringify(config().worktreeCleanup);
+      if (rules !== lastRules) {
+        lastRules = rules;
+        cleanInBackground();
+      }
       schedulePullRequests();
       scheduleWatch();
       for (const repo of allRepos()) {
@@ -1391,11 +1711,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const realPath = (value: string) => Fs.realpath(value).catch(() => Path.resolve(value));
 
   /** The threads working in each worktree, by real path, as the threads plugin has them now. */
-  async function worktreeUsers(): Promise<Map<string, string[]>> {
+  async function worktreeUsers(options: { strict?: boolean } = {}): Promise<Map<string, string[]>> {
     // A worktree an agent's generation works in is in use as well (D745).
-    const listed = (await context.commands
-      .execute("threads.list", { includeGenerations: true })
-      .catch(() => [])) as {
+    const listing = context.commands.execute("threads.list", { includeGenerations: true });
+    // Strict: a list that cannot be read is an error, never "nobody works there".
+    const listed = (await (options.strict === true ? listing : listing.catch(() => []))) as {
       id: string;
       worktreePath?: string;
     }[];
@@ -1416,9 +1736,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     // Only a thread that is still to be made gets a setup: an existing one (or one
     // being set up) is never taken over through this id.
     if (threadId !== undefined) {
+      // Only "no such thread" means it is still to be made; any other failure is no answer.
       const existing = await context.commands.execute("threads.get", { threadId }).then(
         () => true,
-        () => false,
+        (error: unknown) => {
+          if ((error as { code?: unknown } | null)?.code === "THREAD_NOT_FOUND") return false;
+          throw error;
+        },
       );
       if (existing || setups.get(threadId)?.phase === "running") {
         throw new SourceControlError(
@@ -2726,9 +3050,34 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     description:
       "The worktrees of a project's repository with their branches, whether this node made them and the threads working in each",
     input: z.object({ projectId: z.string().min(1) }),
-    output: z.object({ worktrees: z.array(Worktree) }),
+    output: z.object({
+      worktrees: z.array(Worktree),
+      cleanupOnDelete: z.boolean().optional().meta({
+        description:
+          "A deleted thread's worktree is removed by the cleanup rules (T3's worktreeOnDelete), so a client asks nothing",
+      }),
+    }),
     permissions: ["git.read"],
-    handler: async ({ projectId }) => ({ worktrees: await service.worktrees(projectId) }),
+    handler: async ({ projectId }) => ({
+      worktrees: await service.worktrees(projectId),
+      cleanupOnDelete: config().worktreeCleanup.onDelete,
+    }),
+  });
+
+  context.commands.register({
+    name: "git.worktree.cleanup",
+    title: "Clean up worktrees",
+    description:
+      "Applies the worktree cleanup rules now (T3's storage cleanup of worktrees): removes the managed worktrees they allow, keeping branches and threads, and reports each one it looked at",
+    input: z.object({}),
+    output: CleanupReport,
+    permissions: ["git.write"],
+    // After a sweep already under way, so the answer reflects the rules as they are now.
+    handler: async () => {
+      // A sweep asked for meanwhile may start as the running one ends: wait for it too.
+      while (cleaning !== undefined) await cleaning.catch(() => undefined);
+      return requestCleanup();
+    },
   });
 
   context.commands.register({
