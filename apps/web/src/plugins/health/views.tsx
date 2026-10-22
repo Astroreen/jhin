@@ -290,7 +290,7 @@ function describe(event: EventRef & { payload: unknown }): string {
 
 type Detail = {
   warning: Warning;
-  events: (EventRef & { payload: unknown; missing?: boolean })[];
+  events: (EventRef & { payload: unknown; missing?: boolean; withheld?: string })[];
 };
 
 /**
@@ -437,7 +437,11 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
                       <Badge variant="secondary">{event.kind}</Badge>
                     )}
                     <span className="truncate">
-                      {event.missing === true ? "Trimmed from the log" : describe(event)}
+                      {event.withheld !== undefined
+                        ? `Needs ${event.withheld} to read`
+                        : event.missing === true
+                          ? "Trimmed from the log"
+                          : describe(event)}
                     </span>
                   </summary>
                   <p className="mt-1 font-mono text-xs text-muted-foreground">

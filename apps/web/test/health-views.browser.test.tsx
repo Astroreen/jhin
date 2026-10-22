@@ -125,6 +125,7 @@ describe("health views (D731)", () => {
           events: [
             { ...warning.evidence[0]!, payload: null, missing: true },
             { ...warning.evidence[1]!, payload: { slice: { title: "Floor" } } },
+            { ...warning.evidence[1]!, sequence: 6, payload: null, withheld: "missions.read" },
           ],
         };
       },
@@ -137,6 +138,7 @@ describe("health views (D731)", () => {
     await expect.element(region.getByText(/under `analysts`/)).toBeVisible();
     await expect.element(region.getByText("Trimmed from the log")).toBeVisible();
     await expect.element(region.getByText('Slice "Floor"')).toBeVisible();
+    await expect.element(region.getByText("Needs missions.read to read")).toBeVisible();
     await userEvent.click(region.getByRole("button", { name: "Dismiss" }));
     await expect.element(region.getByRole("button", { name: "Dismiss" })).toBeEnabled();
     expect(toasts).toEqual([
