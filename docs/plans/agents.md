@@ -1020,7 +1020,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   occurrence; a project's idea counts only in its own slices and their
   messages. `mindVirus.minOccurrences` occurrences within the window raise a warning naming
   the carriers; the analyst is asked to trace the written source and every
-  copy ([mind virus](../lore/mind-viruses.md)). Copies written before the
+  copy ([mind virus](../lore/mind-viruses.md)). The agent health asked to
+  trace an idea is no carrier of it: quoting the phrase is that work. Copies written before the
   correction are the analyst's to find, not the detector's.
 - **D728. A recursive proof loop is proof edits on a done slice.** Every
   `missions.slice.proved` of a slice already done is a proof edit (D646 keeps

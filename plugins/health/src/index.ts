@@ -551,6 +551,12 @@ export default definePlugin({
             )?.message;
             if (delivered?.messageId !== undefined && delivered.to !== undefined) {
               asksDelivered.set(delivered.messageId, { warningId: asked, to: delivered.to });
+              // The analyst of a mind virus traces the idea: its quotes of the
+              // phrase are that work, not the idea coming back.
+              const subject = health.warnings[asked]?.subject;
+              if (subject?.startsWith("idea:") === true) {
+                sensors.addTracer(subject.slice("idea:".length), delivered.to);
+              }
             }
           } else if (!analystReply(event)) sensors.ingestMessage(event);
         },

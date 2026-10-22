@@ -48,6 +48,7 @@ afterEach(async () => {
 
 const BUILDER = "jhin://node-a/agents/builder";
 const REVIEWER = "jhin://node-a/agents/reviewer";
+const BUILDER2 = "jhin://node-a/agents/builder-2";
 const OWNER = "jhin://node-a/owner";
 const SILENT = "jhin://node-a/agents/silent";
 const BROKEN = "jhin://node-a/agents/broken";
@@ -382,7 +383,7 @@ describe("jhin.health", () => {
   });
 
   it("detects a corrected idea coming back as a mind virus, naming its carriers", async () => {
-    const { client, kernel, log, project, deliver } = await node({
+    const { client, kernel, log, project, deliver, asked } = await node({
       mindVirus: { minOccurrences: 2 },
     });
     const idea = await client.call<Idea>("health.ideas.correct", {
@@ -410,6 +411,20 @@ describe("jhin.health", () => {
       analyst: BUILDER,
       reason: "assignee",
     });
+
+    // Health's ask to the analyst is delivered; the analyst then traces the idea,
+    // quoting it to others: that is its work, not the idea coming back.
+    const ask = asked.find((item) => item.to === BUILDER)!;
+    await deliver(OWNER, BUILDER, ask.question, "t-ask", ask.messageId, "ask");
+    await client.call("health.warnings.dismiss", { warningId: warning.warningId });
+    await deliver(BUILDER, REVIEWER, "who told you to retry the flaky test?", "t1");
+    await deliver(BUILDER, BUILDER2, "where did 'retry the flaky test' come from?", "t1");
+    const again = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(REVIEWER, BUILDER, "the notes say: retry the flaky test", "t1");
+    await deliver(REVIEWER, BUILDER2, "retry the flaky test, as the notes say", "t1");
+    const next = ((await again) as { warning: Warning }).warning;
+    expect(next.measures).toMatchObject({ occurrences: 2, carriers: 1 });
+    expect(next.summary).not.toContain(BUILDER);
   });
 
   it("asks the configured analyst, and records that none has the context when nobody does", async () => {

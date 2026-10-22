@@ -127,10 +127,21 @@ export class Sensors {
   }
 
   /** An idea's phrase in a text written after the correction, by someone other than the owner. */
+  /** Who health asked to trace an idea, by idea id: quoting it is their work (D727). */
+  private readonly tracers = new Map<string, Set<string>>();
+
+  /** An agent health asked to trace where an idea came from. */
+  addTracer(ideaId: string, address: string): void {
+    const known = this.tracers.get(ideaId) ?? new Set<string>();
+    known.add(address);
+    this.tracers.set(ideaId, known);
+  }
+
   private findIdeas(event: StoredEvent, text: string, carrier: string, slices: readonly Slice[]) {
     if (this.ideas.length === 0) return;
     const haystack = normalizeIdea(text);
     for (const idea of this.ideas) {
+      if (this.tracers.get(idea.ideaId)?.has(carrier) === true) continue;
       if (Date.parse(event.at) < Date.parse(idea.correctedAt)) continue;
       if (idea.projectId !== undefined && !slices.some((s) => s.projectId === idea.projectId))
         continue;
