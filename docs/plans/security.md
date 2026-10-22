@@ -750,6 +750,10 @@ A stack, one slice a PR:
   `<home>/cli/tailscale-serve.json` is read, merged and renamed without a
   lock: two `jhin pair --tailscale` runs at once may lose one target, which
   only makes a later run refuse to repair that mapping.
+  Ownership is per Jhin home while Tailscale Serve is per machine: a
+  mapping another home made is refused, not repaired. When `jhin pair
+  --tailscale` fails after `auth.pairing.create` succeeded (printing, an
+  unreachable node mid-run), the mapping's notes are not repeated.
 - DPoP-bound tokens and T3's WebSocket tickets: a device token is a bearer
   token.
 - MCP OAuth (T3's `/oauth/mcp/*`): MCP clients use the owner token or an

@@ -94,7 +94,7 @@ describe("Tailscale Serve for jhin pair", () => {
     });
     expect(published.baseUrl).toBe("https://studio.tail1234.ts.net");
     expect(tailscale.calls).toEqual([
-      ["status", "--json"],
+      ["status", "--json", "--peers=false"],
       ["serve", "status", "--json"],
       ["serve", "--bg", "--https=443", "http://127.0.0.1:7777"],
     ]);
@@ -120,7 +120,7 @@ describe("Tailscale Serve for jhin pair", () => {
     expect(published.baseUrl).toBe("https://studio.tail1234.ts.net:8443");
     expect(published.notes).toEqual([expect.stringContaining("jhin.http.trustProxy")]);
     expect(tailscale.calls).toEqual([
-      ["status", "--json"],
+      ["status", "--json", "--peers=false"],
       ["serve", "status", "--json"],
     ]);
   });

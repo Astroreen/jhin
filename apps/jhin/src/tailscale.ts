@@ -203,7 +203,7 @@ export async function publishOverTailscale(input: {
 
   let status: { code: number; stdout: string };
   try {
-    status = await run(["status", "--json"], STATUS_TIMEOUT_MS);
+    status = await run(["status", "--json", "--peers=false"], STATUS_TIMEOUT_MS);
   } catch {
     throw unavailable;
   }
