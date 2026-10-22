@@ -105,4 +105,70 @@ describe("health's sensors (D722)", () => {
     expect(carriesIdea(normalizeIdea("we retry the flaky tests"), idea)).toBe(false);
     expect(carriesIdea(normalizeIdea("prefix: retry the flaky test"), idea)).toBe(true);
   });
+
+  it("keeps a project quiet while one of its missions crosses, dismissed or not (D724)", () => {
+    const sensors = new Sensors();
+    const sliceOf = (id: string, missionId: string, threadId: string) =>
+      ({
+        id,
+        missionId,
+        projectId: "p1",
+        title: id,
+        spec: "",
+        wave: 1,
+        dependsOn: [],
+        status: "active",
+        threads: [{ threadId }],
+        createdAt: hoursAgo(5),
+        updatedAt: hoursAgo(5),
+      }) satisfies Slice;
+    sensors.ingestMission(
+      event("missions", 1, MissionEvents.sliceCreated, hoursAgo(5), {
+        slice: sliceOf("s1", "m1", "t1"),
+      }),
+    );
+    sensors.ingestMission(
+      event("missions", 2, MissionEvents.sliceCreated, hoursAgo(5), {
+        slice: sliceOf("s2", "m2", "t2"),
+      }),
+    );
+    const queue = (threadId: string, sequence: number, at: string) =>
+      sensors.ingestThread(
+        threadId,
+        event(`thread/${threadId}`, sequence, ThreadEvents.queueUpdated, at, {}),
+      );
+    // Mission m1 crosses (3 of 3); its warning is dismissed afterwards.
+    queue("t1", 1, hoursAgo(4));
+    queue("t1", 2, hoursAgo(4));
+    queue("t1", 3, hoursAgo(4));
+    const health = {
+      ...EMPTY_HEALTH,
+      warnings: {
+        w1: {
+          warningId: "w1",
+          detector: "ceremony" as const,
+          subject: "mission:m1",
+          group: { kind: "mission" as const, projectId: "p1", missionId: "m1" },
+          summary: "",
+          measures: {},
+          evidence: [],
+          raisedAt: hoursAgo(3.5),
+          status: "dismissed" as const,
+          dismissedAt: hoursAgo(3),
+          dismissedAfter: { "thread/t1": 3, missions: 2 },
+        },
+      },
+    };
+    // Mission m2 adds 2, under its own threshold; the project holds 5.
+    queue("t2", 1, hoursAgo(1));
+    queue("t2", 2, hoursAgo(1));
+    const config = HealthConfig.parse({ ceremony: { ratio: 1, minCeremony: 3 } });
+    // One cause, one warning: m1 still crosses over the window, so p1 and the node stay quiet.
+    expect(sensors.evaluate(config, health, NOW)).toEqual([]);
+    // Once m2 crosses on its own, it warns, and the project still does not.
+    queue("t2", 3, hoursAgo(0.5));
+    expect(sensors.evaluate(config, health, NOW).map((finding) => finding.subject)).toEqual([
+      "mission:m2",
+    ]);
+  });
 });
