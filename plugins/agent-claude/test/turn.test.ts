@@ -8,6 +8,7 @@ import {
   init,
   memorySessions,
   result,
+  system,
   scriptedQuery,
   streamedBlock,
   toolResult,
@@ -688,6 +689,83 @@ describe("jhin.agent-claude: a turn", () => {
       },
       { kind: "subagent.ended", subagentId: "agent-1", status: "completed" },
     ]);
+  });
+
+  it("hands its subagents in the background over to afterwards, until each ended (D1165)", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield toolUse("m1", "agent-bg", "Agent", {
+          description: "Dig",
+          prompt: "dig",
+          run_in_background: true,
+        });
+        yield system("task_started", {
+          task_id: "task-1",
+          tool_use_id: "agent-bg",
+          description: "Dig",
+          is_backgrounded: true,
+        });
+        // Its background work keeps the per-turn session (D348).
+        yield system("background_tasks_changed", { tasks: [{ task_id: "task-1" }] });
+        yield toolResult("agent-bg", "Async agent launched");
+        // A foreground one Claude Code moved to the background (D805).
+        yield toolUse("m2", "agent-fg", "Agent", { description: "Look", prompt: "look" });
+        yield system("task_started", { task_id: "task-2", tool_use_id: "agent-fg" });
+        yield system("task_updated", { task_id: "task-2", patch: { is_backgrounded: true } });
+        yield toolResult("agent-fg", "Running in the background");
+        yield result();
+        // After the turn: their own work and their ends.
+        yield toolUse("sub", "inner", "Read", { file_path: "/x" }, "agent-bg");
+        yield system("task_notification", {
+          task_id: "task-1",
+          tool_use_id: "agent-bg",
+          status: "completed",
+          summary: "dug",
+          output_file: "",
+        });
+        yield system("task_notification", {
+          task_id: "task-2",
+          status: "failed",
+          summary: "broke",
+          output_file: "",
+        });
+        yield system("background_tasks_changed", { tasks: [] });
+      },
+    ]);
+    const items = await drain(turn);
+    expect(items.filter((item) => item.kind.startsWith("subagent."))).toEqual([
+      { kind: "subagent.started", subagentId: "agent-bg", title: "Dig", prompt: "dig" },
+      { kind: "subagent.backgrounded", subagentId: "agent-bg" },
+      { kind: "subagent.started", subagentId: "agent-fg", title: "Look", prompt: "look" },
+      { kind: "subagent.backgrounded", subagentId: "agent-fg" },
+    ]);
+    // Their calls' quick results end the calls, not the subagents.
+    expect(items.filter((item) => item.kind === "tool.completed")).toHaveLength(2);
+    const afterwards = [];
+    for await (const item of turn.afterwards!) afterwards.push(item);
+    expect(afterwards).toEqual([
+      {
+        kind: "subagent.item",
+        subagentId: "agent-bg",
+        item: expect.objectContaining({ kind: "tool.started", itemId: "inner" }),
+      },
+      { kind: "subagent.ended", subagentId: "agent-bg", status: "completed" },
+      { kind: "subagent.ended", subagentId: "agent-fg", status: "failed", error: "broke" },
+    ]);
+  });
+
+  it("ends afterwards at once when no subagent went to the background", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield result();
+      },
+    ]);
+    await drain(turn);
+    const afterwards = [];
+    for await (const item of turn.afterwards!) afterwards.push(item);
+    expect(afterwards).toEqual([]);
   });
 
   it("fails when Claude Code ends the turn without a result", async () => {

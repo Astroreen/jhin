@@ -1,7 +1,7 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/ThreadRelationshipsControl.tsx (the subagent rows
 // and "Stop subagent") and ThreadLineageWorkflowRow.tsx (the workflow row, its
-// phases and "Stop entire workflow"). Decisions: docs/plans/orchestration.md (D866–D868).
+// phases and "Stop entire workflow"). Decisions: docs/plans/orchestration.md (D866–D868, D1167).
 import type { ChatThreadDetailsProps, NodeTarget } from "@jhin/client-api";
 import { Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import {
@@ -266,10 +266,7 @@ export function DelegationLineage({ target, thread, services, view }: Props) {
     if (stopping !== null) return;
     setStopping(key);
     try {
-      await services.threads.call(target as NodeTarget, method, {
-        ...input,
-        parentThreadId: thread.id,
-      });
+      await services.threads.call(target as NodeTarget, method, input);
     } catch (error) {
       services.toasts?.show({
         type: "error",
@@ -338,7 +335,12 @@ export function DelegationLineage({ target, thread, services, view }: Props) {
                 className="right-1"
                 disabled={stopping !== null}
                 label={`Stop subagent ${task.title}`}
-                onClick={() => void stop(task.taskId, "tasks.cancel", { taskId: task.taskId })}
+                onClick={() =>
+                  void stop(task.taskId, "tasks.cancel", {
+                    taskId: task.taskId,
+                    parentThreadId: thread.id,
+                  })
+                }
                 stopping={stopping === task.taskId}
                 tip="Stop subagent"
               />
@@ -346,27 +348,47 @@ export function DelegationLineage({ target, thread, services, view }: Props) {
           </li>
         );
       })}
-      {providerSubagents.map((child) => (
-        <li className="group relative flex h-8 items-center rounded-lg" key={child.id}>
-          <TipButton
-            className={ROW}
-            label={`Open ${child.title} chat`}
-            onClick={() => open(child.id)}
-            tip="Open subagent in this chat"
-            unavailable={false}
-          >
-            <BotIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            <Title text={child.title} />
-            <Status label={lineageStatusLabel(child)} />
-          </TipButton>
-        </li>
-      ))}
+      {providerSubagents.map((child) => {
+        const running = child.lastTurn?.status === "running";
+        return (
+          <li className="group relative flex h-8 items-center rounded-lg" key={child.id}>
+            <TipButton
+              className={ROW}
+              label={`Open ${child.title} chat`}
+              onClick={() => open(child.id)}
+              tip="Open subagent in this chat"
+              unavailable={false}
+            >
+              <BotIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <Title text={child.title} />
+              <Status
+                className={running ? "group-hover:opacity-0 group-focus-within:opacity-0" : ""}
+                label={lineageStatusLabel(child)}
+              />
+            </TipButton>
+            {running ? (
+              // Its agent stops it (D1167): Claude Code's stopTask.
+              <StopButton
+                className="right-1"
+                disabled={stopping !== null}
+                label={`Stop subagent ${child.title}`}
+                onClick={() => void stop(child.id, "threads.subagent.stop", { threadId: child.id })}
+                stopping={stopping === child.id}
+                tip="Stop subagent"
+              />
+            ) : null}
+          </li>
+        );
+      })}
       {workflows.map((workflow) => (
         <WorkflowRow
           busy={stopping !== null}
           key={workflow.workflowId}
           onStop={() =>
-            void stop(workflow.workflowId, "workflows.stop", { workflowId: workflow.workflowId })
+            void stop(workflow.workflowId, "workflows.stop", {
+              workflowId: workflow.workflowId,
+              parentThreadId: thread.id,
+            })
           }
           open={open}
           stopping={stopping === workflow.workflowId}

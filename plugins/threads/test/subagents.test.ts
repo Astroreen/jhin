@@ -95,3 +95,80 @@ describe("jhin.threads: subagents of a turn (D877)", () => {
     expect(open.thread.lastTurn).toMatchObject({ status: "interrupted" });
   });
 });
+
+/** Two subagents in the background: one works after the turn until it is stopped, one never ends. */
+function backgroundRuntime() {
+  let stop!: () => void;
+  const stopped = new Promise<void>((resolve) => (stop = resolve));
+  const asked: { threadId: string; subagentId: string }[] = [];
+  const backgroundAgent: AgentRuntime = {
+    agentId: "acme.background",
+    async stopSubagent(request) {
+      asked.push(request);
+      if (request.subagentId !== "b1") return false;
+      stop();
+      return true;
+    },
+    startTurn(request) {
+      async function* items(): AsyncGenerator<AgentItem> {
+        yield { kind: "subagent.started", subagentId: "b1", title: "Dig", prompt: "dig" };
+        yield { kind: "subagent.backgrounded", subagentId: "b1" };
+        yield { kind: "subagent.started", subagentId: "b2", title: "Wait", prompt: "wait" };
+        yield { kind: "subagent.backgrounded", subagentId: "b2" };
+        yield { kind: "message.completed", itemId: `${request.turnId}:1`, text: "started" };
+      }
+      async function* afterwards(): AsyncGenerator<
+        Extract<AgentItem, { kind: "subagent.item" | "subagent.ended" }>
+      > {
+        yield {
+          kind: "subagent.item",
+          subagentId: "b1",
+          item: { kind: "message.completed", itemId: "b1:1", text: "dug" },
+        };
+        await stopped;
+        yield { kind: "subagent.ended", subagentId: "b1", status: "interrupted" };
+      }
+      return { items: items(), afterwards: afterwards(), interrupt() {} };
+    },
+  };
+  return { runtime: backgroundAgent, asked };
+}
+
+describe("jhin.threads: subagents in the background (D1164, D1166)", () => {
+  it("keeps their threads running past the turn, and stops one through its runtime", async () => {
+    const { runtime: background, asked } = backgroundRuntime();
+    const { client } = await node({ runtime: background });
+    const parent = await client.call<Thread>("threads.create", {});
+    const parentEvents = watch(client, parent.id);
+    await client.call("threads.send", { threadId: parent.id, text: "go" });
+    await parentEvents.until("agent.turn.completed");
+    const [dig, wait] = parentEvents.events
+      .filter((event) => event.type === "threads.subagent.started")
+      .map((event) => (event.payload as { childThreadId: string }).childThreadId);
+
+    // Its work after the turn goes to its thread, which still runs.
+    const digEvents = watch(client, dig!);
+    expect((await digEvents.until("agent.item.completed")).payload).toMatchObject({ text: "dug" });
+    const running = await client.call<{ thread: Thread }>("threads.get", { threadId: dig });
+    expect(running.thread.lastTurn).toMatchObject({ status: "running" });
+
+    // A runtime that cannot stop it, a thread that is no subagent.
+    await expect(client.call("threads.subagent.stop", { threadId: wait })).rejects.toMatchObject({
+      code: "SUBAGENT_STOP_UNSUPPORTED",
+    });
+    await expect(
+      client.call("threads.subagent.stop", { threadId: parent.id }),
+    ).rejects.toMatchObject({ code: "SUBAGENT_STOP_UNSUPPORTED" });
+
+    expect(await client.call("threads.subagent.stop", { threadId: dig })).toEqual({
+      stopped: true,
+    });
+    expect(asked).toContainEqual({ threadId: parent.id, subagentId: "b1" });
+    await digEvents.until("agent.turn.interrupted");
+    // The runtime followed them no further: the one still open ends with that.
+    await watch(client, wait!).until("agent.turn.interrupted");
+    await expect(client.call("threads.subagent.stop", { threadId: dig })).rejects.toMatchObject({
+      code: "SUBAGENT_NOT_RUNNING",
+    });
+  });
+});

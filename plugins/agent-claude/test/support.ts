@@ -135,6 +135,9 @@ export function scriptedQuery(...scripts: Script[]) {
               return state.background?.(toolUseId) ?? Promise.resolve(true);
             },
           }),
+      stopTask: async (taskId: string) => {
+        call.controls.push(`stop:${taskId}`);
+      },
       setModel: (model) => control(`model:${model}`),
       setPermissionMode: (mode) => control(`mode:${mode}`),
       applyFlagSettings: (settings) =>
@@ -298,6 +301,10 @@ export const toolResult = (
     },
     ...(options.structured === undefined ? {} : { tool_use_result: options.structured }),
   });
+
+/** A system frame of Claude Code (`task_started`, `background_tasks_changed`, …). */
+export const system = (subtype: string, fields: Record<string, unknown> = {}) =>
+  message({ type: "system", subtype, uuid: `${subtype}-uuid`, session_id: "s", ...fields });
 
 export const result = (overrides: Record<string, unknown> = {}) =>
   message({

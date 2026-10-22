@@ -24,6 +24,9 @@ import {
   result,
   scriptedQuery,
   streamedBlock,
+  system,
+  toolResult,
+  toolUse,
   type Script,
 } from "./support.ts";
 
@@ -1140,5 +1143,32 @@ describe("jhin.agent-claude: W9 live sessions", () => {
     stopped.interrupt();
     expect(answers(await items)).toEqual([]);
     expect(calls[0]!.interrupts).toBe(2);
+  });
+});
+
+describe("jhin.agent-claude: stopping a subagent (D1166)", () => {
+  it("stops the task of the subagent's call on the thread's live session", async () => {
+    const { claude, turn, calls } = node([
+      async function* (player) {
+        yield init();
+        yield toolUse("m1", "agent-1", "Agent", {
+          description: "Dig",
+          prompt: "dig",
+          run_in_background: true,
+        });
+        yield system("task_started", { task_id: "task-1", tool_use_id: "agent-1" });
+        yield toolResult("agent-1", "Async agent launched");
+        yield result();
+        await player.nextPrompt();
+      },
+    ]);
+    await turn();
+    expect(await claude.stopSubagent!({ threadId: THREAD, subagentId: "agent-1" })).toBe(true);
+    expect(calls[0]!.controls).toContain("stop:task-1");
+    // A call that started no task, and a thread without a live session.
+    expect(await claude.stopSubagent!({ threadId: THREAD, subagentId: "other" })).toBe(false);
+    expect(await claude.stopSubagent!({ threadId: "elsewhere", subagentId: "agent-1" })).toBe(
+      false,
+    );
   });
 });

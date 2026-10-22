@@ -51,7 +51,7 @@
     "description": "Runs turns with Claude Code (the Claude Agent SDK): tools, approvals, questions, plans and a session per thread, kept running between turns or resumed",
     "side": "server",
     "requires": {
-      "agent.registry": "^1.3",
+      "agent.registry": "^1.4",
       "storage.eventlog": "^1",
       "storage.kv": "^1"
     },

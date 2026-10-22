@@ -441,6 +441,8 @@ export function createClaudeRuntime(options: {
         skills,
       };
     },
+    // A subagent is its `Agent` call; Claude Code stops the task that runs it (D1166).
+    stopSubagent: ({ threadId, subagentId }) => live.stopTask(threadId, subagentId),
     startTurn(request) {
       const config = options.config();
       const model = request.model ?? defaultModel();
