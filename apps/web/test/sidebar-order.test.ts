@@ -115,6 +115,12 @@ describe("a thread's status in the sidebar (D70)", () => {
     });
     expect(ids(lists.working)).toEqual(["t"]);
     expect(ids(lists.active)).toEqual(["u"]);
+    // A watched thread that asks for an answer stays in the inbox.
+    const asking = thread("a", ago(2), { lastTurn: turn("waiting", ago(1), "approval") });
+    const b = node({ node: "b" }, [project("p", "app")], [asking]);
+    const withAsking = sidebarThreads([b], { nowMs: NOW, working: true, waiting: () => true });
+    expect(ids(withAsking.active)).toEqual(["a"]);
+    expect(ids(withAsking.working)).toEqual([]);
   });
 
   it("shows Done for a turn completed since the last visit, as T3's top status", () => {

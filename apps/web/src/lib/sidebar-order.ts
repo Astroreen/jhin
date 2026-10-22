@@ -245,7 +245,9 @@ export function sidebarThreads<Node extends CatalogNode>(
       if (
         section === "active" &&
         options.working === true &&
-        (isWorking(thread) || options.waiting?.(node, thread) === true)
+        (isWorking(thread) ||
+          // One that asks the user something stays in the inbox, watched or not.
+          (thread.lastTurn?.status !== "waiting" && options.waiting?.(node, thread) === true))
       )
         section = "working";
       const at = section === "settled" ? settledAt(thread, options.nowMs) : undefined;
