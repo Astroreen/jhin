@@ -495,17 +495,15 @@ export default definePlugin({
       )?.message;
       // Only a reply to an ask health really delivered, and only its first
       // reply: an id the sender merely writes into `inReplyTo` excludes nothing.
-      const warningId =
+      // The analyst is whom that ask went to, whatever the config says now.
+      const ask =
         message?.inReplyTo === undefined ? undefined : asksDelivered.get(message.inReplyTo);
-      const warning = warningId === undefined ? undefined : health.warnings[warningId];
-      if (warning === undefined) return false;
-      const analyst = warning.analysis?.analyst ?? analystOf(warning)?.address;
-      if (analyst === undefined || message?.from !== analyst) return false;
+      if (ask === undefined || message?.from !== ask.to) return false;
       asksDelivered.delete(message!.inReplyTo!);
       return true;
     };
     /** Health's asks delivered on this node, by message id, until their first reply. */
-    const asksDelivered = new Map<string, string>();
+    const asksDelivered = new Map<string, { warningId: string; to: string }>();
     /** The warnings health already asked about, from the delivered asks (D725). */
     const askedBefore = new Set<string>();
     /** The warning a delivered message is health's own ask about, if it is one. */
@@ -548,9 +546,12 @@ export default definePlugin({
           const asked = ownAsk(event);
           if (asked !== undefined) {
             askedBefore.add(asked);
-            const messageId = (event.payload as { message?: { messageId?: string } } | null)
-              ?.message?.messageId;
-            if (messageId !== undefined) asksDelivered.set(messageId, asked);
+            const delivered = (
+              event.payload as { message?: { messageId?: string; to?: string } } | null
+            )?.message;
+            if (delivered?.messageId !== undefined && delivered.to !== undefined) {
+              asksDelivered.set(delivered.messageId, { warningId: asked, to: delivered.to });
+            }
           } else if (!analystReply(event)) sensors.ingestMessage(event);
         },
       },
