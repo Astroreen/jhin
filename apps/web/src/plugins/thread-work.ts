@@ -21,6 +21,8 @@ export function createThreadWork(
   };
   return {
     register(source) {
+      // Registered already: one registration is enough, and this one owns nothing.
+      if (sources.has(source)) return { dispose: () => undefined };
       // A source that cannot be followed is not added at all.
       const subscription = source.subscribe(changed);
       sources.add(source);

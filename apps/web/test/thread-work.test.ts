@@ -34,7 +34,9 @@ describe("client.thread-work (D1131)", () => {
       subscribe: () => ({ dispose: () => undefined }),
     });
     expect(work.tasks({ node: "n" }, "t")).toHaveLength(1);
+    expect(changes).toBe(3);
     broken.dispose();
+    expect(changes).toBe(4);
     source.dispose();
     expect(changes).toBe(5);
     expect(work.tasks({ node: "n" }, "t")).toEqual([]);
@@ -62,5 +64,23 @@ describe("client.thread-work (D1131)", () => {
     notifyA();
     expect(changes).toBe(before);
     expect(work.tasks({ node: "n" }, "t").map((task) => task.taskId)).toEqual(["b"]);
+  });
+
+  it("takes a source registered twice once", () => {
+    const work = createThreadWork();
+    let subscribed = 0;
+    const source = {
+      tasks: () => [{ taskId: "a", kind: "monitor" as const }],
+      subscribe: () => {
+        subscribed++;
+        return { dispose: () => undefined };
+      },
+    };
+    const first = work.register(source);
+    work.register(source).dispose();
+    expect(subscribed).toBe(1);
+    expect(work.tasks({ node: "n" }, "t")).toHaveLength(1);
+    first.dispose();
+    expect(work.tasks({ node: "n" }, "t")).toEqual([]);
   });
 });
