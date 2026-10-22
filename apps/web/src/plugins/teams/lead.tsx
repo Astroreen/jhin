@@ -106,6 +106,8 @@ function Conversation(props: {
 
   /** The asks this page sent and still waits on, by message id (D1063). */
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  /** Answers the page got from its own asks, shown before the stream brings them. */
+  const [answers, setAnswers] = useState<ReadonlyMap<string, string>>(() => new Map());
   /** Bumped by Retry: following again after the feed failed. */
   const [attempt, setAttempt] = useState(0);
 
@@ -152,19 +154,26 @@ function Conversation(props: {
     setPending((now) => new Set(now).add(messageId));
     setDraft("");
     // The ask lands on the stream at once; its answer when the lead's turn ends
-    // (D624). It stays pending on success: the answer shows once the stream has it.
-    client.call("agents.ask", { to: lead, question, messageId }).catch((error: unknown) => {
-      settle();
-      const silent = (error as { code?: unknown } | null)?.code === "NO_ANSWER";
-      const recorded = entries.current.some((entry) => entry.message.messageId === messageId);
-      // A text that never reached the lead comes back to the composer, if it is still empty.
-      if (!silent && !recorded) setDraft((now) => (now === "" ? question : now));
-      services.toasts?.show({
-        type: silent ? "warning" : "error",
-        title: silent ? "The lead's turn ended without an answer" : "Couldn't reach the lead",
-        description: errorText(error),
-      });
-    });
+    // (D624). The call brings the answer too, so it shows even if the feed lags.
+    client.call<{ answer?: string }>("agents.ask", { to: lead, question, messageId }).then(
+      (result) => {
+        const answer = result.answer;
+        if (answer !== undefined) setAnswers((now) => new Map(now).set(messageId, answer));
+        settle();
+      },
+      (error: unknown) => {
+        settle();
+        const silent = (error as { code?: unknown } | null)?.code === "NO_ANSWER";
+        const recorded = entries.current.some((entry) => entry.message.messageId === messageId);
+        // A text that never reached the lead comes back to the composer, if it is still empty.
+        if (!silent && !recorded) setDraft((now) => (now === "" ? question : now));
+        services.toasts?.show({
+          type: silent ? "warning" : "error",
+          title: silent ? "The lead's turn ended without an answer" : "Couldn't reach the lead",
+          description: errorText(error),
+        });
+      },
+    );
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -173,7 +182,11 @@ function Conversation(props: {
     send();
   };
 
-  const waiting = view.entries.some(
+  const shown = view.entries.map((entry) => {
+    const answer = entry.answer ?? answers.get(entry.message.messageId);
+    return answer === entry.answer ? entry : { ...entry, answer };
+  });
+  const waiting = shown.some(
     (entry) => pending.has(entry.message.messageId) && unanswered(entry, view.owner),
   );
   return (
@@ -239,7 +252,7 @@ function Conversation(props: {
               comes back here and in your inbox.
             </p>
           ) : (
-            view.entries.map((entry) => (
+            shown.map((entry) => (
               <Entry
                 entry={entry}
                 key={entry.message.messageId}

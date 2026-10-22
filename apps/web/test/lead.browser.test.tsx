@@ -165,6 +165,31 @@ describe("the conversation with the lead (C1)", () => {
     await expect.element(log.getByText("The lead is working on an answer…")).toBeVisible();
   });
 
+  it("shows the answer the ask brought back, even when the stream has not caught up", async () => {
+    let entries: ConversationEntry[] = [];
+    let answer: (value: unknown) => void = () => {};
+    const node = nodeOf((method) => {
+      if (method === "teams.list") return { head: 1, teams: [team("2026-10-22T09:00:00Z")] };
+      if (method === "agents.conversation") return { head: 1, owner: OWNER, with: LEAD, entries };
+      if (method === "agents.ask") return new Promise((resolve) => (answer = resolve));
+      throw new Error(method);
+    });
+    await render(<LeadConsole services={node.services} />);
+    await userEvent.type(page.getByRole("textbox", { name: "Message to the lead" }), "Ready?");
+    await userEvent.keyboard("{Enter}");
+    const ask = node.calls.find(([method]) => method === "agents.ask")!;
+    const messageId = (ask[1] as { messageId: string }).messageId;
+    entries = [{ message: message(messageId, OWNER, LEAD, "ask", "Ready?") }];
+    await node.push();
+    const log = page.getByRole("log", { name: "Conversation with the lead" });
+    await expect.element(log.getByText("The lead is working on an answer…")).toBeVisible();
+    await act(async () => answer({ status: "answered", answer: "Yes." }));
+    await expect.element(log.getByRole("article", { name: "Lead" })).toHaveTextContent("Yes.");
+    await expect
+      .element(log.getByText("The lead is working on an answer…"))
+      .not.toBeInTheDocument();
+  });
+
   it("gives the text back when the lead was not reached, and says an ask got no answer", async () => {
     const entries: ConversationEntry[] = [
       // Asked earlier, from another page or before a reload: nobody waits on it here.
