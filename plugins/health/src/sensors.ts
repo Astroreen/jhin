@@ -21,6 +21,7 @@ import {
   type Idea,
   type Progress,
   type SignalKind,
+  type Warning,
 } from "@jhin/health-api";
 import {
   EMPTY_MISSIONS,
@@ -138,12 +139,16 @@ export class Sensors {
     }
   }
 
-  /** An event of the `missions` stream (D642): slices done, proof edits, specs carrying an idea. */
-  ingestMission(event: StoredEvent): void {
+  /**
+   * An event of the `missions` stream (D642): slices done, proof edits, specs
+   * carrying an idea. Returns whether a slice's threads changed, so the plugin
+   * follows new ones.
+   */
+  ingestMission(event: StoredEvent): boolean {
     const slice = (event.payload as { slice?: Slice } | null)?.slice;
     const before = slice === undefined ? undefined : this.missions.slices[slice.id];
     this.missions = applyMissionEvent(this.missions, event);
-    if (slice === undefined) return;
+    if (slice === undefined) return false;
     if (event.type === MissionEvents.sliceProved && before?.status === "done") {
       // A proof recorded again on a done slice: ceremony, and the loop's evidence.
       this.count("proof-edit", event, [slice]);
@@ -159,12 +164,18 @@ export class Sensors {
         this.findIdeas(event, `${slice.title}\n${slice.spec}`, by, [slice]);
       }
     }
+    const threads = (value: Slice | undefined) =>
+      (value?.threads ?? []).map((thread) => thread.threadId).join("|");
+    return threads(before) !== threads(slice);
   }
 
   /**
    * A message delivered on this node (D627). It counts for the missions of the
-   * thread it went to, else of the open slices its sender or recipient is
-   * assigned; otherwise only for the node.
+   * thread it went to; else for one slice: the open slice of its recipient,
+   * else of its sender, changed last (a message is one piece of work, so it
+   * is not multiplied over every mission of an agent); otherwise only for the
+   * node. Attribution is the state when the event is read, which a restart
+   * reproduces, since the streams are replayed in time order.
    */
   ingestMessage(event: StoredEvent): void {
     const payload = event.payload as { message?: AgentMessage; delivery?: MessageDelivery } | null;
@@ -173,12 +184,12 @@ export class Sensors {
     let slices =
       payload?.delivery === undefined ? [] : this.slicesOfThread(payload.delivery.threadId);
     if (slices.length === 0) {
-      slices = Object.values(this.missions.slices).filter(
-        (slice) =>
-          OPEN.has(slice.status) &&
-          slice.assignee !== undefined &&
-          (slice.assignee === message.from || slice.assignee === message.to),
-      );
+      const assigned = (address: string) =>
+        Object.values(this.missions.slices)
+          .filter((slice) => OPEN.has(slice.status) && slice.assignee === address)
+          .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+      const [slice] = [...assigned(message.to), ...assigned(message.from)];
+      slices = slice === undefined ? [] : [slice];
     }
     this.count(message.kind, event, slices);
     if (parseMessageAddress(message.from)?.kind !== "owner") {
@@ -231,15 +242,15 @@ export class Sensors {
     }
   }
 
-  /** Ceremony and progress of every group over the window, by kind. */
-  status(config: HealthConfig, now: number) {
-    this.prune(config, now);
+  /** Counts per group of the signals after `since` (a group's own start, else the window's). */
+  private tally(start: number, since: (key: string) => number = () => start) {
     const byGroup = new Map<
       string,
       { ceremony: number; progress: number; byKind: Record<string, number>; refs: EventRef[] }
     >();
     for (const signal of this.signals) {
       for (const key of signal.groups) {
+        if (signal.time < since(key)) continue;
         const entry = byGroup.get(key) ?? { ceremony: 0, progress: 0, byKind: {}, refs: [] };
         if (isCeremony(signal.kind)) entry.ceremony += 1;
         else entry.progress += 1;
@@ -256,36 +267,71 @@ export class Sensors {
     return [...byGroup].map(([key, entry]) => ({ key, group: this.groups.get(key)!, ...entry }));
   }
 
-  private prune(config: HealthConfig, now: number): void {
-    const since = now - config.windowHours * 3_600_000;
-    if (this.signals.length > 0 && this.signals[0]!.time < since) {
-      this.signals = this.signals.filter((signal) => signal.time >= since);
-    }
+  /** Ceremony and progress of every group over the window, by kind. */
+  status(config: HealthConfig, now: number) {
+    return this.tally(this.prune(config, now));
   }
 
-  /** What every detector finds now (D724, D726, D727). */
+  /** Forgets what left the window; returns the window's start. */
+  private prune(config: HealthConfig, now: number): number {
+    const start = now - config.windowHours * 3_600_000;
+    if (this.signals.length > 0 && this.signals[0]!.time < start) {
+      this.signals = this.signals.filter((signal) => signal.time >= start);
+    }
+    const inWindow = (ref: EventRef) => Date.parse(ref.at) >= start;
+    for (const [sliceId, edits] of this.proofEdits) {
+      const kept = edits.filter(inWindow);
+      if (kept.length === 0) this.proofEdits.delete(sliceId);
+      else if (kept.length !== edits.length) this.proofEdits.set(sliceId, kept);
+    }
+    for (const [ideaId, found] of this.occurrences) {
+      const kept = found.filter((occurrence) => inWindow(occurrence.ref));
+      if (kept.length === 0) this.occurrences.delete(ideaId);
+      else if (kept.length !== found.length) this.occurrences.set(ideaId, kept);
+    }
+    return start;
+  }
+
+  /**
+   * What every detector finds now (D724, D727, D728). Every detector counts
+   * over the window; a dismissal starts the count of its subject again, so
+   * the same subject warns again only when what came after the dismissal
+   * alone crosses the threshold.
+   */
   evaluate(config: HealthConfig, health: HealthState, now: number): Finding[] {
+    const start = this.prune(config, now);
+    // The latest warning of a subject decides: open waits, dismissed resets.
+    const latest = new Map<string, Pick<Warning, "status" | "dismissedAt" | "raisedAt">>();
+    for (const warning of Object.values(health.warnings)) {
+      const key = `${warning.detector}|${warning.subject}`;
+      const known = latest.get(key);
+      if (known === undefined || known.raisedAt < warning.raisedAt) latest.set(key, warning);
+    }
+    const since = (detector: Detector, subject: string) => {
+      const dismissedAt = latest.get(`${detector}|${subject}`)?.dismissedAt;
+      return dismissedAt === undefined ? start : Math.max(start, Date.parse(dismissedAt));
+    };
+    // From the dismissal on, its millisecond included: the clock does not order
+    // two writers within one, and a dismissal counting one event too many is safe.
+    const after = (detector: Detector, subject: string) => (ref: EventRef) =>
+      Date.parse(ref.at) >= since(detector, subject);
+
     const findings: Finding[] = [];
     // Ceremony against progress, per group (D722). The narrowest group that
-    // crosses warns; its project and the node stay quiet while it is open (D724).
+    // crosses warns; its project and the node stay quiet while it crosses (D724).
     const rank = { mission: 0, team: 1, project: 2, node: 3 } as const;
     const quiet = new Set<string>();
-    const hush = (group: HealthGroup) => {
-      quiet.add("node");
-      if (group.kind === "mission")
-        quiet.add(groupKey({ kind: "project", projectId: group.projectId }));
-    };
-    for (const warning of Object.values(health.warnings)) {
-      if (warning.detector === "ceremony" && warning.status === "open") hush(warning.group);
-    }
-    const entries = this.status(config, now).toSorted(
+    const entries = this.tally(start, (key) => since("ceremony", key)).toSorted(
       (a, b) => rank[a.group.kind] - rank[b.group.kind],
     );
     for (const entry of entries) {
       const { ratio, minCeremony } = config.ceremony;
       const limit = Math.max(minCeremony, ratio * Math.max(entry.progress, 1));
       if (entry.ceremony < limit || quiet.has(entry.key)) continue;
-      hush(entry.group);
+      quiet.add("node");
+      if (entry.group.kind === "mission") {
+        quiet.add(groupKey({ kind: "project", projectId: entry.group.projectId }));
+      }
       findings.push({
         detector: "ceremony",
         subject: entry.key,
@@ -295,21 +341,22 @@ export class Sensors {
         evidence: entry.refs.slice(-MAX_EVIDENCE),
       });
     }
-    // Recursive proof loops: a done slice's proof recorded again and again (D726).
-    for (const [sliceId, edits] of this.proofEdits) {
+    // Recursive proof loops: a done slice's proof recorded again and again (D728).
+    for (const [sliceId, all] of this.proofEdits) {
+      const subject = `slice:${sliceId}`;
+      const edits = all.filter(after("proof-loop", subject));
       if (edits.length < config.proofLoop.maxEdits) continue;
       const slice = this.missions.slices[sliceId];
       if (slice === undefined) continue;
+      const title = this.missions.missions[slice.missionId]?.title;
       findings.push({
         detector: "proof-loop",
-        subject: `slice:${sliceId}`,
+        subject,
         group: {
           kind: "mission",
           projectId: slice.projectId,
           missionId: slice.missionId,
-          ...(this.missions.missions[slice.missionId]?.title === undefined
-            ? {}
-            : { title: this.missions.missions[slice.missionId]!.title }),
+          ...(title === undefined ? {} : { title }),
         },
         summary: `The proof of done slice "${slice.title}" was recorded again ${edits.length} times`,
         measures: { edits: edits.length, threshold: config.proofLoop.maxEdits },
@@ -317,13 +364,16 @@ export class Sensors {
       });
     }
     // Mind virus: a corrected idea coming back (D727).
-    for (const [ideaId, found] of this.occurrences) {
+    for (const [ideaId, all] of this.occurrences) {
+      const subject = `idea:${ideaId}`;
       const idea = health.ideas[ideaId];
+      const keep = after("mind-virus", subject);
+      const found = all.filter((occurrence) => keep(occurrence.ref));
       if (idea === undefined || found.length < config.mindVirus.minOccurrences) continue;
       const carriers = [...new Set(found.map((occurrence) => occurrence.carrier))];
       findings.push({
         detector: "mind-virus",
-        subject: `idea:${ideaId}`,
+        subject,
         group:
           idea.projectId === undefined
             ? { kind: "node" }

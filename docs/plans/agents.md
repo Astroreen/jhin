@@ -921,23 +921,34 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   (`git.pr.linked`/`git.pr.updated` with state `merged` on `source-control`,
   once per thread and pull request) and commits (D723). An event counts for
   the missions of the slices whose thread it is on; a message without one
-  counts for the open slices its sender or recipient is assigned; every event
-  counts for the node. A project counts what its missions count.
-  `health.status` returns the counts per group and per kind over the window.
-  Health's own asks (message ids `health.<warningId>`) are no ceremony.
+  counts for one slice: the open slice of its recipient, else of its sender,
+  changed last (one message is not multiplied over an agent's missions);
+  every event counts for the node. A project counts what its missions count.
+  Attribution is the missions as they were when the event happened: on start
+  the streams are replayed merged in time order, so a restart counts as the
+  live node did. `health.status` returns the counts per group and per kind
+  over the window. Health's own asks to an analyst (message id
+  `health.<warningId>.<attempt>`, naming a warning health raised before) are
+  no ceremony; an id that names no such warning counts like any other. The
+  analyst's answer ends its turn (D624) and is not a delivered message.
 - **D723. Commits are the one progress no stream holds.** A turn on a thread
   a slice links records its `HEAD` before it starts (turn-start hook,
-  kernel-scoped state, so a plugin reload keeps it) and, at its end, appends
-  `health.progress.recorded` with the commits since (`git rev-list --count`).
+  kernel-scoped state, so a plugin reload keeps it; a start older than a day
+  is forgotten) and, at its end, appends `health.progress.recorded` with the
+  commits since on the first-parent line (`git rev-list --count
+  --first-parent`), only when the start is an ancestor of the new `HEAD`: a
+  reset, rebase or branch switch inside the turn is no progress of its own.
   The hooks never fail a turn: a directory without git counts nothing.
 - **D724. A warning per detector and subject; the narrowest group warns.**
   A detector raises a warning (`health.warning.raised` on the stream and the
   same kernel event, for server plugins that tell the owner elsewhere) once
   for its subject (a group, a slice, an idea) while that warning is open.
-  The owner dismisses it (`health.warnings.dismiss`); the same subject warns
-  again only on evidence newer than the dismissal. Of ceremony warnings the
-  narrowest group crossing warns: while a mission's is open, its project and
-  the node stay quiet, so one cause makes one warning. A warning keeps the
+  The owner dismisses it (`health.warnings.dismiss`); a dismissal starts the
+  count of its subject again, so it warns again only when what came after the
+  dismissal alone crosses the threshold. Every detector counts over the
+  window (`windowHours`). Of ceremony warnings the narrowest group crossing
+  warns: while a mission crosses, its project and the node stay quiet, so
+  one cause makes one warning; once it no longer crosses, they count again. A warning keeps the
   last 50 events behind it (`EventRef`: stream, sequence, type, time, kind);
   `health.warnings.get` reads them back from the log for the drill-down, a
   trimmed one marked `missing`.
@@ -945,8 +956,10 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   asks its analyst (D726) through `agents.ask` (A2, D624) as this node's
   owner, with the warning, its measures, its last events and what to look at
   (the lore of bureaucracy or of mind viruses), and records the answer
-  (`health.warning.analysed`: `answered`, `failed` with the error, or `none`
-  when no agent has the context). Agents hold `health.read` over MCP
+  (`health.warning.analysed`: `answered`, `failed` with the error or after
+  `analysisTimeoutMinutes`, or `none` when no agent has the context). An ask
+  cut short by a deactivation records nothing; on activation every open
+  warning without an analysis is asked again. Agents hold `health.read` over MCP
   (`AGENT_PERMISSIONS`), so the analyst can open the drill-down itself.
 - **D726. Who has the context.** In order: the address configured for the
   project in `jhin.health.analysts` (or for `*`); the team's lead once A5
@@ -960,20 +973,22 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   other than an owner, and each slice title or spec written later, that
   contains the phrase (case-insensitive, whitespace collapsed) is an
   occurrence; a project's idea counts only in its own slices and their
-  messages. `mindVirus.minOccurrences` occurrences raise a warning naming
+  messages. `mindVirus.minOccurrences` occurrences within the window raise a warning naming
   the carriers; the analyst is asked to trace the written source and every
   copy ([mind virus](../lore/mind-viruses.md)). Copies written before the
   correction are the analyst's to find, not the detector's.
 - **D728. A recursive proof loop is proof edits on a done slice.** Every
   `missions.slice.proved` of a slice already done is a proof edit (D646 keeps
-  them visible); `proofLoop.maxEdits` of them on one slice raise a warning
+  them visible); `proofLoop.maxEdits` of them on one slice within the window
+  raise a warning
   for its mission, with those edits as evidence
   ([bureaucracy](../lore/bureaucracy.md)).
 - **D729. Thresholds are config.** The `jhin.health` section: `enabled`,
   `windowHours` (24), `ceremony.ratio` (10) and `ceremony.minCeremony` (30):
   a group warns when its ceremony in the window reaches both the minimum and
   ratio × progress (no progress counts as 1); `proofLoop.maxEdits` (2),
-  `mindVirus.minOccurrences` (2) and `analysts`. An invalid layer keeps the
+  `mindVirus.minOccurrences` (2), `analysisTimeoutMinutes` (30) and
+  `analysts`. An invalid layer keeps the
   last good thresholds.
 - **D730. Permissions.** `health.read` reads status, warnings, ideas and the
   stream; `health.write` dismisses warnings and names corrected ideas, the

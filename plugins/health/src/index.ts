@@ -39,8 +39,12 @@ import { Sensors, type Finding } from "./sensors.ts";
 
 export { HEALTH_STREAM };
 
-/** Messages health sends itself (an analyst's ask) carry this prefix and are no ceremony (D725). */
-export const HEALTH_MESSAGE_PREFIX = "health.";
+/**
+ * Health's own asks to an analyst (D725) have the id `health.<warningId>.<attempt>`;
+ * they are no ceremony. An id only counts as health's when it names a warning
+ * health raised before it, whose random id nobody else knows in advance.
+ */
+const OWN_ASK = /^health\.([0-9a-f-]{36})\.\d+$/;
 
 class HealthError extends Error {
   readonly code: HealthErrorCode;
@@ -87,7 +91,7 @@ export default definePlugin({
     const sensors = new Sensors();
     const applyHealth = (events: readonly StoredEvent[]) => {
       for (const event of events) {
-        if (event.sequence <= healthHead) continue;
+        if (event.stream !== HEALTH_STREAM || event.sequence <= healthHead) continue;
         health = applyHealthEvent(health, event);
         healthHead = event.sequence;
         if (event.type === HealthEvents.ideaCorrected) {
@@ -98,7 +102,6 @@ export default definePlugin({
         }
       }
     };
-    applyHealth(await log.read(HEALTH_STREAM));
 
     /** Appends to `health` one at a time, so the fold never misses its own events. */
     let appending: Promise<unknown> = Promise.resolve();
@@ -113,57 +116,88 @@ export default definePlugin({
     };
 
     // --- Following the log ---------------------------------------------------------
+    interface Source {
+      readonly stream: string;
+      readonly handle: (event: StoredEvent) => void;
+    }
     const heads = new Map<string, number>();
+    const deliver = ({ stream, handle }: Source, event: StoredEvent) => {
+      if (event.sequence <= (heads.get(stream) ?? 0)) return;
+      heads.set(stream, event.sequence);
+      try {
+        handle(event);
+      } catch (error) {
+        context.log.warn("a health sensor failed on an event", {
+          stream,
+          sequence: event.sequence,
+          error: String(error),
+        });
+      }
+    };
     /**
-     * Reads a stream from its start, then every event appended to it; events
-     * that arrive while it reads wait, so none is handled twice or skipped.
+     * Follows streams from their start, then every event appended to them.
+     * What they hold is replayed merged in time order, so every event is
+     * attributed with the missions as they were then, on a restart as live
+     * (D722). Events that arrive while they are read wait, so none is handled
+     * twice or skipped. A stream that cannot be read is logged and followed
+     * again on the next try.
      */
-    const follow = async (stream: string, handle: (event: StoredEvent) => void) => {
-      if (heads.has(stream)) return;
-      heads.set(stream, 0);
-      const once = (event: StoredEvent) => {
-        if (event.sequence <= (heads.get(stream) ?? 0)) return;
-        heads.set(stream, event.sequence);
-        try {
-          handle(event);
-        } catch (error) {
-          context.log.warn("a health sensor failed on an event", {
-            stream,
-            sequence: event.sequence,
-            error: String(error),
-          });
-        }
-      };
-      let waiting: StoredEvent[] | undefined = [];
-      context.subscriptions.add(
-        log.subscribe(stream, (event) => {
-          if (waiting === undefined) {
-            once(event);
-            evaluateSoon();
-          } else waiting.push(event);
-        }),
+    const follow = async (sources: readonly Source[]) => {
+      const fresh = sources.filter((source) => !heads.has(source.stream));
+      if (fresh.length === 0) return;
+      for (const source of fresh) heads.set(source.stream, 0);
+      let waiting: { source: Source; event: StoredEvent }[] | undefined = [];
+      const subscriptions = fresh.map((source) =>
+        context.subscriptions.add(
+          log.subscribe(source.stream, (event) => {
+            if (waiting === undefined) {
+              deliver(source, event);
+              evaluateSoon();
+            } else waiting.push({ source, event });
+          }),
+        ),
       );
-      for (const event of await log.read(stream)) once(event);
-      const held = waiting;
-      waiting = undefined;
-      for (const event of held) once(event);
+      try {
+        const read = await Promise.all(
+          fresh.map(async (source) =>
+            (await log.read(source.stream)).map((event) => ({ source, event })),
+          ),
+        );
+        // Stable: events of one time keep the order of the sources, then of their stream.
+        const merged = read.flat().toSorted((a, b) => a.event.at.localeCompare(b.event.at));
+        for (const { source, event } of merged) deliver(source, event);
+        const held = waiting;
+        waiting = undefined;
+        for (const { source, event } of held) deliver(source, event);
+      } catch (error) {
+        waiting = undefined;
+        for (const subscription of subscriptions) subscription.dispose();
+        for (const source of fresh) heads.delete(source.stream);
+        context.log.warn("health could not read a stream", {
+          streams: fresh.map((source) => source.stream),
+          error: String(error),
+        });
+      }
     };
     /** A thread a slice links is followed for its approvals and queue (D722). */
     const followThreads = () => {
-      for (const threadId of sensors.linkedThreads()) {
-        void follow(threadStream(threadId), (event) => sensors.ingestThread(threadId, event));
-      }
+      const sources = [...sensors.linkedThreads()].map((threadId) => ({
+        stream: threadStream(threadId),
+        handle: (event: StoredEvent) => sensors.ingestThread(threadId, event),
+      }));
+      void follow(sources);
     };
 
     // --- Warnings --------------------------------------------------------------------
-    /** Raises what is new: one open warning per detector and subject; after a dismissal, only on newer evidence (D724). */
+    /**
+     * Raises what is new: one open warning per detector and subject (D724);
+     * after a dismissal the sensors count only what came since (`evaluate`).
+     */
     const raise = async (finding: Finding) => {
       const earlier = warningsOf(health).find(
         (warning) => warning.detector === finding.detector && warning.subject === finding.subject,
       );
       if (earlier?.status === "open") return;
-      const newest = finding.evidence.at(-1)?.at ?? "";
-      if (earlier !== undefined && newest <= (earlier.dismissedAt ?? earlier.raisedAt)) return;
       const warning: Warning = {
         warningId: Crypto.randomUUID(),
         ...finding,
@@ -220,6 +254,11 @@ export default definePlugin({
           : "You have this work's context. Say why ceremony outgrows progress here and what to stop doing; do not add process (docs/lore/bureaucracy.md).",
       ].join("\n");
 
+    /**
+     * Asks the analyst (D725), for at most `analysisTimeoutMinutes`. An ask
+     * still running when the plugin deactivates records nothing; the next
+     * activation asks again for every open warning without an analysis.
+     */
     const analyse = async (warning: Warning) => {
       const at = now;
       const analyst = analystOf(warning);
@@ -227,12 +266,22 @@ export default definePlugin({
       if (analyst === undefined) {
         analysis = { status: "none", at: at() };
       } else {
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          const result = (await context.commands.execute("agents.ask", {
-            to: analyst.address,
-            question: question(warning),
-            messageId: `${HEALTH_MESSAGE_PREFIX}${warning.warningId}`,
-          })) as { status: string; answer?: string };
+          const minutes = config().analysisTimeoutMinutes;
+          const result = (await Promise.race([
+            context.commands.execute("agents.ask", {
+              to: analyst.address,
+              question: question(warning),
+              messageId: `health.${warning.warningId}.${Date.now()}`,
+            }),
+            new Promise((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error(`no answer within ${minutes} minutes`)),
+                minutes * 60_000,
+              );
+            }),
+          ])) as { status: string; answer?: string };
           analysis = {
             status: "answered",
             analyst: analyst.address,
@@ -248,8 +297,11 @@ export default definePlugin({
             error: error instanceof Error ? error.message : String(error),
             at: at(),
           };
+        } finally {
+          clearTimeout(timer);
         }
       }
+      if (!active) return;
       await append(HealthEvents.warningAnalysed, { warningId: warning.warningId, analysis }).catch(
         (error: unknown) =>
           context.log.warn("a warning's analysis could not be recorded", {
@@ -283,43 +335,76 @@ export default definePlugin({
       await evaluating;
     });
 
-    // Missions first, so messages and threads find the slices they belong to.
-    await follow(MISSIONS_STREAM, (event) => {
-      sensors.ingestMission(event);
-      followThreads();
-    });
-    await follow(MESSAGES_STREAM, (event) => {
-      if (event.type !== MessageEvents.delivered) return;
-      const messageId = (event.payload as { message?: { messageId?: string } }).message?.messageId;
-      if (messageId?.startsWith(HEALTH_MESSAGE_PREFIX) === true) return;
-      sensors.ingestMessage(event);
-    });
-    await follow(SOURCE_CONTROL_STREAM, (event) => sensors.ingestSourceControl(event));
+    /** Whether a delivered message is health's own ask to an analyst (D725). */
+    const ownAsk = (event: StoredEvent) => {
+      const messageId = (event.payload as { message?: { messageId?: string } } | null)?.message
+        ?.messageId;
+      const warningId = messageId === undefined ? undefined : OWN_ASK.exec(messageId)?.[1];
+      return warningId !== undefined && health.warnings[warningId] !== undefined;
+    };
+    // Every stream at once, in time order: health first among equals, so an
+    // idea corrected or a warning raised is known before the events after it.
+    await follow([
+      { stream: HEALTH_STREAM, handle: (event) => applyHealth([event]) },
+      {
+        stream: MISSIONS_STREAM,
+        handle: (event) => {
+          if (sensors.ingestMission(event)) followThreads();
+        },
+      },
+      {
+        stream: MESSAGES_STREAM,
+        handle: (event) => {
+          if (event.type === MessageEvents.delivered && !ownAsk(event)) {
+            sensors.ingestMessage(event);
+          }
+        },
+      },
+      { stream: SOURCE_CONTROL_STREAM, handle: (event) => sensors.ingestSourceControl(event) },
+    ]);
     followThreads();
     evaluateSoon();
+    // Asks a deactivation cut short, or never made, are made now.
+    for (const warning of warningsOf(health)) {
+      if (warning.status === "open" && warning.analysis === undefined) void analyse(warning);
+    }
 
     // --- Progress no stream holds: the commits of a turn (D723) ---------------------
-    const startKey = (turnId: string) => `head:${turnId}`;
+    /** Where each running turn of a linked thread started, kept across a reload. */
+    const STARTS = "turn-starts";
+    type Starts = Record<string, { head: string; at: number }>;
+    const DAY = 24 * 3_600_000;
     context.subscriptions.add(
       context.hooks.before<TurnHookInput>(ThreadHooks.turnStart, async (input) => {
         if (config().enabled && sensors.slicesOfThread(input.threadId).length > 0) {
           const head = await git(input.cwd, ["rev-parse", "HEAD"]);
-          if (head !== undefined) context.state.set(startKey(input.turnId), head);
+          // A turn that never ended (its node crashed) is forgotten after a day.
+          const starts = Object.fromEntries(
+            Object.entries(context.state.get<Starts>(STARTS) ?? {}).filter(
+              ([, start]) => Date.now() - start.at < DAY,
+            ),
+          );
+          if (head !== undefined) starts[input.turnId] = { head, at: Date.now() };
+          context.state.set(STARTS, starts);
         }
         return input;
       }),
     );
     context.subscriptions.add(
       context.hooks.before<TurnEndHookInput>(ThreadHooks.turnEnd, async (input) => {
-        const start = context.state.get<string>(startKey(input.turnId));
+        const { [input.turnId]: start, ...rest } = context.state.get<Starts>(STARTS) ?? {};
         if (start === undefined) return input;
-        context.state.delete(startKey(input.turnId));
+        context.state.set(STARTS, rest);
         const head = await git(input.cwd, ["rev-parse", "HEAD"]);
-        const count =
-          head === undefined || head === start
-            ? 0
-            : Number(await git(input.cwd, ["rev-list", "--count", `${start}..${head}`]));
-        if (head !== undefined && Number.isInteger(count) && count > 0) {
+        if (head === undefined || head === start.head) return input;
+        // Only commits on top of where the turn started: a reset, rebase or
+        // switch to another branch is no progress of its own.
+        const ancestor = await git(input.cwd, ["merge-base", "--is-ancestor", start.head, head]);
+        if (ancestor === undefined) return input;
+        const count = Number(
+          await git(input.cwd, ["rev-list", "--count", "--first-parent", `${start.head}..${head}`]),
+        );
+        if (Number.isInteger(count) && count > 0) {
           const progress: Progress = {
             kind: "commit",
             count,

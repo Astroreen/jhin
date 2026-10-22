@@ -54,10 +54,15 @@ function nextAppended(log: EventLog, stream: string, type: string): Promise<Stor
   });
 }
 
-async function node(health_: Record<string, unknown> = {}) {
-  const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-health-"));
-  const storage = memoryStoragePlugin();
-  const asked: { to: string; question: string; messageId?: string | undefined }[] = [];
+type Asked = { to: string; question: string; messageId?: string | undefined };
+
+/** A node on `storage`: starting another on the same storage is a restart. */
+async function start(
+  storage: ReturnType<typeof memoryStoragePlugin>,
+  data: string,
+  health_: Record<string, unknown>,
+  asked: Asked[],
+) {
   let probe: PluginContext | undefined;
   const kernel = await createTestKernel({
     config: { project: { "jhin.health": health_ } },
@@ -100,11 +105,25 @@ async function node(health_: Record<string, unknown> = {}) {
     ],
   });
   const { client } = connectInMemory(kernel, { log: storage.storage.log });
-  stops.push(async () => {
+  const stop = async () => {
     client.close();
     await kernel.stop();
-  });
+  };
+  stops.push(stop);
+  return { kernel, client, stop, probe: () => probe! };
+}
+
+async function node(health_: Record<string, unknown> = {}) {
+  const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-health-"));
+  const storage = memoryStoragePlugin();
+  const asked: Asked[] = [];
+  const { kernel, client, stop, probe } = await start(storage, data, health_, asked);
   const log = storage.storage.log;
+  /** Stops this node and starts it again on the same storage. */
+  const restart = async () => {
+    await stop();
+    return start(storage, data, health_, asked);
+  };
   const project = await client.call<{ id: string }>("projects.create", { path: data });
   const mission = await client.call<Mission>("missions.create", {
     projectId: project.id,
@@ -120,14 +139,20 @@ async function node(health_: Record<string, unknown> = {}) {
   await client.call("slices.link", { sliceId: slice.id, threadId: "t1" });
   /** A message delivered on this node, as jhin.agents records it (D627). */
   let messages = 0;
-  const deliver = (from: string, to: string, body: string, threadId?: string) => {
+  const deliver = (
+    from: string,
+    to: string,
+    body: string,
+    threadId?: string,
+    messageId = `m${messages + 1}`,
+  ) => {
     messages += 1;
     return log.append(MESSAGES_STREAM, [
       {
         type: MessageEvents.delivered,
         payload: {
           message: {
-            messageId: `m${messages}`,
+            messageId,
             kind: "message",
             from,
             to,
@@ -142,7 +167,7 @@ async function node(health_: Record<string, unknown> = {}) {
       },
     ]);
   };
-  return { client, kernel, log, project, mission, slice, asked, deliver, probe: () => probe! };
+  return { client, kernel, log, project, mission, slice, asked, deliver, probe, restart };
 }
 
 describe("jhin.health", () => {
@@ -169,7 +194,7 @@ describe("jhin.health", () => {
     const { analysis } = (await analysed).payload as { analysis: Analysis };
     expect(analysis).toMatchObject({ status: "answered", analyst: BUILDER, reason: "assignee" });
     expect(asked).toHaveLength(1);
-    expect(asked[0]!.messageId).toBe(`health.${warning.warningId}`);
+    expect(asked[0]!.messageId).toMatch(new RegExp(`^health\\.${warning.warningId}\\.\\d+$`));
     expect(asked[0]!.question).toContain(warning.summary);
 
     // Its project and the node stay quiet while the mission's warning is open.
@@ -194,8 +219,8 @@ describe("jhin.health", () => {
     });
   });
 
-  it("counts done slices, merged pull requests and a turn's commits as progress", async () => {
-    const { client, log, slice, probe } = await node();
+  it("counts done slices, merged pull requests and a turn's commits as progress, also after a restart", async () => {
+    const { client, log, slice, probe, restart } = await node();
     await client.call("slices.prove", {
       sliceId: slice.id,
       items: [{ kind: "command", command: "vp test run", output: "1 passed" }],
@@ -250,15 +275,32 @@ describe("jhin.health", () => {
       threadId: "t1",
     });
 
+    // A turn that rewrites history (a reset) and commits on top is no progress of its own.
+    const rewrite = { ...turn, turnId: "turn-2" };
+    await probe().hooks.run(ThreadHooks.turnStart, rewrite, (input) => input);
+    git("reset", "-q", "--hard", "HEAD~2");
+    git("commit", "-q", "--allow-empty", "-m", "elsewhere");
+    await probe().hooks.run(
+      ThreadHooks.turnEnd,
+      { ...rewrite, status: "completed" },
+      (input) => input,
+    );
+    const recordedProgress = (await log.read(HEALTH_STREAM)).filter(
+      (event) => event.type === HealthEvents.progressRecorded,
+    );
+    expect(recordedProgress).toHaveLength(1);
+
+    const progress = { ceremony: 0, progress: 4, byKind: { "slice-done": 1, merge: 1, commit: 2 } };
     const status = await client.call<{ groups: GroupStatus[] }>("health.status", {});
-    expect(status.groups.find((group) => group.group.kind === "mission")).toMatchObject({
-      ceremony: 0,
-      progress: 4,
-      byKind: { "slice-done": 1, merge: 1, commit: 2 },
-    });
+    expect(status.groups.find((group) => group.group.kind === "mission")).toMatchObject(progress);
+
+    // A restart replays the streams in time order: the commits still count for the mission.
+    const again = await restart();
+    const replayed = await again.client.call<{ groups: GroupStatus[] }>("health.status", {});
+    expect(replayed.groups.find((group) => group.group.kind === "mission")).toMatchObject(progress);
   });
 
-  it("warns about a recursive proof loop, and again after a dismissal only on a new proof edit", async () => {
+  it("warns about a recursive proof loop, and after a dismissal counts the edits since", async () => {
     const { client, kernel, slice } = await node({ proofLoop: { maxEdits: 2 } });
     const prove = (output: string) =>
       client.call("slices.prove", {
@@ -278,10 +320,12 @@ describe("jhin.health", () => {
     expect(warning.evidence.map((ref) => ref.kind)).toEqual(["proof-edit", "proof-edit"]);
 
     await client.call("health.warnings.dismiss", { warningId: warning.warningId });
-    const again = nextEvent(kernel, HealthEvents.warningRaised);
+    // The edits since the dismissal are counted, not the ones before it.
     await prove("1 passed, polished");
+    const again = nextEvent(kernel, HealthEvents.warningRaised);
+    await prove("1 passed, polished again");
     const { warning: next } = (await again) as { warning: Warning };
-    expect(next).toMatchObject({ detector: "proof-loop", measures: { edits: 3 } });
+    expect(next).toMatchObject({ detector: "proof-loop", measures: { edits: 2 } });
     expect(next.warningId).not.toBe(warning.warningId);
     const all = await client.call<Warning[]>("health.warnings.list", { status: "all" });
     expect(all.map((item) => item.status)).toEqual(["open", "dismissed"]);
@@ -339,5 +383,31 @@ describe("jhin.health", () => {
       status: "none",
     });
     expect(bare.asked).toEqual([]);
+  });
+
+  it("counts ceremony after a dismissal from the dismissal on, and takes no message id for health's own", async () => {
+    const { client, kernel, deliver } = await node({ ceremony: { ratio: 1, minCeremony: 2 } });
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(OWNER, BUILDER, "one", "t1");
+    await deliver(OWNER, BUILDER, "two", "t1");
+    const { warning } = (await raised) as { warning: Warning };
+    expect(warning.measures).toMatchObject({ ceremony: 2 });
+    await client.call("health.warnings.dismiss", { warningId: warning.warningId });
+
+    // An id shaped like health's own ask, naming no warning health raised, is ceremony.
+    await deliver(OWNER, BUILDER, "three", "t1", `health.${crypto.randomUUID()}.1`);
+    const again = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(OWNER, BUILDER, "four", "t1");
+    const { warning: next } = (await again) as { warning: Warning };
+    // Only what came after the dismissal: three and four, not one and two.
+    expect(next.measures).toMatchObject({ ceremony: 2 });
+    expect(next.warningId).not.toBe(warning.warningId);
+  });
+
+  it("keeps the last good thresholds while a config layer is invalid", async () => {
+    const { client, kernel } = await node({ windowHours: 12 });
+    kernel.config.setLayer("project", { "jhin.health": { windowHours: -1 } });
+    const status = await client.call<{ windowHours: number }>("health.status", {});
+    expect(status.windowHours).toBe(12);
   });
 });
