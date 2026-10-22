@@ -370,6 +370,14 @@ finishes out of the Deferred lists and leaves the rest there.
   subagent threads, usage limits with their reset time, ChatGPT sign-in,
   MCP elicitations, `/goal`, fork and rollback; OpenCode's fork, rollback
   and pending requests after a reconnect.
+  Done: `providers.md` D1141–D1155 (#206, #215, #216, #218, #223, #225,
+  #228); Claude Code's slash commands and skills were already in
+  (`t3-parity.md` D300–D301). Left in `providers.md`'s Deferred lists:
+  Claude's and OpenCode's usage limits, reset credits and the Usage page,
+  Codex subagents that outlive their turn, MCP apps and "Always allow",
+  T3's own OpenAI sign-in and several accounts, `/feedback`, and the
+  sidebar's "Goal" and "limited" states. No signed-in Codex or OpenCode was
+  at hand: all of it is proven against the fake servers.
 - **W32:** the "N subagents" row, the subagent hover card, background
   subagent work, stopping a provider subagent from the panel, "Lineage · N
   running"; the sidebar's "Keep threads with a PR", per-project settle
