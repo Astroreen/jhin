@@ -959,8 +959,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   for its subject (a group, a slice, an idea) while that warning is open.
   The owner dismisses it (`health.warnings.dismiss`); a dismissal starts the
   count of its subject again, so it warns again only when what came after the
-  dismissal alone crosses the threshold. The dismissal records the last event
-  of each followed stream it saw (`dismissedAfter`), and the count goes on
+  dismissal alone crosses the threshold. The dismissal records the log's head
+  of each followed stream (`dismissedAfter`), also of events not delivered to
+  health yet, and the count goes on
   from the events after them: an exact cut, where the clock's milliseconds
   would not order a dismissal against events of the same millisecond. A
   stream it did not follow yet (a slice's thread linked later) counts from the

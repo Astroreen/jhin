@@ -339,7 +339,7 @@ export default definePlugin({
                 () => reject(new Error(`no answer within ${minutes} minutes`)),
                 minutes * 60_000,
               );
-              timers.add(timer);
+              timers.set(timer, () => reject(new Error("health deactivated")));
             }),
           ])) as { status: string; answer?: string };
           if (result.status !== "answered") {
@@ -374,8 +374,8 @@ export default definePlugin({
       );
     };
 
-    /** The timeouts of asks under way, cleared on deactivation. */
-    const timers = new Set<ReturnType<typeof setTimeout>>();
+    /** The timeouts of asks under way, with what ends the wait for each. */
+    const timers = new Map<ReturnType<typeof setTimeout>, () => void>();
     /** Detectors run after the events of a tick, one run at a time. */
     let evaluating: Promise<void> = Promise.resolve();
     let scheduled = false;
@@ -397,8 +397,12 @@ export default definePlugin({
     }
     context.onDeactivate(async () => {
       active = false;
-      // An ask that never answers leaves no timer behind a reload.
-      for (const timer of timers) clearTimeout(timer);
+      // An ask that never answers leaves no timer, and no waiting analysis,
+      // behind a reload: each wait ends now and records nothing (not active).
+      for (const [timer, end] of timers) {
+        clearTimeout(timer);
+        end();
+      }
       timers.clear();
       await evaluating;
       // Commits being counted finish before the plugin goes (git calls are bounded).
@@ -711,9 +715,15 @@ export default definePlugin({
         await append(HealthEvents.warningDismissed, {
           warningId,
           dismissedAt: now(),
-          // What it saw: an exact cut for counting again (D724).
-          // Health's own stream is ahead of its subscription: its fold knows best.
-          dismissedAfter: { ...Object.fromEntries(heads), [HEALTH_STREAM]: healthHead },
+          // An exact cut for counting again (D724): the log's own head of every
+          // stream health follows, also of events not delivered to it yet.
+          dismissedAfter: Object.fromEntries(
+            await Promise.all(
+              [...new Set([...heads.keys(), HEALTH_STREAM])].map(
+                async (stream) => [stream, await log.head(stream)] as const,
+              ),
+            ),
+          ),
           ...by(invocation),
         });
         return getWarning(warningId);
