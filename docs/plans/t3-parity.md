@@ -1995,7 +1995,8 @@ the sidebar's settling. The reference is D53's tag:
   its branch, in any state, keeps it. A merged or closed one still settles
   it through `threads.auto-settle` (D447). What the sweep found is kept in
   memory until the next sweep, so a thread kept by its pull request is not
-  on the Settled shelf meanwhile either.
+  on the Settled shelf meanwhile either. A thread whose pull requests cannot
+  be read (the lookup failed) stays where it is until a sweep can read them.
 - **D1173. Settling per project.** T3 resolves the four settle settings per
   project (`projectSettingsOverrides`); a Jhin node has one project config
   layer (D19, D477), not one per project of its threads. So the threads

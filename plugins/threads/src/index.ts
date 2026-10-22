@@ -813,16 +813,16 @@ export default definePlugin({
     };
     /** Threads the last sweep found kept from settling by a pull request (D1172). */
     const keptByPullRequest = new Set<string>();
-    /** The rule for settling a thread by inactivity, as configured now for its project. */
-    const settleRule = (thread: {
-      readonly id: string;
-      readonly projectId: string;
-    }): SettleRule => {
-      const settings = settleSettings(thread.projectId);
-      return settings.autoSettleInactive && !keptByPullRequest.has(thread.id)
+    /** The rule as configured for a project, before what a thread's pull requests say. */
+    const configuredRule = (projectId: string): SettleRule => {
+      const settings = settleSettings(projectId);
+      return settings.autoSettleInactive
         ? { afterMs: settings.autoSettleAfterDays * DAY_MS }
         : undefined;
     };
+    /** The rule for settling a thread by inactivity, as configured now for its project. */
+    const settleRule = (thread: { readonly id: string; readonly projectId: string }): SettleRule =>
+      keptByPullRequest.has(thread.id) ? undefined : configuredRule(thread.projectId);
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
     const blobs = context.services.tryGet<BlobStore>(BLOBS_CAPABILITY);
@@ -3286,7 +3286,7 @@ export default definePlugin({
     context.commands.register({
       name: "threads.auto-settle",
       description:
-        "Settles a thread whose pull request merged or closed at `closedAt`, as the node's rule says: not one settled, pinned, snoozed, running, waiting or with auto-settle off, nor one the user wrote to since; merged ones only while jhin.threads.autoSettleOnMerge is on",
+        "Settles a thread whose pull request merged or closed at `closedAt`, as the node's rule says: not one settled, pinned, snoozed, running, waiting or with auto-settle off, nor one the user wrote to since; merged ones only while autoSettleOnMerge is on for the thread's project (jhin.threads.projects, else the node's)",
       input: ThreadId.extend({
         reason: z.enum(["pull-request-merged", "pull-request-closed"]),
         closedAt: z.iso.datetime({ offset: true }),
@@ -3326,12 +3326,14 @@ export default definePlugin({
       const source = context.services.tryGet<ThreadPullRequestStates>(PULL_REQUESTS_CAPABILITY);
       if (source === undefined) return false;
       const states = await source.pullRequestsOf(thread.id).catch((error: unknown) => {
-        context.log.warn("could not read a thread's pull requests", {
+        context.log.warn("could not read a thread's pull requests; it stays", {
           threadId: thread.id,
           error: String(error),
         });
-        return [];
+        return undefined;
       });
+      // Not known: it stays, until a sweep can read them.
+      if (states === undefined) return true;
       if (states.some((pr) => pr.linked && (pr.state === "open" || pr.state === "unknown"))) {
         return true;
       }
@@ -3341,14 +3343,21 @@ export default definePlugin({
     /** T3's sweep: every thread the inactivity rule settles now, written as settled. */
     const sweep = async () => {
       const nowMs = Date.parse(now());
-      for (const thread of await listThreads()) {
-        // The rule as configured, before what its pull requests say.
-        keptByPullRequest.delete(thread.id);
-        if (autoSettledAt(thread, nowMs, settleRule(thread)) === undefined) continue;
+      const listed = await listThreads();
+      // A thread no longer there is kept by nothing.
+      const ids = new Set(listed.map((thread) => thread.id));
+      for (const id of keptByPullRequest) if (!ids.has(id)) keptByPullRequest.delete(id);
+      for (const thread of listed) {
+        // The verdict first, then the set: a kept thread never reads as settled meanwhile.
+        if (autoSettledAt(thread, nowMs, configuredRule(thread.projectId)) === undefined) {
+          keptByPullRequest.delete(thread.id);
+          continue;
+        }
         if (await keptByItsPullRequests(thread)) {
           keptByPullRequest.add(thread.id);
           continue;
         }
+        keptByPullRequest.delete(thread.id);
         await autoSettle(
           thread.id,
           (latest, latestMs) => autoSettledAt(latest, latestMs, settleRule(latest)) !== undefined,

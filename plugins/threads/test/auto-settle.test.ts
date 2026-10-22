@@ -4,7 +4,7 @@ import * as Path from "node:path";
 
 import type { ThreadPullRequestState } from "@jhin/source-control-api";
 import { mockCapability } from "@jhin/testing";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 
 import { node, watch } from "./support.ts";
 
@@ -273,9 +273,11 @@ describe("jhin.threads: pull requests and projects in settling (D1172, D1173)", 
   it("reads each thread's project's own settle settings over the node's", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const { client, kernel, create, get } = await withThreads({ autoSettleAfterDays: 1 });
+    const folder = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-settle-"));
+    onTestFinished(() => Fs.rmSync(folder, { recursive: true, force: true }));
     const project = await client.call<{ id: string }>("projects.create", {
       name: "kept",
-      path: Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-settle-")),
+      path: folder,
     });
     const elsewhere = await create();
     const own = await client.call<Thread>("threads.create", { projectId: project.id });
@@ -301,5 +303,62 @@ describe("jhin.threads: pull requests and projects in settling (D1172, D1173)", 
     vi.setSystemTime(Date.now() + 4 * DAY_MS);
     await client.call("threads.sweep", {});
     expect((await get(own.id)).settledOverride).toBe("settled");
+  });
+});
+
+describe("jhin.threads: a project's own pull request rules (D1172, D1173)", () => {
+  it("keeps per project, and keeps a thread whose pull requests cannot be read", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const pullRequests = new Map<string, ThreadPullRequestState[]>();
+    let failing = false;
+    const { client, kernel } = await node({
+      config: { "jhin.threads": { autoSettleAfterDays: 1 } },
+      plugins: [
+        mockCapability("source-control.pull-requests", {
+          pullRequestsOf: async (threadId: string) => {
+            if (failing) throw new Error("gh is down");
+            return pullRequests.get(threadId) ?? [];
+          },
+        }),
+      ],
+    });
+    const get = async (threadId: string) =>
+      (await client.call<{ thread: Thread }>("threads.get", { threadId })).thread;
+    const project = async (name: string) => {
+      const folder = Fs.mkdtempSync(Path.join(Os.tmpdir(), `jhin-${name}-`));
+      onTestFinished(() => Fs.rmSync(folder, { recursive: true, force: true }));
+      return client.call<{ id: string }>("projects.create", { path: folder });
+    };
+    const keep = await project("keep");
+    const quiet = await project("quiet");
+    kernel.config.setLayer("node", {
+      "jhin.threads": {
+        autoSettleAfterDays: 1,
+        projects: {
+          [keep.id]: { autoSettleKeepPullRequests: true },
+          [quiet.id]: { autoSettleInactive: false },
+        },
+      },
+    });
+    const kept = await client.call<Thread>("threads.create", { projectId: keep.id });
+    const still = await client.call<Thread>("threads.create", { projectId: quiet.id });
+    const plain = await client.call<Thread>("threads.create", {});
+    pullRequests.set(kept.id, [{ state: "merged", linked: false }]);
+
+    vi.setSystemTime(Date.now() + 2 * DAY_MS);
+    await client.call("threads.sweep", {});
+    expect((await get(kept.id)).settledOverride).toBeUndefined();
+    expect((await get(still.id)).settledOverride).toBeUndefined();
+    expect((await get(plain.id)).settledOverride).toBe("settled");
+
+    // A lookup that fails keeps the thread where it is.
+    failing = true;
+    const unread = await client.call<Thread>("threads.create", {});
+    vi.setSystemTime(Date.now() + 2 * DAY_MS);
+    await client.call("threads.sweep", {});
+    expect((await get(unread.id)).settledOverride).toBeUndefined();
+    failing = false;
+    await client.call("threads.sweep", {});
+    expect((await get(unread.id)).settledOverride).toBe("settled");
   });
 });
