@@ -426,6 +426,8 @@ describe("jhin.preview", () => {
     await client.call("preview.tab.upload", { threadId: thread, tabId, viewer: "v1", files: [] });
     await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser === null);
     tabsStream.subscription.dispose();
+    // The shared node keeps an agent session's tabs to 8.
+    await client.call("preview.tab.close", { threadId: thread, tabId });
   });
 
   it("refuses two files for a picker of one, and keeps the picker open (D1203)", async () => {
@@ -467,6 +469,7 @@ describe("jhin.preview", () => {
     });
     await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser === null);
     tabsStream.subscription.dispose();
+    await client.call("preview.tab.close", { threadId: thread, tabId });
   });
 
   it("fills the viewer's size and resizes to a device preset", async () => {
