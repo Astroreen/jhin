@@ -344,8 +344,6 @@ Done since: steering a running turn (`t3-parity.md` D204–D206).
   race apart needs a frame Claude Code does not send.
 - Choosing a thread agent's permissions per thread or in config: D341 is one
   list for every Claude Code.
-- Slash commands and skills from Claude Code's initialization in the
-  composer.
 - A snapshot frame Claude Code would send twice for one unstreamed block
   (not seen so far) shows twice: since D342 identical texts are not merged.
 - Session files of a deleted thread under an earlier config directory: D345
@@ -684,8 +682,6 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
   through them too: today only full access gets the writing permissions.
-- Usage limits and rate-limit windows (`account/rateLimits/*`) and T3's
-  usage-limit wording with the reset time.
 - ChatGPT sign-in from Jhin, several Codex accounts per node and shadow
   homes; signing in is `codex login` on the node.
 - Models a newer Codex would list (T3's `updateRequiredModels`), and custom
@@ -735,6 +731,86 @@ plugin, not Codex itself.
   preferred default) and the `codex.sessions.*` commands.
 - Against a signed-in Codex (manual): a supervised turn asks before a
   command, runs it once approved and answers.
+
+## Codex parity and Claude Code's slash commands (W31)
+
+Round 3 of `docs/plans/t3-roadmap.md`. Claude Code's slash commands and
+skills were already in the composer (`t3-parity.md` D300–D301, D845,
+D1004): its initialization's commands, `SKILL.md` skills, the `/` and `$`
+menus and T3's skill dispatch; the Deferred line that still named them is
+gone. The reference is T3 Code `eb7b35ac` (D53).
+
+### Decisions
+
+- **D1141. Usage limits are part of a runtime** (`agent.runtime@1.8`,
+  additive; `agent.registry` 1.5): `AgentRuntime.usageLimits?()` answers
+  T3's `ServerProviderUsageLimits` as `AgentUsageLimits` (`checkedAt`,
+  `windows` of `{ id, kind, label, usedPercent, resetsAt?,
+  windowDurationMins? }`, `resetCredits?`, `unavailable?` with `unsupported`
+  or `probeFailed`), `undefined` when it cannot tell (signed out). The
+  command `agents.usage-limits` (`{ agentId? }` → `{ usageLimits | null }`,
+  under `threads.read`) asks it; `agents.list` says which agents have them
+  (`usageLimits`). As T3's server does for a provider with limits,
+  `agents.commands` lists T3's `/usage-limits` ("Show this provider's usage
+  limits") first for such an agent.
+- **D1142. Codex reads them as T3 does** (`codexUsageLimits.ts`, ported as
+  `plugins/agent-codex/src/usage-limits.ts`): the status probe of a signed-in
+  account also asks `account/rateLimits/read` (5 s, T3's limit) and keeps the
+  main allowance (`limitId` `codex`, or `rateLimitsByLimitId.codex`):
+  `primary` and `secondary` become Session, Weekly or Monthly by their
+  duration (5 hours and a week when Codex names none, a month for Free and Go
+  plans), reset times from epoch seconds, and the first available reset
+  credit's expiry. An API key has none (`unsupported`); a read that fails is
+  `probeFailed` with T3's message ("Codex could not read usage (JSON-RPC
+  -32601).", "Codex did not answer the usage request."). Every app-server's
+  `account/rateLimits/updated` merges onto the last snapshot field by field
+  (T3's `mergeCodexRateLimits`: a part names only what changed, a model's own
+  allowance such as Spark is ignored); a new probe starts over from its read,
+  keeping an update newer than it. The read runs beside the model listing,
+  as T3's probe runs them, so a slow one holds up neither. `agents.usage-limits`
+  reads them again when what it knows (the last read or update, the newer)
+  is older than a minute, the read failed, or a window it would show has
+  reset since (T3 answers from its provider snapshot, refreshed on its own
+  schedule).
+- **D1143. A turn that hits a usage limit fails as one.** A runtime throws
+  `UsageLimitError` (`@jhin/agent-api`, with `resetAt`); the threads plugin
+  records its `failure` (`{ class: "usage_limit", resetAt? }`) with
+  `agent.turn.failed`. Codex's `usageLimitExceeded` and `rateLimitExceeded`
+  (`codexErrorInfo` of the turn's error or of its last `error` notification,
+  T3's classes) are such failures, with T3's `codexUsageLimitResetAt`: the
+  latest reset of every exhausted window, none when one has no reset time or
+  the time is already past (a read from before the window reset).
+  The timeline shows T3's row for it, a warning instead of "Turn failed":
+  "Usage limit reached. Retry after {time}." (T3's `formatUpcomingTimestamp`:
+  "8:09 PM", "tomorrow at 9:30 AM"), Retry still offered.
+- **D1144. `/usage-limits` in the composer**, T3's `useUsageLimitsPanel` and
+  `usageLimitsBannerItem`: sent alone to an agent with limits, it is answered
+  by the client and never reaches the agent; for an agent without, it goes to
+  the agent untouched, and one whose limits cannot be read shows T3's toast
+  "Usage limits are unavailable for this provider". The banner above the
+  composer ("Usage limits", the agent's name, "Dismiss usage limits") shows
+  T3's `LimitWindows`: per window "{n}% left", a bar with the even-spending
+  line, the pace icon and "resets in 2h 0m", with T3's tooltip; or T3's notice
+  ("This account has no subscription limits.", "Could not read limits.", "No
+  limits reported."). It is read once, when sent: it closes when a turn
+  starts (which spends quota), on another thread or agent, or dismissed. The
+  bars take T3's Codex colour for every agent, as the client names no agent
+  ids. The fake agent reports two windows and fails `/limit` on a usage
+  limit, for the end-to-end test.
+
+### Deferred
+
+- Claude Code's usage limits (T3's `claudeUsageLimits.ts`: its OAuth usage
+  read and `rate_limit_event`) and OpenCode Go's: only Codex reports them.
+- Reset credits: carried in `AgentUsageLimits`, neither shown nor redeemable
+  (T3's `ResetCredits` and `consumeResetCredit`).
+- T3's Usage page (every account's limits, pooled accounts, usage-limit
+  sources such as CLIProxy) and the sidebar's "limited" state of a thread
+  whose turn hit a limit (it shows "Failed").
+- A reset time Codex sends after the turn already failed (T3 updates the
+  failure item); Codex sends its rate-limit update before the error in
+  practice.
+- Live updates of an open `/usage-limits` banner: it is read when sent.
 
 ## OpenCode (W8)
 

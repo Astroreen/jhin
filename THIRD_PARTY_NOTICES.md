@@ -65,10 +65,14 @@ the agent credentials of the MCP server plugin (`plugins/mcp-server`), the
 Codex agent runtime (`plugins/agent-codex`: the app-server protocol and
 handshake, runtime and interaction modes, approval, question, plan, tool and
 usage mapping, the status probe and its messages, the model names and
-preferred defaults), the OpenCode agent runtime (`plugins/agent-opencode`:
-starting and reaching an OpenCode 2 server, its version probe, session
-rules, permission, form and tool mapping, usage and interrupts, reverting
-and forking a session, its pending requests after a reconnect), the
+preferred defaults, usage limits and their windows in
+`plugins/agent-codex/src/usage-limits.ts`), an agent's usage limits and the
+composer's `/usage-limits` banner (`packages/agent-api/src/usage-limits.ts`,
+`apps/web/src/lib/usage-limits.ts`), the OpenCode agent runtime
+(`plugins/agent-opencode`: starting and reaching an OpenCode 2 server, its
+version probe, session rules, permission, form and tool mapping, usage and
+interrupts, reverting and forking a session, its pending requests after a
+reconnect), the
 terminal plugin (`plugins/terminal`:
 loading node-pty, the shell's environment, sizes, scrollback and its
 history files, the limit on exited sessions and finding the program a

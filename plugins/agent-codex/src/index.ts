@@ -15,6 +15,7 @@ import {
   type AgentRuntimeStatus,
   type AgentSkill,
   type AgentTurn,
+  type AgentUsageLimits,
 } from "@jhin/agent-api";
 import {
   AGENT_PERMISSIONS,
@@ -51,11 +52,22 @@ import {
 } from "./rpc.ts";
 import { createSessions, type Launcher, type Sessions } from "./session.ts";
 import { CODEX_AGENT_ID, codexTurn, type ThreadStore } from "./turn.ts";
+import {
+  RATE_LIMITS_FAILURE,
+  codexRateLimitsToLimits,
+  codexRateLimitsToWindows,
+  codexUsageLimitResetAt,
+  mergeCodexRateLimits,
+  readRateLimitSnapshot,
+  type CodexRateLimitSnapshot,
+  type CodexRateLimitsRead,
+} from "./usage-limits.ts";
 
 export { CODEX_AGENT_ID, codexTurn, type ThreadStore } from "./turn.ts";
 export { SessionTakenOver, createSessions, type Launcher, type Sessions } from "./session.ts";
 export { launchAppServer, type AppServerConnection, type LaunchOptions } from "./rpc.ts";
 export * from "./mapping.ts";
+export * from "./usage-limits.ts";
 
 export const CONFIG_SECTION = "jhin.agent-codex";
 const NAMESPACE = "jhin.agent-codex";
@@ -70,6 +82,10 @@ const UNAVAILABLE_TTL_MS = 10_000;
 const MODEL_WAIT_MS = 3_000;
 /** A probe that takes longer reports Codex as unavailable (T3's CODEX_AUTH_PROBE_TIMEOUT_MS). */
 const PROBE_TIMEOUT_MS = 20_000;
+/** How old a usage read `/usage-limits` answers from before it reads them again. */
+const USAGE_TTL_MS = 60_000;
+/** A usage read that takes longer is reported as failed (T3's RATE_LIMITS_PROBE_TIMEOUT_MS). */
+const RATE_LIMITS_TIMEOUT_MS = 5_000;
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
 export const Config = z
@@ -151,6 +167,65 @@ interface Probe {
   readonly status: AgentRuntimeStatus;
   readonly models?: readonly AgentModel[];
   readonly defaultModel?: string;
+  /** The account's usage limits (D1142), when it has any to read. */
+  readonly usageLimits?: AgentUsageLimits;
+  /** The snapshot they were read from, which `account/rateLimits/updated` merges onto. */
+  readonly rateLimits?: CodexRateLimitSnapshot;
+}
+
+/**
+ * The account's usage limits (T3's probe): none to read for an API key, a failure kept as
+ * `probeFailed` so the client tells it apart.
+ */
+async function readUsageLimits(
+  connection: AppServerConnection,
+  account: Account,
+): Promise<Pick<Probe, "usageLimits" | "rateLimits">> {
+  const checkedAt = new Date().toISOString();
+  if (account.account?.type === "apiKey") {
+    return { usageLimits: { checkedAt, windows: [], unavailable: { reason: "unsupported" } } };
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const read = (await Promise.race([
+      connection.request("account/rateLimits/read", null),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(RATE_LIMITS_FAILURE)), RATE_LIMITS_TIMEOUT_MS);
+      }),
+    ])) as CodexRateLimitsRead | null;
+    const snapshot = readRateLimitSnapshot(read?.rateLimits) ?? {};
+    const byLimitId: Record<string, CodexRateLimitSnapshot> = {};
+    for (const [id, value] of Object.entries(read?.rateLimitsByLimitId ?? {})) {
+      const parsed = readRateLimitSnapshot(value);
+      if (parsed !== undefined) byLimitId[id] = parsed;
+    }
+    return {
+      usageLimits: codexRateLimitsToLimits({
+        snapshot,
+        rateLimitsByLimitId: byLimitId,
+        resetCredits: read?.rateLimitResetCredits,
+        checkedAt,
+      }),
+      rateLimits: byLimitId["codex"] ?? snapshot,
+    };
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    return {
+      usageLimits: {
+        checkedAt,
+        windows: [],
+        unavailable: {
+          reason: "probeFailed",
+          message:
+            typeof code === "number"
+              ? `Codex could not read usage (JSON-RPC ${code}).`
+              : RATE_LIMITS_FAILURE,
+        },
+      },
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Starts `codex app-server` and reads its account and models (T3's provider probe). */
@@ -172,6 +247,8 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
     if (!status.available) {
       return { status: { ...status, ...(version === undefined ? {} : { version }) } };
     }
+    // Read beside the models, as T3's probe does (`Effect.all`): a slow read holds up neither.
+    const usageRead = readUsageLimits(running, account);
     const listed: ListedModel[] = [];
     let cursor: string | undefined;
     do {
@@ -186,7 +263,9 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
       cursor = page?.nextCursor ?? undefined;
     } while (cursor !== undefined);
     const preferred = preferredDefault(listed);
+    const usage = await usageRead;
     return {
+      ...usage,
       status: { ...status, ...(version === undefined ? {} : { version }) },
       ...(listed.length === 0 ? {} : { models: listedModels(listed) }),
       ...(preferred === undefined ? {} : { defaultModel: preferred }),
@@ -319,10 +398,25 @@ export function createCodexRuntime(options: {
 } {
   const launch = options.launch ?? launchAppServer;
   const turns = new Map<AgentTurn, { threadId: string; done: Promise<void> }>();
+  /**
+   * What `account/rateLimits/updated` said since the last probe, merged onto the probe's
+   * snapshot (T3's mergeCodexRateLimits): Codex sends a part of the snapshot at a time.
+   */
+  let liveRateLimits: { at: string; snapshot: CodexRateLimitSnapshot } | undefined;
   const sessions = createSessions({
     launch,
     idleMs: () => options.config().sessionIdleMinutes * 60_000,
     ...(options.log === undefined ? {} : { log: options.log }),
+    notified: (method, params) => {
+      if (method !== "account/rateLimits/updated") return;
+      const update = readRateLimitSnapshot((params as { rateLimits?: unknown } | null)?.rateLimits);
+      if (update === undefined) return;
+      const merged = mergeCodexRateLimits(
+        liveRateLimits?.snapshot ?? current()?.rateLimits,
+        update,
+      );
+      if (merged !== undefined) liveRateLimits = { at: new Date().toISOString(), snapshot: merged };
+    },
   });
   /** The last probe and the config it ran with: another binary or environment probes again. */
   let probed: { at: number; key: string; probe: Probe } | undefined;
@@ -356,26 +450,73 @@ export function createCodexRuntime(options: {
     current()?.defaultModel ??
     models()[0]?.id ??
     BUNDLED_MODELS[0]!.id;
+  /** Probes Codex again (once at a time per config): its status, models and usage. */
+  const refresh = (key: string) => {
+    let running = probing.get(key);
+    if (running === undefined) {
+      running = probe(launch, options.config())
+        .then((result) => {
+          probed = { at: Date.now(), key, probe: result };
+          // A new read holds what the updates before it said; one that came while it was
+          // read (it merged onto the older snapshot) is newer and stays.
+          const readAt = result.usageLimits?.checkedAt;
+          if (
+            result.rateLimits !== undefined &&
+            readAt !== undefined &&
+            liveRateLimits !== undefined &&
+            Date.parse(liveRateLimits.at) <= Date.parse(readAt)
+          ) {
+            liveRateLimits = undefined;
+          }
+          return result;
+        })
+        .finally(() => probing.delete(key));
+      probing.set(key, running);
+    }
+    return running;
+  };
   const status = async (): Promise<AgentRuntimeStatus> => {
     const key = probeKey();
-    const refresh = () => {
-      let running = probing.get(key);
-      if (running === undefined) {
-        running = probe(launch, options.config())
-          .then((result) => {
-            probed = { at: Date.now(), key, probe: result };
-            return result;
-          })
-          .finally(() => probing.delete(key));
-        probing.set(key, running);
-      }
-      return running;
-    };
-    if (probed === undefined || probed.key !== key) return (await refresh()).status;
+    if (probed === undefined || probed.key !== key) return (await refresh(key)).status;
     // A stale answer is given at once while a new probe runs (D95).
     const ttl = probed.probe.status.available ? STATUS_TTL_MS : UNAVAILABLE_TTL_MS;
-    if (Date.now() - probed.at >= ttl) void refresh().catch(() => undefined);
+    if (Date.now() - probed.at >= ttl) void refresh(key).catch(() => undefined);
     return probed.probe.status;
+  };
+
+  /** The latest snapshot: the updates since the last probe, else the probe's. */
+  const rateLimits = () => liveRateLimits?.snapshot ?? current()?.rateLimits;
+  /** The usage limits as Codex last reported them (D1142): the probe's, then its updates. */
+  const usageLimits = async (): Promise<AgentUsageLimits | undefined> => {
+    // `/usage-limits` reads them again when what it knows (the last read or update, the newer)
+    // is older than a minute, the read failed, or a window it shows has reset since (D1142),
+    // instead of answering from the status cache.
+    const key = probeKey();
+    const last = probed?.key === key ? probed : undefined;
+    const now = Date.now();
+    const known = Math.max(
+      last?.at ?? 0,
+      liveRateLimits === undefined ? 0 : Date.parse(liveRateLimits.at),
+    );
+    const shown =
+      liveRateLimits === undefined
+        ? (last?.probe.usageLimits?.windows ?? [])
+        : codexRateLimitsToWindows(liveRateLimits.snapshot);
+    const stale =
+      last === undefined ||
+      now - known >= USAGE_TTL_MS ||
+      last.probe.usageLimits?.unavailable?.reason === "probeFailed" ||
+      shown.some((window) => window.resetsAt !== undefined && Date.parse(window.resetsAt) <= now);
+    // A new read drops the updates it is newer than (`refresh`).
+    if (stale) await refresh(key).catch(() => undefined);
+    else await status();
+    const read = current()?.usageLimits;
+    if (liveRateLimits === undefined) return read;
+    return {
+      checkedAt: liveRateLimits.at,
+      windows: codexRateLimitsToWindows(liveRateLimits.snapshot),
+      ...(read?.resetCredits === undefined ? {} : { resetCredits: read.resetCredits }),
+    };
   };
 
   /**
@@ -430,6 +571,7 @@ export function createCodexRuntime(options: {
       return { commands: [COMPACT_COMMAND], skills };
     },
     status,
+    usageLimits,
     startTurn(request) {
       const config = options.config();
       const turn = codexTurn(request, {
@@ -451,6 +593,11 @@ export function createCodexRuntime(options: {
           : {}),
         version: VERSION,
         home: expandHome(config.homePath),
+        // A reset time already past is no time to retry after (a probe read before it reset).
+        usageLimitResetAt: () => {
+          const at = codexUsageLimitResetAt(rateLimits());
+          return at !== undefined && Date.parse(at) > Date.now() ? at : undefined;
+        },
         ...(options.log === undefined ? {} : { log: options.log }),
       });
       turns.set(turn, { threadId: request.threadId, done: turn.done });

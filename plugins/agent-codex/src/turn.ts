@@ -5,6 +5,7 @@
 // reasoning, tools, plans, usage, approvals, questions, errors) into a turn's items.
 import {
   DEFAULT_RUNTIME_MODE,
+  UsageLimitError,
   historyTranscript,
   type AgentItem,
   type AgentRequest,
@@ -39,6 +40,7 @@ import {
 import { jhinToolsInstructions } from "@jhin/mcp-api";
 import { CodexEnded, CodexRpcError, CodexSpawnError, codexEnvironment } from "./rpc.ts";
 import { SessionTakenOver, type Lease, type McpAttachment, type Sessions } from "./session.ts";
+import { codexErrorInfoCode, isUsageLimitCode } from "./usage-limits.ts";
 
 /** The turn ended while it still waited on Codex (a stop's grace ran out). */
 class TurnEnded extends Error {}
@@ -84,6 +86,8 @@ export interface CodexTurnDependencies {
   readonly version: string;
   /** `homePath` with `~` expanded. */
   readonly home?: string | undefined;
+  /** When every exhausted usage window resets, for a turn that hit a usage limit (D1143). */
+  readonly usageLimitResetAt?: () => string | undefined;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }
 
@@ -233,6 +237,8 @@ export function codexTurn(
   const completedTexts = new Set<string>();
   /** The last failure Codex reported without retrying it (T3's latestProviderFailure). */
   let lastError: string | undefined;
+  /** Its code (`codexErrorInfo`), e.g. `usageLimitExceeded`. */
+  let lastErrorCode: string | undefined;
 
   const delta = (kind: "message" | "reasoning", itemId: string, text: string) => {
     if (text.length === 0) return;
@@ -426,6 +432,7 @@ export function codexTurn(
         }
         const details =
           typeof error["additionalDetails"] === "string" ? error["additionalDetails"].trim() : "";
+        lastErrorCode = codexErrorInfoCode(error["codexErrorInfo"]);
         lastError =
           details.length > 0
             ? details
@@ -461,7 +468,14 @@ export function codexTurn(
           lastError ??
           "Codex failed the turn.";
         settleRetry(message);
-        return finish({ ended: true, error: new Error(message) });
+        // A usage limit is a failure of its own, with when it resets (T3's `usage_limit`).
+        const code = codexErrorInfoCode(error?.["codexErrorInfo"]) ?? lastErrorCode;
+        return finish({
+          ended: true,
+          error: isUsageLimitCode(code)
+            ? new UsageLimitError(message, deps.usageLimitResetAt?.())
+            : new Error(message),
+        });
       }
       default:
         return;

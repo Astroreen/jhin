@@ -112,6 +112,8 @@ export function createSessions(options: {
   /** Milliseconds an idle app-server stays up; 0 keeps it until something else ends it. */
   readonly idleMs: () => number;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
+  /** Every notification of every app-server, before its turn gets it (`account/*`, D1142). */
+  readonly notified?: (method: string, params: unknown) => void;
 }): Sessions {
   const launch = options.launch ?? launchAppServer;
   const sessions = new Map<string, Live>();
@@ -188,7 +190,10 @@ export function createSessions(options: {
       revoke,
       ...(attachment === undefined ? {} : { mcpServers: attachment.servers }),
     };
-    connection.onNotification((method, params) => live.holder?.notification(method, params));
+    connection.onNotification((method, params) => {
+      options.notified?.(method, params);
+      live.holder?.notification(method, params);
+    });
     connection.onRequest((method, params) =>
       live.holder === undefined
         ? Promise.reject(new Error("No turn of this thread is running."))

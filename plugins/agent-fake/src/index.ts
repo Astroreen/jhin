@@ -1,5 +1,6 @@
 import {
   AGENT_RUNTIME_CAPABILITY,
+  UsageLimitError,
   type AgentItem,
   type AgentResponse,
   type AgentRuntime,
@@ -13,6 +14,7 @@ import * as Path from "node:path";
 import { definePlugin } from "@jhin/sdk";
 
 export const FAKE_AGENT_ID = "jhin.agent-fake";
+const HOUR_MS = 60 * 60 * 1000;
 
 /** A one-shot latch: `wait()` resolves once `open()` is called (or at once if it was). */
 function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
@@ -25,6 +27,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * Scripted, timer-free and deterministic:
  * - "/hold …" sends one delta, then waits until interrupted;
  * - "/fail …" fails the turn;
+ * - "/limit" fails the turn on a usage limit that resets in two hours (providers.md D1143);
  * - "/think …" reasons first, then answers;
  * - "/tool <command>" runs a pretend command and reports its output;
  * - "/approve <command>" asks for approval before running it;
@@ -122,6 +125,12 @@ export function fakeTurn(
       const first = /\nUSER:\n(.*)/.exec(text)?.[1]?.trim() ?? "nothing";
       yield* say(JSON.stringify({ title: `About ${first}`, needsRefinement: false }));
       return;
+    }
+    if (text.startsWith("/limit")) {
+      throw new UsageLimitError(
+        "fake agent: usage limit reached",
+        new Date(Date.now() + 2 * HOUR_MS).toISOString(),
+      );
     }
     if (/^\/subagent(\s|$)/.test(text)) {
       const tasks = text
@@ -410,6 +419,31 @@ export default definePlugin({
         const stop = stops.get(`${threadId}\u0000${subagentId}`);
         stop?.();
         return stop !== undefined;
+      },
+      // A session and a weekly window, so `/usage-limits` has something to show (D1144).
+      usageLimits: async () => {
+        const now = Date.now();
+        return {
+          checkedAt: new Date(now).toISOString(),
+          windows: [
+            {
+              id: "primary",
+              kind: "session",
+              label: "Session",
+              usedPercent: 25,
+              windowDurationMins: 300,
+              resetsAt: new Date(now + 2 * HOUR_MS).toISOString(),
+            },
+            {
+              id: "secondary",
+              kind: "weekly",
+              label: "Weekly",
+              usedPercent: 60,
+              windowDurationMins: 7 * 24 * 60,
+              resetsAt: new Date(now + 72 * HOUR_MS).toISOString(),
+            },
+          ],
+        };
       },
       startTurn: (request) => fakeTurn(request, stops),
     };

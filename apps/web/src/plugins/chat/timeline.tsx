@@ -74,6 +74,7 @@ import {
   type WorkEntry,
 } from "../../lib/timeline.ts";
 import { lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { usageLimitFailureLabel } from "../../lib/usage-limits.ts";
 import { type MessageContextChips, MessageContextChipsContext } from "./message-context.ts";
 import { ChatContext } from "./services.ts";
 import { MessageText } from "./message-text.tsx";
@@ -684,6 +685,8 @@ function TurnView(props: {
   /** One retry at a time: a second click while it goes would send the message twice. */
   const [retrying, setRetrying] = useState(false);
   const running = turn.state === "running";
+  // T3 shows a usage limit as a warning with when to retry, not as an error (D1143).
+  const limited = turn.failure?.class === "usage_limit";
   const blocks = turnBlocks(turn);
   const folds = foldsBeforeFinal(turn);
   const finalIndex = blocks.findIndex((block) => block.kind === "message" && block.final);
@@ -819,10 +822,22 @@ function TurnView(props: {
       {turn.state === "failed" ? (
         <div className="pb-4">
           <WorkLine
-            icon={<CircleAlertIcon className="size-4 text-destructive" />}
-            label={<span className="text-sm font-medium text-destructive">Turn failed</span>}
+            icon={
+              <CircleAlertIcon
+                className={cn("size-4", limited ? "text-warning" : "text-destructive")}
+              />
+            }
+            label={
+              <span
+                className={cn("text-sm font-medium", limited ? "text-warning" : "text-destructive")}
+              >
+                {limited
+                  ? usageLimitFailureLabel(turn.failure?.resetAt, format, now)
+                  : "Turn failed"}
+              </span>
+            }
           >
-            {turn.error === undefined ? null : (
+            {turn.error === undefined || limited ? null : (
               <p
                 className="ms-7 py-1 text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground/80"
                 role="alert"

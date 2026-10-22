@@ -178,6 +178,10 @@ Words about Jhin:
   (`jhin.agent-claude`), Codex (`jhin.agent-codex`), OpenCode
   (`jhin.agent-opencode`, off until enabled) and a fake one for tests and
   demos.
+- **Usage limits** — what the account an agent runs on may still spend: its
+  usage windows (Session, Weekly, Monthly), each with how much is used and
+  when it resets (`agents.usage-limits`, `/usage-limits`). A turn that hits
+  one fails with a **usage-limit failure**, which says when to retry.
 - **Model option** — something a turn chooses for its model besides the
   model itself: the reasoning effort, fast mode, the context window. A model
   declares its options; the composer's traits menu (T3's term) picks them.

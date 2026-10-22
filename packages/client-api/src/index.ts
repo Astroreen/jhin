@@ -768,6 +768,8 @@ export interface AgentInfo {
   readonly steering?: boolean;
   /** A runtime, or an agent defined on one (A1, D610); absent from older nodes. */
   readonly kind?: "runtime" | "defined";
+  /** It reports usage limits (`agents.usage-limits`); absent from older nodes. */
+  readonly usageLimits?: boolean;
 }
 
 /**

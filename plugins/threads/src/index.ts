@@ -29,6 +29,8 @@ import {
   ThreadEvents,
   ThreadHooks,
   threadStream,
+  turnFailureOf,
+  USAGE_LIMITS_COMMAND,
   type AgentItem,
   type AgentRegistry,
   type AgentRequest,
@@ -38,6 +40,8 @@ import {
   type AgentSkill,
   type AgentSlashCommand,
   type AgentTurn,
+  type AgentTurnFailure,
+  type AgentUsageLimits,
   type InteractionMode,
   type MessageContext,
   type MessageContextRecord,
@@ -641,6 +645,61 @@ const AgentInfo = z.object({
   /** The runtime its turns run on: its own id for a runtime. */
   runtimeId: z.string(),
   role: z.string().optional(),
+  /** It reports usage limits (`agents.usage-limits`, providers.md D1141). */
+  usageLimits: z.boolean(),
+});
+
+const UsageWindow = z.object({
+  id: z.string(),
+  kind: z.enum(["session", "weekly", "monthly", "other"]),
+  label: z.string(),
+  usedPercent: z.number().min(0).max(100),
+  resetsAt: z.string().optional(),
+  windowDurationMins: z.number().int().nonnegative().optional(),
+});
+
+/**
+ * What a runtime reported, kept to the schema: a percentage clamped, a duration rounded, a
+ * window or credit summary that still does not fit dropped (a runtime is anyone's plugin).
+ */
+function usageLimitsOf(found: AgentUsageLimits): z.infer<typeof UsageLimits> {
+  const windows = (Array.isArray(found.windows) ? found.windows : []).flatMap((window) => {
+    const parsed = UsageWindow.safeParse({
+      ...window,
+      usedPercent: Number.isFinite(window?.usedPercent)
+        ? Math.max(0, Math.min(100, window.usedPercent))
+        : window?.usedPercent,
+      ...(typeof window?.windowDurationMins === "number"
+        ? { windowDurationMins: Math.max(0, Math.round(window.windowDurationMins)) }
+        : {}),
+    });
+    return parsed.success ? [parsed.data] : [];
+  });
+  const credits = UsageLimits.shape.resetCredits.safeParse(found.resetCredits);
+  const unavailable = UsageLimits.shape.unavailable.safeParse(found.unavailable);
+  return {
+    checkedAt: typeof found.checkedAt === "string" ? found.checkedAt : new Date().toISOString(),
+    windows,
+    ...(credits.success && credits.data !== undefined ? { resetCredits: credits.data } : {}),
+    ...(unavailable.success && unavailable.data !== undefined
+      ? { unavailable: unavailable.data }
+      : {}),
+  };
+}
+
+/** `AgentUsageLimits` (D1141). */
+const UsageLimits = z.object({
+  checkedAt: z.string(),
+  windows: z.array(UsageWindow),
+  resetCredits: z
+    .object({
+      availableCount: z.number().int().nonnegative(),
+      nextExpiresAt: z.string().optional(),
+    })
+    .optional(),
+  unavailable: z
+    .object({ reason: z.enum(["unsupported", "probeFailed"]), message: z.string().optional() })
+    .optional(),
 });
 
 /**
@@ -1672,6 +1731,7 @@ export default definePlugin({
         status: TurnStatus;
         error?: string;
         reason?: string;
+        failure?: AgentTurnFailure;
       }) => {
         if (entry.ending) return;
         entry.ending = true;
@@ -1715,6 +1775,7 @@ export default definePlugin({
             turnId,
             ...(ending.error === undefined ? {} : { error: ending.error }),
             ...(ending.reason === undefined ? {} : { reason: ending.reason }),
+            ...(ending.failure === undefined ? {} : { failure: { ...ending.failure } }),
           };
           // A stop or a failure holds the queue in the same write, so no queued
           // message starts after it (T3's queueHeld); a restart for a steer does not.
@@ -1772,7 +1833,12 @@ export default definePlugin({
       // A stop gave up on it while it was starting: it ends now.
       if (entry.giveUp !== undefined) void entry.abandon(entry.giveUp);
       void (async () => {
-        let ending: { type: string; status: TurnStatus; error?: string };
+        let ending: {
+          type: string;
+          status: TurnStatus;
+          error?: string;
+          failure?: AgentTurnFailure;
+        };
         try {
           // A turn that delivered its answer is complete even if an interrupt came late.
           let answered = false;
@@ -1827,7 +1893,14 @@ export default definePlugin({
               : { type: ThreadEvents.turnCompleted, status: "completed" };
         } catch (error) {
           context.log.warn("turn failed", { threadId: thread.id, turnId, error: String(error) });
-          ending = { type: ThreadEvents.turnFailed, status: "failed", error: String(error) };
+          // A failure the agent classed (a usage limit, D1143) is recorded with it.
+          const failure = turnFailureOf(error);
+          ending = {
+            type: ThreadEvents.turnFailed,
+            status: "failed",
+            error: String(error),
+            ...(failure === undefined ? {} : { failure }),
+          };
         } finally {
           // Its items are closed, so an agent still going may clean up; it is not waited for.
           void Promise.resolve(items.return?.()).catch(() => undefined);
@@ -2341,6 +2414,7 @@ export default definePlugin({
               kind: runtime.runtimeId === undefined ? ("runtime" as const) : ("defined" as const),
               runtimeId: runtime.runtimeId ?? runtime.agentId,
               ...(runtime.role === undefined ? {} : { role: runtime.role }),
+              usageLimits: runtime.usageLimits !== undefined,
             };
           }),
         );
@@ -2379,11 +2453,38 @@ export default definePlugin({
             agentId,
           });
         }
-        if (runtime.commands === undefined) return { commands: [], skills: [] };
+        // T3's server offers `/usage-limits` for a provider with limits; the client answers it.
+        const usage = runtime.usageLimits === undefined ? [] : [{ ...USAGE_LIMITS_COMMAND }];
+        if (runtime.commands === undefined) return { commands: usage, skills: [] };
         const found = await runtime.commands({ cwd: project.path });
-        return structuredClone({ commands: [...found.commands], skills: [...found.skills] }) as {
+        const commands = [
+          ...usage,
+          ...found.commands.filter((command) => command.name !== USAGE_LIMITS_COMMAND.name),
+        ];
+        return structuredClone({ commands, skills: [...found.skills] }) as {
           commands: AgentSlashCommand[];
           skills: AgentSkill[];
+        };
+      },
+    });
+
+    context.commands.register({
+      name: "agents.usage-limits",
+      description:
+        "What the account an agent runs on may still spend: its usage windows and when they reset, as the agent last reported them",
+      input: z.object({ agentId: z.string().optional() }),
+      output: z.object({ usageLimits: UsageLimits.nullable() }),
+      permissions: ["threads.read"],
+      handler: async ({ agentId }) => {
+        const runtime = agentId === undefined ? await defaultRuntime() : registry.get(agentId);
+        if (runtime === undefined) {
+          throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${agentId ?? ""} on this node`, {
+            agentId,
+          });
+        }
+        const found = await runtime.usageLimits?.();
+        return {
+          usageLimits: found === undefined ? null : usageLimitsOf(found),
         };
       },
     });

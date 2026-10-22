@@ -93,7 +93,11 @@ describe("jhin.threads: project files for @ mentions (D302)", () => {
     ).toMatchObject({ truncated: true });
 
     expect(await client.call("agents.commands", { projectId: project.id })).toEqual({
-      commands: [{ name: "review", description: "Review the changes", input: { hint: "<path>" } }],
+      // T3's `/usage-limits` comes first for an agent with usage limits (providers.md D1144).
+      commands: [
+        { name: "usage-limits", description: "Show this provider's usage limits" },
+        { name: "review", description: "Review the changes", input: { hint: "<path>" } },
+      ],
       skills: [
         {
           name: "deploy",

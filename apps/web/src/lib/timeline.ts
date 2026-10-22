@@ -4,6 +4,7 @@ import {
   ThreadEvents,
   type AgentRequest,
   type AgentResponse,
+  type AgentTurnFailure,
   type MessageContext,
   type PlanStep,
   type TokenUsage,
@@ -151,6 +152,8 @@ export interface TimelineTurn {
   readonly endedAt?: string;
   readonly state: TurnState;
   readonly error?: string;
+  /** Why it failed, when the agent classed it: a usage limit (providers.md D1143). */
+  readonly failure?: AgentTurnFailure;
   /** The agent's output in the order it came. A plan stays where it first appeared. */
   readonly items: readonly TimelineItem[];
   readonly usage?: TokenUsage;
@@ -184,6 +187,7 @@ interface Payload {
   };
   readonly text?: string;
   readonly error?: string;
+  readonly failure?: AgentTurnFailure;
   readonly reason?: string;
   readonly status?: string;
   readonly output?: string;
@@ -497,6 +501,7 @@ export function createTimeline() {
           turn.state = "failed";
           turn.endedAt = at;
           if (payload.error !== undefined) turn.error = payload.error;
+          if (payload.failure?.class === "usage_limit") turn.failure = payload.failure;
           changed.add(turn);
           break;
       }
