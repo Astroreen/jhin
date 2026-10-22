@@ -966,7 +966,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (closedAt === undefined || pr.state === "open") return;
     for (const thread of Array.from(threads.values())) {
       if (thread.projectId !== repo.project.id || thread.branch !== branch) continue;
-      const decided = await linkSettlement(thread.threadId);
+      // One thread whose links cannot be read keeps none of the others from settling.
+      const decided = await linkSettlement(thread.threadId).catch((error: unknown) => {
+        context.log.warn("reading a thread's linked pull requests failed", {
+          threadId: thread.threadId,
+          error: String(error),
+        });
+        return "hold" as const;
+      });
       if (decided === "hold") {
         context.log.info("a thread waits on its open linked pull requests", {
           threadId: thread.threadId,
