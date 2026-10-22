@@ -1967,6 +1967,49 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   own (`custom-snooze-dialog.tsx`); a failed load fails the snooze with "Couldn't load the custom
   snooze dialog.", which its caller shows.
 
+### Settling with pull requests and per project (W32)
+
+W32 of `t3-roadmap.md` (round 3, D1161–D1180) takes what W14 and W26 left of
+the sidebar's settling. The reference is D53's tag:
+`apps/server/src/orchestration-v2/ThreadSettlementService.ts`
+(`resolveAutoSettlementAt`, `autoSettlementSettingsKey`) and
+`packages/shared/src/projectSettings.ts` (`resolveProjectSettings`).
+
+- **D1171. What a thread's pull requests are, through a capability.**
+  `source-control.pull-requests@1` (`@jhin/source-control-api`, provided
+  by the source control plugin): `pullRequestsOf(threadId)` lists the
+  thread's linked pull requests (D267) and the one of its branch, each with
+  its last known state (`open`, `merged`, `closed`; a linked one not read
+  yet is `unknown`) and whether it is linked. The threads plugin takes it
+  as an optional capability and asks for it when it sweeps; without it no
+  thread has a pull request. Source control already takes `agent.registry`
+  from the threads plugin optionally; the kernel drops a cycle of optional
+  edges from the activation order (D9's dependency graph), and both look the other up
+  when they use it.
+- **D1172. A pull request keeps a thread from settling by inactivity, as in
+  T3.** A thread with a linked pull request that is open, or not read yet,
+  never settles by inactivity (T3 checks it before anything else). With
+  T3's "Keep threads with a PR" (`jhin.threads.autoSettleKeepPullRequests`,
+  off by default; "Inactivity does not settle threads with a pull request.
+  Merge and close still do."), any pull request of the thread, linked or of
+  its branch, in any state, keeps it. A merged or closed one still settles
+  it through `threads.auto-settle` (D447). A branch not looked up yet counts
+  as a pull request of unknown state: kept with "Keep threads with a PR",
+  ignored without it. What the sweep found is kept in memory until the next
+  sweep, which the node's other rules (pinning, un-settling) read too; after
+  a restart it is found again by the first sweep, which settles nothing it
+  keeps. A thread whose pull requests cannot
+  be read (the lookup failed) stays where it is until a sweep can read them.
+- **D1173. Settling per project.** T3 resolves the four settle settings per
+  project (`projectSettingsOverrides`); a Jhin node has one project config
+  layer (D19, D477), not one per project of its threads. So the threads
+  config gets `projects`: a record from a project's id (T3 keys them by
+  id too) to any of `autoSettleOnMerge`, `autoSettleInactive`, `autoSettleAfterDays`
+  and `autoSettleKeepPullRequests`; a setting a project's entry leaves out
+  is the node's. Every rule (the sweep, `threads.auto-settle`, whether a
+  thread is settled now) reads its thread's project's settings. The node
+  config form edits the record like any other.
+
 ### Entry chunk headroom and the build-mode flake (W29)
 
 W29 of `t3-roadmap.md` (round 2), D1041–D1060.
@@ -2095,13 +2138,10 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   each thread's texts once per run and one thread after another on the first
   search, D227) and searching again while a query stays typed (T3 asks again
   after 30 s; here the next change of the query or of the nodes does).
-- Sidebar (T3's layout, D70, D75–D79): T3's "Keep threads with a PR"
-  (`sidebarAutoSettleKeepPullRequests`) and its rule that an open pull
-  request linked to a thread keeps it from settling by inactivity: the
-  threads plugin does not know a thread's pull request (linking them is
-  W4's); per-project overrides of the settle settings (T3 resolves them per
-  project; a Jhin node has one project config layer, D19);
-  the selection menu's "Regenerate titles (N)" (no title regeneration yet);
+- Sidebar (T3's layout, D70, D75–D79): the selection menu's "Regenerate
+  titles (N)" (no title regeneration yet); T3's scope picker for a
+  project's settle settings (D1173 edits them as a record of the node
+  config, by project id);
   dragging a selection into the chat as context. The card's branch, diff
   and pull request are `source-control.md`'s D117 and its terminal
   indicator `terminal.md`'s D148, all in the `sidebar.thread.indicators`

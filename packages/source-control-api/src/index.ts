@@ -4,6 +4,27 @@ import { z, type Disposable } from "@jhin/sdk";
 export const SOURCE_CONTROL_CAPABILITY = "source-control.git";
 
 /**
+ * `source-control.pull-requests@1`: the pull requests of a thread, for whoever
+ * decides by them, such as settling (docs/plans/t3-parity.md, D1171).
+ */
+export const PULL_REQUESTS_CAPABILITY = "source-control.pull-requests";
+
+/**
+ * A pull request of a thread as the node last saw it; `unknown`: linked and not read
+ * yet, or its branch not looked up yet.
+ */
+export interface ThreadPullRequestState {
+  readonly state: "open" | "merged" | "closed" | "unknown";
+  /** Linked to the thread (D267); else the pull request of its branch. */
+  readonly linked: boolean;
+}
+
+export interface ThreadPullRequestStates {
+  /** The thread's linked pull requests and the one of its branch, from what was read last. */
+  pullRequestsOf(threadId: string): Promise<readonly ThreadPullRequestState[]>;
+}
+
+/**
  * The node's source control changes: one event per change of a project's
  * status or a thread's branch. Clients read `git.status` and follow this
  * stream after the `head` it returns.

@@ -54,7 +54,8 @@
     "description": "Git status, diffs, branches and checkouts of the node's projects, each thread's branch, checkpoints of its turns and its worktree, git actions (commit, push, create a pull request) and pull requests through the GitHub CLI",
     "side": "server",
     "provides": {
-      "source-control.git": "1.2.0"
+      "source-control.git": "1.2.0",
+      "source-control.pull-requests": "1.0.0"
     },
     "requires": {
       "storage.kv": "^1",
