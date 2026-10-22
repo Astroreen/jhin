@@ -103,6 +103,8 @@ export interface CleanupCandidate {
   readonly threads: readonly {
     readonly id: string;
     readonly running: boolean;
+    /** It has had a turn: a thread still waiting for its first message keeps its fresh worktree. */
+    readonly started?: boolean;
     /** Last activity, epoch ms. */
     readonly activeAt: number;
     readonly settledAt?: number | undefined;
@@ -204,6 +206,9 @@ export async function judge(
   if (candidate.threads.length > 1) return keep(`shared by ${candidate.threads.length} threads`);
   if (candidate.threads.some((thread) => thread.running)) {
     return keep("thread is running or has pending work");
+  }
+  if (candidate.threads.some((thread) => thread.started === false)) {
+    return keep("thread has not started yet");
   }
   if (options.hasTerminal(candidate.path)) return keep("open terminal");
   const git = options.git(candidate.path);

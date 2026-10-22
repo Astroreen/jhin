@@ -874,7 +874,7 @@ with screenshots).
   alone (kept in the plugin's store with its project and branch). A
   worktree is kept, saying why in T3's words, when it is gone, shared by
   several threads, a thread there runs ("thread is running or has pending
-  work"), a terminal of the node works in it ("open terminal"), its branch
+  work") or has not had its first turn ("thread has not started yet"), a terminal of the node works in it ("open terminal"), its branch
   is no longer the thread's ("repository or branch changed"), or it has
   local changes as `keepWhen` counts them (T3's `git status
   --porcelain=v1` and, for any local files, ignored files other than

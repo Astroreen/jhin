@@ -30,6 +30,21 @@ async function worktreeThread(sc: Node, projectId: string) {
   return thread;
 }
 
+/** Sends a message and resolves once the thread's turn ended. */
+async function firstTurn(sc: Node, threadId: string) {
+  const ended = sc.next(
+    "threads",
+    (event) =>
+      event.type === "threads.thread.updated" &&
+      (event.payload as { id: string; lastTurn?: { status: string } }).id === threadId &&
+      ["completed", "failed", "interrupted"].includes(
+        (event.payload as { lastTurn?: { status: string } }).lastTurn?.status ?? "",
+      ),
+  );
+  await sc.client.call("threads.send", { threadId, text: "hello" });
+  await ended;
+}
+
 const cleanup = (sc: Node) => sc.client.call<Report>("git.worktree.cleanup", {});
 
 describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
@@ -102,6 +117,8 @@ describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
     const unchanged = await worktreeThread(sc, projectId);
     const ahead = await worktreeThread(sc, projectId);
     git(ahead.worktreePath, "commit", "--quiet", "--allow-empty", "-m", "ahead");
+    // Both have had their first turn: a thread still to start keeps its worktree.
+    for (const thread of [unchanged, ahead]) await firstTurn(sc, thread.id);
 
     const report = await cleanup(sc);
     expect(report.entries.toSorted((a, b) => a.reason.localeCompare(b.reason))).toEqual([
@@ -256,5 +273,15 @@ describe("worktree cleanup decisions (D1129, T3's cleanWorktrees)", () => {
     expect(await decide(where, { unchanged: true })).toEqual({
       remove: "No commits beyond the default branch.",
     });
+  });
+
+  it("keeps a fresh worktree whose thread has not had its first turn", async () => {
+    expect(
+      await decide(
+        worktree(false),
+        { unchanged: true },
+        { threads: [{ id: "t", running: false, started: false, activeAt: NOW }] },
+      ),
+    ).toEqual({ keep: "Thread has not started yet." });
   });
 });

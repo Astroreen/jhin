@@ -1274,6 +1274,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         threads: group.map((thread) => ({
           id: thread.id,
           running: thread.lastTurn?.status === "running" || thread.lastTurn?.status === "waiting",
+          started: thread.lastTurn !== undefined,
           // A time that does not parse counts as now: the worktree reads as just used.
           activeAt: timeOr(thread.updatedAt ?? thread.createdAt, Date.now()),
           ...(Number.isNaN(Date.parse(thread.settledAt ?? ""))
@@ -1354,10 +1355,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           if ((await terminalFolders()).some((folder) => inside(candidate.path, folder))) {
             return "Open terminal.";
           }
-          const changes = await localChangesReason(
-            createGit(config().gitPath, candidate.path),
-            rules.keepWhen,
-          );
+          const worktreeGit = createGit(config().gitPath, candidate.path);
+          const current = (
+            await worktreeGit(["symbolic-ref", "--quiet", "HEAD"], { ok: [0, 1, 128] })
+          ).stdout
+            .trim()
+            .replace(/^refs\/heads\//, "");
+          if (current !== candidate.branch) return "Repository or branch changed.";
+          const changes = await localChangesReason(worktreeGit, rules.keepWhen);
           if (changes !== null) return `${changes.charAt(0).toUpperCase()}${changes.slice(1)}.`;
           for (const threadId of now) {
             const answer = (await context.commands
