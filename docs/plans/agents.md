@@ -1385,7 +1385,7 @@ with its report as a "C3 run" note here.
   stream breaks; today the roster shows the error with a Retry button.
 - A1: a generation's own status in the page's list of generations
   (`agents.generations` has it); the list marks the current one only.
-- A3: (the Projects section was dropped, see C3) a project's own intent; the Missions section groups by project and a
+- A3: a project's own intent; the Missions section groups by project and a
   mission shows its project's intent (D654, D656).
 - A3: missions of a mesh member (`route.remote`): the view reads the route's
   connection's node only (D654); a slice's thread on a member is read through

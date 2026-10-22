@@ -59,7 +59,7 @@ const SIDEBAR_SECTIONS: readonly {
     slot: "civilization.sidebar.inbox",
     title: "Inbox",
     icon: InboxIcon,
-    empty: "Nothing from your agents waits for you.",
+    empty: "Nothing here yet.",
   },
   {
     slot: "civilization.sidebar.missions",
