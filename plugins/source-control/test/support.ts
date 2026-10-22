@@ -194,6 +194,8 @@ exit 1
 
 export interface Node {
   readonly client: RpcClient;
+  /** Stops the node, so another can start on its data and storage. */
+  stop(): Promise<void>;
   /** A client of the node holding only `permissions` (a narrow device token). */
   as(permissions: string[]): RpcClient;
   /** The fake terminals, when the node has them. */
@@ -210,6 +212,8 @@ export interface Node {
   configure(values: Record<string, unknown>): void;
   /** Resolves when the node next logs `message` (at any level). */
   logged(message: string): Promise<void>;
+  /** Resolves once the node has logged `message`, now or since it started. */
+  loggedSinceStart(message: string): Promise<void>;
 }
 
 /** A logger that tells `listen` every message, at any level and from any child. */
@@ -354,7 +358,9 @@ export async function node(
   const live = createLiveStreams();
   const terminals = options.terminals === true ? fakeTerminals(live) : undefined;
   const logWaiters = new Map<string, (() => void)[]>();
+  const loggedMessages = new Set<string>();
   const logger = recordingLogger((message) => {
+    loggedMessages.add(message);
     for (const resolve of logWaiters.get(message)?.splice(0) ?? []) resolve();
   });
   const kernel = await createTestKernel({
@@ -379,10 +385,13 @@ export async function node(
     config: { node: { "jhin.source-control": config } },
   });
   const { client } = connectInMemory(kernel, { log: storage.storage.log, streams: live });
-  cleanups.push(async () => {
-    client.close();
-    await kernel.stop();
-  });
+  let stopped: Promise<void> | undefined;
+  const stop = () =>
+    (stopped ??= (async () => {
+      client.close();
+      await kernel.stop();
+    })());
+  cleanups.push(stop);
   const events: StoredEvent[] = [];
   const waiters = new Set<{
     match: (event: StoredEvent) => boolean;
@@ -399,6 +408,7 @@ export async function node(
   });
   return {
     client,
+    stop,
     events,
     as: (permissions) => {
       const narrow = connectInMemory(kernel, {
@@ -427,6 +437,14 @@ export async function node(
         list.push(resolve);
         logWaiters.set(message, list);
       }),
+    loggedSinceStart: (message) =>
+      loggedMessages.has(message)
+        ? Promise.resolve()
+        : new Promise((resolve) => {
+            const list = logWaiters.get(message) ?? [];
+            list.push(resolve);
+            logWaiters.set(message, list);
+          }),
     until: (match) =>
       new Promise((resolve) => {
         const seen = events.find(match);

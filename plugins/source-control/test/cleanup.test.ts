@@ -6,6 +6,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { judge, type CleanupCandidate, type WorktreeCleanupRules } from "../src/cleanup.ts";
 import { createGit } from "../src/git.ts";
+import { memoryStoragePlugin } from "@jhin/testing";
+
 import { git, node, repository, temp, type Node } from "./support.ts";
 
 interface Report {
@@ -86,6 +88,26 @@ describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
     expect(git(dir, "branch", "--list", branch).trim()).toBe(branch);
     // Decided once: a later sweep has nothing left to look at.
     expect((await cleanup(sc)).entries).toEqual([]);
+  });
+
+  it("sweeps when the node starts, once every plugin is up, with nobody asking", async () => {
+    const dir = repository();
+    const data = temp("jhin-sc-restart-");
+    const storage = memoryStoragePlugin();
+    const before = await node({ watch: false }, { data, storage });
+    const projectId = await before.project(dir);
+    const thread = await worktreeThread(before, projectId);
+    await firstTurn(before, thread.id);
+    await before.stop();
+
+    // Started again with a rule that removes it: the startup sweep reads the
+    // projects and threads, so it runs only once the threads plugin answers.
+    const after = await node(
+      { watch: false, worktreeCleanup: { unchanged: true } },
+      { data, storage },
+    );
+    await after.loggedSinceStart("removed a worktree");
+    expect(Fs.existsSync(thread.worktreePath)).toBe(false);
   });
 
   it("keeps local changes as keepWhen counts them", async () => {

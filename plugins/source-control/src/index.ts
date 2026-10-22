@@ -1409,8 +1409,22 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   );
   cleanupTimer.unref?.();
   // As T3 sweeps when it starts: a node restarted more often than hourly still cleans up.
-  // After activation, once the other plugins answer; a failure is logged.
-  if (cleanupEnabled(config().worktreeCleanup)) queueMicrotask(() => cleanInBackground());
+  // Once every plugin is up (the threads plugin answers `projects.list` and `threads.list`),
+  // or at once when this plugin is reloaded into a running kernel; a failure is logged and
+  // the hourly sweep tries again.
+  const startupSweep = () => {
+    if (cleanupEnabled(config().worktreeCleanup)) cleanInBackground();
+  };
+  if (context.state.get<boolean>("kernelStarted") === true) queueMicrotask(startupSweep);
+  else {
+    const started = context.subscriptions.add(
+      context.events.on("kernel.started", () => {
+        started.dispose();
+        context.state.set("kernelStarted", true);
+        startupSweep();
+      }),
+    );
+  }
   let lastRules = JSON.stringify(config().worktreeCleanup);
   context.subscriptions.add({
     dispose() {
