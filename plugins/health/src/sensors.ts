@@ -30,6 +30,7 @@ import {
   type MissionsState,
   type Slice,
 } from "@jhin/missions-api";
+import { OWNER_PRINCIPAL_ID } from "@jhin/auth-api";
 import { SourceControlEvents } from "@jhin/source-control-api";
 import type { StoredEvent } from "@jhin/storage-api";
 
@@ -159,8 +160,14 @@ export class Sensors {
       this.count("slice-done", event, [slice]);
     }
     if (event.type === MissionEvents.sliceCreated || event.type === MissionEvents.sliceUpdated) {
-      const by = (event.payload as { by?: string }).by ?? "unknown";
-      if (before === undefined || before.spec !== slice.spec || before.title !== slice.title) {
+      const by = (event.payload as { by?: string }).by;
+      // The owner, or one of the owner's devices, writing the phrase (a "do not
+      // do X" note) is the correction, not a carrier; so is the node itself.
+      const owners = by === undefined || by === OWNER_PRINCIPAL_ID || by.startsWith("client:");
+      if (
+        !owners &&
+        (before === undefined || before.spec !== slice.spec || before.title !== slice.title)
+      ) {
         this.findIdeas(event, `${slice.title}\n${slice.spec}`, by, [slice]);
       }
     }

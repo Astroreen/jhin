@@ -1011,6 +1011,9 @@ importers:
       '@jhin/agent-api':
         specifier: workspace:*
         version: link:../../packages/agent-api
+      '@jhin/auth-api':
+        specifier: workspace:*
+        version: link:../../packages/auth-api
       '@jhin/health-api':
         specifier: workspace:*
         version: link:../../packages/health-api

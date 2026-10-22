@@ -993,7 +993,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
 - **D727. A mind virus is a corrected idea coming back.** The owner names a
   wrong idea by a phrase when correcting it (`health.ideas.correct { idea,
   correction?, projectId? }`), the vaccine. Each later message of a sender
-  other than an owner, and each slice title or spec written later, that
+  other than an owner, and each slice title or spec an agent writes later
+  (not the owner or the owner's devices, `client:<id>`), that
   contains the phrase (case-insensitive, whitespace collapsed) is an
   occurrence; a project's idea counts only in its own slices and their
   messages. `mindVirus.minOccurrences` occurrences within the window raise a warning naming
@@ -1019,7 +1020,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   permissions of the streams behind a warning: `health.warnings.get` returns
   an event's record only to a caller who may read its stream (`agents.read`,
   `missions.read`, `threads.read`, `git.read`), and names what it lacks
-  (`withheld`) otherwise.
+  (`withheld`) otherwise. The analyst's answer is health's own record and is
+  read with `health.read`: the analyst writes it for whoever watches health,
+  agents included, as an agent writes any message.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 

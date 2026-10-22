@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
+    "@jhin/auth-api": "workspace:*",
     "@jhin/health-api": "workspace:*",
     "@jhin/missions-api": "workspace:*",
     "@jhin/rpc": "workspace:*",

@@ -599,4 +599,31 @@ describe("jhin.health", () => {
     );
     expect(analysed).toEqual([]);
   });
+
+  it("counts an agent's spec carrying a corrected idea, not the owner's note about it", async () => {
+    const { client, kernel, project, slice, deliver } = await node({
+      mindVirus: { minOccurrences: 2 },
+    });
+    await client.call("health.ideas.correct", {
+      idea: "retry the flaky test",
+      projectId: project.id,
+    });
+    // The owner's note quotes the idea to forbid it: the correction, not a carrier.
+    await client.call("slices.update", {
+      sliceId: slice.id,
+      spec: "The floor holds the dog. Do not retry the flaky test.",
+    });
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    const agent = { caller: { id: "jhin.agent-fake:t1", permissions: ["missions.write"] } };
+    await kernel.commands.execute(
+      "slices.update",
+      { sliceId: slice.id, spec: "The floor holds the dog; retry the flaky test until green." },
+      agent,
+    );
+    await deliver(BUILDER, REVIEWER, "I will retry the flaky test", "t1");
+    const { warning } = (await raised) as { warning: Warning };
+    expect(warning.measures).toMatchObject({ occurrences: 2, carriers: 2 });
+    expect(warning.summary).toContain("jhin.agent-fake:t1");
+    expect(warning.summary).not.toContain("owner");
+  });
 });
