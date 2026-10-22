@@ -647,6 +647,10 @@ const AgentInfo = z.object({
   role: z.string().optional(),
   /** It reports usage limits (`agents.usage-limits`, providers.md D1141). */
   usageLimits: z.boolean(),
+  /** How its account can be signed in from Jhin (`agents.sign-in.*`, providers.md D1151). */
+  signIn: z.array(z.enum(["browser", "device-code"])).optional(),
+  /** Whether its account is signed in, when it says. */
+  signedIn: z.boolean().optional(),
 });
 
 const UsageWindow = z.object({
@@ -2420,6 +2424,8 @@ export default definePlugin({
               runtimeId: runtime.runtimeId ?? runtime.agentId,
               ...(runtime.role === undefined ? {} : { role: runtime.role }),
               usageLimits: runtime.usageLimits !== undefined,
+              ...(runtime.auth === undefined ? {} : { signIn: [...runtime.auth.methods] }),
+              ...(status.signedIn === undefined ? {} : { signedIn: status.signedIn }),
             };
           }),
         );
@@ -2470,6 +2476,96 @@ export default definePlugin({
           commands: AgentSlashCommand[];
           skills: AgentSkill[];
         };
+      },
+    });
+
+    // Signing an agent's account in and out (providers.md D1151, T3's provider auth): the
+    // node's own credentials, so only the node's admin may.
+    const authOf = async (agentId: string | undefined) => {
+      const runtime = agentId === undefined ? await defaultRuntime() : registry.get(agentId);
+      if (runtime === undefined) {
+        throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${agentId ?? ""} on this node`, {
+          agentId,
+        });
+      }
+      if (runtime.auth === undefined) {
+        throw new ThreadsError(
+          "SIGN_IN_UNSUPPORTED",
+          `${runtime.name ?? runtime.agentId} cannot be signed in from Jhin`,
+          {
+            agentId: runtime.agentId,
+          },
+        );
+      }
+      return { runtime, auth: runtime.auth };
+    };
+    /** A sign-in changes what the agent can do: its status is asked again. */
+    const signedInOrOut = (agentId: string) => statuses.delete(agentId);
+    context.commands.register({
+      name: "agents.sign-in.start",
+      description:
+        "Starts signing an agent's account in: a URL to open in a browser, and for a device code the code to enter there",
+      input: z.object({
+        agentId: z.string().optional(),
+        method: z.enum(["browser", "device-code"]).optional(),
+      }),
+      output: z.object({ flowId: z.string(), url: z.string(), userCode: z.string().optional() }),
+      permissions: ["auth.admin"],
+      handler: async ({ agentId, method }) => {
+        const { auth } = await authOf(agentId);
+        const chosen = method ?? auth.methods[0];
+        if (chosen === undefined || !auth.methods.includes(chosen)) {
+          throw new ThreadsError("SIGN_IN_UNSUPPORTED", `The agent does not sign in by ${chosen}`, {
+            method: chosen,
+          });
+        }
+        const started = await auth.start(chosen);
+        return {
+          flowId: started.flowId,
+          url: started.url,
+          ...(started.userCode === undefined ? {} : { userCode: started.userCode }),
+        };
+      },
+    });
+    context.commands.register({
+      name: "agents.sign-in.wait",
+      description:
+        "Waits until a sign-in started with agents.sign-in.start ends: signed in, failed or cancelled",
+      input: z.object({ agentId: z.string().optional(), flowId: z.string() }),
+      output: z.object({ success: z.boolean(), error: z.string().optional() }),
+      permissions: ["auth.admin"],
+      handler: async ({ agentId, flowId }) => {
+        const { runtime, auth } = await authOf(agentId);
+        const ended = await auth.wait(flowId);
+        signedInOrOut(runtime.agentId);
+        return {
+          success: ended.success,
+          ...(ended.error === undefined ? {} : { error: ended.error }),
+        };
+      },
+    });
+    context.commands.register({
+      name: "agents.sign-in.cancel",
+      description: "Cancels a sign-in under way",
+      input: z.object({ agentId: z.string().optional(), flowId: z.string() }),
+      output: z.object({}),
+      permissions: ["auth.admin"],
+      handler: async ({ agentId, flowId }) => {
+        await (await authOf(agentId)).auth.cancel(flowId);
+        return {};
+      },
+    });
+    context.commands.register({
+      name: "agents.sign-out",
+      description: "Signs an agent's account out of this node",
+      input: z.object({ agentId: z.string().optional() }),
+      output: z.object({}),
+      permissions: ["auth.admin"],
+      handler: async ({ agentId }) => {
+        const { runtime, auth } = await authOf(agentId);
+        await auth.signOut();
+        signedInOrOut(runtime.agentId);
+        return {};
       },
     });
 

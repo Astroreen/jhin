@@ -30,6 +30,8 @@ export type Step =
 export interface Scenario {
   /** `account/read`'s answer; a ChatGPT account when absent. */
   readonly account?: unknown;
+  /** How a sign-in ends right after `account/login/start`; it never ends when absent. */
+  readonly login?: { readonly success: boolean; readonly error?: string };
   /** `account/rateLimits/read`'s answer; the method is unknown when absent. */
   readonly rateLimits?: unknown;
   /** `skills/list`'s entries, one per folder. */
@@ -199,6 +201,28 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
           requiresOpenaiAuth: true,
         },
       });
+      return;
+    case "account/login/start": {
+      const loginId = `login-${calls("account/login/start")}`;
+      send({
+        id,
+        result:
+          params["type"] === "chatgptDeviceCode"
+            ? {
+                type: "chatgptDeviceCode",
+                loginId,
+                userCode: "ABCD-1234",
+                verificationUrl: "https://auth.openai.com/codex/device",
+              }
+            : { type: "chatgpt", loginId, authUrl: `https://auth.openai.com/oauth/${loginId}` },
+      });
+      if (scenario.login !== undefined) {
+        send({ method: "account/login/completed", params: { loginId, ...scenario.login } });
+      }
+      return;
+    }
+    case "account/logout":
+      send({ id, result: {} });
       return;
     case "account/rateLimits/read":
       if (scenario.rateLimits === undefined) break;
