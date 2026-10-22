@@ -454,7 +454,30 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   };
   const links = createLinks({
     kv,
-    append,
+    append: async (type, payload) => {
+      await append(type, payload);
+      // A linked pull request that merged or closed may settle its thread (D1133).
+      const { threadId, pullRequest } = payload as {
+        threadId?: string;
+        pullRequest?: ThreadPullRequest;
+      };
+      // …and so may unlinking the one that held it open.
+      if (
+        threadId !== undefined &&
+        (type === SourceControlEvents.pullRequestUnlinked ||
+          ((type === SourceControlEvents.pullRequestUpdated ||
+            type === SourceControlEvents.pullRequestLinked) &&
+            pullRequest?.snapshot != null &&
+            pullRequest.snapshot.state !== "open"))
+      ) {
+        void settleOnLinks(threadId).catch((error: unknown) =>
+          context.log.warn("settling a thread on its linked pull requests failed", {
+            threadId,
+            error: String(error),
+          }),
+        );
+      }
+    },
     remoteOf: async (threadId) => {
       const repo = await projectRepoOfThread(threadId);
       return repo === undefined
@@ -846,36 +869,99 @@ export function activateSourceControl(context: PluginContext): SourceControl {
    */
   /** Threads told about a pull request in a state; a failed call is told again next lookup. */
   const announced = new Set<string>();
-  const settleOnPullRequest = (repo: Repo, branch: string, pr: PullRequest) => {
-    // The time it merged or closed, never its last update (a later comment moves that);
-    // without one there is nothing to weigh against the user's last message.
-    const closedAt = (pr.state === "merged" ? pr.mergedAt : undefined) ?? pr.closedAt;
-    if (closedAt === undefined) return;
-    for (const thread of threads.values()) {
+  /** Asks the threads plugin to settle a thread on a pull request that merged or closed. */
+  const announceSettle = (
+    threadId: string,
+    pr: { number: number; state: "merged" | "closed"; closedAt: string },
+  ) => {
+    const key = JSON.stringify([threadId, pr.number, pr.state, pr.closedAt]);
+    if (announced.has(key)) return;
+    announced.add(key);
+    context.commands
+      .execute("threads.auto-settle", {
+        threadId,
+        reason: pr.state === "merged" ? "pull-request-merged" : "pull-request-closed",
+        closedAt: pr.closedAt,
+      })
+      .then(
+        // Not settled now (the rule off, a pin): asked again next lookup, the rule may allow it.
+        (result) => {
+          if ((result as { settled?: boolean }).settled !== true) announced.delete(key);
+        },
+        (error: unknown) => {
+          announced.delete(key);
+          context.log.warn("settling a thread on its pull request failed", {
+            threadId,
+            pullRequest: pr.number,
+            error: String(error),
+          });
+        },
+      );
+  };
+
+  /** When a pull request merged or closed: never its last update, which a comment moves. */
+  const closedAtOf = (pr: PullRequest) =>
+    (pr.state === "merged" ? pr.mergedAt : undefined) ?? pr.closedAt;
+
+  /**
+   * What a thread's linked pull requests say of settling it (D1133, T3's
+   * `settlementPullRequestLinks`): `hold` while one is open or not read yet;
+   * the latest that merged or closed; none without links. A link made after
+   * its pull request had closed records work the thread did, and is left out.
+   */
+  const linkSettlement = async (
+    threadId: string,
+  ): Promise<
+    "hold" | { number: number; state: "merged" | "closed"; closedAt: string } | undefined
+  > => {
+    let latest: { number: number; state: "merged" | "closed"; closedAt: string } | undefined;
+    for (const link of await links.list(threadId)) {
+      const pr = link.snapshot;
+      // Never read on a host no forge here reads: it can tell nothing, so it holds nothing.
+      if (pr === null && kindOfHost(link.host) === undefined) continue;
+      if (pr === null || pr.state === "open") return "hold";
+      const closedAt = closedAtOf(pr);
+      const closedMs = Date.parse(closedAt ?? "");
+      // No close time to weigh: it cannot settle anything (T3's -Infinity).
+      if (closedAt === undefined || Number.isNaN(closedMs)) continue;
+      const linkedMs = Date.parse(link.linkedAt);
+      if (!Number.isNaN(linkedMs) && closedMs < linkedMs) continue;
+      if (latest === undefined || closedMs > Date.parse(latest.closedAt)) {
+        latest = { number: pr.number, state: pr.state, closedAt };
+      }
+    }
+    return latest;
+  };
+
+  /** A linked pull request changed: its thread may settle on its links (D1133). */
+  const settleOnLinks = async (threadId: string) => {
+    const decided = await linkSettlement(threadId);
+    if (decided === "hold") {
+      context.log.info("a thread waits on its open linked pull requests", { threadId });
+    } else if (decided === undefined) {
+      context.log.info("no linked pull request settles the thread", { threadId });
+    } else {
+      announceSettle(threadId, decided);
+    }
+  };
+
+  /**
+   * A branch's pull request merged or closed (D447): every thread on the branch
+   * may settle, unless its linked pull requests say otherwise (D1133).
+   */
+  const settleOnPullRequest = async (repo: Repo, branch: string, pr: PullRequest) => {
+    const closedAt = closedAtOf(pr);
+    if (closedAt === undefined || pr.state === "open") return;
+    for (const thread of Array.from(threads.values())) {
       if (thread.projectId !== repo.project.id || thread.branch !== branch) continue;
-      const key = JSON.stringify([repo.project.id, thread.threadId, pr.number, pr.state, closedAt]);
-      if (announced.has(key)) continue;
-      announced.add(key);
-      context.commands
-        .execute("threads.auto-settle", {
+      const decided = await linkSettlement(thread.threadId);
+      if (decided === "hold") {
+        context.log.info("a thread waits on its open linked pull requests", {
           threadId: thread.threadId,
-          reason: pr.state === "merged" ? "pull-request-merged" : "pull-request-closed",
-          closedAt,
-        })
-        .then(
-          // Not settled now (the rule off, a pin): asked again next lookup, the rule may allow it.
-          (result) => {
-            if ((result as { settled?: boolean }).settled !== true) announced.delete(key);
-          },
-          (error: unknown) => {
-            announced.delete(key);
-            context.log.warn("settling a thread on its pull request failed", {
-              threadId: thread.threadId,
-              pullRequest: pr.number,
-              error: String(error),
-            });
-          },
-        );
+        });
+        continue;
+      }
+      announceSettle(thread.threadId, decided ?? { number: pr.number, state: pr.state, closedAt });
     }
   };
 
@@ -910,7 +996,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         try {
           const pr = await forge.find(await headContextOf(repo.git!, branch));
           repo.pullRequests.set(branch, { pr, at: Date.now() });
-          if (pr !== null && pr.state !== "open") settleOnPullRequest(repo, branch, pr);
+          if (pr !== null && pr.state !== "open") {
+            void settleOnPullRequest(repo, branch, pr).catch((error: unknown) =>
+              context.log.warn("settling threads on a pull request failed", {
+                error: String(error),
+              }),
+            );
+          }
         } catch (error) {
           if (!(error instanceof ForgeUnavailable)) throw error;
           provider = { kind: forge.kind, available: false, reason: error.message };
