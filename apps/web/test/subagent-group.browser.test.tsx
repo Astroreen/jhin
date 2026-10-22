@@ -33,7 +33,25 @@ const catalog: NodeCatalog = {
   projects: [],
   threads: [parent, settled("c1", "north"), settled("c2", "south"), settled("c3", "east")],
 } as unknown as NodeCatalog;
-const view: DelegationView = { status: "ready", tasks: new Map(), workflows: new Map() };
+const view: DelegationView = {
+  status: "ready",
+  workflows: new Map(),
+  tasks: new Map([
+    [
+      "t1",
+      {
+        taskId: "t1",
+        parentThreadId: "p",
+        childThreadId: "c4",
+        title: "dig",
+        agentId: "jhin.agent-fake",
+        status: "running",
+        createdAt: "2026-10-22T10:00:00.000Z",
+        updatedAt: "2026-10-22T10:00:00.000Z",
+      },
+    ],
+  ]),
+};
 const services: DelegatedWorkServices = {
   store: { view: () => view, watch: () => () => () => undefined } as unknown as DelegationStore,
   threads: {
@@ -52,6 +70,45 @@ const mark = (sequence: number, childThreadId: string, title: string) => ({
 });
 
 describe("the N subagents row (D1161)", () => {
+  it("folds a delegated task that runs with a runtime's subagent", async () => {
+    const delegated = {
+      type: OrchestrationThreadEvents.taskDelegated,
+      payload: { taskId: "t1", childThreadId: "c4", title: "dig", agentId: "jhin.agent-fake" },
+      sequence: 5,
+      at: "2026-10-22T10:00:00.000Z",
+    };
+    const adjacent = [mark(4, "c1", "north"), delegated];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () =>
+      root.render(
+        <>
+          {adjacent.map((event) => (
+            <DelegatedWork
+              adjacent={adjacent}
+              event={event}
+              key={event.sequence}
+              services={services}
+              target={target}
+              thread={parent}
+              turnId="u"
+            />
+          ))}
+        </>,
+      ),
+    );
+    const group = page.getByRole("button", { name: "2 subagents" });
+    await expect.element(group).toBeVisible();
+    expect(group.element().textContent).toContain("1 working · 1 done");
+    await userEvent.click(group);
+    const dig = page.getByRole("button", { name: "Open dig", exact: true });
+    await expect.element(dig).toBeVisible();
+    expect(dig.element().textContent).toContain("Running");
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
   it("shows the group once, at its first mark, and unfolds into the members", async () => {
     const launched = {
       type: OrchestrationThreadEvents.threadLaunched,

@@ -88,6 +88,8 @@ describe("the subagent marks in a row (D1161)", () => {
     expect(
       summarizeSubagentStatuses(["running", "starting", "completed", "failed", "cancelled"]),
     ).toBe("2 working · 1 done · 1 failed · 1 stopped");
+    // A member whose status is not known counts nowhere.
+    expect(summarizeSubagentStatuses(["unknown", "cancelled", "interrupted"])).toBe("2 stopped");
     const settled = subagentGroupTiming([
       {
         status: "completed",

@@ -711,7 +711,8 @@ function TurnView(props: {
         ? "Worked"
         : `Worked for ${duration}`;
   const lastMessage = blocks.findLast((block) => block.kind === "message");
-  const adjacent = adjacentExtensions(blocks);
+  // Not rebuilt on every tick of a running turn's clock.
+  const adjacent = useMemo(() => adjacentExtensions(turnBlocks(turn)), [turn]);
 
   return (
     <div className="flex flex-col" data-turn={turn.turnId}>

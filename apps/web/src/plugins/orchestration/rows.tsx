@@ -306,6 +306,8 @@ export interface SubagentMember {
 export function summarizeSubagentStatuses(statuses: readonly RowStatus[]): string {
   const counts = { working: 0, done: 0, failed: 0, stopped: 0 };
   for (const status of statuses) {
+    // Without a record its status is not known: it is counted nowhere (the card says so).
+    if (status === "unknown") continue;
     if (isLive(status)) counts.working += 1;
     else if (status === "completed") counts.done += 1;
     else if (status === "failed") counts.failed += 1;
