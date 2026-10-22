@@ -554,8 +554,14 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
         });
       const clean = await create("clean-lib");
       const dirty = await create("dirty-lib");
+      const ahead = await create("ahead-lib");
       // Work inside the submodule only: the parent's status still shows it.
       Fs.writeFileSync(Path.join(dirty.worktreePath, "lib", "notes.txt"), "mine\n");
+      // A submodule commit, pushed nowhere, its pointer committed: the parent's status is clean.
+      const lib = Path.join(ahead.worktreePath, "lib");
+      git(lib, "commit", "--quiet", "--allow-empty", "-m", "only here");
+      const only = git(lib, "rev-parse", "HEAD").trim();
+      git(ahead.worktreePath, "commit", "--quiet", "-am", "lib ahead");
 
       // Clean, checked out submodules and all: the sweep after the deletion forces it away.
       const swept = sc.logged("removed a worktree");
@@ -570,6 +576,11 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
       expect(Fs.readFileSync(Path.join(dirty.worktreePath, "lib", "notes.txt"), "utf8")).toBe(
         "mine\n",
       );
+
+      // The unpushed submodule commit keeps its worktree too.
+      await sc.client.call("threads.delete", { threadId: "ahead-lib" });
+      await sc.client.call("git.worktree.cleanup", {});
+      expect(git(lib, "rev-parse", "HEAD").trim()).toBe(only);
     } finally {
       vi.unstubAllEnvs();
     }

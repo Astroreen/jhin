@@ -135,6 +135,14 @@ export async function localChangesReason(
     if (/^[RC]|^.[RC]/.test(records[index]!)) index++;
   }
   if (count > 0) return `has uncommitted changes (${count} ${count === 1 ? "file" : "files"})`;
+  // A submodule's own commits live in this worktree's git folder alone until pushed, and a
+  // clean status does not show them: a forced removal would take them (D1134).
+  const unpushed = await git(
+    ["submodule", "foreach", "--quiet", "--recursive", "git rev-list -n 1 HEAD --not --remotes"],
+    { ok: [0, 1, 128] },
+  );
+  if (unpushed.code !== 0) return "submodules could not be read";
+  if (unpushed.stdout.trim() !== "") return "has unpushed submodule commits";
   if (keepWhen !== "any-local-files") return null;
   const ignored = await git([
     "ls-files",

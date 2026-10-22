@@ -950,7 +950,10 @@ with screenshots).
   while "Skip" ends it done with "submodules left empty", as the user
   chose). A worktree with checked-out submodules is removed only with `force`
   (D255's deletion and the cleanup pass it), as git holds: their own commits
-  may be pushed nowhere, which a clean status does not show. Without `force`,
+  may be pushed nowhere, which a clean status does not show. So the cleanup
+  first asks each submodule for commits on no remote (`git submodule foreach
+  git rev-list HEAD --not --remotes`) and keeps a worktree that has any
+  ("has unpushed submodule commits"). Without `force`,
   `git.worktree.remove` says so ("remove it with force"), not git's own
   message. A submodule run git ends without a reason (killed at the timeout)
   says its exit code. T3's per-project setting and its `t3.json` override,
