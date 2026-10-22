@@ -171,4 +171,37 @@ describe("health's sensors (D722)", () => {
       "mission:m2",
     ]);
   });
+
+  it("counts a merge at the time it merged, so one told late from before the window counts nothing", () => {
+    const sensors = new Sensors();
+    const slice = {
+      id: "s1",
+      missionId: "m1",
+      projectId: "p1",
+      title: "Floor",
+      spec: "",
+      wave: 1,
+      dependsOn: [],
+      status: "active",
+      threads: [{ threadId: "t1" }],
+      createdAt: hoursAgo(50),
+      updatedAt: hoursAgo(50),
+    } satisfies Slice;
+    sensors.ingestMission(
+      event("missions", 1, MissionEvents.sliceCreated, hoursAgo(50), { slice }),
+    );
+    const merged = (sequence: number, key: string, mergedAt: string) =>
+      sensors.ingestSourceControl(
+        event("source-control", sequence, "git.pr.updated", hoursAgo(1), {
+          threadId: "t1",
+          pullRequest: { key, snapshot: { state: "merged", mergedAt } },
+        }),
+      );
+    // Published an hour ago: one merged two days ago, one merged within the window.
+    merged(1, "gh:o/r#1", hoursAgo(48));
+    merged(2, "gh:o/r#2", hoursAgo(2));
+    const config = HealthConfig.parse({ windowHours: 24 });
+    const mission = sensors.status(config, NOW).find((entry) => entry.group.kind === "mission");
+    expect(mission).toMatchObject({ progress: 1, byKind: { merge: 1 } });
+  });
 });

@@ -272,25 +272,37 @@ export default definePlugin({
      * Raises what is new: one open warning per detector and subject (D724);
      * after a dismissal the sensors count only what came since (`evaluate`).
      */
-    const raise = async (finding: Finding) => {
-      // The latest warning of this detector and subject decides.
-      const earlier = Object.values(health.warnings)
-        .filter(
-          (warning) => warning.detector === finding.detector && warning.subject === finding.subject,
-        )
-        .reduce<Warning | undefined>(
-          (latest, warning) =>
-            latest === undefined || warning.raisedAt > latest.raisedAt ? warning : latest,
-          undefined,
-        );
-      if (earlier?.status === "open") return;
+    const raise = async (finding: Finding, foundAt: number) => {
       const warning: Warning = {
         warningId: Crypto.randomUUID(),
         ...finding,
         raisedAt: now(),
         status: "open",
       };
-      await append(HealthEvents.warningRaised, { warning });
+      let raised = false;
+      // Decided on the fold right before the write, in turn with every append:
+      // a dismissal that lands meanwhile is seen.
+      await appendIf(() => {
+        // The latest warning of this detector and subject decides.
+        const earlier = Object.values(health.warnings)
+          .filter(
+            (other) => other.detector === finding.detector && other.subject === finding.subject,
+          )
+          .reduce<Warning | undefined>(
+            (latest, other) =>
+              latest === undefined || other.raisedAt > latest.raisedAt ? other : latest,
+            undefined,
+          );
+        if (earlier?.status === "open") return undefined;
+        // Found before a dismissal of its subject: it counted what the dismissal
+        // set aside, so the next run decides again.
+        if (earlier?.dismissedAt !== undefined && Date.parse(earlier.dismissedAt) >= foundAt) {
+          return undefined;
+        }
+        raised = true;
+        return { type: HealthEvents.warningRaised, payload: { warning } };
+      });
+      if (!raised) return;
       context.events.emit(HealthEvents.warningRaised, { warning });
       void analyse(warning);
     };
@@ -454,7 +466,10 @@ export default definePlugin({
       if (!current.enabled || !active) return;
       // A linked thread that could not be read is tried again on every run.
       followThreads();
-      for (const finding of sensors.evaluate(current, health, Date.now())) await raise(finding);
+      const foundAt = Date.now();
+      for (const finding of sensors.evaluate(current, health, foundAt)) {
+        await raise(finding, foundAt);
+      }
     };
     function evaluateSoon() {
       if (scheduled) return;

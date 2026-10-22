@@ -117,16 +117,20 @@ export class Sensors {
     return [...keys];
   }
 
-  private count(kind: SignalKind, event: StoredEvent, slices: readonly Slice[]): void {
+  private count(
+    kind: SignalKind,
+    event: StoredEvent,
+    slices: readonly Slice[],
+    time = Date.parse(event.at),
+  ): void {
     this.signals.push({
       kind,
       ref: refOf(event, kind),
-      time: Date.parse(event.at),
+      time,
       groups: this.groupsOf(slices),
     });
   }
 
-  /** An idea's phrase in a text written after the correction, by someone other than the owner. */
   /** Who health asked to trace an idea, by idea id: quoting it is their work (D727). */
   private readonly tracers = new Map<string, Set<string>>();
 
@@ -137,6 +141,7 @@ export class Sensors {
     this.tracers.set(ideaId, known);
   }
 
+  /** An idea's phrase in a text written after the correction, by someone other than the owner. */
   private findIdeas(event: StoredEvent, text: string, carrier: string, slices: readonly Slice[]) {
     if (this.ideas.length === 0) return;
     const haystack = normalizeIdea(text);
@@ -243,7 +248,7 @@ export class Sensors {
       return;
     const payload = event.payload as {
       threadId?: string;
-      pullRequest?: { key?: string; snapshot?: { state?: string } | null };
+      pullRequest?: { key?: string; snapshot?: { state?: string; mergedAt?: string } | null };
     } | null;
     const threadId = payload?.threadId;
     const key = payload?.pullRequest?.key;
@@ -251,8 +256,12 @@ export class Sensors {
     if (payload?.pullRequest?.snapshot?.state !== "merged") return;
     const merge = `${threadId}|${key}`;
     if (this.merges.has(merge)) return;
-    this.merges.set(merge, Date.parse(event.at));
-    this.count("merge", event, this.slicesOfThread(threadId));
+    // A merge counts at the time it merged, not when its snapshot was published
+    // again: a merge already out of the window is out of it however late it is told.
+    const mergedAt = Date.parse(payload?.pullRequest?.snapshot?.mergedAt ?? event.at);
+    const time = Number.isNaN(mergedAt) ? Date.parse(event.at) : mergedAt;
+    this.merges.set(merge, time);
+    this.count("merge", event, this.slicesOfThread(threadId), time);
   }
 
   /** Commits recorded on the `health` stream (D723). */
