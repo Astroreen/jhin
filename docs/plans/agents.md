@@ -1607,3 +1607,6 @@ Each workstream lists its PRs here as they merge.
   mission, Edit intent, Edit mission, Add slice and Edit slice through the
   `missions.*` and `slices.*` commands, assignees by their agent's title
   (D1081–D1085).
+- C3 #193: the civilization scenario in `e2e/tests/civilization.spec.ts`
+  on the fake runtime, through commands, with `e2e/tests/support/streams.ts`
+  (D1101–D1104); what it exposed went to Deferred.
