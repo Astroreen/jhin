@@ -875,8 +875,9 @@ with screenshots).
   and branch; one deleted with the rule off was the user's to decide, D255). A
   worktree is kept, saying why in T3's words, when it is gone, shared by
   several threads, a thread there runs ("thread is running or has pending
-  work") or has not had its first turn ("thread has not started yet"), a
-  terminal of the node works in it ("open terminal"), its branch
+  work") or, for the commit rules (`unchanged`, `onMerge`), has not had its
+  first turn yet ("thread has not started yet"), a terminal of the node
+  works in it ("open terminal"), its branch
   is no longer the thread's ("repository or branch changed"), or it has
   local changes as `keepWhen` counts them (T3's `git status
   --porcelain=v1` and, for any local files, ignored files other than
@@ -885,9 +886,12 @@ with screenshots).
   settled for `settledAfterDays`, has no commits beyond the default branch
   (`unchanged`, `merge-base --is-ancestor` with `origin/<default>` after a
   fetch, else the local default branch) or a linked pull request of that
-  branch merged into the default branch, or with its commits in it
-  (`onMerge`, T3's `storageCleanupPullRequestMerged`; T3 also compares the
-  pull request's head commit, which Jhin's records do not keep). Removal is `git worktree remove --force`, under the project's worktree
+  branch merged into the default branch with the worktree still at its head
+  commit, or with its commits in it (`onMerge`, T3's
+  `storageCleanupPullRequestMerged`; the head commit is the pull request's
+  `headSha`, which GitHub and GitLab tell; without it only the commits in
+  the default branch count, so work made after the merge never goes).
+  Removal is `git worktree remove --force`, under the project's worktree
   lock and after the threads there are read again (T3's
   `blockedSinceCheck`: one that came in or started a turn since keeps it); the
   branch and the thread stay, and a thread's next turn makes the worktree

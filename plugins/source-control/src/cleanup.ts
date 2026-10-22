@@ -111,8 +111,8 @@ export interface CleanupCandidate {
   }[];
   /** Its thread was deleted (it worked there alone). */
   readonly deleted: boolean;
-  /** The base branches of the linked pull requests of its branch that merged. */
-  readonly mergedInto: readonly string[];
+  /** The linked pull requests of its branch that merged: their base, and head commit if told. */
+  readonly mergedInto: readonly { readonly base: string; readonly headSha?: string }[];
 }
 
 /** T3's `localChangesReason`: what counts as local changes under `keepWhen`. */
@@ -211,9 +211,6 @@ export async function judge(
   if (candidate.threads.some((thread) => thread.running)) {
     return keep("thread is running or has pending work");
   }
-  if (candidate.threads.some((thread) => thread.started === false)) {
-    return keep("thread has not started yet");
-  }
   if (options.hasTerminal(candidate.path)) return keep("open terminal");
   const git = options.git(candidate.path);
   const current = (await git(["symbolic-ref", "--quiet", "HEAD"], { ok: [0, 1, 128] })).stdout
@@ -241,6 +238,14 @@ export async function judge(
   ) {
     return { remove: sentence(`settled for ${settledDays} days`) };
   }
+  // A fresh worktree has no commits of its own yet: the commit rules wait for its first
+  // turn, while inactivity still counts.
+  if (
+    (rules.unchanged || rules.onMerge) &&
+    candidate.threads.some((thread) => thread.started === false)
+  ) {
+    return keep("thread has not started yet");
+  }
   if (rules.unchanged || rules.onMerge) {
     // One fetch per project and sweep, however many of its worktrees are asked.
     const known = options.defaults?.get(candidate.projectPath);
@@ -256,10 +261,23 @@ export async function judge(
     if (integrated && rules.unchanged) {
       return { remove: sentence("no commits beyond the default branch") };
     }
-    // T3's storageCleanupPullRequestMerged: merged into the default branch, its commits
-    // there (a squash leaves them out, so the base must at least be the default branch).
-    if (rules.onMerge && candidate.mergedInto.some((into) => integrated || into === base.branch)) {
-      return { remove: sentence("pull request was merged") };
+    // T3's storageCleanupPullRequestMerged: its commits in the default branch, or (a squash
+    // leaves them out) merged into it with the worktree still at the merged head commit, so
+    // nothing made after the merge goes.
+    if (rules.onMerge && candidate.mergedInto.length > 0) {
+      const head = integrated
+        ? undefined
+        : (
+            await git(["rev-parse", "--verify", "--quiet", "HEAD"], { ok: [0, 1, 128] })
+          ).stdout.trim();
+      if (
+        integrated ||
+        candidate.mergedInto.some(
+          (pr) => pr.base === base.branch && pr.headSha !== undefined && pr.headSha === head,
+        )
+      ) {
+        return { remove: sentence("pull request was merged") };
+      }
     }
   }
   return keep(

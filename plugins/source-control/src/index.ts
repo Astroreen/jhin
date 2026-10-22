@@ -1272,7 +1272,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         deleted: false,
         mergedInto: linked.flatMap((link) =>
           link.snapshot?.state === "merged" && link.snapshot.headBranch === branch
-            ? [link.snapshot.baseBranch]
+            ? [
+                {
+                  base: link.snapshot.baseBranch,
+                  ...(link.snapshot.headSha === undefined
+                    ? {}
+                    : { headSha: link.snapshot.headSha }),
+                },
+              ]
             : [],
         ),
         threads: group.map((thread) => ({

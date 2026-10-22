@@ -245,16 +245,28 @@ describe("worktree cleanup decisions (D1129, T3's cleanWorktrees)", () => {
 
   it("removes a merged one only into the default branch, or with its commits there", async () => {
     const where = worktree(true);
-    expect(await decide(where, { onMerge: true }, { mergedInto: ["main"] })).toEqual({
-      remove: "Pull request was merged.",
-    });
-    expect(await decide(where, { onMerge: true }, { mergedInto: ["release"] })).toEqual({
+    const head = git(where.path, "rev-parse", "HEAD").trim();
+    // Squashed into the default branch at the worktree's own head commit.
+    expect(
+      await decide(where, { onMerge: true }, { mergedInto: [{ base: "main", headSha: head }] }),
+    ).toEqual({ remove: "Pull request was merged." });
+    // A commit made after the merge, or a head the forge did not tell: kept.
+    git(where.path, "commit", "--quiet", "--allow-empty", "-m", "after the merge");
+    expect(
+      await decide(where, { onMerge: true }, { mergedInto: [{ base: "main", headSha: head }] }),
+    ).toEqual({ keep: "Not merged." });
+    expect(await decide(where, { onMerge: true }, { mergedInto: [{ base: "main" }] })).toEqual({
       keep: "Not merged.",
     });
+    expect(
+      await decide(where, { onMerge: true }, { mergedInto: [{ base: "release", headSha: head }] }),
+    ).toEqual({ keep: "Not merged." });
     expect(await decide(where, { onMerge: true })).toEqual({ keep: "Not merged." });
     // Its commits in the default branch: any merged pull request of the branch will do.
     const integrated = worktree(false);
-    expect(await decide(integrated, { onMerge: true }, { mergedInto: ["release"] })).toEqual({
+    expect(
+      await decide(integrated, { onMerge: true }, { mergedInto: [{ base: "release" }] }),
+    ).toEqual({
       remove: "Pull request was merged.",
     });
   });
@@ -317,5 +329,13 @@ describe("worktree cleanup decisions (D1129, T3's cleanWorktrees)", () => {
         { threads: [{ id: "t", running: false, started: false, activeAt: NOW }] },
       ),
     ).toEqual({ keep: "Thread has not started yet." });
+    // Left without a first message for longer than the inactive days: it goes.
+    expect(
+      await decide(
+        worktree(false),
+        { afterDays: 3, unchanged: true },
+        { threads: [{ id: "t", running: false, started: false, activeAt: NOW - 5 * DAY }] },
+      ),
+    ).toEqual({ remove: "Inactive for 5 days." });
   });
 });

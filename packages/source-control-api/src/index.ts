@@ -123,6 +123,8 @@ export const PullRequest = z.object({
   /** When it merged or closed (ISO 8601), if it did. */
   mergedAt: z.string().optional(),
   closedAt: z.string().optional(),
+  /** The head branch's commit the forge knows, where it tells it. */
+  headSha: z.string().optional(),
   checks: PullRequestChecks,
 });
 export type PullRequest = z.output<typeof PullRequest>;
