@@ -677,7 +677,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Background terminals Codex keeps after a turn.
-- MCP elicitations, app access requests and MCP apps.
+- MCP apps; an MCP elicitation that needs a form filled in or a URL opened
+  (declined, as T3 does), and T3's "Always allow" (`acceptAlways`) and an
+  elicitation's own label for its session allowance (D1146).
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
   through them too: today only full access gets the writing permissions.
@@ -812,6 +814,19 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   (`completed`; `interrupted` and `shutdown` as interrupted; `errored` and
   `notFound` as failed with Codex's message), once; a subagent still open
   when the turn ends is interrupted with it (D877).
+- **D1146. MCP elicitations are app access approvals**, T3's
+  `CodexMcpElicitation.ts` and `ComposerPendingApprovalPanel`: Codex's
+  `mcpServer/elicitation/request` opens an approval (`agent.runtime@1.9`,
+  additive: `access: { app }`, the app asking, and `decisions`, those the
+  agent takes) named after the app as T3 finds it (its metadata, "Allow
+  ChatGPT to use X?", the connector, else the server), its message as the
+  detail. The banner says "App access approval", the app's name and the
+  message in body text ("App access request"), and its menu offers only the
+  decisions given: "Always allow this session" only when the form or
+  metadata offers a session allowance. The answer is T3's: the chosen
+  option of the form (`allow_session` for the session, `_meta.persist`), a
+  required field Jhin cannot fill or a URL to open declined without asking.
+  The fake agent's `/access <app>` asks one, for the end-to-end test.
 
 ### Deferred
 

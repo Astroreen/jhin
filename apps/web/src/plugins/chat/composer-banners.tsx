@@ -6,6 +6,7 @@
 // A chunk of its own, loaded with the first of them to show.
 import type {
   AgentResponse,
+  ApprovalDecision,
   AgentUsageLimits,
   AgentUsageWindow,
   UserQuestion,
@@ -73,8 +74,14 @@ export function ApprovalBanner(props: {
   busy: boolean;
 }) {
   if (props.request.request.kind !== "approval") return null;
-  const { tool, reason } = props.request.request;
-  const label = APPROVAL_LABELS[tool.kind] ?? "Permission approval";
+  const { tool, reason, access, decisions } = props.request.request;
+  // An app asking for access is T3's MCP elicitation (providers.md D1146).
+  const label =
+    access !== undefined
+      ? "App access approval"
+      : (APPROVAL_LABELS[tool.kind] ?? "Permission approval");
+  const offers = (decision: ApprovalDecision) =>
+    decisions === undefined || decisions.includes(decision);
   const decide = (decision: "accept" | "accept-for-session" | "decline" | "cancel") =>
     props.onRespond({ kind: "approval", decision });
   return (
@@ -92,17 +99,27 @@ export function ApprovalBanner(props: {
             >
               <span className="flex w-full min-w-0 items-center gap-2 text-2xs text-muted-foreground">
                 <span className="shrink-0 font-medium text-warning">{label}</span>
-                <span className="min-w-0 truncate">{tool.title}</span>
+                <span className="min-w-0 truncate">{access?.app ?? tool.title}</span>
                 {props.count > 1 ? (
                   <span className="ml-auto shrink-0 tabular-nums">1/{props.count}</span>
                 ) : null}
               </span>
-              <code
-                className="block max-h-20 w-full min-w-0 overflow-auto font-mono text-xs whitespace-pre-wrap text-foreground [scrollbar-width:thin]"
-                tabIndex={0}
-              >
-                {tool.detail ?? tool.name}
-              </code>
+              {access !== undefined ? (
+                <span
+                  aria-label="App access request"
+                  className="block max-h-20 w-full min-w-0 overflow-auto font-sans text-xs whitespace-pre-wrap wrap-break-word text-foreground [scrollbar-width:thin]"
+                  tabIndex={0}
+                >
+                  {tool.detail ?? label}
+                </span>
+              ) : (
+                <code
+                  className="block max-h-20 w-full min-w-0 overflow-auto font-mono text-xs whitespace-pre-wrap text-foreground [scrollbar-width:thin]"
+                  tabIndex={0}
+                >
+                  {tool.detail ?? tool.name}
+                </code>
+              )}
               {reason === undefined ? null : (
                 <span className="text-2xs text-muted-foreground">{reason}</span>
               )}
@@ -139,9 +156,11 @@ export function ApprovalBanner(props: {
                 <EllipsisIcon />
               </MenuTrigger>
               <MenuPopup align="end" side="top">
-                <MenuItem className="mb-1 last:mb-0" onClick={() => decide("accept-for-session")}>
-                  Always allow this session
-                </MenuItem>
+                {offers("accept-for-session") ? (
+                  <MenuItem className="mb-1 last:mb-0" onClick={() => decide("accept-for-session")}>
+                    Always allow this session
+                  </MenuItem>
+                ) : null}
                 <MenuItem className="mb-1 last:mb-0" onClick={() => decide("cancel")}>
                   Cancel
                 </MenuItem>

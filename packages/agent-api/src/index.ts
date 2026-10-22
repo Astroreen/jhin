@@ -161,6 +161,13 @@ export type AgentRequest =
       /** The tool call waiting for permission. */
       readonly tool: ToolCall;
       readonly reason?: string;
+      /**
+       * Since 1.9: an app asks for access (T3's MCP elicitation, providers.md D1146): `app`
+       * names it, the tool's `detail` is what it asks.
+       */
+      readonly access?: { readonly app: string };
+      /** Since 1.9: the decisions the agent takes; all of them when absent. */
+      readonly decisions?: readonly ApprovalDecision[];
     }
   | { readonly kind: "user-input"; readonly questions: readonly UserQuestion[] };
 
@@ -404,7 +411,7 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
