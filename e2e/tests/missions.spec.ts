@@ -140,3 +140,100 @@ test("D653–D656: mission → slice → the agent's thread, read only, kept cur
   await crumbs.getByRole("button", { name: "Missions in the client" }).click();
   await expect(missionView.getByRole("region", { name: "Wave 1" })).toBeVisible();
 });
+
+test("D1081–D1085: the owner plans a mission, its intent and slices from the view", async ({
+  page,
+}, info) => {
+  const client = node.client();
+  const path = Path.join(node.home, "lighthouse");
+  Fs.mkdirSync(path, { recursive: true });
+  const project = await client.call<{ id: string }>("projects.create", { path });
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page
+    .getByRole("group", { name: "Modes" })
+    .getByRole("button", { name: "Civilization" })
+    .click();
+  const section = page.getByRole("region", { name: "Missions" });
+  await section.getByRole("button", { name: "New mission" }).click();
+
+  let dialog = page.getByRole("dialog", { name: "New mission" });
+  await dialog.getByRole("combobox", { name: "Project" }).click();
+  await page.getByRole("option", { name: "lighthouse" }).click();
+  await dialog.getByRole("textbox", { name: "Title" }).fill("Light the coast");
+  await dialog.getByRole("textbox", { name: "Outcome" }).fill("Ships find the harbor at night.");
+  await dialog.getByRole("combobox", { name: "Status" }).click();
+  await page.getByRole("option", { name: "Active" }).click();
+  await dialog.getByRole("button", { name: "Create mission" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // Creating opens the mission; the view shows what the stream says.
+  const missionView = page.locator("[data-mission-view=mission]");
+  await expect(missionView.getByRole("heading", { name: "Light the coast" })).toBeVisible();
+  const intent = missionView.getByRole("region", { name: "Project intent" });
+  await intent.getByRole("button", { name: "Edit intent" }).click();
+  dialog = page.getByRole("dialog", { name: "Project intent" });
+  await dialog.getByRole("textbox", { name: "Intent" }).fill("Every ship comes home.");
+  await dialog.getByRole("button", { name: "Save intent" }).click();
+  await expect(intent.getByText("Every ship comes home.")).toBeVisible();
+
+  const waves = missionView.getByRole("region", { name: "Waves" });
+  await waves.getByRole("button", { name: "Add slice" }).click();
+  dialog = page.getByRole("dialog", { name: "New slice" });
+  await dialog.getByRole("textbox", { name: "Title" }).fill("Lamp");
+  await dialog.getByRole("textbox", { name: "Spec" }).fill("The lamp turns every 10 seconds.");
+  await dialog.getByRole("combobox", { name: "Assignee" }).click();
+  await page.getByRole("option", { name: "Builder" }).click();
+  await dialog.getByRole("button", { name: "Add slice" }).click();
+  await expect(dialog).toHaveCount(0);
+  const lamp = missionView
+    .getByRole("region", { name: "Wave 1" })
+    .getByRole("button", { name: "Lamp, Planned, Builder" });
+  await expect(lamp).toBeVisible();
+
+  await waves.getByRole("button", { name: "Add slice" }).click();
+  dialog = page.getByRole("dialog", { name: "New slice" });
+  await dialog.getByRole("textbox", { name: "Title" }).fill("Keeper");
+  await dialog.getByRole("textbox", { name: "Spec" }).fill("Someone winds the lamp.");
+  await dialog.getByRole("checkbox", { name: "Lamp" }).click();
+  await dialog.getByRole("button", { name: "Add slice" }).click();
+  await expect(
+    missionView
+      .getByRole("region", { name: "Wave 2" })
+      .getByRole("button", { name: "Keeper, Planned, Unassigned" }),
+  ).toBeVisible();
+
+  // A command's refusal stays in the dialog: a dependency must come in an earlier wave (D644).
+  await lamp.click();
+  const sliceView = page.locator("[data-mission-view=slice]");
+  await sliceView.getByRole("button", { name: "Edit slice" }).click();
+  dialog = page.getByRole("dialog", { name: "Edit slice" });
+  await dialog.getByRole("checkbox", { name: "Keeper" }).click();
+  await dialog.getByRole("button", { name: "Save slice" }).click();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await dialog.getByRole("checkbox", { name: "Keeper" }).click();
+  await dialog.getByRole("textbox", { name: "Spec" }).fill("The lamp turns every 5 seconds.");
+  await dialog.getByRole("combobox", { name: "Step" }).click();
+  await page.getByRole("option", { name: "build" }).click();
+  await dialog.getByRole("button", { name: "Save slice" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(sliceView.getByText("The lamp turns every 5 seconds.")).toBeVisible();
+  await page.screenshot({ path: info.outputPath("slice-edited.png") });
+
+  // Every edit went through the commands into the stream.
+  const missions = await client.call<{ id: string; title: string }[]>("missions.list", {
+    projectId: project.id,
+  });
+  expect(missions.map((mission) => mission.title)).toEqual(["Light the coast"]);
+  const slices = await client.call<
+    { title: string; spec: string; step?: string; assignee?: string }[]
+  >("slices.list", { missionId: missions[0]?.id });
+  expect(slices.find((slice) => slice.title === "Lamp")).toMatchObject({
+    spec: "The lamp turns every 5 seconds.",
+    step: "build",
+    assignee: expect.stringMatching(/\/agents\/builder$/),
+  });
+  await expect(
+    client.call<{ intent: string }>("missions.intent.get", { projectId: project.id }),
+  ).resolves.toMatchObject({ intent: "Every ship comes home." });
+});

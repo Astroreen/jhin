@@ -13,8 +13,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   assigneeLabel,
+  formatSteps,
+  parseSteps,
   placeOf,
   routeOf,
+  sameSteps,
   threadTarget,
   type MissionPlace,
 } from "../src/plugins/missions/route.ts";
@@ -89,6 +92,30 @@ describe("the mission view's route (D653)", () => {
     expect(assigneeLabel(undefined)).toBe("Unassigned");
     expect(assigneeLabel("jhin://n1/agents/builder")).toBe("builder");
     expect(assigneeLabel("jhin://n1/owner")).toBe("Owner");
+  });
+
+  it("D1082: an assignee shows by its agent's title when its node lists it", () => {
+    const titles = new Map([["jhin://n1/agents/builder", "Builder"]]);
+    expect(assigneeLabel("jhin://n1/agents/builder", titles)).toBe("Builder");
+    expect(assigneeLabel("jhin://n2/agents/builder", titles)).toBe("builder");
+  });
+
+  it("D1084: a process is edited as one line of step ids, keeping descriptions", () => {
+    const previous = [{ id: "build", description: "Make it work" }, { id: "test" }];
+    expect(formatSteps(previous)).toBe("build → test");
+    expect(parseSteps("spec → build, test", previous)).toEqual([
+      { id: "spec" },
+      { id: "build", description: "Make it work" },
+      { id: "test" },
+    ]);
+    expect(parseSteps("spec->build  test")).toEqual([
+      { id: "spec" },
+      { id: "build" },
+      { id: "test" },
+    ]);
+    expect(parseSteps("  ")).toEqual([]);
+    expect(sameSteps(parseSteps("build test", previous), previous)).toBe(true);
+    expect(sameSteps(parseSteps("test build"), previous)).toBe(false);
   });
 });
 
