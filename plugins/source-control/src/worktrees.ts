@@ -398,16 +398,21 @@ async function populateSubmodules(
         "--init",
         ...(mode === "recursive" ? ["--recursive"] : []),
       ],
-      { ok: [0, 1, 128], timeoutMs: WORKTREE_TIMEOUT_MS },
+      // Every exit comes back, so its whole stderr gives the reason (a thrown failure would
+      // carry only its first line, git's progress).
+      { ok: EVERY_EXIT, timeoutMs: WORKTREE_TIMEOUT_MS },
     );
   } catch (error) {
-    // Any failure (another exit code, a timeout) leaves the worktree, made already, in use.
+    // git could not run at all: the worktree, made already, stays in use.
     return ["warning", notCheckedOut((error as Error).message)];
   }
   if (updated.code === 0) return ["done", undefined];
   // Killed at the timeout, git leaves no reason of its own: its exit is said instead.
   return ["warning", notCheckedOut(updated.stderr, `git stopped with exit code ${updated.code}`)];
 }
+
+/** Every exit code a process can end with. */
+const EVERY_EXIT = Array.from({ length: 256 }, (_, code) => code);
 
 /** The warning of a failed submodule step: git's own reason, its credentials masked. */
 function notCheckedOut(output: string, otherwise = ""): string {
