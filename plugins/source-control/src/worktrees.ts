@@ -509,6 +509,8 @@ export async function hasCheckedOutSubmodules(git: Git, path: string): Promise<b
   );
   if (!exists) return false;
   const status = await git(["-C", path, "submodule", "status"], { ok: [0, 1, 128] });
+  // Unreadable counts as checked out: an unforced removal is refused, not risked.
+  if (status.code !== 0) return true;
   // A line starting with `-` is a submodule not checked out.
   return status.stdout.split("\n").some((line) => line !== "" && !line.startsWith("-"));
 }
