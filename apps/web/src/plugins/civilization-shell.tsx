@@ -47,8 +47,8 @@ export interface CivilizationShell {
 }
 
 /**
- * The sections of the Civilization sidebar (D749), each a slot the owning
- * workstream fills. Until it does, the section says who fills it.
+ * The sections of the Civilization sidebar (D749), each a slot a plugin
+ * fills. With no plugin filling it, the section says so (D1107).
  */
 const SIDEBAR_SECTIONS: readonly {
   readonly slot: string;
@@ -60,37 +60,37 @@ const SIDEBAR_SECTIONS: readonly {
     slot: "civilization.sidebar.projects",
     title: "Projects",
     icon: FolderKanbanIcon,
-    empty: "Projects run as civilizations, with their intent, arrive with missions (A3).",
+    empty: "No plugin shows projects here.",
   },
   {
     slot: "civilization.sidebar.inbox",
     title: "Inbox",
     icon: InboxIcon,
-    empty: "What agents ask you lands here once messaging (A2) does.",
+    empty: "No plugin shows your inbox here.",
   },
   {
     slot: "civilization.sidebar.missions",
     title: "Missions",
     icon: TargetIcon,
-    empty: "Missions and their slices arrive with A3.",
+    empty: "No plugin shows missions here.",
   },
   {
     slot: "civilization.sidebar.teams",
     title: "Teams",
     icon: UsersIcon,
-    empty: "Teams arrive with A5.",
+    empty: "No plugin shows teams here.",
   },
   {
     slot: "civilization.sidebar.agents",
     title: "Agents",
     icon: BotIcon,
-    empty: "The roster of agents arrives with A1.",
+    empty: "No plugin shows agents here.",
   },
   {
     slot: "civilization.sidebar.health",
     title: "Health",
     icon: HeartPulseIcon,
-    empty: "Health warnings arrive with A7.",
+    empty: "No plugin shows health here.",
   },
 ];
 
@@ -217,7 +217,7 @@ function Lead() {
   if (filled) return <Slot name="civilization.lead" />;
   return (
     <MainEmpty
-      text="You steer a civilization by talking to its lead. The conversation arrives with agents (A1) and their messages (A2); teams (A5) name the lead."
+      text="You steer a civilization by talking to its lead. No plugin shows that conversation here."
       title="No lead yet"
     />
   );

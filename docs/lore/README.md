@@ -15,6 +15,7 @@ is enough: "this is a moonbase" means the whole story below.
 | [bureaucracy](bureaucracy.md)                     | checks that prove checks; finishing the process became the goal       |
 | [just following orders](just-following-orders.md) | an approval from someone who lacked the context is not an approval    |
 | [mind virus](mind-viruses.md)                     | a wrong idea written down spreads to every agent that reads it        |
+| [own homework](own-homework.md)                   | a review whose checklist the author wrote finds only what it foresaw  |
 
 Most of these come from OpenRig's experience
 ([`../research/openrig.md`](../research/openrig.md)). Jhin's own stories go

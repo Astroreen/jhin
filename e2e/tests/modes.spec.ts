@@ -50,6 +50,12 @@ test("D742–D750: switches to Civilization mode and back, each at its last plac
   for (const section of ["Projects", "Inbox", "Missions", "Teams", "Agents", "Health"]) {
     await expect(page.getByRole("region", { name: section })).toBeVisible();
   }
+  // A section no plugin fills says so, not which workstream would (D1107);
+  // the others show their plugin's own state.
+  await expect(
+    page.getByRole("region", { name: "Projects" }).getByText("No plugin shows projects here."),
+  ).toBeVisible();
+  await expect(page.getByText(/arrives? with|No plugin shows missions/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Start a thread" })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("civilization-mode.png") });
 
