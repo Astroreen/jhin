@@ -1388,7 +1388,11 @@ C3 decisions:
   came up `defined` and its first message failed with `PROJECT_NOT_FOUND`,
   and its files in that project were not read (the C3 run). A folder that
   does not exist is the member's error (`PROJECT_PATH_INVALID`); an id the
-  node does not know stays the agent's `unavailable` (D608).
+  node does not know stays the agent's `unavailable` (D608). The project is
+  added as the caller, so it takes the caller's own `projects.write`: putting
+  a team up (D690) grants no more than before, and a caller without it gets
+  the member's `PERMISSION_DENIED`. Files the team keeps in that project
+  (`dir`, D686) are read once it is there.
 
 Where C3 stands: the scenario (its first bullet) runs on commands, with every
 part the bullet names. Left: its steps through C1's console (the

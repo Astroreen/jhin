@@ -207,14 +207,28 @@ export default definePlugin({
      * A folder that does not exist fails as `projects.create` does; an id this
      * node does not know is left to the agent's status (`unavailable`, D608).
      */
-    const ensureHome = async (project: string | undefined): Promise<void> => {
+    const ensureHome = async (
+      project: string | undefined,
+      invocation: Invocation | undefined,
+    ): Promise<void> => {
       if (project === undefined) return;
       const expanded = expandHome(project);
       if (!Path.isAbsolute(expanded)) return;
       const path = Path.resolve(expanded);
       const projects = await run<ProjectInfo[]>("projects.list", {});
       if (projects.some((item) => item.id === project || Path.resolve(item.path) === path)) return;
-      await run("projects.create", { path });
+      // As the caller: adding a project takes its own grant (projects.write),
+      // which putting a team up does not give.
+      await context.commands.execute(
+        "projects.create",
+        { path },
+        invocation?.caller === undefined
+          ? {}
+          : {
+              caller: invocation.caller,
+              ...(invocation.traceId === undefined ? {} : { traceId: invocation.traceId }),
+            },
+      );
     };
 
     /** The folder of a team's files: `dir` of the spec, else its bundle's (D686). */
@@ -336,12 +350,15 @@ export default definePlugin({
       return result;
     };
 
-    const join = (input: {
-      roster: TeamRoster;
-      member: string;
-      definition: AgentDefinition;
-      files: TeamFile[];
-    }) =>
+    const join = (
+      input: {
+        roster: TeamRoster;
+        member: string;
+        definition: AgentDefinition;
+        files: TeamFile[];
+      },
+      invocation?: Invocation,
+    ) =>
       serial(async () => {
         const { roster, member, definition, files } = input;
         const agentId = teamAgentId(roster.teamId, member);
@@ -362,7 +379,7 @@ export default definePlugin({
             { agentId, teamId: roster.teamId },
           );
         }
-        await ensureHome(definition.project);
+        await ensureHome(definition.project, invocation);
         let result: "defined" | "updated" | "unchanged";
         if (existing === undefined) {
           await run("agents.define", { agentId, ...definition });
@@ -457,10 +474,12 @@ export default definePlugin({
       handler: async ({ teamId }, invocation) => {
         const spec = specOrThrow(teamId);
         // Its files may live in the home project (D686). A folder that is not
-        // there fails each member's join below, with its reason; joins run one
+        // there, or a caller that may not add it, fails each member's join
+        // below, with its reason; joins run one
         // at a time, and so does this, so a project is never added twice.
-        await serial(() => ensureHome(spec.project)).catch((error: unknown) => {
-          if ((error as { code?: unknown }).code !== "PROJECT_PATH_INVALID") throw error;
+        await serial(() => ensureHome(spec.project, invocation)).catch((error: unknown) => {
+          const code = (error as { code?: unknown }).code;
+          if (code !== "PROJECT_PATH_INVALID" && code !== "PERMISSION_DENIED") throw error;
         });
         const files = readTeamFiles(await filesDir(teamId, spec));
         const culture = spec.culture ?? files.culture;
@@ -479,7 +498,7 @@ export default definePlugin({
           try {
             const joined =
               node === nodeId
-                ? await join(input)
+                ? await join(input, invocation)
                 : await remote<Awaited<ReturnType<typeof join>>>(
                     node,
                     "teams.join",
@@ -550,7 +569,7 @@ export default definePlugin({
         "Puts one member of a team on this node, as teams.up does for each: defines or updates its agent, resumes it, writes the team's files it lacks and keeps the roster",
       ...TeamCommands["teams.join"],
       permissions: WRITE_PERMISSIONS,
-      handler: (input) => join(input),
+      handler: (input, invocation) => join(input, invocation),
     });
 
     context.commands.register({

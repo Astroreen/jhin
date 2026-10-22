@@ -245,10 +245,16 @@ describe("teams (A5)", () => {
     // Its files live in the project it names (D686): read once the project is added.
     Fs.mkdirSync(Path.join(home, "team"));
     Fs.writeFileSync(Path.join(home, "team", "culture.md"), "We measure twice.");
-    const { client } = await node({
+    const other = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-other-"));
+    stops.push(async () => {
+      for (const dir of [home, other]) Fs.rmSync(dir, { recursive: true, force: true });
+    });
+    const { client, kernel } = await node({
       teams: {
         workshop: { lead: "lead", project: home, dir: "team", agents: { lead } },
         ghost: { lead: "lead", project: Path.join(home, "missing"), agents: { lead } },
+        elsewhere: { lead: "lead", project: other, agents: { lead } },
+        unknown: { lead: "lead", project: "no-such-project", agents: { lead } },
       },
     });
     const up = await client.call<Up>("teams.up", { teamId: "workshop" });
@@ -270,6 +276,22 @@ describe("teams (A5)", () => {
         (project) => project.path === home,
       ),
     ).toHaveLength(1);
+
+    // Adding a project takes the caller's own grant: putting a team up gives none.
+    const narrow = (await kernel.commands.execute(
+      "teams.up",
+      { teamId: "elsewhere" },
+      { caller: { id: "ops", permissions: ["teams.write", "agents.write"] } },
+    )) as Up;
+    expect(narrow.members).toEqual([
+      expect.objectContaining({ error: expect.objectContaining({ code: "PERMISSION_DENIED" }) }),
+    ]);
+    // A project id the node does not know is left to the agent's status (D608).
+    await client.call<Up>("teams.up", { teamId: "unknown" });
+    expect(await client.call<AgentRecord>("agents.get", { agentId: "unknown-lead" })).toMatchObject(
+      { status: "unavailable" },
+    );
+    expect(await client.call<unknown[]>("projects.list", {})).toHaveLength(projects.length);
 
     const ghost = await client.call<Up>("teams.up", { teamId: "ghost" });
     expect(ghost.members).toEqual([
