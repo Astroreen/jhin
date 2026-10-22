@@ -1,6 +1,12 @@
 import * as Fs from "node:fs";
 
-import { ThreadEvents, threadStream } from "@jhin/agent-api";
+import {
+  MESSAGES_STREAM,
+  MessageEvents,
+  ThreadEvents,
+  threadAddress,
+  threadStream,
+} from "@jhin/agent-api";
 import { MISSIONS_STREAM, missionProgress, type Mission, type Slice } from "@jhin/missions-api";
 import type { RpcClient } from "@jhin/rpc";
 import type { StoredEvent } from "@jhin/storage-api";
@@ -213,12 +219,18 @@ describe("missions.orchestrate (D706, D707)", () => {
     const paint = await slice({ title: "Paint", assignee: BUILDER, dependsOn: [walls.id] });
     const missionsFeed = watch(client, MISSIONS_STREAM);
     const workflows = watch(client, "orchestration");
+    const messages = watch(client, MESSAGES_STREAM);
 
     const first = await client.call<{ workflowId: string; existing: boolean }>(
       "missions.orchestrate",
       { missionId: mission.id, parentThreadId: lead.id },
     );
     expect(first).toMatchObject({ name: "mission", status: "running", existing: false });
+    // The owner's token names the lead's thread: the handoff comes from it (D1106).
+    const handoff = await messages.untilMatch(
+      (event) => event.type === MessageEvents.delivered && payloadOf(event).message.to === BUILDER,
+    );
+    expect(payloadOf(handoff).message.from).toBe(threadAddress("node-a", lead.id));
     await sliceBecomes(missionsFeed, walls.id, "active");
     await sliceBecomes(missionsFeed, roof.id, "active");
     expect(
@@ -276,6 +288,7 @@ describe("missions.orchestrate (D706, D707)", () => {
     const door = await slice({ title: "Door" });
     const workflows = watch(client, "orchestration");
     const missionsFeed = watch(client, MISSIONS_STREAM);
+    const messages = watch(client, MESSAGES_STREAM);
     const started = (await kernel.commands.execute(
       "missions.orchestrate",
       { missionId: mission.id },
@@ -292,6 +305,31 @@ describe("missions.orchestrate (D706, D707)", () => {
     });
     // The handoff ran as the agent, not as the node.
     expect(payloadOf(await sliceBecomes(missionsFeed, walls.id, "active")).by).toBe(AGENT.id);
+    // And its message comes from the lead's thread, not from the owner (D1106).
+    const handoff = await messages.untilMatch(
+      (event) => event.type === MessageEvents.delivered && payloadOf(event).message.to === BUILDER,
+    );
+    expect(payloadOf(handoff).message.from).toBe(threadAddress("node-a", lead.id));
+  });
+
+  it("acts from a named thread only for a caller that may act for anyone (D1106)", async () => {
+    const { kernel, client, mission, slice } = await node();
+    const lead = await client.call<{ id: string }>("threads.create", {
+      title: "Lead",
+      runtimeMode: "full-access",
+    });
+    await slice({ title: "Walls", assignee: BUILDER });
+    const messages = watch(client, MESSAGES_STREAM);
+    await kernel.commands.execute(
+      "missions.orchestrate",
+      { missionId: mission.id, parentThreadId: lead.id },
+      { caller: { id: "ops", permissions: [...AGENT.permissions] } },
+    );
+    const handoff = await messages.untilMatch(
+      (event) => event.type === MessageEvents.delivered && payloadOf(event).message.to === BUILDER,
+    );
+    // Not the lead's thread: a scoped caller without a thread sends as the owner (D622).
+    expect(payloadOf(handoff).message.from).toBe(OWNER);
   });
 
   it("needs a thread to run from and an open mission", async () => {
