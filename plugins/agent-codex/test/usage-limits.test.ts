@@ -206,6 +206,39 @@ describe("jhin.agent-codex: usage limits (D1142)", () => {
     expect(payload!["failure"]).toEqual({ class: "usage_limit" });
   });
 
+  it("reads them again once a window Codex updated has reset", async () => {
+    const PAST = Math.floor(Date.parse("2020-01-01T00:00:00Z") / 1000);
+    const fake = fakeCodex({
+      rateLimits: plusLimits,
+      turns: [
+        [
+          {
+            notify: "account/rateLimits/updated",
+            params: {
+              rateLimits: {
+                limitId: "codex",
+                primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: PAST },
+              },
+            },
+          },
+          { complete: "completed" },
+        ],
+      ],
+    });
+    const { client } = await node(fake);
+    await client.call("agents.usage-limits", { agentId: CODEX_AGENT_ID });
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const done = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await done;
+    // The update's session window has reset since: the next answer is a new read, not it.
+    const { usageLimits } = await client.call<{
+      usageLimits: { windows: { id: string; usedPercent: number }[] };
+    }>("agents.usage-limits", { agentId: CODEX_AGENT_ID });
+    expect(fake.received("account/rateLimits/read")).toHaveLength(2);
+    expect(usageLimits.windows[0]).toMatchObject({ id: "primary", usedPercent: 42.4 });
+  });
+
   it("follows T3's window rules", () => {
     // Free and Go plans have one monthly allowance when Codex names no duration.
     expect(codexRateLimitsToWindows({ planType: "free", primary: { usedPercent: 5 } })).toEqual([

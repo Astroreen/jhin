@@ -247,6 +247,8 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
     if (!status.available) {
       return { status: { ...status, ...(version === undefined ? {} : { version }) } };
     }
+    // Read beside the models, as T3's probe does (`Effect.all`): a slow read holds up neither.
+    const usageRead = readUsageLimits(running, account);
     const listed: ListedModel[] = [];
     let cursor: string | undefined;
     do {
@@ -261,7 +263,7 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
       cursor = page?.nextCursor ?? undefined;
     } while (cursor !== undefined);
     const preferred = preferredDefault(listed);
-    const usage = await readUsageLimits(running, account);
+    const usage = await usageRead;
     return {
       ...usage,
       status: { ...status, ...(version === undefined ? {} : { version }) },
@@ -486,15 +488,27 @@ export function createCodexRuntime(options: {
   const rateLimits = () => liveRateLimits?.snapshot ?? current()?.rateLimits;
   /** The usage limits as Codex last reported them (D1142): the probe's, then its updates. */
   const usageLimits = async (): Promise<AgentUsageLimits | undefined> => {
-    // `/usage-limits` reads them again when the last read is older than a minute or failed,
-    // instead of answering from the status cache (D1142).
+    // `/usage-limits` reads them again when what it knows (the last read or update, the newer)
+    // is older than a minute, the read failed, or a window it shows has reset since (D1142),
+    // instead of answering from the status cache.
     const key = probeKey();
     const last = probed?.key === key ? probed : undefined;
+    const now = Date.now();
+    const known = Math.max(
+      last?.at ?? 0,
+      liveRateLimits === undefined ? 0 : Date.parse(liveRateLimits.at),
+    );
+    const shown =
+      liveRateLimits === undefined
+        ? (last?.probe.usageLimits?.windows ?? [])
+        : codexRateLimitsToWindows(liveRateLimits.snapshot);
     const stale =
       last === undefined ||
-      Date.now() - last.at >= USAGE_TTL_MS ||
-      last.probe.usageLimits?.unavailable?.reason === "probeFailed";
-    if (stale && liveRateLimits === undefined) await refresh(key).catch(() => undefined);
+      now - known >= USAGE_TTL_MS ||
+      last.probe.usageLimits?.unavailable?.reason === "probeFailed" ||
+      shown.some((window) => window.resetsAt !== undefined && Date.parse(window.resetsAt) <= now);
+    // A new read drops the updates it is newer than (`refresh`).
+    if (stale) await refresh(key).catch(() => undefined);
     else await status();
     const read = current()?.usageLimits;
     if (liveRateLimits === undefined) return read;
