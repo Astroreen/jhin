@@ -26,17 +26,20 @@ export function createWatchedWork(
     for (const listener of Array.from(listeners)) listener();
   };
   const watchedNow = (target: NodeTarget) =>
-    Array.from(store.view(target).links)
-      .flatMap(([threadId, list]) =>
-        list.filter((link) => link.watch !== undefined).map((link) => `${threadId} ${link.key}`),
-      )
-      .toSorted()
-      .join("\n");
+    JSON.stringify(
+      Array.from(store.view(target).links)
+        .flatMap(([threadId, list]) =>
+          list
+            .filter((link) => link.watch !== undefined)
+            .map((link) => JSON.stringify([threadId, link.key])),
+        )
+        .toSorted(),
+    );
   const notify = (target: NodeTarget) => {
     const key = targetKey(target);
     const now = watchedNow(target);
     // A node first followed with nothing watched tells nothing: nothing changed for its threads.
-    if ((watchedOf.get(key) ?? "") === now) return;
+    if ((watchedOf.get(key) ?? "[]") === now) return;
     watchedOf.set(key, now);
     tell();
   };
