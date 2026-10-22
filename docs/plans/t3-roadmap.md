@@ -230,7 +230,7 @@ D740–D759, inside `agents.md`'s D600–D760; they take D921–D940, D941–D96
 and D961–D980. W20 took the
 next block, D981–D1000. `agents.md`'s phase 2 takes D1061–D1120 (C1–C3).
 A workstream that needs more numbers takes the next free block of 20 after
-D1120 and writes it here.
+D1220 and writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
@@ -345,3 +345,40 @@ D1120 and writes it here.
   made before its chunk loaded, both fixed in the product. The host.test
   watcher flake is in `t3-parity.md` Deferred (no failing log left; not
   the same cause).
+
+## Round 3
+
+Round 2 left about 60 T3 features in the plans' Deferred lists. Round 3
+takes the ones a T3 Code user notices most; each workstream moves what it
+finishes out of the Deferred lists and leaves the rest there.
+
+| Id  | Workstream                                    | Plans                              | Decisions   |
+| --- | --------------------------------------------- | ---------------------------------- | ----------- |
+| W30 | Worktrees and pull requests                   | `source-control.md`                | D1121–D1140 |
+| W31 | Codex parity and Claude Code's slash commands | `providers.md`                     | D1141–D1160 |
+| W32 | Subagents in the UI and the sidebar           | `orchestration.md`, `t3-parity.md` | D1161–D1180 |
+| W33 | Pairing and remote access                     | `security.md`                      | D1181–D1200 |
+| W34 | Preview, devices and the desktop app          | `preview.md`, `desktop.md`         | D1201–D1220 |
+
+- **W30:** worktree setup scripts and their progress card, branch naming
+  settings, cleanup rules, submodules, "Roll back" from an item inspector;
+  the right panel of a thread's pull requests, watching on non-GitHub forges,
+  the notification on wake and the sidebar's "Waiting" state, review comments
+  as chips, settling a thread when its pull request merges; the diff panel's
+  file preview and pop-out mode.
+- **W31:** Claude Code's slash commands and skills in the composer; Codex's
+  subagent threads, usage limits with their reset time, ChatGPT sign-in,
+  MCP elicitations, `/goal`, fork and rollback; OpenCode's fork, rollback
+  and pending requests after a reconnect.
+- **W32:** the "N subagents" row, the subagent hover card, background
+  subagent work, stopping a provider subagent from the panel, "Lineage · N
+  running"; the sidebar's "Keep threads with a PR", per-project settle
+  settings and "Regenerate titles (N)"; `bindToCurrentThread` and the task
+  editor's model options and base-branch picker.
+- **W33:** `jhin pair` with a terminal QR code (D425), pairing links for a
+  `jhin client` page, device metadata and live updates in the authorized
+  clients list, Tailscale Serve, MCP OAuth. T3 Connect stays out of scope.
+- **W34:** the floating mini player, touch input and file uploads, cookie
+  import into a profile, the device hub; desktop auto-restart of a crashed
+  node with backoff, more release builds, preview and devices inside the
+  desktop app.
