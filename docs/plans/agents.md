@@ -1005,11 +1005,11 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   (`AGENT_PERMISSIONS`), so the analyst can open the drill-down itself.
 - **D726. Who has the context.** In order: the agent address configured for
   the project in `jhin.health.analysts` (or for `*`; an address that is no
-  agent's, such as the owner's, is skipped with a warning in the log); the team's lead once A5
-  lands (the seam: a team group and its lead replace the next step); else
-  the agent assigned the most of the group's slices that are not dropped, a
-  tie going to the first address in order. A node-wide warning without a
-  configured analyst has none. Never a random agent.
+  agent's, such as the owner's, is skipped with a warning in the log); else
+  the lead of the team (A5, `teams.list`) holding most of the group's slices
+  that are not dropped, by their assignees; else the agent assigned the most
+  of them, a tie going to the first address in order. A node-wide warning
+  without a configured analyst has none. Never a random agent.
 - **D727. A mind virus is a corrected idea coming back.** The owner names a
   wrong idea by a phrase when correcting it (`health.ideas.correct { idea,
   correction?, projectId? }`), the vaccine; the project must exist, the same
@@ -1236,8 +1236,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
 - A5: the conversation with the lead in `civilization.lead`: the team page
   sends the lead a message (D691); reading its answers is the lead's
   generation, read through A1's agent page.
-- A7: the team group (D722, D726): once A5 lands, a team counts what its
-  agents' messages and slices count, and its lead is the analyst.
+- A7: the team group (D722): a team counting what its agents' messages and
+  slices count, beside missions and projects; its lead is already the
+  analyst (D726).
 - A7: health for a mesh: each node counts its own streams; a team across
   nodes needs the counts of every node, through `mesh.call` or shared
   streams.

@@ -103,6 +103,8 @@ export default definePlugin({
     const sensors = new Sensors();
     /** Health's asks delivered on this node, by message id, until their first reply or the dismissal of their warning. */
     const asksDelivered = new Map<string, { warningId: string; to: string }>();
+    /** Where each warning's dismissal stands in the `health` stream. */
+    const dismissedAtHead = new Map<string, number>();
     const applyHealth = (events: readonly StoredEvent[]) => {
       for (const event of events) {
         if (event.stream !== HEALTH_STREAM || event.sequence <= healthHead) continue;
@@ -119,6 +121,7 @@ export default definePlugin({
         } else if (event.type === HealthEvents.warningDismissed) {
           // A dismissed warning's asks wait for no reply any more.
           const warningId = (event.payload as { warningId?: string } | null)?.warningId;
+          if (warningId !== undefined) dismissedAtHead.set(warningId, event.sequence);
           for (const [messageId, ask] of asksDelivered) {
             if (ask.warningId === warningId) asksDelivered.delete(messageId);
           }
@@ -280,7 +283,7 @@ export default definePlugin({
      * Raises what is new: one open warning per detector and subject (D724);
      * after a dismissal the sensors count only what came since (`evaluate`).
      */
-    const raise = async (finding: Finding, foundAt: number) => {
+    const raise = async (finding: Finding, evaluatedAt: number) => {
       const warning: Warning = {
         warningId: Crypto.randomUUID(),
         ...finding,
@@ -302,11 +305,12 @@ export default definePlugin({
             undefined,
           );
         if (earlier?.status === "open") return undefined;
-        // Found before a dismissal of its subject: it counted what the dismissal
-        // set aside, so the next run decides again.
-        if (earlier?.dismissedAt !== undefined && Date.parse(earlier.dismissedAt) >= foundAt) {
-          return undefined;
-        }
+        // Found before a dismissal of its subject was recorded: it counted what
+        // the dismissal set aside, so the run after the dismissal decides again.
+        // Positions in the stream, not clock time: one millisecond may hold both.
+        const dismissedAt =
+          earlier === undefined ? undefined : dismissedAtHead.get(earlier.warningId);
+        if (dismissedAt !== undefined && dismissedAt > evaluatedAt) return undefined;
         raised = true;
         return { type: HealthEvents.warningRaised, payload: { warning } };
       });
@@ -320,7 +324,9 @@ export default definePlugin({
      * project, else the team's lead (A5, not landed: the seam), else the agent
      * assigned most of the group's open and done slices. Never a random agent.
      */
-    const analystOf = (warning: Warning): { address: string; reason: string } | undefined => {
+    const analystOf = async (
+      warning: Warning,
+    ): Promise<{ address: string; reason: string } | undefined> => {
       const { analysts } = config();
       const projectId =
         warning.group.kind === "project" || warning.group.kind === "mission"
@@ -346,9 +352,38 @@ export default definePlugin({
           continue;
         tally.set(slice.assignee, (tally.get(slice.assignee) ?? 0) + 1);
       }
-      // Most slices first; a tie goes to the address first in order, never to chance.
+      if (tally.size === 0) return undefined;
+      // The team's lead (D726): of the teams the group's assignees belong to, the
+      // one holding most of the group's slices, when teams are offered (A5).
+      const lead = await teamLead(tally);
+      if (lead !== undefined) return { address: lead, reason: "team-lead" };
+      // Else the agent assigned most slices; a tie goes to the address first in order.
       const [best] = [...tally].toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
       return best === undefined ? undefined : { address: best[0], reason: "assignee" };
+    };
+    /** The lead of the team holding most of the tallied assignees' slices, if any. */
+    const teamLead = async (tally: ReadonlyMap<string, number>): Promise<string | undefined> => {
+      if (!context.commands.list().some((command) => command.name === "teams.list")) {
+        return undefined;
+      }
+      let teams: { teamId: string; members: { address: string; lead: boolean }[] }[];
+      try {
+        ({ teams } = (await context.commands.execute("teams.list", {})) as { teams: typeof teams });
+      } catch (error) {
+        context.log.warn("teams could not be read for a warning's analyst", {
+          error: String(error),
+        });
+        return undefined;
+      }
+      const ranked = teams
+        .map((team) => ({
+          team,
+          slices: team.members.reduce((sum, member) => sum + (tally.get(member.address) ?? 0), 0),
+          lead: team.members.find((member) => member.lead)?.address,
+        }))
+        .filter((entry) => entry.slices > 0 && entry.lead !== undefined)
+        .toSorted((a, b) => b.slices - a.slices || a.team.teamId.localeCompare(b.team.teamId));
+      return ranked[0]?.lead;
     };
 
     const question = (warning: Warning) =>
@@ -398,7 +433,7 @@ export default definePlugin({
       await asksReady;
       // Health turned off asks nobody, also for warnings raised before.
       if (!config().enabled) return;
-      const analyst = analystOf(warning);
+      const analyst = await analystOf(warning);
       let analysis: Analysis;
       if (analyst === undefined) {
         analysis = { status: "none", at: now() };
@@ -474,9 +509,10 @@ export default definePlugin({
       if (!current.enabled || !active) return;
       // A linked thread that could not be read is tried again on every run.
       followThreads();
-      const foundAt = Date.now();
-      for (const finding of sensors.evaluate(current, health, foundAt)) {
-        await raise(finding, foundAt);
+      // The health stream's head the findings were made against.
+      const evaluatedAt = healthHead;
+      for (const finding of sensors.evaluate(current, health, Date.now())) {
+        await raise(finding, evaluatedAt);
       }
     };
     function evaluateSoon() {
@@ -606,7 +642,11 @@ export default definePlugin({
           void analyse(warning);
           continue;
         }
-        const analyst = analystOf(warning);
+        // Whom that ask went to, as it was delivered.
+        const to = [...asksDelivered.values()].find(
+          (ask) => ask.warningId === warning.warningId,
+        )?.to;
+        const analyst = to === undefined ? undefined : { address: to, reason: "asked" };
         void append(HealthEvents.warningAnalysed, {
           warningId: warning.warningId,
           analysis: {

@@ -53,6 +53,12 @@ const OWNER = "jhin://node-a/owner";
 const SILENT = "jhin://node-a/agents/silent";
 const BROKEN = "jhin://node-a/agents/broken";
 const ONCE = "jhin://node-a/agents/once";
+const LEAD = "jhin://node-a/agents/lead";
+/** What the test double of `teams.list` answers; reset after each test. */
+let testTeams: unknown[] = [];
+afterEach(() => {
+  testTeams = [];
+});
 const PENDING = "jhin://node-a/agents/pending";
 /** Who waits for the next ask health makes: a fact, not a wait. */
 const askWaiters: ((ask: Asked) => void)[] = [];
@@ -108,6 +114,14 @@ async function start(
                 .tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY)!
                 .guard(MESSAGES_STREAM, ["agents.read"]),
             );
+            // Teams as jhin.teams reports them (A5); none unless a test names some.
+            context.commands.register({
+              name: "teams.list",
+              description: "The teams a test names",
+              input: z.object({}),
+              output: z.object({ head: z.number(), teams: z.array(z.unknown()) }),
+              handler: () => ({ head: 0, teams: testTeams }),
+            });
             context.commands.register({
               name: "agents.ask",
               description: "Answers as the analyst would",
@@ -816,6 +830,26 @@ describe("jhin.health", () => {
     });
     expect(((await raised) as { warning: Warning }).warning.measures).toMatchObject({
       ceremony: 2,
+    });
+  });
+
+  it("asks the lead of the team the mission's assignees belong to", async () => {
+    testTeams = [
+      {
+        teamId: "workshop",
+        members: [
+          { address: BUILDER, lead: false },
+          { address: LEAD, lead: true },
+        ],
+      },
+    ];
+    const { log, deliver } = await node({ ceremony: { ratio: 1, minCeremony: 1 } });
+    const analysed = nextAppended(log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await deliver(OWNER, BUILDER, "status?", "t1");
+    expect(((await analysed).payload as { analysis: Analysis }).analysis).toMatchObject({
+      status: "answered",
+      analyst: LEAD,
+      reason: "team-lead",
     });
   });
 });
