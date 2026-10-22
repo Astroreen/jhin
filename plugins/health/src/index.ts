@@ -401,7 +401,11 @@ export default definePlugin({
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
       await evaluating;
+      // Commits being counted finish before the plugin goes (git calls are bounded).
+      await Promise.all(countings);
     });
+    /** Commit counts under way, finished on deactivation. */
+    const countings = new Set<Promise<void>>();
 
     /**
      * A message the analyst of a warning sent in reply to health's ask about
@@ -561,9 +565,12 @@ export default definePlugin({
     context.subscriptions.add(
       context.hooks.before<TurnEndHookInput>(ThreadHooks.turnEnd, (input) => {
         // Counted off the turn's path: the turn ends at once, whatever git does.
-        void countCommits(input).catch((error: unknown) =>
-          context.log.warn("commits could not be counted", { error: String(error) }),
-        );
+        const counting = countCommits(input)
+          .catch((error: unknown) =>
+            context.log.warn("commits could not be counted", { error: String(error) }),
+          )
+          .finally(() => countings.delete(counting));
+        countings.add(counting);
         return input;
       }),
     );

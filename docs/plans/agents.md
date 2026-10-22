@@ -923,7 +923,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   the missions of the slices whose thread it is on; a message without one
   counts for one slice: the open slice of its recipient, else of its sender,
   changed last (one message is not multiplied over an agent's missions);
-  every event counts for the node. A project counts what its missions count.
+  every event counts for the node. A slice becoming done again after it was reopened counts again: the
+  rework is progress, while a proof recorded again on a done slice is a
+  proof edit, ceremony. A project counts what its missions count.
   Attribution is the missions as they were when the event happened: on start
   the streams are replayed merged in time order, so a restart counts as the
   live node did. `health.status` returns the counts per group and per kind
@@ -1232,6 +1234,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
   answer that comes later stays in the analyst's thread, and the warning is
   not asked again.
+- A7: the commits of a thread's first turn, made before a slice links the
+  thread: the turn-start hook records a start only for linked threads
+  (D723).
 - A7: commits made outside a turn (by hand, by a workflow) and pull requests
   merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's
