@@ -277,5 +277,7 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
       name: /^Mission Doghouse.*Ceremony outgrows progress/,
     }),
   ).toBeVisible();
-  await page.screenshot({ path: info.outputPath("civilization.png") });
+  const shot = info.outputPath("civilization.png");
+  await page.screenshot({ path: shot });
+  await info.attach("civilization", { path: shot, contentType: "image/png" });
 });
