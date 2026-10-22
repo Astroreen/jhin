@@ -50,9 +50,10 @@ describe("jhin.source-control: settling a thread on its linked pull requests (D1
 
     // An open link holds the thread, whatever another one did: the node says so.
     const held = await create();
+    // Waited on from the start: the hold is told once, whichever read decides it first.
+    const holding = sc.logged("a thread waits on its open linked pull requests");
     await sc.client.call("git.pr.link", { threadId: held, url: url(10) });
     await sc.until(read(held, 10));
-    const holding = sc.logged("a thread waits on its open linked pull requests");
     await sc.client.call("git.pr.link", { threadId: held, url: url(7) });
     await holding;
 
@@ -114,9 +115,10 @@ describe("jhin.source-control: settling a thread on its linked pull requests (D1
     const projectId = await sc.project(githubRepository());
     // On the branch `feature`, whose own pull request merged: an open link still holds it.
     const onBranch = (await sc.client.call<{ id: string }>("threads.create", { projectId })).id;
+    // Waited on from the start: the hold is told once, whichever read decides it first.
+    const holding = sc.logged("a thread waits on its open linked pull requests");
     await sc.client.call("git.pr.link", { threadId: onBranch, url: url(10) });
     await sc.until(read(onBranch, 10));
-    const holding = sc.logged("a thread waits on its open linked pull requests");
     gh.pullRequest("feature", [
       ghPullRequest({ number: 12, state: "MERGED", mergedAt: "2099-03-01T00:00:00Z" }),
     ]);
