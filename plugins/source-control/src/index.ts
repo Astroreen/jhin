@@ -1069,6 +1069,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         threadDirs.delete(id);
         await syncWorktrees();
         await removeThread(id);
+        // Once the thread is gone everywhere, its worktree's sweep runs (D1129).
+        if (config().worktreeCleanup.onDelete) cleanInBackground();
         return;
     }
   };
@@ -1179,7 +1181,6 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       branch,
     };
     await kv.set(NAMESPACE, `${DELETED_PREFIX}${threadId}`, record as unknown as Json);
-    if (config().worktreeCleanup.onDelete) cleanInBackground();
   }
 
   let cleaning: Promise<CleanupReport> | undefined;
@@ -1317,8 +1318,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         threads: [],
       });
     }
-    const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
     const defaults = new Map<string, Promise<{ commit: string; branch: string } | undefined>>();
+    /** The folders running terminals work in, as real paths like the worktrees'. */
+    const terminalFolders = async () =>
+      Promise.all(
+        (context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY)?.list() ?? [])
+          .filter((terminal) => terminal.status === "running")
+          .map((terminal) => realPath(terminal.cwd)),
+      );
+    const swept = await terminalFolders();
     const inside = (folder: string, path: string) =>
       path === folder || path.startsWith(`${folder}${Path.sep}`);
     for (const candidate of candidates) {
@@ -1330,10 +1338,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           now: Date.now(),
           git: (cwd) => createGit(config().gitPath, cwd),
           defaults,
-          hasTerminal: (path) =>
-            (terminals?.list() ?? []).some(
-              (terminal) => terminal.status === "running" && inside(path, terminal.cwd),
-            ),
+          hasTerminal: (path) => swept.some((folder) => inside(path, folder)),
         });
         if ("keep" in verdict) {
           entries.push({ ...entry, outcome: "kept", reason: verdict.keep });
@@ -1347,11 +1352,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           if (now.length !== expected.length || now.some((id) => !expected.includes(id))) {
             return "Threads changed since the check.";
           }
-          if (
-            (terminals?.list() ?? []).some(
-              (terminal) => terminal.status === "running" && inside(candidate.path, terminal.cwd),
-            )
-          ) {
+          if ((await terminalFolders()).some((folder) => inside(candidate.path, folder))) {
             return "Open terminal.";
           }
           const changes = await localChangesReason(
@@ -1365,7 +1366,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               .catch(() => undefined)) as
               | { thread?: { lastTurn?: { status: string } } }
               | undefined;
-            const status = answer?.thread?.lastTurn?.status;
+            // A thread that cannot be read now is not known to be idle: keep the worktree.
+            if (answer?.thread === undefined) return "Thread could not be read.";
+            const status = answer.thread.lastTurn?.status;
             if (status === "running" || status === "waiting") {
               return "Thread is running or has pending work.";
             }
