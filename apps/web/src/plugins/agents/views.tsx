@@ -30,17 +30,27 @@ import { useState } from "react";
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { AGENT_PANEL, agentRoute, parseAgentSection } from "./route.ts";
-import { STATUS_LABELS, statusOf, type AgentsStore, type NodeAgents } from "./store.ts";
+import {
+  STATUS_LABELS,
+  createAgentsStore,
+  statusOf,
+  type AgentsStore,
+  type NodeAgents,
+} from "./store.ts";
 
 /** What the views use of the plugin that shows them. */
 export interface AgentsView {
   readonly context: PluginContext;
-  readonly store: AgentsStore;
+  /** The agents store, made by this chunk on first use and disposed with the plugin. */
+  readonly held: { store?: AgentsStore };
   readonly connections: Connections;
   readonly navigation: Navigation;
   readonly threads: ThreadsCatalog;
   readonly toasts: Toasts | undefined;
 }
+
+const storeOf = (view: AgentsView): AgentsStore =>
+  (view.held.store ??= createAgentsStore(view.connections, view.context.log));
 
 const STATUS_DOT: Readonly<Record<AgentStatus, string>> = {
   idle: "bg-muted-foreground/40",
@@ -151,7 +161,7 @@ function NodeRoster(props: {
       {state.status === "error" ? (
         <div className="flex items-center gap-2 px-2 py-1 text-xs text-destructive-foreground">
           <span className="min-w-0 truncate">{state.error}</span>
-          <Button onClick={() => view.store.refresh(connection.id)} size="xs" variant="ghost">
+          <Button onClick={() => storeOf(view).refresh(connection.id)} size="xs" variant="ghost">
             Retry
           </Button>
         </div>
@@ -162,7 +172,7 @@ function NodeRoster(props: {
 
 /** The `civilization.sidebar.agents` section: every open node's defined agents. */
 export function Roster({ view }: { view: AgentsView }) {
-  const nodes = useExternal(view.store, view.store.snapshot);
+  const nodes = useExternal(storeOf(view), storeOf(view).snapshot);
   const list = useExternal(view.connections, view.connections.list);
   const shown = list.filter((connection) => {
     const state = nodes.get(connection.id);
@@ -274,7 +284,7 @@ export function AgentPage(props: {
   generation?: number | undefined;
 }) {
   const { view, node, agentId } = props;
-  const nodes = useExternal(view.store, view.store.snapshot);
+  const nodes = useExternal(storeOf(view), storeOf(view).snapshot);
   const state = nodes.get(node);
   const agent = state?.agents.find((item) => item.agentId === agentId);
   const [busy, setBusy] = useState(false);

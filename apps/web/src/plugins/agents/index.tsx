@@ -21,7 +21,7 @@ import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { agentRoute, parseAgentSection, AGENT_PANEL } from "./route.ts";
-import { createAgentsStore } from "./store.ts";
+import type { AgentsStore } from "./store.ts";
 import type { AgentsView } from "./views.tsx";
 
 // The views are a chunk of their own (D440), loaded once Civilization mode shows them.
@@ -62,9 +62,10 @@ export const agentsViewPlugin = builtin(
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
-      const store = createAgentsStore(connections, context.log);
-      context.subscriptions.add(store);
-      const view: AgentsView = { context, store, connections, navigation, threads, toasts };
+      // The store comes with the views' chunk, made when they first show (D440).
+      const held: { store?: AgentsStore } = {};
+      context.subscriptions.add({ dispose: () => held.store?.dispose() });
+      const view: AgentsView = { context, held, connections, navigation, threads, toasts };
 
       // Opening an agent is a command, so the palette, CLI and MCP reach it (rule 6).
       context.subscriptions.add(

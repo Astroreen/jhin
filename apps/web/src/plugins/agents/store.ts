@@ -106,7 +106,7 @@ export const STATUS_LABELS: Readonly<Record<AgentStatus, string>> = {
   unavailable: "Unavailable",
 };
 
-export interface AgentsStore {
+export interface AgentsStore extends Disposable {
   /** Every followed node's agents, by connection id: the same map until one changes. */
   snapshot(): ReadonlyMap<string, NodeAgents>;
   /** Follows the open connections while subscribed. */
@@ -124,7 +124,7 @@ export interface AgentsStore {
 export function createAgentsStore(
   connections: Connections,
   log: { warn(message: string, fields?: Record<string, unknown>): void },
-): AgentsStore & Disposable {
+): AgentsStore {
   const states = new Map<string, NodeAgents>();
   const feeds = new Map<string, { client: NodeConnection["client"]; stop: () => void }>();
   const listeners = new Set<() => void>();
