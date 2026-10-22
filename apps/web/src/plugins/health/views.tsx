@@ -19,6 +19,7 @@ import { ActivityIcon, HeartPulseIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
+import { notLive } from "../../lib/node-feeds.ts";
 import { HEALTH_PANEL, detectorLabel, groupLabel, healthRoute } from "./route.ts";
 import { openWarnings, type HealthStore, type NodeHealth } from "./store.ts";
 
@@ -35,9 +36,19 @@ export function HealthList({ view }: { view: HealthView }) {
   const nodes = useExternal(view.store, view.store.snapshot);
   const route = useExternal(view.navigation, view.navigation.current);
   const warnings = openWarnings(nodes);
-  const ready = [...nodes].filter(([, feed]) => feed.status === "ready").map(([node]) => node);
+  // A node whose stream failed after it was read still has its overview.
+  const ready = [...nodes]
+    .filter(([, feed]) => feed.status === "ready" || feed.status === "error")
+    .map(([node]) => node);
+  const stale = notLive(nodes);
   return (
     <SidebarMenu aria-label="Health">
+      {stale.length === 0 ? null : (
+        <p className="px-2 py-1 text-xs text-destructive">
+          Not live: {stale.map((node) => view.connections.get(node)?.label ?? node).join(", ")}.
+          What shows may be out of date.
+        </p>
+      )}
       {/* One overview per node with health; the node is named once there are several. */}
       {ready.map((node) => (
         <SidebarMenuItem key={node}>

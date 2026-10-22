@@ -20,6 +20,7 @@ import { InboxIcon, MessageCircleQuestionIcon, MessageSquareIcon } from "lucide-
 import { useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
+import { notLive } from "../../lib/node-feeds.ts";
 import { INBOX_PANEL, inboxRoute, senderLabel } from "./route.ts";
 import { openItems, type InboxStore } from "./store.ts";
 
@@ -38,13 +39,25 @@ export function InboxList({ view }: { view: InboxView }) {
   const nodes = useExternal(view.store, view.store.snapshot);
   const route = useExternal(view.navigation, view.navigation.current);
   const items = openItems(nodes);
+  const stale = notLive(nodes);
+  const notice =
+    stale.length === 0 ? null : (
+      <p className="px-2 py-1 text-xs text-destructive">
+        Not live: {stale.map((node) => view.connections.get(node)?.label ?? node).join(", ")}. What
+        shows may be out of date.
+      </p>
+    );
   if (items.length === 0) {
     return (
-      <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">Nothing waits for you.</p>
+      <>
+        {notice}
+        <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">Nothing waits for you.</p>
+      </>
     );
   }
   return (
     <SidebarMenu aria-label="Inbox">
+      {notice}
       {items.map(({ node, item }) => {
         const { message } = item;
         const Icon = message.kind === "ask" ? MessageCircleQuestionIcon : MessageSquareIcon;

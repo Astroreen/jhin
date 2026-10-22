@@ -23,6 +23,11 @@ export interface NodeFeeds<S> {
   apply(id: string, event: { type: string; payload: unknown }): void;
 }
 
+/** The connections whose feed was read and then failed: what they show may be out of date. */
+export function notLive<S>(nodes: ReadonlyMap<string, NodeFeed<S>>): string[] {
+  return [...nodes].filter(([, feed]) => feed.status === "error").map(([node]) => node);
+}
+
 export interface NodeFeedSource<S> {
   /** What a feed holds before its node answers, and when it cannot. */
   readonly empty: S;

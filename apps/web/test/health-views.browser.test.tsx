@@ -286,4 +286,19 @@ describe("health views (D731)", () => {
     await expect.element(overview.getByText(/The last refresh failed: node busy/)).toBeVisible();
     await expect.element(overview.getByRole("cell", { name: "The node" })).toBeVisible();
   });
+
+  it("marks a node whose stream failed in the sidebar, and keeps its overview", async () => {
+    const { view } = viewOf(
+      { a: { status: "error", value: healthOf(warning), error: "stream gone" } },
+      async () => ({}),
+    );
+    await render(
+      <SidebarProvider>
+        <HealthList view={view} />
+      </SidebarProvider>,
+    );
+    await expect.element(page.getByText(/Not live: node a/)).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Ceremony and progress" })).toBeVisible();
+    await expect.element(page.getByRole("button", { name: /Recursive proof loop/ })).toBeVisible();
+  });
 });
