@@ -1381,6 +1381,20 @@ C3 decisions:
   every step is a command; the test ends in Civilization mode on what A3
   and A7 already show (the mission view, the health section). Steps move to
   C1's console and C2's mission editing as they land.
+- **D1105. `teams.up` adds a home project named by a folder's path.** A
+  team or member whose `project` is the absolute path of a folder the node
+  has no project for gets it through `projects.create` when the member
+  joins, so the team works there from its first message; before, the team
+  came up `defined` and its first message failed with `PROJECT_NOT_FOUND`,
+  and its files in that project were not read (the C3 run). A folder that
+  does not exist is the member's error (`PROJECT_PATH_INVALID`); an id the
+  node does not know stays the agent's `unavailable` (D608). The project is
+  added as the caller, so it takes the caller's own `projects.write`: putting
+  a team up (D690) grants no more than before, and a caller without it gets
+  the member's `PERMISSION_DENIED`; a member on another node gets
+  `projects.write` with the caller's other grants (D416) when the caller
+  holds it. Files the team keeps in that project
+  (`dir`, D686) are read once it is there.
 
 Where C3 stands: the scenario (its first bullet) runs on commands, with every
 part the bullet names. Left: its steps through C1's console (the
@@ -1678,3 +1692,5 @@ Each workstream lists its PRs here as they merge.
   (`jhin.orchestrator`), the `civilization.mission.aside` slot and
   `jhin.orchestrator.panel` with next, waits for, and start, pause and stop
   (D1086–D1090).
+- C3 #199: `teams.up` adds a member's home project named by a folder's path
+  (D1105), found by the C3 run.

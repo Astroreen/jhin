@@ -36,7 +36,7 @@ import {
 } from "@jhin/agent-api";
 import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, describePermissions, type Invocation } from "@jhin/sdk";
+import { definePlugin, describePermissions, holdsPermission, type Invocation } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -59,6 +59,16 @@ export {
 const NAMESPACE = "jhin.teams";
 /** Changing teams puts agents on nodes, so it takes changing agents too (D690). */
 const WRITE_PERMISSIONS = [TEAMS_WRITE_PERMISSION, "agents.write"];
+
+/**
+ * What a member's node gets of the caller's grants (D416): putting a team up,
+ * and adding the member's home project there when the caller may (D1105).
+ */
+const joinGrants = (invocation: Invocation): string[] => {
+  const held = invocation.caller?.permissions;
+  const mayAdd = held === undefined || holdsPermission(held, "projects.write");
+  return mayAdd ? [...WRITE_PERMISSIONS, "projects.write"] : WRITE_PERMISSIONS;
+};
 
 interface Bundle {
   readonly spec: TeamSpecLayer;
@@ -201,6 +211,36 @@ export default definePlugin({
     };
     context.subscriptions.add(context.services.provide(TEAM_BUNDLES_CAPABILITY, service));
 
+    /**
+     * A home project named by the absolute path of a folder this node has no
+     * project for is added, so the team that names it can work there (D1105).
+     * A folder that does not exist fails as `projects.create` does; an id this
+     * node does not know is left to the agent's status (`unavailable`, D608).
+     */
+    const ensureHome = async (
+      project: string | undefined,
+      invocation: Invocation | undefined,
+    ): Promise<void> => {
+      if (project === undefined) return;
+      const expanded = expandHome(project);
+      if (!Path.isAbsolute(expanded)) return;
+      const path = Path.resolve(expanded);
+      const projects = await run<ProjectInfo[]>("projects.list", {});
+      if (projects.some((item) => item.id === project || Path.resolve(item.path) === path)) return;
+      // As the caller: adding a project takes its own grant (projects.write),
+      // which putting a team up does not give.
+      await context.commands.execute(
+        "projects.create",
+        { path },
+        invocation?.caller === undefined
+          ? {}
+          : {
+              caller: invocation.caller,
+              ...(invocation.traceId === undefined ? {} : { traceId: invocation.traceId }),
+            },
+      );
+    };
+
     /** The folder of a team's files: `dir` of the spec, else its bundle's (D686). */
     const filesDir = async (teamId: string, spec: TeamSpec): Promise<string | undefined> => {
       const configuredDir = configured()[teamId]?.dir;
@@ -320,12 +360,15 @@ export default definePlugin({
       return result;
     };
 
-    const join = (input: {
-      roster: TeamRoster;
-      member: string;
-      definition: AgentDefinition;
-      files: TeamFile[];
-    }) =>
+    const join = (
+      input: {
+        roster: TeamRoster;
+        member: string;
+        definition: AgentDefinition;
+        files: TeamFile[];
+      },
+      invocation?: Invocation,
+    ) =>
       serial(async () => {
         const { roster, member, definition, files } = input;
         const agentId = teamAgentId(roster.teamId, member);
@@ -346,6 +389,7 @@ export default definePlugin({
             { agentId, teamId: roster.teamId },
           );
         }
+        await ensureHome(definition.project, invocation);
         let result: "defined" | "updated" | "unchanged";
         if (existing === undefined) {
           await run("agents.define", { agentId, ...definition });
@@ -439,6 +483,17 @@ export default definePlugin({
       permissions: WRITE_PERMISSIONS,
       handler: async ({ teamId }, invocation) => {
         const spec = specOrThrow(teamId);
+        // Files in a folder relative to the home project (D686) are read here,
+        // so this node needs the project then, and only then. A folder that is
+        // not there, or a caller that may not add it, fails each member's join
+        // below, with its reason; joins run one at a time, and so does this.
+        const dir = configured()[teamId]?.dir;
+        if (dir !== undefined && !Path.isAbsolute(expandHome(dir))) {
+          await serial(() => ensureHome(spec.project, invocation)).catch((error: unknown) => {
+            const code = (error as { code?: unknown }).code;
+            if (code !== "PROJECT_PATH_INVALID" && code !== "PERMISSION_DENIED") throw error;
+          });
+        }
         const files = readTeamFiles(await filesDir(teamId, spec));
         const culture = spec.culture ?? files.culture;
         const roster = rosterFor(teamId, spec);
@@ -456,13 +511,13 @@ export default definePlugin({
           try {
             const joined =
               node === nodeId
-                ? await join(input)
+                ? await join(input, invocation)
                 : await remote<Awaited<ReturnType<typeof join>>>(
                     node,
                     "teams.join",
                     input,
                     invocation,
-                    WRITE_PERMISSIONS,
+                    joinGrants(invocation),
                   );
             members.push({
               member,
@@ -527,7 +582,7 @@ export default definePlugin({
         "Puts one member of a team on this node, as teams.up does for each: defines or updates its agent, resumes it, writes the team's files it lacks and keeps the roster",
       ...TeamCommands["teams.join"],
       permissions: WRITE_PERMISSIONS,
-      handler: (input) => join(input),
+      handler: (input, invocation) => join(input, invocation),
     });
 
     context.commands.register({

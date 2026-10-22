@@ -240,6 +240,68 @@ describe("teams (A5)", () => {
     ]);
   });
 
+  it("adds a home project named by a folder's path, and names a missing folder (D1105)", async () => {
+    const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-home-"));
+    // Its files live in the project it names (D686): read once the project is added.
+    Fs.mkdirSync(Path.join(home, "team"));
+    Fs.writeFileSync(Path.join(home, "team", "culture.md"), "We measure twice.");
+    const other = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-other-"));
+    stops.push(async () => {
+      for (const dir of [home, other]) Fs.rmSync(dir, { recursive: true, force: true });
+    });
+    const { client, kernel } = await node({
+      teams: {
+        workshop: { lead: "lead", project: home, dir: "team", agents: { lead } },
+        ghost: { lead: "lead", project: Path.join(home, "missing"), agents: { lead } },
+        elsewhere: { lead: "lead", project: other, agents: { lead } },
+        unknown: { lead: "lead", project: "no-such-project", agents: { lead } },
+      },
+    });
+    const up = await client.call<Up>("teams.up", { teamId: "workshop" });
+    expect(up.members).toEqual([expect.objectContaining({ result: "defined" })]);
+    const projects = await client.call<{ id: string; path: string }[]>("projects.list", {});
+    const added = projects.find((project) => project.path === home);
+    expect(added).toBeDefined();
+    expect(
+      await client.call<AgentRecord>("agents.get", { agentId: "workshop-lead" }),
+    ).toMatchObject({
+      status: "idle",
+      knowledgeDir: expect.stringContaining(home),
+      instructions: expect.stringContaining("We measure twice."),
+    });
+    // Up again, the project is there: none is added twice.
+    await client.call<Up>("teams.up", { teamId: "workshop" });
+    expect(
+      (await client.call<{ path: string }[]>("projects.list", {})).filter(
+        (project) => project.path === home,
+      ),
+    ).toHaveLength(1);
+
+    // Adding a project takes the caller's own grant: putting a team up gives none.
+    const narrow = (await kernel.commands.execute(
+      "teams.up",
+      { teamId: "elsewhere" },
+      { caller: { id: "ops", permissions: ["teams.write", "agents.write"] } },
+    )) as Up;
+    expect(narrow.members).toEqual([
+      expect.objectContaining({ error: expect.objectContaining({ code: "PERMISSION_DENIED" }) }),
+    ]);
+    // A project id the node does not know is left to the agent's status (D608).
+    await client.call<Up>("teams.up", { teamId: "unknown" });
+    expect(await client.call<AgentRecord>("agents.get", { agentId: "unknown-lead" })).toMatchObject(
+      { status: "unavailable" },
+    );
+    expect(await client.call<unknown[]>("projects.list", {})).toHaveLength(projects.length);
+
+    const ghost = await client.call<Up>("teams.up", { teamId: "ghost" });
+    expect(ghost.members).toEqual([
+      expect.objectContaining({
+        member: "lead",
+        error: expect.objectContaining({ code: "PROJECT_PATH_INVALID" }),
+      }),
+    ]);
+  });
+
   it("updates a member when the spec changes, and clears what it dropped (D685)", async () => {
     const { client, kernel, layers } = await node({
       teams: { workshop: { lead: "lead", agents: { lead, builder: { ...builder, model: "m1" } } } },
@@ -428,5 +490,55 @@ describe("teams across the mesh (A5)", () => {
       agentId: "workshop-builder",
     })) as AgentRecord;
     expect(stopped.stoppedAt).toBeDefined();
+  });
+
+  it("adds a member's home project on the member's node, with the caller's grant (D1105)", async () => {
+    const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-remote-"));
+    const other = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-remote-"));
+    stops.push(async () => {
+      for (const dir of [home, other]) Fs.rmSync(dir, { recursive: true, force: true });
+    });
+    const network = createMemoryNetwork();
+    const a = await meshNode(network, "a", {
+      "jhin.teams": {
+        teams: {
+          workshop: {
+            lead: "lead",
+            agents: { lead, builder: { ...builder, node: "b", project: home } },
+          },
+          elsewhere: {
+            lead: "lead",
+            agents: { lead, builder: { ...builder, node: "b", project: other } },
+          },
+        },
+      },
+    });
+    const b = await meshNode(network, "b");
+    await b.join(a);
+
+    const up = (await a.kernel.commands.execute("teams.up", { teamId: "workshop" })) as Up;
+    expect(up.members[1]).toMatchObject({ result: "defined" });
+    const onB = (await b.kernel.commands.execute("projects.list", {})) as { path: string }[];
+    expect(onB.map((project) => project.path)).toContain(home);
+    const onA = (await a.kernel.commands.execute("projects.list", {})) as { path: string }[];
+    expect(onA.map((project) => project.path)).not.toContain(home);
+    expect(
+      await b.kernel.commands.execute("agents.get", { agentId: "workshop-builder" }),
+    ).toMatchObject({ status: "idle" });
+
+    // A caller that may not add projects gives the member's node no grant to (D416).
+    await a.kernel.commands
+      .execute(
+        "teams.up",
+        { teamId: "elsewhere" },
+        { caller: { id: "ops", permissions: ["teams.*", "agents.write", "mesh.call"] } },
+      )
+      .then((result) =>
+        expect((result as Up).members[1]).toMatchObject({
+          error: expect.objectContaining({ code: "PERMISSION_DENIED" }),
+        }),
+      );
+    const after = (await b.kernel.commands.execute("projects.list", {})) as { path: string }[];
+    expect(after.map((project) => project.path)).not.toContain(other);
   });
 });
