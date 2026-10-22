@@ -12,7 +12,7 @@ export function jhinToolsInstructions(shownAs?: (tool: string) => string): strin
   const shown = shownAs === undefined ? "" : ` (${shownAs("threads_send")})`;
   return `## Jhin tools
 
-The \`${MCP_SERVER_NAME}\` MCP server exposes this Jhin node's commands as tools: a command \`threads.send\` is the tool \`threads_send\`${shown}. Use them when the user asks you to work with Jhin itself: list and read projects and threads (\`projects_list\`, \`threads_list\`, \`threads_get\`, \`threads_events\`), start a thread in a project (\`threads_create\`) and send it a message (\`threads_send\`). Calls act for the current thread and only reach what this thread's agent may do. Threads you start are ordinary top-level threads the user sees in the sidebar: start one only when the user asks for a separate thread. Message other agents and the owner by address (\`jhin://<node>/agents/<id>\`, \`jhin://<node>/owner\`): \`agents_send\` delivers a message, \`agents_ask\` waits for an agent's answer (the owner answers later, as a message).`;
+The \`${MCP_SERVER_NAME}\` MCP server exposes this Jhin node's commands as tools: a command \`threads.send\` is the tool \`threads_send\`${shown}. Use them when the user asks you to work with Jhin itself: list and read projects and threads (\`projects_list\`, \`threads_list\`, \`threads_get\`, \`threads_events\`), start a thread in a project (\`threads_create\`) and send it a message (\`threads_send\`). Calls act for the current thread and only reach what this thread's agent may do. Threads you start are ordinary top-level threads the user sees in the sidebar: start one only when the user asks for a separate thread. Message other agents and the owner by address (\`jhin://<node>/agents/<id>\`, \`jhin://<node>/owner\`): \`agents_send\` delivers a message, \`agents_ask\` waits for an agent's answer (the owner answers later, as a message); a team member's alias (\`builder@workshop\`) works as its address, and \`teams_list\` lists the teams with their leads.`;
 }
 
 /**
@@ -33,6 +33,8 @@ export const AGENT_PERMISSIONS: readonly string[] = [
   // Messaging between agents (agents.md D628); never `agents.inbox`, the owner's.
   "agents.read",
   "agents.message",
+  // A lead finds other teams' leads (agents.md D688, D690); never `teams.write`.
+  "teams.read",
 ];
 
 /** Who a credential acts as, and for which thread's agent (docs/plans/providers.md, D340). */

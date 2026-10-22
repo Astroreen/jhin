@@ -15,6 +15,7 @@ import {
   messageText,
   ownerAddress,
   parseMessageAddress,
+  parseTeamAlias,
   threadAddress,
   threadStream,
   type AgentGeneration,
@@ -117,6 +118,16 @@ export function registerMessaging(
       );
     }
     return party;
+  };
+
+  /**
+   * An alias `<member>@<team>` stands for its member's full address (A5,
+   * D687), resolved by `teams.resolve` on a node that has it.
+   */
+  const addressOf = async (to: string): Promise<string> => {
+    if (parseTeamAlias(to) === undefined) return to;
+    if (!context.commands.list().some((command) => command.name === "teams.resolve")) return to;
+    return (await run<{ address: string }>("teams.resolve", { alias: to })).address;
   };
 
   /** The party a thread's agent is: its agent for a generation, else the thread (D622). */
@@ -340,7 +351,8 @@ export function registerMessaging(
       "Sends a message to an agent (its current generation; queued while it works), a thread or the owner's inbox, on any node of the mesh. It carries the sender's address and the trace",
     ...MessageCommands["agents.send"],
     permissions: [MESSAGE_PERMISSION],
-    handler: async ({ to, body, from, inReplyTo, messageId }, invocation) => {
+    handler: async ({ to: given, body, from, inReplyTo, messageId }, invocation) => {
+      const to = await addressOf(given);
       const sender = await senderOf(from, invocation);
       const target = partyOf(to, "to");
       const id = messageId ?? Crypto.randomUUID();
@@ -378,7 +390,8 @@ export function registerMessaging(
       "Asks an agent, a thread or the owner a question. An agent answers in a turn of its current generation, or with `generation` an earlier one answers in a side turn; the owner answers later through the inbox (`pending`)",
     ...MessageCommands["agents.ask"],
     permissions: [MESSAGE_PERMISSION],
-    handler: async ({ to, question, from, generation, messageId }, invocation) => {
+    handler: async ({ to: given, question, from, generation, messageId }, invocation) => {
+      const to = await addressOf(given);
       const sender = await senderOf(from, invocation);
       const target = partyOf(to, "to");
       const id = messageId ?? Crypto.randomUUID();

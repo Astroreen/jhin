@@ -36,7 +36,11 @@ function startServe(home: string): Promise<string> {
 }
 
 function jhin(...args: string[]): { status: number; stdout: string; stderr: string } {
-  const result = ChildProcess.spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8" });
+  // `inspect` of the whole distribution prints more than spawnSync's default 1 MiB.
+  const result = ChildProcess.spawnSync(process.execPath, [BIN, ...args], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
   return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
 }
 

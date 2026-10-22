@@ -761,7 +761,8 @@ commands) is `packages/agent-api/src/teams.ts`.
   its head, as `agents.catalog` does.
 - **D690. Permissions.** `teams.list`, `teams.get`, `teams.resolve` and the
   `teams` stream need `teams.read`; `teams.up`, `teams.down` and
-  `teams.join` need `teams.write`. Agents get `teams.read` through their
+  `teams.join` need `teams.write` and `agents.write`, since they define and
+  stop agents. Agents get `teams.read` through their
   node's MCP server (`AGENT_PERMISSIONS`), so a lead finds other leads; never
   `teams.write`. A member on another node is put there with the caller's
   grants (D416), so a member node without `teams.write` refuses.
@@ -1044,6 +1045,12 @@ Each workstream lists its PRs here as they merge.
   spec and its config layer, the roster, aliases, `teams.bundles@1`, the
   `teams` stream and the schemas of `teams.*`). D681–D690 recorded; the
   server side and the Civilization-mode views follow.
+- A5 #186: the `jhin.teams` plugin: specs from `jhin.teams` and bundles
+  (`teams.bundles@1`), `teams.list`, `.get`, `.up`, `.down`, `.join`,
+  `.resolve` and the `teams` stream, members on other nodes through
+  `mesh.call`; aliases in `agents.send` and `agents.ask` (`jhin.agents`);
+  agents hold `teams.read` (D681–D690). A bundle fixture in
+  `plugins/teams/test/fixtures/workshop` is the example of a bundle.
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and

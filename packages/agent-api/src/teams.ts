@@ -216,7 +216,9 @@ export type TeamErrorCode =
   /** Not `<member>@<team>`. */
   | "ALIAS_INVALID"
   /** The member's agent id is defined on its node, not by this team. */
-  | "AGENT_EXISTS";
+  | "AGENT_EXISTS"
+  /** Another bundle registered a team of that id already. */
+  | "TEAM_EXISTS";
 
 const TeamRef = z.object({ teamId: TeamId });
 /** What happened to one member's agent on `teams.up` or `teams.join`. */

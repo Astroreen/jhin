@@ -44,6 +44,7 @@
     "@jhin/plugin-secrets": "workspace:*",
     "@jhin/plugin-source-control": "workspace:*",
     "@jhin/plugin-storage-sqlite": "workspace:*",
+    "@jhin/plugin-teams": "workspace:*",
     "@jhin/plugin-terminal": "workspace:*",
     "@jhin/plugin-threads": "workspace:*",
     "@jhin/plugin-transport-ws": "workspace:*",
@@ -82,6 +83,7 @@
     "@jhin/plugin-orchestration",
     "@jhin/plugin-agent-opencode",
     "@jhin/plugin-agents",
+    "@jhin/plugin-teams",
     "@jhin/plugin-context",
     "@jhin/plugin-mcp-server",
     "@jhin/plugin-mesh"
