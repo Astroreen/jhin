@@ -23,8 +23,14 @@ export function createThreadWork(
     register(source) {
       // Registered already: one registration is enough, and this one owns nothing.
       if (sources.has(source)) return { dispose: () => undefined };
-      // A source that cannot be followed is not added at all.
-      const subscription = source.subscribe(changed);
+      // A source that cannot be followed is not added at all; its plugin still activates.
+      let subscription: Disposable;
+      try {
+        subscription = source.subscribe(changed);
+      } catch (error) {
+        warn("a thread work source could not be followed", { error: String(error) });
+        return { dispose: () => undefined };
+      }
       sources.add(source);
       changed();
       return {

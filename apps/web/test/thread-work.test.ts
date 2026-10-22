@@ -83,4 +83,18 @@ describe("client.thread-work (D1131)", () => {
     first.dispose();
     expect(work.tasks({ node: "n" }, "t")).toEqual([]);
   });
+
+  it("adds no source that cannot be followed, and the registering plugin goes on", () => {
+    const warnings: string[] = [];
+    const work = createThreadWork((message) => warnings.push(message));
+    const registration = work.register({
+      tasks: () => [{ taskId: "a", kind: "monitor" as const }],
+      subscribe: () => {
+        throw new Error("no feed");
+      },
+    });
+    expect(work.tasks({ node: "n" }, "t")).toEqual([]);
+    expect(warnings).toEqual(["a thread work source could not be followed"]);
+    registration.dispose();
+  });
 });
