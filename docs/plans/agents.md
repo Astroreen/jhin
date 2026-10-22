@@ -1323,15 +1323,16 @@ Decisions (C2):
   under Run from (D706 takes a named thread from a caller that has none).
   Only agents with a generation can be picked. The default is the last run's
   agent, then a team's lead (`teams.list`), then an agent of the mission's
-  project. W10 refuses a thread that is not full access, and the panel shows
+  project, then the first that can. W10 refuses a thread that is not full access, and the panel shows
   that refusal.
 - **D1090. Pause ends the run, Stop halts the mission's work.** W10 has no
   pause, and the orchestrator keeps no state (D707), so Pause is
   `workflows.stop`: the slices already handed out keep going, and Resume
   orchestrates again from where the mission is. Stop mission, once confirmed,
   stops the run and calls `agents.stop` on every agent of this node working
-  on an active slice of the mission. Those agents are resumed on their own
-  page (D612). Stop does not change the mission's status; that stays an
+  on an active slice of the mission. `agents.stop` stops an agent as a
+  whole, in every mission, and the dialog says so. Those agents are resumed
+  on their own page (D612). Stop does not change the mission's status; that stays an
   edit (D1081). After a Stop the run reads Paused too (W10 has one `stopped`),
   and the stopped agents show on their pages. Without a dialog host
   (`ui.dialogs`) there is no Stop, since it is never done unconfirmed.

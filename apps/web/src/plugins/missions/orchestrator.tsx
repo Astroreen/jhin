@@ -259,7 +259,7 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
       description:
         working.length === 0
           ? "The orchestrator run stops; no slice is handed off until it runs again."
-          : `The orchestrator run stops, and so do ${names}: they take no new work until resumed on their page.`,
+          : `The orchestrator run stops, and so do ${names}: each stops as a whole, in every mission, and takes no new work until resumed on its page.`,
       confirmLabel: "Stop mission",
       variant: "destructive",
     });
