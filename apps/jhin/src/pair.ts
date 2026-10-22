@@ -120,12 +120,12 @@ export function pairingNotes(pairingUrl: string): string[] {
   const url = new URL(pairingUrl);
   if (isLoopbackHost(url.hostname)) {
     return [
-      "This URL is only reachable from this machine. Re-run with --tailscale, or set jhin.http.host to an address other devices reach and restart the node.",
+      "This URL is only reachable from this machine. Set jhin.http.host to an address other devices reach and restart the node.",
     ];
   }
   if (url.protocol === "http:") {
     return [
-      "This URL is plain HTTP: anyone on the network path can read the pairing code and the token it becomes. Prefer --tailscale or an HTTPS proxy.",
+      "This URL is plain HTTP: anyone on the network path can read the pairing code and the token it becomes. Prefer an HTTPS proxy.",
     ];
   }
   return [];

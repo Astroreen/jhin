@@ -503,9 +503,9 @@ The threat model comes first; the decisions after it implement it.
   `--base-url` (the address devices reach the node by), `--tailscale` and
   `--tailscale-serve-port` (D1189), `--json` (the command's output as JSON
   instead of the block). Notes, T3's wording where it has one: a loopback
-  link gets "This URL is only reachable from this machine. Re-run with
-  --tailscale, or set jhin.http.host to an address other devices reach and
-  restart the node."; a plain `http:` link to another machine gets "This URL
+  link gets "This URL is only reachable from this machine. Set
+  jhin.http.host to an address other devices reach and restart the node."
+  (with D1189: "Re-run with --tailscale, or set …", T3's); a plain `http:` link to another machine gets "This URL
   is plain HTTP: anyone on the network path can read the pairing code and
   the token it becomes. Prefer --tailscale or an HTTPS proxy.". No running
   node: "No running Jhin node found." with the paths it checked and "Start

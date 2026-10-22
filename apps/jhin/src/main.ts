@@ -232,18 +232,23 @@ async function uiEndpoint(host: NodeHost): Promise<string> {
   return `ui: ${url}\n`;
 }
 
-/** Every value of a repeatable `--key value` / `--key=value` option, in order. */
-function allValues(argv: readonly string[], key: string): string[] {
+/**
+ * Every value of a repeatable `--key value` / `--key=value` option, in order;
+ * `undefined` when one is given without a value.
+ */
+function allValues(argv: readonly string[], key: string): string[] | undefined {
   const values: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]!;
-    if (token.startsWith(`--${key}=`)) values.push(token.slice(key.length + 3));
-    else if (token === `--${key}`) {
+    if (token.startsWith(`--${key}=`)) {
+      const value = token.slice(key.length + 3);
+      if (value === "") return undefined;
+      values.push(value);
+    } else if (token === `--${key}`) {
       const next = argv[index + 1];
-      if (next !== undefined && !next.startsWith("--")) {
-        values.push(next);
-        index += 1;
-      }
+      if (next === undefined || next.startsWith("--")) return undefined;
+      values.push(next);
+      index += 1;
     }
   }
   return values;
@@ -262,13 +267,21 @@ async function pair(
     const value = options.get(key);
     return typeof value === "string" ? value : undefined;
   };
+  // A flag without its value is refused, never read as "not given": a bare
+  // `--permission` would otherwise pair with every permission the token holds.
+  const permissions = allValues(argv, "permission");
+  const valueless = ["label", "ttl", "base-url"].filter((key) => options.get(key) === true);
+  if (permissions === undefined) valueless.unshift("permission");
+  if (valueless.length > 0) {
+    process.stderr.write(`${valueless.map((key) => `--${key}`).join(", ")} needs a value\n`);
+    return 2;
+  }
   const ttl = option("ttl");
   const ttlMinutes = ttl === undefined ? undefined : Number(ttl);
   if (ttlMinutes !== undefined && !(ttlMinutes > 0)) {
     process.stderr.write(`--ttl takes minutes, e.g. --ttl 10; got ${ttl}\n`);
     return 2;
   }
-  const permissions = allValues(argv, "permission");
   let url = remote.url;
   try {
     url ??= (await discoverNode(remote.home)).url;
@@ -282,7 +295,7 @@ async function pair(
   return withTarget({ ...remote, url }, async (target) => {
     const link = (await target.execute("auth.pairing.create", {
       label: option("label") ?? "jhin pair",
-      ...(permissions.length > 0 ? { permissions } : {}),
+      ...(permissions !== undefined && permissions.length > 0 ? { permissions } : {}),
       ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
       baseUrl,
     })) as PairingLink;
