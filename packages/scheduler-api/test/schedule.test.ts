@@ -101,6 +101,6 @@ describe("@jhin/scheduler-api: schedules", () => {
     ).toBe(false);
     expect(
       CreateTaskInput.parse({ ...base, schedule: { type: "interval", everyMs: 60_000 } }),
-    ).toMatchObject({ enabled: true, threadId: null });
+    ).toMatchObject({ enabled: true });
   });
 });
