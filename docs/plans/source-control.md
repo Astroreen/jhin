@@ -625,9 +625,10 @@ with screenshots).
   thread starts in its worktree and that worktree is on a temporary
   `jhin/<8 hex>` (or `jhin-<8 hex>`) branch, the plugin asks the writer
   (D266, its agent and `writerTimeoutSeconds`) with T3's branch name prompt in
-  its default naming mode, sanitizes the answer as T3's
-  `sanitizeBranchFragment` does and runs `git branch -m` to `jhin/<fragment>`
-  (`jhin-<fragment>` after a flat temporary name). A part of that name that an
+  the naming mode the settings name (D1126; by default a fragment that
+  `sanitizeBranchFragment` cleans, renamed with `git branch -m` to
+  `jhin/<fragment>`, or `jhin-<fragment>` after a flat temporary name). A part
+  of that name that an
   existing branch is in the way of (the name itself, a branch where a folder
   is wanted, a folder where a branch is wanted) takes `-1` to `-100`, walked
   part by part as T3's `resolveAutoFeatureBranchName` does. The first turn is
@@ -640,8 +641,8 @@ with screenshots).
   renamed while the writer ran. Every thread in that worktree records the new branch (D113); the
   folder keeps its temporary name, as in T3. A plugin stopped while its writer
   runs renames nothing. There is no switch to turn it off: T3 renames on
-  every launch too, and the off switch comes with its naming settings
-  (Deferred). Two threads that share a fresh worktree and start at once both
+  every launch too, and its naming settings have none either (D1126). Two
+  threads that share a fresh worktree and start at once both
   try; the second rename fails and is only logged.
 
 - **D902. Checking a pull request out for a thread**, T3's `resolvePullRequest`
@@ -774,7 +775,9 @@ with screenshots).
 - **D1122. A thread's new worktree runs the setup script**, as T3's
   `ThreadLaunchService` with `ProjectSetupScriptRunner` does: `threads.create`
   with a `worktree` workspace passes its `threadId` to `git.worktree.create`
-  (additive), which then tracks the thread's setup. Once the worktree is made
+  (additive), which then tracks the thread's setup; an id of a thread that
+  exists already, or whose setup still runs, is refused (`WORKTREE_INVALID`),
+  so no caller takes another thread's setup or terminal over. Once the worktree is made
   the script is typed into a terminal of the thread (`terminal.sessions@1`,
   terminal id `setup-<script id>`, in the worktree), wrapped as T3
   wraps it (posix, fish or PowerShell, after `$SHELL`) so a sentinel with a
@@ -827,6 +830,30 @@ with screenshots).
   terminal" (the setup terminal in the terminal drawer, `terminal.open`) and
   "Cancel" while it runs. Once the agent has started and the setup is over
   it collapses to T3's one summary row.
+
+- **D1126. T3's branch naming settings** in `jhin.source-control`:
+  `branchNamingMode` ("Worktree branch naming", T3's `static` "Static
+  prefix" by default, `semantic` "Semantic prefix", `custom` "Custom
+  instructions"), `branchNamePrefix` ("Branch prefix", default `jhin` for
+  T3's `t3`, shown for `static`) and `branchNameInstructions` ("Branch
+  naming instructions", shown for `custom`, D481), with T3's descriptions.
+  They shape D901's rename as T3's `buildBranchNamePrompt` and
+  `formatGeneratedBranchName` do: `static` asks for a fragment and puts the
+  prefix's sanitized parts before it (none when the prefix is empty);
+  `semantic` asks for a prefix of the model's own (`feat/add-search`) and
+  adds none; `custom` asks for the complete name, with the instructions as
+  T3's "Additional instructions:", and takes it as it comes (trimmed, a
+  valid branch name, no `-1` suffixes, T3's `exactName`); a taken name is
+  refused with `BRANCH_EXISTS`, logged, and the temporary branch stays. The fragment
+  modes walk around taken names as D901 does; a prefix that is itself a
+  branch (the case of a flat temporary `jhin-<hex>` name) joins with `-`
+  instead of `/`, as D901's flat rename did. T3 has no setting that turns
+  the rename off, so Jhin has none either (D901's "off switch" is dropped).
+- **D1127. A message's attachments go to the branch name prompt** as T3's
+  "Attachment metadata:" lines (`- <name> (<type>, <size> bytes)`), read
+  from the first message's `input.attachments`. Only their names reach the
+  writer, not the images, so T3's rule "If images are attached, use them as
+  primary context" is left out of the prompt until they do (Deferred).
 
 #### Reverting
 
@@ -1172,10 +1199,11 @@ with the node's token, and without one).
   worktree as it is); a bound of its own on a setup that holds the agent (the
   threads plugin's turn hook timeout fails the turn, and the script runs on
   until it exits or is cancelled).
-- Worktrees, from W3 (D240): the
-  attachments of a first message in its branch name prompt (D901), T3's
-  branch naming settings (semantic, a custom prefix, custom instructions,
-  and with them a way to turn the rename off), the cleanup rules
+- Branch naming (D1126, D1127): the instructions are a one-line field where
+  T3 has a text area (the config form has no multi-line text yet), the
+  settings are the node's (T3 also keeps them per project), and the images
+  themselves do not reach the writer, only their names.
+- Worktrees, from W3 (D240): the cleanup rules
   (keep when, after days, on merge, on delete without asking), submodules,
   one worktree per model of a multi-model send, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
   `git.worktree.handoff` takes a `threadId`), a handoff's continuation

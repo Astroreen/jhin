@@ -73,6 +73,15 @@ describe("setup script wrapper", () => {
     expect(completionShellOf("win32", "/bin/bash")).toBe("powershell");
   });
 
+  it("wraps for fish and PowerShell with their own exit status and quoting", () => {
+    const fish = wrapCommandForCompletion("make", "fish", "DONE:", { NAME: "it's" });
+    expect(fish).toBe("begin\rset -lx NAME 'it\\'s'; make\rend; printf '\\nDONE:%s\\n' $status");
+    const pwsh = wrapCommandForCompletion("make", "powershell", "DONE:", { NAME: "it's" });
+    expect(pwsh).toContain("$env:NAME = 'it''s'; make");
+    expect(pwsh).toContain('Write-Host "DONE:$__jc"');
+    expect(pwsh).toContain("$LASTEXITCODE");
+  });
+
   it("sets the script's variables inside its block and prints the sentinel with its code", () => {
     const line = wrapCommandForCompletion('echo "$NAME"\nexit 4', "posix", "DONE:", {
       NAME: "it's here",
@@ -372,6 +381,16 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
         .as(["git.read", "terminals.read"])
         .call("git.worktree.setup.get", { threadId: "any" }),
     ).toBeNull();
+  });
+
+  it("sets up only a thread that is still to be made", async () => {
+    const sc = await node({ watch: false }, { terminals: true });
+    const projectId = await projectWithScript(sc, { command: "true" });
+    const existing = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    await expect(
+      sc.client.call("git.worktree.create", { projectId, baseRef: "main", threadId: existing.id }),
+    ).rejects.toMatchObject({ code: "WORKTREE_INVALID" });
+    expect(sc.terminals!.opened).toEqual([]);
   });
 
   it("lets only a caller that may run a shell save a script (D1121)", async () => {
