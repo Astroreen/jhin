@@ -961,7 +961,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const settleOnLinks = async (threadId: string) => {
     const decided = await linkSettlement(threadId);
     // Removed meanwhile: its links are gone because it is, not because they closed.
+    // Asked again after the read, so a removal that ended during it leaves nothing behind.
     if (removingThreads.has(threadId)) return;
+    if (!threads.has(threadId) && (await links.list(threadId)).length === 0) return;
     if (decided === "hold") {
       noteHold(threadId);
     } else if (decided === undefined) {
