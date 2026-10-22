@@ -524,7 +524,10 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
         "checkout",
       );
       expect(checkout?.status).toBe("warning");
-      expect(checkout?.detail).toMatch(/^submodules not checked out: (?!Cloning)/);
+      // git's own reason, its fatal or error line without the prefix, not a progress line.
+      expect(checkout?.detail).toMatch(
+        /^submodules not checked out: (?!Cloning).*(does not exist|not found|failed|unable)/,
+      );
     } finally {
       vi.unstubAllEnvs();
     }
