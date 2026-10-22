@@ -1163,8 +1163,9 @@ with the node's token, and without one).
   cancel that removes the new worktree and hands the first message to the
   local checkout; the finished setup recorded on the thread (a restart
   forgets it); the card for a thread on a mesh member (its setup stream is
-  not relayed); a setup that holds the agent longer than the threads
-  plugin's turn hook timeout.
+  not relayed); a bound of its own on a setup that holds the agent (the
+  threads plugin's turn hook timeout fails the turn, and the script runs on
+  until it exits or is cancelled).
 - Worktrees, from W3 (D240): the
   attachments of a first message in its branch name prompt (D901), T3's
   branch naming settings (semantic, a custom prefix, custom instructions,

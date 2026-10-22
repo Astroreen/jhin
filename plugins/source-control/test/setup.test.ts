@@ -119,6 +119,31 @@ describe("reading a setup script's terminal", () => {
     expect(await started!.completion).toBe(0);
     expect(lines).toEqual(["hi", "running make"]);
   });
+
+  it("ends without an exit code when the terminal closes, even before follow returns", async () => {
+    const started = await runSetupScript({
+      terminals: {
+        open: async () => ({}) as never,
+        write: () => undefined,
+        resize: () => undefined,
+        close: async () => 0,
+        list: () => [],
+        get: () => undefined,
+      },
+      // The session is gone already: its stream ends at once.
+      follow: (_thread, _terminal, next) => {
+        next({ type: "terminal.closed", payload: {} });
+        return { dispose: () => undefined };
+      },
+      threadId: "t",
+      script: { id: "s", name: "S", command: "true", icon: "play", runOnWorktreeCreate: true },
+      projectRoot: "/p",
+      worktreePath: "/w",
+      shell: "posix",
+      onLine: () => undefined,
+    });
+    expect(await started!.completion).toBeNull();
+  });
 });
 
 describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
@@ -196,8 +221,16 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
       detail: "exited with 3",
       tail: ["broken"],
     });
-    // A failed script keeps its terminal, for "Open terminal".
+    // A failed script keeps its terminal, for "Open terminal"…
     expect(sc.terminals!.closed).toEqual([]);
+    // …until its thread goes.
+    await sc.client.call("threads.delete", { threadId });
+    await sc.until(
+      (event) =>
+        event.type === "source-control.thread.removed" &&
+        (event.payload as { threadId: string }).threadId === threadId,
+    );
+    expect(sc.terminals!.closed).toEqual(["setup-setup"]);
   });
 
   it("cancels a running setup, and the held agent starts without it", async () => {

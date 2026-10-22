@@ -1469,10 +1469,23 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         { path, threadIds: users },
       );
     }
-    // Its setup stops with it (D1124).
-    for (const [threadId, run] of setupRuns) {
+    // Its setup stops with it (D1124), and a setup that ended (a failed script)
+    // leaves no terminal or run behind.
+    for (const [threadId, run] of Array.from(setupRuns)) {
       if (run.worktreePath === wanted || (await realPath(run.worktreePath)) === wanted) {
-        await cancelSetup(threadId);
+        if (!(await cancelSetup(threadId))) {
+          setupRuns.delete(threadId);
+          run.cancel();
+        }
+      }
+    }
+    for (const [threadId, terminal] of Array.from(setupTerminals)) {
+      if (terminal.worktreePath === wanted || (await realPath(terminal.worktreePath)) === wanted) {
+        setupTerminals.delete(threadId);
+        await context.services
+          .tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY)
+          ?.close({ threadId, terminalId: terminal.terminalId })
+          .catch(() => undefined);
       }
     }
     await removeWorktree(git, known.path, options);
@@ -1812,6 +1825,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     readonly cancel: () => void;
   }
   const setupRuns = new Map<string, SetupRun>();
+  /** The terminal a thread's setup script ran in, kept open after a failure (for "Open terminal"). */
+  const setupTerminals = new Map<string, { worktreePath: string; terminalId: string }>();
   /** Setups whose script is being looked up: the first turn waits until its run is known. */
   const setupStarts = new Map<string, Promise<void>>();
 
@@ -1916,6 +1931,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     }
     const terminalId = started.terminalId;
     run.terminalId = terminalId;
+    setupTerminals.set(threadId, { worktreePath, terminalId });
     setups.update(threadId, (snapshot) => ({
       ...snapshot,
       setupScript: { name: script.name, command: script.command, terminalId },
@@ -1933,6 +1949,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     });
     // A script that worked leaves nothing to look at; a failed one keeps its terminal.
     if (outcome === 0) {
+      setupTerminals.delete(threadId);
       await terminals.close({ threadId, terminalId }).catch(() => undefined);
     }
     settleSetup(threadId);
@@ -1942,6 +1959,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   function forgetSetup(threadId: string) {
     setupRuns.get(threadId)?.cancel();
     setupRuns.delete(threadId);
+    const terminal = setupTerminals.get(threadId);
+    setupTerminals.delete(threadId);
+    if (terminal !== undefined) {
+      void context.services
+        .tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY)
+        ?.close({ threadId, terminalId: terminal.terminalId })
+        .catch(() => undefined);
+    }
     setups.forget(threadId);
     setupStreams.delete(worktreeSetupStream(threadId));
   }
@@ -1950,6 +1975,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (setups.get(threadId)?.phase !== "running") return false;
     const run = setupRuns.get(threadId);
     setupRuns.delete(threadId);
+    setupTerminals.delete(threadId);
     run?.cancel();
     if (run?.terminalId !== undefined) {
       await context.services

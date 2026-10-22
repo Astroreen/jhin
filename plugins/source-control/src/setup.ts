@@ -331,6 +331,8 @@ export async function runSetupScript(input: {
     settle = resolve;
   });
   let settled = false;
+  // Declared first: `follow` may report an exit before it returns.
+  let subscription: Disposable | undefined;
   let buffer = "";
   const done = (code: number | null) => {
     if (settled) return;
@@ -352,7 +354,7 @@ export async function runSetupScript(input: {
     input.onLine(cleaned.slice(0, OUTPUT_LINE_MAX_LENGTH));
   };
   // Subscribed before writing, so the sentinel cannot race past the listener.
-  const subscription = input.follow(input.threadId, terminalId, (event) => {
+  subscription = input.follow(input.threadId, terminalId, (event) => {
     if (settled) return;
     if (event.type === TerminalEvents.output) {
       buffer += (event.payload as { data: string }).data;
@@ -369,6 +371,8 @@ export async function runSetupScript(input: {
       done(null);
     }
   });
+  // Settled while it subscribed: nothing listens any more.
+  if (settled) subscription?.dispose();
   if (input.wanted?.() === false) {
     subscription?.dispose();
     return undefined;
