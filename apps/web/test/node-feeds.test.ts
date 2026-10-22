@@ -428,4 +428,36 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
     expect(disposed).toEqual([1, 2]);
   });
+
+  it("starts one read when a drop comes as a waiting retry's minute ends", async () => {
+    let time = 0;
+    const waiting: { run: () => void; cancelled: boolean }[] = [];
+    const one = fakeClient();
+    const { connections } = fakeConnections(one.client);
+    const feeds = createNodeFeeds(connections, quiet, source, {
+      clock: () => time,
+      later: (_ms, run) => {
+        const entry = { run, cancelled: false };
+        waiting.push(entry);
+        return toDisposable(() => (entry.cancelled = true));
+      },
+    });
+    let ready = changes(feeds);
+    one.answer.resolve({ head: 1, items: ["x"] });
+    await ready;
+    ready = changes(feeds);
+    one.stream.onError!(new Error("dropped"));
+    await ready;
+    // A second drop within the minute: a retry waits.
+    one.stream.onError!(new Error("dropped again"));
+    expect(waiting).toHaveLength(1);
+    // The minute ends and a third drop is reported first: it reads, and the waiting retry is off.
+    time += 60_000;
+    ready = changes(feeds);
+    one.stream.onError!(new Error("dropped a third time"));
+    expect(waiting[0]!.cancelled).toBe(true);
+    await ready;
+    expect(one.reads.count).toBe(3);
+    feeds.dispose();
+  });
 });

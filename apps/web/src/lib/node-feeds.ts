@@ -136,6 +136,9 @@ export function createNodeFeeds<S>(
       // The dropped subscription is given up now, not when the read answers:
       // what it still delivers or reports meanwhile is not heard.
       generation += 1;
+      // One read at a time: a retry waiting for the minute is this one now.
+      waitingRetry?.dispose();
+      waitingRetry = undefined;
       lastRetry = clock();
       rereads.set(id, []);
       for (const subscription of subscriptions.splice(0)) subscription.dispose();
