@@ -331,15 +331,18 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
   that dies while a restart is starting it counts as a failed start. As in
   T3, a node that comes up and then dies every time restarts every 500 ms:
   its last 20 lines of output, which D512's dialog showed, go to the app's
-  log with each exit. One restart is pending at a time; it leaves alone a
-  node another path started or is starting (a failed update's restart); a
-  quit cancels it (and stops a node a restart is starting, D522); and the
+  log with each exit. One restart is pending at a time. It leaves alone a
+  node another path started or is starting (a failed update's restart, with
+  its Try Again dialog), which neither counts as a start nor fails one. A
+  quit cancels it (and stops a node a restart is starting, D522), and a
+  failed update install, after which the app runs on, takes it back. The
   window loads the restarted node as it loads the first, or opens on it if
   none was open. Meanwhile the page shows the web client's own disconnected
   state. The first start keeps D512's dialog, since no window is open yet.
   `apps/desktop/src/node-restart.ts` holds the policy, unit tested with a
   scheduler the test runs by hand; the desktop e2e kills the node and sees
-  the page come back without a dialog.
+  the restart scheduled after 500 ms in the app's log and the page come
+  back without a dialog.
 
 ## Deferred
 
