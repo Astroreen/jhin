@@ -17,8 +17,9 @@ export interface NodeFeeds<S> {
   subscribe(listener: () => void): Disposable;
   /**
    * Applies a change this client made and knows succeeded to a feed whose
-   * stream is not live, so what it shows does not wait for an event that will
-   * not come. A live feed is left to its stream.
+   * stream is not live, or is being read again (kept for what that read
+   * brings), so what it shows does not wait for an event that may not come.
+   * A live feed is left to its stream.
    */
   apply(id: string, event: { type: string; payload: unknown }): void;
 }
@@ -65,6 +66,8 @@ export function createNodeFeeds<S>(
   clock: () => number = Date.now,
 ): NodeFeeds<S> & Disposable {
   const states = new Map<string, NodeFeed<S>>();
+  /** Changes this client applied to a feed while its stream is read again. */
+  const rereads = new Map<string, { type: string; payload: unknown }[]>();
   const feeds = new Map<string, { client: NodeConnection["client"]; stop: () => void }>();
   const listeners = new Set<() => void>();
   let snapshot: ReadonlyMap<string, NodeFeed<S>> = new Map();
@@ -104,6 +107,7 @@ export function createNodeFeeds<S>(
     let lastRetry = Number.NEGATIVE_INFINITY;
     const failed = (error: unknown) => {
       if (stopped) return;
+      rereads.delete(id);
       const code = String((error as { code?: unknown } | null)?.code);
       const message = error instanceof Error ? error.message : String(error);
       const wasRead = states.get(id)?.status === "ready";
@@ -115,6 +119,7 @@ export function createNodeFeeds<S>(
       const rested = clock() - lastRetry >= RETRY_GAP_MS;
       if (wasRead && rested && code !== "PERMISSION_DENIED") {
         lastRetry = clock();
+        rereads.set(id, []);
         for (const subscription of subscriptions.splice(0)) subscription.dispose();
         follow(true);
         return;
@@ -141,9 +146,16 @@ export function createNodeFeeds<S>(
     const follow = (again = false) =>
       void source
         .load(client)
-        .then(({ head, state }) => {
+        .then(({ head, state: read }) => {
           if (stopped) return;
           const before = states.get(id)?.value ?? source.empty;
+          // What this client changed while the stream was read again may not
+          // be in what was read: it is applied to it once more.
+          const state = (rereads.get(id) ?? []).reduce(
+            (value, change) => source.apply(value, change),
+            read,
+          );
+          rereads.delete(id);
           set(id, () => ({ status: "ready", value: state }));
           // What arrived while the stream was down is told now, not lost.
           if (again) {
@@ -198,11 +210,14 @@ export function createNodeFeeds<S>(
   return {
     snapshot: () => snapshot,
     apply(id, event) {
+      const pending = rereads.get(id);
       set(id, (feed) => {
-        if (feed.status !== "error") return feed;
+        // A feed being read again keeps the change for the state it gets (D731).
+        if (feed.status !== "error" && pending === undefined) return feed;
         const value = source.apply(feed.value, event);
         return value === feed.value ? feed : { ...feed, value };
       });
+      pending?.push(event);
     },
     subscribe(listener) {
       listeners.add(listener);

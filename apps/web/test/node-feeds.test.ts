@@ -309,4 +309,36 @@ describe("node feeds (D630, D731)", () => {
     expect(one.reads.count).toBe(2);
     feeds.dispose();
   });
+
+  it("keeps a change this client made while a dropped stream was read again", async () => {
+    let answer!: (value: unknown) => void;
+    const reads: Promise<unknown>[] = [
+      Promise.resolve({ head: 1, items: ["x"] }),
+      new Promise((resolve) => (answer = resolve)),
+    ];
+    let onError: ((error: unknown) => void) | undefined;
+    const client = {
+      call: () => reads.shift(),
+      subscribe: (_stream: string, options: { onError: (error: unknown) => void }) => {
+        onError = options.onError;
+        return toDisposable(() => {});
+      },
+    };
+    const { connections } = fakeConnections(client as never);
+    const feeds = createNodeFeeds(connections, quiet, source);
+    await changes(feeds);
+    onError!(new Error("dropped"));
+    // A change made here (a dismissal) while the re-read is under way…
+    feeds.apply("a", { type: "add", payload: "local" });
+    expect(feeds.snapshot().get("a")?.value).toEqual(["x", "local"]);
+    // …is kept when the re-read answers without it.
+    const ready = changes(feeds);
+    answer({ head: 2, items: ["x", "y"] });
+    await ready;
+    expect(feeds.snapshot().get("a")).toMatchObject({
+      status: "ready",
+      value: ["x", "y", "local"],
+    });
+    feeds.dispose();
+  });
 });
