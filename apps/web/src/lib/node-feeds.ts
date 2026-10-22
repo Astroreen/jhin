@@ -102,6 +102,15 @@ export function createNodeFeeds<S>(
       const code = String((error as { code?: unknown } | null)?.code);
       const message = error instanceof Error ? error.message : String(error);
       const wasRead = states.get(id)?.status === "ready";
+      // A stream that dropped is read and followed once more, so one hiccup
+      // does not silence what is told; the feed stays as it is meanwhile, not
+      // flashing "not live". A permission taken back is not retried.
+      if (wasRead && !retried && code !== "PERMISSION_DENIED") {
+        retried = true;
+        for (const subscription of subscriptions.splice(0)) subscription.dispose();
+        follow(true);
+        return;
+      }
       // A node that never answered has nothing to show; a feed that failed
       // after it was read (even a permission taken back) keeps what it showed,
       // marked not live.
@@ -118,14 +127,6 @@ export function createNodeFeeds<S>(
                   : message,
             },
       );
-      // A stream that dropped is read and followed once more, so one hiccup
-      // does not silence what is told; a second failure stays not live until
-      // the connection is replaced. A permission taken back is not retried.
-      if (wasRead && !retried && code !== "PERMISSION_DENIED") {
-        retried = true;
-        for (const subscription of subscriptions.splice(0)) subscription.dispose();
-        follow(true);
-      }
     };
     const follow = (again = false) =>
       void source

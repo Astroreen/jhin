@@ -389,7 +389,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
         // The node's record, as its event would carry it (D724).
         payload: {
           warningId,
-          dismissedAt: dismissed.dismissedAt ?? new Date().toISOString(),
+          ...(dismissed.dismissedAt === undefined ? {} : { dismissedAt: dismissed.dismissedAt }),
           ...(dismissed.dismissedAfter === undefined
             ? {}
             : { dismissedAfter: dismissed.dismissedAfter }),

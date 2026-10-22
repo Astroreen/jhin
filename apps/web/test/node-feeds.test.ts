@@ -130,7 +130,8 @@ describe("node feeds (D630, D731)", () => {
       });
     });
     one.stream.onError!(new Error("stream gone"));
-    expect(feeds.snapshot().get("a")?.status).toBe("error");
+    // It stays as it was while it is read again: no flash of "not live".
+    expect(feeds.snapshot().get("a")?.status).toBe("ready");
     await ready;
     expect(one.reads.count).toBe(2);
     expect(one.stream.open).toBe(true);
