@@ -2,7 +2,7 @@ import type { Connections, NodeConnection } from "@jhin/client-api";
 import { toDisposable } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createNodeFeeds, type NodeFeeds } from "../src/lib/node-feeds.ts";
+import { MAX_FAILURES_IN_A_ROW, createNodeFeeds, type NodeFeeds } from "../src/lib/node-feeds.ts";
 
 type Event = { type: string; payload: unknown };
 
@@ -484,6 +484,51 @@ describe("node feeds (D630, D731)", () => {
       status: "ready",
       value: ["x", "local"],
       read: true,
+    });
+    feeds.dispose();
+  });
+
+  it("gives a feed up after failing ten times in a row", async () => {
+    let time = 0;
+    const waiting: (() => void)[] = [];
+    let reads = 0;
+    let failedRead!: () => void;
+    const client = {
+      call: () => {
+        reads += 1;
+        // Every read fails the same way: an error that will not pass.
+        const read = Promise.reject(Object.assign(new Error("bad answer"), { code: "INTERNAL" }));
+        void read.catch(() => queueMicrotask(() => failedRead()));
+        return read;
+      },
+      subscribe: () => toDisposable(() => {}),
+    };
+    const { connections } = fakeConnections(client as never);
+    const nextFailure = () => new Promise<void>((resolve) => (failedRead = resolve));
+    let failure = nextFailure();
+    const feeds = createNodeFeeds(connections, quiet, source, {
+      clock: () => time,
+      later: (_ms, run) => {
+        waiting.push(run);
+        return toDisposable(() => {});
+      },
+    });
+    // The first failure is retried at once, the rest once a minute each.
+    await failure;
+    failure = nextFailure();
+    await failure;
+    while (waiting.length > 0 && reads <= MAX_FAILURES_IN_A_ROW) {
+      failure = nextFailure();
+      time += 60_000;
+      waiting.shift()!();
+      await failure;
+    }
+    expect(reads).toBe(MAX_FAILURES_IN_A_ROW);
+    expect(feeds.snapshot().get("a")).toEqual({
+      status: "error",
+      value: [],
+      retrying: false,
+      error: `given up after ${MAX_FAILURES_IN_A_ROW} failures in a row (bad answer)`,
     });
     feeds.dispose();
   });

@@ -1086,7 +1086,10 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   same way, telling nothing of it as new. A re-read tells at most the three
   newest of what came meanwhile; the rest is in the sidebar. A permission taken back, or a node
   without the feed (a node read before that restarted on a build without
-  it included), is not retried; a read feed keeps its items, not live.
+  it included), is not retried; a read feed keeps its items, not live. Nor
+  is a feed that failed ten times in a row with no read between (an error
+  that will not pass, such as an answer failing its schema): it is given up
+  until its connection is replaced.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 
@@ -1294,9 +1297,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   feed, recovering by itself when it is granted (or installed) again; today it stays not live until the connection is
   replaced (D731).
 - A7: a growing pause between retries of a feed whose node keeps failing,
-  and giving up on an error that will not pass (a read whose answer fails
-  its schema): today any error but a missing command or a permission is
-  read again once a minute for as long as its connection is open (D731).
+  and telling a lasting error from a passing one by its code: today any
+  error but a missing command or a permission is read again once a minute,
+  up to ten failures in a row (D731).
 - A7: reading a turn's commits through `source-control.git@1` once it offers
   a read of `HEAD` and a count of commits; health runs `git` itself until
   then (D723).

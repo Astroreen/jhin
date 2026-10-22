@@ -91,6 +91,13 @@ export function newestToTell<T>(
 /** The least time between two retries of one feed. */
 const RETRY_GAP_MS = 60_000;
 
+/**
+ * Failures in a row, with no read between them, after which a feed is given
+ * up until its connection is replaced: an error that will not pass (a read
+ * whose answer fails its schema) does not load the node forever (D731).
+ */
+export const MAX_FAILURES_IN_A_ROW = 10;
+
 const NOT_THERE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_DENIED"]);
 
 /** Follows `source` on every open connection for as long as it is not disposed. */
@@ -160,6 +167,8 @@ export function createNodeFeeds<S>(
     let lastRetry = Number.NEGATIVE_INFINITY;
     /** Whether this feed was ever read; only such a feed is read again. */
     let everRead = false;
+    /** Failures since the last read that answered. */
+    let failuresInARow = 0;
     /** A retry waiting for the minute to pass. */
     let waitingRetry: Disposable | undefined;
     /** The current subscription's number: a disposed one's late events are ignored. */
@@ -193,8 +202,11 @@ export function createNodeFeeds<S>(
       // flapping stream does not loop on the node: a drop (or a failed read)
       // within that minute marks the feed not live and reads it again once
       // the minute is over. A permission taken back, or a node that no longer
-      // has the feed (restarted on a build without it), is not retried.
-      const retrying = code === undefined || !NOT_THERE.has(code);
+      // has the feed (restarted on a build without it), is not retried, nor
+      // is a feed that failed `MAX_FAILURES_IN_A_ROW` times with no read between.
+      failuresInARow += 1;
+      const lasting = failuresInARow >= MAX_FAILURES_IN_A_ROW;
+      const retrying = !lasting && (code === undefined || !NOT_THERE.has(code));
       if (!retrying) {
         // The feed is given up: a retry already waiting for the minute is
         // called off, and what its subscription still delivers is not heard.
@@ -231,7 +243,9 @@ export function createNodeFeeds<S>(
                   ? `this client may no longer read it (${message})`
                   : retrying
                     ? message
-                    : `this node no longer has it (${message})`,
+                    : code !== undefined && NOT_THERE.has(code)
+                      ? `this node no longer has it (${message})`
+                      : `given up after ${failuresInARow} failures in a row (${message})`,
             },
       );
     };
@@ -258,6 +272,7 @@ export function createNodeFeeds<S>(
           }, read);
           rereads.delete(id);
           everRead = true;
+          failuresInARow = 0;
           set(id, () => ({ status: "ready", value: state, read: true }));
           // What arrived while the stream was down is told now, not lost.
           if (again) {
