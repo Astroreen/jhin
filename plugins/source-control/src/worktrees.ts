@@ -382,7 +382,7 @@ async function populateSubmodules(
     (error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? false : error),
   );
   if (hasSubmodules instanceof Error) {
-    return ["warning", `submodules not checked out: ${hasSubmodules.message}`];
+    return ["warning", `submodules not checked out: ${redactUrls(hasSubmodules.message)}`];
   }
   if (!hasSubmodules) return ["done", undefined];
   // Skipped as asked: no warning, only what was left (a setup script may fill them).
