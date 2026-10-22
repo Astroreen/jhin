@@ -581,6 +581,20 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
       await sc.client.call("threads.delete", { threadId: "ahead-lib" });
       await sc.client.call("git.worktree.cleanup", {});
       expect(git(lib, "rev-parse", "HEAD").trim()).toBe(only);
+
+      // A submodule pinned to a tagged commit on no branch is pushed: it goes.
+      git(library, "switch", "--quiet", "--detach");
+      git(library, "commit", "--quiet", "--allow-empty", "-m", "release");
+      git(library, "tag", "v1");
+      git(library, "switch", "--quiet", "-");
+      git(Path.join(dir, "lib"), "fetch", "--quiet", "--tags");
+      git(Path.join(dir, "lib"), "switch", "--quiet", "--detach", "v1");
+      git(dir, "commit", "--quiet", "-am", "lib at v1");
+      const pinned = await create("pinned-lib");
+      const pinnedGone = sc.logged("removed a worktree");
+      await sc.client.call("threads.delete", { threadId: "pinned-lib" });
+      await pinnedGone;
+      expect(Fs.existsSync(pinned.worktreePath)).toBe(false);
     } finally {
       vi.unstubAllEnvs();
     }

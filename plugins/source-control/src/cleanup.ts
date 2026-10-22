@@ -136,9 +136,17 @@ export async function localChangesReason(
   }
   if (count > 0) return `has uncommitted changes (${count} ${count === 1 ? "file" : "files"})`;
   // A submodule's own commits live in this worktree's git folder alone until pushed, and a
-  // clean status does not show them: a forced removal would take them (D1134).
+  // clean status does not show them: a forced removal would take them (D1134). One on a
+  // remote branch or a tag is safe; any other (a commit fetched by hash alone, say) keeps
+  // the worktree, the safe side: forcing it away stays the user's to choose.
   const unpushed = await git(
-    ["submodule", "foreach", "--quiet", "--recursive", "git rev-list -n 1 HEAD --not --remotes"],
+    [
+      "submodule",
+      "foreach",
+      "--quiet",
+      "--recursive",
+      "git rev-list -n 1 HEAD --not --remotes --tags",
+    ],
     { ok: [0, 1, 128] },
   );
   if (unpushed.code !== 0) return "submodules could not be read";
