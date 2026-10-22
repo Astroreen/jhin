@@ -1516,6 +1516,11 @@ with its report as a "C3 run" note here.
   threads are followed (D710).
 - A6: a refocus interval in minutes for long turns (D711 counts turns).
 - A6: a row in the chat for `agent.context.compacted` (D709).
+- A6: the orchestrator in Civilization mode, beside A3's mission view (D712).
+- A6: ending a `missions.wait` when its caller goes away: commands get no
+  cancellation signal (as W10's waits), so a stopped run's wait ends at its
+  timeout.
+- A6: journaling `command()` results (D705) so a resumed run reuses them.
 - C3: a fake runtime that calls the agent's own tools (`slices_prove`,
   `agents_ask`, `agents_send`) on a slash command, so the scenario runs the
   agents' path through MCP instead of commands sent for them (D1102).
@@ -1529,11 +1534,6 @@ with its report as a "C3 run" note here.
   which landed without filling it; the Missions section already groups by
   project. Fill it (projects with their intent, C2's intent editing) or drop
   the section.
-- A6: the orchestrator in Civilization mode, beside A3's mission view (D712).
-- A6: ending a `missions.wait` when its caller goes away: commands get no
-  cancellation signal (as W10's waits), so a stopped run's wait ends at its
-  timeout.
-- A6: journaling `command()` results (D705) so a resumed run reuses them.
 
 ## Landing
 

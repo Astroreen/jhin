@@ -218,8 +218,10 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
     event.type === "health.warning.raised" &&
     payloadOf(event).warning.detector === "ceremony" &&
     payloadOf(event).warning.group.missionId === mission.id;
-  // A message to the owner starts no turn and queues nothing in a slice's
-  // thread, so it is the only ceremony the node adds meanwhile; it counts for
+  // Nothing else adds ceremony meanwhile: the orchestrator waits in
+  // `missions.wait`, the builder's roof turn answers in its thread (no
+  // message, no queue), and a message to the owner starts no turn and queues
+  // nothing in a slice's thread. So each send is the one ceremony; it counts for
   // the builder's open slice, the roof. Each counts once, as it is sent: the
   // mission reaches its limit with the last one and not before, and a warning
   // needs the limit (D722).
