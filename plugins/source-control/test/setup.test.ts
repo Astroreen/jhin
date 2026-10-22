@@ -569,10 +569,10 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
       await swept;
       expect(Fs.existsSync(clean.worktreePath)).toBe(false);
 
-      // The submodule's own changes keep the other one. Its record is decided by the
-      // sweep the deletion starts, which a cleanup asked for now waits for.
+      // The submodule's own changes keep the other one, as the sweep the deletion starts says.
+      const keptDirty = sc.loggedWith("kept a worktree", { path: dirty.worktreePath });
       await sc.client.call("threads.delete", { threadId: "dirty-lib" });
-      await sc.client.call("git.worktree.cleanup", {});
+      await keptDirty;
       expect(Fs.readFileSync(Path.join(dirty.worktreePath, "lib", "notes.txt"), "utf8")).toBe(
         "mine\n",
       );
@@ -583,13 +583,25 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
       git(branchedLib, "switch", "--quiet", "-c", "mine");
       git(branchedLib, "commit", "--quiet", "--allow-empty", "-m", "on a branch");
       git(branchedLib, "switch", "--quiet", "--detach", "HEAD~1");
+      const keptBranched = sc.loggedWith("kept a worktree", { path: branched.worktreePath });
       await sc.client.call("threads.delete", { threadId: "branched-lib" });
-      await sc.client.call("git.worktree.cleanup", {});
+      await keptBranched;
       expect(git(branchedLib, "branch", "--list", "mine").trim()).toContain("mine");
 
+      // And a stash in a submodule, its files back as they were.
+      const stashed = await create("stashed-lib");
+      const stashedLib = Path.join(stashed.worktreePath, "lib");
+      Fs.writeFileSync(Path.join(stashedLib, "draft.txt"), "later\n");
+      git(stashedLib, "stash", "push", "--quiet", "--include-untracked");
+      const keptStashed = sc.loggedWith("kept a worktree", { path: stashed.worktreePath });
+      await sc.client.call("threads.delete", { threadId: "stashed-lib" });
+      await keptStashed;
+      expect(git(stashedLib, "stash", "list").trim()).not.toBe("");
+
       // The unpushed submodule commit keeps its worktree too.
+      const keptAhead = sc.loggedWith("kept a worktree", { path: ahead.worktreePath });
       await sc.client.call("threads.delete", { threadId: "ahead-lib" });
-      await sc.client.call("git.worktree.cleanup", {});
+      await keptAhead;
       expect(git(lib, "rev-parse", "HEAD").trim()).toBe(only);
 
       // A submodule pinned to a tagged commit on no branch is pushed: it goes.

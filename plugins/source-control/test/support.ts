@@ -214,11 +214,15 @@ export interface Node {
   logged(message: string): Promise<void>;
   /** Resolves once the node has logged `message`, now or since it started. */
   loggedSinceStart(message: string): Promise<void>;
+  /** Resolves when the node next logs `message` with `fields` among its fields. */
+  loggedWith(message: string, fields: Record<string, unknown>): Promise<void>;
 }
 
 /** A logger that tells `listen` every message, at any level and from any child. */
-function recordingLogger(listen: (message: string) => void): Logger {
-  const log = (message: string) => listen(message);
+function recordingLogger(
+  listen: (message: string, fields?: Record<string, unknown>) => void,
+): Logger {
+  const log = (message: string, fields?: Record<string, unknown>) => listen(message, fields);
   const logger: Logger = {
     debug: log,
     info: log,
@@ -361,8 +365,22 @@ export async function node(
   const terminals = options.terminals === true ? fakeTerminals(live) : undefined;
   const logWaiters = new Map<string, (() => void)[]>();
   const loggedMessages = new Set<string>();
-  const logger = recordingLogger((message) => {
+  const fieldWaiters = new Set<{
+    message: string;
+    fields: Record<string, unknown>;
+    resolve(): void;
+  }>();
+  const logger = recordingLogger((message, fields) => {
     loggedMessages.add(message);
+    for (const waiter of Array.from(fieldWaiters)) {
+      if (
+        waiter.message === message &&
+        Object.entries(waiter.fields).every(([key, value]) => fields?.[key] === value)
+      ) {
+        fieldWaiters.delete(waiter);
+        waiter.resolve();
+      }
+    }
     for (const resolve of logWaiters.get(message)?.splice(0) ?? []) resolve();
   });
   const kernel = await createTestKernel({
@@ -446,6 +464,10 @@ export async function node(
         const list = logWaiters.get(message) ?? [];
         list.push(resolve);
         logWaiters.set(message, list);
+      }),
+    loggedWith: (message, fields) =>
+      new Promise((resolve) => {
+        fieldWaiters.add({ message, fields, resolve });
       }),
     loggedSinceStart: (message) =>
       loggedMessages.has(message)

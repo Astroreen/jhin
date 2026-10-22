@@ -1551,6 +1551,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         });
         if ("keep" in verdict) {
           entries.push({ ...entry, outcome: "kept", reason: verdict.keep });
+          // A deleted thread's worktree stays on disk with nobody to see it: say why.
+          if (candidate.deleted) {
+            context.log.info("kept a worktree", { path: candidate.path, reason: verdict.keep });
+          }
           continue;
         }
         // T3's blockedSinceCheck: under the project's worktree lock, the threads there
@@ -1596,6 +1600,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         });
         if (blocked !== undefined) {
           entries.push({ ...entry, outcome: "kept", reason: blocked });
+          if (candidate.deleted) {
+            context.log.info("kept a worktree", { path: candidate.path, reason: blocked });
+          }
           continue;
         }
         const key = deletedKeys.get(candidate.path);
