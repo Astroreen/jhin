@@ -114,6 +114,8 @@ import {
   removeWorktree,
   renameTemporaryBranch,
   worktreesRoot,
+  hasCheckedOutSubmodules,
+  submodulesNeedForce,
 } from "./worktrees.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
 import {
@@ -240,6 +242,18 @@ export const Config = z
         "How long the writer agent may take; past it the message is written without a model",
       advanced: true,
     }),
+    worktreeSubmodules: z
+      .union([
+        z.literal("recursive").meta({ title: "Recursive" }),
+        z.literal("top-level").meta({ title: "Top level only" }),
+        z.literal("none").meta({ title: "Skip" }),
+      ])
+      .default("recursive")
+      .meta({
+        title: "Worktree submodules",
+        description:
+          "How new worktrees populate git submodules. Recursive checks out submodules and theirs; Top level only checks out the repository's own and leaves theirs empty; Skip leaves every submodule empty, for a setup script to handle.",
+      }),
     // T3's branch naming settings (D1126), with T3's words.
     branchNamingMode: z
       .union([
@@ -1537,6 +1551,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         });
         if ("keep" in verdict) {
           entries.push({ ...entry, outcome: "kept", reason: verdict.keep });
+          // A deleted thread's worktree stays on disk with nobody to see it: say why.
+          if (candidate.deleted) {
+            context.log.info("kept a worktree", { path: candidate.path, reason: verdict.keep });
+          }
           continue;
         }
         // T3's blockedSinceCheck: under the project's worktree lock, the threads there
@@ -1559,7 +1577,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
             .trim()
             .replace(/^refs\/heads\//, "");
           if (current !== candidate.branch) return "Repository or branch changed.";
-          const changes = await localChangesReason(worktreeGit, rules.keepWhen);
+          const changes = await localChangesReason(worktreeGit, rules.keepWhen, candidate.path);
           if (changes !== null) return sentence(changes);
           for (const threadId of now) {
             const answer = (await context.commands
@@ -1582,6 +1600,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         });
         if (blocked !== undefined) {
           entries.push({ ...entry, outcome: "kept", reason: blocked });
+          if (candidate.deleted) {
+            context.log.info("kept a worktree", { path: candidate.path, reason: blocked });
+          }
           continue;
         }
         const key = deletedKeys.get(candidate.path);
@@ -1955,6 +1976,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         repository: root,
         root: worktreesRoot(config().worktreesDirectory, hostPaths.home),
         baseRef: options.baseRef,
+        submodules: config().worktreeSubmodules,
         ...(options.branch === undefined ? {} : { branch: options.branch }),
         ...(options.startFromOrigin === undefined
           ? {}
@@ -2028,6 +2050,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         `Threads still work in ${path}: ${users.join(", ")}`,
         { path, threadIds: users },
       );
+    }
+    // Refused before anything else stops: an unforced removal git would turn down
+    // leaves the setup and its terminal as they are (D1134).
+    if (options.force !== true && (await hasCheckedOutSubmodules(git, known.path))) {
+      throw submodulesNeedForce(path);
     }
     // Its setup stops with it (D1124), and a setup that ended (a failed script)
     // leaves no terminal or run behind.
@@ -2286,7 +2313,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
             worktreePath: worktree,
             branch,
           });
-          await recreateWorktree(git, worktree, branch);
+          const warning = await recreateWorktree(
+            git,
+            worktree,
+            branch,
+            config().worktreeSubmodules,
+          );
+          if (warning !== undefined) {
+            context.log.warn("a recreated worktree's submodules", {
+              worktreePath: worktree,
+              warning,
+            });
+          }
         } catch (error) {
           // The turn fails saying why, instead of starting nowhere.
           throw new SourceControlError(
@@ -3213,7 +3251,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     name: "git.worktree.remove",
     title: "Remove a worktree",
     description:
-      "Removes a worktree of a project's repository that no thread works in (`force`: with its changes; `deleteBranch`: its branch too); one listed but gone from disk is pruned",
+      "Removes a worktree of a project's repository that no thread works in (`force`: with its changes, and with checked-out submodules, which git removes only forced; `deleteBranch`: its branch too); one listed but gone from disk is pruned",
     input: z.object({
       projectId: z.string().min(1),
       path: z.string().min(1),

@@ -351,6 +351,15 @@ test("D1128–D1130: with the delete rule on, deleting a thread asks nothing and
     .getByRole("switch", { name: "Delete unchanged worktrees" })
     .scrollIntoViewIfNeeded();
   await shot(page, info, "worktree-cleanup-settings");
+  // D1134: the submodules of a new worktree, with T3's words, recursive by default.
+  const submodules = section.getByRole("combobox", { name: "Worktree submodules" });
+  await submodules.scrollIntoViewIfNeeded();
+  await expect(submodules).toHaveText("Recursive");
+  await submodules.click();
+  await expect(page.getByRole("option", { name: "Top level only" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Skip" })).toBeVisible();
+  await shot(page, info, "worktree-submodules-setting");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Back" }).click();
 
   // The node is done with the deleted thread once source control lets go of it.

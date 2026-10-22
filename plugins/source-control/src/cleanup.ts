@@ -7,6 +7,7 @@ import * as Fs from "node:fs/promises";
 import { z } from "@jhin/sdk";
 
 import type { Git } from "./git.ts";
+import { gitmodulesIn } from "./worktrees.ts";
 
 const DAY_MS = 86_400_000;
 
@@ -119,6 +120,8 @@ export interface CleanupCandidate {
 export async function localChangesReason(
   git: Git,
   keepWhen: WorktreeCleanupRules["keepWhen"],
+  /** The worktree's folder: its submodules are asked only when it has a `.gitmodules`. */
+  path?: string,
 ): Promise<string | null> {
   const status = await git([
     "status",
@@ -135,6 +138,29 @@ export async function localChangesReason(
     if (/^[RC]|^.[RC]/.test(records[index]!)) index++;
   }
   if (count > 0) return `has uncommitted changes (${count} ${count === 1 ? "file" : "files"})`;
+  // A submodule's git folder lives in this worktree's, so a forced removal takes its own
+  // commits (on its HEAD or any local branch) and its stashes, none of which a clean status
+  // shows (D1134). A commit on a remote branch or a tag is safe; any other (one fetched by
+  // hash alone, say) keeps the worktree, the safe side: forcing it away stays the user's.
+  // An error reading `.gitmodules` asks git all the same.
+  const hasSubmodules = path === undefined || (await gitmodulesIn(path)) !== false;
+  const unpushed = !hasSubmodules
+    ? { code: 0, stdout: "" }
+    : await git(
+        [
+          "submodule",
+          "foreach",
+          "--quiet",
+          "--recursive",
+          "git rev-list -n 1 HEAD --branches --not --remotes --tags; git stash list -n 1",
+        ],
+        { ok: [0, 1, 128] },
+      )
+        // Any other failure keeps the worktree the same way, not the sweep's entry failing.
+        .catch(() => ({ code: -1, stdout: "" }));
+  if (unpushed.code !== 0) return "submodules could not be read";
+  if (unpushed.stdout.trim() !== "")
+    return "has submodule commits on no remote branch or tag, or stashes";
   if (keepWhen !== "any-local-files") return null;
   const ignored = await git([
     "ls-files",
@@ -217,7 +243,7 @@ export async function judge(
     .trim()
     .replace(/^refs\/heads\//, "");
   if (current !== candidate.branch) return keep("repository or branch changed");
-  const changes = await localChangesReason(git, rules.keepWhen);
+  const changes = await localChangesReason(git, rules.keepWhen, candidate.path);
   if (changes !== null) return keep(changes);
   if (candidate.deleted) return { remove: sentence("thread was deleted") };
 

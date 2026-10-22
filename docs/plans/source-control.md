@@ -939,6 +939,34 @@ with screenshots).
   closed with no readable close time, as T3 leaves them out) settles on its
   branch's pull request as before.
 
+- **D1134. A new worktree's submodules are checked out**, as T3's
+  `createWorktree` does after `git worktree add` (which leaves them empty):
+  with a `.gitmodules`, `git submodule update --init` (`--recursive` unless
+  only the top level is wanted) runs in the worktree, as `worktreeSubmodules`
+  of `jhin.source-control` says ("Worktree submodules": "Recursive", the
+  default, "Top level only" or "Skip"; T3's words). A failure leaves their
+  folders empty and the worktree in use; the setup card's "Check out files"
+  then ends with a warning ("submodules not checked out: <git's reason>",
+  while "Skip" ends it done with "submodules left empty", as the user
+  chose). A worktree with checked-out submodules is removed only with `force`
+  (D255's deletion and the cleanup pass it), as git holds: their own commits
+  may be pushed nowhere, which a clean status does not show. So the cleanup
+  first asks each submodule for commits on no remote branch or tag, on its
+  HEAD or any local branch, and for stashes (`git submodule foreach git
+  rev-list HEAD --branches --not --remotes --tags; git stash list`), and
+  keeps a worktree that has any ("has submodule commits on no remote branch
+  or tag, or stashes"; a commit fetched by hash alone counts too, the safe
+  side). The sweep logs a deleted thread's worktree it keeps ("kept a
+  worktree", with the reason), since nobody else sees it. Without `force`,
+  `git.worktree.remove` says so ("remove it with force"), not git's own
+  message. A submodule run git ends without a reason (killed at the
+  timeout) says its exit code. T3's per-project setting and its `t3.json` override,
+  and pull request checkouts (D902), are Deferred. A managed worktree made
+  again from its branch (D256) gets its submodules the same way; a failure
+  there is logged. Cancelling a setup while its
+  submodules are still being checked out ends the setup but lets that git
+  run finish (Deferred).
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1291,8 +1319,15 @@ with the node's token, and without one).
   cleanup" (Inherit, Off, Custom), its "Last run" report in the settings,
   folders under the worktrees directory no thread ever used (T3's orphan
   report), and the checks for a subagent chain sharing a worktree.
-- Worktrees, from W3 (D240): submodules,
-  one worktree per model of a multi-model send, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
+- Worktree submodules (D1134): those of a pull request's worktree (D902);
+  T3's per-project and `t3.json` submodule settings; stopping a submodule
+  checkout that a cancelled setup leaves running; showing a recreated
+  worktree's submodule warning on its turn instead of only logging it; a
+  submodule checkout's own timeout; and D255's "Delete the worktree too?"
+  naming a submodule's unpushed commits or stashes, which the user's forced
+  removal takes (the cleanup keeps such a worktree).
+- Worktrees, from W3 (D240): one worktree per model of a multi-model send, MCP
+  tools that act as the calling thread (T3's `t3_worktree_status`;
   `git.worktree.handoff` takes a `threadId`), a handoff's continuation
   prompt (W1's queue), deleting a removed worktree's branch from the client's
   question (T3 keeps it too; `git.worktree.remove` takes `deleteBranch`), the

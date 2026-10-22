@@ -7,10 +7,10 @@ import {
   type WorktreeSetupSnapshot,
   type WorktreeSetupStageId,
 } from "@jhin/source-control-api";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { completionShellOf, runSetupScript, wrapCommandForCompletion } from "../src/setup.ts";
-import { node, repository, type Node } from "./support.ts";
+import { git, node, repository, type Node } from "./support.ts";
 
 /** Resolves with the first snapshot of the thread's setup (kept or new) that `match` accepts. */
 function setupUntil(
@@ -425,6 +425,201 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     expect(
       await sc.client.call<{ cancelled: boolean }>("git.worktree.setup.cancel", { threadId }),
     ).toEqual({ cancelled: false });
+  });
+
+  it("checks a new worktree's submodules out, or leaves them empty with a warning (D1134)", async () => {
+    // Local submodules need the file transport, which git turns off for them by default.
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "protocol.file.allow");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "always");
+    try {
+      const library = repository();
+      const dir = repository();
+      git(dir, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", library, "lib");
+      git(dir, "commit", "--quiet", "-m", "lib");
+      const sc = await node({ watch: false });
+      const projectId = await sc.project(dir);
+      const thread = await sc.client.call<{ worktreePath: string }>("threads.create", {
+        projectId,
+        threadId: "with-lib",
+        workspace: { type: "worktree", baseRef: "main" },
+      });
+      expect(Fs.readFileSync(Path.join(thread.worktreePath, "lib", "README.md"), "utf8")).toBe(
+        "one\ntwo\nthree\n",
+      );
+      const snapshot = await sc.client.call<WorktreeSetupSnapshot>("git.worktree.setup.get", {
+        threadId: "with-lib",
+      });
+      expect(stage(snapshot, "checkout")?.status).toBe("done");
+      // Gone from disk, it is made again from its branch at the next turn (D256), submodules too.
+      Fs.rmSync(thread.worktreePath, { recursive: true, force: true });
+      expect(await turn(sc, "with-lib", "hello")).toBe("completed");
+      expect(Fs.readFileSync(Path.join(thread.worktreePath, "lib", "README.md"), "utf8")).toBe(
+        "one\ntwo\nthree\n",
+      );
+      // A worktree with checked-out submodules goes only when forced: their commits
+      // may be pushed nowhere, as git itself holds.
+      await sc.client.call("threads.delete", { threadId: "with-lib" });
+      await expect(
+        sc.client.call("git.worktree.remove", { projectId, path: thread.worktreePath }),
+      ).rejects.toThrow(/checked-out submodules, whose commits may be pushed nowhere/);
+      expect(Fs.existsSync(thread.worktreePath)).toBe(true);
+      await sc.client.call("git.worktree.remove", {
+        projectId,
+        path: thread.worktreePath,
+        force: true,
+      });
+      expect(Fs.existsSync(thread.worktreePath)).toBe(false);
+
+      sc.configure({ worktreeSubmodules: "none" });
+      const empty = await sc.client.call<{ worktreePath: string }>("threads.create", {
+        projectId,
+        threadId: "without-lib",
+        workspace: { type: "worktree", baseRef: "main" },
+      });
+      expect(Fs.readdirSync(Path.join(empty.worktreePath, "lib"))).toEqual([]);
+      expect(
+        stage(
+          await sc.client.call<WorktreeSetupSnapshot>("git.worktree.setup.get", {
+            threadId: "without-lib",
+          }),
+          "checkout",
+        ),
+      ).toMatchObject({ status: "done", detail: "submodules left empty" });
+
+      // Top level only: a submodule's own submodule stays empty.
+      const inner = repository();
+      git(
+        library,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "--quiet",
+        inner,
+        "inner",
+      );
+      git(library, "commit", "--quiet", "-m", "inner");
+      git(dir, "-C", "lib", "pull", "--quiet");
+      git(dir, "commit", "--quiet", "-am", "lib with inner");
+      sc.configure({ worktreeSubmodules: "top-level" });
+      const top = await sc.client.call<{ worktreePath: string }>("threads.create", {
+        projectId,
+        threadId: "top-level",
+        workspace: { type: "worktree", baseRef: "main" },
+      });
+      expect(Fs.existsSync(Path.join(top.worktreePath, "lib", "README.md"))).toBe(true);
+      expect(Fs.readdirSync(Path.join(top.worktreePath, "lib", "inner"))).toEqual([]);
+
+      // A submodule that cannot be fetched: the worktree is still used, with git's reason.
+      Fs.rmSync(library, { recursive: true, force: true });
+      sc.configure({ worktreeSubmodules: "recursive" });
+      const broken = await sc.client.call<{ worktreePath: string }>("threads.create", {
+        projectId,
+        threadId: "broken-lib",
+        workspace: { type: "worktree", baseRef: "main" },
+      });
+      expect(Fs.existsSync(broken.worktreePath)).toBe(true);
+      const checkout = stage(
+        await sc.client.call<WorktreeSetupSnapshot>("git.worktree.setup.get", {
+          threadId: "broken-lib",
+        }),
+        "checkout",
+      );
+      expect(checkout?.status).toBe("warning");
+      // git's own reason, its fatal or error line without the prefix, not a progress line
+      // (its wording is git's and differs between versions, so only its shape is checked).
+      expect(checkout?.detail).toMatch(/^submodules not checked out: (?!Cloning|fatal:|error:)\S/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("lets the cleanup remove a deleted thread's worktree with clean submodules, and keep a dirty one (D1134)", async () => {
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "protocol.file.allow");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "always");
+    try {
+      const library = repository();
+      const dir = repository();
+      git(dir, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", library, "lib");
+      git(dir, "commit", "--quiet", "-m", "lib");
+      const sc = await node({ watch: false, worktreeCleanup: { onDelete: true } });
+      const projectId = await sc.project(dir);
+      const create = (threadId: string) =>
+        sc.client.call<{ worktreePath: string }>("threads.create", {
+          projectId,
+          threadId,
+          workspace: { type: "worktree", baseRef: "main" },
+        });
+      const clean = await create("clean-lib");
+      const dirty = await create("dirty-lib");
+      const ahead = await create("ahead-lib");
+      // Work inside the submodule only: the parent's status still shows it.
+      Fs.writeFileSync(Path.join(dirty.worktreePath, "lib", "notes.txt"), "mine\n");
+      // A submodule commit, pushed nowhere, its pointer committed: the parent's status is clean.
+      const lib = Path.join(ahead.worktreePath, "lib");
+      git(lib, "commit", "--quiet", "--allow-empty", "-m", "only here");
+      const only = git(lib, "rev-parse", "HEAD").trim();
+      git(ahead.worktreePath, "commit", "--quiet", "-am", "lib ahead");
+
+      // Clean, checked out submodules and all: the sweep after the deletion forces it away.
+      const swept = sc.logged("removed a worktree");
+      await sc.client.call("threads.delete", { threadId: "clean-lib" });
+      await swept;
+      expect(Fs.existsSync(clean.worktreePath)).toBe(false);
+
+      // The submodule's own changes keep the other one, as the sweep the deletion starts says.
+      const keptDirty = sc.loggedWith("kept a worktree", { path: dirty.worktreePath });
+      await sc.client.call("threads.delete", { threadId: "dirty-lib" });
+      await keptDirty;
+      expect(Fs.readFileSync(Path.join(dirty.worktreePath, "lib", "notes.txt"), "utf8")).toBe(
+        "mine\n",
+      );
+
+      // So does a commit on another local branch of a submodule, its HEAD back where it was.
+      const branched = await create("branched-lib");
+      const branchedLib = Path.join(branched.worktreePath, "lib");
+      git(branchedLib, "switch", "--quiet", "-c", "mine");
+      git(branchedLib, "commit", "--quiet", "--allow-empty", "-m", "on a branch");
+      git(branchedLib, "switch", "--quiet", "--detach", "HEAD~1");
+      const keptBranched = sc.loggedWith("kept a worktree", { path: branched.worktreePath });
+      await sc.client.call("threads.delete", { threadId: "branched-lib" });
+      await keptBranched;
+      expect(git(branchedLib, "branch", "--list", "mine").trim()).toContain("mine");
+
+      // And a stash in a submodule, its files back as they were.
+      const stashed = await create("stashed-lib");
+      const stashedLib = Path.join(stashed.worktreePath, "lib");
+      Fs.writeFileSync(Path.join(stashedLib, "draft.txt"), "later\n");
+      git(stashedLib, "stash", "push", "--quiet", "--include-untracked");
+      const keptStashed = sc.loggedWith("kept a worktree", { path: stashed.worktreePath });
+      await sc.client.call("threads.delete", { threadId: "stashed-lib" });
+      await keptStashed;
+      expect(git(stashedLib, "stash", "list").trim()).not.toBe("");
+
+      // The unpushed submodule commit keeps its worktree too.
+      const keptAhead = sc.loggedWith("kept a worktree", { path: ahead.worktreePath });
+      await sc.client.call("threads.delete", { threadId: "ahead-lib" });
+      await keptAhead;
+      expect(git(lib, "rev-parse", "HEAD").trim()).toBe(only);
+
+      // A submodule pinned to a tagged commit on no branch is pushed: it goes.
+      git(library, "switch", "--quiet", "--detach");
+      git(library, "commit", "--quiet", "--allow-empty", "-m", "release");
+      git(library, "tag", "v1");
+      git(library, "switch", "--quiet", "-");
+      git(Path.join(dir, "lib"), "fetch", "--quiet", "--tags");
+      git(Path.join(dir, "lib"), "switch", "--quiet", "--detach", "v1");
+      git(dir, "commit", "--quiet", "-am", "lib at v1");
+      const pinned = await create("pinned-lib");
+      const pinnedGone = sc.logged("removed a worktree");
+      await sc.client.call("threads.delete", { threadId: "pinned-lib" });
+      await pinnedGone;
+      expect(Fs.existsSync(pinned.worktreePath)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("keeps a project's scripts and refuses two with one id", async () => {

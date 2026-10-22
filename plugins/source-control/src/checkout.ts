@@ -367,7 +367,8 @@ export async function checkoutWorktree(
   await materialize(git, target, local, options.warn);
   const path = worktreePath(options.root, options.repository, local);
   try {
-    await recreateWorktree(git, path, local);
+    // Its submodules wait for D1134 to reach pull request checkouts (Deferred).
+    await recreateWorktree(git, path, local, "none");
   } catch (error) {
     // A branch made only for this worktree goes with it.
     if (!existed) await git(["branch", "-D", "--", local], { ok: [0, 1] });

@@ -286,6 +286,8 @@ export async function createWorktree(
     readonly baseRef: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
+    /** How a new worktree populates git submodules (T3's `worktreeSubmodules`, D1134). */
+    readonly submodules?: "recursive" | "top-level" | "none";
     /** Told when fetching the base and checking the files out start and end (D1123). */
     readonly onStage?: (
       stage: "fetch" | "checkout",
@@ -352,7 +354,8 @@ export async function createWorktree(
   await git(["worktree", "add", "-b", branch, "--", path, startRef], {
     timeoutMs: WORKTREE_TIMEOUT_MS,
   });
-  onStage("checkout", "done");
+  const [status, detail] = await populateSubmodules(git, path, options.submodules ?? "recursive");
+  onStage("checkout", status, detail);
   return {
     path: await Fs.realpath(path),
     branch,
@@ -362,11 +365,96 @@ export async function createWorktree(
   };
 }
 
+/**
+ * T3's submodule step of a new worktree: `git worktree add` leaves submodules
+ * empty, so a repository that keeps tooling or source in one gets them
+ * checked out (`--recursive` unless only the top level is wanted). A failure
+ * leaves their folders empty and the worktree in use, with a warning.
+ */
+async function populateSubmodules(
+  git: Git,
+  path: string,
+  mode: "recursive" | "top-level" | "none",
+): Promise<["done", string | undefined] | ["warning", string]> {
+  // Another error reading `.gitmodules` is said.
+  const hasSubmodules = await gitmodulesIn(path);
+  // Skipped as asked, the file is not git's to read either: nothing to warn of.
+  if (hasSubmodules instanceof Error && mode !== "none") {
+    return ["warning", `submodules not checked out: ${redactUrls(hasSubmodules.message)}`];
+  }
+  if (!hasSubmodules) return ["done", undefined];
+  // Skipped as asked: no warning, only what was left (a setup script may fill them).
+  if (mode === "none") return ["done", "submodules left empty"];
+  let updated: { code: number; stderr: string };
+  try {
+    updated = await git(
+      [
+        "-C",
+        path,
+        "submodule",
+        "update",
+        "--init",
+        ...(mode === "recursive" ? ["--recursive"] : []),
+      ],
+      // Every exit comes back, so its whole stderr gives the reason (a thrown failure would
+      // carry only its first line, git's progress).
+      { ok: EVERY_EXIT, timeoutMs: WORKTREE_TIMEOUT_MS },
+    );
+  } catch (error) {
+    // git could not run at all: the worktree, made already, stays in use.
+    return ["warning", notCheckedOut((error as Error).message)];
+  }
+  if (updated.code === 0) return ["done", undefined];
+  // Killed at the timeout, git leaves no reason of its own: its exit is said instead.
+  return ["warning", notCheckedOut(updated.stderr, `git stopped with exit code ${updated.code}`)];
+}
+
+/** Every exit code a process can end with. */
+const EVERY_EXIT = Array.from({ length: 256 }, (_, code) => code);
+
+/** The warning of a failed submodule step: git's own reason, its credentials masked. */
+function notCheckedOut(output: string, otherwise = ""): string {
+  // git's reason is its `fatal:` or `error:` line; progress ("Cloning into …") comes first.
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  // Without one, the last line that is not progress, else what the caller knows.
+  const reason = (
+    lines.find((line) => /^(fatal|error):/.test(line)) ??
+    lines.findLast((line) => !/^(Cloning into|Submodule '|Submodule path )/.test(line)) ??
+    otherwise
+  ).replace(/^(fatal|error):\s*/, "");
+  return `submodules not checked out${reason === "" ? "" : `: ${redactUrls(reason)}`}`;
+}
+
+/** A URL's credentials (`https://user:token@host`) never reach the setup card. */
+export const redactUrls = (text: string) =>
+  text
+    // Up to the last `@` before the next space, so a password with `@` or `/` in it goes
+    // whole (masking a path's `@` too is the safe side).
+    .replace(/(\w+:\/\/)[^\s'"]*@/g, "$1***@")
+    // scp-style `user:token@host:path`: a secret before the `@` (a bare `git@host:` has none).
+    .replace(/(^|[\s'"])[^\s'"@/:]+:[^\s'"@]+@(?=[\w.-]+:)/g, "$1***@")
+    // Any query key that names a secret, whatever its prefix or suffix.
+    .replace(
+      /([?&][\w.-]*(?:token|secret|password|key|sig|auth|session|credential)[\w.-]*=)[^&\s'"]+/gi,
+      "$1***",
+    );
+
 /** Checks an existing branch out again at `path` (a managed worktree that went missing). */
-export async function recreateWorktree(git: Git, path: string, branch: string): Promise<void> {
+export async function recreateWorktree(
+  git: Git,
+  path: string,
+  branch: string,
+  submodules: "recursive" | "top-level" | "none",
+): Promise<string | undefined> {
   await git(["worktree", "prune"]);
   await Fs.mkdir(Path.dirname(path), { recursive: true });
   await git(["worktree", "add", "--", path, branch], { timeoutMs: WORKTREE_TIMEOUT_MS });
+  // Made again as a new one is (D1134): its submodules too; a failure is only told.
+  const [status, detail] = await populateSubmodules(git, path, submodules);
+  return status === "warning" ? detail : undefined;
 }
 
 /** `git worktree remove`; a worktree already gone is pruned instead. */
@@ -384,18 +472,58 @@ export async function removeWorktree(
     await git(["worktree", "prune"]);
     return;
   }
-  await git(
-    [
-      "-c",
-      "status.showUntrackedFiles=normal",
-      "worktree",
-      "remove",
-      ...(options.force === true ? ["--force"] : []),
-      "--",
-      path,
-    ],
-    { timeoutMs: WORKTREE_TIMEOUT_MS },
+  // git refuses a worktree with checked-out submodules unless forced (D1134): their
+  // own commits may be pushed nowhere, so only an explicit `force` removes it.
+  try {
+    await git(
+      [
+        "-c",
+        "status.showUntrackedFiles=normal",
+        "worktree",
+        "remove",
+        ...(options.force === true ? ["--force"] : []),
+        "--",
+        path,
+      ],
+      { timeoutMs: WORKTREE_TIMEOUT_MS },
+    );
+  } catch (error) {
+    // git's own words: every git of this plugin runs with `LC_ALL=C` (git.ts), whatever the
+    // user's locale.
+    if (options.force !== true && /containing submodules/.test((error as Error).message)) {
+      throw submodulesNeedForce(path);
+    }
+    throw error;
+  }
+}
+
+/** The refusal of an unforced removal of a worktree with checked-out submodules (D1134). */
+export const submodulesNeedForce = (path: string) =>
+  new SourceControlError(
+    "GIT_FAILED",
+    "The worktree has checked-out submodules, whose commits may be pushed nowhere: remove it with force",
+    { path },
   );
+
+/**
+ * Whether a worktree has a `.gitmodules`: only a missing file means it has none, and any
+ * other error reading it comes back for the caller to weigh.
+ */
+export const gitmodulesIn = (path: string): Promise<boolean | Error> =>
+  Fs.stat(Path.join(path, ".gitmodules")).then(
+    () => true,
+    (error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? false : error),
+  );
+
+/** Whether a worktree has a submodule checked out, which git removes only forced. */
+export async function hasCheckedOutSubmodules(git: Git, path: string): Promise<boolean> {
+  // An error reading it asks git all the same.
+  if ((await gitmodulesIn(path)) === false) return false;
+  const status = await git(["-C", path, "submodule", "status"], { ok: [0, 1, 128] });
+  // Unreadable counts as checked out: an unforced removal is refused, not risked.
+  if (status.code !== 0) return true;
+  // A line starting with `-` is a submodule not checked out.
+  return status.stdout.split("\n").some((line) => line !== "" && !line.startsWith("-"));
 }
 
 export interface WorktreeEntry {
