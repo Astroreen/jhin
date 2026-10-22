@@ -461,6 +461,17 @@ export interface ProjectActionProps {
   readonly project: ProjectRecord;
 }
 
+/**
+ * The `thread.transcript` slot: a thread's conversation, read only, with no
+ * composer (D614, D741). The chat plugin fills it; Civilization mode shows an
+ * agent's generations through it.
+ */
+export const THREAD_TRANSCRIPT_SLOT = "thread.transcript";
+export interface ThreadTranscriptProps {
+  readonly target: NodeTarget;
+  readonly threadId: string;
+}
+
 /** What the `node.actions` slot gives each item of a connected node's menu. */
 export interface NodeActionProps {
   readonly connection: NodeConnection;
