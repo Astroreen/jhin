@@ -12,8 +12,11 @@ export function restartDelayMs(attempt: number): number {
 }
 
 export interface NodeRestarterOptions {
-  /** Starts the node once; rejects when it did not come up. */
-  readonly start: () => Promise<void>;
+  /**
+   * Starts the node once; rejects when it did not come up. Resolves `false` when it left the
+   * node to another path (the app quits, or a start of its own runs): nothing to count or retry.
+   */
+  readonly start: () => Promise<boolean>;
   /** Runs `run` after `delayMs` and returns its cancel; tests run it when they choose. */
   readonly schedule?: (delayMs: number, run: () => void) => () => void;
   readonly log?: (message: string, fields: Record<string, unknown>) => void;
@@ -23,10 +26,11 @@ export interface NodeRestarterOptions {
  * Restarts a local node that exited by itself, as T3's backend manager does
  * (D1201): after T3's delay, again with a longer one while starts fail, and
  * from the first delay again once a start succeeded. One restart is pending
- * at a time; `stop` cancels it for good (the app quits).
+ * at a time; `stop` cancels it while the app quits, and `resume` takes it
+ * back when the quit did not happen (a failed update install).
  */
 export class NodeRestarter {
-  readonly #start: () => Promise<void>;
+  readonly #start: () => Promise<boolean>;
   readonly #schedule: (delayMs: number, run: () => void) => () => void;
   readonly #log: (message: string, fields: Record<string, unknown>) => void;
   #attempt = 0;
@@ -64,11 +68,17 @@ export class NodeRestarter {
     else this.#scheduleRestart(reason);
   }
 
-  /** Cancels a pending restart; nothing is scheduled afterwards. */
+  /** Cancels a pending restart; nothing is scheduled until `resume`. */
   stop(): void {
     this.#stopped = true;
     this.#pending?.();
     this.#pending = undefined;
+  }
+
+  /** Restarts again after `stop`, from the first delay: the app did not quit after all. */
+  resume(): void {
+    this.#stopped = false;
+    this.#attempt = 0;
   }
 
   #scheduleRestart(reason: string): void {
@@ -81,10 +91,12 @@ export class NodeRestarter {
       if (this.#stopped) return;
       this.#running = true;
       this.#start().then(
-        () => {
+        (started) => {
           this.#running = false;
           const exited = this.#exitedWhileRunning;
           this.#exitedWhileRunning = undefined;
+          // Another path owns the node now: it neither came up here nor failed.
+          if (!started) return;
           // A node that died while it came up counts as a failed start.
           if (exited === undefined) this.#attempt = 0;
           else this.#scheduleRestart(exited);

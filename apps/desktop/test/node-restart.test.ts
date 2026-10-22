@@ -29,8 +29,8 @@ function manualSchedule() {
 
 /** A start whose outcome the test decides, and a promise of its settling. */
 function controlledStart() {
-  let settle: { resolve: () => void; reject: (error: Error) => void } | undefined;
-  let started: Promise<void> | undefined;
+  let settle: { resolve: (started: boolean) => void; reject: (error: Error) => void } | undefined;
+  let started: Promise<boolean> | undefined;
   let calls = 0;
   /** Settles once the restarter's own handlers of the start ran. */
   const settled = () =>
@@ -40,7 +40,7 @@ function controlledStart() {
     );
   return {
     start: () => {
-      started = new Promise<void>((resolve, reject) => {
+      started = new Promise<boolean>((resolve, reject) => {
         calls += 1;
         settle = { resolve, reject };
       });
@@ -50,7 +50,12 @@ function controlledStart() {
       return calls;
     },
     succeed: async () => {
-      settle!.resolve();
+      settle!.resolve(true);
+      await settled();
+    },
+    /** The start left the node to another path. */
+    skip: async () => {
+      settle!.resolve(false);
       await settled();
     },
     fail: async () => {
@@ -168,5 +173,33 @@ describe("NodeRestarter (D1201)", () => {
     await node.fail();
     expect(clock.delays).toEqual([500, 1_000]);
     expect(restarter.restarting).toBe(true);
+  });
+
+  it("restarts again after a quit that did not happen (a failed update install)", async () => {
+    const clock = manualSchedule();
+    const node = controlledStart();
+    const restarter = new NodeRestarter({ start: node.start, schedule: clock.schedule });
+    restarter.stop();
+    restarter.exited("killed");
+    expect(clock.delays).toEqual([]);
+    restarter.resume();
+    restarter.exited("killed");
+    expect(clock.delays).toEqual([500]);
+  });
+
+  it("neither counts nor retries a start that left the node to another path", async () => {
+    const clock = manualSchedule();
+    const node = controlledStart();
+    const restarter = new NodeRestarter({ start: node.start, schedule: clock.schedule });
+    restarter.exited("killed");
+    clock.fire();
+    await node.fail();
+    clock.fire();
+    restarter.exited("died while starting");
+    await node.skip();
+    expect(clock.delays).toEqual([500, 1_000]);
+    expect(restarter.restarting).toBe(false);
+    // The count stays: the next exit waits as long as the next failure would.
+    expect(restarter.attempt).toBe(2);
   });
 });

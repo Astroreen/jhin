@@ -65,6 +65,8 @@ let starting: Promise<RunningLocalNode> | undefined;
 let shownNode: RunningLocalNode | undefined;
 let nodeOrigin: string | undefined;
 let quitting = false;
+/** `startNode` runs, its Try Again dialog included: a restart leaves the node to it (D1201). */
+let startingInDialog = false;
 /** A quit stops the node; a second quit meanwhile waits for it. */
 let stoppingNode = false;
 let menuContributions: DesktopMenuContribution[] = [];
@@ -185,6 +187,7 @@ async function main(): Promise<void> {
     },
     afterFailedInstall: async () => {
       quitting = false;
+      restarter.resume();
       await restartNodeInWindow();
     },
     log,
@@ -337,6 +340,14 @@ async function main(): Promise<void> {
   }
   /** Starts the node, asking to try again or quit while it fails (D512). */
   async function startNode(): Promise<RunningLocalNode> {
+    startingInDialog = true;
+    try {
+      return await startNodeAsking();
+    } finally {
+      startingInDialog = false;
+    }
+  }
+  async function startNodeAsking(): Promise<RunningLocalNode> {
     for (;;) {
       try {
         return await launchNode();
@@ -362,11 +373,13 @@ async function main(): Promise<void> {
   // A node that exits by itself comes back with T3's backoff, no dialog (D1201).
   const restarter = new NodeRestarter({
     start: async () => {
-      // Quitting, or another path (a failed update's restart) brought the node back or is
-      // starting it meanwhile: one node per home and port.
-      if (quitting || node !== undefined || starting !== undefined) return;
+      // Quitting, or another path (a failed update's restart, with its Try Again dialog)
+      // brought the node back or is starting it: one node per home and port.
+      if (quitting || node !== undefined || starting !== undefined || startingInDialog)
+        return false;
       const restarted = await launchNode();
       if (mainWindow !== undefined && !mainWindow.isDestroyed()) loadNode(mainWindow, restarted);
+      return true;
     },
     log,
   });
