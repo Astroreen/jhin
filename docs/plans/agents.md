@@ -1007,7 +1007,7 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `windowHours` (24), `ceremony.ratio` (10) and `ceremony.minCeremony` (30):
   a group warns when its ceremony in the window reaches both the minimum and
   ratio × progress (no progress counts as 1); `proofLoop.maxEdits` (2),
-  `mindVirus.minOccurrences` (2), `analysisTimeoutMinutes` (30) and
+  `mindVirus.minOccurrences` (2), `analysisTimeoutMinutes` (30, a day at most) and
   `analysts`. An invalid layer keeps the
   last good thresholds.
 - **D730. Permissions.** `health.read` reads status, warnings, ideas and the
@@ -1215,6 +1215,10 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   threshold; today the owner dismisses them (D724).
 - A7: queue activity of threads no slice links (an agent's other
   generations); D722 follows only the threads slices link.
+- A7: linking a late answer back to its warning. An ask past
+  `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
+  answer that comes later stays in the analyst's thread, and the warning is
+  not asked again.
 - A7: commits made outside a turn (by hand, by a workflow) and pull requests
   merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's

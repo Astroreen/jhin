@@ -211,7 +211,8 @@ export const HealthConfig = z
       })
       .default({ minOccurrences: 2 })
       .meta({ title: "Mind virus" }),
-    analysisTimeoutMinutes: z.number().positive().default(30).meta({
+    // A day at most: setTimeout takes no more than 2^31 - 1 ms (about 24.8 days).
+    analysisTimeoutMinutes: z.number().positive().max(1440).default(30).meta({
       title: "Analysis timeout (minutes)",
       description: "How long the analyst may take to answer before the analysis counts as failed.",
     }),

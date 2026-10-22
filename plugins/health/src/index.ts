@@ -387,7 +387,6 @@ export default definePlugin({
       await evaluating;
     });
 
-    /** Whether a delivered message is health's own ask to an analyst (D725). */
     /**
      * A message the analyst of a warning sent in reply to health's ask about
      * it: health's own conversation, no ceremony, and not a carrier of the
