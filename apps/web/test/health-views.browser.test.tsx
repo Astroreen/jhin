@@ -41,7 +41,6 @@ const warning: Warning = {
 const healthOf = (...warnings: Warning[]): HealthState => ({
   warnings: Object.fromEntries(warnings.map((item) => [item.warningId, item])),
   ideas: {},
-  progress: [],
 });
 
 const ROUTE = {};

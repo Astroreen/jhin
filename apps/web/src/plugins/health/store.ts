@@ -42,15 +42,11 @@ export function createHealthStore(
         state: {
           warnings: Object.fromEntries(warnings.map((warning) => [warning.warningId, warning])),
           ideas: Object.fromEntries(ideas.map((idea) => [idea.ideaId, idea])),
-          // The client holds no progress: the catalog has none, and the counts
-          // come from `health.status`.
-          progress: [],
         },
       };
     },
-    // Progress events are skipped too, so `progress` never holds half a list.
-    apply: (state, event) =>
-      event.type === HealthEvents.progressRecorded ? state : applyHealthEvent(state, event),
+    // Commits are no part of the fold: the counts come from `health.status`.
+    apply: applyHealthEvent,
     reread: (connection, before, after) => {
       for (const warning of Object.values(after.warnings)) {
         if (warning.status === "open" && before.warnings[warning.warningId] === undefined) {
