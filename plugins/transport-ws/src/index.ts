@@ -144,9 +144,10 @@ export default definePlugin({
       streams.serve(AUTH_CLIENTS_STREAM, authClients, { permissions: ["auth.read"] }),
     );
     context.events.on(AuthEvents.clientsChanged, () => {
-      authClients.append(AUTH_CLIENTS_STREAM, AuthEvents.clientsChanged, {});
       // Only "it changed" matters: the latest event is all a subscriber needs.
-      authClients.drop(AUTH_CLIENTS_STREAM, authClients.events(AUTH_CLIENTS_STREAM).length - 1);
+      // `clear` keeps the sequence counting, so the new event is above every old one.
+      authClients.clear(AUTH_CLIENTS_STREAM);
+      authClients.append(AUTH_CLIENTS_STREAM, AuthEvents.clientsChanged, {});
     });
 
     // Only the protocol is echoed back, never the token subprotocol.
