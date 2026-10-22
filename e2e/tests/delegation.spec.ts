@@ -61,6 +61,13 @@ return await parallel(['north', 'south'].map((place) => () => agent('look ' + pl
   await expect(page.getByText("Thread completed")).toHaveCount(0);
   await shot(page, info, "delegation-rows");
 
+  // D1162: the row's hover card tells the status and the result.
+  await subagent.hover();
+  const card = page.getByRole("group", { name: "Subagent details" });
+  await expect(card).toContainText("completed");
+  await expect(card).toContainText("Echo: look around");
+  await shot(page, info, "subagent-hover-card");
+
   await subagent.click();
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: look around");
   expect(page.url()).not.toContain(encodeURIComponent(parentId));
@@ -93,6 +100,8 @@ return await parallel(['east', 'west'].map((place) => () => agent('/hold ' + pla
   const details = page.getByRole("region", { name: "Thread details" });
   const related = details.getByRole("list", { name: "Related threads" });
   await expect(related.getByRole("button", { name: "Open Digger chat" })).toContainText("Running");
+  // D1163: the title counts the subagents that run.
+  await expect(details.getByRole("heading", { name: "Lineage · 3 running" })).toBeVisible();
   await related.getByRole("button", { name: "Expand tour" }).click();
   await expect(related.getByRole("button", { name: "Collapse Wait phase, running" })).toContainText(
     "0/2 agents",
@@ -103,6 +112,7 @@ return await parallel(['east', 'west'].map((place) => () => agent('/hold ' + pla
   await related.getByRole("button", { name: "Open Digger chat" }).hover();
   await related.getByRole("button", { name: "Stop subagent Digger" }).click();
   await expect(related.getByRole("button", { name: "Open Digger chat" })).toContainText("Stopped");
+  await expect(details.getByRole("heading", { name: "Lineage · 2 running" })).toBeVisible();
 
   await related.getByRole("button", { name: "tour Running" }).hover();
   await related.getByRole("button", { name: "Stop workflow tour" }).click();
@@ -188,4 +198,29 @@ test("D1164–D1167: a subagent in the background works past its turn and stops 
   // Its work after the turn is in its thread.
   await row.click();
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: dig deep");
+});
+
+test("D1161: subagents started one after another are one row", async ({ page }, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/subagent north; south; east; west");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Ran 4 subagents");
+  const group = page.getByRole("button", { name: "4 subagents" });
+  await expect(group).toContainText("4 done");
+  await expect(group).toContainText("+1");
+  await expect(group).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Open north", exact: true })).toHaveCount(0);
+
+  await group.click();
+  await expect(group).toHaveAttribute("aria-expanded", "true");
+  for (const place of ["north", "south", "east", "west"]) {
+    await expect(page.getByRole("button", { name: `Open ${place}`, exact: true })).toContainText(
+      "Completed",
+    );
+  }
+  await shot(page, info, "subagent-group");
+  await page.getByRole("button", { name: "Open south", exact: true }).click();
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: south");
 });

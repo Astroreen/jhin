@@ -1,12 +1,27 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/V2LifecycleRow.tsx (SubagentTimelineLink, the
 // created-thread row), WorkflowOpeningBlock.tsx, AgentElapsed.tsx and
-// workflowOpeningHeadline of packages/client-runtime/src/state/subagentRuntime.ts.
-// Decisions: docs/plans/orchestration.md (D864).
-import { Button, cn, InlineButton } from "@jhin/ui";
-import { ChevronRightIcon, MessageSquareIcon, WorkflowIcon } from "lucide-react";
+// workflowOpeningHeadline of packages/client-runtime/src/state/subagentRuntime.ts;
+// MessagesTimeline.tsx (V2SubagentGroup, subagentGroupTiming), SubagentTooltipContent.tsx,
+// ThreadHoverCard.tsx and packages/client-runtime/src/state/subagentDisplay.ts
+// (summarizeSubagentStatuses, subagentDetailPreview).
+// Decisions: docs/plans/orchestration.md (D864, D1161, D1162).
+import { Button, cn, InlineButton, Tooltip, TooltipPopup, TooltipTrigger } from "@jhin/ui";
+import {
+  BotIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CircleDashedIcon,
+  CircleXIcon,
+  FolderIcon,
+  MessageSquareIcon,
+  TerminalIcon,
+  WorkflowIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { AgentIcon } from "../../lib/agent-icon.tsx";
 import { MessageText } from "../chat/message-text.tsx";
 import type { TaskRecord, TaskStatus, WorkflowRecord } from "./store.ts";
 
@@ -93,12 +108,110 @@ export const runOfTask = (task: TaskRecord | undefined): RowRun | undefined =>
         ...(task.summary === undefined ? {} : { summary: task.summary }),
       };
 
-/** One delegated agent: T3's subagent row, opening its thread. */
+/** What the hover card tells of a subagent besides its row (D1162). */
+export interface SubagentDetails {
+  readonly agentId?: string;
+  readonly model?: string;
+  readonly effort?: string;
+  /** The child's worktree folder, when it is not its parent's. */
+  readonly worktree?: string;
+}
+
+/** T3's subagentDetailPreview of a result: one line, at most 280 characters. */
+export function subagentPreview(result: string | undefined): string | null {
+  const compact = (result ?? "").trim().replace(/\s+/gu, " ");
+  return compact.length > 280 ? `${compact.slice(0, 280).trimEnd()}…` : compact || null;
+}
+
+/** T3's SubagentTooltipContent in its ThreadHoverCard. */
+function SubagentCard(props: {
+  readonly title: string;
+  readonly status: RowStatus;
+  readonly run: RowRun | undefined;
+  readonly details: SubagentDetails;
+}) {
+  const { status, details } = props;
+  const working = isLive(status);
+  const failed = status === "failed";
+  const StatusIcon = working
+    ? CircleDashedIcon
+    : failed
+      ? CircleXIcon
+      : status === "completed"
+        ? CheckIcon
+        : CircleDashedIcon;
+  const preview = subagentPreview(props.run?.summary);
+  return (
+    <div
+      aria-label="Subagent details"
+      className="flex min-w-0 max-w-80 flex-col gap-2 px-1 py-2"
+      role="group"
+    >
+      <div className="min-w-0 truncate text-xs leading-tight font-medium text-foreground">
+        {props.title}
+      </div>
+      <div className="grid gap-1.5 pl-0.5 text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2">
+          {details.agentId === undefined ? (
+            <BotIcon aria-hidden className="size-3 shrink-0" />
+          ) : (
+            <AgentIcon agentId={details.agentId} className="size-3 shrink-0 opacity-60 grayscale" />
+          )}
+          <span className="min-w-0 truncate text-foreground/75">
+            {details.model ?? "Not reported"}
+            {details.effort === undefined ? null : ` · ${details.effort}`}
+          </span>
+        </div>
+        <div className="flex min-w-0 items-center justify-between gap-4">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-sm font-medium capitalize",
+              working
+                ? "text-info"
+                : failed
+                  ? "text-destructive"
+                  : status === "completed"
+                    ? "text-success"
+                    : "text-muted-foreground",
+            )}
+          >
+            <StatusIcon aria-hidden className="size-3 shrink-0" />
+            {status === "unknown" ? "unavailable" : status}
+          </span>
+          <span className="tabular-nums">
+            <Elapsed
+              status={status}
+              {...(props.run?.startedAt === undefined ? {} : { startedAt: props.run.startedAt })}
+              {...(props.run?.endedAt === undefined ? {} : { endedAt: props.run.endedAt })}
+            />
+          </span>
+        </div>
+        {details.worktree === undefined ? null : (
+          <div className="flex min-w-0 items-center gap-2">
+            <FolderIcon aria-hidden className="size-3 shrink-0" />
+            <span className="sr-only">Worktree</span>
+            <span className="min-w-0 truncate">{details.worktree}</span>
+          </div>
+        )}
+        {preview === null ? null : (
+          <div className="flex min-w-0 items-center gap-2">
+            <TerminalIcon aria-hidden className="size-3 shrink-0" />
+            <span className="min-w-0 truncate">{preview}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** One delegated agent: T3's subagent row, opening its thread, with its hover card (D1162). */
 export function SubagentRow(props: {
   readonly title: string;
   readonly status: RowStatus;
   readonly run: RowRun | undefined;
   readonly onOpen: (() => void) | undefined;
+  /** Shown in the hover card; no card without them. */
+  readonly details?: SubagentDetails;
 }) {
   const { status, run } = props;
   const visual = STATUS_VISUALS[status];
@@ -149,23 +262,186 @@ export function SubagentRow(props: {
       )}
     </>
   );
-  return props.onOpen === undefined ? (
-    <div aria-description={visual.label} className={ROW_CLASS}>
-      {content}
-    </div>
-  ) : (
-    <button
-      type="button"
-      aria-label={`Open ${props.title}`}
-      aria-description={visual.label}
-      onClick={props.onOpen}
-      className={cn(
-        ROW_CLASS,
-        "cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
-      )}
+  const row =
+    props.onOpen === undefined ? (
+      <div aria-description={visual.label} className={ROW_CLASS}>
+        {content}
+      </div>
+    ) : (
+      <button
+        type="button"
+        aria-label={`Open ${props.title}`}
+        aria-description={visual.label}
+        onClick={props.onOpen}
+        className={cn(
+          ROW_CLASS,
+          "cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+        )}
+      >
+        {content}
+      </button>
+    );
+  if (props.details === undefined) return row;
+  return (
+    <Tooltip>
+      <TooltipTrigger delay={200} render={row} />
+      <TooltipPopup className="max-w-80 text-left whitespace-normal" variant="glass">
+        <SubagentCard title={props.title} status={status} run={run} details={props.details} />
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** A member of a "N subagents" row: what its own row shows. */
+export interface SubagentMember {
+  readonly key: string;
+  readonly title: string;
+  readonly status: RowStatus;
+  readonly run: RowRun | undefined;
+  readonly onOpen: (() => void) | undefined;
+  readonly details: SubagentDetails;
+}
+
+/** T3's summarizeSubagentStatuses: "1 working · 2 done". */
+export function summarizeSubagentStatuses(statuses: readonly RowStatus[]): string {
+  const counts = { working: 0, done: 0, failed: 0, stopped: 0 };
+  for (const status of statuses) {
+    // Without a record its status is not known: it is counted nowhere (the card says so).
+    if (status === "unknown") continue;
+    if (isLive(status)) counts.working += 1;
+    else if (status === "completed") counts.done += 1;
+    else if (status === "failed") counts.failed += 1;
+    else counts.stopped += 1;
+  }
+  return (Object.keys(counts) as (keyof typeof counts)[])
+    .filter((key) => counts[key] > 0)
+    .map((key) => `${counts[key]} ${key}`)
+    .join(" · ");
+}
+
+/**
+ * T3's subagentGroupTiming: the first start to the last end, open while any runs. A
+ * settled group whose end is not known for every member shows no time, rather than one
+ * that stopped counting.
+ */
+export function subagentGroupTiming(members: readonly Pick<SubagentMember, "status" | "run">[]): {
+  status: RowStatus;
+  startedAt?: string;
+  endedAt?: string;
+} {
+  let start: number | undefined;
+  let end: number | undefined;
+  let endUnknown = false;
+  for (const { run } of members) {
+    const started = run?.startedAt === undefined ? Number.NaN : Date.parse(run.startedAt);
+    if (Number.isFinite(started)) start = start === undefined ? started : Math.min(start, started);
+    const ended = run?.endedAt === undefined ? Number.NaN : Date.parse(run.endedAt);
+    if (Number.isFinite(ended)) end = end === undefined ? ended : Math.max(end, ended);
+    else endUnknown = true;
+  }
+  const live = members.some(({ status }) => isLive(status));
+  if (!live && (endUnknown || end === undefined)) return { status: "completed" };
+  return {
+    status: live ? "running" : "completed",
+    ...(start === undefined ? {} : { startedAt: new Date(start).toISOString() }),
+    ...(live || end === undefined ? {} : { endedAt: new Date(end).toISOString() }),
+  };
+}
+
+function SubagentAvatar(props: { agentId?: string | undefined; status?: RowStatus }) {
+  return (
+    <span
+      aria-hidden
+      className="relative inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted ring-2 ring-background"
     >
-      {content}
-    </button>
+      {props.agentId === undefined ? (
+        <BotIcon className="size-3.5 text-muted-foreground" />
+      ) : (
+        <AgentIcon agentId={props.agentId} className="size-3.5 text-muted-foreground" />
+      )}
+      {props.status === undefined ? null : (
+        <span
+          className={cn(
+            "absolute -right-px -bottom-px size-2 rounded-full ring-2 ring-background",
+            STATUS_VISUALS[props.status].dotClass,
+          )}
+        />
+      )}
+    </span>
+  );
+}
+
+/** Subagents started one after another in a turn: T3's "N subagents" row (D1161). */
+export function SubagentGroup(props: { readonly members: readonly SubagentMember[] }) {
+  const { members } = props;
+  const [expanded, setExpanded] = useState(false);
+  const statuses = members.map((member) => member.status);
+  const active = statuses.some(isLive);
+  const failed = statuses.includes("failed");
+  const label = `${members.length} ${members.length === 1 ? "subagent" : "subagents"}`;
+  const summary = summarizeSubagentStatuses(statuses);
+  const timing = subagentGroupTiming(members);
+  return (
+    <div className="px-1" data-subagent-group>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={label}
+        aria-description={summary}
+        onClick={() => setExpanded((value) => !value)}
+        className={cn(
+          "flex w-full min-w-0 cursor-pointer items-center gap-3 py-2 text-left transition-opacity hover:opacity-100",
+          expanded || active ? "text-foreground opacity-100" : "text-muted-foreground opacity-55",
+        )}
+      >
+        <span className="flex shrink-0 items-center -space-x-1.5" aria-hidden>
+          {members.slice(0, 3).map((member) => (
+            <SubagentAvatar
+              key={member.key}
+              agentId={member.details.agentId}
+              {...(members.length === 1 ? { status: member.status } : {})}
+            />
+          ))}
+          {members.length > 3 ? (
+            <span className="inline-flex size-6 items-center justify-center rounded-full bg-muted text-3xs font-medium text-muted-foreground ring-2 ring-background">
+              +{members.length - 3}
+            </span>
+          ) : null}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-semibold">{label}</span>
+          <span
+            className={cn(
+              "block truncate text-3xs text-muted-foreground",
+              active ? "text-info" : failed && "text-destructive",
+            )}
+          >
+            {summary}
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          <Elapsed
+            status={timing.status}
+            {...(timing.startedAt === undefined ? {} : { startedAt: timing.startedAt })}
+            {...(timing.endedAt === undefined ? {} : { endedAt: timing.endedAt })}
+          />
+        </span>
+        <ChevronDownIcon
+          aria-hidden
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            expanded && "rotate-180",
+          )}
+        />
+      </button>
+      {expanded ? (
+        <div className="mt-1 mb-1 rounded-lg border border-border/60 bg-card/30 p-1">
+          {members.map(({ key, ...member }) => (
+            <SubagentRow key={key} {...member} />
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -60,6 +60,7 @@ import { citationSource, knownRecordsById, threadLinks } from "../../lib/compose
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { useCopy, useNow } from "../../lib/hooks.ts";
 import {
+  adjacentExtensions,
   answerPreview,
   foldsBeforeFinal,
   summarizeWork,
@@ -670,8 +671,10 @@ function TurnView(props: {
   projectPath?: string;
   onSavePlan?: SavePlan;
   footer?: ReactNode;
-  /** An event of another plugin in the turn (the `chat.turn.item` slot). */
-  extension?: ((event: ExtensionItem["event"]) => ReactNode) | undefined;
+  /** An event of another plugin in the turn (the `chat.turn.item` slot), with those beside it. */
+  extension?:
+    | ((event: ExtensionItem["event"], adjacent: readonly ExtensionItem["event"][]) => ReactNode)
+    | undefined;
 }) {
   const { turn, format } = props;
   const now = useContext(NowContext);
@@ -708,6 +711,8 @@ function TurnView(props: {
         ? "Worked"
         : `Worked for ${duration}`;
   const lastMessage = blocks.findLast((block) => block.kind === "message");
+  // Not rebuilt on every tick of a running turn's clock.
+  const adjacent = useMemo(() => adjacentExtensions(turnBlocks(turn)), [turn]);
 
   return (
     <div className="flex flex-col" data-turn={turn.turnId}>
@@ -756,7 +761,10 @@ function TurnView(props: {
           if (block.kind === "extension") {
             return (
               <Fragment key={`extension-${block.item.event.sequence}`}>
-                {props.extension?.(block.item.event)}
+                {props.extension?.(
+                  block.item.event,
+                  adjacent.get(block.item.event.sequence) ?? [block.item.event],
+                )}
               </Fragment>
             );
           }
@@ -862,8 +870,14 @@ export function TimelineView(props: {
   titleOf?(threadId: string): string | undefined;
   /** What goes under a turn's answer (the `chat.turn.footer` slot). */
   footer?: ((turn: TimelineTurn, latest: boolean) => ReactNode) | undefined;
-  /** Events of other plugins in a turn (the `chat.turn.item` slot). */
-  extension?: ((turn: TimelineTurn, event: ExtensionItem["event"]) => ReactNode) | undefined;
+  /** Events of other plugins in a turn (the `chat.turn.item` slot), with those beside each. */
+  extension?:
+    | ((
+        turn: TimelineTurn,
+        event: ExtensionItem["event"],
+        adjacent: readonly ExtensionItem["event"][],
+      ) => ReactNode)
+    | undefined;
 }) {
   const { turns, forkedFrom } = props.timeline;
   const now = useNow();
@@ -909,7 +923,7 @@ export function TimelineView(props: {
               extension={
                 props.extension === undefined
                   ? undefined
-                  : (event) => props.extension?.(turn, event)
+                  : (event, adjacent) => props.extension?.(turn, event, adjacent)
               }
               {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
             />

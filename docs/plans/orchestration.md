@@ -482,6 +482,50 @@ user sees, which their Deferred lists left out.
   agent's disabled), from `agents.list`, saved as the task's `agentId` and
   `model`.
 
+### Subagents in the UI (W32)
+
+Round 3 of `t3-roadmap.md` (D1161–D1180): what W20 left of T3's subagent UI.
+The reference is D861's tag: `MessagesTimeline.tsx` (`V2SubagentGroup`,
+`subagentGroupTiming`), `MessagesTimeline.logic.ts` (the grouping),
+`SubagentTooltipContent.tsx`, `ThreadHoverCard.tsx`,
+`client-runtime/src/state/subagentDisplay.ts` and
+`ThreadRelationshipsControl.tsx` (the running count).
+
+- **D1161. Subagents started one after another are one "N subagents" row.**
+  T3 folds a turn's consecutive subagent items into one row; here the marks
+  of tasks (D864) and of a runtime's subagents (D879) are other plugins'
+  events in the turn, with the tool calls that started them between. So
+  `chat.turn.item` gives each event the group it stands among
+  (`ChatTurnItemProps.adjacent`, additive): the turn's events of other
+  plugins with only the agent's work between them; a message, a plan or a
+  steer starts another group. The orchestration view folds two or more
+  subagent marks in a row of that group (no workflow or launch mark between)
+  into T3's row, at the first; the others show nothing. The row is T3's:
+  up to three agent avatars (the agent's icon, with the status dot when it
+  is one) and "+N", "N subagents", the status summary ("1 working · 2
+  done", T3's `summarizeSubagentStatuses`), the group's elapsed time (from
+  the first start to the last end, ticking while any runs) and a chevron.
+  It starts folded and unfolds into the members' rows. A mark a client older
+  than D1161 renders gets no group and shows alone, as before.
+- **D1162. A subagent row has T3's hover card.** Hovering (200 ms) or
+  focusing a subagent row, alone or in a group, shows T3's
+  `SubagentTooltipContent` in the glass popup the sidebar's cards use: the
+  title, the agent's icon with the model ("Not reported" without one) and
+  the effort option the child runs with, the status with its icon
+  (`running`, `completed`, …) and elapsed time, the child's worktree when
+  it is not its parent's ("Worktree", its folder's name), and a preview of
+  the result (T3's `subagentDetailPreview`: the first 280 characters, on
+  one line). The model and options are the child thread's (the
+  catalog), else the task's. T3's progress line has no source here (a task
+  carries no progress), so a running subagent shows none.
+- **D1163. "Lineage · N running".** The Lineage section's title counts
+  the thread's subagent threads (`relationshipToParent: "subagent"`, a
+  delegated task, a workflow's agent or a runtime's subagent) whose turn
+  runs and that are not archived, as T3 counts its active subagent edges
+  (a workflow's agents among them, also while their workflow row is
+  folded); waiting ones are not counted, as in T3. The count comes from the node's catalog, so it needs no
+  record of the orchestration plugin.
+
 ### A runtime's subagents in the background, and stopping them (W32)
 
 Round 3 of `t3-roadmap.md` (D1161–D1180). T3 keeps a Claude subagent that
@@ -534,14 +578,16 @@ runs in the background as a live child (`ClaudeAdapterV2.ts`: its
 
 ### Deferred
 
-- The running count in the Lineage title ("Lineage · 2 running").
 - Saved workflows of the node (outside a project) and a command listing
   them; today they are read from the project only.
 - A thread whose Lineage section is hidden (no rows) still counts as having
   details, so the panel does not say "No details for this thread" then.
-- T3's grouping of a turn's subagents into one "N subagents" row, the hover
-  card of a subagent (model, result, progress), and the bar that replaces the
-  composer in a Claude subagent's thread ("Runs on its own", "Open parent").
+- The progress line of a running subagent's hover card (D1162): a task
+  carries no progress, and T3's comes from its runtime's subagent updates.
+  The card names a model by its id, not T3's catalog label, and shows no
+  branch (the catalog does not know a thread's branch).
+- A workflow's member rows have no hover card; T3's opening block has none
+  either, but its Lineage rows do.
 - A subagent thread that waits for the user (an approval or an answer) is
   reached only through its row in the parent's chat, as in T3: the sidebar
   hides it and it raises no notification. Without its row (a thread from

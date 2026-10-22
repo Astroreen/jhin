@@ -37,6 +37,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/write <file> <text>" writes the text to a file of its working directory;
  * - "/compact" compacts its context, then holds like "/hold";
  * - "/subagent <task>" runs a subagent titled after the task that answers "Echo: <task>" (D876);
+ *   "/subagent <a>; <b>" runs one after another (D1161);
  * - "/subagent-bg <task>" starts one in the background: it answers "Echo: <task>" once the
  *   turn ended and runs until it is stopped (D1164, D1166);
  * - a title prompt (D1174) is answered with the title "About <the thread's first message>";
@@ -123,16 +124,25 @@ export function fakeTurn(
       return;
     }
     if (/^\/subagent(\s|$)/.test(text)) {
-      const task = text.slice("/subagent".length).trim() || "something";
-      const subagentId = nextId();
-      yield { kind: "subagent.started", subagentId, title: task, prompt: task };
-      yield {
-        kind: "subagent.item",
-        subagentId,
-        item: { kind: "message.completed", itemId: nextId(), text: `Echo: ${task}` },
-      };
-      yield { kind: "subagent.ended", subagentId, status: "completed" };
-      yield* say(`Ran a subagent for ${task}`);
+      const tasks = text
+        .slice("/subagent".length)
+        .split(";")
+        .map((task) => task.trim())
+        .filter((task) => task !== "");
+      if (tasks.length === 0) tasks.push("something");
+      for (const task of tasks) {
+        const subagentId = nextId();
+        yield { kind: "subagent.started", subagentId, title: task, prompt: task };
+        yield {
+          kind: "subagent.item",
+          subagentId,
+          item: { kind: "message.completed", itemId: nextId(), text: `Echo: ${task}` },
+        };
+        yield { kind: "subagent.ended", subagentId, status: "completed" };
+      }
+      yield* say(
+        tasks.length === 1 ? `Ran a subagent for ${tasks[0]}` : `Ran ${tasks.length} subagents`,
+      );
       return;
     }
     if (text.startsWith("/compact")) {

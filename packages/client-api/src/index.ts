@@ -598,6 +598,14 @@ export interface ChatTurnItemProps {
     readonly sequence: number;
     readonly at: string;
   };
+  /**
+   * The other plugins' events of the turn this one stands among, in order and
+   * including it: those with only the agent's work between them (a message,
+   * a plan or a steer starts another group). A contribution that shows several
+   * as one (T3's "N subagents") shows them at the first (D1161). Absent from
+   * a client older than that.
+   */
+  readonly adjacent?: readonly ChatTurnItemProps["event"][];
 }
 
 /**

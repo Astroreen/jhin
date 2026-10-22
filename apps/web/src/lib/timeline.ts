@@ -610,6 +610,31 @@ export function turnBlocks(turn: TimelineTurn): TurnBlock[] {
 }
 
 /**
+ * The extension events each one stands among (D1161), by sequence: those of
+ * the turn with only the agent's work between them. A message, a plan or a
+ * steer starts another group. A plugin that shows several as one (T3's
+ * "N subagents") reads them from here.
+ */
+export function adjacentExtensions(
+  blocks: readonly TurnBlock[],
+): ReadonlyMap<number, readonly StoredEvent[]> {
+  const byEvent = new Map<number, readonly StoredEvent[]>();
+  let group: StoredEvent[] = [];
+  const close = () => {
+    const done: readonly StoredEvent[] = group;
+    for (const event of done) byEvent.set(event.sequence, done);
+    group = [];
+  };
+  for (const block of blocks) {
+    if (block.kind === "work") continue;
+    if (block.kind !== "extension") close();
+    else group.push(block.item.event);
+  }
+  close();
+  return byEvent;
+}
+
+/**
  * Whether a settled turn folds: everything before its final answer hides
  * behind "Worked for …". A failed turn, or one with no final answer, shows all.
  */
