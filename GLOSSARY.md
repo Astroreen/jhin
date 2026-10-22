@@ -142,6 +142,12 @@ Words about Jhin:
   marked with the agent's id (`generationOf`) on the thread record. The current generation takes
   the agent's work; `agents.rotate` starts the next one, which begins with
   the agent's inherited knowledge, not the old transcript.
+- **Roster** — Civilization mode's list of the defined agents of the
+  connected nodes, by home project, each with its role and status
+  (`docs/plans/agents.md#D614`).
+- **Transcript** — a thread's conversation shown read only, with no
+  composer (the `thread.transcript` slot): how Civilization mode shows a
+  generation, which is observed, not driven.
 - **Inherited knowledge** — the Markdown files in `.jhin/agents/<id>/` of an
   agent's home project, which its generations read on start and keep current.
 - **Message** — what one party sends another with `agents.send`: an agent,

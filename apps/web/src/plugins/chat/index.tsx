@@ -72,7 +72,7 @@ import {
   type ComposerHandle,
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
-import { ThreadTranscript } from "./transcript.tsx";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { registerThreadDetails } from "./thread-details.tsx";
 import { armPasteAsText, consumeArmedPasteAsText } from "../../lib/attachment-files.ts";
 import { registerHistory } from "./history.tsx";
@@ -261,6 +261,17 @@ function NoActiveThread() {
     </div>
   );
 }
+
+/** The read-only transcript (D614), a chunk of its own: only Civilization mode shows it (D440). */
+const Transcript = lazyChunk(
+  () => import("./transcript.tsx").then((module) => module.ThreadTranscript),
+  {
+    loading: () => null,
+    failed: (_props, retry) => (
+      <ChunkFailed retry={retry}>Couldn't load this conversation.</ChunkFailed>
+    ),
+  },
+);
 
 export const chatPlugin = builtin(
   "jhin.chat",
@@ -802,7 +813,7 @@ export const chatPlugin = builtin(
           id: "jhin.chat.transcript",
           component: (props: ThreadTranscriptProps) => (
             <ChatContext.Provider value={services}>
-              <ThreadTranscript {...props} />
+              <Transcript {...props} />
             </ChatContext.Provider>
           ),
         }),

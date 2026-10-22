@@ -1,0 +1,31 @@
+import type { Route } from "@jhin/client-api";
+
+/** Civilization mode's id (D741, `jhin.civilization`). */
+const CIVILIZATION_MODE = "civilization";
+/** The route panel of an agent's page (D615). */
+export const AGENT_PANEL = "agent";
+
+/**
+ * An agent's page (D615): panel `agent`, the agent and the generation shown in
+ * `section` (`<agentId>` for the current one, `<agentId>/<n>` for another).
+ * Never `thread`: a generation is not one of Threads mode's threads.
+ */
+export function agentRoute(node: string, agentId: string, generation?: number): Route {
+  return {
+    node,
+    mode: CIVILIZATION_MODE,
+    panel: AGENT_PANEL,
+    section: generation === undefined ? agentId : `${agentId}/${generation}`,
+  };
+}
+
+/** The agent and generation of an agent page's `section`, or `undefined` for anything else. */
+export function parseAgentSection(
+  section: string | undefined,
+): { readonly agentId: string; readonly generation?: number } | undefined {
+  const match = /^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\/([1-9][0-9]*))?$/.exec(section ?? "");
+  if (match === null) return undefined;
+  return match[2] === undefined
+    ? { agentId: match[1]! }
+    : { agentId: match[1]!, generation: Number(match[2]) };
+}
