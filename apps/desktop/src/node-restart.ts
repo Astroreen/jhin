@@ -1,0 +1,112 @@
+// Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/desktop/src/backend/DesktopBackendManager.ts
+// (calculateRestartDelay and scheduleRestart).
+
+/** T3's first restart delay. */
+const INITIAL_RESTART_DELAY_MS = 500;
+/** T3's longest restart delay. */
+const MAX_RESTART_DELAY_MS = 10_000;
+
+/** T3's backoff: 500 ms doubled per failed attempt, at most 10 s (D1201). */
+export function restartDelayMs(attempt: number): number {
+  return Math.min(INITIAL_RESTART_DELAY_MS * 2 ** attempt, MAX_RESTART_DELAY_MS);
+}
+
+export interface NodeRestarterOptions {
+  /**
+   * Starts the node once; rejects when it did not come up. Resolves `false` when it left the
+   * node to another path (the app quits, or a start of its own runs): nothing to count or retry.
+   */
+  readonly start: () => Promise<boolean>;
+  /** Runs `run` after `delayMs` and returns its cancel; tests run it when they choose. */
+  readonly schedule?: (delayMs: number, run: () => void) => () => void;
+  readonly log?: (message: string, fields: Record<string, unknown>) => void;
+}
+
+/**
+ * Restarts a local node that exited by itself, as T3's backend manager does
+ * (D1201): after T3's delay, again with a longer one while starts fail, and
+ * from the first delay again once a start succeeded. One restart is pending
+ * at a time; `stop` cancels it while the app quits, and `resume` takes it
+ * back when the quit did not happen (a failed update install).
+ */
+export class NodeRestarter {
+  readonly #start: () => Promise<boolean>;
+  readonly #schedule: (delayMs: number, run: () => void) => () => void;
+  readonly #log: (message: string, fields: Record<string, unknown>) => void;
+  #attempt = 0;
+  #pending: (() => void) | undefined;
+  #running = false;
+  /** Why the node exited while a restart was starting it, to restart again once it settles. */
+  #exitedWhileRunning: string | undefined;
+  #stopped = false;
+
+  constructor(options: NodeRestarterOptions) {
+    this.#start = options.start;
+    this.#schedule =
+      options.schedule ??
+      ((delayMs, run) => {
+        const timer = setTimeout(run, delayMs);
+        return () => clearTimeout(timer);
+      });
+    this.#log = options.log ?? (() => {});
+  }
+
+  /** The attempts that failed since the node last came up. */
+  get attempt(): number {
+    return this.#attempt;
+  }
+
+  /** Whether a restart is waiting for its delay or starting the node. */
+  get restarting(): boolean {
+    return this.#pending !== undefined || this.#running;
+  }
+
+  /** The node exited without being asked to: schedule its restart. */
+  exited(reason: string): void {
+    // The node a restart is starting died before the start settled: restart again after it.
+    if (this.#running) this.#exitedWhileRunning = reason;
+    else this.#scheduleRestart(reason);
+  }
+
+  /** Cancels a pending restart; nothing is scheduled until `resume`. */
+  stop(): void {
+    this.#stopped = true;
+    this.#pending?.();
+    this.#pending = undefined;
+  }
+
+  /** Restarts again after `stop`, from the first delay: the app did not quit after all. */
+  resume(): void {
+    this.#stopped = false;
+    this.#attempt = 0;
+  }
+
+  #scheduleRestart(reason: string): void {
+    if (this.#stopped || this.restarting) return;
+    const delayMs = restartDelayMs(this.#attempt);
+    this.#attempt += 1;
+    this.#log("local node exited unexpectedly; restart scheduled", { reason, delayMs });
+    this.#pending = this.#schedule(delayMs, () => {
+      this.#pending = undefined;
+      if (this.#stopped) return;
+      this.#running = true;
+      this.#start().then(
+        (started) => {
+          this.#running = false;
+          const exited = this.#exitedWhileRunning;
+          this.#exitedWhileRunning = undefined;
+          // Another path owns the node now: it neither came up here nor failed.
+          if (!started) return;
+          // A node that died while it came up counts as a failed start.
+          if (exited === undefined) this.#attempt = 0;
+          else this.#scheduleRestart(exited);
+        },
+        (error: unknown) => {
+          this.#running = false;
+          this.#exitedWhileRunning = undefined;
+          this.#scheduleRestart(error instanceof Error ? error.message : String(error));
+        },
+      );
+    });
+  }
+}

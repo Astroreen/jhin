@@ -33,6 +33,7 @@ import { createSettingsStore } from "./settings.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updates/channels.ts";
 import { UpdateController } from "./updates/controller.ts";
 import { createElectronUpdater, hasPackagedFeed } from "./updates/electron-updater.ts";
+import { NodeRestarter } from "./node-restart.ts";
 import { makeQuitShortcutHandler } from "./quit-hold.ts";
 import { createMainWindow, loadNode, syncWindowAppearance, zoomMainWindow } from "./window.ts";
 
@@ -64,6 +65,8 @@ let starting: Promise<RunningLocalNode> | undefined;
 let shownNode: RunningLocalNode | undefined;
 let nodeOrigin: string | undefined;
 let quitting = false;
+/** `startNode` runs, its Try Again dialog included: a restart leaves the node to it (D1201). */
+let startingInDialog = false;
 /** A quit stops the node; a second quit meanwhile waits for it. */
 let stoppingNode = false;
 let menuContributions: DesktopMenuContribution[] = [];
@@ -184,6 +187,7 @@ async function main(): Promise<void> {
     },
     afterFailedInstall: async () => {
       quitting = false;
+      restarter.resume();
       await restartNodeInWindow();
     },
     log,
@@ -310,36 +314,45 @@ async function main(): Promise<void> {
   });
 
   // --- The local node and the window (D512, D513). ---
+  /** Starts the node once and makes it the app's; rejects when it did not come up. */
+  async function launchNode(): Promise<RunningLocalNode> {
+    try {
+      starting = startLocalNode(nodePaths);
+      const started = await starting;
+      starting = undefined;
+      if (quitting) {
+        // The app quit while the node started: stop it rather than leave it running.
+        await started.stop();
+        app.quit();
+        throw new Error("The app quit while its local node started.");
+      }
+      node = started;
+      shownNode = started;
+      nodeOrigin = new URL(started.url).origin;
+      started.onExit((output) => nodeStopped(output));
+      log("local node running", { url: started.url, home: started.home });
+      return started;
+    } catch (error) {
+      starting = undefined;
+      if (quitting) app.quit();
+      throw error;
+    }
+  }
+  /** Starts the node, asking to try again or quit while it fails (D512). */
   async function startNode(): Promise<RunningLocalNode> {
+    startingInDialog = true;
+    try {
+      return await startNodeAsking();
+    } finally {
+      startingInDialog = false;
+    }
+  }
+  async function startNodeAsking(): Promise<RunningLocalNode> {
     for (;;) {
       try {
-        starting = startLocalNode(nodePaths);
-        const started = await starting;
-        starting = undefined;
-        if (quitting) {
-          // The app quit while the node started: stop it rather than leave it running.
-          await started.stop();
-          app.quit();
-          throw new Error("The app quit while its local node started.");
-        }
-        node = started;
-        shownNode = started;
-        nodeOrigin = new URL(started.url).origin;
-        started.onExit(
-          (output) =>
-            void nodeStopped(output).catch((error: unknown) =>
-              // The user chose Quit after a restart failed: the app is quitting.
-              log("local node not restarted", { error: String(error) }),
-            ),
-        );
-        log("local node running", { url: started.url, home: started.home });
-        return started;
+        return await launchNode();
       } catch (error) {
-        starting = undefined;
-        if (quitting) {
-          app.quit();
-          throw error;
-        }
+        if (quitting) throw error;
         const choice = await dialog.showMessageBox({
           type: "error",
           title: "The local node did not start",
@@ -357,24 +370,26 @@ async function main(): Promise<void> {
       }
     }
   }
-  async function nodeStopped(output: string): Promise<void> {
+  // A node that exits by itself comes back with T3's backoff, no dialog (D1201).
+  const restarter = new NodeRestarter({
+    start: async () => {
+      // Quitting, or another path (a failed update's restart, with its Try Again dialog)
+      // brought the node back or is starting it: one node per home and port.
+      if (quitting || node !== undefined || starting !== undefined || startingInDialog)
+        return false;
+      const restarted = await launchNode();
+      if (mainWindow !== undefined && !mainWindow.isDestroyed()) loadNode(mainWindow, restarted);
+      return true;
+    },
+    log,
+  });
+  function nodeStopped(output: string): void {
     if (quitting) return;
     node = undefined;
-    const choice = await dialog.showMessageBox({
-      type: "error",
-      title: "The local node stopped",
-      message: `${APP_NAME}'s local node stopped unexpectedly.`,
-      detail: output.trim().split("\n").slice(-20).join("\n"),
-      buttons: ["Restart", "Quit"],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (choice.response !== 0) {
-      quitting = true;
-      app.quit();
-      return;
-    }
-    await restartNodeInWindow();
+    // What D512's dialog showed goes to the app's log, so a node that keeps dying says why.
+    const tail = output.trim().split("\n").slice(-20);
+    log("local node exited", { output: tail.join("\n") });
+    restarter.exited(tail.at(-1) || "exited");
   }
   /** Starts the node again and points the window at it: it may listen elsewhere now. */
   async function restartNodeInWindow(): Promise<void> {
@@ -382,7 +397,8 @@ async function main(): Promise<void> {
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) loadNode(mainWindow, restarted);
   }
   const openWindow = () => {
-    if (node === undefined) return;
+    // A node being restarted still has a window: it loads the new node once it is up (D1201).
+    if (shownNode === undefined) return;
     mainWindow = createMainWindow({
       title: APP_NAME,
       platform: process.platform,
@@ -420,6 +436,7 @@ async function main(): Promise<void> {
     quitting = true;
     clearBadge();
     updates.stop();
+    restarter.stop();
     if (node === undefined) {
       // Still starting (startNode stops it once up, then quits), or a stop runs
       // that quits when it is done: either way the node is not left behind (D522).
