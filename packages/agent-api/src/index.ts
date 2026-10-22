@@ -216,7 +216,13 @@ export type AgentItem =
       readonly subagentId: string;
       readonly status: "completed" | "failed" | "interrupted";
       readonly error?: string;
-    };
+    }
+  /**
+   * Since 1.6: the agent compacted its context inside the turn (Claude Code's
+   * compact boundary, Codex's context compaction): what it knew of the
+   * conversation is now a summary. Refocus follows it (agents.md D709).
+   */
+  | { readonly kind: "context.compacted"; readonly trigger?: "auto" | "manual" };
 
 /** The kinds of items a subagent's thread shows (D877); a runtime's others stay in the turn. */
 export const SUBAGENT_WORK_KINDS = [
@@ -378,7 +384,7 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -465,6 +471,8 @@ export const ThreadEvents = {
   planProposed: "agent.plan.proposed",
   /** `{ turnId, usage }` */
   usageUpdated: "agent.usage.updated",
+  /** `{ turnId, trigger? }`: the agent compacted its context (since 1.6, agents.md D709). */
+  contextCompacted: "agent.context.compacted",
   turnCompleted: "agent.turn.completed",
   turnInterrupted: "agent.turn.interrupted",
   turnFailed: "agent.turn.failed",

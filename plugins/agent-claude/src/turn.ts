@@ -593,6 +593,12 @@ export function claudeTurn(
         }
         return;
       }
+      case "system":
+        // Claude Code compacted the conversation: refocus follows it (agents.md D709).
+        if (message.subtype === "compact_boundary") {
+          out.push({ kind: "context.compacted", trigger: message.compact_metadata.trigger });
+        }
+        return;
       default:
         return;
     }

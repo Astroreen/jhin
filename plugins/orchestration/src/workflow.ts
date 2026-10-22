@@ -53,6 +53,11 @@ export interface WorkflowHost {
    * for `workflow()` (D874, D875).
    */
   load?(ref: string | { readonly scriptPath: string }): Promise<string>;
+  /**
+   * Runs a command of the node as whoever started the run, for `command()`
+   * (agents.md D705): its output, or a throw with the command's error.
+   */
+  command?(name: string, input: unknown): Promise<unknown>;
 }
 
 export interface WorkflowLimits {
@@ -349,6 +354,13 @@ export async function runWorkflow(
     );
   };
 
+  /** Rejects once the run is stopped, for a hook that waits on the node. */
+  const aborted = new Promise<never>((_, reject) => {
+    const stop = () => reject(new WorkflowError("WORKFLOW_STOPPED", "The workflow was stopped"));
+    if (signal.aborted) stop();
+    else signal.addEventListener("abort", stop, { once: true });
+  });
+  aborted.catch(() => undefined);
   const budget = host.budget ?? null;
   const spent = () => host.spent?.() ?? 0;
   /** Runs a script body in a context of its own; a child (`group` set) cannot nest further. */
@@ -392,6 +404,28 @@ export async function runWorkflow(
         const child = parseWorkflow(await host.load(scriptRef));
         host.log(`Workflow ${child.meta.name} started`);
         return runBody(child.body, childArgs, `\u25b8 ${child.meta.name}`);
+      },
+      command: async (name: unknown, input: unknown = {}) => {
+        stopped();
+        if (typeof name !== "string" || name === "" || host.command === undefined) {
+          throw new WorkflowError("WORKFLOW_SCRIPT", "command() takes a command name");
+        }
+        const copied = input === undefined ? {} : (JSON.parse(JSON.stringify(input)) as unknown);
+        let result: unknown;
+        try {
+          // A stop ends the wait; the command itself runs on (commands take no signal).
+          result = await Promise.race([host.command(name, copied), aborted]);
+        } catch (error) {
+          stopped();
+          if (error instanceof WorkflowError) throw error;
+          const failure = error as { code?: unknown; message?: unknown };
+          throw new WorkflowError(
+            typeof failure.code === "string" ? failure.code : "COMMAND_FAILED",
+            typeof failure.message === "string" ? failure.message : String(error),
+          );
+        }
+        stopped();
+        return result === undefined ? null : (JSON.parse(JSON.stringify(result)) as unknown);
       },
       console: { log: (...parts: unknown[]) => host.log(parts.map(String).join(" ")) },
     });

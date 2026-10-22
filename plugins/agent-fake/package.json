@@ -43,10 +43,10 @@
     "version": "0.1.0",
     "apiVersion": 1,
     "name": "Fake agent",
-    "description": "Answers \"Echo: <message>\" word by word; /hold, /fail, /think, /tool, /approve, /ask, /plan and /write exercise the rest of a turn",
+    "description": "Answers \"Echo: <message>\" word by word; /hold, /compact, /fail, /think, /tool, /approve, /ask, /plan and /write exercise the rest of a turn",
     "side": "server",
     "provides": {
-      "agent.runtime": "1.5.0"
+      "agent.runtime": "1.6.0"
     },
     "entry": "src/index.ts"
   }

@@ -35,6 +35,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/attachments" answers with each attachment's name, size and, for text, its content;
  * - in plan mode, anything else is answered with a proposed plan titled after it;
  * - "/write <file> <text>" writes the text to a file of its working directory;
+ * - "/compact" compacts its context, then holds like "/hold";
  * - "/subagent <task>" runs a subagent titled after the task that answers "Echo: <task>" (D876);
  * - anything else is answered "Echo: <text>", one word per delta.
  * A message steered into a turn (D204) is answered "Echo: <text>" before the
@@ -100,6 +101,13 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
       };
       yield { kind: "subagent.ended", subagentId, status: "completed" };
       yield* say(`Ran a subagent for ${task}`);
+      return;
+    }
+    if (text.startsWith("/compact")) {
+      // Compacts, then holds as /hold does, so a refocus can be steered in (agents.md D709).
+      yield { kind: "context.compacted", trigger: "manual" };
+      yield { kind: "message.delta", itemId: nextId(), text: "Compacted" };
+      if (steers.length === 0) await Promise.race([interruption.wait(), steered.wait()]);
       return;
     }
     if (text.startsWith("/hold")) {

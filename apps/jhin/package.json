@@ -39,6 +39,7 @@
     "@jhin/plugin-mesh": "workspace:*",
     "@jhin/plugin-missions": "workspace:*",
     "@jhin/plugin-orchestration": "workspace:*",
+    "@jhin/plugin-orchestrator": "workspace:*",
     "@jhin/plugin-preview": "workspace:*",
     "@jhin/plugin-scheduler": "workspace:*",
     "@jhin/plugin-secrets": "workspace:*",
@@ -85,6 +86,7 @@
     "@jhin/plugin-agents",
     "@jhin/plugin-teams",
     "@jhin/plugin-context",
+    "@jhin/plugin-orchestrator",
     "@jhin/plugin-mcp-server",
     "@jhin/plugin-mesh"
   ],

@@ -97,6 +97,27 @@ describe("jhin.agent-claude: a turn", () => {
     expect(sessions.ids.has(THREAD)).toBe(true);
   });
 
+  it("says when Claude Code compacted the conversation (agents.md D709)", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield {
+          type: "system",
+          subtype: "compact_boundary",
+          compact_metadata: { trigger: "auto", pre_tokens: 180_000 },
+          uuid: "c1",
+          session_id: THREAD,
+        } as never;
+        yield* streamedBlock("m1", 0, "text", ["Going on."]);
+        yield result();
+      },
+    ]);
+    const items = await drain(turn);
+    expect(items.filter((item) => item.kind === "context.compacted")).toEqual([
+      { kind: "context.compacted", trigger: "auto" },
+    ]);
+  });
+
   it("completes a block once when its snapshot comes after its stop", async () => {
     const { turn } = start([
       async function* () {

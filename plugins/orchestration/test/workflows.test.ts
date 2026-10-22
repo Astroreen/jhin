@@ -155,6 +155,33 @@ return { echoed, failed, piped, counted, stubborn }`;
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 
+  it("runs commands of the node as the run's caller with command() (agents.md D705)", async () => {
+    const { kernel, client } = await node();
+    const feed = orchestrationFeed(client);
+    const parent = await parentThread(client);
+    const script = `export const meta = { name: 'commands', description: 'Calls commands' }
+const agents = await command('agents.list')
+let denied = null
+try { await command('projects.create', { path: '/nowhere' }) } catch (error) { denied = error.code }
+let missing = null
+try { await command('no.such.command', {}) } catch (error) { missing = error.code }
+return { listed: agents.some((agent) => agent.agentId === 'jhin.agent-fake'), denied, missing }`;
+    const { workflowId } = (await kernel.commands.execute(
+      "workflows.run",
+      { script, parentThreadId: parent.id },
+      {
+        caller: {
+          id: "lead",
+          permissions: ["threads.read", "threads.write", "workflows.run"],
+        },
+      },
+    )) as { workflowId: string };
+    expect(await feed.workflow(workflowId, (record) => record.status !== "running")).toMatchObject({
+      status: "completed",
+      result: { listed: true, denied: "PERMISSION_DENIED", missing: "COMMAND_NOT_FOUND" },
+    });
+  });
+
   it("refuses a script from another node of the mesh", async () => {
     const { kernel, client } = await node();
     const parent = await parentThread(client);

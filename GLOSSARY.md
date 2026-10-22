@@ -314,3 +314,19 @@ Words about Jhin:
 - **Process** — the steps of a level as data: a slice's (spec → build →
   test), a mission's between its slices (merge), a project's between missions
   (release). A slice records its current **step**.
+- **Ready slice** — a planned slice of a mission's current wave (the
+  earliest with open slices) that has an assignee and can be handed off. A
+  slice that cannot move waits for a **decision** of whoever runs the
+  mission: no assignee, blocked, a dropped dependency, an assignee
+  elsewhere (`missions.next`).
+- **Handoff** — giving a ready slice to its assignee: a message in its
+  agent's current generation, and the slice marked active
+  (`slices.handoff`).
+- **Orchestrator** — the workflow that walks a mission wave by wave for its
+  lead: it hands off ready slices, waits for their proofs and ends at every
+  decision (`missions.orchestrate`). Not the same as `jhin.orchestration`,
+  the plugin of delegated tasks and workflows it runs on.
+- **Refocus** — handing an agent the intent chain of the slice it works on,
+  after a compaction, every few turns or on request, with the moonbase
+  question (`refocus.send`). A **compaction** is an agent replacing its
+  context with a summary (`agent.context.compacted`).

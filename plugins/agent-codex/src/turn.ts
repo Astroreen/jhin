@@ -310,6 +310,13 @@ export function codexTurn(
             ? { status: "declined" }
             : {}),
         });
+        // The compaction stays a row of the turn and also says the context was compacted (D709).
+        if (item.type === "contextCompaction" && outcome.status === "completed") {
+          out.push({
+            kind: "context.compacted",
+            trigger: isCompact(request.input) ? "manual" : "auto",
+          });
+        }
       }
     }
   };

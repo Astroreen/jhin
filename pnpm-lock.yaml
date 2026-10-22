@@ -294,6 +294,9 @@ importers:
       '@jhin/plugin-orchestration':
         specifier: workspace:*
         version: link:../../plugins/orchestration
+      '@jhin/plugin-orchestrator':
+        specifier: workspace:*
+        version: link:../../plugins/orchestrator
       '@jhin/plugin-preview':
         specifier: workspace:*
         version: link:../../plugins/preview
@@ -1152,6 +1155,31 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.32.1(supports-color@7.2.0)(zod@4.6.7)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+
+  plugins/orchestrator:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
+      '@jhin/missions-api':
+        specifier: workspace:*
+        version: link:../../packages/missions-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2

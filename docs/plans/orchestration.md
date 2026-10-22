@@ -209,7 +209,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   Jhin's addition (any runtime); `effort` is the model's `effort` option
   (D870); `budget` and `workflow()` are W20's D873, D874; `agentType` is
   not available and throws. `Date.now()`, argless `new Date()` and `Math.random()` throw, as in
-  the Workflow tool.
+  the Workflow tool. `command(name, input)` is A6's addition (agents.md
+  D705).
 - **D374. Limits.** At most `jhin.orchestration.maxConcurrentAgents` agents
   of one workflow run at once (default `min(16, CPUs − 2)`, at least 1), 1000
   over a run, 4096 items per `parallel()`/`pipeline()` call. The body may run

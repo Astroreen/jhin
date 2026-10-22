@@ -790,6 +790,101 @@ commands) is `packages/agent-api/src/teams.ts`.
   project intent. The question is whether what it does now serves that
   ([moonbase](../lore/doghouse-moonbase.md)). The intervals are config.
 
+Decisions:
+
+- **D701. One plugin, `jhin.orchestrator`** (`plugins/orchestrator`, server
+  side). It requires `host.identity@^1`, `storage.kv@^1` and
+  `storage.eventlog@^1`, folds the `missions` stream as any client does
+  (D641) and reaches missions, agents, threads, workflows and lore only
+  through their commands. It adds no second runner: the orchestrator is a W10
+  workflow (D705–D707), and refocus is a message in the agent's own thread
+  (D710).
+- **D702. Readiness is a function of the mission** (`missionProgress` in
+  `@jhin/missions-api`; `missions.next { missionId }`). Waves run one after
+  another: only the earliest wave with open slices moves. Its planned slices
+  are **ready** once they have an assignee on this node; its active ones are
+  **working**; the rest wait for a **decision** of whoever runs the mission:
+  `unassigned`, `blocked` (the assignee said it cannot go on), `elsewhere`
+  (an assignee of another node), and, in any wave, `orphaned` (a dependency
+  was dropped, D651: the lead re-plans it). `missions.next` adds the stream's
+  `head`, the mission's own steps and the project's. `slicesDone` means no
+  slice is open; it never sets the mission done.
+- **D703. `slices.handoff { sliceId }` hands a ready slice to its
+  assignee** with A2's `agents.send` (D623), as the caller: an agent of this
+  node gets it in its current generation (its first is started when it has
+  none), queued while it works, and that thread is linked to the slice; the
+  owner gets it in the inbox (D626). Either way the slice becomes `active`
+  at its slice process's first step. The message is the slice, what it
+  serves (mission outcome, project intent), its process, and how to close
+  it: `slices_update` for each step, `slices_prove` once with the smallest
+  proof, `blocked` when stuck. Its message id is the slice as it was
+  planned, so a retry after a node stopped delivers it once. Handing an
+  active slice again changes nothing (`handed: false`); a slice that is not
+  ready is `SLICE_NOT_READY` (with the decision it waits for) or
+  `AGENT_ELSEWHERE`. It takes `missions.write` and `agents.message`, which
+  a thread's agent holds, and every write runs as the caller (so `by` and
+  the message's sender name it).
+- **D704. `missions.wait { missionId, after, timeoutMs? }`** returns when
+  the mission or one of its slices changes after the stream's sequence
+  `after` (`changed: true`), or after `timeoutMs` (default 10 minutes, at
+  most 60). It reads what came before the call first, so nothing between
+  `missions.next` and the wait is missed. Nothing polls: the wait is an
+  event of the stream.
+- **D705. W10's scripts get `command(name, input)`**, Jhin's addition like
+  `agentId` (orchestration.md D373): it runs a command of the node as
+  whoever started the run (its grants, trace and thread) and returns its
+  output, or throws with the command's `code` and message. A stop ends the
+  wait at once. A script already runs with the node's rights (D375), so this
+  adds none; resuming a run (D872) runs its commands again.
+- **D706. `missions.orchestrate { missionId, parentThreadId? }`** runs the
+  orchestrator workflow (`ORCHESTRATOR_WORKFLOW`, named `mission`) through
+  `workflows.run` from the calling thread, the lead's: the workflow shows in
+  its chat (W20) and its end wakes it (D376). A thread is required
+  (`THREAD_REQUIRED`), the mission must be open (`MISSION_CLOSED`), and a
+  mission already being orchestrated returns its running workflow
+  (`existing: true`). The script is this plugin's own and its only argument
+  a mission id, so the caller does not need `workflows.run` itself: the
+  plugin adds that one grant to the caller's for this run, and the script's
+  `command()` calls run with the caller's own grants. W10's other rules hold
+  (a full-access thread, no mesh caller).
+- **D707. What the orchestrator does, and where it stops.** Per wave: it
+  hands every ready slice (`slices.handoff`), then waits for the mission to
+  move (`missions.wait`) and looks again. It decides nothing: it ends, and
+  wakes the lead, with an `outcome` for each decision the lead must take:
+  `decide` (the decisions of D702 and handoffs that failed), `wave-done` (a
+  wave it watched is over and the mission has steps between waves, such as
+  merge: the lead runs them, then orchestrates again), `slices-done` (the
+  mission's and the project's steps; the lead sets the mission done when its
+  outcome holds, D651) or `closed`. Its state is the mission, so running it
+  again goes on from there; a run the node stopped fails (D376) and is
+  started again the same way.
+- **D708. `refocus.brief { sliceId } | { threadId, nodeId? }`** renders
+  the intent chain (`intentChain`, D650: slice spec → mission outcome →
+  project intent) with the moonbase question: does what you are doing now
+  serve it? For a thread it takes the open slice changed last.
+  `refocus.send { threadId, reason? }` hands a thread of this node that
+  brief: steered into its running turn when its agent steers (W1), else as
+  its next queued message, so a refocus never stops a turn.
+- **D709. Runtimes report a compaction.** `agent.runtime@1.6` adds the item
+  `context.compacted { trigger? }` (`auto` or `manual`); the threads plugin
+  (`agent.registry` 1.3) records it as `agent.context.compacted { turnId,
+  trigger? }` in the thread's stream. Claude Code's `compact_boundary`
+  message, Codex's completed `contextCompaction` item and the fake agent's
+  `/compact` emit it.
+- **D710. Refocus comes by itself.** The plugin follows the streams of this
+  node's threads linked to open slices. After an `agent.context.compacted`
+  it sends the brief (D708) with the lore brief for a compaction
+  (`lore.brief`, reason `compaction`, D671): the item A4 left to whoever
+  reports compactions. Every `refocusEveryTurns` turns of such a thread it
+  sends the brief again. Turns are counted per thread in `storage.kv`, and a
+  compaction starts the count over.
+- **D711. Config `jhin.orchestrator`:** `refocusOnCompaction` (default on)
+  and `refocusEveryTurns` (default 10, 0 off). The interval is counted in
+  turns, not minutes, so an idle agent is never woken to be refocused.
+- **D712. No UI of its own yet.** The orchestrator is a workflow, which
+  W20 already shows in the lead's chat (phases per wave, its log of
+  handoffs, its result); its Civilization-mode view waits (Deferred).
+
 ### A7. Health: ceremony against progress (D721–D740)
 
 - Sensors over the event log: ceremony (messages, asks, approvals, proof
@@ -945,19 +1040,12 @@ commands) is `packages/agent-api/src/teams.ts`.
   the missions of a deleted project (they stay in the stream, unseen).
 - A3: editing intent, missions and slices from the client; the view reads
   (D656), the commands edit.
-- A3: which slice is ready or next (its dependencies done): A6 computes it
-  from `missions.get`.
 - A3: proof stored on the node (screenshot files); a proof item names a URL.
 - A3: a project deleted between the project check and the append of
   `missions.create` or `missions.intent.set` (D643) still gets its record;
   closing that needs a projects capability the writer can hold.
-- A3: what to do with the open dependants of a dropped slice (D651): A6
-  re-plans them; `missions.get` shows them.
 - A3: fencing an agent's `missions.write` to the slices that link its own
   thread (D652); agents are node-wide like the rest of D341 for now.
-- A4: the lore brief after a compaction (`reason: compaction`). No runtime
-  reports a compaction yet; whoever adds that event (A6's refocus) calls
-  `lore.brief` there, as D671 does on start.
 - A4: team lore (`lore.list { team }`), once A5 settles where a team's files
   live.
 - A4: detecting conflicts between sections (two pages saying different
@@ -1016,6 +1104,22 @@ commands) is `packages/agent-api/src/teams.ts`.
   choose their node.
 - A8: leaving generations out of `threads.search` as well: D745 filters the lists
   and catalogs only, so a search can still find a generation's text.
+- A6: handing off a slice whose assignee is on another node (D702's
+  `elsewhere`): `agents.send` reaches it, but the slice's thread link and
+  refocus follow only this node's threads.
+- A6: refocus as an `agents.send` message rather than a steer or queued
+  message of the thread (D708), once a message can be steered.
+- A6: an orchestrator that survives a node restart by itself; today the run
+  fails (D376) and the lead starts it again (D707).
+- A6: refocusing threads of other nodes linked to a slice; only this node's
+  threads are followed (D710).
+- A6: a refocus interval in minutes for long turns (D711 counts turns).
+- A6: a row in the chat for `agent.context.compacted` (D709).
+- A6: the orchestrator in Civilization mode, beside A3's mission view (D712).
+- A6: ending a `missions.wait` when its caller goes away: commands get no
+  cancellation signal (as W10's waits), so a stopped run's wait ends at its
+  timeout.
+- A6: journaling `command()` results (D705) so a resumed run reuses them.
 
 ## Landing
 
@@ -1076,3 +1180,9 @@ Each workstream lists its PRs here as they merge.
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
   `includeGenerations` on `threads.list` and `threads.catalog` (D742–D750).
+- A6 #181: the `jhin.orchestrator` plugin (`missions.next`, `missions.wait`,
+  `missions.orchestrate`, `slices.handoff` through `agents.send`,
+  `refocus.brief`, `refocus.send`), `missionProgress` in `@jhin/missions-api`, `command()`
+  in W10's workflow scripts, and `context.compacted` from Claude Code, Codex
+  and the fake agent (`agent.runtime@1.6`, `agent.registry` 1.3)
+  (D701–D712).
