@@ -2,8 +2,10 @@
 
 Status: **implemented** (workstream W13 of `t3-roadmap.md`, decisions
 D410–D426): PR 1 #48, PR 2 #52, PR 3 #57, PR 4a #65, PR 4b #72. The
-secret store and `secretRef`s (W28, D1021–D1034): #173, #178, #180. What is
-left is under Deferred, `jhin pair` (D425) first.
+secret store and `secretRef`s (W28, D1021–D1034): #173, #178, #180.
+Pairing and remote access (W33, D1181–D1196): `jhin pair` #203, Tailscale
+Serve #204, clients and `jhin client` links #208, MCP OAuth #214. What is
+left is under Deferred.
 
 ## Goal
 
