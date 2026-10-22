@@ -432,12 +432,16 @@ export const sourceControlPlugin = builtin(
             // What the node's view holds already (followed by another part before) counts now.
             notifyWork(target);
           }
+          let dropped = false;
           for (const [id, subscription] of followed) {
             if (ids.has(id)) continue;
             subscription.dispose();
             followed.delete(id);
             watchedOf.delete(targetKey({ node: id }));
+            dropped = true;
           }
+          // A node that went away waits on nothing any more: its threads are told so.
+          if (dropped) for (const listener of Array.from(workListeners)) listener();
         };
         followConnections();
         context.subscriptions.add(connections.subscribe(followConnections));
@@ -450,6 +454,8 @@ export const sourceControlPlugin = builtin(
         context.subscriptions.add(
           work.register({
             tasks: (target, threadId) => {
+              // Only a node followed now: a disconnected one's last view is not news.
+              if (target.remote !== undefined || !followed.has(target.node)) return [];
               return (store.view(target).links.get(threadId) ?? []).flatMap((link) =>
                 link.watch === undefined
                   ? []

@@ -303,6 +303,10 @@ Words about Jhin:
   scripts). The **setup script** is the one that runs in each new worktree of
   a thread, in a terminal of that thread; the **worktree setup** card under
   the thread's first message shows its stages.
+- **Waiting** — a thread whose turn is over but that waits on background
+  work, such as a watched pull request (T3 Code's pending background tasks):
+  the sidebar says "Waiting" and keeps it with the threads at work. Plugins
+  report that work as **thread work** (`client.thread-work@1`).
 - **Worktree cleanup** — the node removing the worktrees its rules allow
   (a deleted thread's, an inactive, settled, merged or unchanged one) in a
   sweep every hour, keeping their branches and threads (T3 Code's storage
