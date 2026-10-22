@@ -1686,5 +1686,5 @@ Each workstream lists its PRs here as they merge.
   (`jhin.orchestrator`), the `civilization.mission.aside` slot and
   `jhin.orchestrator.panel` with next, waits for, and start, pause and stop
   (D1086–D1090).
-- C3 #PR: `teams.up` adds a member's home project named by a folder's path
+- C3 #199: `teams.up` adds a member's home project named by a folder's path
   (D1105), found by the C3 run.
