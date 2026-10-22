@@ -52,10 +52,10 @@ const runTailscale: TailscaleRunner = (args, timeoutMs) =>
 /**
  * Whether `tailscale serve status --json` leaves HTTPS port `port` to us: no
  * handler at all, or only web handlers proxying to targets `jhin pair` made
- * itself (`ours`, a node's old address). A TCP forward, a file or text
+ * itself on this port (`ours`, the node's last address there). A TCP forward, a file or text
  * handler, a funneled port, or any proxy someone else made is never taken.
  */
-export function replaceable(statusJson: string, port: number, ours: readonly string[]): boolean {
+export function replaceable(statusJson: string, port: number, ours: string | undefined): boolean {
   let status: {
     TCP?: Record<string, { TCPForward?: unknown; HTTPS?: unknown; HTTP?: unknown }>;
     Web?: Record<string, { Handlers?: Record<string, Record<string, unknown>> }>;
@@ -82,7 +82,7 @@ export function replaceable(statusJson: string, port: number, ours: readonly str
         path === "/" &&
         Object.keys(handler).every((key) => key === "Proxy") &&
         typeof handler["Proxy"] === "string" &&
-        ours.includes(handler["Proxy"]),
+        handler["Proxy"] === ours,
     )
   );
 }
@@ -101,31 +101,39 @@ function funneled(statusJson: string, port: number): boolean {
   }
 }
 
-/** The proxy targets `jhin pair --tailscale` mapped, so it repairs only its own (D1189). */
+/**
+ * The target `jhin pair --tailscale` last mapped on each HTTPS port, so it
+ * repairs only its own mapping (D1189). One per port: a new one replaces the
+ * old, so an address mapped long ago never claims a later hand-made mapping.
+ */
 export interface OwnMappings {
-  targets(): readonly string[];
-  remember(target: string): void;
+  target(port: number): string | undefined;
+  remember(port: number, target: string): void;
 }
 
 /** Own mappings kept in a file of the home (0600), written whole. */
 export function fileMappings(file: string): OwnMappings {
-  const read = (): string[] => {
+  const read = (): Record<string, string> => {
     try {
-      const parsed = JSON.parse(Fs.readFileSync(file, "utf8")) as { targets?: unknown };
-      return Array.isArray(parsed.targets)
-        ? parsed.targets.filter((target): target is string => typeof target === "string")
-        : [];
+      const parsed = JSON.parse(Fs.readFileSync(file, "utf8")) as { ports?: unknown };
+      return typeof parsed.ports === "object" && parsed.ports !== null
+        ? Object.fromEntries(
+            Object.entries(parsed.ports).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string",
+            ),
+          )
+        : {};
     } catch {
-      return [];
+      return {};
     }
   };
   return {
-    targets: read,
-    remember(target) {
-      const targets = [...new Set([...read(), target])];
+    target: (port) => read()[String(port)],
+    remember(port, target) {
+      const ports = { ...read(), [String(port)]: target };
       Fs.mkdirSync(Path.dirname(file), { recursive: true });
       const temporary = `${file}.${process.pid}.tmp`;
-      Fs.writeFileSync(temporary, `${JSON.stringify({ targets })}\n`, { mode: 0o600 });
+      Fs.writeFileSync(temporary, `${JSON.stringify({ ports })}\n`, { mode: 0o600 });
       Fs.renameSync(temporary, file);
     },
   };
@@ -234,7 +242,7 @@ export async function publishOverTailscale(input: {
 
   // Nothing that answers as this node is there. Only an empty port, or a
   // mapping `jhin pair` made itself (a node's old address), is taken over.
-  if (!replaceable(serveStatus.stdout, input.servePort, input.mappings.targets())) {
+  if (!replaceable(serveStatus.stdout, input.servePort, input.mappings.target(input.servePort))) {
     throw new PairError(
       "TAILSCALE_PORT_OCCUPIED",
       `HTTPS port ${port} on the tailnet already serves something that is not this Jhin node. Pass --tailscale-serve-port to publish this one on another port.`,
@@ -257,7 +265,7 @@ export async function publishOverTailscale(input: {
   }
   // The mapping exists now: failing to note it costs only a later repair.
   try {
-    input.mappings.remember(target);
+    input.mappings.remember(input.servePort, target);
   } catch (error) {
     notes.push(
       `Could not record this mapping (${String(error)}); a later run will not repair it on its own.`,
@@ -271,15 +279,19 @@ export async function publishOverTailscale(input: {
   for (let attempt = 0; attempt < PROBE_ATTEMPTS; attempt += 1) {
     if (attempt > 0) await pause();
     const probed = await probe(baseUrl);
+    // The mapping made above stays when this fails: the error says how to remove it.
+    const stays = ` The mapping made stays: remove it with \`tailscale serve --https=${port} off\`.`;
     if (probed.kind === "node") {
-      if (probed.instance !== input.node.instance) throw otherNode;
+      if (probed.instance !== input.node.instance) {
+        throw new PairError(otherNode.code, `${otherNode.message}${stays}`);
+      }
       return { baseUrl, notes };
     }
     // Something else answers on the fresh mapping: never hand out a link to it.
     if (probed.kind === "other") {
       throw new PairError(
         "TAILSCALE_PORT_OCCUPIED",
-        `HTTPS port ${port} on the tailnet answers as something that is not this Jhin node. Check \`tailscale serve status\`.`,
+        `HTTPS port ${port} on the tailnet answers as something that is not this Jhin node. Check \`tailscale serve status\`.${stays}`,
       );
     }
   }

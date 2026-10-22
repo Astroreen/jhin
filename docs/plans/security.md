@@ -547,7 +547,7 @@ The threat model comes first; the decisions after it implement it.
   `instance` is kept, one that answers 502–504 or not at all is
   (re)created with `tailscale serve --bg --https=<port> <local url>` only
   when `tailscale serve status --json` shows the port empty or proxying
-  only to a target `jhin pair` mapped itself (kept in
+  only `/` to the target `jhin pair` last mapped on that port (kept in
   `<home>/cli/tailscale-serve.json`), and one that answers anything
   else, or a port with a TCP forward, another handler or Funnel, is never replaced ("… already serves
   something that is not this Jhin node. Pass --tailscale-serve-port …").
@@ -685,7 +685,10 @@ A stack, one slice a PR:
 - **PR 5b — Tailscale Serve** (D1189): `jhin pair --tailscale`.
   **Done when:** tests with a fake `tailscale` create a mapping where
   nothing answers, keep one fronting this node, never replace one that
-  answers as something else, and say why when Tailscale fails.
+  answers as something else, a funneled port, a TCP forward, another path
+  or a target `jhin pair` did not map last on that port, say why when
+  Tailscale fails (repeating what it said, and how to remove a mapping
+  left behind), and `probeNode` is tested against real listeners.
 - **PR 5c — clients** (D1187, D1188, D1190): device metadata, the live
   `auth/clients` stream, pairing links for a `jhin client` page.
 - **PR 5d — MCP OAuth** (D1191–D1196).

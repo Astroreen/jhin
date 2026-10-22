@@ -58,9 +58,12 @@ function probes(...answers: Probe[]) {
 
 const pause = async () => {};
 
-function memoryMappings(...targets: string[]) {
-  const kept = [...targets];
-  return { targets: () => kept, remember: (target: string) => void kept.push(target) };
+function memoryMappings() {
+  const kept = new Map<number, string>();
+  return {
+    target: (port: number) => kept.get(port),
+    remember: (port: number, target: string) => void kept.set(port, target),
+  };
 }
 
 describe("Tailscale Serve for jhin pair", () => {
@@ -212,15 +215,15 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
     });
 
   it("takes an empty port or a mapping jhin pair made, and nothing else", () => {
-    const ours = ["http://127.0.0.1:7777"];
+    const ours = "http://127.0.0.1:7777";
     expect(replaceable("{}", 443, ours)).toBe(true);
     expect(replaceable("", 443, ours)).toBe(true);
     expect(
       replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 443, ours),
     ).toBe(true);
-    expect(replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 8443, [])).toBe(
-      true,
-    );
+    expect(
+      replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 8443, undefined),
+    ).toBe(true);
     // Someone's stopped dev server on loopback is not ours to take.
     expect(
       replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:3000" }), 443, ours),
@@ -265,17 +268,21 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
   it("remembers what it mapped, in a 0600 file of the home", () => {
     const file = Path.join(Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-ts-")), "cli", "map.json");
     const mappings = fileMappings(file);
-    expect(mappings.targets()).toEqual([]);
-    mappings.remember("http://127.0.0.1:7777");
-    mappings.remember("http://127.0.0.1:7777");
-    expect(fileMappings(file).targets()).toEqual(["http://127.0.0.1:7777"]);
+    expect(mappings.target(443)).toBeUndefined();
+    mappings.remember(443, "http://127.0.0.1:3000");
+    // One per port: a newer target replaces an old one, which claims nothing any more.
+    mappings.remember(443, "http://127.0.0.1:7777");
+    mappings.remember(8443, "http://127.0.0.1:7777");
+    expect(fileMappings(file).target(443)).toBe("http://127.0.0.1:7777");
+    expect(fileMappings(file).target(8443)).toBe("http://127.0.0.1:7777");
+    expect(fileMappings(file).target(10000)).toBeUndefined();
     expect(Fs.statSync(file).mode & 0o777).toBe(0o600);
   });
 
   it("keeps the link when the mapping cannot be recorded", async () => {
     const published = await publishOverTailscale({
       mappings: {
-        targets: () => [],
+        target: () => undefined,
         remember: () => {
           throw new Error("read-only home");
         },
@@ -340,7 +347,9 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
         probe: probes({ kind: "unreachable" }, { kind: "other" }).probe,
         pause,
       }),
-    ).rejects.toThrow("answers as something that is not this Jhin node");
+    ).rejects.toThrow(
+      /answers as something that is not this Jhin node.*remove it with `tailscale serve --https=443 off`/,
+    );
     await expect(
       publishOverTailscale({
         mappings: memoryMappings(),
