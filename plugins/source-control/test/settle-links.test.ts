@@ -147,4 +147,20 @@ describe("jhin.source-control: settling a thread on its linked pull requests (D1
     await sc.client.call("git.pr.list", { threadId, refresh: true });
     await settling;
   });
+
+  it("is not held by a link on a host no forge of the node reads", async () => {
+    const gh = fakeGh();
+    gh.view(7, merged(7, "2099-01-01T00:00:00Z"));
+    const sc = await node();
+    const projectId = await sc.project(githubRepository());
+    const threadId = (await sc.client.call<{ id: string }>("threads.create", { projectId })).id;
+    // Never read, and nothing here could read it: it tells nothing, so it holds nothing.
+    await sc.client.call("git.pr.link", {
+      threadId,
+      url: "https://forge.example.com/acme/demo/pull/5",
+    });
+    const settling = sc.next("threads", settled(threadId));
+    await sc.client.call("git.pr.link", { threadId, url: url(7) });
+    await settling;
+  });
 });

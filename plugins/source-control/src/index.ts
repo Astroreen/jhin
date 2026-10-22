@@ -961,10 +961,6 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       noteHold(threadId);
     } else if (decided === undefined) {
       heldThreads.delete(threadId);
-      if (!unsettledByLinks.has(threadId)) {
-        unsettledByLinks.add(threadId);
-        context.log.info("no linked pull request settles the thread", { threadId });
-      }
       // Its branch's pull request decides now, as read last (D447), not at the next lookup.
       const known = threads.get(threadId);
       const repo = known === undefined ? undefined : repos.get(known.projectId);
@@ -976,6 +972,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         cached.state !== "open"
       ) {
         await settleOnPullRequest(repo, known.branch, cached);
+      }
+      // Told once the decision is over, the branch's pull request's part included.
+      if (!unsettledByLinks.has(threadId)) {
+        unsettledByLinks.add(threadId);
+        context.log.info("no linked pull request settles the thread", { threadId });
       }
     } else {
       heldThreads.delete(threadId);
@@ -1007,6 +1008,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         noteHold(thread.threadId);
         continue;
       }
+      heldThreads.delete(thread.threadId);
+      unsettledByLinks.delete(thread.threadId);
       announceSettle(thread.threadId, decided ?? { number: pr.number, state: pr.state, closedAt });
     }
   };
