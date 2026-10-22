@@ -1226,10 +1226,19 @@ export function Composer(props: ComposerProps) {
     // `/usage-limits` sent alone is answered here when the agent has limits (T3); otherwise it
     // goes to the agent untouched.
     if (attachments.length === 0 && isUsageLimitsCommand(typed) && agent?.usageLimits === true) {
-      // T3 clears the prompt once the panel opened; what was typed stays otherwise.
-      if (await openUsageLimits(usageKey, agent)) {
-        setPrompt("");
-        setCursor(0);
+      // T3 clears the prompt once the panel opened; what was typed stays otherwise. Busy while
+      // it asks, so a second Enter asks nothing more, and text typed meanwhile is kept.
+      setBusy(true);
+      try {
+        if (
+          (await openUsageLimits(usageKey, agent)) &&
+          isUsageLimitsCommand(editor.current?.value() ?? "")
+        ) {
+          setPrompt("");
+          setCursor(0);
+        }
+      } finally {
+        setBusy(false);
       }
       return false;
     }
