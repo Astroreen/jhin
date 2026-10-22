@@ -91,6 +91,8 @@ describe("health views (D731)", () => {
     });
     await render(<HealthPage node="a" view={view} />);
     await expect.element(page.getByText("No health here")).toBeVisible();
+    // A command the node is known not to have is not called.
+    expect(asked).toEqual([]);
     await expect
       .element(page.getByRole("region", { name: "Ceremony and progress" }))
       .not.toBeInTheDocument();

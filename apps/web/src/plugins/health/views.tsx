@@ -129,7 +129,8 @@ function FeedProblem({ feed }: { feed: NodeHealth | undefined }) {
 /**
  * Calls a command of a node once per key, with its answer or error and when it
  * answered. A new key of the same `scope` keeps showing the last answer until
- * the new one arrives, so a refresh does not blank the page.
+ * the new one arrives, so a refresh does not blank the page. Nothing is called
+ * while `enabled` is false (a node that has not answered, or has no health).
  */
 function useCall<T>(
   view: HealthView,
@@ -137,7 +138,7 @@ function useCall<T>(
   command: string,
   input: unknown,
   key: string,
-  scope = key,
+  { scope = key, enabled = true }: { scope?: string; enabled?: boolean } = {},
 ) {
   const [result, setResult] = useState<{
     key: string;
@@ -147,6 +148,7 @@ function useCall<T>(
     error?: string;
   }>();
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
     const connection = view.connections.get(node);
     const call =
@@ -163,7 +165,7 @@ function useCall<T>(
     };
     // `key` names everything the call depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, enabled]);
   return result?.key === key || result?.scope === scope ? result : undefined;
 }
 
@@ -190,7 +192,7 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
     "health.status",
     {},
     `${node}|${round}`,
-    node,
+    { scope: node, enabled: feed?.status === "ready" },
   );
   if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
   if (status === undefined) return <PageEmpty text="Reading the sensors…" title="Health" />;
@@ -287,6 +289,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     { warningId },
     // The newest event behind it: it moves even once the evidence holds its 50.
     `${node}|${warningId}|${JSON.stringify(warning?.evidence.at(-1) ?? null)}`,
+    // The list stays while the newer one is read.
+    { scope: `${node}|${warningId}`, enabled: warning !== undefined },
   );
   const [dismissing, setDismissing] = useState(false);
   const mounted = useRef(true);
