@@ -23,6 +23,7 @@ import {
   contextReferencesAsLabels,
   MessageContextSchema,
   MessageOrigin,
+  ProjectScript,
   projectMessageContext,
   referencedContext,
   ThreadEvents,
@@ -193,6 +194,8 @@ const Project = z.object({
   path: z.string(),
   scratch: z.boolean(),
   createdAt: z.string(),
+  /** T3's project scripts (D1121); absent until set. */
+  scripts: z.array(ProjectScript).optional(),
 });
 type Project = z.infer<typeof Project>;
 
@@ -1125,7 +1128,7 @@ export default definePlugin({
         scratch: true,
         createdAt: now(),
       };
-      await kv.set(NAMESPACE, `project/${SCRATCH_PROJECT}`, scratch);
+      await kv.set(NAMESPACE, `project/${SCRATCH_PROJECT}`, scratch as unknown as Json);
     }
 
     // Threads made before the index existed are added to it once, oldest first.
@@ -2007,12 +2010,23 @@ export default definePlugin({
 
     context.commands.register({
       name: "projects.update",
-      description: "Renames a project",
-      input: z.object({ projectId: z.string(), name: z.string().trim().min(1) }),
+      description:
+        "Renames a project, or sets its scripts (T3's project scripts: the first with runOnWorktreeCreate is the setup script of its new worktrees)",
+      input: z
+        .object({
+          projectId: z.string(),
+          name: z.string().trim().min(1).optional(),
+          scripts: z.array(ProjectScript).max(50).optional().meta({
+            description: "Every script of the project, replacing those it had",
+          }),
+        })
+        .refine((input) => input.name !== undefined || input.scripts !== undefined, {
+          message: "Name a new name or the scripts",
+        }),
       output: Project,
       permissions: ["projects.write"],
       // One change of a project's record at a time, its removal included.
-      handler: ({ projectId, name }) =>
+      handler: ({ projectId, name, scripts }) =>
         queued(`project/${projectId}`, async () => {
           if (removedProjects.has(projectId)) {
             throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
@@ -2023,7 +2037,19 @@ export default definePlugin({
               projectId,
             });
           }
-          const next: Project = { ...project, name };
+          if (scripts !== undefined) {
+            const ids = new Set(scripts.map((script) => script.id));
+            if (ids.size !== scripts.length) {
+              throw new ThreadsError("PROJECT_SCRIPTS_INVALID", "Two scripts share an id", {
+                projectId,
+              });
+            }
+          }
+          const next: Project = {
+            ...project,
+            ...(name === undefined ? {} : { name }),
+            ...(scripts === undefined ? {} : { scripts }),
+          };
           await writeIndexed(
             `project/${projectId}`,
             next as unknown as Json,
@@ -2539,7 +2565,7 @@ export default definePlugin({
           }
           let made: string | undefined;
           try {
-            if (workspace?.type === "worktree") made = await newWorktree(projectId, workspace);
+            if (workspace?.type === "worktree") made = await newWorktree(projectId, workspace, id);
             const directory =
               made ??
               (workspace?.type === "existing_worktree"
@@ -2650,10 +2676,13 @@ export default definePlugin({
         branch?: string | undefined;
         startFromOrigin?: boolean | undefined;
       },
+      /** The new thread: its setup script runs there (D1122). */
+      threadId: string,
     ): Promise<string> {
       try {
         const created = (await context.commands.execute("git.worktree.create", {
           projectId,
+          threadId,
           baseRef: workspace.baseRef,
           ...(workspace.branch === undefined ? {} : { branch: workspace.branch }),
           ...(workspace.startFromOrigin === undefined

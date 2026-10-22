@@ -18,6 +18,7 @@ export * from "./context.ts";
 export * from "./citations.ts";
 export * from "./context-schema.ts";
 export * from "./writer.ts";
+export * from "./project-scripts.ts";
 
 import { contextReferencesAsLabels } from "./context.ts";
 import type { InteractionMode, RuntimeMode } from "./modes.ts";

@@ -211,6 +211,12 @@ export async function createWorktree(
     readonly baseRef: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
+    /** Told when fetching the base and checking the files out start and end (D1123). */
+    readonly onStage?: (
+      stage: "fetch" | "checkout",
+      status: "running" | "done" | "skipped" | "warning",
+      detail?: string,
+    ) => void;
   },
 ): Promise<CreatedWorktree> {
   const { baseRef } = options;
@@ -240,8 +246,17 @@ export async function createWorktree(
   }
   // "origin/main" names the remote branch the toolbar shows: fetched as main.
   const remoteBase = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
-  const fromOrigin =
-    options.startFromOrigin === true ? await originRef(git, remoteBase) : undefined;
+  const onStage = options.onStage ?? (() => undefined);
+  let fromOrigin: string | undefined;
+  if (options.startFromOrigin === true) {
+    onStage("fetch", "running");
+    fromOrigin = await originRef(git, remoteBase);
+    // Not on origin: the local branch is used, as T3's fetch stage warns.
+    if (fromOrigin === undefined) onStage("fetch", "warning", `origin has no ${remoteBase}`);
+    else onStage("fetch", "done");
+  } else {
+    onStage("fetch", "skipped");
+  }
   const startRef = fromOrigin ?? baseRef;
   const path = worktreePath(options.root, options.repository, branch);
   // Branches can share a folder ("a/b" and "a-b"), and so can repositories of one name.
@@ -258,9 +273,11 @@ export async function createWorktree(
     );
   }
   await Fs.mkdir(Path.dirname(path), { recursive: true });
+  onStage("checkout", "running");
   await git(["worktree", "add", "-b", branch, "--", path, startRef], {
     timeoutMs: WORKTREE_TIMEOUT_MS,
   });
+  onStage("checkout", "done");
   return {
     path: await Fs.realpath(path),
     branch,

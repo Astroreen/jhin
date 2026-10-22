@@ -319,6 +319,27 @@ export const terminalPlugin = builtin(
         "Opens another terminal below the active one",
         split("vertical"),
       );
+      // Another plugin shows a thread's terminal it started (a worktree's setup script, D1125).
+      context.commands.register({
+        name: "terminal.reveal",
+        title: "Show terminal",
+        description:
+          "Shows a terminal of a thread in its drawer, opening the drawer and adding the terminal's tab when it has none",
+        input: z.object({
+          node: z.string(),
+          remote: z.string().optional(),
+          threadId: z.string(),
+          terminalId: z.string(),
+        }),
+        output: z.object({}),
+        handler: async ({ node, remote, threadId, terminalId }) => {
+          const target: NodeTarget = { node, ...(remote === undefined ? {} : { remote }) };
+          change(terminalThreadKey(target, threadId), (state) =>
+            revealThreadTerminal(state, terminalId),
+          );
+          return {};
+        },
+      });
       register("terminal.new", "New terminal", "Opens another terminal in its own group", () => {
         const place = openThread();
         if (place === undefined) return;

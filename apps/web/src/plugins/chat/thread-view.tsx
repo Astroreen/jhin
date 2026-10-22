@@ -12,6 +12,7 @@ import {
   visitKey,
   type ChatDrawerProps,
   type ChatTurnFooterProps,
+  type ChatTurnHeaderProps,
   type ThreadCreateInput,
   type ChatTurnItemProps,
   type NodeTarget,
@@ -526,6 +527,24 @@ export function ThreadView(props: {
                                   event,
                                   adjacent,
                                 } satisfies ChatTurnItemProps
+                              }
+                            />
+                          )
+                    }
+                    header={
+                      thread === undefined
+                        ? undefined
+                        : (turn, first) => (
+                            <Slot
+                              name="chat.turn.header"
+                              props={
+                                {
+                                  target,
+                                  thread,
+                                  turnId: turn.turnId,
+                                  state: turn.state,
+                                  first,
+                                } satisfies ChatTurnHeaderProps
                               }
                             />
                           )

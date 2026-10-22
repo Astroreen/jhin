@@ -291,6 +291,10 @@ Words about Jhin:
 - **Worktree** — a git worktree of a project that a thread works in instead of
   the project's own folder (`worktreePath`); its turns, branch, status and
   diffs are the worktree's. The project's folder is the **local checkout**.
+- **Project script** — a shell command saved on a project (T3 Code's project
+  scripts). The **setup script** is the one that runs in each new worktree of
+  a thread, in a terminal of that thread; the **worktree setup** card under
+  the thread's first message shows its stages.
 - **Checkpoint** — a snapshot of a thread's working directory before its first
   turn and after each turn (a commit under `refs/jhin/checkpoints/`), from
   which a turn's diff is read and to which a thread can be reverted.

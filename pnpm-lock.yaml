@@ -1387,6 +1387,9 @@ importers:
       '@jhin/storage-api':
         specifier: workspace:*
         version: link:../../packages/storage-api
+      '@jhin/terminal-api':
+        specifier: workspace:*
+        version: link:../../packages/terminal-api
     devDependencies:
       '@jhin/plugin-agent-fake':
         specifier: workspace:*

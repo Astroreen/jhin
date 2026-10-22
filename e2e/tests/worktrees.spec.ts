@@ -231,3 +231,79 @@ exit 1
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
 });
+
+test("D1121–D1125: a new worktree runs the project's setup script and shows its progress", async ({
+  page,
+}, info) => {
+  const node = await startNode({ mode: "ui" });
+  running.push(node);
+  const dir = Path.join(node.home, "acme");
+  Fs.mkdirSync(dir, { recursive: true });
+  git(dir, "init", "--quiet", "--initial-branch=main");
+  Fs.writeFileSync(Path.join(dir, "README.md"), "acme\n");
+  git(dir, "add", ".");
+  git(dir, "commit", "--quiet", "-m", "first");
+  const project = await node.client().call<{ id: string }>("projects.create", { path: dir });
+  // The script waits for an answer typed into its terminal, then fails.
+  await node.client().call("projects.update", {
+    projectId: project.id,
+    scripts: [
+      {
+        id: "install",
+        name: "Install dependencies",
+        command: 'echo "Installing dependencies"\nread answer\necho "got $answer"\nexit 2',
+        runOnWorktreeCreate: true,
+      },
+    ],
+  });
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Command palette", exact: true }).click();
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("option", { name: "New thread in...", exact: true }).click();
+  await palette.getByRole("option", { name: /^acme/ }).click();
+  await expect(palette).toBeHidden();
+  const workspace = page.getByRole("button", { name: "Workspace" });
+  await workspace.click();
+  await page.getByRole("menuitemradio", { name: "New worktree" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("set up and say hello");
+  await message.press("Enter");
+
+  // T3's card under the first message: the script still runs beside the agent (async).
+  const card = page.getByRole("region", { name: "Worktree setup" });
+  await expect(card.getByText("Setting up worktree…")).toBeVisible();
+  await expect(card.locator('[data-worktree-setup-stage="checkout"]')).toHaveAttribute(
+    "data-worktree-setup-status",
+    "done",
+  );
+  const script = card.locator('[data-worktree-setup-stage="setup-script"]');
+  await expect(script).toContainText("Install dependencies");
+  await expect(script).toHaveAttribute("data-worktree-setup-status", "running");
+  await expect(card.getByLabel("Setup script output")).toContainText("Installing dependencies");
+  await expect(card.locator('[data-worktree-setup-stage="agent"]')).toHaveAttribute(
+    "data-worktree-setup-status",
+    "done",
+  );
+  await card.getByRole("button", { name: "Details" }).click();
+  await expect(card).toContainText("Base");
+  await expect(card).toContainText("Setup");
+  await expect(card.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await shot(page, info, "worktree-setup-running");
+
+  // "Open terminal" shows the script's terminal, where it waits for its answer.
+  await card.getByRole("button", { name: "Open terminal" }).click();
+  const drawer = page.getByRole("complementary", { name: "Terminal" });
+  await expect(drawer.getByRole("textbox", { name: "Terminal input" })).toBeFocused();
+  await expect(drawer.locator(".xterm-rows")).toContainText("Installing dependencies");
+  await page.keyboard.type("yes");
+  await page.keyboard.press("Enter");
+  await expect(drawer.locator(".xterm-rows")).toContainText("got yes");
+
+  // The agent had started, so the finished setup folds into T3's summary row.
+  const summary = card.locator('[data-worktree-setup-stage="summary"]');
+  await expect(summary).toHaveText(/Worktree ready, setup script failed/);
+  await expect(summary).toHaveAttribute("data-worktree-setup-status", "failed");
+  await expect(card.getByRole("button", { name: "Cancel" })).toBeHidden();
+  await shot(page, info, "worktree-setup-failed");
+});
