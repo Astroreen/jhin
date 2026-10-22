@@ -538,5 +538,7 @@ describe("teams across the mesh (A5)", () => {
           error: expect.objectContaining({ code: "PERMISSION_DENIED" }),
         }),
       );
+    const after = (await b.kernel.commands.execute("projects.list", {})) as { path: string }[];
+    expect(after.map((project) => project.path)).not.toContain(other);
   });
 });
