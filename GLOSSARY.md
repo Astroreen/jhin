@@ -330,3 +330,17 @@ Words about Jhin:
   after a compaction, every few turns or on request, with the moonbase
   question (`refocus.send`). A **compaction** is an agent replacing its
   context with a summary (`agent.context.compacted`).
+- **Ceremony** — the work around the work: messages and asks between
+  agents, approvals, proof edits, queue activity. **Progress** is the work
+  moving: slices done, commits, merged pull requests. **Health** watches one
+  against the other per mission, per project and for the node (`jhin.health`).
+- **Health warning** — what a health detector raises when a threshold is
+  crossed: an event of the `health` stream with the events behind it, told to
+  the owner and analysed by the agent that has the context (the **analyst**:
+  the configured one, the team's lead, else the agent assigned most of the
+  mission's slices; never a random agent).
+- **Proof edit** — a proof recorded again on a slice already done; many of
+  them are a **recursive proof loop** ("bureaucracy").
+- **Corrected idea** — a wrong idea named by a phrase when it was corrected
+  (`health.ideas.correct`); when the phrase comes back in agents' messages or
+  slice specs, health warns of a **mind virus**.

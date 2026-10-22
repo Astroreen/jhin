@@ -276,6 +276,9 @@ importers:
       '@jhin/plugin-example':
         specifier: workspace:*
         version: link:../../plugins/example
+      '@jhin/plugin-health':
+        specifier: workspace:*
+        version: link:../../plugins/health
       '@jhin/plugin-html-render':
         specifier: workspace:*
         version: link:../../plugins/html-render
@@ -533,6 +536,12 @@ importers:
         version: link:../sdk
 
   packages/desktop-api:
+    dependencies:
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+
+  packages/health-api:
     dependencies:
       '@jhin/sdk':
         specifier: workspace:*
@@ -996,6 +1005,43 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+
+  plugins/health:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/health-api':
+        specifier: workspace:*
+        version: link:../../packages/health-api
+      '@jhin/missions-api':
+        specifier: workspace:*
+        version: link:../../packages/missions-api
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/source-control-api':
+        specifier: workspace:*
+        version: link:../../packages/source-control-api
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/plugin-missions':
+        specifier: workspace:*
+        version: link:../missions
+      '@jhin/plugin-threads':
+        specifier: workspace:*
+        version: link:../threads
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
 
   plugins/html-render:
     dependencies:

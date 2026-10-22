@@ -899,6 +899,86 @@ Decisions:
   wrong ideas ([mind virus](../lore/mind-viruses.md)) are the first two
   named detectors.
 
+Decisions are recorded here as they are taken. The contract (the `health`
+stream, warnings, ideas, groups, config) is `packages/health-api`; the
+sensors and detectors are `plugins/health/src/sensors.ts`.
+
+- **D721. One `health` stream per node, folded.** Sensors read the log the
+  other plugins already write; nothing is counted twice into a second store.
+  What health concludes is an event of the node's `health` stream
+  (`health.warning.raised`, `.analysed`, `.dismissed`,
+  `health.idea.corrected`, `health.progress.recorded`), and the state is its
+  fold (`applyHealthEvent`), on the node and in clients alike, as D641 does
+  for missions. `health.catalog` returns the head to follow it from;
+  following it takes `health.read`. The counts themselves are not stored: on
+  start the plugin reads the streams again and keeps the window in memory.
+- **D722. Ceremony and progress are read from the streams that hold them.**
+  Ceremony: a message, ask or answer delivered (`agents/messages`, D627), a
+  proof recorded again on a done slice (`missions`, D642/D646), and, on the
+  threads slices link (D647), an approval asked (`agent.request.opened` of
+  kind `approval`) and a queue change (`threads.queue.updated`). Progress: a
+  slice becoming done (`missions`), a linked thread's pull request merging
+  (`git.pr.linked`/`git.pr.updated` with state `merged` on `source-control`,
+  once per thread and pull request) and commits (D723). An event counts for
+  the missions of the slices whose thread it is on; a message without one
+  counts for the open slices its sender or recipient is assigned; every event
+  counts for the node. A project counts what its missions count.
+  `health.status` returns the counts per group and per kind over the window.
+  Health's own asks (message ids `health.<warningId>`) are no ceremony.
+- **D723. Commits are the one progress no stream holds.** A turn on a thread
+  a slice links records its `HEAD` before it starts (turn-start hook,
+  kernel-scoped state, so a plugin reload keeps it) and, at its end, appends
+  `health.progress.recorded` with the commits since (`git rev-list --count`).
+  The hooks never fail a turn: a directory without git counts nothing.
+- **D724. A warning per detector and subject; the narrowest group warns.**
+  A detector raises a warning (`health.warning.raised` on the stream and the
+  same kernel event, for server plugins that tell the owner elsewhere) once
+  for its subject (a group, a slice, an idea) while that warning is open.
+  The owner dismisses it (`health.warnings.dismiss`); the same subject warns
+  again only on evidence newer than the dismissal. Of ceremony warnings the
+  narrowest group crossing warns: while a mission's is open, its project and
+  the node stay quiet, so one cause makes one warning. A warning keeps the
+  last 50 events behind it (`EventRef`: stream, sequence, type, time, kind);
+  `health.warnings.get` reads them back from the log for the drill-down, a
+  trimmed one marked `missing`.
+- **D725. The analyst is asked with `agents.ask`.** On a new warning health
+  asks its analyst (D726) through `agents.ask` (A2, D624) as this node's
+  owner, with the warning, its measures, its last events and what to look at
+  (the lore of bureaucracy or of mind viruses), and records the answer
+  (`health.warning.analysed`: `answered`, `failed` with the error, or `none`
+  when no agent has the context). Agents hold `health.read` over MCP
+  (`AGENT_PERMISSIONS`), so the analyst can open the drill-down itself.
+- **D726. Who has the context.** In order: the address configured for the
+  project in `jhin.health.analysts` (or for `*`); the team's lead once A5
+  lands (the seam: a team group and its lead replace the next step); else
+  the agent assigned the most of the group's slices that are not dropped, a
+  tie going to the first address in order. A node-wide warning without a
+  configured analyst has none. Never a random agent.
+- **D727. A mind virus is a corrected idea coming back.** The owner names a
+  wrong idea by a phrase when correcting it (`health.ideas.correct { idea,
+  correction?, projectId? }`), the vaccine. Each later message of a sender
+  other than an owner, and each slice title or spec written later, that
+  contains the phrase (case-insensitive, whitespace collapsed) is an
+  occurrence; a project's idea counts only in its own slices and their
+  messages. `mindVirus.minOccurrences` occurrences raise a warning naming
+  the carriers; the analyst is asked to trace the written source and every
+  copy ([mind virus](../lore/mind-viruses.md)). Copies written before the
+  correction are the analyst's to find, not the detector's.
+- **D728. A recursive proof loop is proof edits on a done slice.** Every
+  `missions.slice.proved` of a slice already done is a proof edit (D646 keeps
+  them visible); `proofLoop.maxEdits` of them on one slice raise a warning
+  for its mission, with those edits as evidence
+  ([bureaucracy](../lore/bureaucracy.md)).
+- **D729. Thresholds are config.** The `jhin.health` section: `enabled`,
+  `windowHours` (24), `ceremony.ratio` (10) and `ceremony.minCeremony` (30):
+  a group warns when its ceremony in the window reaches both the minimum and
+  ratio × progress (no progress counts as 1); `proofLoop.maxEdits` (2),
+  `mindVirus.minOccurrences` (2) and `analysts`. An invalid layer keeps the
+  last good thresholds.
+- **D730. Permissions.** `health.read` reads status, warnings, ideas and the
+  stream; `health.write` dismisses warnings and names corrected ideas, the
+  owner's. Agents get `health.read` only.
+
 ### A8. Modes and the Civilization shell (D742–D760)
 
 - A client capability for **modes** (`client.modes@1` or similar): a mode
@@ -1083,6 +1163,21 @@ Decisions:
 - A5: the conversation with the lead in `civilization.lead`: the team page
   sends the lead a message (D691); reading its answers is the lead's
   generation, read through A1's agent page.
+- A7: the team group (D722, D726): once A5 lands, a team counts what its
+  agents' messages and slices count, and its lead is the analyst.
+- A7: health for a mesh: each node counts its own streams; a team across
+  nodes needs the counts of every node, through `mesh.call` or shared
+  streams.
+- A7: detecting a repeated wrong idea nobody named yet (phrases recurring
+  across agents' notes and messages); D727 needs the correction first.
+- A7: an agent naming a corrected idea (`health.write` for an epidemiology
+  team, see the item above) and tracing copies written before the correction.
+- A7: warnings that clear themselves when the measure drops back under the
+  threshold; today the owner dismisses them (D724).
+- A7: queue activity of threads no slice links (an agent's other
+  generations); D722 follows only the threads slices link.
+- A7: commits made outside a turn (by hand, by a workflow) and pull requests
+  merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's
   life); a mode per window or per node.
 - A8: offering Civilization mode for a mesh member reached through another node

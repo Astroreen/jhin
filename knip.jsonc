@@ -29,6 +29,7 @@
         "@jhin/plugin-transport-ws",
         "@jhin/plugin-threads",
         "@jhin/plugin-missions",
+        "@jhin/plugin-health",
         "@jhin/plugin-source-control",
         "@jhin/plugin-editors",
         "@jhin/plugin-terminal",
