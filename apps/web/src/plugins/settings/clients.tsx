@@ -363,16 +363,27 @@ function NodeClients({ node }: { node: NodeConnection }) {
     );
     return () => subscription.dispose();
   }, [node, load]);
-  // An open link leaves the list when it expires: no event says so.
+  // An open link or a device token leaves the list when it expires: no event says so.
   useEffect(() => {
-    const next = Math.min(...links.map((link) => link.expiresAt));
+    const next = Math.min(
+      ...links.map((link) => link.expiresAt),
+      ...(clients ?? []).flatMap((client) =>
+        client.expiresAt === undefined ? [] : [client.expiresAt],
+      ),
+    );
     if (!Number.isFinite(next)) return;
     const timer = setTimeout(
-      () => setLinks((current) => current.filter((link) => link.expiresAt > Date.now())),
+      () => {
+        const now = Date.now();
+        setLinks((current) => current.filter((link) => link.expiresAt > now));
+        setClients((current) =>
+          current?.filter((client) => client.expiresAt === undefined || client.expiresAt > now),
+        );
+      },
       Math.max(0, next - Date.now()) + 50,
     );
     return () => clearTimeout(timer);
-  }, [links]);
+  }, [links, clients]);
   // One change at a time: the buttons wait for the node's answer.
   const run = (method: string, input: unknown) => {
     setPending(true);
