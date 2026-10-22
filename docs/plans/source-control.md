@@ -1318,8 +1318,11 @@ with the node's token, and without one).
   report), and the checks for a subagent chain sharing a worktree.
 - Worktree submodules (D1134): those of a pull request's worktree (D902);
   T3's per-project and `t3.json` submodule settings; stopping a submodule
-  checkout that a cancelled setup leaves running; and showing a recreated
-  worktree's submodule warning on its turn instead of only logging it.
+  checkout that a cancelled setup leaves running; showing a recreated
+  worktree's submodule warning on its turn instead of only logging it; a
+  submodule checkout's own timeout; and D255's "Delete the worktree too?"
+  naming a submodule's unpushed commits or stashes, which the user's forced
+  removal takes (the cleanup keeps such a worktree).
 - Worktrees, from W3 (D240): one worktree per model of a multi-model send, MCP
   tools that act as the calling thread (T3's `t3_worktree_status`;
   `git.worktree.handoff` takes a `threadId`), a handoff's continuation
