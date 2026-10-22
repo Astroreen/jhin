@@ -792,7 +792,8 @@ OpenCode 2 behaviour.
   The record also names the last turn whose prompt OpenCode took; a turn
   whose history no longer shows it (a rollback dropped it, `t3-parity.md`
   D220) starts a new session with the thread's transcript, as Claude's does
-  (D222). T3 reverts OpenCode's own session instead (deferred).
+  (D222). Since D1153 OpenCode's own session is reverted instead, as T3
+  does, when the record names the dropped prompt.
 - **D328. Modes are OpenCode rules and agents, as in T3.** `full-access` is
   `* * allow`; otherwise `shell * ask`, `edit * ask` (`allow` with
   `auto-accept-edits`) and `external_directory * ask`. The grants
@@ -947,12 +948,37 @@ OpenCode 2 behaviour.
   back, or whose prompt is not among the last 1000 messages while the
   session no longer runs, fails as lost; read-backs of one turn run one
   after another. `Connection` gains `onReconnected`.
+- **D1153. A rollback reverts OpenCode's session** (W31), T3's
+  `rollBackTo`: the session's record keeps every turn OpenCode took, with its
+  prompt's id (`msg_jhin_turn_<session>:<turn>`; a `/command` turn has none),
+  at most 500. A turn whose history no longer shows recorded turns stages a
+  revert to before the oldest dropped prompt (`POST …/revert/stage` with
+  `files: false`: Jhin's checkpoints restore files, as T3's do) and commits
+  it, once the session is not running (T3's `ensureQuiet`); the record keeps
+  the turns still shown and only the turns OpenCode missed go as a
+  transcript, the whole one when the revert went back before its first
+  prompt. A stage or commit that fails is cleared (`DELETE …/revert`, as
+  OpenCode would commit it with the next prompt) and the thread starts a new
+  session with its transcript, as before.
+- **D1154. A fork forks OpenCode's session** (W31), T3's `forkThread`: a
+  fork's first OpenCode turn, on a thread with no session, finds the fork's
+  marker and its parent's record, and `POST /api/session/<parent>/fork`s with
+  `before` the parent's first prompt the fork did not inherit (all of it when
+  it inherited every one); its record starts with the inherited turns, and
+  only turns after OpenCode's last go as a transcript. A parent without a
+  record, without an inherited OpenCode turn, or whose next prompt has no id,
+  and a fork OpenCode refuses, start a new session with the transcript.
+- **D1155. Requests asked while the stream was down are asked again** (W31),
+  T3's reconnect: once a reconnect read back a running turn (D887), the
+  session's pending permissions (`GET …/permission`) and forms (`GET
+  …/form`) that the turn does not show yet open as if their events had
+  come.
 
 ### Not ported
 
 - OpenCode 1.x (T3's `adapter.ts` over `@opencode-ai/sdk`): a CLI older than
   2.0 is reported as unsupported.
-- T3's per-thread MCP server inside OpenCode, fork and rollback, subagent
+- T3's per-thread MCP server inside OpenCode, subagent
   child sessions and background wakes, OpenCode Go usage limits, text
   generation, skills and `$skill` mentions, the version advisory and
   self-update.
@@ -960,10 +986,13 @@ OpenCode 2 behaviour.
 ### Deferred
 
 - OpenCode 1.x.
-- After a reconnect (D887), the permissions and forms a session asked for
-  while the stream was down are not listed again (T3 lists them), and a
-  subagent session's turn is not read back first.
-- Fork and rollback of a session.
+- After a reconnect (D887), a subagent session's turn is not read back
+  first, and a request shown before that the session no longer lists
+  (answered elsewhere, expired) stays open until the turn ends (T3 cancels
+  it): a runtime has no item that closes a request.
+- A rollback or fork into turns a fork inherited, or to before a turn sent
+  as a `/command` (no prompt id): a new session with the transcript
+  (D1153, D1154).
 - Subagent transcripts: a `subagent` call shows its result only.
 - Writing the thread's title to its OpenCode session.
 - Deleting a deleted thread's OpenCode session.
@@ -973,8 +1002,6 @@ OpenCode 2 behaviour.
   Claude's `inheritEnv` (D346) does: today it gets the whole environment.
 - A size bound on the transcript handed to a new session (D327), as for
   Claude's (D102): a long thread goes over whole.
-- A rollback through OpenCode's own revert (`session.revert.stage`/`commit`,
-  as T3 does) instead of a new session with the transcript (D327).
 - A time limit on each request a turn makes before its prompt (agents,
   session, switches): an interrupt takes effect between them, and only the
   activation retries are bounded (60 s).

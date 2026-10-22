@@ -61,7 +61,8 @@ handshake, runtime and interaction modes, approval, question, plan, tool and
 usage mapping, the status probe and its messages, the model names and
 preferred defaults), the OpenCode agent runtime (`plugins/agent-opencode`:
 starting and reaching an OpenCode 2 server, its version probe, session
-rules, permission, form and tool mapping, usage and interrupts), the
+rules, permission, form and tool mapping, usage and interrupts, reverting
+and forking a session, its pending requests after a reconnect), the
 terminal plugin (`plugins/terminal`:
 loading node-pty, the shell's environment, sizes, scrollback and its
 history files, the limit on exited sessions and finding the program a

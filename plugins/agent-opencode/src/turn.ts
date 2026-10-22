@@ -1,7 +1,8 @@
 // Derived from T3 Code (https://github.com/pingdotgg/t3code),
 // packages/provider-opencode/src/server/v2/adapter.ts at eb7b35ac: a turn on an OpenCode 2
 // session (startTurn, submit, onTurnEvent, onPermissionAsked, onFormCreated,
-// respondToRuntimeRequest, interruptTurn), rewritten without Effect for Jhin's agent.runtime@1.
+// respondToRuntimeRequest, interruptTurn, rollBackTo, forkThread and the reconnect's pending
+// requests), rewritten without Effect for Jhin's agent.runtime@1.
 import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
 
@@ -78,6 +79,8 @@ const CLEAR_REJECTIONS = new Set([
 const INTERRUPT_TIMEOUT_MS = 10_000;
 /** How far back a read-back looks for a turn's prompt: 50 messages a page (D887). */
 const MAX_HISTORY_PAGES = 20;
+/** The turns kept in a session's record: a rollback further back starts a new session. */
+const MAX_RECORDED_TURNS = 500;
 /** How long OpenCode may take to answer a prompt (it queues it and answers at once). */
 const PROMPT_TIMEOUT_MS = 60_000;
 /** Tool output kept in the thread's log; longer output is cut. */
@@ -95,6 +98,16 @@ export interface SessionRecord {
   readonly grants?: readonly PermissionRule[];
   /** The last turn whose prompt OpenCode took on it (D222's check after a rollback). */
   readonly turnId?: string;
+  /**
+   * Every turn OpenCode took on it, oldest first, with its prompt's message id when Jhin named
+   * it (a `/command` has none): what a rollback reverts to and a fork forks at (D1153, D1154).
+   */
+  readonly turns?: readonly RecordedTurn[];
+}
+
+interface RecordedTurn {
+  readonly turnId: string;
+  readonly messageId?: string;
 }
 
 /** Which OpenCode session each thread has. */
@@ -242,6 +255,8 @@ export function openCodeTurn(
   let prompting = false;
   /** Set once OpenCode took the prompt: an interrupt stops its execution. */
   let sent = false;
+  /** The id of the turn's prompt, when it went as one (not as a `/command`). */
+  let promptedId: string | undefined;
   /** Answers every open request when the turn is interrupted. */
   let cancelOpen: (() => void) | undefined;
   /** Ends the wait for OpenCode's execution end. */
@@ -269,6 +284,8 @@ export function openCodeTurn(
   let saved = false;
   let fresh = false;
   let lastTurn: string | undefined;
+  /** The turns OpenCode took on the session (D1153). */
+  let turns: RecordedTurn[] = [];
   /** Why the turn fails when it cancelled a form Jhin cannot show (D332). */
   let declinedForm: Error | undefined;
   let save = () => {};
@@ -333,17 +350,31 @@ export function openCodeTurn(
             event.type === ThreadEvents.turnStarted &&
             (event.payload as { turnId?: unknown } | null)?.turnId === stored.turnId,
         );
-      if (stale) {
+      const visible = new Set(
+        request.history.flatMap((event) => {
+          const id = (event.payload as { turnId?: unknown } | null)?.turnId;
+          return event.type === ThreadEvents.turnStarted && typeof id === "string" ? [id] : [];
+        }),
+      );
+      // T3's rollBackTo (D1153): OpenCode reverts its session to before the oldest dropped
+      // turn, when the record names its prompt; else a new session with the transcript.
+      const recordedTurns = stored?.turns ?? [];
+      const firstDropped = recordedTurns.find((turn) => !visible.has(turn.turnId));
+      const revertTo = stale ? firstDropped?.messageId : undefined;
+      if (stale && revertTo === undefined) {
         deps.log?.("opencode session holds dropped turns, starting a new one", {
           threadId: request.threadId,
         });
       }
-      const recorded = stale ? undefined : stored;
-      lastTurn = recorded?.turnId;
+      const recorded = stale && revertTo === undefined ? undefined : stored;
+      turns = recordedTurns.filter((turn) => visible.has(turn.turnId));
+      lastTurn = revertTo === undefined ? recorded?.turnId : turns.at(-1)?.turnId;
       if (interrupted) return;
-      let session: SessionInfo;
+      let session!: SessionInfo;
       let preface: string | undefined;
-      if (recorded === undefined) {
+      /** Whether the session carries rules of its own to bring up to date. */
+      let inherited = recorded !== undefined;
+      const startSession = async () => {
         session = await client.createSession({
           location: { directory },
           model: ref,
@@ -353,7 +384,42 @@ export function openCodeTurn(
         // refused before that leaves the next one the session and the transcript (D327).
         fresh = true;
         saved = true;
+        turns = [];
+        lastTurn = undefined;
         preface = historyTranscript(request.history);
+      };
+      if (recorded === undefined) {
+        // A fork's first OpenCode turn forks its parent's session (T3's forkThread, D1154):
+        // before the parent's first turn the fork did not inherit.
+        const marker = request.history.findLast(
+          (event) => event.type === ThreadEvents.threadForked,
+        );
+        const parentId = (marker?.payload as { threadId?: unknown } | null)?.threadId;
+        const parent = typeof parentId === "string" ? await deps.sessions.get(parentId) : undefined;
+        const parentTurns = parent?.turns ?? [];
+        const kept = parentTurns.filter((turn) => visible.has(turn.turnId));
+        const after = parentTurns.find((turn) => !visible.has(turn.turnId));
+        let forked: SessionInfo | undefined;
+        if (parent !== undefined && kept.length > 0 && (after === undefined || after.messageId)) {
+          forked = await client.fork(parent.id, after?.messageId).catch((error: unknown) => {
+            deps.log?.("opencode could not fork the session, starting one", {
+              threadId: request.threadId,
+              error: String(error),
+            });
+            return undefined;
+          });
+        }
+        if (forked === undefined) await startSession();
+        else {
+          session = forked;
+          saved = true;
+          inherited = true;
+          // Its copies of the parent's prompts have ids of their own: a rollback into them
+          // starts a new session.
+          turns = kept.map(({ turnId }) => ({ turnId }));
+          lastTurn = turns.at(-1)?.turnId;
+          preface = historyTranscript(request.history, OPENCODE_AGENT_ID);
+        }
       } else {
         try {
           session = await client.getSession(recorded.id);
@@ -369,6 +435,35 @@ export function openCodeTurn(
         preface = fresh
           ? historyTranscript(request.history)
           : historyTranscript(request.history, OPENCODE_AGENT_ID);
+        if (revertTo !== undefined) {
+          // Not while it may still run (D337, T3's ensureQuiet): the stage would cut a run
+          // half done. A revert that fails is cleared, as OpenCode commits a staged one on the
+          // next prompt.
+          const quiet = !unsettled && (await client.active())[recorded.id] === undefined;
+          const reverted =
+            quiet &&
+            (await client
+              .revertStage(recorded.id, revertTo)
+              .then(() => client.revertCommit(recorded.id))
+              .then(
+                () => true,
+                async (error: unknown) => {
+                  deps.log?.("opencode could not revert the session", { error: String(error) });
+                  await client.revertClear(recorded.id).catch(() => undefined);
+                  return false;
+                },
+              ));
+          if (!reverted) {
+            grants = [];
+            unsettled = false;
+            inherited = false;
+            await startSession();
+          } else if (turns.length === 0) {
+            // Reverted to before its first prompt, which carried the transcript: it is empty.
+            fresh = true;
+            preface = historyTranscript(request.history);
+          }
+        }
       }
       const sessionId = session.id;
       save = () => {
@@ -378,6 +473,7 @@ export function openCodeTurn(
           ...(unsettled ? { unsettled: true } : {}),
           ...(fresh ? { fresh: true } : {}),
           ...(lastTurn === undefined ? {} : { turnId: lastTurn }),
+          ...(turns.length === 0 ? {} : { turns: turns.map((turn) => ({ ...turn })) }),
           ...(grants.length === 0 ? {} : { grants: [...grants] }),
         };
         writes = writes
@@ -386,8 +482,9 @@ export function openCodeTurn(
             deps.log?.("could not record the opencode session", { error: String(error) }),
           );
       };
-      // A new session is recorded at once, fresh until OpenCode takes a prompt.
-      if (recorded === undefined) save();
+      // A new, forked or reverted session is recorded at once; a new one is fresh until
+      // OpenCode takes a prompt.
+      if (recorded === undefined || revertTo !== undefined) save();
 
       // A stopped execution may still run (D337).
       if (unsettled) {
@@ -422,7 +519,7 @@ export function openCodeTurn(
         set.add(inboxId);
       };
       const rules = rulesFor(sessionId);
-      if (recorded !== undefined && !sameRules(session.permissions, rules)) {
+      if (inherited && !sameRules(session.permissions, rules)) {
         await client.updateSession(sessionId, { permissions: rules });
       }
       const contextWindow = await deps
@@ -856,7 +953,25 @@ export function openCodeTurn(
             }
           }
         }
-        if (running) return;
+        if (running) {
+          // What the session asked while the stream was down is asked again (T3's
+          // reconnect, D1155): its pending permissions and forms Jhin does not show yet.
+          const [asked, forms] = await Promise.all([
+            client.permissions(sessionId).catch(() => []),
+            client.forms(sessionId).catch(() => []),
+          ]);
+          for (const permission of asked) {
+            if (typeof permission["id"] === "string" && !pending.has(permission["id"])) {
+              onEvent({ type: "permission.asked", data: permission });
+            }
+          }
+          for (const form of forms) {
+            if (typeof form["id"] === "string" && !pending.has(form["id"])) {
+              onEvent({ type: "form.created", data: { form } });
+            }
+          }
+          return;
+        }
         // Not running and no `idle` after the prompt: a restarted server writes none for the
         // execution it lost (T3's reading), so the turn was stopped.
         const idle = read.find((message) => message.type === "idle");
@@ -938,11 +1053,8 @@ export function openCodeTurn(
           ) {
             await client.command(sessionId, command, signal);
           } else {
-            await client.prompt(
-              sessionId,
-              { id: turnPromptId(sessionId, request.turnId), text },
-              signal,
-            );
+            promptedId = turnPromptId(sessionId, request.turnId);
+            await client.prompt(sessionId, { id: promptedId, text }, signal);
           }
         } catch (error) {
           const tag = errorTag(error);
@@ -964,6 +1076,12 @@ export function openCodeTurn(
         sent = true;
         fresh = false;
         lastTurn = request.turnId;
+        turns = [
+          ...turns,
+          promptedId === undefined
+            ? { turnId: request.turnId }
+            : { turnId: request.turnId, messageId: promptedId },
+        ].slice(-MAX_RECORDED_TURNS);
         save();
         sendSteer = (input) => {
           const index = ++steerCount;

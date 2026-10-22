@@ -260,6 +260,38 @@ export function createClient(options: ClientOptions) {
         body,
         ...(signal === undefined ? {} : { signal }),
       }),
+    /** Stages a revert of the session to before `messageId`, files left as they are (D1153). */
+    revertStage: (sessionId: string, messageId: string) =>
+      request<unknown>("POST", `/api/session/${enc(sessionId)}/revert/stage`, {
+        body: { messageID: messageId, files: false },
+      }),
+    revertCommit: (sessionId: string) =>
+      request<void>("POST", `/api/session/${enc(sessionId)}/revert/commit`),
+    revertClear: (sessionId: string) =>
+      request<void>("DELETE", `/api/session/${enc(sessionId)}/revert`),
+    /** A child session with the history before `before`, all of it without (D1154). */
+    fork: async (sessionId: string, before?: string) =>
+      unwrap(
+        await request<{ data: SessionInfo }>("POST", `/api/session/${enc(sessionId)}/fork`, {
+          body: before === undefined ? {} : { before },
+        }),
+      ),
+    /** The permission requests a session waits on (D1155). */
+    permissions: async (sessionId: string) =>
+      unwrap(
+        await request<{ data: Record<string, unknown>[] }>(
+          "GET",
+          `/api/session/${enc(sessionId)}/permission`,
+        ),
+      ),
+    /** The forms a session waits on (D1155). */
+    forms: async (sessionId: string) =>
+      unwrap(
+        await request<{ data: Record<string, unknown>[] }>(
+          "GET",
+          `/api/session/${enc(sessionId)}/form`,
+        ),
+      ),
     /** Takes back a prompt OpenCode has not delivered yet (a steer). */
     cancelInbox: (sessionId: string, inboxId: string) =>
       request<void>("DELETE", `/api/session/${enc(sessionId)}/inbox/${enc(inboxId)}`),

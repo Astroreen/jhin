@@ -80,6 +80,11 @@ export async function fakeOpenCode(
   const rejections: { status: number; body: unknown }[] = [];
   const steerRejections: { status: number; body: unknown }[] = [];
   const inboxCancels: number[] = [];
+  /** Whether `revert/stage` refuses (a session OpenCode cannot revert). */
+  let revertFails = false;
+  /** What `GET …/permission` and `GET …/form` list, by session. */
+  const pendingPermissions = new Map<string, Record<string, unknown>[]>();
+  const pendingForms = new Map<string, Record<string, unknown>[]>();
   /** Event streams refused before one opens again. */
   let refusedStreams = 0;
   /** Each session's messages, oldest first, as `GET …/message` lists them (newest first). */
@@ -286,6 +291,24 @@ export async function fakeOpenCode(
       const status = inboxCancels.shift() ?? 204;
       return status === 204 ? json(res, 204) : notFound(res, "NotFound", "no such inbox item");
     }
+    if (method === "POST" && rest === "/revert/stage") {
+      if (revertFails) return json(res, 409, { _tag: "SessionBusyError", message: "busy" });
+      return json(res, 200, { data: { messageID: body["messageID"] } });
+    }
+    if (method === "POST" && rest === "/revert/commit") return json(res, 204);
+    if (method === "DELETE" && rest === "/revert") return json(res, 204);
+    if (method === "POST" && rest === "/fork") {
+      const id = `ses_${++sessionCount}`;
+      const forked: FakeSession = { ...session, id };
+      sessions.set(id, forked);
+      return json(res, 200, { data: forked });
+    }
+    if (method === "GET" && rest === "/permission") {
+      return json(res, 200, { data: pendingPermissions.get(sessionId) ?? [] });
+    }
+    if (method === "GET" && rest === "/form") {
+      return json(res, 200, { data: pendingForms.get(sessionId) ?? [] });
+    }
     if (/^\/permission\/[^/]+\/reply$/.test(rest)) return json(res, 204);
     if (/^\/form\/[^/]+(\/reply)?$/.test(rest)) return json(res, 204);
     return json(res, 404, { _tag: "NotFound", message: `no route ${method} ${path}` });
@@ -321,6 +344,18 @@ export async function fakeOpenCode(
       const list = messages.get(sessionId) ?? [];
       list.push(message);
       messages.set(sessionId, list);
+    },
+    /** Makes `revert/stage` refuse. */
+    failReverts() {
+      revertFails = true;
+    },
+    /** What a session waits on, as `GET …/permission` and `GET …/form` list it. */
+    pending(
+      sessionId: string,
+      requests: { permissions?: Record<string, unknown>[]; forms?: Record<string, unknown>[] },
+    ) {
+      pendingPermissions.set(sessionId, requests.permissions ?? []);
+      pendingForms.set(sessionId, requests.forms ?? []);
     },
     /** Ends every open event stream, as a server that lost them. */
     dropStreams() {
