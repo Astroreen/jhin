@@ -545,8 +545,11 @@ The threat model comes first; the decisions after it implement it.
   `https://<name>:<port>/.well-known/jhin` (port 443 by default,
   `--tailscale-serve-port`); a mapping that answers with this node's
   `instance` is kept, one that answers 502–504 or not at all is
-  (re)created with `tailscale serve --bg --https=<port> <local url>`, and
-  one that answers anything else is never replaced ("… already serves
+  (re)created with `tailscale serve --bg --https=<port> <local url>` only
+  when `tailscale serve status --json` shows the port empty or proxying
+  only `/` to the target `jhin pair` last mapped on that port (kept in
+  `<home>/cli/tailscale-serve.json`), and one that answers anything
+  else, or a port with a TCP forward, another handler or Funnel, is never replaced ("… already serves
   something that is not this Jhin node. Pass --tailscale-serve-port …").
   What it publishes: the node's whole HTTP server (web client, `/rpc`,
   `/auth/*`, `/mcp`, `/mesh/*`) to every device of the tailnet, over HTTPS
@@ -680,6 +683,12 @@ A stack, one slice a PR:
   time, finds the code in no log, and sees `runtime.json` (`0600`, no
   token) gone after the node stops.
 - **PR 5b — Tailscale Serve** (D1189): `jhin pair --tailscale`.
+  **Done when:** tests with a fake `tailscale` create a mapping where
+  nothing answers, keep one fronting this node, never replace one that
+  answers as something else, a funneled port, a TCP forward, another path
+  or a target `jhin pair` did not map last on that port, say why when
+  Tailscale fails (repeating what it said, and how to remove a mapping
+  left behind), and `probeNode` is tested against real listeners.
 - **PR 5c — clients** (D1187, D1188, D1190): device metadata, the live
   `auth/clients` stream, pairing links for a `jhin client` page.
 - **PR 5d — MCP OAuth** (D1191–D1196).
@@ -731,8 +740,20 @@ A stack, one slice a PR:
   the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.
 - T3 Connect: pairing and remote access through a T3 account, the hosted
   relay and the hosted-app pairing link (out of scope, `t3-roadmap.md`).
-- Tailscale Serve (`--tailscale-serve`, `t3 pair --tailscale`): publishing
-  the node over Tailscale HTTPS is not done by the node itself.
+- Tailscale Serve (D1189) is `jhin pair --tailscale` only: T3's
+  `t3 serve --tailscale-serve` (publishing at every start) is not ported,
+  since the node never runs `tailscale` itself. The flow is tested with a
+  fake `tailscale` and fake probes; no automated test runs a real tailnet.
+  It was checked by hand once (PR 5b): the mapping answered with the node's
+  instance, and `POST /auth/session` from the tailnet page's own origin got
+  its `Secure` cookie, so Tailscale Serve keeps the `Host` D418 checks.
+  `<home>/cli/tailscale-serve.json` is read, merged and renamed without a
+  lock: two `jhin pair --tailscale` runs at once may lose one target, which
+  only makes a later run refuse to repair that mapping.
+  Ownership is per Jhin home while Tailscale Serve is per machine: a
+  mapping another home made is refused, not repaired. When `jhin pair
+  --tailscale` fails after `auth.pairing.create` succeeded (printing, an
+  unreachable node mid-run), the mapping's notes are not repeated.
 - DPoP-bound tokens and T3's WebSocket tickets: a device token is a bearer
   token.
 - MCP OAuth (T3's `/oauth/mcp/*`): MCP clients use the owner token or an

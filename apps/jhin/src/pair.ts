@@ -7,6 +7,8 @@ import * as Path from "node:path";
 import { resolveHome } from "@jhin/node-host";
 import { renderTerminalQrCode } from "@jhin/qr-code";
 
+import type { Args } from "./args.ts";
+
 /** What `jhin.http` writes once it listens (docs/plans/security.md D1184). */
 export interface RuntimeState {
   readonly url: string;
@@ -59,17 +61,34 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** The instance a node answers with at `/.well-known/jhin`, or undefined when nothing answers so. */
-async function probeInstance(baseUrl: string): Promise<string | undefined> {
+/** What answers at an address's `/.well-known/jhin` (docs/plans/security.md D1184). */
+export type Probe =
+  | { readonly kind: "node"; readonly instance: string }
+  | { readonly kind: "unreachable" }
+  | { readonly kind: "other" };
+
+export async function probeNode(baseUrl: string): Promise<Probe> {
+  let response: Response;
   try {
-    const response = await fetch(new URL("/.well-known/jhin", baseUrl), {
+    response = await fetch(new URL("/.well-known/jhin", baseUrl), {
       signal: AbortSignal.timeout(2_500),
     });
-    if (!response.ok) return undefined;
-    const body = (await response.json()) as { instance?: unknown };
-    return typeof body.instance === "string" ? body.instance : undefined;
   } catch {
-    return undefined;
+    return { kind: "unreachable" };
+  }
+  // A proxy answering for a backend that is gone (a stale mapping) is no
+  // occupant: T3 treats the bad-gateway family as unreachable, so the mapping
+  // can be repaired after the node's port changed.
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    return { kind: "unreachable" };
+  }
+  try {
+    const body = (await response.json()) as { instance?: unknown };
+    return response.ok && typeof body.instance === "string"
+      ? { kind: "node", instance: body.instance }
+      : { kind: "other" };
+  } catch {
+    return { kind: "other" };
   }
 }
 
@@ -101,8 +120,8 @@ export async function discoverNode(home: string | undefined): Promise<RuntimeSta
     throw missing;
   }
   if (!isProcessAlive(state.pid)) throw missing;
-  const answered = await probeInstance(localUrl(state.url));
-  if (answered === undefined || answered !== state.instance) throw missing;
+  const probed = await probeNode(localUrl(state.url));
+  if (probed.kind !== "node" || probed.instance !== state.instance) throw missing;
   return state;
 }
 
@@ -137,12 +156,12 @@ export function pairingNotes(pairingUrl: string): string[] {
   const url = new URL(pairingUrl);
   if (isLoopbackHost(url.hostname)) {
     return [
-      "This URL is only reachable from this machine. Set jhin.http.host to an address other devices reach and restart the node.",
+      "This URL is only reachable from this machine. Re-run with --tailscale, or set jhin.http.host to an address other devices reach and restart the node.",
     ];
   }
   if (url.protocol === "http:") {
     return [
-      "This URL is plain HTTP: anyone on the network path can read the pairing code and the token it becomes. Prefer an HTTPS proxy.",
+      "This URL is plain HTTP: anyone on the network path can read the pairing code and the token it becomes. Prefer --tailscale or an HTTPS proxy.",
     ];
   }
   return [];
@@ -168,4 +187,71 @@ export function formatPairOutput(input: {
     ...input.notes.flatMap((note) => ["", `Note: ${note}`]),
     "",
   ].join("\n");
+}
+
+/** T3's default: Tailscale Serve on the tailnet's HTTPS port. */
+export const DEFAULT_TAILSCALE_SERVE_PORT = 443;
+
+export interface PairFlags {
+  readonly permissions: readonly string[];
+  readonly ttlMinutes?: number;
+  readonly tailscale: boolean;
+  readonly servePort: number;
+}
+
+/**
+ * `jhin pair`'s own flags (D1185, D1189), or why they are refused. A flag
+ * without its value is refused, never read as "not given": a bare
+ * `--permission` would otherwise pair with every permission the token holds.
+ */
+export function parsePairFlags(
+  args: Pick<Args, "options" | "repeated">,
+  hasUrl: boolean,
+): PairFlags | { readonly error: string } {
+  const { options } = args;
+  const option = (key: string) => {
+    const value = options.get(key);
+    return typeof value === "string" ? value : undefined;
+  };
+  const given = args.repeated.get("permission") ?? [];
+  const permissions = given.every(
+    (value): value is string => typeof value === "string" && value !== "",
+  )
+    ? given
+    : undefined;
+  const valueless = ["label", "ttl", "base-url", "tailscale-serve-port"].filter(
+    (key) => options.get(key) === true,
+  );
+  if (permissions === undefined) valueless.unshift("permission");
+  if (valueless.length > 0) {
+    return { error: `${valueless.map((key) => `--${key}`).join(", ")} needs a value` };
+  }
+  const ttl = option("ttl");
+  const ttlMinutes = ttl === undefined ? undefined : Number(ttl);
+  if (ttlMinutes !== undefined && !(Number.isFinite(ttlMinutes) && ttlMinutes > 0)) {
+    return { error: `--ttl takes minutes, e.g. --ttl 10; got ${ttl}` };
+  }
+  const tailscale = options.get("tailscale") === true;
+  if (options.has("tailscale") && !tailscale) return { error: "--tailscale takes no value" };
+  if (options.has("tailscale-serve-port") && !tailscale) {
+    return { error: "--tailscale-serve-port needs --tailscale" };
+  }
+  if (tailscale && (hasUrl || options.has("base-url"))) {
+    return {
+      error:
+        "--tailscale publishes the node running from this home; it takes no --url or --base-url",
+    };
+  }
+  const portText = option("tailscale-serve-port") ?? String(DEFAULT_TAILSCALE_SERVE_PORT);
+  // Digits only: `1e3` or `0x1bb` would publish on a port nobody typed.
+  const servePort = /^\d{1,5}$/.test(portText) ? Number(portText) : Number.NaN;
+  if (!Number.isInteger(servePort) || servePort < 1 || servePort > 65_535) {
+    return { error: `--tailscale-serve-port takes a port; got ${option("tailscale-serve-port")}` };
+  }
+  return {
+    permissions: permissions ?? [],
+    ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
+    tailscale,
+    servePort,
+  };
 }

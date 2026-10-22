@@ -10,14 +10,17 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CommandInfo } from "@jhin/sdk";
 
+import { parseArgv, type Args } from "./args.ts";
 import {
   PairError,
   discoverNode,
   formatPairOutput,
   pairingNotes,
+  parsePairFlags,
   reachableBaseUrl,
   type PairingLink,
 } from "./pair.ts";
+import { fileMappings, publishOverTailscale } from "./tailscale.ts";
 
 const require = Module.createRequire(import.meta.url);
 
@@ -56,6 +59,9 @@ const USAGE = `Usage:
          [--permission <grant>] ...repeatable; limits what the paired device can do
                                    (default: every permission the token holds)
          [--base-url <url>]     ...the address other devices reach the node by
+         [--tailscale]          ...publish the node over Tailscale Serve HTTPS and pair through
+                                   the tailnet URL (never to the internet)
+         [--tailscale-serve-port <port>]  ...its HTTPS port (default: 443)
          [--json]               ...print the pairing link as JSON instead
   jhin mcp                      serve every command as an MCP tool over stdio
   jhin <command> [--key value]  run a registered command, e.g. jhin example.greet --name Ada
@@ -73,38 +79,6 @@ Global options:
 
 function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
-}
-
-interface Args {
-  readonly positionals: readonly string[];
-  /** Every `--key value`, `--key=value` or bare `--flag` (true), in order. */
-  readonly options: ReadonlyMap<string, string | true>;
-}
-
-function parseArgv(argv: readonly string[]): Args {
-  const positionals: string[] = [];
-  const options = new Map<string, string | true>();
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index]!;
-    if (!token.startsWith("--")) {
-      positionals.push(token);
-      continue;
-    }
-    const body = token.slice(2);
-    const equals = body.indexOf("=");
-    if (equals >= 0) {
-      options.set(body.slice(0, equals), body.slice(equals + 1));
-      continue;
-    }
-    const next = argv[index + 1];
-    if (next === undefined || next.startsWith("--")) {
-      options.set(body, true);
-    } else {
-      options.set(body, next);
-      index += 1;
-    }
-  }
-  return { positionals, options };
 }
 
 const GLOBAL_OPTIONS = new Set([
@@ -233,74 +207,67 @@ async function uiEndpoint(host: NodeHost): Promise<string> {
 }
 
 /**
- * Every value of a repeatable `--key value` / `--key=value` option, in order;
- * `undefined` when one is given without a value.
- */
-function allValues(argv: readonly string[], key: string): string[] | undefined {
-  const values: string[] = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index]!;
-    if (token.startsWith(`--${key}=`)) {
-      const value = token.slice(key.length + 3);
-      if (value === "") return undefined;
-      values.push(value);
-    } else if (token === `--${key}`) {
-      const next = argv[index + 1];
-      if (next === undefined || next.startsWith("--")) return undefined;
-      values.push(next);
-      index += 1;
-    }
-  }
-  return values;
-}
-
-/**
  * `jhin pair` (docs/plans/security.md D1185): a pairing code from the running
  * node (D1184) or `--url`, printed as T3's block with a terminal QR code.
  */
 async function pair(
-  argv: readonly string[],
-  options: ReadonlyMap<string, string | true>,
+  args: Args,
   remote: { home?: string; url?: string; token?: string },
 ): Promise<number> {
+  const { options } = args;
   const option = (key: string) => {
     const value = options.get(key);
     return typeof value === "string" ? value : undefined;
   };
-  // A flag without its value is refused, never read as "not given": a bare
-  // `--permission` would otherwise pair with every permission the token holds.
-  const permissions = allValues(argv, "permission");
-  const valueless = ["label", "ttl", "base-url"].filter((key) => options.get(key) === true);
-  if (permissions === undefined) valueless.unshift("permission");
-  if (valueless.length > 0) {
-    process.stderr.write(`${valueless.map((key) => `--${key}`).join(", ")} needs a value\n`);
+  const parsed = parsePairFlags(args, remote.url !== undefined);
+  if ("error" in parsed) {
+    process.stderr.write(`${parsed.error}\n`);
     return 2;
   }
-  const ttl = option("ttl");
-  const ttlMinutes = ttl === undefined ? undefined : Number(ttl);
-  if (ttlMinutes !== undefined && !(Number.isFinite(ttlMinutes) && ttlMinutes > 0)) {
-    process.stderr.write(`--ttl takes minutes, e.g. --ttl 10; got ${ttl}\n`);
-    return 2;
-  }
+  const { permissions, ttlMinutes, tailscale, servePort } = parsed;
   let url = remote.url;
+  let baseUrl = option("base-url");
+  const notes: string[] = [];
   try {
-    url ??= (await discoverNode(remote.home)).url;
+    if (url === undefined) {
+      const node = await discoverNode(remote.home);
+      url = node.url;
+      if (tailscale) {
+        const published = await publishOverTailscale({
+          node,
+          servePort,
+          mappings: fileMappings(
+            Path.join(resolveHome(remote.home).root, "cli", "tailscale-serve.json"),
+          ),
+        });
+        baseUrl = published.baseUrl;
+        notes.push(...published.notes);
+      }
+    }
   } catch (error) {
     if (!(error instanceof PairError)) throw error;
     process.stderr.write(`${error.message}\n`);
     return 1;
   }
   const origin = new URL(url.replace(/^ws/, "http")).origin;
-  const baseUrl = option("base-url") ?? reachableBaseUrl(origin);
+  baseUrl ??= reachableBaseUrl(origin);
   return withTarget({ ...remote, url }, async (target) => {
-    const link = (await target.execute("auth.pairing.create", {
-      label: option("label") ?? "jhin pair",
-      ...(permissions !== undefined && permissions.length > 0 ? { permissions } : {}),
-      ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
-      baseUrl,
-    })) as PairingLink;
+    let link: PairingLink;
+    try {
+      link = (await target.execute("auth.pairing.create", {
+        label: option("label") ?? "jhin pair",
+        ...(permissions.length > 0 ? { permissions } : {}),
+        ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
+        baseUrl,
+      })) as PairingLink;
+    } catch (error) {
+      // A Tailscale mapping made above stays: say so, and how to remove it.
+      for (const note of notes) process.stderr.write(`Note: ${note}\n`);
+      throw error;
+    }
     if (options.get("json") === true) {
-      print(link);
+      // The notes too: a Tailscale mapping outlives this run and says how to remove it.
+      print({ ...link, ...(notes.length > 0 ? { notes } : {}) });
       return 0;
     }
     let nodeLabel = new URL(origin).host;
@@ -317,7 +284,7 @@ async function pair(
         pairingUrl,
         code: link.code,
         expiresAt: link.expiresAt,
-        notes: pairingNotes(pairingUrl),
+        notes: [...notes, ...pairingNotes(pairingUrl)],
       }),
     );
     return 0;
@@ -419,7 +386,7 @@ async function main(argv: readonly string[]): Promise<number> {
       process.stderr.write(`Unexpected arguments: ${rest.join(" ")}\n${USAGE}\n`);
       return 2;
     }
-    return pair(argv, parsed.options, remote);
+    return pair(parsed, remote);
   }
 
   if (command === "inspect") {

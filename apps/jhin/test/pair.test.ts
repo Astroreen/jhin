@@ -9,11 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
 import { renderTerminalQrCode } from "@jhin/qr-code";
 
+import { parseArgv } from "../src/args.ts";
 import {
   discoverNode,
   formatPairOutput,
   localUrl,
   pairingNotes,
+  parsePairFlags,
   reachableBaseUrl,
 } from "../src/pair.ts";
 import { seedToken } from "./support/token.ts";
@@ -79,6 +81,7 @@ describe("jhin pair against a running node", () => {
   let runtime: { url: string; pid: number };
   let output: { status: number; stdout: string; stderr: string };
   let code: string;
+  let asJson: { status: number; stdout: string };
 
   // Spawns a node and CLI processes; the limit bounds the run, nothing waits on time.
   beforeAll(async () => {
@@ -98,6 +101,7 @@ describe("jhin pair against a running node", () => {
       "example.*",
     );
     code = /^Code: (\S+)$/m.exec(output.stdout)?.[1] ?? "";
+    asJson = await jhin("pair", "--home", home, "--json");
   }, 60_000);
   afterAll(stopServe);
 
@@ -138,52 +142,83 @@ describe("jhin pair against a running node", () => {
     expect((await pair()).status).toBe(401);
   });
 
-  it(
-    "prints the link as JSON, with every grant of the token by default",
-    { timeout: 30_000 },
-    async () => {
-      const json = await jhin("pair", "--home", home, "--json");
-      expect(json.status).toBe(0);
-      expect(JSON.parse(json.stdout)).toMatchObject({
-        label: "jhin pair",
-        permissions: ["*"],
-        url: expect.stringMatching(/\/pair#token=/),
-      });
-    },
-  );
-
-  // Four CLI processes; the limit bounds the run, nothing waits on time.
-  it(
-    "refuses a flag given without its value instead of pairing with every permission",
-    { timeout: 30_000 },
-    async () => {
-      const runs = await Promise.all(
-        [
-          ["--permission"],
-          ["--permission", "--json"],
-          ["--ttl"],
-          ["--label"],
-          ["--ttl", "Infinity"],
-          ["--ttl", "-3"],
-          ["--ttl", "soon"],
-        ].map((args) => jhin("pair", "--home", home, ...args)),
-      );
-      for (const refused of runs.slice(0, 4)) {
-        expect(refused.status).toBe(2);
-        expect(refused.stderr).toContain("needs a value");
-      }
-      for (const refused of runs.slice(4)) {
-        expect(refused.status).toBe(2);
-        expect(refused.stderr).toContain("--ttl takes minutes");
-      }
-    },
-  );
+  it("prints the link as JSON, with every grant of the token by default", () => {
+    const json = asJson;
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      label: "jhin pair",
+      permissions: ["*"],
+      url: expect.stringMatching(/\/pair#token=/),
+    });
+  });
 
   it("logs no code, and removes runtime.json when the node stops", async () => {
     await stopServe();
     expect(Fs.existsSync(runtimeFile(home))).toBe(false);
     // Read after the node exited: every log line is written.
     expect(Fs.readFileSync(Path.join(home, "logs", "node.log"), "utf8")).not.toContain(code);
+  });
+});
+
+describe("jhin pair's flags (security.md D1185, D1189)", () => {
+  /** The options as `jhin` parses them (`args.ts`). */
+  const refusal = (hasUrl: boolean, ...argv: string[]) => {
+    const parsed = parsePairFlags(parseArgv(argv), hasUrl);
+    return "error" in parsed ? parsed.error : undefined;
+  };
+
+  it("refuses a flag without its value instead of pairing with every permission", () => {
+    expect(refusal(false, "--permission")).toContain("needs a value");
+    expect(refusal(false, "--permission", "--json")).toContain("needs a value");
+    expect(refusal(false, "--permission=")).toContain("needs a value");
+    expect(refusal(false, "--ttl")).toContain("needs a value");
+    expect(refusal(false, "--label")).toContain("needs a value");
+    for (const ttl of ["Infinity", "-3", "soon"]) {
+      expect(refusal(false, "--ttl", ttl)).toContain("--ttl takes minutes");
+    }
+  });
+
+  it("refuses what would publish or pair somewhere else than asked", () => {
+    expect(refusal(true, "--tailscale")).toContain("takes no --url or --base-url");
+    expect(refusal(false, "--tailscale", "--base-url", "https://x.example")).toContain(
+      "takes no --url or --base-url",
+    );
+    expect(refusal(false, "--tailscale", "--tailscale-serve-port", "70000")).toContain(
+      "takes a port",
+    );
+    for (const port of ["1e3", "0x1bb", "+443", " 443"]) {
+      expect(refusal(false, "--tailscale", "--tailscale-serve-port", port)).toContain(
+        "takes a port",
+      );
+    }
+    expect(refusal(false, "--tailscale", "--tailscale-serve-port")).toContain("needs a value");
+    expect(refusal(false, "--tailscale-serve-port", "8443")).toContain("needs --tailscale");
+    expect(refusal(false, "--tailscale", "yes")).toContain("takes no value");
+  });
+
+  it("reads repeated permissions, minutes and the Tailscale port", () => {
+    const argv = [
+      "--permission",
+      "threads.read",
+      "--permission=git.*",
+      "--ttl",
+      "10",
+      "--tailscale",
+      "--tailscale-serve-port",
+      "8443",
+    ];
+    expect(parsePairFlags(parseArgv(argv), false)).toEqual({
+      permissions: ["threads.read", "git.*"],
+      ttlMinutes: 10,
+      tailscale: true,
+      servePort: 8443,
+    });
+  });
+
+  it("exits 2 on a refused flag", async () => {
+    const refused = await jhin("pair", "--home", newHome(), "--permission");
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain("--permission needs a value");
   });
 });
 
