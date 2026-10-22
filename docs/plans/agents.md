@@ -957,7 +957,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
 - **D724. A warning per detector and subject; the narrowest group warns.**
   A detector raises a warning (`health.warning.raised` on the stream and the
   same kernel event, for server plugins that tell the owner elsewhere, such
-  as a chat integration) once
+  as a chat integration). The owner is told by the client, which follows the
+  stream: `jhin.health` in the web client toasts or notifies each new warning
+  the way the inbox tells an ask (D630, D731). A warning is raised once
   for its subject (a group, a slice, an idea) while that warning is open.
   The owner dismisses it (`health.warnings.dismiss`); a dismissal starts the
   count of its subject again, so it warns again only when what came after the
@@ -1345,7 +1347,8 @@ Each workstream lists its PRs here as they merge.
   `jhin.health` config) and the `jhin.health` plugin: sensors of ceremony
   against progress per mission, project and node, the ceremony, recursive
   proof loop and mind-virus detectors, the analyst asked with `agents.ask`,
-  `health.*` commands; agents read health over MCP (D721–D730). The Health
+  `health.*` commands; agents read health over MCP (D721–D730). The owner's
+  notification of a warning is the client's (#190, D731). The Health
   view in Civilization mode follows.
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
   `jhin.civilization` client plugins: Threads mode on today's slots, the
