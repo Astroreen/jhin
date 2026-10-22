@@ -21,6 +21,7 @@ import { HeartPulseIcon } from "lucide-react";
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { holdsRead } from "../../lib/node-feeds.ts";
 import { tellOwner } from "../../lib/tell-owner.tsx";
 import { HEALTH_PANEL, detectorLabel, groupLabel, healthRoute } from "./route.ts";
 import { createHealthStore } from "./store.ts";
@@ -111,7 +112,8 @@ export const healthPlugin = builtin(
             const feed = store.snapshot().get(node);
             if (
               warningId !== undefined &&
-              (feed?.status === "ready" || feed?.status === "error") &&
+              feed !== undefined &&
+              holdsRead(feed) &&
               feed.value.warnings[warningId] === undefined
             ) {
               throw Object.assign(new Error(`No warning ${warningId}`), {

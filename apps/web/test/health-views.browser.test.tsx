@@ -147,7 +147,7 @@ describe("health views (D731)", () => {
 
   it("keeps a warning on screen, marked not live, when its node's stream failed", async () => {
     const { view } = viewOf(
-      { a: { status: "error", value: healthOf(warning), error: "stream gone" } },
+      { a: { status: "error", value: healthOf(warning), error: "stream gone", read: true } },
       async () => ({ warning, events: [] }),
     );
     await render(<HealthPage node="a" view={view} warningId="w1" />);
@@ -217,7 +217,7 @@ describe("health views (D731)", () => {
 
   it("confirms a dismiss itself while the node's stream is not live", async () => {
     const { view, toasts } = viewOf(
-      { a: { status: "error", value: healthOf(warning), error: "stream gone" } },
+      { a: { status: "error", value: healthOf(warning), error: "stream gone", read: true } },
       async (method) =>
         method === "health.warnings.dismiss"
           ? {
@@ -301,7 +301,7 @@ describe("health views (D731)", () => {
 
   it("marks a node whose stream failed in the sidebar, and keeps its overview", async () => {
     const { view } = viewOf(
-      { a: { status: "error", value: healthOf(warning), error: "stream gone" } },
+      { a: { status: "error", value: healthOf(warning), error: "stream gone", read: true } },
       async () => ({}),
     );
     await render(
@@ -316,7 +316,7 @@ describe("health views (D731)", () => {
 
   it("shows the overview of a node whose stream failed, marked not live", async () => {
     const { view } = viewOf(
-      { a: { status: "error", value: healthOf(), error: "stream gone" } },
+      { a: { status: "error", value: healthOf(), error: "stream gone", read: true } },
       async () => ({
         windowHours: 24,
         groups: [{ group: { kind: "node" }, ceremony: 1, progress: 0, byKind: { message: 1 } }],
@@ -326,5 +326,22 @@ describe("health views (D731)", () => {
     const overview = page.getByRole("region", { name: "Ceremony and progress" });
     await expect.element(overview.getByText(/Not live: stream gone/)).toBeVisible();
     await expect.element(overview.getByRole("cell", { name: "The node" })).toBeVisible();
+  });
+
+  it("offers no overview, and no all clear, for a node that failed before it was read", async () => {
+    const { view } = viewOf(
+      { a: { status: "error", value: healthOf(), error: "network down" } },
+      async () => ({}),
+    );
+    await render(
+      <SidebarProvider>
+        <HealthList view={view} />
+      </SidebarProvider>,
+    );
+    await expect.element(page.getByText("No node here reports health.")).toBeVisible();
+    await expect.element(page.getByText("No warnings.")).not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: /Ceremony and progress/ }))
+      .not.toBeInTheDocument();
   });
 });

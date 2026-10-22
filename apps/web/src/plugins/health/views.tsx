@@ -19,7 +19,7 @@ import { ActivityIcon, HeartPulseIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
-import { notLive } from "../../lib/node-feeds.ts";
+import { holdsRead, notLive } from "../../lib/node-feeds.ts";
 import { HEALTH_PANEL, detectorLabel, groupLabel, healthRoute } from "./route.ts";
 import { openWarnings, type HealthStore, type NodeHealth } from "./store.ts";
 
@@ -37,9 +37,7 @@ export function HealthList({ view }: { view: HealthView }) {
   const route = useExternal(view.navigation, view.navigation.current);
   const warnings = openWarnings(nodes);
   // A node whose stream failed after it was read still has its overview.
-  const ready = [...nodes]
-    .filter(([, feed]) => feed.status === "ready" || feed.status === "error")
-    .map(([node]) => node);
+  const ready = [...nodes].filter(([, feed]) => holdsRead(feed)).map(([node]) => node);
   const stale = notLive(nodes);
   return (
     <SidebarMenu aria-label="Health">
@@ -160,7 +158,7 @@ function useCall<T>(
     error?: string;
   }>();
   // The call is named by what it calls, not only by the caller's key.
-  const call = `${node}|${command}|${JSON.stringify(input)}|${key}`;
+  const call = `${node}|${command}|${JSON.stringify(input)}|${key}|${scope}`;
   useEffect(() => {
     if (!enabled) return;
     let live = true;
@@ -203,7 +201,7 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
   const [round, setRound] = useState(0);
   // A node whose stream failed after it was read still answers commands: its
   // overview is read and shown, marked not live, as the sidebar offers it.
-  const ready = feed?.status === "ready" || feed?.status === "error";
+  const ready = holdsRead(feed);
   const status = useCall<{ windowHours: number; groups: GroupStatus[] }>(
     view,
     node,

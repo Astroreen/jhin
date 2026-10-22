@@ -108,6 +108,7 @@ describe("node feeds (D630, D731)", () => {
     feeds.apply("a", { type: "add", payload: "z" });
     expect(feeds.snapshot().get("a")).toEqual({
       status: "error",
+      read: true,
       value: ["x", "y", "z"],
       error: "this client may no longer read it (stream gone)",
     });
@@ -139,6 +140,7 @@ describe("node feeds (D630, D731)", () => {
     one.stream.onError!(new Error("stream gone again"));
     expect(feeds.snapshot().get("a")).toEqual({
       status: "error",
+      read: true,
       value: ["x"],
       error: "stream gone again",
     });

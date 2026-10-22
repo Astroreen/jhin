@@ -9,7 +9,13 @@ export interface NodeFeed<S> {
   readonly status: "loading" | "ready" | "unsupported" | "error";
   readonly value: S;
   readonly error?: string;
+  /** Whether the node was read once: a feed in `error` then still holds what it read. */
+  readonly read?: boolean;
 }
+
+/** A feed that holds what its node answered: live, or failed after it was read. */
+export const holdsRead = <S>(feed: NodeFeed<S> | undefined): boolean =>
+  feed?.status === "ready" || (feed?.status === "error" && feed.read === true);
 
 export interface NodeFeeds<S> {
   /** Every connection's feed, by connection id: the same map until one changes. */
@@ -171,6 +177,7 @@ export function createNodeFeeds<S>(
           : {
               status: "error",
               value: feed.value,
+              ...(feed.read === true ? { read: true } : {}),
               // A permission taken back is not a dropped stream: say which.
               error:
                 code === "PERMISSION_DENIED"
@@ -193,7 +200,7 @@ export function createNodeFeeds<S>(
           );
           rereads.delete(id);
           everRead = true;
-          set(id, () => ({ status: "ready", value: state }));
+          set(id, () => ({ status: "ready", value: state, read: true }));
           // What arrived while the stream was down is told now, not lost.
           if (again) {
             try {
