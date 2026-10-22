@@ -494,4 +494,38 @@ describe("node feeds (D630, D731)", () => {
     expect(feeds.snapshot().get("a")?.value).toEqual(["n"]);
     feeds.dispose();
   });
+
+  it("takes a node whose retried first load answers 'no such feed' as one without it", async () => {
+    let time = 0;
+    const waiting: (() => void)[] = [];
+    const reads: (() => Promise<unknown>)[] = [
+      () => Promise.reject(new Error("network down")),
+      () => Promise.reject(new Error("network down again")),
+      () =>
+        Promise.reject(Object.assign(new Error("no such command"), { code: "COMMAND_NOT_FOUND" })),
+    ];
+    const client = { call: () => reads.shift()!(), subscribe: () => toDisposable(() => {}) };
+    const { connections } = fakeConnections(client as never);
+    const feeds = createNodeFeeds(connections, quiet, source, {
+      clock: () => time,
+      later: (_ms, run) => {
+        waiting.push(run);
+        return toDisposable(() => {});
+      },
+    });
+    // The first failure is retried at once; the second waits for the minute.
+    await new Promise<void>((resolve) => {
+      const subscription = feeds.subscribe(() => {
+        if (feeds.snapshot().get("a")?.status !== "error") return;
+        subscription.dispose();
+        resolve();
+      });
+    });
+    time += 60_000;
+    const answered = changes(feeds);
+    waiting[0]!();
+    await answered;
+    expect(feeds.snapshot().get("a")).toMatchObject({ status: "unsupported", value: [] });
+    feeds.dispose();
+  });
 });

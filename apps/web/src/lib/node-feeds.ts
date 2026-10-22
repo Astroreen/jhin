@@ -188,7 +188,7 @@ export function createNodeFeeds<S>(
       // after it was read (even a permission taken back) keeps what it showed,
       // marked not live.
       set(id, (feed) =>
-        feed.status === "loading" && code !== undefined && NOT_THERE.has(code)
+        absent
           ? { status: "unsupported", value: source.empty }
           : {
               status: "error",
