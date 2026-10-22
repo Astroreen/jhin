@@ -22,8 +22,10 @@ export interface OwnerNews {
 
 /**
  * Tells the owner `news`: a toast with focus (unless `inApp` is off), else a
- * system notification. Returns whether anything was shown: with no toasts in
- * the client and no system notification, nothing was (the caller logs it).
+ * system notification, else a toast left on the page, which the owner may
+ * not see until they return. Returns whether anything was shown: with no
+ * toasts in the client and no system notification, nothing was (the caller
+ * logs it).
  */
 export function tellOwner(
   config: PluginContext["config"],

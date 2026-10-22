@@ -1290,9 +1290,10 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
 - A7: a feed whose read permission was taken back, or whose node lost the
   feed, recovering by itself when it is granted (or installed) again; today it stays not live until the connection is
   replaced (D731).
-- A7: a growing pause between retries of a feed whose node keeps failing:
-  today it is read again once a minute for as long as its connection is
-  open (D731).
+- A7: a growing pause between retries of a feed whose node keeps failing,
+  and giving up on an error that will not pass (a read whose answer fails
+  its schema): today any error but a missing command or a permission is
+  read again once a minute for as long as its connection is open (D731).
 - A7: reading a turn's commits through `source-control.git@1` once it offers
   a read of `HEAD` and a count of commits; health runs `git` itself until
   then (D723).
