@@ -1310,7 +1310,8 @@ with the node's token, and without one).
   folders under the worktrees directory no thread ever used (T3's orphan
   report), and the checks for a subagent chain sharing a worktree.
 - Worktrees, from W3 (D240): submodules of a pull request's worktree
-  (D902) and T3's per-project and `t3.json` submodule settings (D1134),
+  (D902), T3's per-project and `t3.json` submodule settings, and stopping a
+  submodule checkout that a cancelled setup leaves running (D1134),
   one worktree per model of a multi-model send, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
   `git.worktree.handoff` takes a `threadId`), a handoff's continuation
   prompt (W1's queue), deleting a removed worktree's branch from the client's
