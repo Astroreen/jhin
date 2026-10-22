@@ -48,34 +48,28 @@ async function firstTurn(sc: Node, threadId: string) {
 const cleanup = (sc: Node) => sc.client.call<Report>("git.worktree.cleanup", {});
 
 describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
-  it("removes a deleted thread's worktree only under onDelete, keeping its branch", async () => {
+  it("leaves a worktree deleted without the rule to the user's choice, even once the rule is on", async () => {
     const dir = repository();
     const sc = await node({ watch: false });
     const projectId = await sc.project(dir);
     const thread = await worktreeThread(sc, projectId);
-    const branch = git(thread.worktreePath, "branch", "--show-current").trim();
     expect(
       (await sc.client.call<{ cleanupOnDelete: boolean }>("git.worktree.list", { projectId }))
         .cleanupOnDelete,
     ).toBe(false);
 
+    // Deleted with the rule off: the user answered D255's question then.
     await sc.client.call("threads.delete", { threadId: thread.id });
     await sc.until(removed(thread.id));
-    // Every rule off: nothing is looked at.
     expect(await cleanup(sc)).toEqual({ entries: [], counts: { removed: 0, kept: 0, failed: 0 } });
 
-    // New rules apply at once: their sweep removes it.
-    const swept = sc.logged("removed a worktree");
     sc.configure({ worktreeCleanup: { onDelete: true } });
-    await swept;
     expect(
       (await sc.client.call<{ cleanupOnDelete: boolean }>("git.worktree.list", { projectId }))
         .cleanupOnDelete,
     ).toBe(true);
-    expect(Fs.existsSync(thread.worktreePath)).toBe(false);
-    expect(git(dir, "branch", "--list", branch).trim()).toBe(branch);
-    // Decided once: a later sweep has nothing left to look at.
     expect((await cleanup(sc)).entries).toEqual([]);
+    expect(Fs.existsSync(thread.worktreePath)).toBe(true);
   });
 
   it("sweeps once a thread is deleted while onDelete is on, with nobody asking", async () => {
@@ -83,10 +77,15 @@ describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
     const sc = await node({ watch: false, worktreeCleanup: { onDelete: true } });
     const projectId = await sc.project(dir);
     const thread = await worktreeThread(sc, projectId);
+    const branch = git(thread.worktreePath, "branch", "--show-current").trim();
     const swept = sc.logged("removed a worktree");
     await sc.client.call("threads.delete", { threadId: thread.id });
     await swept;
     expect(Fs.existsSync(thread.worktreePath)).toBe(false);
+    // Its branch stays.
+    expect(git(dir, "branch", "--list", branch).trim()).toBe(branch);
+    // Decided once: a later sweep has nothing left to look at.
+    expect((await cleanup(sc)).entries).toEqual([]);
   });
 
   it("keeps local changes as keepWhen counts them", async () => {

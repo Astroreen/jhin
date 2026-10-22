@@ -871,7 +871,8 @@ with screenshots).
   report (`entries` of `{ path, threadId?, outcome: removed | kept |
   failed, reason }` and `counts`). It looks only at managed worktrees (D250)
   that a thread works in, or that a thread deleted on this node worked in
-  alone (kept in the plugin's store with its project and branch). A
+  alone while `onDelete` was on (kept in the plugin's store with its project
+  and branch; one deleted with the rule off was the user's to decide, D255). A
   worktree is kept, saying why in T3's words, when it is gone, shared by
   several threads, a thread there runs ("thread is running or has pending
   work") or has not had its first turn ("thread has not started yet"), a

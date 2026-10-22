@@ -88,7 +88,7 @@ export const CleanupReport = z.object({
 export type CleanupReport = z.output<typeof CleanupReport>;
 
 /** T3's `sentence`: a reason as the report shows it. */
-const sentence = (reason: string) => `${reason.charAt(0).toUpperCase()}${reason.slice(1)}.`;
+export const sentence = (reason: string) => `${reason.charAt(0).toUpperCase()}${reason.slice(1)}.`;
 
 /** A worktree a sweep looks at, with what is known of the threads there. */
 export interface CleanupCandidate {

@@ -123,6 +123,7 @@ import {
   exists,
   judge,
   localChangesReason,
+  sentence,
   type CleanupCandidate,
   type CleanupEntry,
 } from "./cleanup.ts";
@@ -1166,6 +1167,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const DELETED_PREFIX = "cleanup/deleted/";
 
   async function noteDeletedWorktree(threadId: string) {
+    // Only under the delete rule: without it the user decided at the deletion
+    // (D255's question), and a later rule must not overturn that choice.
+    if (!config().worktreeCleanup.onDelete) return;
     const dir = threadDirs.get(threadId);
     const branch = threads.get(threadId)?.branch;
     if (dir?.worktreePath === undefined || branch == null) return;
@@ -1363,7 +1367,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
             .replace(/^refs\/heads\//, "");
           if (current !== candidate.branch) return "Repository or branch changed.";
           const changes = await localChangesReason(worktreeGit, rules.keepWhen);
-          if (changes !== null) return `${changes.charAt(0).toUpperCase()}${changes.slice(1)}.`;
+          if (changes !== null) return sentence(changes);
           for (const threadId of now) {
             const answer = (await context.commands
               .execute("threads.get", { threadId })
