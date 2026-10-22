@@ -1401,7 +1401,10 @@ C3 decisions:
   `slices.handoff`'s message is sent as the lead's thread (D622). Before, the
   run carried the caller's grants but no thread, and `agents.send` fell back
   to the owner: in the C3 run every handoff reached the builder and the
-  reviewer as a message from the owner.
+  reviewer as a message from the owner. A caller without a thread that names
+  `parentThreadId` (the owner's token) acts from it only when it holds every
+  permission and so could send as that thread anyway; any other keeps its own
+  sender.
 
 Where C3 stands: the scenario (its first bullet) runs on commands, with every
 part the bullet names. Left: its steps through C1's console (the

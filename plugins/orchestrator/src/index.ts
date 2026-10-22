@@ -421,6 +421,9 @@ export default definePlugin({
         // the caller may start it without holding workflows.run itself; its
         // command() calls still run with the caller's own grants (D706).
         const caller = invocation.caller;
+        const actsFrom =
+          invocation.threadId ??
+          (caller === undefined || caller.permissions.includes("*") ? parentThreadId : undefined);
         const started = await run<{ workflowId: string; name: string; status: string }>(
           "workflows.run",
           {
@@ -431,8 +434,9 @@ export default definePlugin({
           {
             ...(invocation.traceId === undefined ? {} : { traceId: invocation.traceId }),
             // The run's command() calls act from the lead's thread, so a handoff
-            // is sent as the lead, not as the owner (D1106).
-            threadId: parentThreadId,
+            // is sent as the lead, not as the owner (D1106). A caller without a
+            // thread acts for the thread it names only if it may act for anyone.
+            ...(actsFrom === undefined ? {} : { threadId: actsFrom }),
             ...(caller === undefined
               ? {}
               : { caller: { id: caller.id, permissions: [...caller.permissions, WORKFLOWS_RUN] } }),
