@@ -174,6 +174,11 @@ export function createNodeFeeds<S>(
       // the minute is over. A permission taken back, or a node that no longer
       // has the feed (restarted on a build without it), is not retried.
       const retrying = code === undefined || !NOT_THERE.has(code);
+      if (!retrying) {
+        // A retry already waiting for the minute is called off as well.
+        waitingRetry?.dispose();
+        waitingRetry = undefined;
+      }
       const wait = lastRetry + RETRY_GAP_MS - clock();
       if (retrying && wait <= 0) {
         retry();

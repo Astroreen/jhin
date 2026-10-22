@@ -318,6 +318,43 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
+  it("calls off a waiting retry when the permission is taken back", async () => {
+    let time = 0;
+    const waiting: { ms: number; run: () => void; cancelled: boolean }[] = [];
+    const one = fakeClient();
+    const { connections } = fakeConnections(one.client);
+    const feeds = createNodeFeeds(connections, quiet, source, {
+      clock: () => time,
+      later: (ms, run) => {
+        const retry = { ms, run, cancelled: false };
+        waiting.push(retry);
+        return toDisposable(() => (retry.cancelled = true));
+      },
+    });
+    let ready = changes(feeds);
+    one.answer.resolve({ head: 1, items: ["x"] });
+    await ready;
+    ready = new Promise<void>((resolve) => {
+      const subscription = feeds.subscribe(() => {
+        if (feeds.snapshot().get("a")?.status !== "ready") return;
+        subscription.dispose();
+        resolve();
+      });
+    });
+    one.stream.onError!(new Error("dropped"));
+    await ready;
+    // A second drop within the minute: a retry waits.
+    time += 1_000;
+    one.stream.onError!(new Error("dropped again"));
+    expect(waiting).toHaveLength(1);
+    // Then the permission is taken back: the waiting retry is called off.
+    one.stream.onError!(Object.assign(new Error("denied"), { code: "PERMISSION_DENIED" }));
+    expect(waiting[0]!.cancelled).toBe(true);
+    expect(feeds.snapshot().get("a")).toMatchObject({ status: "error", retrying: false });
+    expect(one.reads.count).toBe(2);
+    feeds.dispose();
+  });
+
   it("marks a second drop within a minute not live, and reads it again once the minute is over", async () => {
     let time = 0;
     const waiting: { ms: number; run: () => void }[] = [];
