@@ -36,4 +36,13 @@ export interface HttpServer {
    * with it (security.md D418).
    */
   requestedHost(request: IncomingMessage): string | undefined;
+  /**
+   * Since 1.3 (security.md D1191): the origin the client asked for,
+   * `scheme://host[:port]`, for URLs a node hands back (OAuth metadata, an
+   * MCP 401). The host is `requestedHost` when it is a plain host and port,
+   * else the listening address; the scheme is `https` for a TLS socket, or
+   * for `X-Forwarded-Proto: https` from a peer of `jhin.http.trustProxy` or
+   * loopback (Tailscale Serve, a local proxy).
+   */
+  requestOrigin?(request: IncomingMessage): string;
 }

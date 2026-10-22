@@ -592,7 +592,10 @@ The threat model comes first; the decisions after it implement it.
   code flow with PKCE `S256` only (`/oauth/mcp/authorize`,
   `/oauth/mcp/token`), public clients only (`token_endpoint_auth_method`
   `none`), no refresh tokens. Every URL comes from the request's origin, so
-  loopback, a proxy and Tailscale Serve each answer with their own. The
+  loopback, a proxy and Tailscale Serve each answer with their own:
+  `http.server` 1.3 `requestOrigin` (the requested host; `https` for TLS,
+  or for `X-Forwarded-Proto: https` from a trusted proxy or loopback), the
+  one derivation the 401 header and the metadata share. The
   endpoints are the plugin `jhin.mcp-oauth` (requires `http.server`,
   `auth.verifier`, `secrets.store@^1.1`): neither `jhin.auth-token` nor
   `jhin.mcp-server` can depend on the secret store, whose optional edge to
@@ -622,7 +625,9 @@ The threat model comes first; the decisions after it implement it.
   "Approve", "Deny"). Approving needs the node's page session (the cookie
   of D421) of a caller holding `auth.write` and every permission asked
   for, and a form posted with an anti-forgery value (an HMAC of the
-  session's principal and the request), refused from another origin. The
+  session, by its token's hash, and the request, so another session of the
+  same owner cannot reuse it), refused from another origin and without an
+  `Origin` unless `Sec-Fetch-Site` says same-origin. The
   page is `no-store`, `frame-ancestors 'none'`, `no-referrer`. Without a
   session it offers T3's "Pairing code" field, which opens the session
   through `POST /auth/session` from the same page, then approves.
@@ -637,11 +642,16 @@ The threat model comes first; the decisions after it implement it.
   kernel-scoped state, and bound to the client id, the redirect URI, the
   PKCE challenge, the resource and the approver; a presented code is spent
   even when a later check fails (RFC 6749 §4.1.2). The token endpoint
-  issues through `auth.tokens.issue` as the approver (so D413 holds): a
+  issues through `auth.tokens.issue` as the approver with its grants at
+  that moment (a session revoked or narrowed since issues nothing, so D413
+  holds): a
   device token (`jhd1`, D411) with method `oauth` (additive), the client's
   name as label, 30 days' life (`expires_in`) and the request's metadata
   (D1187). It is listed under Authorized clients, revoked there, and
-  checked by `/mcp` on every request (D414).
+  checked by `/mcp` on every request (D414). `method` and `metadata` are
+  the issuer's word, as a device's own metadata is: any caller holding
+  `auth.write` may pass them, and the list shows them, never decides by
+  them.
 - **D1196. Nothing about OAuth is a UI-only path.** Issuing goes through
   the command `auth.tokens.issue`; listing and revoking OAuth clients are
   `auth.clients.list` / `auth.clients.revoke`; the HTTP endpoints are the

@@ -73,16 +73,8 @@ const allowed = (caller: Principal, permissions: readonly string[]) =>
  * theirs. `jhin.mcp-oauth` answers there; without it the client keeps to tokens.
  */
 function resourceMetadataUrl(http: HttpServer, request: IncomingMessage): string {
-  const secure =
-    request.headers["x-forwarded-proto"] === "https" ||
-    (request.socket as { encrypted?: boolean }).encrypted === true;
-  const requested = http.requestedHost(request);
-  // The header is the client's: only a host and a port go into the answer.
-  const host =
-    requested !== undefined && /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d+)?$/i.test(requested)
-      ? requested
-      : new URL(http.url).host;
-  return `${secure ? "https" : "http"}://${host}/.well-known/oauth-protected-resource${MCP_PATH}`;
+  const origin = http.requestOrigin?.(request) ?? new URL(http.url).origin;
+  return `${origin}/.well-known/oauth-protected-resource${MCP_PATH}`;
 }
 
 function bearer(request: IncomingMessage): string | undefined {

@@ -50,7 +50,7 @@
     "description": "MCP clients sign in with OAuth; the owner approves in the browser and the client gets a device token",
     "side": "server",
     "requires": {
-      "http.server": "^1.2",
+      "http.server": "^1.3",
       "auth.verifier": "^1.1",
       "secrets.store": "^1.1"
     },

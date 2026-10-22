@@ -48,7 +48,7 @@
     "description": "One HTTP listener per node; plugins add routes and upgrade handlers",
     "side": "server",
     "provides": {
-      "http.server": "1.2.0"
+      "http.server": "1.3.0"
     },
     "optional": {
       "host.paths": "^1"

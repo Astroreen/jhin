@@ -300,12 +300,12 @@ export function createOAuth(options: {
       };
     },
 
-    /** The anti-forgery value of a form shown to `principal` for `request` (D1193). */
-    csrf(principal: string, request: AuthorizationRequest): string {
+    /** The anti-forgery value of a form shown to the browser session `session` for `request` (D1193). */
+    csrf(session: string, request: AuthorizationRequest): string {
       return sign(
         "mcp-csrf",
         JSON.stringify([
-          principal,
+          session,
           request.client.clientId,
           request.redirectUri,
           request.codeChallenge,
@@ -313,8 +313,8 @@ export function createOAuth(options: {
         ]),
       );
     },
-    csrfMatches(given: string, principal: string, request: AuthorizationRequest): boolean {
-      return sameText(given, this.csrf(principal, request));
+    csrfMatches(given: string, session: string, request: AuthorizationRequest): boolean {
+      return sameText(given, this.csrf(session, request));
     },
 
     /** Approves: a one-use code, back to the client's redirect (D1195). */

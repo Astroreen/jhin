@@ -5,6 +5,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
   AUTH_VERIFIER_CAPABILITY,
+  OWNER_PRINCIPAL_ID,
+  clientPrincipalId,
   deriveClientMetadata,
   readCookie,
   sessionCookieName,
@@ -131,30 +133,37 @@ export default definePlugin({
     const cookie = sessionCookieName(new URL(http.url).port);
 
     /** Every URL from the request's own origin: loopback, a proxy and Tailscale Serve alike (D1191). */
-    const originOf = (request: IncomingMessage) => {
-      const secure =
-        request.headers["x-forwarded-proto"] === "https" ||
-        (request.socket as { encrypted?: boolean }).encrypted === true;
-      const requested = http.requestedHost(request);
-      const host =
-        requested !== undefined && /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d+)?$/i.test(requested)
-          ? requested
-          : new URL(http.url).host;
-      return `${secure ? "https" : "http"}://${host}`;
-    };
+    const originOf = (request: IncomingMessage) =>
+      http.requestOrigin?.(request) ?? new URL(http.url).origin;
     const urlsOf = (request: IncomingMessage) => urlsFor(originOf(request));
 
     /** The page session's principal, when it may approve `request` (D1193). */
     const approverOf = async (request: IncomingMessage, authorization: AuthorizationRequest) => {
       const token = readCookie(request.headers.cookie, cookie);
       const principal = token === undefined ? undefined : await verifier.verify({ token });
-      if (principal === undefined) return { kind: "none" } as const;
+      if (principal === undefined || token === undefined) return { kind: "none" } as const;
       const missing = [APPROVE_PERMISSION, ...authorization.scopes].filter(
         (permission) => !holdsPermission(principal.permissions, permission),
       );
       return missing.length > 0
         ? ({ kind: "short", missing } as const)
-        : ({ kind: "ok", principal } as const);
+        : ({ kind: "ok", principal, session: sessionKey(token) } as const);
+    };
+
+    /** What the anti-forgery value binds to: this browser's session, never its token itself. */
+    const sessionKey = (token: string) =>
+      Crypto.createHash("sha256").update(token).digest("base64url");
+
+    /**
+     * The approver's grants now, not when it approved (D413): a revoked or
+     * narrowed session within the code's 60 seconds issues nothing more.
+     */
+    const currentGrants = async (approver: { id: string }) => {
+      if (approver.id === OWNER_PRINCIPAL_ID) return ["*"];
+      const { clients } = (await context.commands.execute("auth.clients.list", {})) as {
+        clients: { id: string; permissions: string[] }[];
+      };
+      return clients.find((client) => clientPrincipalId(client.id) === approver.id)?.permissions;
     };
 
     const titles = async () => {
@@ -250,9 +259,7 @@ export default definePlugin({
           permissions: authorization.scopes.map(
             (scope) => known.get(scope) ?? { permission: scope },
           ),
-          ...(approver.kind === "ok"
-            ? { csrf: oauth.csrf(approver.principal.id, authorization) }
-            : {}),
+          ...(approver.kind === "ok" ? { csrf: oauth.csrf(approver.session, authorization) } : {}),
           ...(approver.kind === "short"
             ? {
                 sessionProblem: `This browser's session cannot approve it: it does not hold ${approver.missing.join(", ")}. Enter a pairing code instead.`,
@@ -272,9 +279,11 @@ export default definePlugin({
     );
 
     add("POST", "/oauth/mcp/authorize", async (request, response) => {
-      // The decision is posted by the approval page only (D1193).
+      // The decision is posted by the approval page only (D1193). Browsers send
+      // `Origin` with a form post; without it, only a same-origin fetch counts.
       const origin = request.headers.origin;
-      if (origin !== undefined && origin !== originOf(request)) {
+      const sameSite = request.headers["sec-fetch-site"] === "same-origin";
+      if (origin === undefined ? !sameSite : origin !== originOf(request)) {
         response.writeHead(403, pageHeaders()).end(renderErrorPage("This page is not the node's."));
         return;
       }
@@ -303,7 +312,7 @@ export default definePlugin({
       const approver = await approverOf(request, authorization);
       if (
         approver.kind !== "ok" ||
-        !oauth.csrfMatches(params["csrf"] ?? "", approver.principal.id, authorization)
+        !oauth.csrfMatches(params["csrf"] ?? "", approver.session, authorization)
       ) {
         response
           .writeHead(403, pageHeaders())
@@ -344,6 +353,17 @@ export default definePlugin({
         });
         return;
       }
+      const grants = await currentGrants(exchanged.approver);
+      if (
+        grants === undefined ||
+        !exchanged.scopes.every((scope) => holdsPermission(grants, scope))
+      ) {
+        json(response, 400, {
+          error: "invalid_grant",
+          error_description: "Whoever approved this sign-in can no longer grant it.",
+        });
+        return;
+      }
       let issued: { token: string; expiresAt?: number };
       try {
         // As the approver: a token never holds more than who approved it (D413, D1195).
@@ -359,7 +379,7 @@ export default definePlugin({
               ipAddress: http.clientAddress(request),
             }),
           },
-          { caller: exchanged.approver },
+          { caller: { id: exchanged.approver.id, permissions: grants } },
         )) as { token: string; expiresAt?: number };
       } catch (error) {
         context.log.error("an approved MCP client could not get its token", {

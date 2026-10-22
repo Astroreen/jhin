@@ -187,7 +187,7 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     const forged = await fetch(`${base}/oauth/mcp/authorize`, {
       method: "POST",
       redirect: "manual",
-      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: base },
       body: new URLSearchParams({ ...form, csrf: "forged", decision: "approve" }),
     });
     expect(forged.status).toBe(403);
@@ -203,10 +203,31 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     });
     expect(foreign.status).toBe(403);
 
-    const approved = await fetch(`${base}/oauth/mcp/authorize`, {
+    const noOrigin = await fetch(`${base}/oauth/mcp/authorize`, {
       method: "POST",
       redirect: "manual",
       headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: new URLSearchParams({ ...form, decision: "approve" }),
+    });
+    expect(noOrigin.status).toBe(403);
+    // Another browser session of the same owner cannot reuse this page's value.
+    const otherSession = await sessionCookie(base, token);
+    const replayed = await fetch(`${base}/oauth/mcp/authorize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: otherSession,
+        origin: base,
+      },
+      body: new URLSearchParams({ ...form, decision: "approve" }),
+    });
+    expect(replayed.status).toBe(403);
+
+    const approved = await fetch(`${base}/oauth/mcp/authorize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: base },
       body: new URLSearchParams({ ...form, decision: "approve" }),
     });
     expect(approved.status).toBe(303);
@@ -353,7 +374,7 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     const denied = await fetch(`${base}/oauth/mcp/authorize`, {
       method: "POST",
       redirect: "manual",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: base },
       body: new URLSearchParams({
         ...Object.fromEntries(new URL(authorizeUrl(base, clientId)).searchParams),
         decision: "deny",
@@ -362,6 +383,58 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     expect(new URL(denied.headers.get("location")!).searchParams.get("error")).toBe(
       "access_denied",
     );
+  });
+
+  it("issues nothing when the approver is revoked before the code is exchanged", async () => {
+    const { kernel, base } = await startNode();
+    const { client_id: clientId } = (await (await register(base)).json()) as { client_id: string };
+    const approverToken = (await kernel.commands.execute("auth.tokens.issue", {
+      label: "approver",
+      permissions: ["threads.read", "auth.write"],
+    })) as { id: string; token: string };
+    const cookie = await sessionCookie(base, approverToken.token);
+    const html = await (
+      await fetch(authorizeUrl(base, clientId, { scope: "threads.read" }), { headers: { cookie } })
+    ).text();
+    const approved = await fetch(`${base}/oauth/mcp/authorize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: base },
+      body: new URLSearchParams({ ...formOf(html), decision: "approve" }),
+    });
+    const code = new URL(approved.headers.get("location")!).searchParams.get("code")!;
+    // The session goes with the token that opened it (D421).
+    await kernel.commands.execute("auth.clients.revoke", { id: approverToken.id });
+    const exchanged = await fetch(`${base}/oauth/mcp/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        client_id: clientId,
+        redirect_uri: REDIRECT.replace("33418", "40000"),
+        code_verifier: verifier,
+      }),
+    });
+    expect(exchanged.status).toBe(400);
+    expect(await exchanged.json()).toMatchObject({ error: "invalid_grant" });
+  });
+
+  it("names https URLs behind a local TLS proxy, and http otherwise", async () => {
+    const { base } = await startNode();
+    const plain = (await (
+      await fetch(`${base}/.well-known/oauth-authorization-server`)
+    ).json()) as {
+      issuer: string;
+    };
+    expect(plain.issuer).toBe(base);
+    // From loopback (Tailscale Serve, a local proxy) X-Forwarded-Proto counts.
+    const proxied = (await (
+      await fetch(`${base}/.well-known/oauth-authorization-server`, {
+        headers: { "x-forwarded-proto": "https" },
+      })
+    ).json()) as { issuer: string };
+    expect(proxied.issuer).toBe(base.replace(/^http:/, "https:"));
   });
 
   it("registers clients statelessly within T3's bounds", async () => {
