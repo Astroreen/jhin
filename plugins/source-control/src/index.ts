@@ -240,6 +240,17 @@ export const Config = z
         "How long the writer agent may take; past it the message is written without a model",
       advanced: true,
     }),
+    worktreeSubmodules: z
+      .union([
+        z.literal("recursive").meta({ title: "Recursive" }),
+        z.literal("top-level").meta({ title: "Top level only" }),
+        z.literal("none").meta({ title: "Skip" }),
+      ])
+      .default("recursive")
+      .meta({
+        title: "Worktree submodules",
+        description: "How new worktrees populate git submodules.",
+      }),
     // T3's branch naming settings (D1126), with T3's words.
     branchNamingMode: z
       .union([
@@ -1955,6 +1966,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         repository: root,
         root: worktreesRoot(config().worktreesDirectory, hostPaths.home),
         baseRef: options.baseRef,
+        submodules: config().worktreeSubmodules,
         ...(options.branch === undefined ? {} : { branch: options.branch }),
         ...(options.startFromOrigin === undefined
           ? {}

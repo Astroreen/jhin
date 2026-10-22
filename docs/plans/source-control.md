@@ -939,6 +939,17 @@ with screenshots).
   closed with no readable close time, as T3 leaves them out) settles on its
   branch's pull request as before.
 
+- **D1134. A new worktree's submodules are checked out**, as T3's
+  `createWorktree` does after `git worktree add` (which leaves them empty):
+  with a `.gitmodules`, `git submodule update --init` (`--recursive` unless
+  only the top level is wanted) runs in the worktree, as `worktreeSubmodules`
+  of `jhin.source-control` says ("Worktree submodules": "Recursive", the
+  default, "Top level only" or "Skip"; T3's words). A failure leaves their
+  folders empty and the worktree in use; the setup card's "Check out files"
+  then ends with a warning ("submodules not checked out: <git's reason>",
+  or "submodules left empty" when skipped). T3's per-project setting and its
+  `t3.json` override, and pull request checkouts (D902), are Deferred.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1291,7 +1302,8 @@ with the node's token, and without one).
   cleanup" (Inherit, Off, Custom), its "Last run" report in the settings,
   folders under the worktrees directory no thread ever used (T3's orphan
   report), and the checks for a subagent chain sharing a worktree.
-- Worktrees, from W3 (D240): submodules,
+- Worktrees, from W3 (D240): submodules of a pull request's worktree
+  (D902) and T3's per-project and `t3.json` submodule settings (D1134),
   one worktree per model of a multi-model send, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
   `git.worktree.handoff` takes a `threadId`), a handoff's continuation
   prompt (W1's queue), deleting a removed worktree's branch from the client's

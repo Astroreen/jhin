@@ -286,6 +286,8 @@ export async function createWorktree(
     readonly baseRef: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
+    /** How a new worktree populates git submodules (T3's `worktreeSubmodules`, D1134). */
+    readonly submodules?: "recursive" | "top-level" | "none";
     /** Told when fetching the base and checking the files out start and end (D1123). */
     readonly onStage?: (
       stage: "fetch" | "checkout",
@@ -352,7 +354,8 @@ export async function createWorktree(
   await git(["worktree", "add", "-b", branch, "--", path, startRef], {
     timeoutMs: WORKTREE_TIMEOUT_MS,
   });
-  onStage("checkout", "done");
+  const [status, detail] = await populateSubmodules(git, path, options.submodules ?? "recursive");
+  onStage("checkout", status, detail);
   return {
     path: await Fs.realpath(path),
     branch,
@@ -360,6 +363,53 @@ export async function createWorktree(
     startRef,
     startedFromOrigin: fromOrigin !== undefined,
   };
+}
+
+/**
+ * T3's submodule step of a new worktree: `git worktree add` leaves submodules
+ * empty, so a repository that keeps tooling or source in one gets them
+ * checked out (`--recursive` unless only the top level is wanted). A failure
+ * leaves their folders empty and the worktree in use, with a warning.
+ */
+async function populateSubmodules(
+  git: Git,
+  path: string,
+  mode: "recursive" | "top-level" | "none",
+): Promise<["done", undefined] | ["warning", string]> {
+  const hasSubmodules = await Fs.stat(Path.join(path, ".gitmodules")).then(
+    () => true,
+    () => false,
+  );
+  if (!hasSubmodules) return ["done", undefined];
+  if (mode === "none") return ["warning", "submodules left empty"];
+  let updated: { code: number; stderr: string };
+  try {
+    updated = await git(
+      [
+        "-C",
+        path,
+        "submodule",
+        "update",
+        "--init",
+        ...(mode === "recursive" ? ["--recursive"] : []),
+      ],
+      { ok: [0, 1, 128], timeoutMs: WORKTREE_TIMEOUT_MS },
+    );
+  } catch (error) {
+    // Any failure (another exit code, a timeout) leaves the worktree, made already, in use.
+    return ["warning", `submodules not checked out: ${(error as Error).message.split("\n")[0]}`];
+  }
+  if (updated.code === 0) return ["done", undefined];
+  // git's reason is its `fatal:` or `error:` line; progress ("Cloning into …") comes first.
+  const lines = updated.stderr
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const reason = (lines.find((line) => /^(fatal|error):/.test(line)) ?? lines.at(-1) ?? "").replace(
+    /^(fatal|error):\s*/,
+    "",
+  );
+  return ["warning", `submodules not checked out${reason === "" ? "" : `: ${reason}`}`];
 }
 
 /** Checks an existing branch out again at `path` (a managed worktree that went missing). */

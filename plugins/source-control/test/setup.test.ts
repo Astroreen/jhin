@@ -10,7 +10,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import { completionShellOf, runSetupScript, wrapCommandForCompletion } from "../src/setup.ts";
-import { node, repository, type Node } from "./support.ts";
+import { git, node, repository, type Node } from "./support.ts";
 
 /** Resolves with the first snapshot of the thread's setup (kept or new) that `match` accepts. */
 function setupUntil(
@@ -425,6 +425,99 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     expect(
       await sc.client.call<{ cancelled: boolean }>("git.worktree.setup.cancel", { threadId }),
     ).toEqual({ cancelled: false });
+  });
+
+  it("checks a new worktree's submodules out, or leaves them empty with a warning (D1134)", async () => {
+    // Local submodules need the file transport, which git turns off for them by default.
+    const previous = { ...process.env };
+    Object.assign(process.env, {
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "protocol.file.allow",
+      GIT_CONFIG_VALUE_0: "always",
+    });
+    try {
+      const library = repository();
+      const dir = repository();
+      git(dir, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", library, "lib");
+      git(dir, "commit", "--quiet", "-m", "lib");
+      const sc = await node({ watch: false });
+      const projectId = await sc.project(dir);
+      const thread = await sc.client.call<{ worktreePath: string }>("threads.create", {
+        projectId,
+        threadId: "with-lib",
+        workspace: { type: "worktree", baseRef: "main" },
+      });
+      expect(Fs.readFileSync(Path.join(thread.worktreePath, "lib", "README.md"), "utf8")).toBe(
+        "one\ntwo\nthree\n",
+      );
+      const snapshot = await sc.client.call<WorktreeSetupSnapshot>("git.worktree.setup.get", {
+        threadId: "with-lib",
+      });
+      expect(stage(snapshot, "checkout")?.status).toBe("done");
+
+      sc.configure({ worktreeSubmodules: "none" });
+      const empty = await sc.client.call<{ worktreePath: string }>("threads.create", {
+        projectId,
+        threadId: "without-lib",
+        workspace: { type: "worktree", baseRef: "main" },
+      });
+      expect(Fs.readdirSync(Path.join(empty.worktreePath, "lib"))).toEqual([]);
+      expect(
+        stage(
+          await sc.client.call<WorktreeSetupSnapshot>("git.worktree.setup.get", {
+            threadId: "without-lib",
+          }),
+          "checkout",
+        ),
+      ).toMatchObject({ status: "warning", detail: "submodules left empty" });
+
+      // Top level only: a submodule's own submodule stays empty.
+      const inner = repository();
+      git(
+        library,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "--quiet",
+        inner,
+        "inner",
+      );
+      git(library, "commit", "--quiet", "-m", "inner");
+      git(dir, "-C", "lib", "pull", "--quiet");
+      git(dir, "commit", "--quiet", "-am", "lib with inner");
+      sc.configure({ worktreeSubmodules: "top-level" });
+      const top = await sc.client.call<{ worktreePath: string }>("threads.create", {
+        projectId,
+        threadId: "top-level",
+        workspace: { type: "worktree", baseRef: "main" },
+      });
+      expect(Fs.existsSync(Path.join(top.worktreePath, "lib", "README.md"))).toBe(true);
+      expect(Fs.readdirSync(Path.join(top.worktreePath, "lib", "inner"))).toEqual([]);
+
+      // A submodule that cannot be fetched: the worktree is still used, with git's reason.
+      Fs.rmSync(library, { recursive: true, force: true });
+      sc.configure({ worktreeSubmodules: "recursive" });
+      const broken = await sc.client.call<{ worktreePath: string }>("threads.create", {
+        projectId,
+        threadId: "broken-lib",
+        workspace: { type: "worktree", baseRef: "main" },
+      });
+      expect(Fs.existsSync(broken.worktreePath)).toBe(true);
+      const checkout = stage(
+        await sc.client.call<WorktreeSetupSnapshot>("git.worktree.setup.get", {
+          threadId: "broken-lib",
+        }),
+        "checkout",
+      );
+      expect(checkout?.status).toBe("warning");
+      expect(checkout?.detail).toMatch(/^submodules not checked out: (?!Cloning)/);
+    } finally {
+      for (const key of ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"]) {
+        if (previous[key] === undefined) delete process.env[key];
+        else process.env[key] = previous[key];
+      }
+    }
   });
 
   it("keeps a project's scripts and refuses two with one id", async () => {
