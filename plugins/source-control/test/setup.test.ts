@@ -7,7 +7,7 @@ import {
   type WorktreeSetupSnapshot,
   type WorktreeSetupStageId,
 } from "@jhin/source-control-api";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { completionShellOf, runSetupScript, wrapCommandForCompletion } from "../src/setup.ts";
 import { git, node, repository, type Node } from "./support.ts";
@@ -429,12 +429,9 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
 
   it("checks a new worktree's submodules out, or leaves them empty with a warning (D1134)", async () => {
     // Local submodules need the file transport, which git turns off for them by default.
-    const previous = { ...process.env };
-    Object.assign(process.env, {
-      GIT_CONFIG_COUNT: "1",
-      GIT_CONFIG_KEY_0: "protocol.file.allow",
-      GIT_CONFIG_VALUE_0: "always",
-    });
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "protocol.file.allow");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "always");
     try {
       const library = repository();
       const dir = repository();
@@ -513,10 +510,7 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
       expect(checkout?.status).toBe("warning");
       expect(checkout?.detail).toMatch(/^submodules not checked out: (?!Cloning)/);
     } finally {
-      for (const key of ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"]) {
-        if (previous[key] === undefined) delete process.env[key];
-        else process.env[key] = previous[key];
-      }
+      vi.unstubAllEnvs();
     }
   });
 

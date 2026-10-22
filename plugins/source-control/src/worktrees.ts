@@ -376,10 +376,14 @@ async function populateSubmodules(
   path: string,
   mode: "recursive" | "top-level" | "none",
 ): Promise<["done", undefined] | ["warning", string]> {
+  // Only a missing `.gitmodules` means none; another error reading it is said.
   const hasSubmodules = await Fs.stat(Path.join(path, ".gitmodules")).then(
     () => true,
-    () => false,
+    (error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? false : error),
   );
+  if (hasSubmodules instanceof Error) {
+    return ["warning", `submodules not checked out: ${hasSubmodules.message}`];
+  }
   if (!hasSubmodules) return ["done", undefined];
   if (mode === "none") return ["warning", "submodules left empty"];
   let updated: { code: number; stderr: string };
