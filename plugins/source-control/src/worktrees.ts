@@ -431,6 +431,8 @@ export const redactUrls = (text: string) =>
     // Up to the last `@` before the next space, so a password with `@` or `/` in it goes
     // whole (masking a path's `@` too is the safe side).
     .replace(/(\w+:\/\/)[^\s'"]*@/g, "$1***@")
+    // scp-style `user:token@host:path`: a secret before the `@` (a bare `git@host:` has none).
+    .replace(/(^|[\s'"])[^\s'"@/:]+:[^\s'"@]+@(?=[\w.-]+:)/g, "$1***@")
     .replace(
       /([?&](?:(?:access_|private_|api_)?(?:token|password|key|secret)|auth|sig)=)[^&\s'"]+/gi,
       "$1***",

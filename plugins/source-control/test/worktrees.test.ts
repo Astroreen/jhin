@@ -853,6 +853,12 @@ describe("submodule warnings", () => {
     expect(redactUrls("fatal: 'https://user:pa/ss@host/x.git' failed")).toBe(
       "fatal: 'https://***@host/x.git' failed",
     );
+    expect(redactUrls("fatal: clone of 'bot:ghp_x@github.com:acme/lib.git' failed")).toBe(
+      "fatal: clone of '***@github.com:acme/lib.git' failed",
+    );
+    expect(redactUrls("fatal: clone of 'git@github.com:acme/lib.git' failed")).toBe(
+      "fatal: clone of 'git@github.com:acme/lib.git' failed",
+    );
     expect(redactUrls("fatal: repository '/tmp/lib' not found")).toBe(
       "fatal: repository '/tmp/lib' not found",
     );
