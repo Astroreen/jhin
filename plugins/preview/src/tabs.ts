@@ -1588,6 +1588,8 @@ export function createTabs(options: TabsOptions) {
             reason: "humanControl",
           });
         }
+        // A page with a dialog open runs no script until it is answered: nothing to type into.
+        if (tab.dialog !== null) return { x: input.x, y: input.y, editable: false };
         const editable = await tab.page.evaluate(editableAtPoint, { x: input.x, y: input.y });
         return { x: input.x, y: input.y, editable };
       });

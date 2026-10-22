@@ -473,6 +473,25 @@ describe("jhin.preview", () => {
     await client.call("preview.tab.close", { threadId: thread, tabId });
   });
 
+  it("answers a probe while the page shows a dialog without running script in it (D1203)", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/`,
+    });
+    const tabId = opened.tabId!;
+    await client.call("preview.wait.for", { threadId: thread, text: "Preview home" });
+    await client.call("preview.click", { threadId: thread, locator: "role=button[name='Alert']" });
+    const tabsStream = watch(client, previewTabsStream(thread));
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.dialog != null);
+    await client.call("preview.tab.control", { threadId: thread, tabId, viewer: "v1", take: true });
+    expect(
+      await client.call("preview.tab.probe", { threadId: thread, tabId, viewer: "v1", x: 5, y: 5 }),
+    ).toEqual({ x: 5, y: 5, editable: false });
+    tabsStream.subscription.dispose();
+    await client.call("preview.tab.close", { threadId: thread, tabId });
+  });
+
   it("closes a picker its page dropped, and refuses file data that is not base64 (D1203)", async () => {
     const { client } = await node();
     const opened = await client.call<PreviewStatus>("preview.open", {
