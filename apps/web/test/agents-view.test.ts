@@ -12,7 +12,13 @@ import { toDisposable } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { agentRoute, parseAgentSection } from "../src/plugins/agents/route.ts";
+import {
+  defineInput,
+  draftOf,
+  draftProblem,
+  updateInput,
+} from "../src/plugins/agents/definition.ts";
+import { agentFormRoute, agentRoute, parseAgentSection } from "../src/plugins/agents/route.ts";
 import {
   applyAgentEvent,
   applyThreadEvent,
@@ -199,5 +205,51 @@ describe("the agents store", () => {
     keep.dispose();
     store.dispose();
     expect(node.streams.size).toBe(0);
+  });
+});
+
+describe("an agent's definition from the client (C1, D1065)", () => {
+  const record = {
+    agentId: "builder",
+    address: "jhin://a/agents/builder",
+    kind: "defined",
+    title: "builder",
+    role: "Builds",
+    runtimeId: "fake",
+    skills: ["tdd"],
+    generations: [],
+  } as AgentRecord;
+
+  it("defines what the form sets, and nothing it leaves empty", () => {
+    const draft = { ...draftOf(), agentId: " reviewer ", role: "Reviews", runtime: "fake" };
+    expect(draftProblem(draft, true)).toBeUndefined();
+    expect(defineInput({ ...draft, skills: "a, b\nc" })).toEqual({
+      agentId: "reviewer",
+      role: "Reviews",
+      runtime: "fake",
+      skills: ["a", "b", "c"],
+    });
+    expect(draftProblem({ ...draft, agentId: "Bad Id" }, true)).toMatch(/lowercase/);
+    expect(draftProblem({ ...draft, role: " " }, true)).toMatch(/role/);
+    expect(draftProblem({ ...draft, runtime: "" }, false)).toMatch(/runtime/);
+  });
+
+  it("updates only what changed, and unsets what was emptied", () => {
+    const draft = draftOf(record);
+    // A title equal to the id was never set.
+    expect(draft.title).toBe("");
+    expect(updateInput(record, draft)).toBeUndefined();
+    expect(updateInput(record, { ...draft, role: "Builds well", skills: "", model: "m" })).toEqual({
+      agentId: "builder",
+      role: "Builds well",
+      model: "m",
+      unset: ["skills"],
+    });
+    expect(agentFormRoute("a", "builder")).toEqual({
+      node: "a",
+      mode: "civilization",
+      panel: "agent-definition",
+      section: "builder",
+    });
   });
 });

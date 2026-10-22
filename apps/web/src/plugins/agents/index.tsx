@@ -20,7 +20,13 @@ import {
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
-import { agentRoute, parseAgentSection, AGENT_PANEL } from "./route.ts";
+import {
+  AGENT_FORM_PANEL,
+  AGENT_PANEL,
+  agentFormRoute,
+  agentRoute,
+  parseAgentSection,
+} from "./route.ts";
 import type { AgentsStore } from "./store.ts";
 import type { AgentsView } from "./views.tsx";
 
@@ -36,6 +42,13 @@ const Page = lazyChunk(() => viewsChunk().then((module) => module.AgentPage), {
   loading: () => null,
   failed: (_props: object, retry: () => void) => (
     <ChunkFailed retry={retry}>Couldn't load this agent.</ChunkFailed>
+  ),
+});
+
+const Form = lazyChunk(() => import("./form.tsx").then((module) => module.AgentForm), {
+  loading: () => null,
+  failed: (_props: object, retry: () => void) => (
+    <ChunkFailed retry={retry}>Couldn't load the agent's form.</ChunkFailed>
   ),
 });
 
@@ -87,7 +100,37 @@ export const agentsViewPlugin = builtin(
         }),
       );
 
+      context.subscriptions.add(
+        context.commands.register({
+          name: "civilization.agent.define",
+          title: "Define agent",
+          description:
+            "Opens the form that defines a new agent, or with agentId edits one, in Civilization mode (D1065)",
+          input: z.object({
+            node: z.string().min(1).meta({ description: "The connection the agent is on" }),
+            agentId: z.string().min(1).optional(),
+          }),
+          output: z.object({}),
+          handler: ({ node, agentId }) => {
+            navigation.navigate(agentFormRoute(node, agentId));
+            return {};
+          },
+        }),
+      );
+
       const AgentsRoster = () => <Roster view={view} />;
+      const AgentFormView = () => {
+        const route = useExternal(navigation, navigation.current);
+        if (route.panel !== AGENT_FORM_PANEL || route.node === undefined) return null;
+        return (
+          <Form
+            agentId={route.section}
+            key={`${route.node}|${route.section ?? ""}`}
+            node={route.node}
+            view={view}
+          />
+        );
+      };
       const AgentView = () => {
         const route = useExternal(navigation, navigation.current);
         // Only its own panel: the other views of `civilization.views` render theirs (D750).
@@ -113,6 +156,12 @@ export const agentsViewPlugin = builtin(
       );
       context.subscriptions.add(
         slots.contribute("civilization.views", { id: "jhin.agents.page", component: AgentView }),
+      );
+      context.subscriptions.add(
+        slots.contribute("civilization.views", {
+          id: "jhin.agents.form",
+          component: AgentFormView,
+        }),
       );
     },
   }),

@@ -28,3 +28,16 @@ export function parseAgentSection(
     ? { agentId: match[1]! }
     : { agentId: match[1]!, generation: Number(match[2]) };
 }
+
+/** The route panel of the form that defines or edits an agent (D1065). */
+export const AGENT_FORM_PANEL = "agent-definition";
+
+/** The form of a new agent, or with `agentId` of one to edit (D1065). */
+export function agentFormRoute(node: string, agentId?: string): Route {
+  return {
+    node,
+    mode: CIVILIZATION_MODE,
+    panel: AGENT_FORM_PANEL,
+    ...(agentId === undefined ? {} : { section: agentId }),
+  };
+}
