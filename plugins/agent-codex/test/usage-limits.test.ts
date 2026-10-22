@@ -243,6 +243,40 @@ describe("jhin.agent-codex: usage limits (D1142)", () => {
     expect(usageLimits.windows[0]).toMatchObject({ id: "primary", usedPercent: 42.4 });
   });
 
+  it("forgets Codex's updates once the config names another Codex", async () => {
+    const fake = fakeCodex({
+      rateLimits: plusLimits,
+      turns: [
+        [
+          {
+            notify: "account/rateLimits/updated",
+            params: {
+              rateLimits: {
+                limitId: "codex",
+                primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: IN_TWO_HOURS },
+              },
+            },
+          },
+          { complete: "completed" },
+        ],
+      ],
+    });
+    const { client, kernel } = await node(fake);
+    await client.call("agents.usage-limits", { agentId: CODEX_AGENT_ID });
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const done = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await done;
+    // Another home is another account: the update said nothing about it.
+    kernel.config.setLayer("node", {
+      "jhin.agent-codex": { ...fake.config, args: ["-c", "model_reasoning_summary=auto"] },
+    });
+    const { usageLimits } = await client.call<{
+      usageLimits: { windows: { id: string; usedPercent: number }[] };
+    }>("agents.usage-limits", { agentId: CODEX_AGENT_ID });
+    expect(usageLimits.windows[0]).toMatchObject({ id: "primary", usedPercent: 42.4 });
+  });
+
   it("follows T3's window rules", () => {
     // Free and Go plans have one monthly allowance when Codex names no duration.
     expect(codexRateLimitsToWindows({ planType: "free", primary: { usedPercent: 5 } })).toEqual([

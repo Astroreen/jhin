@@ -425,7 +425,14 @@ export function createCodexRuntime(options: {
    * What `account/rateLimits/updated` said since the last probe, merged onto the probe's
    * snapshot (T3's mergeCodexRateLimits): Codex sends a part of the snapshot at a time.
    */
-  let liveRateLimits: { at: string; snapshot: CodexRateLimitSnapshot } | undefined;
+  let liveRateLimits: { at: string; key: string; snapshot: CodexRateLimitSnapshot } | undefined;
+  /** The updates, while the config is the one Codex ran with: another home is another account. */
+  const live = () => {
+    if (liveRateLimits !== undefined && liveRateLimits.key !== probeKey()) {
+      liveRateLimits = undefined;
+    }
+    return liveRateLimits;
+  };
   const sessions = createSessions({
     launch,
     idleMs: () => options.config().sessionIdleMinutes * 60_000,
@@ -434,11 +441,10 @@ export function createCodexRuntime(options: {
       if (method !== "account/rateLimits/updated") return;
       const update = readRateLimitSnapshot((params as { rateLimits?: unknown } | null)?.rateLimits);
       if (update === undefined) return;
-      const merged = mergeCodexRateLimits(
-        liveRateLimits?.snapshot ?? current()?.rateLimits,
-        update,
-      );
-      if (merged !== undefined) liveRateLimits = { at: new Date().toISOString(), snapshot: merged };
+      const merged = mergeCodexRateLimits(live()?.snapshot ?? current()?.rateLimits, update);
+      if (merged !== undefined) {
+        liveRateLimits = { at: new Date().toISOString(), key: probeKey(), snapshot: merged };
+      }
     },
   });
   /** The last probe and the config it ran with: another binary or environment probes again. */
@@ -622,7 +628,7 @@ export function createCodexRuntime(options: {
   };
 
   /** The latest snapshot: the updates since the last probe, else the probe's. */
-  const rateLimits = () => liveRateLimits?.snapshot ?? current()?.rateLimits;
+  const rateLimits = () => live()?.snapshot ?? current()?.rateLimits;
   /** The usage limits as Codex last reported them (D1142): the probe's, then its updates. */
   const usageLimits = async (): Promise<AgentUsageLimits | undefined> => {
     // `/usage-limits` reads them again when what it knows (the last read or update, the newer)
@@ -630,6 +636,7 @@ export function createCodexRuntime(options: {
     // instead of answering from the status cache.
     const key = probeKey();
     const last = probed?.key === key ? probed : undefined;
+    live();
     const now = Date.now();
     const known = Math.max(
       last?.at ?? 0,
