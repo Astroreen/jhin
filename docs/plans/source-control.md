@@ -865,8 +865,8 @@ with screenshots).
   changes" by default, "Edited tracked files"), with T3's descriptions.
   T3's per-project override ("Inherit", "Off", "Custom") waits for
   per-project settings (Deferred).
-- **D1129. A cleanup sweep applies them**, T3's `cleanWorktrees`: every
-  hour, when the group changes, after a thread is deleted while `onDelete`
+- **D1129. A cleanup sweep applies them**, T3's `cleanWorktrees`: when
+  the plugin starts and every hour after, when the group changes, after a thread is deleted while `onDelete`
   is on, and on `git.worktree.cleanup {}` (`git.write`), which answers T3's
   report (`entries` of `{ path, threadId?, outcome: removed | kept |
   failed, reason }` and `counts`). It looks only at managed worktrees (D250)

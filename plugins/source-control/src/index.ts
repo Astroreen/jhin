@@ -1408,6 +1408,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     3_600_000,
   );
   cleanupTimer.unref?.();
+  // As T3 sweeps when it starts: a node restarted more often than hourly still cleans up.
+  // After activation, once the other plugins answer; a failure is logged.
+  if (cleanupEnabled(config().worktreeCleanup)) queueMicrotask(() => cleanInBackground());
   let lastRules = JSON.stringify(config().worktreeCleanup);
   context.subscriptions.add({
     dispose() {
