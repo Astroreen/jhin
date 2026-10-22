@@ -115,6 +115,20 @@ function PageEmpty({ title, text }: { title: string; text: string }) {
   );
 }
 
+/** A number per client object, so a replaced connection's client changes a call's name. */
+const clients = new WeakMap<object, number>();
+let clientsSeen = 0;
+function clientNumber(client: object | undefined): number {
+  if (client === undefined) return 0;
+  let number = clients.get(client);
+  if (number === undefined) {
+    clientsSeen += 1;
+    number = clientsSeen;
+    clients.set(client, number);
+  }
+  return number;
+}
+
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** What a node's feed says when it has no health to show, or nothing. */
@@ -158,7 +172,9 @@ function useCall<T>(
     error?: string;
   }>();
   // The call is named by what it calls, not only by the caller's key.
-  const call = `${node}|${command}|${JSON.stringify(input)}|${key}|${scope}`;
+  // A replaced connection (same node, new client) is called again too.
+  const client = clientNumber(view.connections.get(node)?.client);
+  const call = `${node}|${client}|${command}|${JSON.stringify(input)}|${key}|${scope}`;
   useEffect(() => {
     if (!enabled) return;
     let live = true;
@@ -313,15 +329,19 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
 
 /** One line on an event behind a warning: who wrote what, or which slice. */
 function describe(event: EventRef & { payload: unknown }): string {
-  const payload = event.payload as {
-    message?: { from?: string; to?: string; body?: string };
-    slice?: { title?: string };
-  } | null;
-  if (payload?.message !== undefined) {
-    const { from, to, body } = payload.message;
-    return `${from} → ${to}: ${(body ?? "").trim().split("\n")[0]}`;
+  // The record is whatever its stream holds: only strings are shown.
+  const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+  const payload = (event.payload ?? {}) as {
+    message?: { from?: unknown; to?: unknown; body?: unknown };
+    slice?: { title?: unknown };
+  };
+  const message = typeof payload.message === "object" ? payload.message : undefined;
+  if (message !== undefined && message !== null) {
+    const body = (text(message.body) ?? "").trim().split("\n")[0];
+    return `${text(message.from) ?? "?"} → ${text(message.to) ?? "?"}: ${body}`;
   }
-  if (payload?.slice?.title !== undefined) return `Slice "${payload.slice.title}"`;
+  const title = typeof payload.slice === "object" ? text(payload.slice?.title) : undefined;
+  if (title !== undefined) return `Slice "${title}"`;
   return event.type;
 }
 
@@ -360,7 +380,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
   }, []);
   // A feed that failed after it was read keeps what it showed (`node-feeds`).
   if (warning === undefined) {
-    if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
+    // A feed that holds what it read knows the warning is gone, even when not live.
+    if (!holdsRead(feed)) return <FeedProblem feed={feed} />;
     return <PageEmpty text="The node no longer has this warning." title="No such warning" />;
   }
   const dismiss = async () => {

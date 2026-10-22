@@ -52,6 +52,10 @@ function viewOf(
 ) {
   const toasts: { type?: string; title: string }[] = [];
   const quiet = { subscribe: () => toDisposable(() => {}) };
+  const client = { call };
+  const connectionsById = new Map(
+    Object.keys(feeds).map((id) => [id, { label: `node ${id}`, client }] as const),
+  );
   let snapshot = new Map(Object.entries(feeds));
   const listeners = new Set<() => void>();
   const view = {
@@ -73,8 +77,8 @@ function viewOf(
       },
     },
     connections: {
-      get: (id: string) =>
-        feeds[id] === undefined ? undefined : { label: `node ${id}`, client: { call } },
+      // One connection object per id, as Connections keeps them.
+      get: (id: string) => connectionsById.get(id),
     },
     navigation: { ...quiet, current: () => ROUTE, navigate: () => {} },
     toasts: { show: (toast: { type?: string; title: string }) => toasts.push(toast) },
@@ -258,12 +262,11 @@ describe("health views (D731)", () => {
         return toDisposable(() => listeners.delete(listener));
       },
     });
-    Object.assign(view.connections, {
-      get: () => ({
-        label: "a",
-        client: { call: () => new Promise((resolve) => answers.push(resolve)) },
-      }),
-    });
+    const connection = {
+      label: "a",
+      client: { call: () => new Promise((resolve) => answers.push(resolve)) },
+    };
+    Object.assign(view.connections, { get: () => connection });
     const change = async () => {
       snapshot = new Map([["a", { status: "ready", value: healthOf() } as NodeHealth]]);
       await act(async () => {

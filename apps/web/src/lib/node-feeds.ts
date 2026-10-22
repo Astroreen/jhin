@@ -160,10 +160,9 @@ export function createNodeFeeds<S>(
       // silence what is told; the feed stays as it is meanwhile, not flashing
       // "not live". The first failure is retried at once (a dropped socket, a
       // node busy for a moment); from then on at most once a minute, so a
-      // flapping stream does not loop
-      // on the node: a drop (or a failed read) within that minute marks the
-      // feed not live and reads it again once the minute is over. A
-      // permission taken back is not retried.
+      // flapping stream does not loop on the node: a drop (or a failed read)
+      // within that minute marks the feed not live and reads it again once
+      // the minute is over. A permission taken back is not retried.
       const retrying = !absent && code !== "PERMISSION_DENIED";
       const wait = lastRetry + RETRY_GAP_MS - clock();
       if (retrying && wait <= 0) {
