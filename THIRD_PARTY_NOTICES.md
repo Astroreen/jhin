@@ -81,7 +81,8 @@ frame), devices (`plugins/devices`: finding the Android SDK, the device tools'
 wording and the Device panel), pairing (`plugins/auth-token`:
 pairing codes, the pairing and session endpoints; the web client's pairing
 links, saved nodes in IndexedDB, Authorized clients settings and QR code
-component), secrets (`packages/secrets-api`, `plugins/secrets`: the secret
+component; `packages/qr-code`: the terminal rendering of a QR code;
+`apps/jhin`: `jhin pair`, its output, notes and Tailscale Serve flow), secrets (`packages/secrets-api`, `plugins/secrets`: the secret
 store's shape, secret requests and their card, one-use secretRefs, their
 statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/desktop`,
 `packages/desktop-api`: the window and its chrome, the application and context
@@ -89,7 +90,7 @@ menus, the notification badge, the update flow, its state machine and its
 controls, the nightly release notes, the quit hold and its hint;
 `scripts/desktop-release.ts` and `.github/workflows/release-desktop.yml`: the
 packaging configuration, signing and the release workflow).
-`apps/web/src/lib/qr-code.ts` is Project Nayuki's QR Code generator (MIT,
+`packages/qr-code/src/qr-code.ts` is Project Nayuki's QR Code generator (MIT,
 copyright Project Nayuki) as T3 Code vendors it; its notice is kept in the
 file. Files derived from T3 Code say so in a header comment.
 

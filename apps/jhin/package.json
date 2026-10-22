@@ -51,6 +51,7 @@
     "@jhin/plugin-threads": "workspace:*",
     "@jhin/plugin-transport-ws": "workspace:*",
     "@jhin/plugin-web-ui": "workspace:*",
+    "@jhin/qr-code": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:"

@@ -330,6 +330,9 @@ importers:
       '@jhin/plugin-web-ui':
         specifier: workspace:*
         version: link:../../plugins/web-ui
+      '@jhin/qr-code':
+        specifier: workspace:*
+        version: link:../../packages/qr-code
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
@@ -382,6 +385,9 @@ importers:
       '@jhin/preview-api':
         specifier: workspace:*
         version: link:../../packages/preview-api
+      '@jhin/qr-code':
+        specifier: workspace:*
+        version: link:../../packages/qr-code
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
@@ -663,6 +669,8 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../sdk
+
+  packages/qr-code: {}
 
   packages/rpc:
     dependencies:
@@ -1076,6 +1084,9 @@ importers:
 
   plugins/http:
     dependencies:
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
       '@jhin/http-api':
         specifier: workspace:*
         version: link:../../packages/http-api

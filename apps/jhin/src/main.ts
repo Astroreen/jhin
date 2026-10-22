@@ -10,6 +10,15 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CommandInfo } from "@jhin/sdk";
 
+import {
+  PairError,
+  discoverNode,
+  formatPairOutput,
+  pairingNotes,
+  reachableBaseUrl,
+  type PairingLink,
+} from "./pair.ts";
+
 const require = Module.createRequire(import.meta.url);
 
 // The desktop app runs this CLI with its own Node through ELECTRON_RUN_AS_NODE
@@ -41,6 +50,13 @@ const USAGE = `Usage:
   jhin serve [--watch] [--ui]   run this node until interrupted; --ui also serves the web client
   jhin client [--watch]         serve only the web client, which connects to remote nodes
   jhin inspect                  print the node's live state as JSON
+  jhin pair                     print a one-time pairing link and its QR code for another device
+         [--label <name>]       ...shown in Authorized clients (default: jhin pair)
+         [--ttl <minutes>]      ...how long the code is valid (default: 5)
+         [--permission <grant>] ...repeatable; limits what the paired device can do
+                                   (default: every permission the token holds)
+         [--base-url <url>]     ...the address other devices reach the node by
+         [--json]               ...print the pairing link as JSON instead
   jhin mcp                      serve every command as an MCP tool over stdio
   jhin <command> [--key value]  run a registered command, e.g. jhin example.greet --name Ada
          [--input '<json>']     ...or pass the whole input as JSON
@@ -216,6 +232,85 @@ async function uiEndpoint(host: NodeHost): Promise<string> {
   return `ui: ${url}\n`;
 }
 
+/** Every value of a repeatable `--key value` / `--key=value` option, in order. */
+function allValues(argv: readonly string[], key: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]!;
+    if (token.startsWith(`--${key}=`)) values.push(token.slice(key.length + 3));
+    else if (token === `--${key}`) {
+      const next = argv[index + 1];
+      if (next !== undefined && !next.startsWith("--")) {
+        values.push(next);
+        index += 1;
+      }
+    }
+  }
+  return values;
+}
+
+/**
+ * `jhin pair` (docs/plans/security.md D1185): a pairing code from the running
+ * node (D1184) or `--url`, printed as T3's block with a terminal QR code.
+ */
+async function pair(
+  argv: readonly string[],
+  options: ReadonlyMap<string, string | true>,
+  remote: { home?: string; url?: string; token?: string },
+): Promise<number> {
+  const option = (key: string) => {
+    const value = options.get(key);
+    return typeof value === "string" ? value : undefined;
+  };
+  const ttl = option("ttl");
+  const ttlMinutes = ttl === undefined ? undefined : Number(ttl);
+  if (ttlMinutes !== undefined && !(ttlMinutes > 0)) {
+    process.stderr.write(`--ttl takes minutes, e.g. --ttl 10; got ${ttl}\n`);
+    return 2;
+  }
+  const permissions = allValues(argv, "permission");
+  let url = remote.url;
+  try {
+    url ??= (await discoverNode(remote.home)).url;
+  } catch (error) {
+    if (!(error instanceof PairError)) throw error;
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  const origin = new URL(url.replace(/^ws/, "http")).origin;
+  const baseUrl = option("base-url") ?? reachableBaseUrl(origin);
+  return withTarget({ ...remote, url }, async (target) => {
+    const link = (await target.execute("auth.pairing.create", {
+      label: option("label") ?? "jhin pair",
+      ...(permissions.length > 0 ? { permissions } : {}),
+      ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
+      baseUrl,
+    })) as PairingLink;
+    if (options.get("json") === true) {
+      print(link);
+      return 0;
+    }
+    let nodeLabel = new URL(origin).host;
+    try {
+      nodeLabel = ((await target.execute("host.identity", {})) as { hostname: string }).hostname;
+    } catch {
+      // A token without host.identity still pairs; the address names the node.
+    }
+    const pairingUrl = link.url ?? `${baseUrl}/pair#token=${link.code}`;
+    process.stdout.write(
+      formatPairOutput({
+        nodeLabel,
+        origin,
+        pairingUrl,
+        code: link.code,
+        expiresAt: link.expiresAt,
+        notes: pairingNotes(pairingUrl),
+      }),
+    );
+    return 0;
+  });
+}
+
 function describeCommands(commands: readonly CommandInfo[]): string {
   return commands
     .map((command) => `  ${command.name.padEnd(28)} ${command.description}`)
@@ -304,6 +399,14 @@ async function main(argv: readonly string[]): Promise<number> {
       await finished;
     });
     return 0;
+  }
+
+  if (command === "pair") {
+    if (rest.length > 0) {
+      process.stderr.write(`Unexpected arguments: ${rest.join(" ")}\n${USAGE}\n`);
+      return 2;
+    }
+    return pair(argv, parsed.options, remote);
   }
 
   if (command === "inspect") {
