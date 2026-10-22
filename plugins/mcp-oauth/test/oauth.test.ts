@@ -143,6 +143,12 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
       authorization_servers: [base],
       scopes_supported: AGENT_PERMISSIONS,
     });
+    // A browser-based client preflights the metadata too.
+    const preflight = await fetch(`${base}/.well-known/oauth-protected-resource/mcp`, {
+      method: "OPTIONS",
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-headers")).toContain("mcp-protocol-version");
     const server = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
     expect(server).toMatchObject({
       issuer: base,

@@ -216,7 +216,13 @@ export default definePlugin({
     add("GET", "/.well-known/oauth-authorization-server", (request, response) =>
       json(response, 200, authorizationServerMetadata(urlsOf(request), AGENT_PERMISSIONS)),
     );
-    for (const path of ["/oauth/mcp/register", "/oauth/mcp/token"]) {
+    for (const path of [
+      "/oauth/mcp/register",
+      "/oauth/mcp/token",
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+      "/.well-known/oauth-authorization-server",
+    ]) {
       add("OPTIONS", path, (_request, response) => {
         response.writeHead(204, CORS).end();
       });
