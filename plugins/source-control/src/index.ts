@@ -1710,9 +1710,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     // Only a thread that is still to be made gets a setup: an existing one (or one
     // being set up) is never taken over through this id.
     if (threadId !== undefined) {
+      // Only "no such thread" means it is still to be made; any other failure is no answer.
       const existing = await context.commands.execute("threads.get", { threadId }).then(
         () => true,
-        () => false,
+        (error: unknown) => {
+          if ((error as { code?: unknown }).code === "THREAD_NOT_FOUND") return false;
+          throw error;
+        },
       );
       if (existing || setups.get(threadId)?.phase === "running") {
         throw new SourceControlError(
