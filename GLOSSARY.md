@@ -156,6 +156,10 @@ Words about Jhin:
   is a message that waits for its **answer** (`docs/plans/agents.md#D621`).
 - **Inbox** — the messages and asks to a node's owner, open until the owner
   answers them, shown in Civilization mode.
+- **Lead view** — Civilization mode's main area without a panel: the
+  owner's **conversation** with a team's lead, the one composer of the mode;
+  the owner asks, the lead answers and escalates there
+  (`docs/plans/agents.md#D1062`).
 - **Team** — agents that work together (OpenRig's _rig_), named by a **team
   spec** in the `jhin.teams` config section: its members (each a defined agent
   `<team>-<member>` on its node), its **lead** (the member the owner talks

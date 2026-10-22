@@ -27,7 +27,7 @@ test.afterAll(async () => {
   await node.stop();
 });
 
-test("D689, D691: a team is started, stopped and messaged through its lead in Civilization mode", async ({
+test("D689, D691: a team is started, stopped and talked to through its lead in Civilization mode", async ({
   page,
 }, info) => {
   const client = node.client();
@@ -51,14 +51,28 @@ test("D689, D691: a team is started, stopped and messaged through its lead in Ci
   await expect(team.getByText("We ask before we guess.")).toBeVisible();
   await page.screenshot({ path: info.outputPath("team-up.png") });
 
-  await team.getByRole("textbox", { name: "Message to the lead" }).fill("Plan slice 3.");
-  await team.getByRole("button", { name: "Send to the lead" }).click();
-  await expect(page.getByText("Sent to the lead")).toBeVisible();
+  // The owner talks to the lead in the Lead view, the one composer of the mode (C1, D1062).
+  await team.getByRole("button", { name: "Talk to the lead" }).click();
+  const leadView = page.getByRole("region", { name: "Lead", exact: true });
+  await leadView.getByRole("textbox", { name: "Message to the lead" }).fill("Plan slice 3.");
+  await leadView.getByRole("textbox", { name: "Message to the lead" }).press("Enter");
+  const conversation = leadView.getByRole("log", { name: "Conversation with the lead" });
+  await expect(conversation.getByRole("article", { name: "You" })).toHaveText("Plan slice 3.");
+  // The fake lead echoes what it was asked: its answer is the turn's last message (D624).
+  await expect(conversation.getByRole("article", { name: "Lead" })).toContainText("Plan slice 3.");
+  await page.screenshot({ path: info.outputPath("lead-console.png") });
   const lead = await client.call<{ generations: unknown[] }>("agents.get", {
     agentId: "workshop-lead",
   });
   expect(lead.generations).toHaveLength(1);
+  // The conversation is the node's record, read back as the CLI and MCP read it (D1061).
+  const read = await client.call<{ entries: { answer?: string }[] }>("agents.conversation", {
+    with: "lead@workshop",
+  });
+  expect(read.entries).toHaveLength(1);
+  expect(read.entries[0]?.answer).toContain("Plan slice 3.");
 
+  await teams.getByRole("button", { name: /Workshop/ }).click();
   await team.getByRole("button", { name: "Stop team" }).click();
   await expect(agents.getByText("Stopped")).toHaveCount(2);
   await expect(team.getByRole("button", { name: "Start team" })).toBeVisible();

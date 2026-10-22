@@ -15,6 +15,29 @@ export function teamRoute(route: Route, teamId: string): Route {
   };
 }
 
+/** The Lead view talking to a team's lead: no panel, the team id as section (D1062). */
+export function leadRoute(route: Route, teamId?: string): Route {
+  return {
+    ...(route.node === undefined ? {} : { node: route.node }),
+    ...(route.remote === undefined ? {} : { remote: route.remote }),
+    ...(route.mode === undefined ? {} : { mode: route.mode }),
+    ...(teamId === undefined ? {} : { section: teamId }),
+  };
+}
+
+/** The team the Lead view talks to: the route's, else the first one up, else the first (D1062). */
+export function chosenTeam(
+  teams: readonly TeamRecord[],
+  route: Pick<Route, "panel" | "section">,
+): TeamRecord | undefined {
+  const valid = teams.filter((team) => team.error === undefined);
+  if (route.panel === undefined && route.section !== undefined) {
+    const named = valid.find((team) => team.teamId === route.section);
+    if (named !== undefined) return named;
+  }
+  return valid.find((team) => isUp(team)) ?? valid[0];
+}
+
 /** Whether a team is up: put up from this node, and not stopped since (D689). */
 export function isUp(team: Pick<TeamRecord, "upAt" | "downAt">): boolean {
   if (team.upAt === undefined) return false;

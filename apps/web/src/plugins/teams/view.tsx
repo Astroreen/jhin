@@ -2,6 +2,7 @@
 // own (D440): loaded once the Teams section or a team's page shows.
 import type { AgentStatus, TeamRecord } from "@jhin/agent-api";
 import type { Connections, Navigation, Route } from "@jhin/client-api";
+import type { PluginContext } from "@jhin/sdk";
 import {
   Badge,
   Button,
@@ -13,14 +14,21 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  Textarea,
   type Toasts,
 } from "@jhin/ui";
 import { CrownIcon, UsersIcon } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
-import { STATUS_LABELS, TEAM_PANEL, isUp, nodeLabel, statusVariant, teamRoute } from "./route.ts";
+import {
+  STATUS_LABELS,
+  TEAM_PANEL,
+  isUp,
+  leadRoute,
+  nodeLabel,
+  statusVariant,
+  teamRoute,
+} from "./route.ts";
 import { createTeamsStore, type TeamsStore, type TeamsView } from "./store.ts";
 
 export { createTeamsStore };
@@ -31,10 +39,11 @@ export interface TeamsServices {
   readonly connections: Connections;
   readonly toasts: Toasts | undefined;
   readonly store: TeamsStore;
+  readonly commands: Pick<PluginContext["commands"], "execute">;
 }
 
 /** The route's connection, or the first open one when the route names none. */
-function useConnection(services: TeamsServices, route: Route): string | undefined {
+export function useConnection(services: TeamsServices, route: Route): string | undefined {
   const nodes = useExternal(services.connections, services.connections.list);
   return (
     route.node ?? nodes.find((node) => node.state === "open")?.id ?? nodes.at(0)?.id ?? undefined
@@ -43,7 +52,7 @@ function useConnection(services: TeamsServices, route: Route): string | undefine
 
 const NO_VIEW: TeamsView = { status: "loading", teams: [] };
 
-function useTeams(store: TeamsStore, connection: string | undefined): TeamsView {
+export function useTeams(store: TeamsStore, connection: string | undefined): TeamsView {
   const subscribe = useMemo(
     () => (listener: () => void) => {
       if (connection === undefined) return () => undefined;
@@ -140,12 +149,11 @@ export function TeamsMain({ services }: { services: TeamsServices }) {
 
 function TeamPage(props: { services: TeamsServices; connection: string; team: TeamRecord }) {
   const { services, connection, team } = props;
+  const route = useExternal(services.navigation, services.navigation.current);
   const client = services.connections.get(connection)?.client;
   const [status, setStatus] = useState<Record<string, AgentStatus | "absent">>({});
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
   const up = isUp(team);
-  const lead = `${team.lead}@${team.teamId}`;
 
   // Statuses at open and whenever the team changes; they are not followed live (Deferred).
   useEffect(() => {
@@ -191,24 +199,6 @@ function TeamPage(props: { services: TeamsServices; connection: string; team: Te
     }
   };
 
-  const send = async () => {
-    if (client === undefined) return;
-    setBusy(true);
-    try {
-      await client.call("agents.send", { to: lead, body: message.trim() });
-      setMessage("");
-      services.toasts?.show({ type: "success", title: "Sent to the lead", description: lead });
-    } catch (error) {
-      services.toasts?.show({
-        type: "error",
-        title: "Couldn't send it to the lead",
-        description: errorText(error),
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <section
       aria-label={`Team ${team.title}`}
@@ -221,6 +211,14 @@ function TeamPage(props: { services: TeamsServices; connection: string; team: Te
         </Badge>
         {team.bundle === undefined ? null : <Badge variant="outline">Bundle {team.bundle}</Badge>}
         <div className="ml-auto flex gap-2">
+          {team.error === undefined ? (
+            <Button
+              onClick={() => services.navigation.navigate(leadRoute(route, team.teamId))}
+              variant="outline"
+            >
+              Talk to the lead
+            </Button>
+          ) : null}
           {up ? (
             <Button disabled={busy} onClick={() => void act("teams.down")} variant="outline">
               Stop team
@@ -281,35 +279,6 @@ function TeamPage(props: { services: TeamsServices; connection: string; team: Te
           </p>
         </Section>
       )}
-      {team.error === undefined ? (
-        <Section title="Message the lead">
-          <form
-            className="flex max-w-3xl flex-col gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (message.trim() !== "" && !busy) void send();
-            }}
-          >
-            <Textarea
-              aria-label="Message to the lead"
-              disabled={!up}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder={
-                up
-                  ? `It goes to ${lead}; what only you can decide comes back in your inbox.`
-                  : "Start the team to talk to its lead."
-              }
-              rows={4}
-              value={message}
-            />
-            <div>
-              <Button disabled={!up || busy || message.trim() === ""} type="submit">
-                Send to the lead
-              </Button>
-            </div>
-          </form>
-        </Section>
-      ) : null}
     </section>
   );
 }
