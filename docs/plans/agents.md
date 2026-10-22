@@ -655,6 +655,83 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
 - **Escalation**: the owner talks to the lead. Leads ask leads, and decisions
   only the owner can take reach the owner through A2.
 
+Decisions are recorded here as they are taken. The contract (the spec, the
+roster, aliases, `teams.bundles@1` and the schemas of the `teams.*`
+commands) is `packages/agent-api/src/teams.ts`.
+
+- **D681. A team spec** is `{title?, description?, lead, culture?, project?,
+  dir?, agents: {<member>: TeamMember}}` (`TeamSpec`). A member is an A1
+  definition (role, runtime, model, modes, instructions, skills, home
+  project) plus `node`, the node its agent runs on (the node running
+  `teams.up` when unset). `lead` names one of the members; `project` is the
+  home project of members that name none. Team ids and member names are
+  slugs of at most 30 characters (`TeamId`, `MemberId`).
+- **D682. Specs are layered config.** The section `jhin.teams` holds
+  `{teams: {<id>: TeamSpecLayer}}` on the node or project layer, any part of
+  a spec, so the settings page edits it with no new UI. A bundle's spec
+  (D686) is the layer below the node's: the layers merge key by key as
+  config layers do (arrays replaced), and the merge is validated as a
+  `TeamSpec`. A team whose merge is invalid is listed with its `error` and
+  cannot go up (`TEAM_INVALID`).
+- **D683. A member is a defined agent `<team>-<member>`** on its node
+  (`workshop-builder`), an A1 agent like any other: its generations,
+  knowledge, stop and messages are A1's and A2's. Its id is taken only by
+  the team that put it there (the node keeps which team it is): any other
+  definition of that id is `AGENT_EXISTS`.
+- **D684. What a member is told.** `teams.up` writes each member's
+  definition with `instructions` made of the team's part (the team, its
+  role in it, the lead's and teammates' aliases and addresses, how to
+  escalate, D688), the culture, and the member's own instructions. The
+  culture is the spec's `culture`, else `culture.md` of the team's files.
+  The definition is A1 config, so the owner sees what the agent is told.
+- **D685. `teams.up` and `teams.join`.** `teams.up {teamId}` on the node with
+  the spec computes the roster (each member's address on its node), then
+  puts each member on its node with `teams.join` (`mesh.call` for another
+  node): `join` defines the agent or updates it to the spec (A1's
+  `agents.define`/`agents.update`, `unset` for what the spec dropped),
+  resumes it when it was stopped, keeps the roster, and writes the team's
+  files into the agent's knowledge folder: `agents/<member>/*.md` as starter
+  knowledge, `lore/*.md` into its `lore/` (A4 D666 reads the agent's own
+  lore, so the lore brief has the team's). Only files missing there are
+  written: what the agent learnt is never overwritten. `up` is idempotent;
+  a member that fails is reported with its error, and the others go on.
+- **D686. A team bundle is a plugin.** An npm package with a `"jhin"`
+  manifest (`side: server`, `requires: {"teams.bundles": "^1"}`) whose entry
+  registers its own folder with the `teams.bundles@1` service of
+  `jhin.teams` (`register(root, pluginId)`, a disposable). The folder holds
+  `team.json` (`TeamBundleSpec`: the team's `id` and its spec), `culture.md`,
+  `lore/` and `agents/<member>/`. It installs where plugins install (a
+  plugin location such as `~/.jhin/plugins/<id>/` or `.jhin/plugins/`, or a
+  dependency of the distribution) and the node finds it as it finds plugins
+  (D14, D15): no second install path. Removing it takes the team off
+  `teams.list`; agents that are up stay, as A1 D611 keeps a removed
+  agent's work.
+- **D687. Aliases.** `<member>@<team>` (`builder@workshop`) is an alias of
+  the member's full address. Every node a team's member was put on keeps its
+  roster, and so does the node that ran `up`: `teams.resolve {alias}` reads
+  it there (`TEAM_NOT_UP` when the node has none). `agents.send` and
+  `agents.ask` take an alias in `to` and resolve it through `teams.resolve`
+  when the node has it; the message carries the full address.
+- **D688. Escalation goes through the lead.** The lead is told that the
+  owner talks to it, that it asks other teams' leads (`teams_list` names
+  them, `agents_ask` reaches them), and that a decision only the owner can
+  take goes to the owner with `agents_ask` to `jhin://<node>/owner`, which
+  lands in A2's inbox (D626). Members are told to ask their teammates and
+  their lead, not the owner. The owner reaches the lead with `agents.send`
+  or its alias. This is told, not fenced (see [Deferred](#deferred)).
+- **D689. `teams.down` stops a team through its agents** (D612): `agents.stop`
+  on each member's node, through `mesh.call` for another node. The roster
+  and the definitions stay; `teams.up` resumes them. The `teams` stream
+  records `teams.team.changed` (a spec appeared, changed or went),
+  `teams.team.up` (the roster) and `teams.team.down`; `teams.list` returns
+  its head, as `agents.catalog` does.
+- **D690. Permissions.** `teams.list`, `teams.get`, `teams.resolve` and the
+  `teams` stream need `teams.read`; `teams.up`, `teams.down` and
+  `teams.join` need `teams.write`. Agents get `teams.read` through their
+  node's MCP server (`AGENT_PERMISSIONS`), so a lead finds other leads; never
+  `teams.write`. A member on another node is put there with the caller's
+  grants (D416), so a member node without `teams.write` refuses.
+
 ### A6. Orchestration and refocus (D701–D720)
 
 - An **orchestrator workflow** walks a mission's process: it knows which
@@ -845,6 +922,16 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
   brief (D671); `lore.brief` reads local files, so it ends.
 - A4: reference-style links (`[x][ref]`) and HTML links as routes; events
   when pages change (pages are re-read when their mtime changes).
+- A5: fencing escalation: refusing a member's ask to the owner, so only
+  the lead reaches the inbox. D688 tells members, it does not enforce it.
+- A5: removing a team's agents. `teams.down` stops them (D689); removing
+  each member is `agents.remove` on its node.
+- A5: a member moved to another node: `teams.up` puts it on the new node and
+  rewrites the rosters, but its agent on the old node stays defined (stop it
+  with `teams.down` before the move).
+- A5: installing a plugin, and so a bundle, from npm with a command. Today the
+  unpacked package goes into a plugin location (D686).
+- A5: a bundle's skills installed for its members; skills stay names (D613).
 - A8: mode places that survive a page reload (D744 keeps them for the page's
   life); a mode per window or per node.
 - A8: offering Civilization mode for a mesh member reached through another node
@@ -904,6 +991,10 @@ Each workstream lists its PRs here as they merge.
   `missions` stream (D653–D656); with A1's `thread.transcript` seam (D614).
 - A4 #91: `jhin.context` (D661–D670), and the lore brief on a generation's
   start in `jhin.agents` (D671).
+- A5 #PR: the teams contract in `@jhin/agent-api` (`teams.ts`: the team
+  spec and its config layer, the roster, aliases, `teams.bundles@1`, the
+  `teams` stream and the schemas of `teams.*`). D681–D690 recorded; the
+  server side and the Civilization-mode views follow.
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
