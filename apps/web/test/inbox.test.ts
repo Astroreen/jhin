@@ -137,6 +137,16 @@ describe("the owner's inbox (D630)", () => {
     );
     const store = createInboxStore(node.connections, quiet, () => {});
     await settled(store);
+    // A stream that drops is read once more (D731); the second drop stays.
+    const reread = new Promise<void>((resolve) => {
+      const subscription = store.subscribe(() => {
+        if (store.snapshot().get("a")?.status !== "ready") return;
+        subscription.dispose();
+        resolve();
+      });
+    });
+    node.streams.get(INBOX_STREAM)!.onError!(new Error("stream dropped"));
+    await reread;
     node.streams.get(INBOX_STREAM)!.onError!(new Error("stream gone"));
     expect(store.snapshot().get("a")).toMatchObject({ status: "error", error: "stream gone" });
     expect(openItems(store.snapshot()).map((entry) => entry.item.message.messageId)).toEqual([

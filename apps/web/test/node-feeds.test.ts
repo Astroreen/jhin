@@ -16,8 +16,12 @@ function fakeClient() {
     after?: number;
     open: boolean;
   } = { open: false };
+  const reads = { count: 0 };
   const client = {
-    call: () => loaded,
+    call: () => {
+      reads.count += 1;
+      return loaded;
+    },
     subscribe: (
       _stream: string,
       options: { after: number; onError: (error: unknown) => void },
@@ -32,7 +36,7 @@ function fakeClient() {
       return toDisposable(() => (stream.open = false));
     },
   };
-  return { client, answer, stream };
+  return { client, answer, stream, reads };
 }
 
 /** One connection `a` whose client can be replaced or closed. */
@@ -107,6 +111,37 @@ describe("node feeds (D630, D731)", () => {
       value: ["x", "y", "z"],
       error: "this client may no longer read it (stream gone)",
     });
+    feeds.dispose();
+  });
+
+  it("reads and follows a dropped stream once more, then stays not live", async () => {
+    const one = fakeClient();
+    const { connections } = fakeConnections(one.client);
+    const feeds = createNodeFeeds(connections, quiet, source);
+    let ready = changes(feeds);
+    one.answer.resolve({ head: 3, items: ["x"] });
+    await ready;
+    // The first drop: marked not live, then read again and followed from its head.
+    ready = new Promise<void>((resolve) => {
+      const subscription = feeds.subscribe(() => {
+        if (feeds.snapshot().get("a")?.status !== "ready") return;
+        subscription.dispose();
+        resolve();
+      });
+    });
+    one.stream.onError!(new Error("stream gone"));
+    expect(feeds.snapshot().get("a")?.status).toBe("error");
+    await ready;
+    expect(one.reads.count).toBe(2);
+    expect(one.stream.open).toBe(true);
+    // The second drop stays: not live until the connection is replaced.
+    one.stream.onError!(new Error("stream gone again"));
+    expect(feeds.snapshot().get("a")).toEqual({
+      status: "error",
+      value: ["x"],
+      error: "stream gone again",
+    });
+    expect(one.reads.count).toBe(2);
     feeds.dispose();
   });
 

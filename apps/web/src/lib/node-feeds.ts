@@ -90,10 +90,13 @@ export function createNodeFeeds<S>(
     });
     states.set(id, { status: "loading", value: source.empty });
     changed();
+    /** One more read after a stream that failed once it was read (D731). */
+    let retried = false;
     const failed = (error: unknown) => {
       if (stopped) return;
       const code = String((error as { code?: unknown } | null)?.code);
       const message = error instanceof Error ? error.message : String(error);
+      const wasRead = states.get(id)?.status === "ready";
       // A node that never answered has nothing to show; a feed that failed
       // after it was read (even a permission taken back) keeps what it showed,
       // marked not live.
@@ -110,28 +113,41 @@ export function createNodeFeeds<S>(
                   : message,
             },
       );
+      // A stream that dropped is read and followed once more, so one hiccup
+      // does not silence what is told; a second failure stays not live until
+      // the connection is replaced. A permission taken back is not retried.
+      if (wasRead && !retried && code !== "PERMISSION_DENIED") {
+        retried = true;
+        for (const subscription of subscriptions.splice(0)) subscription.dispose();
+        follow();
+      }
     };
-    void source
-      .load(client)
-      .then(({ head, state }) => {
-        if (stopped) return;
-        set(id, () => ({ status: "ready", value: state }));
-        subscriptions.push(
-          client.subscribe(source.stream, { after: head, onError: failed }, (event) => {
-            if (stopped) return;
-            const before = states.get(id)?.value ?? source.empty;
-            const after = source.apply(before, event);
-            if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
-            // What hears the events (a notification) never breaks the feed.
-            try {
-              source.seen?.(connection, event, before, after);
-            } catch (error) {
-              log.warn("a feed's listener failed", { stream: source.stream, error: String(error) });
-            }
-          }),
-        );
-      })
-      .catch(failed);
+    const follow = () =>
+      void source
+        .load(client)
+        .then(({ head, state }) => {
+          if (stopped) return;
+          set(id, () => ({ status: "ready", value: state }));
+          subscriptions.push(
+            client.subscribe(source.stream, { after: head, onError: failed }, (event) => {
+              if (stopped) return;
+              const before = states.get(id)?.value ?? source.empty;
+              const after = source.apply(before, event);
+              if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
+              // What hears the events (a notification) never breaks the feed.
+              try {
+                source.seen?.(connection, event, before, after);
+              } catch (error) {
+                log.warn("a feed's listener failed", {
+                  stream: source.stream,
+                  error: String(error),
+                });
+              }
+            }),
+          );
+        })
+        .catch(failed);
+    follow();
   };
 
   const stop = (id: string) => {
