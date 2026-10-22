@@ -176,6 +176,10 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   background (`subagent.backgrounded`, `AgentTurn.afterwards`) and
   `stopSubagent`; `threads.subagent.stop` (`jhin.threads`) stops one by its
   thread (`plans/orchestration.md` D1164–D1167).
+- `source-control.pull-requests@1` (`@jhin/source-control-api`, provided by
+  `jhin.source-control`) — a thread's pull requests and their states, which
+  settling reads; `jhin.threads`' `autoSettleKeepPullRequests` and
+  per-project `projects` settle settings (`plans/t3-parity.md` D1171–D1173).
 - `@jhin/agent-api`'s `citations.ts` — a quote of an agent's message in a user's
   (`jhin-citation://`), and what the agent reads of it (`plans/t3-parity.md`
   D1010).

@@ -7,7 +7,7 @@ import {
   type StatusSnapshot,
   type ThreadPullRequest,
 } from "@jhin/source-control-api";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { createLinks, pullRequestUrl } from "../src/index.ts";
 import { fakeGh, ghPullRequest, git, node, repository, temp, write } from "./support.ts";
@@ -320,5 +320,44 @@ describe("reading linked pull requests again", () => {
     expect(events).toEqual([
       { type: "git.pr.unlinked", payload: { threadId: "t", key: "git.acme.io/a/b#4" } },
     ]);
+  });
+});
+
+describe("jhin.source-control: a thread's pull requests for settling (t3-parity.md D1171)", () => {
+  it("keeps a thread with an open linked pull request from settling by inactivity", async () => {
+    const gh = fakeGh();
+    gh.view(7, ghPullRequest({ state: "OPEN" }));
+    const sc = await node();
+    const projectId = await sc.project(githubRepository());
+    const kept = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    const free = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    await sc.client.call("git.pr.link", {
+      threadId: kept.id,
+      url: "https://github.com/acme/demo/pull/7",
+    });
+    await sc.until(updated(kept.id, "open"));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 10 * 24 * 60 * 60 * 1000);
+      await sc.client.call("threads.sweep", {});
+      const settled = async (threadId: string) =>
+        (
+          await sc.client.call<{ thread: { settledOverride?: string } }>("threads.get", {
+            threadId,
+          })
+        ).thread.settledOverride;
+      expect(await settled(kept.id)).toBeUndefined();
+      expect(await settled(free.id)).toBe("settled");
+
+      await sc.client.call("git.pr.unlink", {
+        threadId: kept.id,
+        repository: "acme/demo",
+        number: 7,
+      });
+      await sc.client.call("threads.sweep", {});
+      expect(await settled(kept.id)).toBe("settled");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

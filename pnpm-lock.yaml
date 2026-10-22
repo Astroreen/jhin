@@ -1502,6 +1502,9 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@jhin/source-control-api':
+        specifier: workspace:*
+        version: link:../../packages/source-control-api
       '@jhin/storage-api':
         specifier: workspace:*
         version: link:../../packages/storage-api

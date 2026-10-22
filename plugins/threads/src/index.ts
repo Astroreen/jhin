@@ -49,6 +49,7 @@ import {
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, holdsPermission, toDisposable, z, describePermissions } from "@jhin/sdk";
+import { PULL_REQUESTS_CAPABILITY, type ThreadPullRequestStates } from "@jhin/source-control-api";
 import {
   BLOBS_CAPABILITY,
   EVENTLOG_CAPABILITY,
@@ -138,6 +139,29 @@ const Config = z
       title: "Days of inactivity before auto-settle",
       description: "Any new activity un-settles a thread automatically.",
     }),
+    // T3's sidebarAutoSettleKeepPullRequests (t3-parity.md D1172).
+    autoSettleKeepPullRequests: z.boolean().default(false).meta({
+      title: "Keep threads with a PR",
+      description:
+        "Inactivity does not settle threads with a pull request. Merge and close still do.",
+    }),
+    // T3's projectSettingsOverrides of the settle settings (D1173).
+    projects: z
+      .record(
+        z.string(),
+        z.object({
+          autoSettleOnMerge: z.boolean().optional(),
+          autoSettleInactive: z.boolean().optional(),
+          autoSettleAfterDays: z.number().int().min(1).max(90).optional(),
+          autoSettleKeepPullRequests: z.boolean().optional(),
+        }),
+      )
+      .default({})
+      .meta({
+        title: "Settling per project",
+        description:
+          "A project's own settle settings, by its id. A setting its entry leaves out is the node's.",
+      }),
   })
   .meta({
     title: "Threads",
@@ -775,11 +799,28 @@ function withDeadline(task: Promise<unknown>, ms: number, expired: () => void): 
 export default definePlugin({
   async activate(context) {
     context.config.define(CONFIG_SECTION, Config);
-    /** The node's rule for settling by inactivity, as configured now (D444). */
-    const settleRule = (): SettleRule => {
+    /** A project's settle settings: its entry over the node's (D444, D1173). */
+    const settleSettings = (projectId: string) => {
       const config = context.config.get<Config>(CONFIG_SECTION);
-      return config.autoSettleInactive
-        ? { afterMs: config.autoSettleAfterDays * DAY_MS }
+      const own = config.projects[projectId] ?? {};
+      return {
+        autoSettleOnMerge: own.autoSettleOnMerge ?? config.autoSettleOnMerge,
+        autoSettleInactive: own.autoSettleInactive ?? config.autoSettleInactive,
+        autoSettleAfterDays: own.autoSettleAfterDays ?? config.autoSettleAfterDays,
+        autoSettleKeepPullRequests:
+          own.autoSettleKeepPullRequests ?? config.autoSettleKeepPullRequests,
+      };
+    };
+    /** Threads the last sweep found kept from settling by a pull request (D1172). */
+    const keptByPullRequest = new Set<string>();
+    /** The rule for settling a thread by inactivity, as configured now for its project. */
+    const settleRule = (thread: {
+      readonly id: string;
+      readonly projectId: string;
+    }): SettleRule => {
+      const settings = settleSettings(thread.projectId);
+      return settings.autoSettleInactive && !keptByPullRequest.has(thread.id)
+        ? { afterMs: settings.autoSettleAfterDays * DAY_MS }
         : undefined;
     };
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
@@ -2885,7 +2926,7 @@ export default definePlugin({
         const since =
           thread.settledOverride === "settled"
             ? thread.settledAt
-            : autoSettledAt(thread, Date.parse(at), settleRule());
+            : autoSettledAt(thread, Date.parse(at), settleRule(thread));
         return {
           ...rest,
           settledOverride: "settled",
@@ -2899,12 +2940,12 @@ export default definePlugin({
         // Only a thread on the shelf comes back: T3's command would also move an
         // active one to the top and switch the automatic rule off for it. A
         // snooze stays; it still hides the thread until it wakes.
-        if (!isSettled(thread, Date.parse(at), settleRule())) return thread;
+        if (!isSettled(thread, Date.parse(at), settleRule(thread))) return thread;
         const { settledAt: _settledAt, ...rest } = thread;
         return { ...rest, settledOverride: "active", unsettledAt: at };
       },
       pin(thread: Thread, at: string, orderKey?: string): Thread {
-        const settled = isSettled(thread, Date.parse(at), settleRule());
+        const settled = isSettled(thread, Date.parse(at), settleRule(thread));
         if (thread.pinnedAt !== undefined && !settled && thread.snoozedUntil === undefined) {
           return thread;
         }
@@ -2942,7 +2983,7 @@ export default definePlugin({
         if (
           list === "active" &&
           (thread.pinnedAt !== undefined ||
-            isSettled(thread, nowMs, settleRule()) ||
+            isSettled(thread, nowMs, settleRule(thread)) ||
             isSnoozed(thread, nowMs))
         ) {
           throw new ThreadsError("THREAD_NOT_ACTIVE", "The thread is pinned, settled or snoozed", {
@@ -3253,8 +3294,8 @@ export default definePlugin({
       output: z.object({ settled: z.boolean() }),
       permissions: ["threads.write"],
       handler: async ({ threadId, reason, closedAt }) => {
-        const config = context.config.get<Config>(CONFIG_SECTION);
-        if (reason === "pull-request-merged" && !config.autoSettleOnMerge)
+        const { projectId } = await getThread(threadId);
+        if (reason === "pull-request-merged" && !settleSettings(projectId).autoSettleOnMerge)
           return { settled: false };
         const closedMs = Date.parse(closedAt);
         const thread = await autoSettle(
@@ -3276,16 +3317,41 @@ export default definePlugin({
       },
     });
 
+    /**
+     * Whether a thread's pull requests keep it from settling by inactivity (T3's
+     * resolveAutoSettlementAt, D1172): a linked one open or not read yet always does;
+     * with "Keep threads with a PR" any one does.
+     */
+    const keptByItsPullRequests = async (thread: Thread) => {
+      const source = context.services.tryGet<ThreadPullRequestStates>(PULL_REQUESTS_CAPABILITY);
+      if (source === undefined) return false;
+      const states = await source.pullRequestsOf(thread.id).catch((error: unknown) => {
+        context.log.warn("could not read a thread's pull requests", {
+          threadId: thread.id,
+          error: String(error),
+        });
+        return [];
+      });
+      if (states.some((pr) => pr.linked && (pr.state === "open" || pr.state === "unknown"))) {
+        return true;
+      }
+      return settleSettings(thread.projectId).autoSettleKeepPullRequests && states.length > 0;
+    };
+
     /** T3's sweep: every thread the inactivity rule settles now, written as settled. */
     const sweep = async () => {
-      const rule = settleRule();
-      if (rule === undefined) return;
       const nowMs = Date.parse(now());
       for (const thread of await listThreads()) {
-        if (autoSettledAt(thread, nowMs, rule) === undefined) continue;
+        // The rule as configured, before what its pull requests say.
+        keptByPullRequest.delete(thread.id);
+        if (autoSettledAt(thread, nowMs, settleRule(thread)) === undefined) continue;
+        if (await keptByItsPullRequests(thread)) {
+          keptByPullRequest.add(thread.id);
+          continue;
+        }
         await autoSettle(
           thread.id,
-          (latest, latestMs) => autoSettledAt(latest, latestMs, settleRule()) !== undefined,
+          (latest, latestMs) => autoSettledAt(latest, latestMs, settleRule(latest)) !== undefined,
         ).catch((error: unknown) =>
           context.log.warn("settling a thread failed", {
             threadId: thread.id,
@@ -3473,7 +3539,7 @@ export default definePlugin({
         // A new turn also brings a settled thread back and wakes a snoozed one.
         const at = now();
         await updateThread(threadId, (latest) => {
-          const back = revived(latest, at, settleRule());
+          const back = revived(latest, at, settleRule(latest));
           const { model: _model, ...rest } = back;
           const withModel = dropModel ? rest : back;
           const { modelOptions: _options, ...withoutOptions } = withModel;

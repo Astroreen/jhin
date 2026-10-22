@@ -28,6 +28,7 @@ import {
   PullRequest,
   PullResult,
   SOURCE_CONTROL_ACTIONS_STREAM,
+  PULL_REQUESTS_CAPABILITY,
   SOURCE_CONTROL_CAPABILITY,
   SOURCE_CONTROL_STREAM,
   SourceControlEvents,
@@ -41,6 +42,7 @@ import {
   Worktree,
   type PullRequestProvider,
   type SourceControl,
+  type ThreadPullRequestStates,
 } from "@jhin/source-control-api";
 import {
   EVENTLOG_CAPABILITY,
@@ -2370,6 +2372,21 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   });
 
   context.services.provide(SOURCE_CONTROL_CAPABILITY, service);
+  // What settling needs of a thread's pull requests (t3-parity.md D1171).
+  context.services.provide<ThreadPullRequestStates>(PULL_REQUESTS_CAPABILITY, {
+    async pullRequestsOf(threadId) {
+      const linked = (await links.list(threadId)).map((link) => ({
+        state: link.snapshot?.state ?? ("unknown" as const),
+        linked: true,
+      }));
+      const thread = threads.get(threadId);
+      const own =
+        thread?.branch == null
+          ? undefined
+          : repos.get(thread.projectId)?.pullRequests.get(thread.branch)?.pr;
+      return own == null ? linked : [...linked, { state: own.state, linked: false }];
+    },
+  });
   return service;
 }
 

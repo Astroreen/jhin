@@ -1,3 +1,9 @@
+import * as Fs from "node:fs";
+import * as Os from "node:os";
+import * as Path from "node:path";
+
+import type { ThreadPullRequestState } from "@jhin/source-control-api";
+import { mockCapability } from "@jhin/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { node, watch } from "./support.ts";
@@ -20,8 +26,23 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function withThreads(config: Record<string, unknown> = {}) {
-  const { client, kernel } = await node({ config: { "jhin.threads": config } });
+async function withThreads(
+  config: Record<string, unknown> = {},
+  /** Each thread's pull requests, as source control would tell (D1171). */
+  pullRequests?: Map<string, ThreadPullRequestState[]>,
+) {
+  const { client, kernel } = await node({
+    config: { "jhin.threads": config },
+    ...(pullRequests === undefined
+      ? {}
+      : {
+          plugins: [
+            mockCapability("source-control.pull-requests", {
+              pullRequestsOf: async (threadId: string) => pullRequests.get(threadId) ?? [],
+            }),
+          ],
+        }),
+  });
   const create = () => client.call<Thread>("threads.create", {});
   const get = async (threadId: string) =>
     (await client.call<{ thread: Thread }>("threads.get", { threadId })).thread;
@@ -183,5 +204,102 @@ describe("jhin.threads: the node settles threads by itself (D444–D447)", () =>
     const secondSettled = settledEvent(second.id);
     vi.advanceTimersByTime(60_000);
     await secondSettled;
+  });
+});
+
+describe("jhin.threads: pull requests and projects in settling (D1172, D1173)", () => {
+  it("never settles a thread by inactivity while a linked pull request is open or unread", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const pullRequests = new Map<string, ThreadPullRequestState[]>();
+    const { client, create, get } = await withThreads({ autoSettleAfterDays: 1 }, pullRequests);
+    const open = await create();
+    const unread = await create();
+    const merged = await create();
+    const branchOnly = await create();
+    const none = await create();
+    pullRequests.set(open.id, [{ state: "open", linked: true }]);
+    pullRequests.set(unread.id, [{ state: "unknown", linked: true }]);
+    pullRequests.set(merged.id, [{ state: "merged", linked: true }]);
+    pullRequests.set(branchOnly.id, [{ state: "open", linked: false }]);
+
+    vi.setSystemTime(Date.now() + 2 * DAY_MS);
+    await client.call("threads.sweep", {});
+    expect((await get(open.id)).settledOverride).toBeUndefined();
+    expect((await get(unread.id)).settledOverride).toBeUndefined();
+    // Without "Keep threads with a PR", a settled or a branch's pull request keeps nothing.
+    expect((await get(merged.id)).settledOverride).toBe("settled");
+    expect((await get(branchOnly.id)).settledOverride).toBe("settled");
+    expect((await get(none.id)).settledOverride).toBe("settled");
+
+    // Once it closed, the next sweep settles it.
+    pullRequests.set(open.id, [{ state: "closed", linked: true }]);
+    await client.call("threads.sweep", {});
+    expect((await get(open.id)).settledOverride).toBe("settled");
+  });
+
+  it("keeps every thread with a pull request while Keep threads with a PR is on", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const pullRequests = new Map<string, ThreadPullRequestState[]>();
+    const { client, kernel, create, get } = await withThreads(
+      { autoSettleAfterDays: 1, autoSettleKeepPullRequests: true },
+      pullRequests,
+    );
+    const merged = await create();
+    const branch = await create();
+    const none = await create();
+    pullRequests.set(merged.id, [{ state: "merged", linked: true }]);
+    pullRequests.set(branch.id, [{ state: "closed", linked: false }]);
+    vi.setSystemTime(Date.now() + 2 * DAY_MS);
+    await client.call("threads.sweep", {});
+    expect((await get(merged.id)).settledOverride).toBeUndefined();
+    expect((await get(branch.id)).settledOverride).toBeUndefined();
+    expect((await get(none.id)).settledOverride).toBe("settled");
+    // A merge still settles it (D447), and a thread kept is not settled by a later arrange.
+    expect(
+      await client.call("threads.auto-settle", {
+        threadId: merged.id,
+        reason: "pull-request-merged",
+        closedAt: new Date().toISOString(),
+      }),
+    ).toEqual({ settled: true });
+
+    kernel.config.setLayer("node", {
+      "jhin.threads": { autoSettleAfterDays: 1, autoSettleKeepPullRequests: false },
+    });
+    await client.call("threads.sweep", {});
+    expect((await get(branch.id)).settledOverride).toBe("settled");
+  });
+
+  it("reads each thread's project's own settle settings over the node's", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { client, kernel, create, get } = await withThreads({ autoSettleAfterDays: 1 });
+    const project = await client.call<{ id: string }>("projects.create", {
+      name: "kept",
+      path: Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-settle-")),
+    });
+    const elsewhere = await create();
+    const own = await client.call<Thread>("threads.create", { projectId: project.id });
+    kernel.config.setLayer("node", {
+      "jhin.threads": {
+        autoSettleAfterDays: 1,
+        projects: { [project.id]: { autoSettleAfterDays: 5, autoSettleOnMerge: false } },
+      },
+    });
+    vi.setSystemTime(Date.now() + 2 * DAY_MS);
+    await client.call("threads.sweep", {});
+    expect((await get(elsewhere.id)).settledOverride).toBe("settled");
+    expect((await get(own.id)).settledOverride).toBeUndefined();
+    // Its project settles nothing on merge; a close still does.
+    const closedAt = new Date().toISOString();
+    expect(
+      await client.call("threads.auto-settle", {
+        threadId: own.id,
+        reason: "pull-request-merged",
+        closedAt,
+      }),
+    ).toEqual({ settled: false });
+    vi.setSystemTime(Date.now() + 4 * DAY_MS);
+    await client.call("threads.sweep", {});
+    expect((await get(own.id)).settledOverride).toBe("settled");
   });
 });

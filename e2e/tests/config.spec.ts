@@ -343,3 +343,34 @@ test("D483, D484: a change made elsewhere reaches the open page, keeping the edi
     layers: { node: { label: "from elsewhere", level: "low", retries: 7 } },
   });
 });
+
+test("D1172–D1173: the Threads section keeps threads with a PR, and per project", async ({
+  page,
+}, info) => {
+  node = await startNode();
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  await page.getByRole("combobox", { name: "Config section" }).click();
+  await page.getByRole("option", { name: /^Threads/ }).click();
+  const section = page.getByRole("region", { name: "Threads" });
+  await expect(
+    section.getByText(
+      "Inactivity does not settle threads with a pull request. Merge and close still do.",
+    ),
+  ).toBeVisible();
+  await expect(section.getByText("Settling per project")).toBeVisible();
+  await section.getByRole("switch", { name: "Keep threads with a PR" }).click();
+  await section.getByText("Keep threads with a PR").scrollIntoViewIfNeeded();
+  const shot = info.outputPath("keep-threads-with-a-pr.png");
+  await page.screenshot({ path: shot });
+  await info.attach("keep-threads-with-a-pr", { path: shot, contentType: "image/png" });
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByRole("list", { name: "Outcome" })).toContainText("applied");
+  expect(await node.client().call("host.config.get", { section: "jhin.threads" })).toMatchObject({
+    value: { autoSettleKeepPullRequests: true, projects: {} },
+  });
+});
