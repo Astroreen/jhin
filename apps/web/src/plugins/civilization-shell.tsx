@@ -23,7 +23,6 @@ import {
 } from "@jhin/ui";
 import {
   BotIcon,
-  FolderKanbanIcon,
   HeartPulseIcon,
   InboxIcon,
   LandmarkIcon,
@@ -47,8 +46,8 @@ export interface CivilizationShell {
 }
 
 /**
- * The sections of the Civilization sidebar (D749), each a slot the owning
- * workstream fills. Until it does, the section says who fills it.
+ * The sections of the Civilization sidebar (D749), each a slot a plugin
+ * fills. Until it does, the section says in the owner's words what is empty.
  */
 const SIDEBAR_SECTIONS: readonly {
   readonly slot: string;
@@ -57,40 +56,34 @@ const SIDEBAR_SECTIONS: readonly {
   readonly empty: string;
 }[] = [
   {
-    slot: "civilization.sidebar.projects",
-    title: "Projects",
-    icon: FolderKanbanIcon,
-    empty: "Projects run as civilizations, with their intent, arrive with missions (A3).",
-  },
-  {
     slot: "civilization.sidebar.inbox",
     title: "Inbox",
     icon: InboxIcon,
-    empty: "What agents ask you lands here once messaging (A2) does.",
+    empty: "Nothing from your agents waits for you.",
   },
   {
     slot: "civilization.sidebar.missions",
     title: "Missions",
     icon: TargetIcon,
-    empty: "Missions and their slices arrive with A3.",
+    empty: "No missions yet.",
   },
   {
     slot: "civilization.sidebar.teams",
     title: "Teams",
     icon: UsersIcon,
-    empty: "Teams arrive with A5.",
+    empty: "No teams yet.",
   },
   {
     slot: "civilization.sidebar.agents",
     title: "Agents",
     icon: BotIcon,
-    empty: "The roster of agents arrives with A1.",
+    empty: "No agents yet.",
   },
   {
     slot: "civilization.sidebar.health",
     title: "Health",
     icon: HeartPulseIcon,
-    empty: "Health warnings arrive with A7.",
+    empty: "No health warnings.",
   },
 ];
 
@@ -217,7 +210,7 @@ function Lead() {
   if (filled) return <Slot name="civilization.lead" />;
   return (
     <MainEmpty
-      text="You steer a civilization by talking to its lead. The conversation arrives with agents (A1) and their messages (A2); teams (A5) name the lead."
+      text="A team names its lead, the agent you talk to here. No team has one yet."
       title="No lead yet"
     />
   );

@@ -1182,8 +1182,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   no node, render `app.main`; the route keeps its mode, so Back returns to
   the shell.
 - **D749. The Civilization sidebar is slots.** A Lead entry, then one
-  section per workstream, each its own slot with an empty state naming who
-  fills it: `civilization.sidebar.projects` (A3), `.inbox` (A2), `.missions`
+  section per workstream, each its own slot with an empty state in the owner's
+  words: `civilization.sidebar.inbox` (A2), `.missions`
   (A3), `.teams` (A5), `.agents` (A1), `.health` (A7); the footer is the
   slot `civilization.sidebar.footer`, where the plugin contributes Settings
   (`jhin.civilization.settings`) and the palette (`jhin.civilization.palette`).
@@ -1385,8 +1385,7 @@ with its report as a "C3 run" note here.
   stream breaks; today the roster shows the error with a Retry button.
 - A1: a generation's own status in the page's list of generations
   (`agents.generations` has it); the list marks the current one only.
-- A3: the Projects section (`civilization.sidebar.projects`) with a
-  project's intent of its own; the Missions section groups by project and a
+- A3: (the Projects section was dropped, see C3) a project's own intent; the Missions section groups by project and a
   mission shows its project's intent (D654, D656).
 - A3: missions of a mesh member (`route.remote`): the view reads the route's
   connection's node only (D654); a slice's thread on a member is read through
@@ -1530,10 +1529,10 @@ with its report as a "C3 run" note here.
   node is quiet but its open warning stays: two warnings for one cause, which
   D724 means to avoid. Seen running the scenario (D1101): its Health
   section lists both; the test asserts only the mission's.
-- C3: Civilization mode's Projects section still says it arrives with A3,
-  which landed without filling it; the Missions section already groups by
-  project. Fill it (projects with their intent, C2's intent editing) or drop
-  the section.
+- C3: settled. Civilization mode's Projects section was dropped: the
+  Missions section already groups by project and the mission view edits the
+  project's intent (C2). `civilization.sidebar.projects` no longer exists;
+  every empty text now says in the owner's words what is empty.
 
 ## Landing
 
