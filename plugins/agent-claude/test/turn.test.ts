@@ -799,6 +799,59 @@ describe("jhin.agent-claude: a turn", () => {
     });
   });
 
+  it("ends afterwards when Claude Code exits while a subagent works in the background", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield toolUse("m1", "agent-bg", "Agent", {
+          description: "Dig",
+          prompt: "dig",
+          run_in_background: true,
+        });
+        yield system("background_tasks_changed", { tasks: [{ task_id: "task-1" }] });
+        yield toolResult("agent-bg", "Async agent launched");
+        yield result();
+        yield toolUse("sub", "read-1", "Read", { file_path: "/a" }, "agent-bg");
+        // Claude Code exits: no notification ever comes.
+      },
+    ]);
+    await drain(turn);
+    const afterwards: AgentItem[] = [];
+    for await (const item of turn.afterwards!) afterwards.push(item);
+    // Its thread is ended as interrupted by whoever reads it (the threads plugin, D1164).
+    expect(afterwards.map((item) => item.kind)).toEqual(["subagent.item"]);
+  });
+
+  it("lets go of the session when afterwards is left early", async () => {
+    let more!: () => void;
+    const unblocked = new Promise<void>((resolve) => (more = resolve));
+    const { turn, calls } = start([
+      async function* () {
+        yield init();
+        yield toolUse("m1", "agent-bg", "Agent", {
+          description: "Dig",
+          prompt: "dig",
+          run_in_background: true,
+        });
+        yield system("background_tasks_changed", { tasks: [{ task_id: "task-1" }] });
+        yield toolResult("agent-bg", "Async agent launched");
+        yield result();
+        yield toolUse("sub", "read-1", "Read", { file_path: "/a" }, "agent-bg");
+        await unblocked;
+        yield toolUse("sub2", "read-2", "Read", { file_path: "/b" }, "agent-bg");
+        yield system("background_tasks_changed", { tasks: [] });
+      },
+    ]);
+    await drain(turn);
+    for await (const item of turn.afterwards!) {
+      expect(item.kind).toBe("subagent.item");
+      break;
+    }
+    // Later frames reach no reader, and the session ends once its work does.
+    more();
+    await calls[0]!.whenClosed;
+  });
+
   it("does not move a subagent whose call already returned to the background", async () => {
     const { turn } = start([
       async function* () {

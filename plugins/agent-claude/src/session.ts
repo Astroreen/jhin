@@ -637,7 +637,17 @@ export function createLiveSessions(options: {
             }
           }
           live.holder?.push(message);
-          for (const tap of live.taps) tap.message(message);
+          for (const tap of live.taps) {
+            // A reader's failure is its own: the session goes on.
+            try {
+              tap.message(message);
+            } catch (error) {
+              options.log?.("a reader of claude code's messages failed", {
+                threadId,
+                error: String(error),
+              });
+            }
+          }
         }
         live.holder?.end();
       } catch (error) {

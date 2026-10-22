@@ -296,6 +296,9 @@ const subagentFrame = (message: SDKMessage) =>
       message.subtype === "task_updated" ||
       message.subtype === "task_notification"));
 
+/** Items `afterwards` holds unread before it gives up on its reader (D1165). */
+const MAX_UNREAD_LATER = 10_000;
+
 /** Claude Code refused the session: none to resume (`resume`), or it exists already. */
 class SessionMismatch extends Error {
   readonly resume: boolean;
@@ -316,7 +319,22 @@ export function claudeTurn(
   let interrupted = false;
   const out = channel<AgentItem>(() => interrupted);
   /** The later work of its subagents in the background (D1164), read after `items`. */
-  const later = channel<AgentItem>(() => false);
+  const laterItems = channel<AgentItem>(() => false);
+  /** Items handed to `afterwards` and not read yet. */
+  let unreadLater = 0;
+  const later = {
+    push: (item: AgentItem) => {
+      unreadLater += 1;
+      laterItems.push(item);
+    },
+    end: laterItems.end,
+    read: async function* () {
+      for await (const item of laterItems.read()) {
+        unreadLater -= 1;
+        yield item;
+      }
+    },
+  };
   /** The session is followed past the turn for its subagents in the background. */
   let following = false;
   /** Stops following the session: `afterwards` was given up on, or every subagent ended. */
@@ -834,8 +852,14 @@ export function claudeTurn(
     let untap = () => {
       tapping = false;
     };
-    /** After the turn: its subagents in the background, until each ended. */
+    /** After the turn: its subagents in the background, until each ended or nobody reads. */
     const follow = (message: SDKMessage) => {
+      // Nobody reads `afterwards` (it is optional for a runtime's caller): let go of the session.
+      if (unreadLater >= MAX_UNREAD_LATER) {
+        untap();
+        later.end();
+        return;
+      }
       if ("parent_tool_use_id" in message && message.parent_tool_use_id) {
         if (backgrounded.has(message.parent_tool_use_id)) {
           projectSubagent(message.parent_tool_use_id, message, later.push);
@@ -867,12 +891,14 @@ export function claudeTurn(
     };
     /** Hands the subagents still in the background over to `afterwards`. */
     const handOver = () => {
-      if (backgrounded.size === 0 || !tapping) return untap();
+      if (backgrounded.size === 0) return untap();
       following = true;
       release = untap;
+      // What came after the turn's last frame, also when Claude Code has exited since.
       for (const message of unread.splice(0)) {
         if ((order.get(message) ?? 0) > read) follow(message);
       }
+      if (!tapping) later.end();
     };
     if (interrupted) stop(lease);
     // Steers that came while the turn waited for its Claude Code go in after its message.
