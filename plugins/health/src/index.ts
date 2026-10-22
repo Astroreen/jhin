@@ -214,7 +214,8 @@ export default definePlugin({
         stream: threadStream(threadId),
         handle: (event: StoredEvent) => sensors.ingestThread(threadId, event),
       }));
-      void follow(sources);
+      // What a newly followed thread replays is counted: the detectors run after it.
+      void follow(sources).then(evaluateSoon);
     };
 
     /**
@@ -251,9 +252,16 @@ export default definePlugin({
      * after a dismissal the sensors count only what came since (`evaluate`).
      */
     const raise = async (finding: Finding) => {
-      const earlier = warningsOf(health).find(
-        (warning) => warning.detector === finding.detector && warning.subject === finding.subject,
-      );
+      // The latest warning of this detector and subject decides.
+      const earlier = Object.values(health.warnings)
+        .filter(
+          (warning) => warning.detector === finding.detector && warning.subject === finding.subject,
+        )
+        .reduce<Warning | undefined>(
+          (latest, warning) =>
+            latest === undefined || warning.raisedAt > latest.raisedAt ? warning : latest,
+          undefined,
+        );
       if (earlier?.status === "open") return;
       const warning: Warning = {
         warningId: Crypto.randomUUID(),
@@ -324,6 +332,28 @@ export default definePlugin({
      * activation asks again for every open warning without an analysis.
      */
     const analyse = async (warning: Warning) => {
+      // One ask at a time per warning; asked again meanwhile, it is looked at
+      // once more when this one ends (a config change naming an analyst).
+      if (asking.has(warning.warningId)) {
+        lookAgain.add(warning.warningId);
+        return;
+      }
+      asking.add(warning.warningId);
+      try {
+        await analyseOnce(warning);
+      } finally {
+        asking.delete(warning.warningId);
+      }
+      if (lookAgain.delete(warning.warningId)) {
+        const current = health.warnings[warning.warningId];
+        const unasked = current?.analysis === undefined || current.analysis.status === "none";
+        if (current?.status === "open" && unasked) void analyse(current);
+      }
+    };
+    /** Warnings whose analyst is being asked now, and those asked again meanwhile. */
+    const asking = new Set<string>();
+    const lookAgain = new Set<string>();
+    const analyseOnce = async (warning: Warning) => {
       await asksReady;
       // Health turned off asks nobody, also for warnings raised before.
       if (!config().enabled) return;
@@ -497,6 +527,11 @@ export default definePlugin({
         // Unanalysed, or analysed by nobody: a config change may name an analyst now.
         const unasked = warning.analysis === undefined || warning.analysis.status === "none";
         if (warning.status !== "open" || !unasked) continue;
+        // An ask under way is no ask cut short: it is looked at again once it ends.
+        if (asking.has(warning.warningId)) {
+          lookAgain.add(warning.warningId);
+          continue;
+        }
         if (!askedBefore.has(warning.warningId)) {
           void analyse(warning);
           continue;

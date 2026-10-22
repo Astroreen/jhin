@@ -988,7 +988,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   is dropped. An ask cut short by a deactivation records nothing. On activation an open
   warning without an analysis, or analysed by nobody (`none`), is asked again
   (also when the `jhin.health` config changes, so an analyst named later or
-  health turned on is asked), unless its ask had already
+  health turned on is asked; an ask under way is asked once, and looked at
+  again when it ends), unless its ask had already
   been delivered (`agents/messages`): then its analysis is recorded `failed`,
   pointing to the analyst's thread, so no analyst is asked twice. Asks wait
   for `agents.ask` to be registered (or for `kernel.started`), so a node
