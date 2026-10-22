@@ -31,9 +31,9 @@ export function chosenTeam(
   route: Pick<Route, "panel" | "section">,
 ): TeamRecord | undefined {
   const valid = teams.filter((team) => team.error === undefined);
+  // A team the route names is that team or none: never another lead (D1062).
   if (route.panel === undefined && route.section !== undefined) {
-    const named = valid.find((team) => team.teamId === route.section);
-    if (named !== undefined) return named;
+    return valid.find((team) => team.teamId === route.section);
   }
   return valid.find((team) => isUp(team)) ?? valid[0];
 }

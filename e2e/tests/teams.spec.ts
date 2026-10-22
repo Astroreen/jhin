@@ -53,7 +53,7 @@ test("D689, D691: a team is started, stopped and talked to through its lead in C
 
   // The owner talks to the lead in the Lead view, the one composer of the mode (C1, D1062).
   await team.getByRole("button", { name: "Talk to the lead" }).click();
-  const leadView = page.getByRole("region", { name: "Lead", exact: true });
+  const leadView = page.getByRole("region", { name: "Lead view" });
   await leadView.getByRole("textbox", { name: "Message to the lead" }).fill("Plan slice 3.");
   await leadView.getByRole("textbox", { name: "Message to the lead" }).press("Enter");
   const conversation = leadView.getByRole("log", { name: "Conversation with the lead" });

@@ -42,35 +42,47 @@ export function followConversation(
     const message = error instanceof Error ? error.message : String(error);
     set({ ...view, status: "error", error: message });
   };
+  /** Reads the conversation; a read that a newer one overtook says nothing, answer or error. */
   const read = async (): Promise<number | undefined> => {
     const ask = ++asked;
-    const answer = await client.call<{
-      head: number;
-      owner: string;
-      entries: ConversationEntry[];
-    }>("agents.conversation", { with: address });
-    if (stopped || ask !== asked) return undefined;
-    set({ status: "ready", entries: answer.entries, owner: answer.owner });
-    return answer.head;
+    try {
+      const answer = await client.call<{
+        head: number;
+        owner: string;
+        entries: ConversationEntry[];
+      }>("agents.conversation", { with: address });
+      if (stopped || ask !== asked) return undefined;
+      set({ status: "ready", entries: answer.entries, owner: answer.owner });
+      return answer.head;
+    } catch (error) {
+      if (!stopped && ask === asked) failed(error);
+      return undefined;
+    }
   };
-  void read()
-    .then((head) => {
-      if (stopped || head === undefined) return;
-      // Any message of the node may be one of this conversation: read it again.
-      subscription = client.subscribe(MESSAGES_STREAM, { after: head, onError: failed }, () => {
-        if (!stopped) void read().catch(failed);
-      });
-      if (stopped) subscription.dispose();
-    })
-    .catch(failed);
+  void read().then((head) => {
+    if (stopped || head === undefined) return;
+    // Any message of the node may be one of this conversation: read it again.
+    subscription = client.subscribe(MESSAGES_STREAM, { after: head, onError: failed }, () => {
+      if (!stopped) void read();
+    });
+    if (stopped) subscription.dispose();
+  });
   return toDisposable(() => {
     stopped = true;
     subscription?.dispose();
   });
 }
 
-/** Whether the owner's latest message is an ask that still waits for its answer. */
-export function waitingForAnswer(view: ConversationView): boolean {
-  const last = view.entries.findLast((entry) => entry.message.from === view.owner);
-  return last !== undefined && last.message.kind === "ask" && last.answer === undefined;
+/**
+ * Whether the owner's ask still has no answer. The view shows the ones this
+ * page is waiting for as being worked on, the others as having none (D1063).
+ */
+export function unanswered(entry: ConversationEntry, owner: string | undefined): boolean {
+  // An ask answered before D1061 has its answerer but no text.
+  return (
+    entry.message.from === owner &&
+    entry.message.kind === "ask" &&
+    entry.answer === undefined &&
+    entry.answeredBy === undefined
+  );
 }

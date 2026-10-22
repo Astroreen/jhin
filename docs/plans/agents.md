@@ -1244,19 +1244,26 @@ Decisions (C1):
   `jhin.teams-view` to `civilization.lead`, a chunk of its own (D440): the
   lead is a team's (D681), so the teams plugin owns talking to it. It talks
   to the route's team: the route has no panel and names the team as
-  `section` (`#m=civilization&s=workshop`); without one, the first team that
-  is up, else the first. With several teams a picker (`Team`) switches
+  `section` (`#m=civilization&s=workshop`), and a named team that is gone
+  or invalid is "No such team", never another lead; without one, the first
+  team that is up, else the first. With several teams a picker (`Team`) switches
   between them; `civilization.lead.open {node, teamId?}` opens it. The
   conversation is `agents.conversation` with the lead's alias, read again on
-  each event of `agents/messages` after its head (D1061). A team that is not
+  each event of `agents/messages` after its head (D1061); a read that a
+  newer one overtook is dropped, failure included, and a feed that failed
+  shows Retry. A team that is not
   up shows **Start team** (`teams.up`) and a closed composer; a node without
   teams says "No team yet" where the shell said "No lead yet".
 - **D1063. The owner asks the lead.** The composer (`Message to the lead`,
   Enter sends, Shift+Enter breaks the line) calls `agents.ask` with the
   lead's alias: the answer is the last message of the lead's turn (D624),
   recorded with the ask (D1061), so it arrives even when the page was closed
-  meanwhile. While the owner's latest ask has no answer, the view says the
-  lead is working on one; a failed or silent turn is a toast. What the lead
+  meanwhile. The page names the ask (`messageId`), so it says the lead is
+  working on an answer only for the asks it still waits on; any other ask
+  without an answer (a silent turn, a stopped team, an ask before a reload)
+  says "No answer from the lead". A silent turn is a toast; an ask that did
+  not reach the lead is a toast and gives its text back to an empty
+  composer. What the lead
   sends the owner shows as the lead's text; what it asks the owner (an
   escalation, D688) is a card with its inbox state and **Answer**, which
   opens the item in the inbox (`civilization.inbox.open`): answering stays

@@ -24,7 +24,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
 import { MessageText } from "../chat/message-text.tsx";
-import { CONVERSATION_LOADING, followConversation, waitingForAnswer } from "./conversation.ts";
+import { CONVERSATION_LOADING, followConversation, unanswered } from "./conversation.ts";
 import type { ConversationView } from "./conversation.ts";
 import { chosenTeam, isUp, leadRoute, teamRoute } from "./route.ts";
 import { useConnection, useTeams, type TeamsServices } from "./view.tsx";
@@ -57,6 +57,14 @@ export function LeadConsole({ services }: { services: TeamsServices }) {
     return <LeadEmpty text={`Couldn't load the teams: ${view.error}`} title="Lead" />;
   }
   const team = view.status === "ready" ? chosenTeam(view.teams, route) : undefined;
+  if (team === undefined && route.section !== undefined && view.status === "ready") {
+    return (
+      <LeadEmpty
+        text={`This node has no team ${route.section} whose lead you could talk to.`}
+        title="No such team"
+      />
+    );
+  }
   if (team === undefined) {
     return (
       <LeadEmpty
@@ -93,11 +101,16 @@ function Conversation(props: {
   const [starting, setStarting] = useState(false);
   const log = useRef<HTMLDivElement>(null);
 
+  /** The asks this page sent and still waits on, by message id (D1063). */
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  /** Bumped by Retry: following again after the feed failed. */
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     if (client === undefined) return;
     const following = followConversation(client, lead, setView);
     return () => following.dispose();
-  }, [client, lead]);
+  }, [client, lead, attempt]);
 
   // The newest message in view, as a chat does.
   useEffect(() => {
@@ -125,10 +138,22 @@ function Conversation(props: {
   const send = () => {
     const question = draft.trim();
     if (client === undefined || question === "" || !up) return;
+    // The page names the ask, so it knows which one it waits on.
+    const messageId = crypto.randomUUID();
+    const settle = () =>
+      setPending((now) => {
+        const next = new Set(now);
+        next.delete(messageId);
+        return next;
+      });
+    setPending((now) => new Set(now).add(messageId));
     setDraft("");
     // The ask lands on the stream at once; its answer when the lead's turn ends (D624).
-    client.call("agents.ask", { to: lead, question }).catch((error: unknown) => {
+    client.call("agents.ask", { to: lead, question, messageId }).then(settle, (error: unknown) => {
+      settle();
       const silent = (error as { code?: unknown } | null)?.code === "NO_ANSWER";
+      // A text that never reached the lead comes back to the composer, if it is still empty.
+      if (!silent) setDraft((now) => (now === "" ? question : now));
       services.toasts?.show({
         type: silent ? "warning" : "error",
         title: silent ? "The lead's turn ended without an answer" : "Couldn't reach the lead",
@@ -143,9 +168,11 @@ function Conversation(props: {
     send();
   };
 
-  const waiting = waitingForAnswer(view);
+  const waiting = view.entries.some(
+    (entry) => pending.has(entry.message.messageId) && unanswered(entry, view.owner),
+  );
   return (
-    <section aria-label="Lead" className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <section aria-label="Lead view" className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex h-[var(--workspace-topbar-height)] shrink-0 items-center gap-2 border-b border-border px-4">
         <CrownIcon aria-hidden className="size-4 shrink-0 text-warning" />
         <h1 className="text-sm font-medium">Lead</h1>
@@ -212,19 +239,25 @@ function Conversation(props: {
                 entry={entry}
                 key={entry.message.messageId}
                 owner={view.owner}
+                pending={pending.has(entry.message.messageId)}
                 services={services}
                 connection={connection}
               />
             ))
           )}
-          {waiting ? (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
-              <Spinner className="size-3.5" /> The lead is working on an answer…
-            </p>
-          ) : null}
+          <div aria-live="polite">
+            {waiting ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner className="size-3.5" /> The lead is working on an answer…
+              </p>
+            ) : null}
+          </div>
           {view.status === "error" ? (
-            <p className="text-sm text-destructive-foreground" role="alert">
+            <p className="flex items-center gap-2 text-sm text-destructive-foreground" role="alert">
               Not live: {view.error}
+              <Button onClick={() => setAttempt((now) => now + 1)} size="xs" variant="outline">
+                Retry
+              </Button>
             </p>
           ) : null}
         </div>
@@ -289,6 +322,8 @@ function LeadText({ text }: { text: string }) {
 function Entry(props: {
   entry: ConversationEntry;
   owner: string | undefined;
+  /** Whether this page waits on its answer. */
+  pending: boolean;
   services: TeamsServices;
   connection: string;
 }) {
@@ -301,7 +336,11 @@ function Entry(props: {
           caption={message.kind === "answer" ? "Your answer to the lead" : undefined}
           text={message.body}
         />
-        {entry.answer === undefined ? null : <LeadText text={entry.answer} />}
+        {entry.answer !== undefined ? (
+          <LeadText text={entry.answer} />
+        ) : unanswered(entry, owner) && !props.pending ? (
+          <p className="pb-4 text-xs text-muted-foreground">No answer from the lead.</p>
+        ) : null}
       </>
     );
   }
@@ -332,7 +371,13 @@ function Entry(props: {
                   node: props.connection,
                   messageId: message.messageId,
                 })
-                .catch(() => undefined)
+                .catch((error: unknown) =>
+                  props.services.toasts?.show({
+                    type: "error",
+                    title: "Couldn't open it in the inbox",
+                    description: errorText(error),
+                  }),
+                )
             }
             size="xs"
             variant="outline"

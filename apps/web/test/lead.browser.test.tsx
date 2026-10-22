@@ -17,7 +17,10 @@ import { LeadConsole } from "../src/plugins/teams/lead.tsx";
 import { createTeamsStore } from "../src/plugins/teams/store.ts";
 import type { TeamsServices } from "../src/plugins/teams/view.tsx";
 
-const ROUTE = { node: "a", mode: "civilization" };
+const ROUTE: { node: string; mode: string; section?: string } = {
+  node: "a",
+  mode: "civilization",
+};
 const OWNER = "jhin://a/owner";
 const LEAD = "jhin://a/agents/workshop-lead";
 const team = (upAt?: string): TeamRecord => ({
@@ -73,6 +76,7 @@ function nodeOf(answer: (method: string, input: unknown) => unknown) {
     subscribe: () => toDisposable(() => {}),
   } as unknown as Connections;
   const executed: [string, unknown][] = [];
+  const toasts: { type?: string; title: string }[] = [];
   const navigated: unknown[] = [];
   const services: TeamsServices = {
     connections,
@@ -81,7 +85,7 @@ function nodeOf(answer: (method: string, input: unknown) => unknown) {
       subscribe: () => toDisposable(() => {}),
       navigate: (route: unknown) => navigated.push(route),
     } as unknown as TeamsServices["navigation"],
-    toasts: undefined,
+    toasts: { show: (toast: { type?: string; title: string }) => toasts.push(toast) } as never,
     store: createTeamsStore(connections, { warn() {} }),
     commands: {
       execute: async (name: string, input: unknown) => {
@@ -93,7 +97,7 @@ function nodeOf(answer: (method: string, input: unknown) => unknown) {
   const push = async () => {
     await act(async () => streams.get(MESSAGES_STREAM)?.());
   };
-  return { services, calls, executed, navigated, push };
+  return { services, calls, executed, navigated, push, toasts };
 }
 
 let unmount: (() => Promise<void>) | undefined;
@@ -147,18 +151,68 @@ describe("the conversation with the lead (C1)", () => {
     // The composer asks the lead by its alias (D1063); the ask shows once recorded.
     await userEvent.type(page.getByRole("textbox", { name: "Message to the lead" }), "Ship it?");
     await userEvent.keyboard("{Enter}");
-    expect(node.calls.filter(([method]) => method === "agents.ask")).toEqual([
-      ["agents.ask", { to: "lead@workshop", question: "Ship it?" }],
-    ]);
+    const asks = node.calls.filter(([method]) => method === "agents.ask");
+    expect(asks).toMatchObject([["agents.ask", { to: "lead@workshop", question: "Ship it?" }]]);
+    const messageId = (asks[0]![1] as { messageId: string }).messageId;
     await expect
       .element(page.getByRole("textbox", { name: "Message to the lead" }))
       .toHaveValue("");
-    entries = [...entries, { message: message("m3", OWNER, LEAD, "ask", "Ship it?") }];
+    entries = [...entries, { message: message(messageId, OWNER, LEAD, "ask", "Ship it?") }];
     await node.push();
     await expect
       .element(log.getByRole("article", { name: "You" }).nth(1))
       .toHaveTextContent("Ship it?");
     await expect.element(log.getByText("The lead is working on an answer…")).toBeVisible();
+  });
+
+  it("gives the text back when the lead was not reached, and says an ask got no answer", async () => {
+    const entries: ConversationEntry[] = [
+      // Asked earlier, from another page or before a reload: nobody waits on it here.
+      { message: message("m1", OWNER, LEAD, "ask", "Still there?") },
+    ];
+    const node = nodeOf((method) => {
+      if (method === "teams.list") return { head: 1, teams: [team("2026-10-22T09:00:00Z")] };
+      if (method === "agents.conversation") return { head: 1, owner: OWNER, with: LEAD, entries };
+      if (method === "agents.ask") {
+        throw Object.assign(new Error("The agent workshop-lead is stopped"), {
+          code: "AGENT_STOPPED",
+        });
+      }
+      throw new Error(method);
+    });
+    await render(<LeadConsole services={node.services} />);
+    const log = page.getByRole("log", { name: "Conversation with the lead" });
+    await expect.element(log.getByText("No answer from the lead.")).toBeVisible();
+    await expect
+      .element(log.getByText("The lead is working on an answer…"))
+      .not.toBeInTheDocument();
+
+    const box = page.getByRole("textbox", { name: "Message to the lead" });
+    await userEvent.type(box, "Go on");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(box).toHaveValue("Go on");
+    expect(node.toasts).toEqual([
+      {
+        type: "error",
+        title: "Couldn't reach the lead",
+        description: "The agent workshop-lead is stopped",
+      },
+    ]);
+  });
+
+  it("says a team the route names is not there, instead of talking to another lead", async () => {
+    const node = nodeOf((method) => {
+      if (method === "teams.list") return { head: 1, teams: [team("2026-10-22T09:00:00Z")] };
+      throw new Error(method);
+    });
+    ROUTE.section = "gone";
+    try {
+      await render(<LeadConsole services={node.services} />);
+      await expect.element(page.getByText("No such team")).toBeVisible();
+      expect(node.calls.some(([method]) => method === "agents.conversation")).toBe(false);
+    } finally {
+      delete ROUTE.section;
+    }
   });
 
   it("offers to start a team that is not up, and keeps the composer closed until then", async () => {
