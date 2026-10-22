@@ -940,6 +940,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       context.log.info("a thread waits on its open linked pull requests", { threadId });
     } else if (decided === undefined) {
       context.log.info("no linked pull request settles the thread", { threadId });
+      // Its branch's pull request decides now, as read last (D447), not at the next lookup.
+      const known = threads.get(threadId);
+      const repo = known === undefined ? undefined : repos.get(known.projectId);
+      const cached = known?.branch == null ? undefined : repo?.pullRequests.get(known.branch)?.pr;
+      if (
+        repo !== undefined &&
+        known?.branch != null &&
+        cached != null &&
+        cached.state !== "open"
+      ) {
+        await settleOnPullRequest(repo, known.branch, cached);
+      }
     } else {
       announceSettle(threadId, decided);
     }

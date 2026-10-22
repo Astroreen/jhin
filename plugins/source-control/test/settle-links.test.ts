@@ -126,6 +126,11 @@ describe("jhin.source-control: settling a thread on its linked pull requests (D1
       await sc.client.call<{ id: string; settledAt?: string }[]>("threads.list", { projectId })
     ).filter((item) => item.id === onBranch);
     expect(thread?.settledAt).toBeUndefined();
+
+    // Unlinking the open link lets the branch's merged pull request settle it at once.
+    const freed = sc.next("threads", settled(onBranch));
+    await sc.client.call("git.pr.unlink", { threadId: onBranch, url: url(10) });
+    await freed;
   });
 
   it("settles a thread when its open link merges, read again", async () => {
