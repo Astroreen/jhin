@@ -355,7 +355,7 @@ const sameStatus = (a: ProjectStatus | undefined, b: ProjectStatus) =>
   JSON.stringify({ ...a, checkedAt: "" }) === JSON.stringify({ ...b, checkedAt: "" });
 
 const isCommandMissing = (error: unknown) =>
-  (error as { code?: unknown }).code === "COMMAND_NOT_FOUND";
+  (error as { code?: unknown } | null)?.code === "COMMAND_NOT_FOUND";
 
 export function activateSourceControl(context: PluginContext): SourceControl {
   const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
@@ -1728,7 +1728,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       const existing = await context.commands.execute("threads.get", { threadId }).then(
         () => true,
         (error: unknown) => {
-          if ((error as { code?: unknown }).code === "THREAD_NOT_FOUND") return false;
+          if ((error as { code?: unknown } | null)?.code === "THREAD_NOT_FOUND") return false;
           throw error;
         },
       );

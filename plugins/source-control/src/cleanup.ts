@@ -203,6 +203,10 @@ export async function judge(
 ): Promise<{ keep: string } | { remove: string }> {
   const keep = (reason: string) => ({ keep: sentence(reason) });
   if (candidate.deleted && !rules.onDelete) return keep("no rules apply");
+  // A live thread's worktree under the delete rule alone: nothing to read git for.
+  if (!candidate.deleted && !cleanupEnabled({ ...rules, onDelete: false })) {
+    return keep("no rules apply");
+  }
   if (candidate.threads.length > 1) return keep(`shared by ${candidate.threads.length} threads`);
   if (candidate.threads.some((thread) => thread.running)) {
     return keep("thread is running or has pending work");
