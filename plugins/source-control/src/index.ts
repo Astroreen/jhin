@@ -548,6 +548,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       removingThreads.delete(threadId);
       heldThreads.delete(threadId);
       unsettledByLinks.delete(threadId);
+      const told = `${JSON.stringify([threadId]).slice(0, -1)},`;
+      for (const key of Array.from(announced)) if (key.startsWith(told)) announced.delete(key);
     }
     await turns.remove(threadId);
     if (!threads.delete(threadId)) return;
