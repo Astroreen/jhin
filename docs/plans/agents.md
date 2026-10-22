@@ -1305,6 +1305,43 @@ Decisions (C2):
   small PRs or written down as lore in `docs/lore/`; what is missing goes to
   [Deferred](#deferred) with the run as its evidence.
 
+C3 decisions:
+
+- **D1101. One scenario, one node, `e2e/tests/civilization.spec.ts`.** A
+  team of three fake agents (lead, builder, reviewer) from a `jhin.teams`
+  spec in config, `teams.up`, the intent, a mission with two waves of
+  slices, `missions.orchestrate` from the lead's generation, proofs, an ask
+  to the owner answered through the inbox, and a ceremony warning: the
+  builder reports to the owner again and again. It ends when the mission is
+  set done, which is the lead's decision (D651), sent for it (D1102). It
+  follows the `missions`, `orchestration`, `agents/messages`,
+  `agents/inbox` and `health` streams from their start
+  (`e2e/tests/support/streams.ts`) and waits for the record it expects; it
+  never waits for time.
+- **D1102. The fake agents' own acts are commands sent for them.** The fake
+  runtime calls no tools, so the test calls what an agent's MCP tools call:
+  `slices.prove`, `missions.update`, and `agents.ask` and `agents.send`
+  with the agent as `from` (D622). Everything the node does by itself
+  (handoffs, thread links, the inbox item, the warning, its analysis, the
+  orchestrator's outcomes) is asserted, never driven.
+- **D1103. The scenario proves the threshold, not just a warning.** Health
+  runs with a low `ceremony` config. Health takes each event as the log
+  appends it, so once the last handoff is in the log `health.status` is
+  exact: the test sends exactly the messages that reach `limitOf` (D722),
+  reads the mission's count after each (one more each time, so the limit is
+  reached with the last and not before), and asserts the warning's
+  `measures` and that the agent with the context analysed it (D725).
+- **D1104. Commands first, the UI where it exists.** Until C1 and C2 land,
+  every step is a command; the test ends in Civilization mode on what A3
+  and A7 already show (the mission view, the health section). Steps move to
+  C1's console and C2's mission editing as they land.
+
+Where C3 stands: the scenario (its first bullet) runs on commands, with every
+part the bullet names. Left: its steps through C1's console (the
+conversation with the lead, bringing the team up) and C2's mission editing
+and orchestrator view once they land, and the real run (the second bullet),
+with its report as a "C3 run" note here.
+
 ## Deferred
 
 - Pods (groups inside a team).
@@ -1484,6 +1521,19 @@ Decisions (C2):
   cancellation signal (as W10's waits), so a stopped run's wait ends at its
   timeout.
 - A6: journaling `command()` results (D705) so a resumed run reuses them.
+- C3: a fake runtime that calls the agent's own tools (`slices_prove`,
+  `agents_ask`, `agents_send`) on a slash command, so the scenario runs the
+  agents' path through MCP instead of commands sent for them (D1102).
+- C3: a node warning raised before its mission's stays open beside it. The
+  owner's messages to the lead count only for the node (the lead holds no
+  slice), so the node crosses first, and when the mission crosses later the
+  node is quiet but its open warning stays: two warnings for one cause, which
+  D724 means to avoid. Seen running the scenario (D1101): its Health
+  section lists both; the test asserts only the mission's.
+- C3: Civilization mode's Projects section still says it arrives with A3,
+  which landed without filling it; the Missions section already groups by
+  project. Fill it (projects with their intent, C2's intent editing) or drop
+  the section.
 
 ## Landing
 
@@ -1567,3 +1617,6 @@ Each workstream lists its PRs here as they merge.
   mission, Edit intent, Edit mission, Add slice and Edit slice through the
   `missions.*` and `slices.*` commands, assignees by their agent's title
   (D1081–D1085).
+- C3 #193: the civilization scenario in `e2e/tests/civilization.spec.ts`
+  on the fake runtime, through commands, with `e2e/tests/support/streams.ts`
+  (D1101–D1104); what it exposed went to Deferred.

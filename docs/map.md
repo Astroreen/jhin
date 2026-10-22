@@ -197,7 +197,7 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 - `patches/` — pnpm patches of dependencies (`patchedDependencies` in
   `pnpm-workspace.yaml`): T3's `@pierre/diffs` patch, find in the diff
   (`plans/source-control.md#D924`).
-- `e2e/` — Playwright end-to-end tests.
+- `e2e/` — Playwright end-to-end tests; `tests/support/` starts nodes (`node.ts`) and follows a node's streams to the record a test waits for (`streams.ts`).
 - `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
   `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a
   checkout, see its README).
