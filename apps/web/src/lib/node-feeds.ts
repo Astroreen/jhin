@@ -124,7 +124,12 @@ export function createNodeFeeds<S>(
     let everRead = false;
     /** A retry waiting for the minute to pass. */
     let waitingRetry: Disposable | undefined;
+    /** The current subscription's number: a disposed one's late events are ignored. */
+    let generation = 0;
     const retry = () => {
+      // The dropped subscription is given up now, not when the read answers:
+      // what it still delivers or reports meanwhile is not heard.
+      generation += 1;
       lastRetry = clock();
       rereads.set(id, []);
       for (const subscription of subscriptions.splice(0)) subscription.dispose();
@@ -172,8 +177,6 @@ export function createNodeFeeds<S>(
             },
       );
     };
-    /** The current subscription's number: a disposed one's late events are ignored. */
-    let generation = 0;
     const follow = (again = false) =>
       void source
         .load(client)

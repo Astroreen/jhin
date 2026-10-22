@@ -94,7 +94,7 @@ export const healthPlugin = builtin(
           name: "civilization.health.open",
           title: "Open health",
           description:
-            "Opens Civilization mode's health: a warning with the events behind it, or the overview of ceremony and progress (D731)",
+            "Opens Civilization mode's health: a warning with the events behind it, or the overview of ceremony and progress (D731). A warning id the node's health, once read, does not hold is WARNING_NOT_FOUND; while it is still being read the page opens and says so",
           input: z.object({
             node: z.string().min(1).meta({ description: "The connection the warning is on" }),
             warningId: z.string().min(1).optional(),
@@ -111,7 +111,7 @@ export const healthPlugin = builtin(
             const feed = store.snapshot().get(node);
             if (
               warningId !== undefined &&
-              feed?.status === "ready" &&
+              (feed?.status === "ready" || feed?.status === "error") &&
               feed.value.warnings[warningId] === undefined
             ) {
               throw Object.assign(new Error(`No warning ${warningId}`), {

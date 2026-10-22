@@ -277,6 +277,9 @@ describe("node feeds (D630, D731)", () => {
     await next;
     next = ready();
     onError!(new Error("dropped"));
+    // While the re-read is under way, the dropped subscription is not heard either.
+    listeners[0]!({ type: "add", payload: "early" });
+    expect(feeds.snapshot().get("a")?.value).toEqual(["a"]);
     await next;
     // The old subscription delivers "b" late, which the re-read already holds.
     listeners[0]!({ type: "add", payload: "b" });
