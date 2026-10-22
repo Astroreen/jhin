@@ -18,6 +18,7 @@ import {
   reachableBaseUrl,
   type PairingLink,
 } from "./pair.ts";
+import { DEFAULT_TAILSCALE_SERVE_PORT, publishOverTailscale } from "./tailscale.ts";
 
 const require = Module.createRequire(import.meta.url);
 
@@ -56,6 +57,9 @@ const USAGE = `Usage:
          [--permission <grant>] ...repeatable; limits what the paired device can do
                                    (default: every permission the token holds)
          [--base-url <url>]     ...the address other devices reach the node by
+         [--tailscale]          ...publish the node over Tailscale Serve HTTPS and pair through
+                                   the tailnet URL (never to the internet)
+         [--tailscale-serve-port <port>]  ...its HTTPS port (default: 443)
          [--json]               ...print the pairing link as JSON instead
   jhin mcp                      serve every command as an MCP tool over stdio
   jhin <command> [--key value]  run a registered command, e.g. jhin example.greet --name Ada
@@ -270,7 +274,9 @@ async function pair(
   // A flag without its value is refused, never read as "not given": a bare
   // `--permission` would otherwise pair with every permission the token holds.
   const permissions = allValues(argv, "permission");
-  const valueless = ["label", "ttl", "base-url"].filter((key) => options.get(key) === true);
+  const valueless = ["label", "ttl", "base-url", "tailscale-serve-port"].filter(
+    (key) => options.get(key) === true,
+  );
   if (permissions === undefined) valueless.unshift("permission");
   if (valueless.length > 0) {
     process.stderr.write(`${valueless.map((key) => `--${key}`).join(", ")} needs a value\n`);
@@ -282,16 +288,38 @@ async function pair(
     process.stderr.write(`--ttl takes minutes, e.g. --ttl 10; got ${ttl}\n`);
     return 2;
   }
+  const tailscale = options.get("tailscale") === true;
+  const servePort = Number(option("tailscale-serve-port") ?? DEFAULT_TAILSCALE_SERVE_PORT);
+  if (tailscale && (remote.url !== undefined || options.has("base-url"))) {
+    process.stderr.write(
+      "--tailscale publishes the node running from this home; it takes no --url or --base-url\n",
+    );
+    return 2;
+  }
+  if (!Number.isInteger(servePort) || servePort < 1 || servePort > 65_535) {
+    process.stderr.write(`--tailscale-serve-port takes a port; got ${servePort}\n`);
+    return 2;
+  }
   let url = remote.url;
+  let baseUrl = option("base-url");
+  const notes: string[] = [];
   try {
-    url ??= (await discoverNode(remote.home)).url;
+    if (url === undefined) {
+      const node = await discoverNode(remote.home);
+      url = node.url;
+      if (tailscale) {
+        const published = await publishOverTailscale({ node, servePort });
+        baseUrl = published.baseUrl;
+        notes.push(...published.notes);
+      }
+    }
   } catch (error) {
     if (!(error instanceof PairError)) throw error;
     process.stderr.write(`${error.message}\n`);
     return 1;
   }
   const origin = new URL(url.replace(/^ws/, "http")).origin;
-  const baseUrl = option("base-url") ?? reachableBaseUrl(origin);
+  baseUrl ??= reachableBaseUrl(origin);
   return withTarget({ ...remote, url }, async (target) => {
     const link = (await target.execute("auth.pairing.create", {
       label: option("label") ?? "jhin pair",
@@ -317,7 +345,7 @@ async function pair(
         pairingUrl,
         code: link.code,
         expiresAt: link.expiresAt,
-        notes: pairingNotes(pairingUrl),
+        notes: [...notes, ...pairingNotes(pairingUrl)],
       }),
     );
     return 0;

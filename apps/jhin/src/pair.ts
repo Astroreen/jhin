@@ -59,17 +59,34 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** The instance a node answers with at `/.well-known/jhin`, or undefined when nothing answers so. */
-async function probeInstance(baseUrl: string): Promise<string | undefined> {
+/** What answers at an address's `/.well-known/jhin` (docs/plans/security.md D1184). */
+export type Probe =
+  | { readonly kind: "node"; readonly instance: string }
+  | { readonly kind: "unreachable" }
+  | { readonly kind: "other" };
+
+export async function probeNode(baseUrl: string): Promise<Probe> {
+  let response: Response;
   try {
-    const response = await fetch(new URL("/.well-known/jhin", baseUrl), {
+    response = await fetch(new URL("/.well-known/jhin", baseUrl), {
       signal: AbortSignal.timeout(2_500),
     });
-    if (!response.ok) return undefined;
-    const body = (await response.json()) as { instance?: unknown };
-    return typeof body.instance === "string" ? body.instance : undefined;
   } catch {
-    return undefined;
+    return { kind: "unreachable" };
+  }
+  // A proxy answering for a backend that is gone (a stale mapping) is no
+  // occupant: T3 treats the bad-gateway family as unreachable, so the mapping
+  // can be repaired after the node's port changed.
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    return { kind: "unreachable" };
+  }
+  try {
+    const body = (await response.json()) as { instance?: unknown };
+    return response.ok && typeof body.instance === "string"
+      ? { kind: "node", instance: body.instance }
+      : { kind: "other" };
+  } catch {
+    return { kind: "other" };
   }
 }
 
@@ -101,8 +118,8 @@ export async function discoverNode(home: string | undefined): Promise<RuntimeSta
     throw missing;
   }
   if (!isProcessAlive(state.pid)) throw missing;
-  const answered = await probeInstance(localUrl(state.url));
-  if (answered === undefined || answered !== state.instance) throw missing;
+  const probed = await probeNode(localUrl(state.url));
+  if (probed.kind !== "node" || probed.instance !== state.instance) throw missing;
   return state;
 }
 
@@ -137,12 +154,12 @@ export function pairingNotes(pairingUrl: string): string[] {
   const url = new URL(pairingUrl);
   if (isLoopbackHost(url.hostname)) {
     return [
-      "This URL is only reachable from this machine. Set jhin.http.host to an address other devices reach and restart the node.",
+      "This URL is only reachable from this machine. Re-run with --tailscale, or set jhin.http.host to an address other devices reach and restart the node.",
     ];
   }
   if (url.protocol === "http:") {
     return [
-      "This URL is plain HTTP: anyone on the network path can read the pairing code and the token it becomes. Prefer an HTTPS proxy.",
+      "This URL is plain HTTP: anyone on the network path can read the pairing code and the token it becomes. Prefer --tailscale or an HTTPS proxy.",
     ];
   }
   return [];
