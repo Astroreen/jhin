@@ -156,4 +156,15 @@ describe("health views (D731)", () => {
       .toBeVisible();
     await expect.element(page.getByRole("button", { name: /Recursive proof loop/ })).toBeVisible();
   });
+
+  it("does not say all is well before a node has answered", async () => {
+    const { view } = viewOf({ a: { status: "unsupported", value: healthOf() } }, async () => ({}));
+    await render(
+      <SidebarProvider>
+        <HealthList view={view} />
+      </SidebarProvider>,
+    );
+    await expect.element(page.getByText("No node here reports health.")).toBeVisible();
+    await expect.element(page.getByText("No warnings.")).not.toBeInTheDocument();
+  });
 });

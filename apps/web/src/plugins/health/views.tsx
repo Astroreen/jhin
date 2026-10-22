@@ -55,31 +55,39 @@ export function HealthList({ view }: { view: HealthView }) {
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}
-      {warnings.length === 0 ? (
+      {warnings.length > 0 ? null : ready.length > 0 ? (
         <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">No warnings.</p>
       ) : (
-        warnings.map(({ node, warning }) => (
-          <SidebarMenuItem key={`${node}|${warning.warningId}`}>
-            <SidebarMenuButton
-              className="h-auto py-1.5"
-              isActive={
-                route.panel === HEALTH_PANEL &&
-                route.node === node &&
-                route.section === warning.warningId
-              }
-              onClick={() => view.navigation.navigate(healthRoute(node, warning.warningId))}
-            >
-              <TriangleAlertIcon />
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-xs text-sidebar-muted-foreground">
-                  {groupLabel(warning.group)}
-                </span>
-                <span className="truncate">{detectorLabel(warning)}</span>
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ))
+        // Nothing read yet is not "all healthy".
+        <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">
+          {[...nodes.values()].some((feed) => feed.status === "loading")
+            ? "Reading health…"
+            : "No node here reports health."}
+        </p>
       )}
+      {warnings.length === 0
+        ? null
+        : warnings.map(({ node, warning }) => (
+            <SidebarMenuItem key={`${node}|${warning.warningId}`}>
+              <SidebarMenuButton
+                className="h-auto py-1.5"
+                isActive={
+                  route.panel === HEALTH_PANEL &&
+                  route.node === node &&
+                  route.section === warning.warningId
+                }
+                onClick={() => view.navigation.navigate(healthRoute(node, warning.warningId))}
+              >
+                <TriangleAlertIcon />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-xs text-sidebar-muted-foreground">
+                    {groupLabel(warning.group)}
+                  </span>
+                  <span className="truncate">{detectorLabel(warning)}</span>
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
     </SidebarMenu>
   );
 }
