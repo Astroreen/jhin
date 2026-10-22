@@ -148,7 +148,7 @@ export function createNodeFeeds<S>(
         .load(client)
         .then(({ head, state: read }) => {
           if (stopped) return;
-          const before = states.get(id)?.value ?? source.empty;
+          const shown = states.get(id)?.value ?? source.empty;
           // What this client changed while the stream was read again may not
           // be in what was read: it is applied to it once more.
           const state = (rereads.get(id) ?? []).reduce(
@@ -160,7 +160,7 @@ export function createNodeFeeds<S>(
           // What arrived while the stream was down is told now, not lost.
           if (again) {
             try {
-              source.reread?.(connection, before, state);
+              source.reread?.(connection, shown, state);
             } catch (error) {
               log.warn("a feed's listener failed", { stream: source.stream, error: String(error) });
             }
