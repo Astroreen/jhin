@@ -915,7 +915,15 @@ describe("jhin.threads: usage limits (providers.md D1141)", () => {
         resetCredits: { availableCount: -1 },
       }),
     };
-    const plain: AgentRuntime = { agentId: "acme.plain", startTurn: fakeTurn };
+    // Its own `/usage-limits` stays its own: it reports no limits for the client to answer.
+    const plain: AgentRuntime = {
+      agentId: "acme.plain",
+      startTurn: fakeTurn,
+      commands: async () => ({
+        commands: [{ name: "usage-limits", description: "Its own" }],
+        skills: [],
+      }),
+    };
     const { client } = await node({ plugins: [registering(limited), registering(plain)] });
     expect(await client.call("agents.usage-limits", { agentId: "acme.limited" })).toEqual({
       usageLimits: {
@@ -928,6 +936,9 @@ describe("jhin.threads: usage limits (providers.md D1141)", () => {
     expect(await client.call("agents.usage-limits", { agentId: "acme.plain" })).toEqual({
       usageLimits: null,
     });
+    expect(
+      await client.call("agents.commands", { projectId: "scratch", agentId: "acme.plain" }),
+    ).toEqual({ commands: [{ name: "usage-limits", description: "Its own" }], skills: [] });
     const agents = await client.call<{ agentId: string; usageLimits: boolean }[]>("agents.list");
     expect(
       Object.fromEntries(agents.map((agent) => [agent.agentId, agent.usageLimits])),
