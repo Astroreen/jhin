@@ -577,6 +577,16 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
         "mine\n",
       );
 
+      // So does a commit on another local branch of a submodule, its HEAD back where it was.
+      const branched = await create("branched-lib");
+      const branchedLib = Path.join(branched.worktreePath, "lib");
+      git(branchedLib, "switch", "--quiet", "-c", "mine");
+      git(branchedLib, "commit", "--quiet", "--allow-empty", "-m", "on a branch");
+      git(branchedLib, "switch", "--quiet", "--detach", "HEAD~1");
+      await sc.client.call("threads.delete", { threadId: "branched-lib" });
+      await sc.client.call("git.worktree.cleanup", {});
+      expect(git(branchedLib, "branch", "--list", "mine").trim()).toContain("mine");
+
       // The unpushed submodule commit keeps its worktree too.
       await sc.client.call("threads.delete", { threadId: "ahead-lib" });
       await sc.client.call("git.worktree.cleanup", {});
