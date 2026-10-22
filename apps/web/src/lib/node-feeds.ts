@@ -61,6 +61,12 @@ export interface NodeFeedSource<S> {
   reread?(connection: NodeConnection, before: S, after: S): void;
 }
 
+/**
+ * The most a re-read tells, newest first: after a long outage the rest is in
+ * the sidebar, not a burst of notifications.
+ */
+export const MAX_TOLD_ON_REREAD = 3;
+
 /** The least time between two retries of one feed. */
 const RETRY_GAP_MS = 60_000;
 

@@ -5,7 +5,12 @@ import { INBOX_STREAM, MessageEvents, type InboxItem } from "@jhin/agent-api";
 import type { Connections, NodeConnection } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
 
-import { createNodeFeeds, type NodeFeed, type NodeFeeds } from "../../lib/node-feeds.ts";
+import {
+  MAX_TOLD_ON_REREAD,
+  createNodeFeeds,
+  type NodeFeed,
+  type NodeFeeds,
+} from "../../lib/node-feeds.ts";
 
 /** One node's open items, oldest first. */
 export type NodeInbox = NodeFeed<readonly InboxItem[]>;
@@ -55,11 +60,13 @@ export function createInboxStore(
     },
     apply: applyInboxEvent,
     reread: (connection, before, after) => {
-      for (const item of after) {
-        if (!before.some((known) => known.message.messageId === item.message.messageId)) {
-          arrived(connection, item);
-        }
-      }
+      after
+        .filter(
+          (item) => !before.some((known) => known.message.messageId === item.message.messageId),
+        )
+        .toSorted((a, b) => b.message.sentAt.localeCompare(a.message.sentAt))
+        .slice(0, MAX_TOLD_ON_REREAD)
+        .forEach((item) => arrived(connection, item));
     },
     seen: (connection, event, before, after) => {
       if (event.type === MessageEvents.received && after !== before)

@@ -12,7 +12,12 @@ import {
 import type { Connections, NodeConnection } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
 
-import { createNodeFeeds, type NodeFeed, type NodeFeeds } from "../../lib/node-feeds.ts";
+import {
+  MAX_TOLD_ON_REREAD,
+  createNodeFeeds,
+  type NodeFeed,
+  type NodeFeeds,
+} from "../../lib/node-feeds.ts";
 
 export type NodeHealth = NodeFeed<HealthState>;
 export type HealthStore = NodeFeeds<HealthState>;
@@ -48,11 +53,14 @@ export function createHealthStore(
     // Commits are no part of the fold: the counts come from `health.status`.
     apply: applyHealthEvent,
     reread: (connection, before, after) => {
-      for (const warning of Object.values(after.warnings)) {
-        if (warning.status === "open" && before.warnings[warning.warningId] === undefined) {
-          raised(connection, warning);
-        }
-      }
+      Object.values(after.warnings)
+        .filter(
+          (warning) =>
+            warning.status === "open" && before.warnings[warning.warningId] === undefined,
+        )
+        .toSorted((a, b) => b.raisedAt.localeCompare(a.raisedAt))
+        .slice(0, MAX_TOLD_ON_REREAD)
+        .forEach((warning) => raised(connection, warning));
     },
     seen: (connection, event, before) => {
       const warning = (event.payload as { warning?: Warning } | null)?.warning;

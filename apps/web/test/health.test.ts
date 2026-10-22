@@ -23,7 +23,10 @@ type Listener = (event: { type: string; payload: unknown }) => void;
 
 /** One open node: its `health.catalog` answer, and its streams to push events into. */
 function fakeNode(catalog: () => Promise<unknown>) {
-  const streams = new Map<string, { after: number; listener: Listener }>();
+  const streams = new Map<
+    string,
+    { after: number; listener: Listener; onError?: ((error: unknown) => void) | undefined }
+  >();
   const listeners = new Set<() => void>();
   let state: NodeConnection["state"] = "open";
   const connection = {
@@ -36,8 +39,12 @@ function fakeNode(catalog: () => Promise<unknown>) {
     client: {
       call: (method: string) =>
         method === "health.catalog" ? catalog() : Promise.reject(new Error(method)),
-      subscribe: (stream: string, options: { after: number }, listener: Listener) => {
-        streams.set(stream, { after: options.after, listener });
+      subscribe: (
+        stream: string,
+        options: { after: number; onError?: (error: unknown) => void },
+        listener: Listener,
+      ) => {
+        streams.set(stream, { after: options.after, listener, onError: options.onError });
         return toDisposable(() => streams.delete(stream));
       },
     },
@@ -150,5 +157,36 @@ describe("health in Civilization mode (D731)", () => {
     expect(groupLabel(warning("w", "t").group)).toBe("Mission Doghouse");
     expect(groupLabel({ kind: "node" })).toBe("The node");
     expect(detectorLabel({ detector: "proof-loop" })).toBe("Recursive proof loop");
+  });
+
+  it("tells at most three warnings, newest first, that came while the stream was down", async () => {
+    const catalogs = [
+      { head: 1, warnings: [warning("w0", "2026-10-21T08:00:00Z")], ideas: [] },
+      {
+        head: 9,
+        warnings: ["w0", "w1", "w2", "w3", "w4"].map((id, index) =>
+          warning(id, `2026-10-21T${String(8 + index).padStart(2, "0")}:00:00Z`),
+        ),
+        ideas: [],
+      },
+    ];
+    const node = fakeNode(async () => catalogs.shift());
+    const told: string[] = [];
+    const store = createHealthStore(node.connections, quiet, (_connection, raised) =>
+      told.push(raised.warningId),
+    );
+    await settled(store);
+    const reread = new Promise<void>((resolve) => {
+      const subscription = store.subscribe(() => {
+        if (Object.keys(store.snapshot().get("a")?.value.warnings ?? {}).length !== 5) return;
+        subscription.dispose();
+        resolve();
+      });
+    });
+    node.streams.get(HEALTH_STREAM)!.onError!(new Error("dropped"));
+    await reread;
+    // Four came meanwhile; the three newest are told, the rest are in the sidebar.
+    expect(told).toEqual(["w4", "w3", "w2"]);
+    store.dispose();
   });
 });
