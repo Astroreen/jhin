@@ -247,11 +247,14 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 - A scratch launch in a fresh folder of its own (T3's) waits for per-thread
   working directories.
 - Custom `agentType`s of a workflow agent.
-- A Claude subagent run in the background (`run_in_background`) ends its
-  thread with the call's result, which comes at its start; its later work
-  is not shown. A subagent's text is shown whole, not streamed.
-- Stopping a provider subagent from the panel, and the model label from its
-  alias (`sonnet`) rather than the alias itself.
+- A subagent's text is shown whole, not streamed; T3's progress line of a
+  background subagent (`task_progress.summary`) is not shown (D1165).
+- The model label of a provider subagent from its alias (`sonnet`) rather
+  than the alias itself.
+- A background subagent's work that Claude Code sends while the node
+  restarts is lost, and its thread ends `interrupted` (D1164); T3's
+  continuation turns, which read a result into an idle parent, stay out
+  (`t3-parity.md` D805).
 - Delegating to an agent on another mesh node (`target.node`): today a task
   runs on the parent's node.
 - Pruning old task and workflow records: they stay in `storage.kv` (and in
@@ -478,6 +481,56 @@ user sees, which their Deferred lists left out.
   default" and every agent's models ("<agent> · <model>", an unavailable
   agent's disabled), from `agents.list`, saved as the task's `agentId` and
   `model`.
+
+### A runtime's subagents in the background, and stopping them (W32)
+
+Round 3 of `t3-roadmap.md` (D1161–D1180). T3 keeps a Claude subagent that
+runs in the background as a live child (`ClaudeAdapterV2.ts`: its
+`task_started`, `task_updated` and `task_notification` frames, and
+`stopTask` for "Stop subagent").
+
+- **D1164. A subagent can outlive its turn** (`agent.runtime@1` 1.7,
+  `agent.registry` 1.4, additive). A runtime yields `subagent.backgrounded
+  { subagentId }` for a subagent that goes on in the background; the turn's
+  end then leaves it running, and the runtime hands its later work over
+  through `AgentTurn.afterwards`: `subagent.item` and `subagent.ended` items
+  of the turn's backgrounded subagents only, ending once each has ended or
+  the runtime can no longer follow them. The threads plugin keeps such a
+  child's turn open past its parent's turn and projects those items into
+  it as before (D877); a backgrounded subagent still open when `afterwards`
+  ends (or of a runtime without it) ends `interrupted`, as an open one did
+  with the turn. A node restart closes it like any running turn.
+- **D1165. Claude Code's background subagents.** An `Agent` call with
+  `run_in_background`, or one Claude Code registered or moved to the
+  background (`task_started.is_backgrounded`, `task_updated.patch
+  .is_backgrounded`, D805's moves), is backgrounded: its call's immediate
+  result ("running in the background") ends the call in the parent's turn
+  but not the subagent. Its own messages (`parent_tool_use_id`) and its
+  `task_notification` (`completed`, `failed` with its summary as the error,
+  `stopped` as `interrupted`) are read from the live session also after the
+  turn ended, also while a later turn holds the session; a session that
+  ends ends `afterwards`. A per-turn session is kept while its background
+  work runs (D348), so its subagents go on too.
+- **D1166. Stopping a runtime's subagent** (`AgentRuntime.stopSubagent
+  { threadId, subagentId }`, 1.7): the runtime stops it and answers whether
+  it did; its end comes as its `subagent.ended`. Claude Code's is the
+  session's `stopTask` with the task of the call (`task_started.tool_use_id`).
+  The threads plugin's `threads.subagent.stop { threadId }` takes the
+  subagent's thread (`threads.write`), finds its parent and the runtime's
+  `subagentId` (kept on the child's record as `subagentId`) and asks the
+  parent's runtime; it refuses `SUBAGENT_NOT_RUNNING` when the child's turn
+  does not run or the runtime answered false (it ended meanwhile), and
+  `SUBAGENT_STOP_UNSUPPORTED` for a thread that is no runtime's subagent or a
+  runtime without `stopSubagent`. The threads plugin follows `afterwards`
+  until every backgrounded subagent ended, the parent is deleted or the
+  plugin stops, and then lets the runtime go (`return()`), which lets go of
+  the Claude Code session it read.
+- **D1167. "Stop subagent" in the Lineage section for a runtime's
+  subagent**, as for a task (D867, D868): shown while its turn runs, it
+  runs `threads.subagent.stop` and spins until the command answers; a
+  refusal is a toast. The fake agent's `/subagent-bg <task>` starts a
+  subagent that answers "Echo: <task>" after its turn ended and runs until
+  it is stopped.
 
 ### Deferred
 

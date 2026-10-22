@@ -37,11 +37,17 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/write <file> <text>" writes the text to a file of its working directory;
  * - "/compact" compacts its context, then holds like "/hold";
  * - "/subagent <task>" runs a subagent titled after the task that answers "Echo: <task>" (D876);
+ * - "/subagent-bg <task>" starts one in the background: it answers "Echo: <task>" once the
+ *   turn ended and runs until it is stopped (D1164, D1166);
  * - anything else is answered "Echo: <text>", one word per delta.
  * A message steered into a turn (D204) is answered "Echo: <text>" before the
  * turn ends; it ends a "/hold" turn.
  */
-export function fakeTurn(request: TurnRequest): AgentTurn {
+export function fakeTurn(
+  request: TurnRequest,
+  /** Stops of its subagents in the background, by thread and subagent (D1166). */
+  stops: Map<string, () => void> = new Map(),
+): AgentTurn {
   let interrupted = false;
   const interruption = latch<undefined>();
   /** Messages steered into the turn and not answered yet; `ended` once it takes no more. */
@@ -88,8 +94,27 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
     yield { kind: "tool.completed", itemId, status: "completed", output: `$ ${line}\ndone\n` };
   }
 
+  /** Its subagents in the background: they work once the turn ended. */
+  const background: { subagentId: string; task: string; stopped: Promise<undefined> }[] = [];
+  const turnEnded = latch<undefined>();
+
   async function* items$(): AsyncGenerator<AgentItem> {
     if (text.startsWith("/fail")) throw new Error("fake agent: asked to fail");
+    if (/^\/subagent-bg(\s|$)/.test(text)) {
+      const task = text.slice("/subagent-bg".length).trim() || "something";
+      const subagentId = nextId();
+      const stopped = latch<undefined>();
+      const key = `${request.threadId}\u0000${subagentId}`;
+      stops.set(key, () => {
+        stops.delete(key);
+        stopped.open(undefined);
+      });
+      background.push({ subagentId, task, stopped: stopped.wait() });
+      yield { kind: "subagent.started", subagentId, title: task, prompt: task };
+      yield { kind: "subagent.backgrounded", subagentId };
+      yield* say(`Started ${task} in the background`);
+      return;
+    }
     if (/^\/subagent(\s|$)/.test(text)) {
       const task = text.slice("/subagent".length).trim() || "something";
       const subagentId = nextId();
@@ -276,11 +301,30 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
       while (!interrupted && steers.length > 0) yield* say(`Echo: ${steers.shift()!.text}`);
     } finally {
       ended = true;
+      turnEnded.open(undefined);
+    }
+  }
+
+  async function* afterwards(): AsyncGenerator<
+    Extract<AgentItem, { kind: "subagent.item" | "subagent.ended" }>
+  > {
+    await turnEnded.wait();
+    for (const { subagentId, task } of background) {
+      yield {
+        kind: "subagent.item",
+        subagentId,
+        item: { kind: "message.completed", itemId: nextId(), text: `Echo: ${task}` },
+      };
+    }
+    for (const { subagentId, stopped } of background) {
+      await stopped;
+      yield { kind: "subagent.ended", subagentId, status: "interrupted" };
     }
   }
 
   return {
     items: all(),
+    afterwards: afterwards(),
     steer(input) {
       if (ended || interrupted) throw new Error("fake agent: the turn has ended");
       steers.push(input);
@@ -300,6 +344,7 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
 
 export default definePlugin({
   activate(context) {
+    const stops = new Map<string, () => void>();
     const runtime: AgentRuntime = {
       agentId: FAKE_AGENT_ID,
       name: "Fake agent",
@@ -344,7 +389,12 @@ export default definePlugin({
           },
         ],
       }),
-      startTurn: fakeTurn,
+      async stopSubagent({ threadId, subagentId }) {
+        const stop = stops.get(`${threadId}\u0000${subagentId}`);
+        stop?.();
+        return stop !== undefined;
+      },
+      startTurn: (request) => fakeTurn(request, stops),
     };
     context.services.provide(AGENT_RUNTIME_CAPABILITY, runtime);
   },

@@ -210,6 +210,12 @@ export type AgentItem =
     }
   /** Since 1.4: an item of a subagent's own work: its messages, reasoning and tool calls. */
   | { readonly kind: "subagent.item"; readonly subagentId: string; readonly item: SubagentWorkItem }
+  /**
+   * Since 1.7: the subagent goes on in the background; the turn's end leaves
+   * it running and its later items come through `AgentTurn.afterwards`
+   * (orchestration.md D1164).
+   */
+  | { readonly kind: "subagent.backgrounded"; readonly subagentId: string }
   /** Since 1.4: a subagent ended. */
   | {
       readonly kind: "subagent.ended";
@@ -257,6 +263,16 @@ export interface AgentTurn {
    * to a turn of its own.
    */
   steer?(input: TurnRequest["input"]): void;
+  /**
+   * Since 1.7: the later work of the turn's backgrounded subagents
+   * (`subagent.backgrounded`), read once `items` ended: their `subagent.item`
+   * and `subagent.ended` items only. Ends once each has ended, or when the
+   * runtime can no longer follow them; one still open then ended
+   * `interrupted` (D1164).
+   */
+  readonly afterwards?: AsyncIterable<
+    Extract<AgentItem, { readonly kind: "subagent.item" | "subagent.ended" }>
+  >;
 }
 
 /** One choice of a `select` model option (T3 Code's `ProviderOptionChoice`). */
@@ -384,7 +400,7 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -418,6 +434,15 @@ export interface AgentRuntime {
   }>;
   /** Whether it can run turns now; assumed available when absent. */
   status?(): Promise<AgentRuntimeStatus>;
+  /**
+   * Since 1.7: stops a subagent a turn of the thread started; false when it
+   * cannot (it is unknown, ended or unstoppable). Its end comes as its
+   * `subagent.ended` (D1166).
+   */
+  stopSubagent?(request: {
+    readonly threadId: string;
+    readonly subagentId: string;
+  }): Promise<boolean>;
   startTurn(request: TurnRequest): AgentTurn;
 }
 

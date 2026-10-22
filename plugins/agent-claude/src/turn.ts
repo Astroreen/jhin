@@ -2,7 +2,8 @@
 // apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts at eb7b35ac: query options
 // (makeClaudeQueryOptions), runtime and interaction modes to Claude permission modes
 // (permissionModeForClaudeRuntimePolicy), the canUseTool callback (approvals,
-// AskUserQuestion, ExitPlanMode) and the stream projection of reasoning, tools and usage.
+// AskUserQuestion, ExitPlanMode) and the stream projection of reasoning, tools and usage,
+// with its subagents in the background followed through their task frames (D1165).
 // The live query a turn runs on is leased from ./session.ts: kept between turns, or started
 // for each turn and resumed, as the `session` setting says.
 import { randomUUID } from "node:crypto";
@@ -284,6 +285,20 @@ function channel<T>(stopped: () => boolean) {
   };
 }
 
+/** What a turn hands over of its subagents in the background once it ended (D1164). */
+type AfterwardsItem = Extract<AgentItem, { readonly kind: "subagent.item" | "subagent.ended" }>;
+
+/** A frame about a subagent's work: its own messages, or Claude Code's task frames. */
+const subagentFrame = (message: SDKMessage) =>
+  ("parent_tool_use_id" in message && Boolean(message.parent_tool_use_id)) ||
+  (message.type === "system" &&
+    (message.subtype === "task_started" ||
+      message.subtype === "task_updated" ||
+      message.subtype === "task_notification"));
+
+/** Items `afterwards` holds unread before it gives up on its reader (D1165). */
+const MAX_UNREAD_LATER = 10_000;
+
 /** Claude Code refused the session: none to resume (`resume`), or it exists already. */
 class SessionMismatch extends Error {
   readonly resume: boolean;
@@ -303,6 +318,27 @@ export function claudeTurn(
 ): AgentTurn & { readonly done: Promise<void> } {
   let interrupted = false;
   const out = channel<AgentItem>(() => interrupted);
+  /** The later work of its subagents in the background (D1164), read after `items`. */
+  const laterItems = channel<AgentItem>(() => false);
+  /** Items handed to `afterwards` and not read yet. */
+  let unreadLater = 0;
+  const later = {
+    push: (item: AgentItem) => {
+      unreadLater += 1;
+      laterItems.push(item);
+    },
+    end: laterItems.end,
+    read: async function* () {
+      for await (const item of laterItems.read()) {
+        unreadLater -= 1;
+        yield item;
+      }
+    },
+  };
+  /** The session is followed past the turn for its subagents in the background. */
+  let following = false;
+  /** Stops following the session: `afterwards` was given up on, or every subagent ended. */
+  let release = () => {};
   const runtimeMode = request.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode = request.interactionMode ?? "default";
   // The turn's model options (D298): the model id with its suffix, effort and settings.
@@ -393,7 +429,12 @@ export function claudeTurn(
     // Its own work is shown as a child thread (orchestration.md D878).
     if (SUBAGENT_TOOLS.has(name)) {
       subagentIds.add(id);
-      const fields = (input ?? {}) as { description?: unknown; prompt?: unknown; model?: unknown };
+      const fields = (input ?? {}) as {
+        description?: unknown;
+        prompt?: unknown;
+        model?: unknown;
+        run_in_background?: unknown;
+      };
       out.push({
         kind: "subagent.started",
         subagentId: id,
@@ -401,6 +442,7 @@ export function claudeTurn(
         prompt: typeof fields.prompt === "string" ? fields.prompt : "",
         ...(typeof fields.model === "string" ? { model: fields.model } : {}),
       });
+      if (fields.run_in_background === true) background(id, out.push);
     }
   };
 
@@ -410,7 +452,51 @@ export function claudeTurn(
   let subagentItems = 0;
   /** The subagents this turn started; a subagent's own subagents are not among them. */
   const subagentIds = new Set<string>();
-  const projectSubagent = (subagentId: string, message: SDKMessage) => {
+  /** Its subagents in the background, still running (D1165). */
+  const backgrounded = new Set<string>();
+  /** Its subagents ever in the background: their call's quick result does not end them. */
+  const wentBackground = new Set<string>();
+  /** The tool call that started each task, from `task_started`. */
+  const taskTools = new Map<string, string>();
+  type Push = (item: AgentItem) => void;
+  /** Its subagents whose call returned in the foreground: ended, never moved afterwards. */
+  const endedInForeground = new Set<string>();
+  const background = (subagentId: string, push: Push) => {
+    if (!subagentIds.has(subagentId) || wentBackground.has(subagentId)) return;
+    if (endedInForeground.has(subagentId)) return;
+    wentBackground.add(subagentId);
+    backgrounded.add(subagentId);
+    push({ kind: "subagent.backgrounded", subagentId });
+  };
+  /** Claude Code's frames about its tasks: a subagent going to the background, or ending there. */
+  const taskFrame = (message: SDKMessage, push: Push) => {
+    if (message.type !== "system") return;
+    if (message.subtype === "task_started") {
+      if (message.tool_use_id === undefined) return;
+      taskTools.set(message.task_id, message.tool_use_id);
+      if (message.is_backgrounded === true) background(message.tool_use_id, push);
+    } else if (message.subtype === "task_updated") {
+      const tool = taskTools.get(message.task_id);
+      if (tool !== undefined && message.patch.is_backgrounded === true) background(tool, push);
+    } else if (message.subtype === "task_notification") {
+      const tool = message.tool_use_id ?? taskTools.get(message.task_id);
+      if (tool === undefined || !backgrounded.has(tool)) return;
+      backgrounded.delete(tool);
+      const summary = message.summary.trim();
+      push({
+        kind: "subagent.ended",
+        subagentId: tool,
+        status:
+          message.status === "completed"
+            ? "completed"
+            : message.status === "failed"
+              ? "failed"
+              : "interrupted",
+        ...(message.status === "failed" && summary !== "" ? { error: summary } : {}),
+      });
+    }
+  };
+  const projectSubagent = (subagentId: string, message: SDKMessage, push: Push = out.push) => {
     const items: SubagentWorkItem[] = [];
     if (message.type === "assistant") {
       message.message.content.forEach((block) => {
@@ -452,7 +538,7 @@ export function claudeTurn(
         });
       }
     }
-    for (const item of items) out.push({ kind: "subagent.item", subagentId, item });
+    for (const item of items) push({ kind: "subagent.item", subagentId, item });
   };
 
   const usage = () =>
@@ -577,7 +663,9 @@ export function claudeTurn(
             status,
             ...(output.length === 0 ? {} : status === "failed" ? { error: output } : { output }),
           });
-          if (SUBAGENT_TOOLS.has(tool.name)) {
+          // One in the background ends with its task, not with its call's quick result (D1165).
+          if (SUBAGENT_TOOLS.has(tool.name) && !wentBackground.has(block.tool_use_id)) {
+            endedInForeground.add(block.tool_use_id);
             out.push({
               kind: "subagent.ended",
               subagentId: block.tool_use_id,
@@ -594,6 +682,7 @@ export function claudeTurn(
         return;
       }
       case "system":
+        taskFrame(message, out.push);
         // Claude Code compacted the conversation: refocus follows it (agents.md D709).
         if (message.subtype === "compact_boundary") {
           out.push({ kind: "context.compacted", trigger: message.compact_metadata.trigger });
@@ -751,6 +840,66 @@ export function claudeTurn(
       ),
     });
     current = lease;
+    // Every frame of the session in order, so the work of its subagents in the background
+    // is read on from where the turn stopped reading (D1165).
+    const order = new WeakMap<object, number>();
+    let counter = 0;
+    /** The order of the last frame the turn read. */
+    let read = 0;
+    /** Subagent frames the turn has not read yet. */
+    const unread: SDKMessage[] = [];
+    let tapping = true;
+    let untap = () => {
+      tapping = false;
+    };
+    /** After the turn: its subagents in the background, until each ended or nobody reads. */
+    const follow = (message: SDKMessage) => {
+      // Nobody reads `afterwards` (it is optional for a runtime's caller): let go of the session.
+      if (unreadLater >= MAX_UNREAD_LATER) {
+        untap();
+        later.end();
+        return;
+      }
+      if ("parent_tool_use_id" in message && message.parent_tool_use_id) {
+        if (backgrounded.has(message.parent_tool_use_id)) {
+          projectSubagent(message.parent_tool_use_id, message, later.push);
+        }
+      } else {
+        taskFrame(message, later.push);
+      }
+      if (backgrounded.size === 0) {
+        untap();
+        later.end();
+      }
+    };
+    const stopTapping = lease.tap({
+      message(message) {
+        order.set(message, (counter += 1));
+        if (!subagentFrame(message)) return;
+        if (following) follow(message);
+        else unread.push(message);
+      },
+      end() {
+        tapping = false;
+        // Claude Code ended: their work can no longer be read.
+        if (following) later.end();
+      },
+    });
+    untap = () => {
+      tapping = false;
+      stopTapping();
+    };
+    /** Hands the subagents still in the background over to `afterwards`. */
+    const handOver = () => {
+      if (backgrounded.size === 0) return untap();
+      following = true;
+      release = untap;
+      // What came after the turn's last frame, also when Claude Code has exited since.
+      for (const message of unread.splice(0)) {
+        if ((order.get(message) ?? 0) > read) follow(message);
+      }
+      if (!tapping) later.end();
+    };
     if (interrupted) stop(lease);
     // Steers that came while the turn waited for its Claude Code go in after its message.
     for (const message of steered) lease.steer(message);
@@ -758,6 +907,8 @@ export function claudeTurn(
     let result: SDKResultMessage | undefined;
     try {
       for await (const message of lease.messages) {
+        read = order.get(message) ?? read;
+        while (unread.length > 0 && (order.get(unread[0]!) ?? 0) <= read) unread.shift();
         // Claude Code initializes every turn, also on a session kept from an earlier one.
         if (message.type === "system" && message.subtype === "init") {
           started = true;
@@ -788,6 +939,7 @@ export function claudeTurn(
       }
       throw error;
     } finally {
+      handOver();
       // Kept only when Claude Code finished the turn, interrupted or not: one that broke
       // off mid-turn would hand the rest of this turn to the next.
       lease.release(started && result !== undefined);
@@ -882,10 +1034,26 @@ export function claudeTurn(
       else out.end({ error });
     },
   );
+  void done.then(() => {
+    if (!following) later.end();
+  });
 
   return {
     done,
     items: out.read(),
+    afterwards: (async function* () {
+      try {
+        for await (const item of later.read()) {
+          if (item.kind === "subagent.item" || item.kind === "subagent.ended") {
+            yield item satisfies AfterwardsItem;
+          }
+        }
+      } finally {
+        // Read no further (also when its reader stopped early): the session is let go.
+        release();
+        later.end();
+      }
+    })(),
     interrupt() {
       if (interrupted) return;
       interrupted = true;

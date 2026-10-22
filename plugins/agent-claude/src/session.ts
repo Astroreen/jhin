@@ -39,6 +39,15 @@ interface ClaudeQuery extends AsyncIterable<SDKMessage> {
   }): Promise<void>;
   /** Moves a foreground task to the background (Ctrl+B); false when none matched. */
   backgroundTasks?(toolUseId?: string): Promise<boolean>;
+  /** Stops a running task; its `task_notification` says `stopped` (D1166). */
+  stopTask?(taskId: string): Promise<void>;
+}
+
+/** Reads every message of a live session, also between turns, until it ends (D1165). */
+interface Tap {
+  message(message: SDKMessage): void;
+  /** The session ended: nothing more comes. */
+  end(): void;
 }
 
 /** MCP servers a Claude Code gets once started, and how to revoke their credentials. */
@@ -80,6 +89,12 @@ export interface Lease {
    * steer does not cancel them (D805). Settles once Claude Code answered, or after 5 s.
    */
   backgroundSubagents(): Promise<void>;
+  /**
+   * Reads every message of the Claude Code the turn ran on from now on, also after the
+   * release and while later turns hold it, until it ends or the returned call stops it
+   * (its background subagents, D1165).
+   */
+  tap(tap: Tap): () => void;
   /**
    * Ends the turn's hold, once. `keep` (the turn reached its result) leaves Claude Code
    * running for the next turn when the setting keeps sessions; anything else ends it.
@@ -124,6 +139,11 @@ export interface LiveSessions {
   close(threadId: string, force?: boolean): boolean;
   /** Ends every live session no turn holds; held ones end with their turn's release. */
   closeIdle(): number;
+  /**
+   * Stops the task the thread's live Claude Code runs for a tool call (a subagent's
+   * `Agent` call, D1166); false when there is no such task or it cannot.
+   */
+  stopTask(threadId: string, toolUseId: string): Promise<boolean>;
   /**
    * Arms the idle timers of the sessions no turn holds again, with the idle time the
    * setting says now, counted from each one's last turn.
@@ -206,6 +226,10 @@ interface Live {
   /** Whether the last state it reported is idle: it has taken every message sent so far. */
   settled: boolean;
   holder: Holder | undefined;
+  /** Readers of every message besides the holder (D1165). */
+  readonly taps: Set<Tap>;
+  /** The task of each tool call that started one, from `task_started` (D1166). */
+  readonly tasks: Map<string, string>;
   /** Settles once its MCP servers are registered (D340); rejects when Claude Code never answers. */
   ready: Promise<void>;
   /** Revokes what `ready` registered; called when it ends. */
@@ -419,6 +443,9 @@ export function createLiveSessions(options: {
     live.detach?.();
     live.detach = undefined;
     live.holder?.end(reason === undefined ? undefined : { error: reason });
+    const taps = [...live.taps];
+    live.taps.clear();
+    for (const tap of taps) tap.end();
     try {
       live.query.close();
     } catch (error) {
@@ -536,6 +563,8 @@ export function createLiveSessions(options: {
       reportsState: false,
       settled: false,
       holder: undefined,
+      taps: new Set(),
+      tasks: new Map(),
       ready: Promise.resolve(),
       detach: undefined,
       idleSince: undefined,
@@ -594,7 +623,31 @@ export function createLiveSessions(options: {
             live.reportsState = true;
             live.settled = state === "idle";
           }
+          if (
+            message.type === "system" &&
+            message.subtype === "task_started" &&
+            message.tool_use_id !== undefined
+          ) {
+            live.tasks.set(message.tool_use_id, message.task_id);
+          }
+          // An ended task is stopped no more: its entry goes.
+          if (message.type === "system" && message.subtype === "task_notification") {
+            for (const [tool, task] of live.tasks) {
+              if (task === message.task_id) live.tasks.delete(tool);
+            }
+          }
           live.holder?.push(message);
+          for (const tap of live.taps) {
+            // A reader's failure is its own: the session goes on.
+            try {
+              tap.message(message);
+            } catch (error) {
+              options.log?.("a reader of claude code's messages failed", {
+                threadId,
+                error: String(error),
+              });
+            }
+          }
         }
         live.holder?.end();
       } catch (error) {
@@ -930,6 +983,16 @@ export function createLiveSessions(options: {
           }
           return receipt;
         },
+        tap(tap) {
+          if (session.closed) {
+            tap.end();
+            return () => undefined;
+          }
+          session.taps.add(tap);
+          return () => {
+            session.taps.delete(tap);
+          };
+        },
         release(keep) {
           if (released) return;
           released = true;
@@ -960,6 +1023,19 @@ export function createLiveSessions(options: {
     rearmIdle() {
       const { idleMs } = options.keepAlive();
       for (const live of sessions.values()) if (!live.busy) arm(live, idleMs);
+    },
+    async stopTask(threadId, toolUseId) {
+      const live = sessions.get(threadId);
+      const taskId = live?.tasks.get(toolUseId);
+      if (live === undefined || live.closed || taskId === undefined) return false;
+      if (live.query.stopTask === undefined) return false;
+      try {
+        await live.query.stopTask(taskId);
+        return true;
+      } catch (error) {
+        options.log?.("claude code did not stop a task", { threadId, error: String(error) });
+        return false;
+      }
     },
     closeIdle() {
       let closed = 0;

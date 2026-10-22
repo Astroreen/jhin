@@ -222,6 +222,8 @@ const Thread = z.object({
   relationshipToParent: z.enum(["subagent"]).optional(),
   /** A subagent the parent's agent ran itself (Claude Code's `Agent` tool), not a delegated task (D877). */
   subagentOrigin: z.enum(["provider"]).optional(),
+  /** The runtime's id of the subagent this thread shows, to stop it (D1166). */
+  subagentId: z.string().optional(),
   /** The thread and turn this thread was forked at (D225). */
   forkedFrom: z.object({ threadId: z.string(), turnId: z.string() }).optional(),
   /** A fork merged back: its result goes to the agent with the next message (D226). */
@@ -1212,6 +1214,7 @@ export default definePlugin({
     function eventOf(turnId: string, item: AgentItem): { type: string; payload: Json } {
       switch (item.kind) {
         case "subagent.started":
+        case "subagent.backgrounded":
         case "subagent.item":
         case "subagent.ended":
           // Projected into the subagent's own thread (D877), never into the turn's.
@@ -1463,7 +1466,14 @@ export default definePlugin({
        */
       const subagents = new Map<
         string,
-        { threadId: string; turnId: string; open: boolean; endRecorded?: boolean }
+        {
+          threadId: string;
+          turnId: string;
+          open: boolean;
+          endRecorded?: boolean;
+          /** Goes on in the background past the turn (D1164). */
+          background?: boolean;
+        }
       >();
       const endSubagent = async (
         subagentId: string,
@@ -1503,6 +1513,7 @@ export default definePlugin({
             parentThreadId: thread.id,
             relationshipToParent: "subagent",
             subagentOrigin: "provider",
+            subagentId: item.subagentId,
           });
           const childTurn = Crypto.randomUUID();
           try {
@@ -1534,6 +1545,9 @@ export default definePlugin({
               payload: { turnId, subagentId: item.subagentId, childThreadId: child.id, title },
             },
           ]);
+        } else if (item.kind === "subagent.backgrounded") {
+          const child = subagents.get(item.subagentId);
+          if (child?.open === true) child.background = true;
         } else if (item.kind === "subagent.item") {
           const child = subagents.get(item.subagentId);
           // Only its work items (D877): a runtime's others have no place in its thread.
@@ -1541,6 +1555,46 @@ export default definePlugin({
           await log.append(threadStream(child.threadId), [eventOf(child.turnId, item.item)]);
         } else {
           await endSubagent(item.subagentId, item.status, item.error);
+        }
+      };
+      /**
+       * The later work of the backgrounded subagents, until each ended, the parent is
+       * deleted or the plugin stops; those still open then end interrupted (D1164).
+       */
+      const followAfterwards = async () => {
+        const later = turn.afterwards?.[Symbol.asyncIterator]();
+        let stop!: () => void;
+        const stopped = new Promise<undefined>((resolve) => (stop = () => resolve(undefined)));
+        const follower = context.subscriptions.add(toDisposable(stop));
+        try {
+          while (later !== undefined && !deleted.has(thread.id)) {
+            const next = await Promise.race([later.next(), stopped]);
+            if (next === undefined || next.done === true) break;
+            await projectSubagent(next.value).catch((error: unknown) =>
+              context.log.error("could not record a subagent", {
+                threadId: thread.id,
+                error: String(error),
+              }),
+            );
+            if (![...subagents.values()].some((child) => child.open)) break;
+          }
+        } catch (error) {
+          context.log.warn("lost a background subagent's work", {
+            threadId: thread.id,
+            error: String(error),
+          });
+        } finally {
+          follower.dispose();
+          // The runtime lets go of what it followed for them.
+          void later?.return?.(undefined).catch(() => undefined);
+          for (const subagentId of subagents.keys()) {
+            await endSubagent(subagentId, "interrupted").catch((error: unknown) =>
+              context.log.error("could not end a subagent's thread", {
+                threadId: thread.id,
+                error: String(error),
+              }),
+            );
+          }
         }
       };
       /** Records the end of the turn once, whether the agent ended it or a stop gave up on it. */
@@ -1556,8 +1610,9 @@ export default definePlugin({
         let restartMessage: string | undefined;
         try {
           await closeRequests();
-          // Subagents still open end with their turn.
-          for (const subagentId of subagents.keys()) {
+          // Subagents still open end with their turn, but those in the background (D1164).
+          for (const [subagentId, child] of subagents) {
+            if (child.background === true && turn.afterwards !== undefined) continue;
             await endSubagent(subagentId, "interrupted").catch((error: unknown) =>
               context.log.error("could not end a subagent's thread", {
                 threadId: thread.id,
@@ -1623,6 +1678,8 @@ export default definePlugin({
         } finally {
           finish();
         }
+        // Its subagents in the background go on, their work read from the runtime (D1164).
+        if ([...subagents.values()].some((child) => child.open)) void followAfterwards();
         // The thread is free: its queue goes on, past a hold for a restart's message.
         if (ending.status === "completed") void deliver(thread.id);
         else if (restartMessage !== undefined) {
@@ -1657,6 +1714,7 @@ export default definePlugin({
             const item = next.value;
             if (
               item.kind === "subagent.started" ||
+              item.kind === "subagent.backgrounded" ||
               item.kind === "subagent.item" ||
               item.kind === "subagent.ended"
             ) {
@@ -3122,6 +3180,48 @@ export default definePlugin({
           settledAt: new Date(Number.isFinite(activity) ? activity : nowMs).toISOString(),
         };
       });
+
+    context.commands.register({
+      name: "threads.subagent.stop",
+      description:
+        "Stops a subagent the parent's agent ran itself (Claude Code's Agent tool), given its thread: its end shows in that thread. Refused when its turn does not run or its agent cannot stop it",
+      input: ThreadId,
+      output: z.object({ stopped: z.literal(true) }),
+      permissions: ["threads.write"],
+      handler: async ({ threadId }) => {
+        const child = await getThread(threadId);
+        if (
+          child.subagentOrigin !== "provider" ||
+          child.subagentId === undefined ||
+          child.parentThreadId === undefined
+        ) {
+          throw new ThreadsError(
+            "SUBAGENT_STOP_UNSUPPORTED",
+            "The thread is not a subagent its agent can stop",
+            { threadId },
+          );
+        }
+        const notRunning = () =>
+          new ThreadsError("SUBAGENT_NOT_RUNNING", "The subagent does not run", { threadId });
+        if (child.lastTurn?.status !== "running") throw notRunning();
+        const runtime = child.agentId === undefined ? undefined : registry.get(child.agentId);
+        if (runtime?.stopSubagent === undefined) {
+          throw new ThreadsError("SUBAGENT_STOP_UNSUPPORTED", "Its agent cannot stop subagents", {
+            threadId,
+          });
+        }
+        // The runtime knows it no more: it ended meanwhile.
+        if (
+          !(await runtime.stopSubagent({
+            threadId: child.parentThreadId,
+            subagentId: child.subagentId,
+          }))
+        ) {
+          throw notRunning();
+        }
+        return { stopped: true as const };
+      },
+    });
 
     context.commands.register({
       name: "threads.set-auto-settle",

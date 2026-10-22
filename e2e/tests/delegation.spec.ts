@@ -157,3 +157,35 @@ test("D879–D880: a subagent the agent runs itself is a child thread that runs 
     page.getByRole("button", { name: "Open survey the land", exact: true }),
   ).toBeVisible();
 });
+
+test("D1164–D1167: a subagent in the background works past its turn and stops from the panel", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/subagent-bg dig deep");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText(
+    "Started dig deep in the background",
+  );
+  // The turn ended; its subagent still runs.
+  const row = page.getByRole("button", { name: "Open dig deep", exact: true });
+  await expect(row).toContainText("Running");
+
+  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
+  const details = page.getByRole("region", { name: "Thread details" });
+  const related = details.getByRole("list", { name: "Related threads" });
+  const child = related.getByRole("button", { name: "Open dig deep chat" });
+  await expect(child).toContainText("Running");
+  await child.hover();
+  await shot(page, info, "provider-subagent-stop");
+  await related.getByRole("button", { name: "Stop subagent dig deep" }).click();
+  await expect(child).toContainText("Stopped");
+  await page.keyboard.press("Escape");
+  await expect(row).toContainText("Stopped");
+
+  // Its work after the turn is in its thread.
+  await row.click();
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: dig deep");
+});
