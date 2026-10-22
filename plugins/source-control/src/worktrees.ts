@@ -378,7 +378,8 @@ async function populateSubmodules(
 ): Promise<["done", string | undefined] | ["warning", string]> {
   // Another error reading `.gitmodules` is said.
   const hasSubmodules = await gitmodulesIn(path);
-  if (hasSubmodules instanceof Error) {
+  // Skipped as asked, the file is not git's to read either: nothing to warn of.
+  if (hasSubmodules instanceof Error && mode !== "none") {
     return ["warning", `submodules not checked out: ${redactUrls(hasSubmodules.message)}`];
   }
   if (!hasSubmodules) return ["done", undefined];
