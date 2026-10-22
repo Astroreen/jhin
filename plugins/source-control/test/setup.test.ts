@@ -469,6 +469,12 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
         threadId: "with-lib",
       });
       expect(stage(snapshot, "checkout")?.status).toBe("done");
+      // Gone from disk, it is made again from its branch at the next turn (D256), submodules too.
+      Fs.rmSync(thread.worktreePath, { recursive: true, force: true });
+      expect(await turn(sc, "with-lib", "hello")).toBe("completed");
+      expect(Fs.readFileSync(Path.join(thread.worktreePath, "lib", "README.md"), "utf8")).toBe(
+        "one\ntwo\nthree\n",
+      );
       // A clean worktree with checked-out submodules is removed without force.
       await sc.client.call("threads.delete", { threadId: "with-lib" });
       await sc.client.call("git.worktree.remove", { projectId, path: thread.worktreePath });
