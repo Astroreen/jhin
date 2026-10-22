@@ -973,7 +973,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         cached != null &&
         cached.state !== "open"
       ) {
-        await settleOnPullRequest(repo, known.branch, cached);
+        await settleOnPullRequest(repo, known.branch, cached, threadId);
       }
       // Told once the decision is over, the branch's pull request's part included.
       if (!unsettledByLinks.has(threadId)) {
@@ -991,11 +991,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
    * A branch's pull request merged or closed (D447): every thread on the branch
    * may settle, unless its linked pull requests say otherwise (D1133).
    */
-  const settleOnPullRequest = async (repo: Repo, branch: string, pr: PullRequest) => {
+  const settleOnPullRequest = async (
+    repo: Repo,
+    branch: string,
+    pr: PullRequest,
+    /** Only this thread (its links changed), not every thread on the branch. */
+    only?: string,
+  ) => {
     const closedAt = closedAtOf(pr);
     if (closedAt === undefined || pr.state === "open") return;
     for (const thread of Array.from(threads.values())) {
       if (thread.projectId !== repo.project.id || thread.branch !== branch) continue;
+      if (only !== undefined && thread.threadId !== only) continue;
       // One thread whose links cannot be read keeps none of the others from settling.
       const decided = await linkSettlement(thread.threadId).catch((error: unknown) => {
         context.log.warn("reading a thread's linked pull requests failed", {
