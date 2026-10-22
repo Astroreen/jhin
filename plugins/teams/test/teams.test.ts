@@ -242,9 +242,12 @@ describe("teams (A5)", () => {
 
   it("adds a home project named by a folder's path, and names a missing folder (D1105)", async () => {
     const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-home-"));
+    // Its files live in the project it names (D686): read once the project is added.
+    Fs.mkdirSync(Path.join(home, "team"));
+    Fs.writeFileSync(Path.join(home, "team", "culture.md"), "We measure twice.");
     const { client } = await node({
       teams: {
-        workshop: { lead: "lead", project: home, agents: { lead } },
+        workshop: { lead: "lead", project: home, dir: "team", agents: { lead } },
         ghost: { lead: "lead", project: Path.join(home, "missing"), agents: { lead } },
       },
     });
@@ -255,7 +258,11 @@ describe("teams (A5)", () => {
     expect(added).toBeDefined();
     expect(
       await client.call<AgentRecord>("agents.get", { agentId: "workshop-lead" }),
-    ).toMatchObject({ status: "idle", knowledgeDir: expect.stringContaining(home) });
+    ).toMatchObject({
+      status: "idle",
+      knowledgeDir: expect.stringContaining(home),
+      instructions: expect.stringContaining("We measure twice."),
+    });
     // Up again, the project is there: none is added twice.
     await client.call<Up>("teams.up", { teamId: "workshop" });
     expect(

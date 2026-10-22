@@ -456,9 +456,12 @@ export default definePlugin({
       permissions: WRITE_PERMISSIONS,
       handler: async ({ teamId }, invocation) => {
         const spec = specOrThrow(teamId);
-        // Its files may live in the home project (D686); a folder that is not
-        // there fails each member's join below, with its reason.
-        await ensureHome(spec.project).catch(() => undefined);
+        // Its files may live in the home project (D686). A folder that is not
+        // there fails each member's join below, with its reason; joins run one
+        // at a time, and so does this, so a project is never added twice.
+        await serial(() => ensureHome(spec.project)).catch((error: unknown) => {
+          if ((error as { code?: unknown }).code !== "PROJECT_PATH_INVALID") throw error;
+        });
         const files = readTeamFiles(await filesDir(teamId, spec));
         const culture = spec.culture ?? files.culture;
         const roster = rosterFor(teamId, spec);
