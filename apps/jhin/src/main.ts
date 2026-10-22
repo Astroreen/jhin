@@ -252,12 +252,19 @@ async function pair(
   const origin = new URL(url.replace(/^ws/, "http")).origin;
   baseUrl ??= reachableBaseUrl(origin);
   return withTarget({ ...remote, url }, async (target) => {
-    const link = (await target.execute("auth.pairing.create", {
-      label: option("label") ?? "jhin pair",
-      ...(permissions.length > 0 ? { permissions } : {}),
-      ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
-      baseUrl,
-    })) as PairingLink;
+    let link: PairingLink;
+    try {
+      link = (await target.execute("auth.pairing.create", {
+        label: option("label") ?? "jhin pair",
+        ...(permissions.length > 0 ? { permissions } : {}),
+        ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
+        baseUrl,
+      })) as PairingLink;
+    } catch (error) {
+      // A Tailscale mapping made above stays: say so, and how to remove it.
+      for (const note of notes) process.stderr.write(`Note: ${note}\n`);
+      throw error;
+    }
     if (options.get("json") === true) {
       // The notes too: a Tailscale mapping outlives this run and says how to remove it.
       print({ ...link, ...(notes.length > 0 ? { notes } : {}) });

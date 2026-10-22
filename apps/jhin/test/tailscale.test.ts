@@ -228,6 +228,24 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
     expect(replaceable(status({ TCPForward: "127.0.0.1:22" }, {}), 443, ours)).toBe(false);
     expect(replaceable(status({ HTTPS: true }, { Path: "/srv/www" }), 443, ours)).toBe(false);
     expect(replaceable(status({ HTTPS: true }, { Text: "hello" }), 443, ours)).toBe(false);
+    // `serve` rewrites only `/`: another path of ours would stay published beside it.
+    expect(
+      replaceable(
+        JSON.stringify({
+          TCP: { "443": { HTTPS: true } },
+          Web: {
+            "studio.tail1234.ts.net:443": {
+              Handlers: {
+                "/": { Proxy: "http://127.0.0.1:7777" },
+                "/old": { Proxy: "http://127.0.0.1:7777" },
+              },
+            },
+          },
+        }),
+        443,
+        ours,
+      ),
+    ).toBe(false);
     // A taken port without handlers is not known to be ours.
     expect(replaceable(JSON.stringify({ TCP: { "443": { HTTPS: true } } }), 443, ours)).toBe(false);
     expect(replaceable("{not json", 443, ours)).toBe(false);

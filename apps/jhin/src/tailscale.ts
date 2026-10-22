@@ -57,7 +57,6 @@ const runTailscale: TailscaleRunner = (args, timeoutMs) =>
  */
 export function replaceable(statusJson: string, port: number, ours: readonly string[]): boolean {
   let status: {
-    AllowFunnel?: Record<string, unknown>;
     TCP?: Record<string, { TCPForward?: unknown; HTTPS?: unknown; HTTP?: unknown }>;
     Web?: Record<string, { Handlers?: Record<string, Record<string, unknown>> }>;
   };
@@ -67,24 +66,20 @@ export function replaceable(statusJson: string, port: number, ours: readonly str
     return false;
   }
   // A funneled port is public: re-pointing it would publish the node to the internet.
-  if (
-    Object.entries(status.AllowFunnel ?? {}).some(
-      ([host, on]) => on === true && host.endsWith(`:${port}`),
-    )
-  ) {
-    return false;
-  }
+  if (funneled(statusJson, port)) return false;
   const tcp = status.TCP?.[String(port)];
   if (tcp === undefined) return true;
   if (tcp.TCPForward !== undefined) return false;
   const handlers = Object.entries(status.Web ?? {})
     .filter(([host]) => host.endsWith(`:${port}`))
-    .flatMap(([, web]) => Object.values(web.Handlers ?? {}));
-  // A port that is taken but shows no handler is not known to be ours.
+    .flatMap(([, web]) => Object.entries(web.Handlers ?? {}));
+  // A port that is taken but shows no handler is not known to be ours, and
+  // `serve` rewrites only `/`: a handler on another path would stay beside it.
   return (
     handlers.length > 0 &&
     handlers.every(
-      (handler) =>
+      ([path, handler]) =>
+        path === "/" &&
         Object.keys(handler).every((key) => key === "Proxy") &&
         typeof handler["Proxy"] === "string" &&
         ours.includes(handler["Proxy"]),
