@@ -464,6 +464,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       // …and so may unlinking the one that held it open.
       if (
         threadId !== undefined &&
+        !removingThreads.has(threadId) &&
         (type === SourceControlEvents.pullRequestUnlinked ||
           ((type === SourceControlEvents.pullRequestUpdated ||
             type === SourceControlEvents.pullRequestLinked) &&
@@ -536,9 +537,16 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (repo !== undefined && branch !== null) void lookUpPullRequests(repo, { force: false });
   };
 
+  /** Threads going away: their links' removal settles nothing (D1133). */
+  const removingThreads = new Set<string>();
   const removeThread = async (threadId: string) => {
     await loadThreads();
-    await links.remove(threadId);
+    removingThreads.add(threadId);
+    try {
+      await links.remove(threadId);
+    } finally {
+      removingThreads.delete(threadId);
+    }
     await turns.remove(threadId);
     if (!threads.delete(threadId)) return;
     lastTurns.delete(threadId);
