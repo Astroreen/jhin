@@ -314,4 +314,18 @@ describe("health views (D731)", () => {
     await expect.element(page.getByRole("button", { name: "Ceremony and progress" })).toBeVisible();
     await expect.element(page.getByRole("button", { name: /Recursive proof loop/ })).toBeVisible();
   });
+
+  it("shows the overview of a node whose stream failed, marked not live", async () => {
+    const { view } = viewOf(
+      { a: { status: "error", value: healthOf(), error: "stream gone" } },
+      async () => ({
+        windowHours: 24,
+        groups: [{ group: { kind: "node" }, ceremony: 1, progress: 0, byKind: { message: 1 } }],
+      }),
+    );
+    await render(<HealthPage node="a" view={view} />);
+    const overview = page.getByRole("region", { name: "Ceremony and progress" });
+    await expect.element(overview.getByText(/Not live: stream gone/)).toBeVisible();
+    await expect.element(overview.getByRole("cell", { name: "The node" })).toBeVisible();
+  });
 });

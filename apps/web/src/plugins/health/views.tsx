@@ -201,7 +201,9 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
   // Read again on every change of the node's health and on Refresh; the counts
   // themselves change with every message, so the page says when it read them.
   const [round, setRound] = useState(0);
-  const ready = feed?.status === "ready";
+  // A node whose stream failed after it was read still answers commands: its
+  // overview is read and shown, marked not live, as the sidebar offers it.
+  const ready = feed?.status === "ready" || feed?.status === "error";
   const status = useCall<{ windowHours: number; groups: GroupStatus[] }>(
     view,
     node,
@@ -237,7 +239,7 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
       setRound((value) => value + 1);
     }
   }, [health, ready, answered]);
-  if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
+  if (!ready) return <FeedProblem feed={feed} />;
   if (status === undefined) return <PageEmpty text="Reading the sensors…" title="Health" />;
   // A read that failed after a good one keeps the table, marked.
   if (status.value === undefined) {
@@ -255,6 +257,12 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
       aria-label="Ceremony and progress"
       className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6"
     >
+      {feed?.status === "error" ? (
+        <p className="text-xs text-destructive">
+          Not live: {feed.error ?? "the node's health stream failed"}. Refresh reads the counts
+          again; new warnings are not told until the connection is replaced.
+        </p>
+      ) : null}
       <header className="flex items-start gap-4">
         <div className="flex-1">
           <h1 className="text-lg font-semibold">Ceremony and progress</h1>
