@@ -948,7 +948,9 @@ with screenshots).
   folders empty and the worktree in use; the setup card's "Check out files"
   then ends with a warning ("submodules not checked out: <git's reason>",
   or "submodules left empty" when skipped). T3's per-project setting and its
-  `t3.json` override, and pull request checkouts (D902), are Deferred.
+  `t3.json` override, and pull request checkouts (D902), are Deferred. A
+  managed worktree made again from its branch (D256) gets its submodules the
+  same way; a failure there is logged.
 
 #### Reverting
 

@@ -423,10 +423,18 @@ async function populateSubmodules(
 export const redactUrls = (text: string) => text.replace(/(\w+:\/\/)[^/\s@]+@/g, "$1***@");
 
 /** Checks an existing branch out again at `path` (a managed worktree that went missing). */
-export async function recreateWorktree(git: Git, path: string, branch: string): Promise<void> {
+export async function recreateWorktree(
+  git: Git,
+  path: string,
+  branch: string,
+  submodules: "recursive" | "top-level" | "none" = "recursive",
+): Promise<string | undefined> {
   await git(["worktree", "prune"]);
   await Fs.mkdir(Path.dirname(path), { recursive: true });
   await git(["worktree", "add", "--", path, branch], { timeoutMs: WORKTREE_TIMEOUT_MS });
+  // Made again as a new one is (D1134): its submodules too; a failure is only told.
+  const [status, detail] = await populateSubmodules(git, path, submodules);
+  return status === "warning" ? detail : undefined;
 }
 
 /** `git worktree remove`; a worktree already gone is pruned instead. */

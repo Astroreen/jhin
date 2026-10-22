@@ -249,7 +249,8 @@ export const Config = z
       .default("recursive")
       .meta({
         title: "Worktree submodules",
-        description: "How new worktrees populate git submodules.",
+        description:
+          "How new worktrees populate git submodules. Recursive checks out submodules and theirs; Top level only checks out the repository's own and leaves theirs empty; Skip leaves every submodule empty, for a setup script to handle.",
       }),
     // T3's branch naming settings (D1126), with T3's words.
     branchNamingMode: z
@@ -2298,7 +2299,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
             worktreePath: worktree,
             branch,
           });
-          await recreateWorktree(git, worktree, branch);
+          const warning = await recreateWorktree(
+            git,
+            worktree,
+            branch,
+            config().worktreeSubmodules,
+          );
+          if (warning !== undefined) {
+            context.log.warn("a recreated worktree's submodules", {
+              worktreePath: worktree,
+              warning,
+            });
+          }
         } catch (error) {
           // The turn fails saying why, instead of starting nowhere.
           throw new SourceControlError(
