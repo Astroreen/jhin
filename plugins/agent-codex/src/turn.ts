@@ -6,6 +6,7 @@
 import {
   DEFAULT_RUNTIME_MODE,
   SUBAGENT_WORK_KINDS,
+  ThreadEvents,
   UsageLimitError,
   historyTranscript,
   type AgentItem,
@@ -55,11 +56,25 @@ const causedByStop = (error: unknown) =>
 /** The runtime's agent id, recorded on Codex's turns (D310). */
 export const CODEX_AGENT_ID = "jhin.agent-codex";
 
-/** Which Codex thread each Jhin thread runs on (D312). */
+/** A Jhin turn and the Codex turn it ran as (D1147). */
+export interface RecordedTurn {
+  readonly turnId: string;
+  readonly codexTurnId: string;
+}
+
+/** What is kept of a thread's Codex thread: its id and its turns, oldest first. */
+export interface CodexThreadRecord {
+  readonly codexThreadId: string;
+  readonly turns: readonly RecordedTurn[];
+}
+
+/** Which Codex thread each Jhin thread runs on (D312), and its turns (D1147). */
 export interface ThreadStore {
   get(threadId: string): Promise<string | undefined>;
-  set(threadId: string, codexThreadId: string): Promise<void>;
+  set(threadId: string, codexThreadId: string, turns?: readonly RecordedTurn[]): Promise<void>;
   delete(threadId: string): Promise<void>;
+  /** The whole record; a store without it rolls back and forks with a transcript. */
+  read?(threadId: string): Promise<CodexThreadRecord | undefined>;
 }
 
 /** The `jhin.agent-codex` config section, as a turn needs it. */
@@ -140,6 +155,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // What Codex answers for a thread it keeps no rollout of (codex-cli 0.163:
 // "no rollout found for thread id <id>"); any other resume error fails the turn.
 const NOTHING_TO_RESUME = /\bno rollout found for thread\b/i;
+/** The turns kept in a thread's record: a rollback further back starts a new Codex thread. */
+const MAX_RECORDED_TURNS = 500;
 /**
  * How long a stopped turn waits for Codex's `turn/completed` after the interrupt (T3 waits
  * 10 s for an interrupted lineage); then the turn ends and its app-server with it.
@@ -910,7 +927,12 @@ export function codexTurn(
   };
 
   /** Starts or resumes the thread's Codex thread on this app-server. */
-  const ensureThread = async (current: Lease, recorded: string | undefined) => {
+  const ensureThread = async (
+    current: Lease,
+    recorded: string | undefined,
+    /** The parent's Codex thread and turn to fork at, for a fork's first Codex turn (D1148). */
+    forkAt?: { readonly codexThreadId: string; readonly codexTurnId: string },
+  ) => {
     const connection = current.session.connection;
     if (current.session.codexThreadId !== undefined) return;
     const mcpServers = current.session.mcpServers;
@@ -939,12 +961,61 @@ export function codexTurn(
         deps.log?.("codex has no thread to resume, starting one", { threadId: request.threadId });
       }
     }
+    if (forkAt !== undefined) {
+      // T3's forkThread: Codex copies the parent's thread up to the turn forked at.
+      try {
+        const forked = (await connection.request("thread/fork", {
+          threadId: forkAt.codexThreadId,
+          lastTurnId: forkAt.codexTurnId,
+          ...params,
+        })) as { thread?: { id?: unknown } } | null;
+        if (typeof forked?.thread?.id === "string") {
+          current.session.codexThreadId = forked.thread.id;
+          forkedNatively = true;
+          return;
+        }
+      } catch (error) {
+        if (!(error instanceof CodexRpcError)) throw error;
+        deps.log?.("codex could not fork the thread, starting one", {
+          threadId: request.threadId,
+          error: error.message,
+        });
+      }
+    }
     const response = (await connection.request("thread/start", params)) as {
       thread?: { id?: unknown };
     } | null;
     const id = response?.thread?.id;
     if (typeof id !== "string") throw new Error("Codex started no thread.");
     current.session.codexThreadId = id;
+  };
+
+  /** The fork's Codex thread came from its parent's (D1148): it saw the inherited turns. */
+  let forkedNatively = false;
+
+  /**
+   * Drops from the resumed Codex thread the turns a rollback dropped from the thread (T3's
+   * revertCodexThread, D1147): `thread/revert` before the oldest of them. One Codex cannot
+   * revert (legacy history) gets a new thread instead, handed the transcript.
+   */
+  const revertDropped = async (current: Lease, dropped: readonly RecordedTurn[]) => {
+    const first = dropped[0];
+    if (first === undefined || current.session.codexThreadId === undefined) return;
+    try {
+      await current.session.connection.request("thread/revert", {
+        threadId: current.session.codexThreadId,
+        beforeTurnId: first.codexTurnId,
+      });
+    } catch (error) {
+      if (!(error instanceof CodexRpcError)) throw error;
+      deps.log?.("codex could not revert the thread, starting one", {
+        threadId: request.threadId,
+        error: error.message,
+      });
+      current.session.codexThreadId = undefined;
+      current.session.delivered = false;
+      await ensureThread(current, undefined);
+    }
   };
 
   /**
@@ -970,7 +1041,31 @@ export function codexTurn(
 
   const run = async () => {
     model = await deps.model;
-    const recorded = await deps.threads.get(request.threadId);
+    const record = await deps.threads.read?.(request.threadId);
+    const recorded = record?.codexThreadId ?? (await deps.threads.get(request.threadId));
+    // The turns the thread still shows: a recorded one it does not was rolled back (D1147).
+    const visible = new Set(
+      request.history.flatMap((event) => {
+        const id = (event.payload as { turnId?: unknown } | null)?.turnId;
+        return event.type === ThreadEvents.turnStarted && typeof id === "string" ? [id] : [];
+      }),
+    );
+    const kept = (record?.turns ?? []).filter((turn) => visible.has(turn.turnId));
+    const dropped = (record?.turns ?? []).filter((turn) => !visible.has(turn.turnId));
+    // A fork's first Codex turn forks its parent's Codex thread at the last Codex turn the
+    // fork inherited (D1148).
+    let forkAt: { codexThreadId: string; codexTurnId: string } | undefined;
+    let inherited: RecordedTurn[] = [];
+    if (recorded === undefined && deps.threads.read !== undefined) {
+      const marker = request.history.findLast((event) => event.type === ThreadEvents.threadForked);
+      const parentId = (marker?.payload as { threadId?: unknown } | null)?.threadId;
+      const parent = typeof parentId === "string" ? await deps.threads.read(parentId) : undefined;
+      inherited = (parent?.turns ?? []).filter((turn) => visible.has(turn.turnId));
+      const last = inherited.at(-1);
+      if (parent !== undefined && last !== undefined) {
+        forkAt = { codexThreadId: parent.codexThreadId, codexTurnId: last.codexTurnId };
+      }
+    }
     if (interrupted) return;
     const mcpWrites = runtimeMode === "full-access";
     const leasing = deps.sessions.lease(request.threadId, {
@@ -1027,12 +1122,17 @@ export function codexTurn(
         keep = true;
         return;
       }
-      await untilEnded(ensureThread(current, recorded));
+      await untilEnded(ensureThread(current, recorded, forkAt));
+      // Dropped turns go once from a Codex thread that still has them: the one just resumed,
+      // or one kept loaded since before the rollback.
+      if (dropped.length > 0 && current.session.codexThreadId === recorded) {
+        await untilEnded(revertDropped(current, dropped));
+      }
       codexThreadId = current.session.codexThreadId;
       // The record names the Codex thread once a message of this thread reached it (it is
       // written after turn/start answered). Until then Codex saw none of the thread's turns,
       // also when the thread was started by a turn that failed before its message went in.
-      const fresh = recorded !== codexThreadId && !current.session.delivered;
+      const fresh = recorded !== codexThreadId && !current.session.delivered && !forkedNatively;
       current.session.model = model;
       // A Codex thread that never saw the thread's earlier turns gets them as a transcript.
       const preface = historyTranscript(request.history, fresh ? undefined : CODEX_AGENT_ID);
@@ -1085,8 +1185,18 @@ export function codexTurn(
       turnId = id;
       // A compaction hands Codex no message: the thread's turns still go to it with the next.
       if (!compacting) current.session.delivered = true;
-      if (fresh && !compacting) {
-        await deps.threads.set(request.threadId, codexThreadId!).catch((error: unknown) =>
+      // Every turn is recorded with the Codex turn it ran as, so a rollback can revert it and a
+      // fork can fork at it (D1147, D1148); the turns before are those still shown.
+      const before =
+        codexThreadId === recorded ? kept : forkedNatively ? inherited : ([] as RecordedTurn[]);
+      // A compaction on a thread Codex never saw records nothing: the next message still takes
+      // the transcript.
+      const recordable = fresh ? !compacting : forkedNatively || deps.threads.read !== undefined;
+      if (recordable) {
+        const turns = [...before, { turnId: request.turnId, codexTurnId: turnId }].slice(
+          -MAX_RECORDED_TURNS,
+        );
+        await deps.threads.set(request.threadId, codexThreadId!, turns).catch((error: unknown) =>
           deps.log?.("could not record the codex thread", {
             threadId: request.threadId,
             error: String(error),

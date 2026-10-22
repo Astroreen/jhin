@@ -51,7 +51,13 @@ import {
   type AppServerConnection,
 } from "./rpc.ts";
 import { createSessions, type Launcher, type Sessions } from "./session.ts";
-import { CODEX_AGENT_ID, codexTurn, type ThreadStore } from "./turn.ts";
+import {
+  CODEX_AGENT_ID,
+  codexTurn,
+  type CodexThreadRecord,
+  type RecordedTurn,
+  type ThreadStore,
+} from "./turn.ts";
 import {
   RATE_LIMITS_FAILURE,
   codexRateLimitsToLimits,
@@ -63,7 +69,13 @@ import {
   type CodexRateLimitsRead,
 } from "./usage-limits.ts";
 
-export { CODEX_AGENT_ID, codexTurn, type ThreadStore } from "./turn.ts";
+export {
+  CODEX_AGENT_ID,
+  codexTurn,
+  type CodexThreadRecord,
+  type RecordedTurn,
+  type ThreadStore,
+} from "./turn.ts";
 export { SessionTakenOver, createSessions, type Launcher, type Sessions } from "./session.ts";
 export { launchAppServer, type AppServerConnection, type LaunchOptions } from "./rpc.ts";
 export * from "./mapping.ts";
@@ -643,17 +655,31 @@ export function threadRecords(kv: KeyValueStore): ThreadStore & {
     return next;
   };
   const key = (threadId: string) => `thread/${threadId}`;
+  const read = async (threadId: string): Promise<CodexThreadRecord | undefined> => {
+    const record = (await kv.get(NAMESPACE, key(threadId))) as
+      | { codexThreadId?: unknown; turns?: unknown }
+      | undefined;
+    if (typeof record?.codexThreadId !== "string") return undefined;
+    const turns = Array.isArray(record.turns)
+      ? record.turns.filter(
+          (turn): turn is RecordedTurn =>
+            typeof turn?.turnId === "string" && typeof turn?.codexTurnId === "string",
+        )
+      : [];
+    return { codexThreadId: record.codexThreadId, turns };
+  };
   return {
-    get: async (threadId) => {
-      const record = (await kv.get(NAMESPACE, key(threadId))) as
-        | { codexThreadId?: unknown }
-        | undefined;
-      return typeof record?.codexThreadId === "string" ? record.codexThreadId : undefined;
-    },
-    set: (threadId, codexThreadId) =>
+    get: async (threadId) => (await read(threadId))?.codexThreadId,
+    read,
+    set: (threadId, codexThreadId, turns) =>
       write(threadId, async () => {
         if (forgotten.has(threadId)) return;
-        await kv.set(NAMESPACE, key(threadId), { codexThreadId, at: new Date().toISOString() });
+        await kv.set(NAMESPACE, key(threadId), {
+          codexThreadId,
+          // A record older than D1147 has no turns: rollbacks before it start a new thread.
+          ...(turns === undefined ? {} : { turns: turns.map((turn) => ({ ...turn })) }),
+          at: new Date().toISOString(),
+        });
       }),
     delete: (threadId) => write(threadId, () => kv.delete(NAMESPACE, key(threadId))),
     forget: (threadId, settled = Promise.resolve()) => {

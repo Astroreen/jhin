@@ -223,6 +223,12 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
     case "thread/resume":
       send({ id, result: { thread: { id: params["threadId"], updatedAt: 0 } } });
       return;
+    case "thread/fork":
+      send({ id, result: { thread: { id: `codex-fork-${calls("thread/fork")}` } } });
+      return;
+    case "thread/revert":
+      send({ id, result: { thread: { id: params["threadId"] } } });
+      return;
     case "thread/unarchive":
       send({ id, result: {} });
       return;
