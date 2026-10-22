@@ -258,6 +258,8 @@ export function createNodeFeeds<S>(
   const stop = (id: string) => {
     feeds.get(id)?.stop();
     feeds.delete(id);
+    // A replaced connection's feed starts clean: no change pending from the old one.
+    rereads.delete(id);
     if (states.delete(id)) changed();
   };
   const sync = () => {

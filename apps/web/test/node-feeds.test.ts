@@ -460,4 +460,35 @@ describe("node feeds (D630, D731)", () => {
     expect(one.reads.count).toBe(3);
     feeds.dispose();
   });
+
+  it("starts a replaced connection's feed with no change pending from the old one", async () => {
+    let answerOld!: (value: unknown) => void;
+    const oldReads: Promise<unknown>[] = [
+      Promise.resolve({ head: 1, items: ["x"] }),
+      new Promise((resolve) => (answerOld = resolve)),
+    ];
+    let onError: ((error: unknown) => void) | undefined;
+    const old = {
+      call: () => oldReads.shift(),
+      subscribe: (_stream: string, options: { onError: (error: unknown) => void }) => {
+        onError = options.onError;
+        return toDisposable(() => {});
+      },
+    };
+    const nodes = fakeConnections(old as never);
+    const feeds = createNodeFeeds(nodes.connections, quiet, source);
+    await changes(feeds);
+    onError!(new Error("dropped"));
+    // A change made while the old client's re-read is under way…
+    feeds.apply("a", { type: "add", payload: "old-local" });
+    // …then the connection is replaced before that read answers.
+    const fresh = fakeClient();
+    nodes.replace(fresh.client);
+    const ready = changes(feeds);
+    fresh.answer.resolve({ head: 5, items: ["n"] });
+    await ready;
+    answerOld({ head: 2, items: ["x"] });
+    expect(feeds.snapshot().get("a")?.value).toEqual(["n"]);
+    feeds.dispose();
+  });
 });

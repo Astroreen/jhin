@@ -257,8 +257,8 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
     >
       {feed?.status === "error" ? (
         <p className="text-xs text-destructive">
-          Not live: {feed.error ?? "the node's health stream failed"}. Refresh reads the counts
-          again; new warnings are not told until the connection is replaced.
+          Not live: {feed.error ?? "the node's health stream failed"}. It is read again within a
+          minute, and what came meanwhile is told then; Refresh reads the counts now.
         </p>
       ) : null}
       <header className="flex items-start gap-4">
@@ -416,7 +416,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       </header>
       {feed?.status === "error" ? (
         <p className="text-xs text-destructive">
-          Not live: {feed.error ?? "the node's health stream failed"}. Reconnect to update it.
+          Not live: {feed.error ?? "the node's health stream failed"}. It is read again within a
+          minute.
         </p>
       ) : null}
       <p className="max-w-3xl text-sm">{warning.summary}</p>
