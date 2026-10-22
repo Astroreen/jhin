@@ -1305,6 +1305,33 @@ Decisions (C2):
   small PRs or written down as lore in `docs/lore/`; what is missing goes to
   [Deferred](#deferred) with the run as its evidence.
 
+C3 decisions:
+
+- **D1101. One scenario, one node, `e2e/tests/civilization.spec.ts`.** A
+  team of three fake agents (lead, builder, reviewer) from a `jhin.teams`
+  spec in config, `teams.up`, the intent, a mission with two waves of
+  slices, `missions.orchestrate` from the lead's generation, proofs, an ask
+  to the owner answered through the inbox and a ceremony warning, until the
+  lead sets the mission done (D651). It follows the `missions`,
+  `orchestration`, `agents/inbox` and `health` streams from their start
+  (`e2e/tests/support/streams.ts`) and waits for the record it expects; it
+  never waits for time.
+- **D1102. The fake agents' own acts are commands sent for them.** The fake
+  runtime calls no tools, so the test calls what an agent's MCP tools call:
+  `slices.prove`, and `agents.ask` and `agents.send` with the agent as
+  `from` (D622). Everything the node does by itself (handoffs, thread
+  links, the inbox item, the warning, its analysis, the orchestrator's
+  outcomes) is asserted, never driven.
+- **D1103. The scenario proves the threshold, not just a warning.** Health
+  runs with a low `ceremony` config; the test reads the mission's group in
+  `health.status`, sends exactly the messages that reach `limitOf` (D722),
+  checks no warning came before the last, and asserts the warning's
+  `measures` and that the agent with the context analysed it (D725).
+- **D1104. Commands first, the UI where it exists.** Until C1 and C2 land,
+  every step is a command; the test ends in Civilization mode on what A3
+  and A7 already show (the mission view, the health section). Steps move to
+  C1's console and C2's mission editing as they land.
+
 ## Deferred
 
 - Pods (groups inside a team).
@@ -1479,6 +1506,19 @@ Decisions (C2):
   threads are followed (D710).
 - A6: a refocus interval in minutes for long turns (D711 counts turns).
 - A6: a row in the chat for `agent.context.compacted` (D709).
+- C3: a fake runtime that calls the agent's own tools (`slices_prove`,
+  `agents_ask`, `agents_send`) on a slash command, so the scenario runs the
+  agents' path through MCP instead of commands sent for them (D1102).
+- C3: a node warning raised before its mission's stays open beside it. The
+  owner's messages to the lead count only for the node (the lead holds no
+  slice), so the node crosses first, and when the mission crosses later the
+  node is quiet but its open warning stays: two warnings for one cause, which
+  D724 means to avoid. The scenario (D1101) shows it; it asserts the
+  mission's warning by name.
+- C3: Civilization mode's Projects section still says it arrives with A3,
+  which landed without filling it; the Missions section already groups by
+  project. Fill it (projects with their intent, C2's intent editing) or drop
+  the section.
 - A6: the orchestrator in Civilization mode, beside A3's mission view (D712).
 - A6: ending a `missions.wait` when its caller goes away: commands get no
   cancellation signal (as W10's waits), so a stopped run's wait ends at its
