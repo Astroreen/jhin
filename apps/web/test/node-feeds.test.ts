@@ -100,9 +100,11 @@ describe("node feeds (D630, D731)", () => {
     one.stream.listener!({ type: "add", payload: "y" });
     // A permission taken back mid-stream is a failure too, not "no such feature".
     one.stream.onError!(Object.assign(new Error("stream gone"), { code: "PERMISSION_DENIED" }));
+    // A change this client made applies to the feed that is not live any more.
+    feeds.apply("a", { type: "add", payload: "z" });
     expect(feeds.snapshot().get("a")).toEqual({
       status: "error",
-      value: ["x", "y"],
+      value: ["x", "y", "z"],
       error: "stream gone",
     });
     feeds.dispose();
@@ -124,6 +126,9 @@ describe("node feeds (D630, D731)", () => {
     two.answer.resolve({ head: 9, items: ["new"] });
     await ready;
     expect(feeds.snapshot().get("a")).toMatchObject({ status: "ready", value: ["new"] });
+    // A live feed is left to its stream.
+    feeds.apply("a", { type: "add", payload: "local" });
+    expect(feeds.snapshot().get("a")?.value).toEqual(["new"]);
     expect(two.stream.after).toBe(9);
     feeds.dispose();
   });

@@ -1,6 +1,6 @@
 // Health's views in Civilization mode (docs/plans/agents.md, D731): the states
 // that the E2E does not reach.
-import type { HealthState, Warning } from "@jhin/health-api";
+import { applyHealthEvent, type HealthState, type Warning } from "@jhin/health-api";
 import { toDisposable } from "@jhin/sdk";
 import { SidebarProvider } from "@jhin/ui";
 import { act } from "react";
@@ -53,9 +53,26 @@ function viewOf(
 ) {
   const toasts: { type?: string; title: string }[] = [];
   const quiet = { subscribe: () => toDisposable(() => {}) };
-  const snapshot = new Map(Object.entries(feeds));
+  let snapshot = new Map(Object.entries(feeds));
+  const listeners = new Set<() => void>();
   const view = {
-    store: { ...quiet, snapshot: () => snapshot },
+    store: {
+      snapshot: () => snapshot,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return toDisposable(() => listeners.delete(listener));
+      },
+      // As `createNodeFeeds` does for a feed that is not live.
+      apply: (id: string, event: { type: string; payload: unknown }) => {
+        const feed = snapshot.get(id);
+        if (feed?.status !== "error") return;
+        snapshot = new Map(snapshot).set(id, {
+          ...feed,
+          value: applyHealthEvent(feed.value, event),
+        });
+        for (const listener of listeners) listener();
+      },
+    },
     connections: {
       get: (id: string) =>
         feeds[id] === undefined ? undefined : { label: `node ${id}`, client: { call } },
@@ -205,7 +222,7 @@ describe("health views (D731)", () => {
     );
     await render(<HealthPage node="a" view={view} warningId="w1" />);
     await userEvent.click(page.getByRole("button", { name: "Dismiss" }));
-    // No event will mark it: the page does, and offers no second Dismiss.
+    // No event will mark it: the feed learns it here, and no second Dismiss is offered.
     await expect.element(page.getByText("Dismissed")).toBeVisible();
     await expect.element(page.getByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
     expect(toasts).toEqual([

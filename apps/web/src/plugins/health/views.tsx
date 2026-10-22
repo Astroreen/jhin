@@ -1,6 +1,6 @@
 // Health in Civilization mode (docs/plans/agents.md, A7: D731), a chunk of its
 // own (D440): the page loads it once Civilization mode shows it.
-import type { EventRef, GroupStatus, Warning } from "@jhin/health-api";
+import { HealthEvents, type EventRef, type GroupStatus, type Warning } from "@jhin/health-api";
 import type { Connections, Navigation } from "@jhin/client-api";
 import {
   Badge,
@@ -313,8 +313,6 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     { scope: `${node}|${warningId}`, enabled: warning !== undefined },
   );
   const [dismissing, setDismissing] = useState(false);
-  // Dismissed from here while the stream was not live: no event will say so.
-  const [dismissedHere, setDismissedHere] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     // Set on every mount: StrictMode mounts, cleans up and mounts again.
@@ -343,7 +341,11 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       await connection.client.call("health.warnings.dismiss", { warningId });
       // The stream marks it dismissed; when the stream is down now, the answer says so.
       if (view.store.snapshot().get(node)?.status !== "ready") {
-        if (mounted.current) setDismissedHere(true);
+        // No event will say so: the feed learns it here, page and sidebar alike.
+        view.store.apply(node, {
+          type: HealthEvents.warningDismissed,
+          payload: { warningId, dismissedAt: new Date().toISOString() },
+        });
         view.toasts?.show({ type: "success", title: "Warning dismissed" });
       }
     } catch (error) {
@@ -357,7 +359,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     }
   };
   const { analysis } = warning;
-  const open = warning.status === "open" && !dismissedHere;
+  const open = warning.status === "open";
   return (
     <section
       aria-label="Health warning"

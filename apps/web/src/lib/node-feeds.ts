@@ -15,6 +15,12 @@ export interface NodeFeeds<S> {
   /** Every connection's feed, by connection id: the same map until one changes. */
   snapshot(): ReadonlyMap<string, NodeFeed<S>>;
   subscribe(listener: () => void): Disposable;
+  /**
+   * Applies a change this client made and knows succeeded to a feed whose
+   * stream is not live, so what it shows does not wait for an event that will
+   * not come. A live feed is left to its stream.
+   */
+  apply(id: string, event: { type: string; payload: unknown }): void;
 }
 
 export interface NodeFeedSource<S> {
@@ -134,6 +140,13 @@ export function createNodeFeeds<S>(
 
   return {
     snapshot: () => snapshot,
+    apply(id, event) {
+      set(id, (feed) => {
+        if (feed.status !== "error") return feed;
+        const value = source.apply(feed.value, event);
+        return value === feed.value ? feed : { ...feed, value };
+      });
+    },
     subscribe(listener) {
       listeners.add(listener);
       return toDisposable(() => listeners.delete(listener));
