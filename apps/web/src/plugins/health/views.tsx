@@ -20,7 +20,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
 import { HEALTH_PANEL, detectorLabel, groupLabel, healthRoute } from "./route.ts";
-import { openWarnings, type HealthStore } from "./store.ts";
+import { openWarnings, type HealthStore, type NodeHealth } from "./store.ts";
 
 /** What the views use of the plugin that shows them. */
 export interface HealthView {
@@ -36,20 +36,25 @@ export function HealthList({ view }: { view: HealthView }) {
   const route = useExternal(view.navigation, view.navigation.current);
   const warnings = openWarnings(nodes);
   const ready = [...nodes].filter(([, feed]) => feed.status === "ready").map(([node]) => node);
-  const here = ready.includes(route.node ?? "") ? route.node! : ready[0];
   return (
     <SidebarMenu aria-label="Health">
-      {here === undefined ? null : (
-        <SidebarMenuItem>
+      {/* One overview per node with health; the node is named once there are several. */}
+      {ready.map((node) => (
+        <SidebarMenuItem key={node}>
           <SidebarMenuButton
-            isActive={route.panel === HEALTH_PANEL && route.section === undefined}
-            onClick={() => view.navigation.navigate(healthRoute(here))}
+            isActive={
+              route.panel === HEALTH_PANEL && route.node === node && route.section === undefined
+            }
+            onClick={() => view.navigation.navigate(healthRoute(node))}
           >
             <ActivityIcon />
-            <span>Ceremony and progress</span>
+            <span className="truncate">
+              Ceremony and progress
+              {ready.length > 1 ? ` · ${view.connections.get(node)?.label ?? node}` : ""}
+            </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-      )}
+      ))}
       {warnings.length === 0 ? (
         <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">No warnings.</p>
       ) : (
@@ -95,9 +100,44 @@ function PageEmpty({ title, text }: { title: string; text: string }) {
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Calls a command of a node once per key, with its answer or error and when it answered. */
-function useCall<T>(view: HealthView, node: string, command: string, input: unknown, key: string) {
-  const [result, setResult] = useState<{ key: string; at: Date; value?: T; error?: string }>();
+/** What a node's feed says when it has no health to show, or nothing. */
+function FeedProblem({ feed }: { feed: NodeHealth | undefined }) {
+  if (feed === undefined) return <PageEmpty text="This node is not connected." title="Health" />;
+  if (feed.status === "loading") return <PageEmpty text="Reading the warnings…" title="Health" />;
+  if (feed.status === "unsupported") {
+    return (
+      <PageEmpty
+        text="This node has no health (jhin.health), or this client may not read it."
+        title="No health here"
+      />
+    );
+  }
+  if (feed.status === "error") {
+    return <PageEmpty text={feed.error ?? "Health could not be read."} title="Health" />;
+  }
+  return null;
+}
+
+/**
+ * Calls a command of a node once per key, with its answer or error and when it
+ * answered. A new key of the same `scope` keeps showing the last answer until
+ * the new one arrives, so a refresh does not blank the page.
+ */
+function useCall<T>(
+  view: HealthView,
+  node: string,
+  command: string,
+  input: unknown,
+  key: string,
+  scope = key,
+) {
+  const [result, setResult] = useState<{
+    key: string;
+    scope: string;
+    at: Date;
+    value?: T;
+    error?: string;
+  }>();
   useEffect(() => {
     let live = true;
     const connection = view.connections.get(node);
@@ -106,8 +146,9 @@ function useCall<T>(view: HealthView, node: string, command: string, input: unkn
         ? Promise.reject(new Error("This node is not connected."))
         : connection.client.call<T>(command, input);
     call.then(
-      (value) => live && setResult({ key, at: new Date(), value }),
-      (error: unknown) => live && setResult({ key, at: new Date(), error: errorText(error) }),
+      (value) => live && setResult({ key, scope, at: new Date(), value }),
+      (error: unknown) =>
+        live && setResult({ key, scope, at: new Date(), error: errorText(error) }),
     );
     return () => {
       live = false;
@@ -115,7 +156,7 @@ function useCall<T>(view: HealthView, node: string, command: string, input: unkn
     // `key` names everything the call depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return result?.key === key ? result : undefined;
+  return result?.key === key || result?.scope === scope ? result : undefined;
 }
 
 const RANK = { mission: 0, team: 1, project: 2, node: 3 } as const;
@@ -123,7 +164,8 @@ const RANK = { mission: 0, team: 1, project: 2, node: 3 } as const;
 /** Ceremony against progress per group, over the window (D722). */
 function Overview({ view, node }: { view: HealthView; node: string }) {
   const nodes = useExternal(view.store, view.store.snapshot);
-  const health = nodes.get(node)?.value;
+  const feed = nodes.get(node);
+  const health = feed?.value;
   // Read again on every change of the node's health and on Refresh; the counts
   // themselves change with every message, so the page says when it read them.
   const [round, setRound] = useState(0);
@@ -134,7 +176,9 @@ function Overview({ view, node }: { view: HealthView; node: string }) {
     "health.status",
     {},
     `${node}|${round}`,
+    node,
   );
+  if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
   if (status === undefined) return <PageEmpty text="Reading the sensors…" title="Health" />;
   if (status.error !== undefined) return <PageEmpty text={status.error} title="Health" />;
   const { windowHours } = status.value!;
@@ -237,9 +281,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     },
     [],
   );
-  if (feed === undefined || feed.status === "loading") {
-    return <PageEmpty text="Reading the warnings…" title="Health" />;
-  }
+  if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
   if (warning === undefined) {
     return <PageEmpty text="The node no longer has this warning." title="No such warning" />;
   }
@@ -290,8 +332,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
           <p className="text-sm text-muted-foreground">Waiting for the analyst…</p>
         ) : analysis.status === "none" ? (
           <p className="text-sm text-muted-foreground">
-            No agent has this work's context: name one under Health → Analysts
-            (`jhin.health.analysts`) in Settings.
+            No agent has this work's context: name one in the node's `jhin.health` config, under
+            `analysts`.
           </p>
         ) : (
           <>
