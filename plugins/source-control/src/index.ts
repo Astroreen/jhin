@@ -1573,7 +1573,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
             .trim()
             .replace(/^refs\/heads\//, "");
           if (current !== candidate.branch) return "Repository or branch changed.";
-          const changes = await localChangesReason(worktreeGit, rules.keepWhen);
+          const changes = await localChangesReason(worktreeGit, rules.keepWhen, candidate.path);
           if (changes !== null) return sentence(changes);
           for (const threadId of now) {
             const answer = (await context.commands

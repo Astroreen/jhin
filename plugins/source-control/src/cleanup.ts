@@ -119,6 +119,8 @@ export interface CleanupCandidate {
 export async function localChangesReason(
   git: Git,
   keepWhen: WorktreeCleanupRules["keepWhen"],
+  /** The worktree's folder: its submodules are asked only when it has a `.gitmodules`. */
+  path?: string,
 ): Promise<string | null> {
   const status = await git([
     "status",
@@ -139,16 +141,25 @@ export async function localChangesReason(
   // commits (on its HEAD or any local branch) and its stashes, none of which a clean status
   // shows (D1134). A commit on a remote branch or a tag is safe; any other (one fetched by
   // hash alone, say) keeps the worktree, the safe side: forcing it away stays the user's.
-  const unpushed = await git(
-    [
-      "submodule",
-      "foreach",
-      "--quiet",
-      "--recursive",
-      "git rev-list -n 1 HEAD --branches --not --remotes --tags; git stash list -n 1",
-    ],
-    { ok: [0, 1, 128] },
-  );
+  const hasSubmodules =
+    path === undefined ||
+    (await Fs.stat(`${path}/.gitmodules`).then(
+      () => true,
+      // Only a missing file means none: another error asks git all the same.
+      (error: NodeJS.ErrnoException) => error.code !== "ENOENT",
+    ));
+  const unpushed = !hasSubmodules
+    ? { code: 0, stdout: "" }
+    : await git(
+        [
+          "submodule",
+          "foreach",
+          "--quiet",
+          "--recursive",
+          "git rev-list -n 1 HEAD --branches --not --remotes --tags; git stash list -n 1",
+        ],
+        { ok: [0, 1, 128] },
+      );
   if (unpushed.code !== 0) return "submodules could not be read";
   if (unpushed.stdout.trim() !== "") return "has unpushed submodule commits";
   if (keepWhen !== "any-local-files") return null;
@@ -233,7 +244,7 @@ export async function judge(
     .trim()
     .replace(/^refs\/heads\//, "");
   if (current !== candidate.branch) return keep("repository or branch changed");
-  const changes = await localChangesReason(git, rules.keepWhen);
+  const changes = await localChangesReason(git, rules.keepWhen, candidate.path);
   if (changes !== null) return keep(changes);
   if (candidate.deleted) return { remove: sentence("thread was deleted") };
 
