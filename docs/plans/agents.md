@@ -1767,6 +1767,6 @@ Each workstream lists its PRs here as they merge.
   conversation with a team's lead, the composer asking it, its escalations
   with the way to the inbox, Start team, `civilization.lead.open`; the team
   page opens it instead of a message box of its own (D1062–D1064).
-- C1 #<pr3>: defining and editing agents from Civilization mode
+- C1 #196: defining and editing agents from Civilization mode
   (`jhin.agents.form`, `civilization.agent.define`, New agent in the roster),
   and New generation, Edit and Remove on an agent's page (D1065–D1067).
