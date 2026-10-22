@@ -2,12 +2,23 @@
 // resolveTailscalePairingBase / resolveTailscaleLocalTarget in apps/server/src/cli/pair.ts.
 import * as ChildProcess from "node:child_process";
 
-import { PairError, localUrl, probeNode, type Probe, type RuntimeState } from "./pair.ts";
+import {
+  DEFAULT_TAILSCALE_SERVE_PORT,
+  PairError,
+  localUrl,
+  probeNode,
+  type Probe,
+  type RuntimeState,
+} from "./pair.ts";
 
-/** T3's default: Tailscale Serve on the tailnet's HTTPS port. */
-export const DEFAULT_TAILSCALE_SERVE_PORT = 443;
 const SERVE_TIMEOUT_MS = 10_000;
-const STATUS_TIMEOUT_MS = 1_500;
+/** Shown on every run, a kept mapping too: the setting is easy to miss once. */
+const TRUST_PROXY_NOTE =
+  "Tailscale Serve reaches the node from 127.0.0.1: add 127.0.0.1 to jhin.http.trustProxy so the node tells tailnet clients apart (rate limits, device addresses).";
+
+/** `status --json` lists every peer: a large tailnet answers slowly and at length. */
+const STATUS_TIMEOUT_MS = 5_000;
+const MAX_OUTPUT = 32 * 1024 * 1024;
 /** Tailscale provisions a certificate on a fresh mapping's first request, which takes a few seconds. */
 const PROBE_ATTEMPTS = 5;
 
@@ -22,7 +33,7 @@ const runTailscale: TailscaleRunner = (args, timeoutMs) =>
     ChildProcess.execFile(
       process.platform === "win32" ? "tailscale.exe" : "tailscale",
       [...args],
-      { encoding: "utf8", timeout: timeoutMs },
+      { encoding: "utf8", timeout: timeoutMs, maxBuffer: MAX_OUTPUT },
       (error, stdout) => {
         if (error !== null && typeof error.code !== "number") reject(error);
         else resolve({ code: error === null ? 0 : (error.code as number), stdout });
@@ -40,12 +51,21 @@ const LOOPBACK_TARGET = /^https?:\/\/(127\.\d+\.\d+\.\d+|localhost|\[::1\])(:\d+
  */
 export function replaceable(statusJson: string, port: number): boolean {
   let status: {
+    AllowFunnel?: Record<string, unknown>;
     TCP?: Record<string, { TCPForward?: unknown; HTTPS?: unknown; HTTP?: unknown }>;
     Web?: Record<string, { Handlers?: Record<string, Record<string, unknown>> }>;
   };
   try {
     status = JSON.parse(statusJson === "" ? "{}" : statusJson) as typeof status;
   } catch {
+    return false;
+  }
+  // A funneled port is public: re-pointing it would publish the node to the internet.
+  if (
+    Object.entries(status.AllowFunnel ?? {}).some(
+      ([host, on]) => on === true && host.endsWith(`:${port}`),
+    )
+  ) {
     return false;
   }
   const tcp = status.TCP?.[String(port)];
@@ -128,7 +148,7 @@ export async function publishOverTailscale(input: {
   const existing = await probe(baseUrl);
   if (existing.kind === "node") {
     if (existing.instance !== input.node.instance) throw otherNode;
-    return { baseUrl, notes };
+    return { baseUrl, notes: [TRUST_PROXY_NOTE] };
   }
   if (existing.kind === "other") {
     throw new PairError(
@@ -170,7 +190,7 @@ export async function publishOverTailscale(input: {
   }
   notes.push(
     `Tailscale Serve now maps ${baseUrl} to this node and persists across restarts. Remove it with \`tailscale serve --https=${port} off\`.`,
-    "Tailscale Serve reaches the node from 127.0.0.1: add 127.0.0.1 to jhin.http.trustProxy so the node tells tailnet clients apart (rate limits, device addresses).",
+    TRUST_PROXY_NOTE,
   );
 
   for (let attempt = 0; attempt < PROBE_ATTEMPTS; attempt += 1) {

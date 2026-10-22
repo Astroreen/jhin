@@ -103,7 +103,8 @@ describe("Tailscale Serve for jhin pair", () => {
       probe,
       pause,
     });
-    expect(published).toEqual({ baseUrl: "https://studio.tail1234.ts.net:8443", notes: [] });
+    expect(published.baseUrl).toBe("https://studio.tail1234.ts.net:8443");
+    expect(published.notes).toEqual([expect.stringContaining("jhin.http.trustProxy")]);
     expect(tailscale.calls).toEqual([["status", "--json"]]);
   });
 
@@ -186,6 +187,16 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
     expect(replaceable(status({ HTTPS: true }, { Path: "/srv/www" }), 443)).toBe(false);
     expect(replaceable(status({ HTTPS: true }, { Text: "hello" }), 443)).toBe(false);
     expect(replaceable("{not json", 443)).toBe(false);
+    // A funneled port is public: never re-pointed at the node.
+    expect(
+      replaceable(
+        JSON.stringify({
+          ...JSON.parse(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" })),
+          AllowFunnel: { "studio.tail1234.ts.net:443": true },
+        }),
+        443,
+      ),
+    ).toBe(false);
   });
 
   it("leaves an occupied port alone, even when its backend is down", async () => {

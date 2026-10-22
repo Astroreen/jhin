@@ -186,3 +186,85 @@ export function formatPairOutput(input: {
     "",
   ].join("\n");
 }
+
+/** T3's default: Tailscale Serve on the tailnet's HTTPS port. */
+export const DEFAULT_TAILSCALE_SERVE_PORT = 443;
+
+/**
+ * Every value of a repeatable `--key value` / `--key=value` option, in order;
+ * `undefined` when one is given without a value.
+ */
+function allValues(argv: readonly string[], key: string): string[] | undefined {
+  const values: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]!;
+    if (token.startsWith(`--${key}=`)) {
+      const value = token.slice(key.length + 3);
+      if (value === "") return undefined;
+      values.push(value);
+    } else if (token === `--${key}`) {
+      const next = argv[index + 1];
+      if (next === undefined || next.startsWith("--")) return undefined;
+      values.push(next);
+      index += 1;
+    }
+  }
+  return values;
+}
+
+export interface PairFlags {
+  readonly permissions: readonly string[];
+  readonly ttlMinutes?: number;
+  readonly tailscale: boolean;
+  readonly servePort: number;
+}
+
+/**
+ * `jhin pair`'s own flags (D1185, D1189), or why they are refused. A flag
+ * without its value is refused, never read as "not given": a bare
+ * `--permission` would otherwise pair with every permission the token holds.
+ */
+export function parsePairFlags(
+  argv: readonly string[],
+  options: ReadonlyMap<string, string | true>,
+  hasUrl: boolean,
+): PairFlags | { readonly error: string } {
+  const option = (key: string) => {
+    const value = options.get(key);
+    return typeof value === "string" ? value : undefined;
+  };
+  const permissions = allValues(argv, "permission");
+  const valueless = ["label", "ttl", "base-url", "tailscale-serve-port"].filter(
+    (key) => options.get(key) === true,
+  );
+  if (permissions === undefined) valueless.unshift("permission");
+  if (valueless.length > 0) {
+    return { error: `${valueless.map((key) => `--${key}`).join(", ")} needs a value` };
+  }
+  const ttl = option("ttl");
+  const ttlMinutes = ttl === undefined ? undefined : Number(ttl);
+  if (ttlMinutes !== undefined && !(Number.isFinite(ttlMinutes) && ttlMinutes > 0)) {
+    return { error: `--ttl takes minutes, e.g. --ttl 10; got ${ttl}` };
+  }
+  const tailscale = options.get("tailscale") === true;
+  if (options.has("tailscale") && !tailscale) return { error: "--tailscale takes no value" };
+  if (options.has("tailscale-serve-port") && !tailscale) {
+    return { error: "--tailscale-serve-port needs --tailscale" };
+  }
+  if (tailscale && (hasUrl || options.has("base-url"))) {
+    return {
+      error:
+        "--tailscale publishes the node running from this home; it takes no --url or --base-url",
+    };
+  }
+  const servePort = Number(option("tailscale-serve-port") ?? DEFAULT_TAILSCALE_SERVE_PORT);
+  if (!Number.isInteger(servePort) || servePort < 1 || servePort > 65_535) {
+    return { error: `--tailscale-serve-port takes a port; got ${option("tailscale-serve-port")}` };
+  }
+  return {
+    permissions: permissions ?? [],
+    ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
+    tailscale,
+    servePort,
+  };
+}

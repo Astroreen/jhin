@@ -15,10 +15,11 @@ import {
   discoverNode,
   formatPairOutput,
   pairingNotes,
+  parsePairFlags,
   reachableBaseUrl,
   type PairingLink,
 } from "./pair.ts";
-import { DEFAULT_TAILSCALE_SERVE_PORT, publishOverTailscale } from "./tailscale.ts";
+import { publishOverTailscale } from "./tailscale.ts";
 
 const require = Module.createRequire(import.meta.url);
 
@@ -237,28 +238,6 @@ async function uiEndpoint(host: NodeHost): Promise<string> {
 }
 
 /**
- * Every value of a repeatable `--key value` / `--key=value` option, in order;
- * `undefined` when one is given without a value.
- */
-function allValues(argv: readonly string[], key: string): string[] | undefined {
-  const values: string[] = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index]!;
-    if (token.startsWith(`--${key}=`)) {
-      const value = token.slice(key.length + 3);
-      if (value === "") return undefined;
-      values.push(value);
-    } else if (token === `--${key}`) {
-      const next = argv[index + 1];
-      if (next === undefined || next.startsWith("--")) return undefined;
-      values.push(next);
-      index += 1;
-    }
-  }
-  return values;
-}
-
-/**
  * `jhin pair` (docs/plans/security.md D1185): a pairing code from the running
  * node (D1184) or `--url`, printed as T3's block with a terminal QR code.
  */
@@ -271,43 +250,12 @@ async function pair(
     const value = options.get(key);
     return typeof value === "string" ? value : undefined;
   };
-  // A flag without its value is refused, never read as "not given": a bare
-  // `--permission` would otherwise pair with every permission the token holds.
-  const permissions = allValues(argv, "permission");
-  const valueless = ["label", "ttl", "base-url", "tailscale-serve-port"].filter(
-    (key) => options.get(key) === true,
-  );
-  if (permissions === undefined) valueless.unshift("permission");
-  if (valueless.length > 0) {
-    process.stderr.write(`${valueless.map((key) => `--${key}`).join(", ")} needs a value\n`);
+  const parsed = parsePairFlags(argv, options, remote.url !== undefined);
+  if ("error" in parsed) {
+    process.stderr.write(`${parsed.error}\n`);
     return 2;
   }
-  const ttl = option("ttl");
-  const ttlMinutes = ttl === undefined ? undefined : Number(ttl);
-  if (ttlMinutes !== undefined && !(Number.isFinite(ttlMinutes) && ttlMinutes > 0)) {
-    process.stderr.write(`--ttl takes minutes, e.g. --ttl 10; got ${ttl}\n`);
-    return 2;
-  }
-  const tailscale = options.get("tailscale") === true;
-  if (options.has("tailscale") && !tailscale) {
-    process.stderr.write("--tailscale takes no value\n");
-    return 2;
-  }
-  if (options.has("tailscale-serve-port") && !tailscale) {
-    process.stderr.write("--tailscale-serve-port needs --tailscale\n");
-    return 2;
-  }
-  const servePort = Number(option("tailscale-serve-port") ?? DEFAULT_TAILSCALE_SERVE_PORT);
-  if (tailscale && (remote.url !== undefined || options.has("base-url"))) {
-    process.stderr.write(
-      "--tailscale publishes the node running from this home; it takes no --url or --base-url\n",
-    );
-    return 2;
-  }
-  if (!Number.isInteger(servePort) || servePort < 1 || servePort > 65_535) {
-    process.stderr.write(`--tailscale-serve-port takes a port; got ${servePort}\n`);
-    return 2;
-  }
+  const { permissions, ttlMinutes, tailscale, servePort } = parsed;
   let url = remote.url;
   let baseUrl = option("base-url");
   const notes: string[] = [];
@@ -331,7 +279,7 @@ async function pair(
   return withTarget({ ...remote, url }, async (target) => {
     const link = (await target.execute("auth.pairing.create", {
       label: option("label") ?? "jhin pair",
-      ...(permissions !== undefined && permissions.length > 0 ? { permissions } : {}),
+      ...(permissions.length > 0 ? { permissions } : {}),
       ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
       baseUrl,
     })) as PairingLink;
