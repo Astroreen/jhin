@@ -1997,6 +1997,32 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   rows use as they render), the thread view, timeline and composer, and the
   kernel.
 
+- **D1042. A key acts on the selection the page has, even before
+  ProseMirror heard of it.** ProseMirror reads the page's selection on
+  `selectionchange`, which the browser fires after the change. A key that
+  came first (a script or an assistive tool selected the prompt, then
+  Delete) acted on the old caret: at the end of the text, Delete was
+  swallowed, and the Enter after it sent the prompt instead of an empty
+  composer's action. This was the "implements the plan in build mode"
+  flake of `e2e/tests/composer.spec.ts` (Playwright's `fill("")` selects
+  from a script, then presses Delete): its trace shows the keydown of
+  Delete before the `selectionchange`, and no `beforeinput` after it. The
+  prompt editor's key handler now hands a selection ProseMirror has not
+  seen to ProseMirror's own `selectionchange` handler first. Proof:
+  `apps/web/test/prompt-editor.browser.test.tsx` ("acts on a selection made
+  just before a key"); the test under 4× CPU throttling failed 3 of 20 runs
+  before and none of 20 after.
+
+- **D1043. "Cite" offers itself for a selection made before its chunk
+  loaded.** `CiteSelection` (D1012) is a chunk of its own (D440) that
+  listens for `selectionchange`; a selection made while it loaded had its
+  event already, so "Cite" never showed until the selection changed. It now
+  reads the selection when it starts listening. This was the "cites a
+  selection of the agent's answer" flake of `composer.spec.ts`. Proof:
+  `apps/web/test/cite-selection.browser.test.tsx`; the e2e test with the
+  chunk's response held until the selection was made failed 3 of 5 runs
+  before and none of 5 after.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -2008,6 +2034,13 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
 
 ## Deferred
 
+- The watcher test of `packages/node-host/test/host.test.ts` said to have
+  failed once on #180: #180's failed CI attempt failed on the build-mode
+  flake instead (D1042), and no failure of `host.test.ts` is in the logs of
+  the last 120 CI runs. Its watcher tests wait for the node's events, not
+  for time, and share nothing with D1042 (a file watcher in the node
+  process, not a selection in the page). The next failure's log should show
+  whether a write lands before the watch is armed after `ready()`.
 - A browser test that fails the load of a real D1041 chunk (the approval
   banner, the palette) and checks its message and "Try again" in place;
   `lazy-chunk.browser.test.tsx` covers the helper only. Placeholders of a

@@ -168,6 +168,26 @@ describe("the prompt editor (D303)", () => {
     expect(editor.submits).toEqual(["a\nb"]);
   });
 
+  it("acts on a selection made just before a key, before the page says it changed (D1042)", () => {
+    const editor = mount("also tests");
+    editor.handle.focus();
+    const textbox = editor.editable();
+    // As Playwright's fill("") does: the text selected from a script, then Delete, in one task,
+    // so the key comes before the selectionchange event.
+    const range = document.createRange();
+    range.selectNodeContents(textbox);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(range);
+    const key = (name: string) =>
+      textbox.dispatchEvent(
+        new KeyboardEvent("keydown", { key: name, code: name, bubbles: true, cancelable: true }),
+      );
+    key("Delete");
+    expect(editor.handle.value()).toBe("");
+    key("Enter");
+    expect(editor.submits).toEqual([""]);
+  });
+
   it("lets the parent take a key first, which then neither sends nor edits", async () => {
     const seen: string[] = [];
     const editor = mount("pick", {
