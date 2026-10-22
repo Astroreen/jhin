@@ -9,6 +9,8 @@ const NONE: readonly PreviewTab[] = Object.freeze([]);
 export interface TabsFeed {
   /** Empty until the node answers; the same array until it changes. */
   tabs(): readonly PreviewTab[];
+  /** Whether the node answered with the thread's tabs since the feed last (re)started. */
+  loaded(): boolean;
   subscribe(listener: () => void): Disposable;
 }
 
@@ -25,6 +27,7 @@ export function createTabFeeds(connections: Connections): {
     readonly threadId: string;
     readonly listeners: Set<() => void>;
     list: readonly PreviewTab[];
+    received: boolean;
     client: RpcClient | undefined;
     stop: Disposable | undefined;
   }
@@ -39,6 +42,7 @@ export function createTabFeeds(connections: Connections): {
     feed.stop?.dispose();
     feed.stop = undefined;
     feed.client = client;
+    feed.received = false;
     if (client === undefined) {
       if (feed.list !== NONE) set(feed, NONE);
       return;
@@ -62,6 +66,7 @@ export function createTabFeeds(connections: Connections): {
       (event) => {
         if (event.type !== PreviewEvents.tabs) return;
         const tabs = (event.payload as { tabs?: PreviewTab[] } | null)?.tabs;
+        feed.received = true;
         set(feed, Array.isArray(tabs) && tabs.length > 0 ? tabs : NONE);
       },
     );
@@ -81,9 +86,11 @@ export function createTabFeeds(connections: Connections): {
         threadId,
         listeners: new Set(),
         list: NONE,
+        received: false,
         client: undefined,
         stop: undefined,
         tabs: () => feed.list,
+        loaded: () => feed.received,
         subscribe(listener) {
           feed.listeners.add(listener);
           follow(feed);

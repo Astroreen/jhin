@@ -59,6 +59,7 @@ import {
   HistoryIcon,
   MinusIcon,
   MoreVerticalIcon,
+  PictureInPicture2Icon,
   PlusIcon,
   RadioTowerIcon,
   RefreshCwIcon,
@@ -203,6 +204,10 @@ export interface PanelServices {
   call<T>(method: string, params: unknown): Promise<T>;
   readonly shortcut: (command: string) => string | undefined;
   readonly onError: (title: string, error: unknown) => void;
+  /** The tab of this panel's thread that floats over the chat (D1202). */
+  useFloatingTab(key: string): string | undefined;
+  /** Floats a tab over the chat and closes the panel, or (undefined) closes the floating one. */
+  float(key: string, tabId: string | undefined): void;
   /** This device's browser profiles and its default one (D953). */
   useProfiles(): {
     readonly profiles: readonly BrowserProfile[];
@@ -444,6 +449,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
         <TabView
           client={props.client}
           key={active.tabId}
+          panelKey={panelKey}
           services={services}
           tab={active}
           threadId={threadId}
@@ -535,6 +541,8 @@ function ChromeRow(props: {
   menu?: ReactNode;
   /** Before the address: T3's badge of a tab's non-default profile. */
   leading?: ReactNode;
+  /** T3's "Float preview over chat" toggle (D1202). */
+  float?: { readonly floating: boolean; readonly disabled: boolean; readonly onToggle: () => void };
 }) {
   const refresh = props.services.shortcut("preview.refresh");
   return (
@@ -574,6 +582,30 @@ function ChromeRow(props: {
         services={props.services}
         url={props.url}
       />
+      {props.float === undefined ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                aria-label={
+                  props.float.floating ? "Close floating preview" : "Float preview over chat"
+                }
+                aria-pressed={props.float.floating ? "true" : "false"}
+                disabled={props.float.disabled}
+                onClick={props.float.onToggle}
+                size="icon-xs"
+                type="button"
+                variant={props.float.floating ? "secondary" : "ghost"}
+              />
+            }
+          >
+            <PictureInPicture2Icon className={cn(props.float.floating && "text-primary")} />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            {props.float.floating ? "Close floating preview" : "Float preview over chat"}
+          </TooltipPopup>
+        </Tooltip>
+      )}
       {props.menu}
       <div
         className="preview-loading-progress pointer-events-none absolute bottom-0 left-0 z-10 h-0.5 w-full origin-left rounded-r-full bg-primary"
@@ -953,8 +985,10 @@ function TabView(props: {
   threadId: string;
   tab: PreviewTab;
   services: PanelServices;
+  panelKey: string;
 }) {
-  const { tab, services, threadId } = props;
+  const { tab, services, threadId, panelKey } = props;
+  const floating = services.useFloatingTab(panelKey) === tab.tabId;
   const { viewer } = services;
   const { profiles, defaultProfileId } = services.useProfiles();
   // T3 marks a tab that browses with another profile than the default.
@@ -1093,6 +1127,11 @@ function TabView(props: {
         canGoBack={tab.canGoBack}
         canGoForward={tab.canGoForward}
         disabled={!youControl}
+        float={{
+          floating,
+          disabled: status.state === "failed",
+          onToggle: () => services.float(panelKey, floating ? undefined : tab.tabId),
+        }}
         leading={profileBadge}
         loading={status.state === "loading"}
         menu={menu}

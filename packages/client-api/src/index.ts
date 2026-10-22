@@ -597,6 +597,19 @@ export interface ChatTurnHeaderProps {
 }
 
 /**
+ * What the `chat.thread.overlay` slot gives each contribution: the open
+ * thread, drawn over its messages and composer in a layer that lets the
+ * pointer through (a contribution takes it back with `pointer-events-auto`),
+ * as T3 Code floats its preview mini player over the chat (D1202).
+ */
+export interface ChatThreadOverlayProps {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  /** The composer's height at the bottom of the layer, in CSS pixels. */
+  readonly composerHeight: number;
+}
+
+/**
  * What the `chat.turn.item` slot gives each contribution: an event another
  * plugin put into the thread's stream (D407), in its place among the turn's
  * output (or in the latest turn, when it names none). A contribution renders

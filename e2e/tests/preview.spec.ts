@@ -348,3 +348,57 @@ test("D403: the user opens a page from the address bar and sizes it like a devic
   await page.getByRole("button", { name: "Toggle right panel" }).click();
   await expect(panel).toBeHidden();
 });
+
+test("D1202: a tab floats over the chat, moves, and goes back to the right panel", async ({
+  page,
+}, info) => {
+  await startThread(page, "float please");
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  const panel = page.getByRole("complementary", { name: "Right panel" });
+  const address = panel.getByRole("textbox", { name: "Address" });
+  await address.fill(`${origin}/second`);
+  await address.press("Enter");
+  await expect(panel.getByRole("tab", { name: "Second page" })).toBeVisible();
+
+  // T3's "Float preview over chat": the panel closes and the tab floats over the chat.
+  await panel.getByRole("button", { name: "Float preview over chat" }).click();
+  await expect(panel).toBeHidden();
+  const player = page.getByRole("region", { name: "Floating browser preview" });
+  await expect(player).toBeVisible();
+  await expect(player.locator("[data-preview-canvas]")).toHaveAttribute("data-painted", "true");
+  // It sits above the composer, in the chat's bottom corner.
+  const composer = (await page.getByRole("textbox", { name: "Message" }).boundingBox())!;
+  const before = (await player.boundingBox())!;
+  expect(before.y + before.height).toBeLessThanOrEqual(composer.y);
+  await shot(page, info, "mini-player");
+
+  // Hovering its handle shows T3's pill, whose background drags it.
+  const handle = player.locator("[data-preview-mini-player-handle]");
+  await handle.hover();
+  const pill = (await handle.locator("> div").nth(1).boundingBox())!;
+  const grip = { x: pill.x + 1.5, y: pill.y + pill.height / 2 };
+  await page.mouse.move(grip.x, grip.y);
+  await page.mouse.down();
+  await page.mouse.move(grip.x - 200, grip.y - 100, { steps: 4 });
+  await page.mouse.up();
+  const moved = (await player.boundingBox())!;
+  expect(moved.x).toBeLessThan(before.x - 150);
+  expect(moved.y).toBeLessThan(before.y - 50);
+
+  // Back in the right panel, the tab no longer floats.
+  await handle.hover();
+  await expect(player.getByRole("button", { name: "Open preview in right panel" })).toBeVisible();
+  await shot(page, info, "mini-player-moved");
+  await player.getByRole("button", { name: "Open preview in right panel" }).click();
+  await expect(panel.getByRole("tab", { name: "Second page" })).toBeVisible();
+  await expect(player).toBeHidden();
+  await expect(panel.getByRole("button", { name: "Close floating preview" })).toBeHidden();
+
+  // Closing the panel floats the tab it showed, as T3's does; the pill closes it.
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  await expect(panel).toBeHidden();
+  await expect(player).toBeVisible();
+  await handle.hover();
+  await player.getByRole("button", { name: "Close floating preview" }).click();
+  await expect(player).toBeHidden();
+});
