@@ -30,6 +30,8 @@ export type Step =
 export interface Scenario {
   /** `account/read`'s answer; a ChatGPT account when absent. */
   readonly account?: unknown;
+  /** `account/rateLimits/read`'s answer; the method is unknown when absent. */
+  readonly rateLimits?: unknown;
   /** `skills/list`'s entries, one per folder. */
   readonly skills?: readonly unknown[];
   /** Pages of `model/list`. */
@@ -196,6 +198,10 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
         },
       });
       return;
+    case "account/rateLimits/read":
+      if (scenario.rateLimits === undefined) break;
+      send({ id, result: scenario.rateLimits });
+      return;
     case "skills/list":
       send({ id, result: { data: scenario.skills ?? [] } });
       return;
@@ -251,6 +257,7 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
       return;
     }
     default:
-      send({ id, error: { code: -32601, message: `fake: no ${method}` } });
+      break;
   }
+  send({ id, error: { code: -32601, message: `fake: no ${method}` } });
 });

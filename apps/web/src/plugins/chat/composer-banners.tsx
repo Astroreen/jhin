@@ -1,9 +1,15 @@
 // What shows above the composer only on occasion (D440, D1041): T3's
 // ComposerPendingApprovalPanel.tsx, ComposerPendingApprovalActions.tsx,
-// ComposerPendingUserInputPanel.tsx, ComposerPlanFollowUpBanner and QueuedRunsControl.tsx
-// (MIT, see THIRD_PARTY_NOTICES.md), and the menu of a `/`, `@` or `$` trigger.
+// ComposerPendingUserInputPanel.tsx, ComposerPlanFollowUpBanner and QueuedRunsControl.tsx and
+// ComposerUsageLimits.tsx (MIT, see THIRD_PARTY_NOTICES.md), and the menu of a `/`, `@` or `$`
+// trigger.
 // A chunk of its own, loaded with the first of them to show.
-import type { AgentResponse, UserQuestion } from "@jhin/agent-api";
+import type {
+  AgentResponse,
+  AgentUsageLimits,
+  AgentUsageWindow,
+  UserQuestion,
+} from "@jhin/agent-api";
 import {
   Button,
   Menu,
@@ -19,13 +25,26 @@ import {
   CheckIcon,
   CornerUpRightIcon,
   EllipsisIcon,
+  GaugeIcon,
   GripVerticalIcon,
   ListOrderedIcon,
   PencilIcon,
   ShieldIcon,
+  TrendingDownIcon,
+  TrendingUpIcon,
 } from "lucide-react";
-import { useId, useRef, useState, type ComponentProps } from "react";
+import { Fragment, useId, useRef, useState, type ComponentProps } from "react";
 
+import type { TimestampFormat } from "../../lib/format.ts";
+import {
+  elapsedShare,
+  formatResetsIn,
+  formatUpcomingTimestamp,
+  limitsNotice,
+  paceOf,
+  remainingPercent,
+  type LimitPace,
+} from "../../lib/usage-limits.ts";
 import type { RequestItem, ThreadQueue } from "../../lib/timeline.ts";
 import { useAttachmentUrl, type AttachmentLoader } from "./attachment-media.tsx";
 import { ComposerBanner } from "./banner.tsx";
@@ -558,6 +577,179 @@ export function QueueBanner(props: {
             })}
           </ComposerBanner.Children>
         </ComposerBanner.Scroll>
+      </ComposerBanner.Root>
+    </ComposerBanner.Attachment>
+  );
+}
+
+// `/usage-limits` (providers.md D1144): T3's usageLimitsBannerItem (ComposerUsageLimits.tsx) and
+// LimitWindows with its WindowBar and PaceIcon (components/usage/UsageLimits.tsx).
+const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof GaugeIcon }> = {
+  ahead: { label: "Ahead of pace: spending faster than the window elapses", icon: TrendingUpIcon },
+  on: { label: "On pace with the window", icon: GaugeIcon },
+  under: { label: "Under pace: headroom left for the rest of the window", icon: TrendingDownIcon },
+};
+/** T3's bar colour for Codex; one colour for every agent, as the client knows no agent ids. */
+const BAR_COLOR = "var(--contrast-foreground, var(--foreground))";
+
+function PaceIcon({ pace }: { readonly pace: LimitPace }) {
+  const Icon = PACE[pace].icon;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={PACE[pace].label}
+            className="inline-flex text-muted-foreground"
+            role="img"
+          />
+        }
+      >
+        <Icon aria-hidden className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{PACE[pace].label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function WindowBar(props: {
+  readonly window: AgentUsageWindow;
+  readonly now: number;
+  readonly format: TimestampFormat;
+}) {
+  const { window, now } = props;
+  const remaining = remainingPercent(window);
+  const elapsed = elapsedShare(window, now);
+  const timeLeft = elapsed === null ? null : Math.round((1 - elapsed) * 100);
+  const resetsIn = formatResetsIn(window, now);
+  const resetsAt = window.resetsAt
+    ? formatUpcomingTimestamp(window.resetsAt, props.format, now)
+    : null;
+  const summary = `${window.label}: ${remaining}% left${
+    timeLeft === null ? "" : `, ${timeLeft}% of the window left`
+  }${resetsIn ? `, ${resetsIn}` : ""}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <div
+            aria-label={summary}
+            className="relative h-6 cursor-default rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            role="img"
+            tabIndex={0}
+          />
+        }
+      >
+        <div className="absolute inset-x-0 inset-y-1.5 rounded-full bg-muted" />
+        {remaining > 0 ? (
+          <div
+            className="absolute inset-y-1.5 left-0 rounded-full"
+            style={{ width: `${remaining}%`, backgroundColor: BAR_COLOR }}
+          />
+        ) : null}
+        {timeLeft !== null ? (
+          <span
+            aria-hidden
+            className="absolute inset-y-0.5 w-px -translate-x-1/2 bg-foreground/60"
+            style={{ left: `${timeLeft}%` }}
+          />
+        ) : null}
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-foreground">
+            {remaining}% left{timeLeft !== null ? ` · ${timeLeft}% of the window left` : ""}
+          </span>
+          {timeLeft !== null ? (
+            <span className="text-muted-foreground">The line is where even spending would be.</span>
+          ) : null}
+          {resetsAt ? (
+            <span className="text-muted-foreground">
+              Resets {resetsAt}
+              {resetsIn ? ` · ${resetsIn}` : ""}
+            </span>
+          ) : null}
+        </div>
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function LimitWindows(props: {
+  readonly windows: readonly AgentUsageWindow[];
+  readonly now: number;
+  readonly format: TimestampFormat;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,9rem)_minmax(3rem,1fr)_auto] gap-x-3 gap-y-0.5">
+      {props.windows.map((window) => {
+        const pace = paceOf(window, props.now);
+        const resetsIn = formatResetsIn(window, props.now);
+        return (
+          <Fragment key={window.id}>
+            <span className="flex min-w-0 items-center gap-2 text-xs">
+              <span className="truncate text-muted-foreground">{window.label}</span>
+              <span className="ms-auto shrink-0 font-medium text-foreground tabular-nums">
+                {remainingPercent(window)}% left
+              </span>
+            </span>
+            <WindowBar format={props.format} now={props.now} window={window} />
+            <span className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+              {pace ? <PaceIcon pace={pace} /> : null}
+              <span className="ms-auto shrink-0">{resetsIn ?? ""}</span>
+            </span>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The agent's usage limits, opened by `/usage-limits` and read when it was sent. */
+export function UsageLimitsBanner(props: {
+  /** The agent's name, T3's account summary. */
+  readonly agentName: string;
+  readonly limits: AgentUsageLimits;
+  /** When it was opened: the bars and reset times are as of then. */
+  readonly now: number;
+  readonly format: TimestampFormat;
+  onDismiss(): void;
+}) {
+  const notice = limitsNotice(props.limits);
+  return (
+    <ComposerBanner.Attachment>
+      <ComposerBanner.Root density="comfortable" role="alert" variant="info">
+        <ComposerBanner.Row layout="wrap-actions">
+          <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
+            <GaugeIcon />
+          </ComposerBanner.Icon>
+          <ComposerBanner.Content className="whitespace-nowrap">
+            <span className="min-w-0 truncate font-medium leading-7 sm:leading-6">
+              Usage limits
+            </span>
+            <span className="min-w-0 truncate text-muted-foreground">{props.agentName}</span>
+          </ComposerBanner.Content>
+          <ComposerBanner.Actions>
+            <ComposerBanner.Dismiss aria-label="Dismiss usage limits" onClick={props.onDismiss} />
+          </ComposerBanner.Actions>
+        </ComposerBanner.Row>
+        <ComposerBanner.Children>
+          <ComposerBanner.Scroll>
+            <ComposerBanner.Body className="flex flex-col gap-2 pt-1 pb-1.5 pe-2">
+              <div className="flex min-w-0 flex-col gap-1">
+                {notice ? (
+                  <span className="text-xs text-muted-foreground">{notice}</span>
+                ) : (
+                  <LimitWindows
+                    format={props.format}
+                    now={props.now}
+                    windows={props.limits.windows}
+                  />
+                )}
+              </div>
+            </ComposerBanner.Body>
+          </ComposerBanner.Scroll>
+        </ComposerBanner.Children>
       </ComposerBanner.Root>
     </ComposerBanner.Attachment>
   );

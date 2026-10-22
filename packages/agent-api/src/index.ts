@@ -10,6 +10,7 @@ export const AGENT_RUNTIME_CAPABILITY = "agent.runtime";
 export const AGENT_REGISTRY_CAPABILITY = "agent.registry";
 
 export * from "./modes.ts";
+export * from "./usage-limits.ts";
 export * from "./agents.ts";
 export * from "./messages.ts";
 export * from "./teams.ts";
@@ -22,6 +23,7 @@ export * from "./project-scripts.ts";
 
 import { contextReferencesAsLabels } from "./context.ts";
 import type { InteractionMode, RuntimeMode } from "./modes.ts";
+import type { AgentUsageLimits } from "./usage-limits.ts";
 
 /** D54's form: an image inlined as a data URL, still accepted and read from older events. */
 export interface InlineImageAttachment {
@@ -402,7 +404,7 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -445,6 +447,11 @@ export interface AgentRuntime {
     readonly threadId: string;
     readonly subagentId: string;
   }): Promise<boolean>;
+  /**
+   * Since 1.8: what the account it runs on may still spend (providers.md D1141); undefined
+   * when it cannot tell now. A runtime without it has no usage limits to show.
+   */
+  usageLimits?(): Promise<AgentUsageLimits | undefined>;
   startTurn(request: TurnRequest): AgentTurn;
 }
 
@@ -502,6 +509,7 @@ export const ThreadEvents = {
   contextCompacted: "agent.context.compacted",
   turnCompleted: "agent.turn.completed",
   turnInterrupted: "agent.turn.interrupted",
+  /** `{ turnId, error?, failure? }`; `failure` (since 1.8, `AgentTurnFailure`) says why. */
   turnFailed: "agent.turn.failed",
   /**
    * Thread stream: `{ turnIds, toTurnId? }`, the turns a rollback dropped

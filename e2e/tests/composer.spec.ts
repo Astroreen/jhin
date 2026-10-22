@@ -298,6 +298,7 @@ test("offers commands, skills and files from / $ and @, and inserts what is pick
     /\/model/,
     /\/plan/,
     /\/default/,
+    /\/usage-limits/,
     /\/review/,
     /\/skill:Deploy/,
   ]);
@@ -482,6 +483,45 @@ test("switches to plan mode with /plan sent alone, and dismisses a menu with Esc
   await expect(message).toHaveText("");
 });
 
+test("shows the agent's usage limits on /usage-limits, and a usage-limit failure with its reset time", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  await expect(page.getByRole("button", { name: "Build mode" })).toBeVisible();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.click();
+  await message.pressSequentially("/usage");
+  await expect(page.getByRole("listbox", { name: "Commands" }).getByRole("option")).toHaveText([
+    /\/usage-limits.*Show this provider's usage limits/,
+  ]);
+  await message.press("Escape");
+  await message.pressSequentially("-limits");
+  await message.press("Enter");
+  // Answered by the client: the banner shows and nothing is sent.
+  const banner = page.getByRole("alert").filter({ hasText: "Usage limits" });
+  await expect(banner).toContainText("Fake agent");
+  await expect(banner.getByRole("img", { name: /^Session: 75% left/ })).toBeVisible();
+  await expect(banner.getByRole("img", { name: /^Weekly: 40% left/ })).toBeVisible();
+  await expect(banner).toContainText(/resets in 1h 59m|resets in 2h 0m/);
+  await expect(message).toHaveText("");
+  await expect(page.getByRole("log", { name: "Messages" }).getByRole("article")).toHaveCount(0);
+  const shot = info.outputPath("usage-limits.png");
+  await page.screenshot({ path: shot });
+  await info.attach("usage limits", { path: shot, contentType: "image/png" });
+  await banner.getByRole("button", { name: "Dismiss usage limits" }).click();
+  await expect(banner).toBeHidden();
+
+  await message.fill("/limit");
+  await message.press("Enter");
+  // T3's warning row, with the time to retry after instead of the agent's message.
+  await expect(page.getByText(/^Usage limit reached\. Retry after .+\.$/)).toBeVisible();
+  await expect(page.getByText("Turn failed")).toHaveCount(0);
+  const failed = info.outputPath("usage-limit-failure.png");
+  await page.screenshot({ path: failed });
+  await info.attach("usage limit failure", { path: failed, contentType: "image/png" });
+});
+
 test("highlights a code block in the prompt, picks its language and indents with Tab", async ({
   page,
 }, info) => {
@@ -534,6 +574,7 @@ test("hides skills from the / menu with T3's setting, and still offers them afte
       /\/model/,
       /\/plan/,
       /\/default/,
+      /\/usage-limits/,
       /\/review/,
     ]);
     await message.press("Escape");

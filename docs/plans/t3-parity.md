@@ -1487,8 +1487,8 @@ Reference: T3 Code at `eb7b35ac` (D53).
   again never sends it twice. The
   client command `chat.thread.resume` ("Resume thread") does the same for
   the open thread and answers `{ resumed }`, false when there was nothing to
-  resume or text is typed. T3 also resumes a turn that failed on a usage limit; Jhin
-  has no usage-limit failures yet (Deferred).
+  resume or text is typed. T3 also resumes a turn that failed on a usage limit
+  (`providers.md` D1143 records them now; resuming them is Deferred).
 - **D801. Find in a thread**, T3's `chat.find` (`ThreadFindBar.tsx`,
   `threadFindHighlights.ts`). The client command `chat.find` ("Find in
   thread") opens a find bar over the open thread's messages; `mod+f` runs it
@@ -2189,7 +2189,8 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   indicator `terminal.md`'s D148, all in the `sidebar.thread.indicators`
   slot.
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
-  offers: Jhin has no usage-limit failures to tell apart yet.
+  offers, with its "Usage limit reached" recovery banner (resume at the reset
+  time, snooze): `providers.md` D1143 tells such a failure apart now.
 - The thread details panel (D802): T3's inline presentation, a card beside
   the chat when it is wide enough (here it is always the popover), and the
   heights T3 measures to drop rows on a short window.

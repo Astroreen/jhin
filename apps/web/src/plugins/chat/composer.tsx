@@ -8,6 +8,7 @@ import {
 } from "@jhin/agent-api";
 import type {
   AgentResponse,
+  AgentUsageLimits,
   AssistantCitation,
   MessageContext,
   MessageContextRecord,
@@ -98,6 +99,7 @@ import {
   serializeComposerFileLink,
 } from "../../lib/composer-trigger.ts";
 import { formatTokens } from "../../lib/format.ts";
+import { isUsageLimitsCommand } from "../../lib/usage-limits.ts";
 import { useCatalog } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import {
@@ -184,6 +186,10 @@ const QueueBanner = lazyChunk(
 const PlanFollowUpBanner = lazyChunk(
   () => bannersChunk().then((module) => module.PlanFollowUpBanner),
   quiet,
+);
+const UsageLimitsBanner = lazyChunk(
+  () => bannersChunk().then((module) => module.UsageLimitsBanner),
+  said("the usage limits"),
 );
 
 /** What the next turn runs with. */
@@ -880,6 +886,32 @@ export function Composer(props: ComposerProps) {
       props.onSelectionChange({ ...props.selection, modelOptions: remembered });
     }
   }, [agentId, modelId, props.seedModelOptions, props.selection]);
+  // `/usage-limits` (D1144): the agent's limits as read when it was sent. Only the open moment
+  // is kept, for the thread and agent it was opened on; a new turn spends quota and closes it.
+  const [usagePanel, setUsagePanel] = useState<{
+    key: string;
+    agentName: string;
+    limits: AgentUsageLimits;
+    now: number;
+  }>();
+  const usageKey = `${props.context?.thread?.id ?? ""}|${agentId ?? ""}`;
+  if (usagePanel !== undefined && usagePanel.key !== usageKey) setUsagePanel(undefined);
+  useEffect(() => {
+    if (props.running) setUsagePanel(undefined);
+  }, [props.running]);
+  const openUsageLimits = async (key: string, offered: AgentInfo) => {
+    const { usageLimits } = await chat.threads
+      .call<{ usageLimits: AgentUsageLimits | null }>(props.target, "agents.usage-limits", {
+        agentId: offered.agentId,
+      })
+      .catch(() => ({ usageLimits: null }));
+    if (usageLimits === null) {
+      setUsagePanel(undefined);
+      toasts?.show({ type: "info", title: "Usage limits are unavailable for this provider" });
+      return;
+    }
+    setUsagePanel({ key, agentName: offered.name, limits: usageLimits, now: Date.now() });
+  };
   const runtimeMode = props.selection.runtimeMode ?? "full-access";
   const planSupported = agent?.interactionModes.includes("plan") === true;
   const planMode = props.selection.interactionMode === "plan";
@@ -1175,6 +1207,14 @@ export function Composer(props: ComposerProps) {
       return false;
     }
     if (!hasTyped) return false;
+    // `/usage-limits` sent alone is answered here when the agent has limits (T3); otherwise it
+    // goes to the agent untouched.
+    if (attachments.length === 0 && isUsageLimitsCommand(typed) && agent?.usageLimits === true) {
+      setPrompt("");
+      setCursor(0);
+      await openUsageLimits(usageKey, agent);
+      return false;
+    }
     // `/plan` or `/default` sent alone switch the mode instead (T3).
     const standalone = attachments.length === 0 ? parseStandaloneComposerSlashCommand(typed) : null;
     if (standalone !== null && planSupported) {
@@ -1508,6 +1548,14 @@ export function Composer(props: ComposerProps) {
           />
         ) : planFollowUp !== undefined ? (
           <PlanFollowUpBanner planTitle={planFollowUp.title} />
+        ) : usagePanel !== undefined ? (
+          <UsageLimitsBanner
+            agentName={usagePanel.agentName}
+            format={settings.timestampFormat}
+            limits={usagePanel.limits}
+            now={usagePanel.now}
+            onDismiss={() => setUsagePanel(undefined)}
+          />
         ) : null}
         <ComposerSurface.Host>
           <div className="relative z-10">
