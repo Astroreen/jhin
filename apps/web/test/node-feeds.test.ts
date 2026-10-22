@@ -98,7 +98,8 @@ describe("node feeds (D630, D731)", () => {
     await ready;
     expect(one.stream.after).toBe(3);
     one.stream.listener!({ type: "add", payload: "y" });
-    one.stream.onError!(new Error("stream gone"));
+    // A permission taken back mid-stream is a failure too, not "no such feature".
+    one.stream.onError!(Object.assign(new Error("stream gone"), { code: "PERMISSION_DENIED" }));
     expect(feeds.snapshot().get("a")).toEqual({
       status: "error",
       value: ["x", "y"],

@@ -305,12 +305,13 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
   );
   const [dismissing, setDismissing] = useState(false);
   const mounted = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Set on every mount: StrictMode mounts, cleans up and mounts again.
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
   // A feed that failed after it was read keeps what it showed (`node-feeds`).
   if (warning === undefined) {
     if (feed?.status !== "ready") return <FeedProblem feed={feed} />;
