@@ -120,15 +120,26 @@ export default definePlugin({
 
     /** Appends to `health` one at a time, so the fold never misses its own events. */
     let appending: Promise<unknown> = Promise.resolve();
-    const append = (type: string, payload: unknown): Promise<void> => {
+    const append = (type: string, payload: unknown): Promise<void> =>
+      appendIf(() => ({ type, payload }));
+    /**
+     * Appends what `decide` returns, if anything, deciding on the fold as it is
+     * right before the write: a check and its write are one step, in turn with
+     * every other append.
+     */
+    function appendIf(decide: () => { type: string; payload: unknown } | undefined) {
       const run = async () => {
         applyHealth(await log.read(HEALTH_STREAM, { after: healthHead }));
-        applyHealth(await log.append(HEALTH_STREAM, [{ type, payload: payload as Json }]));
+        const next = decide();
+        if (next === undefined) return;
+        applyHealth(
+          await log.append(HEALTH_STREAM, [{ type: next.type, payload: next.payload as Json }]),
+        );
       };
       const result = appending.then(run, run);
       appending = result.catch(() => undefined);
       return result;
-    };
+    }
 
     // --- Following the log ---------------------------------------------------------
     interface Source {
@@ -841,13 +852,10 @@ export default definePlugin({
             throw new HealthError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
           }
         }
-        // The same phrase corrected again for the same project is the same idea.
-        await sync();
-        const known = Object.values(health.ideas).find(
-          (other) =>
-            normalizeIdea(other.idea) === normalizeIdea(idea) && other.projectId === projectId,
-        );
-        if (known !== undefined) return known;
+        // The same phrase corrected again for the same project is the same idea,
+        // checked in the same step as the write, so two calls make one idea.
+        const same = (other: Idea) =>
+          normalizeIdea(other.idea) === normalizeIdea(idea) && other.projectId === projectId;
         const record: Idea = {
           ideaId: Crypto.randomUUID(),
           idea,
@@ -856,8 +864,14 @@ export default definePlugin({
           ...by(invocation),
           correctedAt: now(),
         };
-        await append(HealthEvents.ideaCorrected, { idea: record });
-        return record;
+        let known: Idea | undefined;
+        await appendIf(() => {
+          known = Object.values(health.ideas).find(same);
+          return known === undefined
+            ? { type: HealthEvents.ideaCorrected, payload: { idea: record } }
+            : undefined;
+        });
+        return known ?? record;
       },
     });
     context.commands.register({

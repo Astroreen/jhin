@@ -719,6 +719,13 @@ describe("jhin.health", () => {
       projectId: project.id,
     });
     expect(again.ideaId).toBe(idea.ideaId);
+    // Two calls at once with a new phrase make one idea.
+    const [first, second] = await Promise.all([
+      client.call<Idea>("health.ideas.correct", { idea: "skip the review", projectId: project.id }),
+      client.call<Idea>("health.ideas.correct", { idea: "Skip the review", projectId: project.id }),
+    ]);
+    expect(second.ideaId).toBe(first.ideaId);
+    await client.call("health.ideas.withdraw", { ideaId: first.ideaId });
     await client.call("health.ideas.withdraw", { ideaId: idea.ideaId });
     expect(await client.call<Idea[]>("health.ideas.list", {})).toEqual([]);
     await expect(

@@ -74,7 +74,7 @@ export class Sensors {
   private readonly occurrences = new Map<string, { ref: EventRef; carrier: string }[]>();
   private ideas: readonly Idea[] = [];
   /** Merged pull requests counted, by thread and pull request. */
-  private readonly merges = new Set<string>();
+  private readonly merges = new Map<string, number>();
 
   /** The slices a thread works on (D647), so its events count for their missions. */
   slicesOfThread(threadId: string): Slice[] {
@@ -240,7 +240,7 @@ export class Sensors {
     if (payload?.pullRequest?.snapshot?.state !== "merged") return;
     const merge = `${threadId}|${key}`;
     if (this.merges.has(merge)) return;
-    this.merges.add(merge);
+    this.merges.set(merge, Date.parse(event.at));
     this.count("merge", event, this.slicesOfThread(threadId));
   }
 
@@ -296,6 +296,8 @@ export class Sensors {
       if (kept.length === 0) this.proofEdits.delete(sliceId);
       else if (kept.length !== edits.length) this.proofEdits.set(sliceId, kept);
     }
+    // A merge out of the window is forgotten too; its pull request is settled.
+    for (const [merge, time] of this.merges) if (time < start) this.merges.delete(merge);
     for (const [ideaId, found] of this.occurrences) {
       const kept = found.filter((occurrence) => inWindow(occurrence.ref));
       if (kept.length === 0) this.occurrences.delete(ideaId);
