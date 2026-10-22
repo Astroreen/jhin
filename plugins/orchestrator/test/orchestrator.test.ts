@@ -1,6 +1,12 @@
 import * as Fs from "node:fs";
 
-import { ThreadEvents, threadStream } from "@jhin/agent-api";
+import {
+  MESSAGES_STREAM,
+  MessageEvents,
+  ThreadEvents,
+  threadAddress,
+  threadStream,
+} from "@jhin/agent-api";
 import { MISSIONS_STREAM, missionProgress, type Mission, type Slice } from "@jhin/missions-api";
 import type { RpcClient } from "@jhin/rpc";
 import type { StoredEvent } from "@jhin/storage-api";
@@ -276,6 +282,7 @@ describe("missions.orchestrate (D706, D707)", () => {
     const door = await slice({ title: "Door" });
     const workflows = watch(client, "orchestration");
     const missionsFeed = watch(client, MISSIONS_STREAM);
+    const messages = watch(client, MESSAGES_STREAM);
     const started = (await kernel.commands.execute(
       "missions.orchestrate",
       { missionId: mission.id },
@@ -292,6 +299,11 @@ describe("missions.orchestrate (D706, D707)", () => {
     });
     // The handoff ran as the agent, not as the node.
     expect(payloadOf(await sliceBecomes(missionsFeed, walls.id, "active")).by).toBe(AGENT.id);
+    // And its message comes from the lead's thread, not from the owner (D1106).
+    const handoff = await messages.untilMatch(
+      (event) => event.type === MessageEvents.delivered && payloadOf(event).message.to === BUILDER,
+    );
+    expect(payloadOf(handoff).message.from).toBe(threadAddress("node-a", lead.id));
   });
 
   it("needs a thread to run from and an open mission", async () => {

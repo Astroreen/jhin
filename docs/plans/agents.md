@@ -1395,6 +1395,13 @@ C3 decisions:
   `projects.write` with the caller's other grants (D416) when the caller
   holds it. Files the team keeps in that project
   (`dir`, D686) are read once it is there.
+- **D1106. The orchestrator's handoffs come from the lead.**
+  `missions.orchestrate` starts its run with the calling thread as the
+  invocation's thread, so the run's `command()` calls act from it (D705) and
+  `slices.handoff`'s message is sent as the lead's thread (D622). Before, the
+  run carried the caller's grants but no thread, and `agents.send` fell back
+  to the owner: in the C3 run every handoff reached the builder and the
+  reviewer as a message from the owner.
 
 Where C3 stands: the scenario (its first bullet) runs on commands, with every
 part the bullet names. Left: its steps through C1's console (the

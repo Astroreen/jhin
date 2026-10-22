@@ -430,6 +430,9 @@ export default definePlugin({
           },
           {
             ...(invocation.traceId === undefined ? {} : { traceId: invocation.traceId }),
+            // The run's command() calls act from the lead's thread, so a handoff
+            // is sent as the lead, not as the owner (D1106).
+            threadId: parentThreadId,
             ...(caller === undefined
               ? {}
               : { caller: { id: caller.id, permissions: [...caller.permissions, WORKFLOWS_RUN] } }),
