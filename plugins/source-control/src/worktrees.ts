@@ -402,14 +402,16 @@ async function populateSubmodules(
     );
   } catch (error) {
     // Any failure (another exit code, a timeout) leaves the worktree, made already, in use.
-    return [
-      "warning",
-      `submodules not checked out: ${redactUrls((error as Error).message.split("\n")[0] ?? "")}`,
-    ];
+    return ["warning", notCheckedOut((error as Error).message)];
   }
   if (updated.code === 0) return ["done", undefined];
+  return ["warning", notCheckedOut(updated.stderr)];
+}
+
+/** The warning of a failed submodule step: git's own reason, its credentials masked. */
+function notCheckedOut(output: string): string {
   // git's reason is its `fatal:` or `error:` line; progress ("Cloning into …") comes first.
-  const lines = updated.stderr
+  const lines = output
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -417,7 +419,7 @@ async function populateSubmodules(
     /^(fatal|error):\s*/,
     "",
   );
-  return ["warning", `submodules not checked out${reason === "" ? "" : `: ${redactUrls(reason)}`}`];
+  return `submodules not checked out${reason === "" ? "" : `: ${redactUrls(reason)}`}`;
 }
 
 /** A URL's credentials (`https://user:token@host`) never reach the setup card. */
