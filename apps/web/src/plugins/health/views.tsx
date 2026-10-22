@@ -115,20 +115,6 @@ function PageEmpty({ title, text }: { title: string; text: string }) {
   );
 }
 
-/** A number per client object, so a replaced connection's client changes a call's name. */
-const clients = new WeakMap<object, number>();
-let clientsSeen = 0;
-function clientNumber(client: object | undefined): number {
-  if (client === undefined) return 0;
-  let number = clients.get(client);
-  if (number === undefined) {
-    clientsSeen += 1;
-    number = clientsSeen;
-    clients.set(client, number);
-  }
-  return number;
-}
-
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** What a node's feed says when it has no health to show, or nothing. */
@@ -173,8 +159,8 @@ function useCall<T>(
   }>();
   // The call is named by what it calls, not only by the caller's key.
   // A replaced connection (same node, new client) is called again too.
-  const client = clientNumber(view.connections.get(node)?.client);
-  const call = `${node}|${client}|${command}|${JSON.stringify(input)}|${key}|${scope}`;
+  const client = view.connections.get(node)?.client;
+  const call = `${node}|${command}|${JSON.stringify(input)}|${key}|${scope}`;
   useEffect(() => {
     if (!enabled) return;
     let live = true;
@@ -200,8 +186,8 @@ function useCall<T>(
     return () => {
       live = false;
     };
-    // `call` names everything the call depends on.
-  }, [call, enabled]);
+    // `call` and the client name everything the call depends on.
+  }, [call, client, enabled]);
   return result?.key === key || result?.scope === scope ? result : undefined;
 }
 

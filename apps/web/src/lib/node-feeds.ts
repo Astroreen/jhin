@@ -159,11 +159,12 @@ export function createNodeFeeds<S>(
     const failed = (error: unknown) => {
       if (stopped) return;
       rereads.delete(id);
-      const code = String((error as { code?: unknown } | null)?.code);
+      const raw = (error as { code?: unknown } | null)?.code;
+      const code = typeof raw === "string" ? raw : undefined;
       const message = error instanceof Error ? error.message : String(error);
       // A node that has no such feed (or may not read it) is not asked again
       // until it is; anything else, a first load included, is retried.
-      const absent = !everRead && NOT_THERE.has(code);
+      const absent = !everRead && code !== undefined && NOT_THERE.has(code);
       // A stream that dropped is read and followed again, so a hiccup does not
       // silence what is told; the feed stays as it is meanwhile, not flashing
       // "not live". The first failure is retried at once (a dropped socket, a
@@ -187,7 +188,7 @@ export function createNodeFeeds<S>(
       // after it was read (even a permission taken back) keeps what it showed,
       // marked not live.
       set(id, (feed) =>
-        feed.status === "loading" && NOT_THERE.has(code)
+        feed.status === "loading" && code !== undefined && NOT_THERE.has(code)
           ? { status: "unsupported", value: source.empty }
           : {
               status: "error",
