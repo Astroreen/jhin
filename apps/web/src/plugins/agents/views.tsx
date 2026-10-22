@@ -11,6 +11,13 @@ import {
 } from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
 import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
   Badge,
   Button,
   Empty,
@@ -25,11 +32,25 @@ import {
   cn,
   type Toasts,
 } from "@jhin/ui";
-import { BotIcon, CircleStopIcon, PlayIcon } from "lucide-react";
+import {
+  BotIcon,
+  CircleStopIcon,
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  RotateCwIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
-import { AGENT_PANEL, agentRoute, parseAgentSection } from "./route.ts";
+import { CIVILIZATION_MODE } from "../../lib/modes.ts";
+import {
+  AGENT_FORM_PANEL,
+  AGENT_PANEL,
+  agentFormRoute,
+  agentRoute,
+  parseAgentSection,
+} from "./route.ts";
 import {
   STATUS_LABELS,
   createAgentsStore,
@@ -49,7 +70,7 @@ export interface AgentsView {
   readonly toasts: Toasts | undefined;
 }
 
-const storeOf = (view: AgentsView): AgentsStore =>
+export const storeOf = (view: AgentsView): AgentsStore =>
   (view.held.store ??= createAgentsStore(view.connections, view.context.log));
 
 const STATUS_DOT: Readonly<Record<AgentStatus, string>> = {
@@ -183,14 +204,34 @@ export function Roster({ view }: { view: AgentsView }) {
     0,
   );
   const failed = shown.some((connection) => nodes.get(connection.id)?.status === "error");
+  // A new agent goes to the route's node, else the first that has agents (D1065).
+  const route = useExternal(view.navigation, view.navigation.current);
+  const target =
+    shown.find((connection) => connection.id === route.node) ??
+    shown.find((connection) => (nodes.get(connection.id)?.agents.length ?? 0) > 0) ??
+    shown[0];
+  const add =
+    target === undefined ? null : (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            className="text-sidebar-muted-foreground"
+            isActive={route.panel === AGENT_FORM_PANEL && route.section === undefined}
+            onClick={() => view.navigation.navigate(agentFormRoute(target.id))}
+          >
+            <PlusIcon />
+            <span>New agent</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
   if (agents === 0 && !failed) {
     const loading = shown.some((connection) => nodes.get(connection.id)?.status === "loading");
     return (
-      <Muted>
-        {loading
-          ? "Loading agents…"
-          : "No agents yet. Define one in Settings (jhin.agents) or with agents.define."}
-      </Muted>
+      <>
+        <Muted>{loading ? "Loading agents…" : "No agents yet."}</Muted>
+        {loading ? null : add}
+      </>
     );
   }
   return (
@@ -204,6 +245,7 @@ export function Roster({ view }: { view: AgentsView }) {
           view={view}
         />
       ))}
+      {add}
     </>
   );
 }
@@ -288,6 +330,7 @@ export function AgentPage(props: {
   const state = nodes.get(node);
   const agent = state?.agents.find((item) => item.agentId === agentId);
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(false);
   if (state === undefined || state.status === "loading") {
     return <PageEmpty text="Loading the agent…" title={agentId} />;
   }
@@ -307,14 +350,36 @@ export function AgentPage(props: {
     props.generation === undefined
       ? agent.generations.at(-1)
       : agent.generations.find((generation) => generation.number === props.generation);
-  const run = async (command: "agents.stop" | "agents.resume", failure: string) => {
+  const run = async (
+    command: "agents.stop" | "agents.resume" | "agents.rotate" | "agents.remove",
+    failure: string,
+    input: Record<string, unknown> = {},
+  ) => {
     setBusy(true);
     try {
-      await view.threads.call({ node }, command, { agentId });
+      await view.threads.call({ node }, command, { agentId, ...input });
+      return true;
     } catch (error) {
       view.toasts?.show({ type: "error", title: failure, description: (error as Error).message });
+      return false;
     } finally {
       setBusy(false);
+    }
+  };
+  // A new generation starts on the owner's word; the page follows it (D1066).
+  const rotate = async () => {
+    if (
+      await run("agents.rotate", "Could not start a new generation", {
+        reason: "started by the owner",
+      })
+    ) {
+      view.navigation.navigate(agentRoute(node, agentId));
+    }
+  };
+  const remove = async () => {
+    setRemoving(false);
+    if (await run("agents.remove", "Could not remove the agent")) {
+      view.navigation.navigate({ node, mode: CIVILIZATION_MODE });
     }
   };
   return (
@@ -335,6 +400,24 @@ export function AgentPage(props: {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Button
+            onClick={() => view.navigation.navigate(agentFormRoute(node, agentId))}
+            size="compact"
+            variant="outline"
+          >
+            <PencilIcon />
+            Edit
+          </Button>
+          <Button
+            disabled={busy || agent.stoppedAt !== undefined}
+            onClick={() => void rotate()}
+            size="compact"
+            title="Start its next generation: a fresh thread that inherits its knowledge"
+            variant="outline"
+          >
+            <RotateCwIcon />
+            New generation
+          </Button>
           {agent.stoppedAt === undefined ? (
             <Button
               disabled={busy}
@@ -356,7 +439,32 @@ export function AgentPage(props: {
               Resume
             </Button>
           )}
+          <Button
+            disabled={busy}
+            onClick={() => setRemoving(true)}
+            size="compact"
+            variant="destructive-outline"
+          >
+            Remove
+          </Button>
         </div>
+        <AlertDialog onOpenChange={setRemoving} open={removing}>
+          <AlertDialogPopup>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove {agent.title}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Its definition leaves the node's config. Its generations, threads and knowledge
+                stay, readable as they are.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+              <Button onClick={() => void remove()} variant="destructive">
+                Remove agent
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
       </header>
       {agent.generations.length === 0 ? (
         <PageEmpty

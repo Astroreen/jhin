@@ -87,3 +87,60 @@ test("D614: the roster and an agent's page, read only, with stop and resume", as
   await expect(page).toHaveURL(/[#&]s=builder(%2F|\/)1(&|$)/);
   await expect(transcript.getByText("Echo: hello there")).toBeVisible();
 });
+
+test("D1065, D1066: the owner defines, edits, renews and removes an agent", async ({
+  page,
+}, info) => {
+  const client = node.client();
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page
+    .getByRole("group", { name: "Modes" })
+    .getByRole("button", { name: "Civilization" })
+    .click();
+  const roster = page.getByRole("region", { name: "Agents" });
+  await roster.getByRole("button", { name: "New agent" }).click();
+
+  const form = page.getByRole("region", { name: "New agent" });
+  await form.getByRole("textbox", { name: "Id" }).fill("reviewer");
+  await form.getByRole("textbox", { name: "Title" }).fill("Reviewer");
+  await form.getByRole("textbox", { name: "Role" }).fill("Reviews slices");
+  await form.getByRole("combobox", { name: "Runtime" }).click();
+  await page.getByRole("option", { name: "Fake agent", exact: true }).click();
+  await form.getByRole("textbox", { name: "Skills" }).fill("review, tdd");
+  await page.screenshot({ path: info.outputPath("agent-new.png") });
+  await form.getByRole("button", { name: "Define agent" }).click();
+
+  const agentPage = page.locator("[data-agent-page=reviewer]");
+  await expect(agentPage.getByRole("heading", { name: "Reviewer" })).toBeVisible();
+  expect(await client.call("agents.get", { agentId: "reviewer" })).toMatchObject({
+    role: "Reviews slices",
+    runtimeId: "jhin.agent-fake",
+    skills: ["review", "tdd"],
+  });
+
+  await agentPage.getByRole("button", { name: "Edit" }).click();
+  const edit = page.getByRole("region", { name: "Edit Reviewer" });
+  await edit.getByRole("textbox", { name: "Role" }).fill("Reviews slices against their spec");
+  await edit.getByRole("textbox", { name: "Skills" }).fill("");
+  await edit.getByRole("button", { name: "Save" }).click();
+  await expect(agentPage.getByText("Reviews slices against their spec")).toBeVisible();
+  const edited = await client.call<{ role: string; skills: string[] }>("agents.get", {
+    agentId: "reviewer",
+  });
+  expect(edited).toMatchObject({ role: "Reviews slices against their spec", skills: [] });
+
+  // A generation starts on the owner's word (D1066).
+  await agentPage.getByRole("button", { name: "New generation" }).click();
+  const generations = agentPage.getByRole("navigation", { name: "Generations" });
+  await expect(generations.getByRole("button", { name: /Generation 1 · current/ })).toBeVisible();
+  await agentPage.getByRole("button", { name: "New generation" }).click();
+  await expect(generations.getByRole("button", { name: /Generation 2 · current/ })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("agent-renewed.png") });
+
+  await agentPage.getByRole("button", { name: "Remove" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove agent" }).click();
+  await expect(roster.getByRole("button", { name: /^Reviewer,/ })).toHaveCount(0);
+  await expect(client.call("agents.get", { agentId: "reviewer" })).rejects.toMatchObject({
+    code: "AGENT_NOT_FOUND",
+  });
+});

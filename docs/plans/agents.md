@@ -1271,6 +1271,29 @@ Decisions (C1):
 - **D1064. The Lead view is the one composer of Civilization mode.** The
   team page's message to the lead (D691) gives way to **Talk to the lead**,
   which opens the Lead view on that team.
+- **D1065. Defining and editing an agent** is a form in `civilization.views`
+  (`jhin.agents.form`) on the route panel `agent-definition`, the agent's id
+  as `section` to edit it, none for a new one; `civilization.agent.define
+  {node, agentId?}` opens it, and the roster ends with **New agent** (for the
+  route's node, else the first with agents); a new agent's page opens once
+  the roster has it. It holds the id (new only),
+  title, role, runtime (the node's runtimes from `agents.list`, its default
+  chosen first; a list that fails says so), model (the runtime's, or its
+  default; kept across a change of runtime only when the new one offers it), home project (a
+  project of the node, or the scratch project), skills and instructions. A
+  new agent is `agents.define` on the node layer; an edit is `agents.update`
+  with only the changed fields, an emptied one in `unset`, so D604 writes it
+  where the agent is defined. Runtime and interaction modes stay in Settings.
+- **D1066. An agent's page starts a generation and removes the agent.**
+  **New generation** is `agents.rotate` with the reason `started by the
+  owner` (refused while stopped, D612, so the button is off); **Remove** asks
+  first and is `agents.remove`, which keeps the generations and knowledge
+  (D611). **Edit** opens D1065's form.
+- **D1067. Teams come up and down where they are shown.** A team from a
+  spec and one from an installed bundle are both in `teams.list` (D686), so
+  the team page's Start and Stop (D691) and the Lead view's Start team
+  (D1062) bring either up or down: no command was missing. Writing a team
+  spec from the client is left ([Deferred](#deferred)).
 
 ### C2. Missions from the client (D1081–D1100)
 
@@ -1471,9 +1494,6 @@ with its report as a "C3 run" note here.
   of the message names the sender and the trace.
 - A2: a count of open inbox items on the mode switcher or the page title
   (D630 notifies once per item).
-- A1: starting a generation (`agents.rotate`), defining, editing or
-  removing an agent from Civilization mode's views. Defining and editing go
-  through the settings page (D604); the commands do the rest.
 - C1: `agents.conversation` folds the node's whole `agents/messages` stream
   on each call (D1061); an index of messages by party once it grows.
 - C1: telling the lead something without waiting for an answer
@@ -1482,6 +1502,11 @@ with its report as a "C3 run" note here.
 - C1: a lead's message (not an ask) to the owner stays an open inbox item
   until it is answered there; the Lead view shows it without closing it
   (dismissing an item is A2's, D626).
+- C1: an agent's runtime and interaction modes in D1065's form; Settings
+  edits them (D604).
+- C1: writing a team spec from the client (a `teams.define` writing the
+  `jhin.teams` section); Settings edits the section, and a bundle installs as
+  a plugin (D686, D1067).
 - C1: the owner's conversation with an agent on another node: the owner's
   messages are recorded on the agent's node (D627), so `agents.conversation`
   here misses them (D1061). Reading both nodes, through `mesh.call`, joins it.
@@ -1744,3 +1769,6 @@ Each workstream lists its PRs here as they merge.
   conversation with a team's lead, the composer asking it, its escalations
   with the way to the inbox, Start team, `civilization.lead.open`; the team
   page opens it instead of a message box of its own (D1062–D1064).
+- C1 #196: defining and editing agents from Civilization mode
+  (`jhin.agents.form`, `civilization.agent.define`, New agent in the roster),
+  and New generation, Edit and Remove on an agent's page (D1065–D1067).
