@@ -114,6 +114,8 @@ import {
   removeWorktree,
   renameTemporaryBranch,
   worktreesRoot,
+  hasCheckedOutSubmodules,
+  submodulesNeedForce,
 } from "./worktrees.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
 import {
@@ -2041,6 +2043,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         `Threads still work in ${path}: ${users.join(", ")}`,
         { path, threadIds: users },
       );
+    }
+    // Refused before anything else stops: an unforced removal git would turn down
+    // leaves the setup and its terminal as they are (D1134).
+    if (options.force !== true && (await hasCheckedOutSubmodules(git, known.path))) {
+      throw submodulesNeedForce(path);
     }
     // Its setup stops with it (D1124), and a setup that ended (a failed script)
     // leaves no terminal or run behind.

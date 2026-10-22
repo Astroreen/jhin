@@ -485,14 +485,30 @@ export async function removeWorktree(
     // git's own words: every git of this plugin runs with `LC_ALL=C` (git.ts), whatever the
     // user's locale.
     if (options.force !== true && /containing submodules/.test((error as Error).message)) {
-      throw new SourceControlError(
-        "GIT_FAILED",
-        "The worktree has checked-out submodules, whose commits may be pushed nowhere: remove it with force",
-        { path },
-      );
+      throw submodulesNeedForce(path);
     }
     throw error;
   }
+}
+
+/** The refusal of an unforced removal of a worktree with checked-out submodules (D1134). */
+export const submodulesNeedForce = (path: string) =>
+  new SourceControlError(
+    "GIT_FAILED",
+    "The worktree has checked-out submodules, whose commits may be pushed nowhere: remove it with force",
+    { path },
+  );
+
+/** Whether a worktree has a submodule checked out, which git removes only forced. */
+export async function hasCheckedOutSubmodules(git: Git, path: string): Promise<boolean> {
+  const exists = await Fs.stat(Path.join(path, ".gitmodules")).then(
+    () => true,
+    () => false,
+  );
+  if (!exists) return false;
+  const status = await git(["-C", path, "submodule", "status"], { ok: [0, 1, 128] });
+  // A line starting with `-` is a submodule not checked out.
+  return status.stdout.split("\n").some((line) => line !== "" && !line.startsWith("-"));
 }
 
 export interface WorktreeEntry {
