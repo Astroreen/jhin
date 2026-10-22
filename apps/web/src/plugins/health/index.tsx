@@ -91,7 +91,7 @@ export const healthPlugin = builtin(
       };
       const store = createHealthStore(connections, context.log, raised);
       context.subscriptions.add(store);
-      const view: HealthView = { store, connections, navigation, toasts };
+      const view: HealthView = { store, connections, navigation, toasts, log: context.log };
 
       // Opening health is a command, so the palette, CLI and MCP reach it (rule 6).
       context.subscriptions.add(

@@ -144,7 +144,7 @@ describe("node feeds (D630, D731)", () => {
     let ready = changes(feeds);
     one.answer.resolve({ head: 3, items: ["x"] });
     await ready;
-    // The first drop: marked not live, then read again and followed from its head.
+    // The first drop: read again at once and followed from its head.
     ready = new Promise<void>((resolve) => {
       const subscription = feeds.subscribe(() => {
         if (feeds.snapshot().get("a")?.status !== "ready") return;

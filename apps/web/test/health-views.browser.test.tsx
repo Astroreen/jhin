@@ -65,10 +65,10 @@ function viewOf(
         listeners.add(listener);
         return toDisposable(() => listeners.delete(listener));
       },
-      // As `createNodeFeeds` does for a feed that is not live.
+      // As `createNodeFeeds` does, live or not.
       apply: (id: string, event: { type: string; payload: unknown }) => {
         const feed = snapshot.get(id);
-        if (feed?.status !== "error") return;
+        if (feed === undefined) return;
         snapshot = new Map(snapshot).set(id, {
           ...feed,
           value: applyHealthEvent(feed.value, event),
@@ -82,6 +82,7 @@ function viewOf(
     },
     navigation: { ...quiet, current: () => ROUTE, navigate: () => {} },
     toasts: { show: (toast: { type?: string; title: string }) => toasts.push(toast) },
+    log: { warn: () => {} },
   } as unknown as HealthView;
   return { view, toasts };
 }
@@ -250,6 +251,42 @@ describe("health views (D731)", () => {
       dismissedAt: "2026-10-22T11:00:00Z",
       dismissedAfter: { missions: 5 },
     });
+  });
+
+  it("tells a dismissal the node made as made, even when this client fails to apply it", async () => {
+    const { view, toasts } = viewOf(
+      { a: { status: "ready", value: healthOf(warning), read: true } },
+      async (method) =>
+        method === "health.warnings.dismiss"
+          ? { ...warning, status: "dismissed", dismissedAt: "2026-10-22T11:00:00Z" }
+          : { warning, events: [] },
+    );
+    const warned: string[] = [];
+    let logged!: () => void;
+    const failedHere = new Promise<void>((resolve) => (logged = resolve));
+    Object.assign(view.store, {
+      apply: () => {
+        throw new Error("fold broke");
+      },
+    });
+    Object.assign(view, {
+      log: {
+        warn: (message: string) => {
+          warned.push(message);
+          logged();
+        },
+      },
+    });
+    await render(<HealthPage node="a" view={view} warningId="w1" />);
+    await userEvent.click(page.getByRole("button", { name: "Dismiss" }));
+    // The handler is done once it logged the failure: a fact, not a wait.
+    await failedHere;
+    expect(warned).toEqual(["a dismissed warning did not apply here"]);
+    // One answer, told once: no "couldn't dismiss", and no second Dismiss offered.
+    expect(toasts).toEqual([
+      expect.objectContaining({ type: "success", title: "Warning dismissed" }),
+    ]);
+    await expect.element(page.getByRole("button", { name: "Dismiss" })).toBeDisabled();
   });
 
   it("makes one more read for the changes that came while a read was under way", async () => {

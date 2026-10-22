@@ -29,6 +29,7 @@ export interface HealthView {
   readonly connections: Connections;
   readonly navigation: Navigation;
   readonly toasts: Toasts | undefined;
+  readonly log: { warn(message: string, fields?: Record<string, unknown>): void };
 }
 
 /** The open warnings of every node in `civilization.sidebar.health`, newest first, and the overview. */
@@ -385,16 +386,25 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       return;
     }
     setDismissing(true);
-    // Dismissed, the button stays off: the answer takes the warning's "Open" away.
-    let succeeded = false;
+    let dismissed: Warning;
     try {
-      const dismissed = await connection.client.call<Warning>("health.warnings.dismiss", {
-        warningId,
+      dismissed = await connection.client.call<Warning>("health.warnings.dismiss", { warningId });
+    } catch (error) {
+      view.toasts?.show({
+        type: "error",
+        title: "Couldn't dismiss the warning",
+        description: errorText(error),
       });
-      // The answer says so at once, whether or not the stream's event follows.
-      view.toasts?.show({ type: "success", title: "Warning dismissed" });
-      // The feed learns it here, page and sidebar alike, even if no event
-      // follows; the stream's own event folds to the same warning (D724).
+      if (mounted.current) setDismissing(false);
+      return;
+    }
+    // Dismissed, the button stays off: the answer takes the warning's "Open" away.
+    // The answer says so at once, whether or not the stream's event follows.
+    view.toasts?.show({ type: "success", title: "Warning dismissed" });
+    // The feed learns it here, page and sidebar alike, even if no event
+    // follows; the stream's own event folds to the same warning (D724). Its
+    // failing is this client's, not the dismissal's: logged, not told.
+    try {
       view.store.apply(node, {
         type: HealthEvents.warningDismissed,
         // The node's record, as its event would carry it (D724).
@@ -406,15 +416,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
             : { dismissedAfter: dismissed.dismissedAfter }),
         },
       });
-      succeeded = true;
     } catch (error) {
-      view.toasts?.show({
-        type: "error",
-        title: "Couldn't dismiss the warning",
-        description: errorText(error),
-      });
-    } finally {
-      if (mounted.current && !succeeded) setDismissing(false);
+      view.log.warn("a dismissed warning did not apply here", { warningId, error: String(error) });
     }
   };
   const { analysis } = warning;
