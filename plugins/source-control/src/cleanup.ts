@@ -7,6 +7,7 @@ import * as Fs from "node:fs/promises";
 import { z } from "@jhin/sdk";
 
 import type { Git } from "./git.ts";
+import { gitmodulesIn } from "./worktrees.ts";
 
 const DAY_MS = 86_400_000;
 
@@ -141,13 +142,8 @@ export async function localChangesReason(
   // commits (on its HEAD or any local branch) and its stashes, none of which a clean status
   // shows (D1134). A commit on a remote branch or a tag is safe; any other (one fetched by
   // hash alone, say) keeps the worktree, the safe side: forcing it away stays the user's.
-  const hasSubmodules =
-    path === undefined ||
-    (await Fs.stat(`${path}/.gitmodules`).then(
-      () => true,
-      // Only a missing file means none: another error asks git all the same.
-      (error: NodeJS.ErrnoException) => error.code !== "ENOENT",
-    ));
+  // An error reading `.gitmodules` asks git all the same.
+  const hasSubmodules = path === undefined || (await gitmodulesIn(path)) !== false;
   const unpushed = !hasSubmodules
     ? { code: 0, stdout: "" }
     : await git(

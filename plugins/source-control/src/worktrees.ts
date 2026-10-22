@@ -376,11 +376,8 @@ async function populateSubmodules(
   path: string,
   mode: "recursive" | "top-level" | "none",
 ): Promise<["done", string | undefined] | ["warning", string]> {
-  // Only a missing `.gitmodules` means none; another error reading it is said.
-  const hasSubmodules = await Fs.stat(Path.join(path, ".gitmodules")).then(
-    () => true,
-    (error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? false : error),
-  );
+  // Another error reading `.gitmodules` is said.
+  const hasSubmodules = await gitmodulesIn(path);
   if (hasSubmodules instanceof Error) {
     return ["warning", `submodules not checked out: ${redactUrls(hasSubmodules.message)}`];
   }
@@ -507,14 +504,20 @@ export const submodulesNeedForce = (path: string) =>
     { path },
   );
 
+/**
+ * Whether a worktree has a `.gitmodules`: only a missing file means it has none, and any
+ * other error reading it comes back for the caller to weigh.
+ */
+export const gitmodulesIn = (path: string): Promise<boolean | Error> =>
+  Fs.stat(Path.join(path, ".gitmodules")).then(
+    () => true,
+    (error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? false : error),
+  );
+
 /** Whether a worktree has a submodule checked out, which git removes only forced. */
 export async function hasCheckedOutSubmodules(git: Git, path: string): Promise<boolean> {
-  // Only a missing file means none: another error asks git all the same.
-  const exists = await Fs.stat(Path.join(path, ".gitmodules")).then(
-    () => true,
-    (error: NodeJS.ErrnoException) => error.code !== "ENOENT",
-  );
-  if (!exists) return false;
+  // An error reading it asks git all the same.
+  if ((await gitmodulesIn(path)) === false) return false;
   const status = await git(["-C", path, "submodule", "status"], { ok: [0, 1, 128] });
   // Unreadable counts as checked out: an unforced removal is refused, not risked.
   if (status.code !== 0) return true;

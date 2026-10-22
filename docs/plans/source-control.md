@@ -956,9 +956,11 @@ with screenshots).
   rev-list HEAD --branches --not --remotes --tags; git stash list`), and
   keeps a worktree that has any ("has submodule commits on no remote branch
   or tag, or stashes"; a commit fetched by hash alone counts too, the safe
-  side). Without `force`, `git.worktree.remove` says so ("remove it
-  with force"), not git's own message. A submodule run git ends without a reason (killed at the timeout)
-  says its exit code. T3's per-project setting and its `t3.json` override,
+  side). The sweep logs a deleted thread's worktree it keeps ("kept a
+  worktree", with the reason), since nobody else sees it. Without `force`,
+  `git.worktree.remove` says so ("remove it with force"), not git's own
+  message. A submodule run git ends without a reason (killed at the
+  timeout) says its exit code. T3's per-project setting and its `t3.json` override,
   and pull request checkouts (D902), are Deferred. A managed worktree made
   again from its branch (D256) gets its submodules the same way; a failure
   there is logged. Cancelling a setup while its
