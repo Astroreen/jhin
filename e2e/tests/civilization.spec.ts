@@ -55,6 +55,7 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
   const workflows = follow(client, "orchestration");
   const inbox = follow(client, "agents/inbox");
   const health = follow(client, "health");
+  const messages = follow(client, "agents/messages");
 
   // 1. The team comes up from its spec.
   const up = await client.call<{ members: { member: string; address: string }[] }>("teams.up", {
@@ -180,26 +181,41 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
   );
 
   // 6. The reviewer keeps asking the builder for more proof of the walls:
-  // ceremony, and no progress, until the mission's health warns.
-  const status = await client.call<{
-    groups: { group: { kind: string; missionId?: string }; ceremony: number; progress: number }[];
-  }>("health.status", {});
-  const group = status.groups.find(
-    (item) => item.group.kind === "mission" && item.group.missionId === mission.id,
-  )!;
+  // ceremony, and no progress, until the mission's health warns. Health takes
+  // each event as the log appends it, so once the roof's handoff is in the
+  // log, `health.status` counts it: the count starts exact.
+  await messages.until(
+    (event) =>
+      event.type === "agents.message.delivered" &&
+      payloadOf(event).message.to === address.builder &&
+      String(payloadOf(event).message.body).includes("Roof"),
+  );
+  const missionStatus = async () =>
+    (
+      await client.call<{
+        groups: {
+          group: { kind: string; missionId?: string };
+          ceremony: number;
+          progress: number;
+        }[];
+      }>("health.status", {})
+    ).groups.find((item) => item.group.kind === "mission" && item.group.missionId === mission.id)!;
+  const group = await missionStatus();
   const limit = Math.max(CEREMONY.minCeremony, CEREMONY.ratio * Math.max(group.progress, 1));
   expect(group.ceremony).toBeLessThan(limit);
   const missionWarning = (event: StreamEvent) =>
     event.type === "health.warning.raised" &&
     payloadOf(event).warning.detector === "ceremony" &&
     payloadOf(event).warning.group.missionId === mission.id;
+  // Each message counts once, as it is sent: the mission reaches its limit
+  // with the last one and not before, and a warning needs the limit (D722).
   for (let count = group.ceremony; count < limit; count++) {
-    expect(health.events.some(missionWarning)).toBe(false);
     await client.call("agents.send", {
       from: address.reviewer,
       to: address.builder,
       body: "Prove the walls again, please.",
     });
+    expect(await missionStatus()).toMatchObject({ ceremony: count + 1, progress: group.progress });
   }
   const raised = payloadOf(await health.until(missionWarning)).warning;
   expect(raised).toMatchObject({
@@ -247,5 +263,5 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
   ).toBeVisible();
   await page.screenshot({ path: info.outputPath("civilization.png") });
 
-  for (const stream of [missions, workflows, inbox, health]) stream.close();
+  for (const stream of [missions, workflows, inbox, health, messages]) stream.close();
 });

@@ -1323,14 +1323,22 @@ C3 decisions:
   links, the inbox item, the warning, its analysis, the orchestrator's
   outcomes) is asserted, never driven.
 - **D1103. The scenario proves the threshold, not just a warning.** Health
-  runs with a low `ceremony` config; the test reads the mission's group in
-  `health.status`, sends exactly the messages that reach `limitOf` (D722),
-  checks no warning came before the last, and asserts the warning's
+  runs with a low `ceremony` config. Health takes each event as the log
+  appends it, so once the last handoff is in the log `health.status` is
+  exact: the test sends exactly the messages that reach `limitOf` (D722),
+  reads the mission's count after each (one more each time, so the limit is
+  reached with the last and not before), and asserts the warning's
   `measures` and that the agent with the context analysed it (D725).
 - **D1104. Commands first, the UI where it exists.** Until C1 and C2 land,
   every step is a command; the test ends in Civilization mode on what A3
   and A7 already show (the mission view, the health section). Steps move to
   C1's console and C2's mission editing as they land.
+
+Where C3 stands: the scenario (its first bullet) runs on commands, with every
+part the bullet names. Left: its steps through C1's console (the
+conversation with the lead, bringing the team up) and C2's mission editing
+and orchestrator view once they land, and the real run (the second bullet),
+with its report as a "C3 run" note here.
 
 ## Deferred
 
