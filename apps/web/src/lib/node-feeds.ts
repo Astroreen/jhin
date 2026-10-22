@@ -158,7 +158,9 @@ export function createNodeFeeds<S>(
       const absent = !everRead && NOT_THERE.has(code);
       // A stream that dropped is read and followed again, so a hiccup does not
       // silence what is told; the feed stays as it is meanwhile, not flashing
-      // "not live". At most once a minute, so a flapping stream does not loop
+      // "not live". The first failure is retried at once (a dropped socket, a
+      // node busy for a moment); from then on at most once a minute, so a
+      // flapping stream does not loop
       // on the node: a drop (or a failed read) within that minute marks the
       // feed not live and reads it again once the minute is over. A
       // permission taken back is not retried.

@@ -1276,6 +1276,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
   answer that comes later stays in the analyst's thread, and the warning is
   not asked again.
+- A7: a growing pause between retries of a feed whose node keeps failing:
+  today it is read again once a minute for as long as its connection is
+  open (D731).
 - A7: reading a turn's commits through `source-control.git@1` once it offers
   a read of `HEAD` and a count of commits; health runs `git` itself until
   then (D723).
