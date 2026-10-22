@@ -1,0 +1,12 @@
+{
+  // Emits a package's src/ as JavaScript and declarations into dist/ for the
+  // packed artifact. Each built package has a tsconfig.build.json that extends
+  // its own tsconfig.json and then this file; development runs src/ directly.
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "rootDir": "${configDir}/src",
+    "outDir": "${configDir}/dist"
+  },
+  "include": ["${configDir}/src"]
+}

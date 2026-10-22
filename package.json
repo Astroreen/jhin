@@ -1,0 +1,31 @@
+{
+  "name": "@jhin/monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "vp config --no-agent",
+    "typecheck": "vp run -r typecheck",
+    "lint": "vp lint --report-unused-disable-directives",
+    "fmt": "vp fmt",
+    "test": "vp test run",
+    "e2e": "vp run --filter @jhin/web build && vp run --filter @jhin/plugin-desktop build && vp run --filter @jhin/desktop build && vp run --filter @jhin/e2e e2e",
+    "knip": "knip --no-config-hints",
+    "verify": "node scripts/verify.ts",
+    "pack:smoke": "node scripts/pack-smoke.ts",
+    "jhin": "node apps/jhin/bin/jhin.js",
+    "package:desktop": "node scripts/package-desktop.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
+    "electron-builder": "catalog:",
+    "knip": "catalog:",
+    "playwright": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": "^24.13.1"
+  },
+  "packageManager": "pnpm@11.25.0"
+}

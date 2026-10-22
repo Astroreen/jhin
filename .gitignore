@@ -1,0 +1,46 @@
+# devenv / direnv
+.devenv*
+.direnv/
+devenv.local.nix
+devenv.local.yaml
+
+# Node / TypeScript
+node_modules/
+*.tsbuildinfo
+.vite/
+.turbo/
+
+# build outputs
+dist/
+.dist-next/
+build/
+out/
+coverage/
+
+# test artifacts
+playwright-report/
+test-results/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime data
+*.db
+*.log
+secrets/
+# The secret store plugins are code, not secrets.
+!/plugins/secrets/
+!/apps/web/src/plugins/secrets/
+.env
+.env.*
+
+# Dev home and tool shims of scripts/t3
+.jhin-dev/
+
+# Desktop installers of scripts/package-desktop.ts
+apps/desktop/release/

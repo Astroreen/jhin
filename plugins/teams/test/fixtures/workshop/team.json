@@ -1,0 +1,14 @@
+{
+  "id": "workshop",
+  "title": "Workshop",
+  "description": "builds Jhin slice by slice",
+  "lead": "lead",
+  "agents": {
+    "lead": { "role": "Talks to the owner and plans the slices", "runtime": "jhin.agent-fake" },
+    "builder": {
+      "role": "Builds slices and proves them",
+      "runtime": "jhin.agent-fake",
+      "instructions": "Prove every slice before you report it."
+    }
+  }
+}

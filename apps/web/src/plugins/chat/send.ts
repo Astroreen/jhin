@@ -1,0 +1,161 @@
+// Sending, queueing and steering follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
+// packages/client-runtime/src/state/composerDispatch.ts (what a send does while a turn runs).
+// The queue itself lives on the node (docs/plans/t3-parity.md, D201).
+import type { MessageContext, ModelOptionSelection, TurnAttachment } from "@jhin/agent-api";
+import type { NodeTarget, ThreadsCatalog } from "@jhin/client-api";
+
+/** The agent, model and modes a message is sent with. */
+interface MessageSettings {
+  readonly agentId?: string;
+  readonly model?: string;
+  readonly runtimeMode?: string;
+  readonly interactionMode?: string;
+  readonly modelOptions?: readonly ModelOptionSelection[];
+}
+
+/** A message as the composer sends it. */
+export interface OutgoingMessage {
+  readonly text: string;
+  readonly attachments: readonly TurnAttachment[];
+  /** The context records its text names (D1006). */
+  readonly context?: MessageContext | undefined;
+  /** What it was typed with: it goes with these, whatever the composer shows later. */
+  readonly settings: MessageSettings;
+}
+
+/** What sending a message came to. */
+export type SendOutcome =
+  | { readonly kind: "sent" }
+  /** Queued on the node: it starts when the thread is free. */
+  | { readonly kind: "queued" }
+  /** Steered into the running turn. */
+  | { readonly kind: "steered" }
+  /** `start` only: the thread runs a turn, and nothing was sent. */
+  | { readonly kind: "busy" }
+  | { readonly kind: "failed"; readonly message: string };
+
+/** What a message sent while a turn runs does (T3's "Follow-up behavior"). */
+export type FollowUpBehavior = "queue" | "steer";
+
+/** T3's resolveComposerDispatchMode: the setting, or the other one for one message. */
+export function dispatchMode(
+  behavior: FollowUpBehavior,
+  alternate: boolean,
+  canSteer: boolean,
+): FollowUpBehavior {
+  const mode = alternate ? (behavior === "queue" ? "steer" : "queue") : behavior;
+  // An agent that cannot steer gets the message after its turn instead.
+  return mode === "steer" && !canSteer ? "queue" : mode;
+}
+
+const failure = (error: unknown): SendOutcome => ({
+  kind: "failed",
+  message: (error as Error | null)?.message ?? String(error),
+});
+
+/**
+ * Sends a message to a thread (D201, D205). `queue` adds it to the thread's
+ * queue on its node (a free thread starts it at once), `steer` sends it into
+ * the running turn, and `send` starts a turn, queueing it after all when the
+ * thread turned out busy.
+ */
+export async function sendMessage(
+  threads: Pick<ThreadsCatalog, "call">,
+  target: NodeTarget,
+  threadId: string,
+  message: OutgoingMessage,
+  /** `start` refuses a busy thread (`busy`) instead of queueing the message. */
+  mode: "send" | "start" | FollowUpBehavior = "send",
+): Promise<SendOutcome> {
+  const input = {
+    threadId,
+    text: message.text,
+    ...(message.attachments.length === 0 ? {} : { attachments: message.attachments }),
+    ...(message.context === undefined ? {} : { context: message.context }),
+    ...message.settings,
+  };
+  try {
+    if (mode === "steer") {
+      try {
+        const sent = await threads.call<{ outcome?: unknown }>(target, "threads.steer", input);
+        // The node queues a steer whose turn ended first (D205): nothing is lost.
+        const outcomes: Record<string, SendOutcome> = {
+          steered: { kind: "steered" },
+          queued: { kind: "queued" },
+          started: { kind: "sent" },
+        };
+        const answer = String(sent?.outcome);
+        const outcome = Object.hasOwn(outcomes, answer) ? outcomes[answer] : undefined;
+        return (
+          outcome ?? failure(new Error(`The node answered a steer with ${String(sent?.outcome)}`))
+        );
+      } catch (error) {
+        // A node from before D803 refuses an agent that cannot steer: queued instead.
+        if ((error as { code?: unknown } | null)?.code !== "STEER_UNSUPPORTED") throw error;
+      }
+    } else if (mode === "send" || mode === "start") {
+      try {
+        await threads.call(target, "threads.send", input);
+        return { kind: "sent" };
+      } catch (error) {
+        if ((error as { code?: unknown } | null)?.code !== "TURN_IN_PROGRESS") throw error;
+        if (mode === "start") return { kind: "busy" };
+      }
+    }
+    const queued = await threads.call<{ turnId?: string }>(target, "threads.queue.add", input);
+    return { kind: queued.turnId === undefined ? "queued" : "sent" };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** What "Resume thread" sends into a stopped turn's thread (T3's text, D800). */
+export const RESUME_TEXT = "Continue where you left off.";
+
+/** What resuming a thread came to: `failed` says which step did not happen. */
+export type ResumeOutcome =
+  | { readonly kind: "resumed" }
+  /** Nothing to resume, or a turn runs already: nothing was sent. */
+  | { readonly kind: "nothing" }
+  | { readonly kind: "failed"; readonly message: string };
+
+/**
+ * T3's "Resume thread" (D800): a stopped turn goes on with T3's message as
+ * the next turn, then a held queue goes on after it. The message is sent only
+ * while the thread is free (`start`), so a second press never sends it twice.
+ */
+export async function resumeThread(
+  threads: Pick<ThreadsCatalog, "call">,
+  target: NodeTarget,
+  threadId: string,
+  state: {
+    /** The latest turn was interrupted. */
+    readonly stopped: boolean;
+    /** The queue is held with messages waiting. */
+    readonly held: boolean;
+    readonly settings: MessageSettings;
+  },
+): Promise<ResumeOutcome> {
+  let resumed = false;
+  if (state.stopped) {
+    const message = { text: RESUME_TEXT, attachments: [], settings: state.settings };
+    const outcome = await sendMessage(threads, target, threadId, message, "start");
+    if (outcome.kind === "failed") {
+      return { kind: "failed", message: `Could not resume thread: ${outcome.message}` };
+    }
+    resumed = outcome.kind === "sent";
+  }
+  if (!state.held) return resumed ? { kind: "resumed" } : { kind: "nothing" };
+  try {
+    await threads.call(target, "threads.queue.resume", { threadId });
+    return { kind: "resumed" };
+  } catch (error) {
+    const reason = (error as Error | null)?.message ?? String(error);
+    return {
+      kind: "failed",
+      message: resumed
+        ? `The thread resumed, but its queue did not: ${reason}`
+        : `Could not resume the queue: ${reason}`,
+    };
+  }
+}

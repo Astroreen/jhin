@@ -1,0 +1,32 @@
+{
+  "name": "@jhin/source-control-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contract of the source-control.git@1 capability: repository status, diffs, branches and pull requests, and its event types",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts"
+  },
+  "dependencies": {
+    "@jhin/sdk": "workspace:*"
+  }
+}

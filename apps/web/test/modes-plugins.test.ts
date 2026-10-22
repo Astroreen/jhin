@@ -1,0 +1,221 @@
+import {
+  CONNECTIONS_CAPABILITY,
+  MODES_CAPABILITY,
+  NAVIGATION_CAPABILITY,
+  type Connections,
+  type Mode,
+  type Modes,
+  type Navigation,
+  type NodeConnection,
+  type Route,
+} from "@jhin/client-api";
+import { definePlugin, toDisposable } from "@jhin/sdk";
+import { createTestKernel, mockCapability, testManifest } from "@jhin/testing";
+import { UI_SLOTS_CAPABILITY, createSlotRegistry } from "@jhin/ui";
+import { describe, expect, it } from "vite-plus/test";
+
+import { civilizationPlugin } from "../src/plugins/civilization.tsx";
+import { modesPlugin } from "../src/plugins/modes.ts";
+
+function fakeNavigation(start: Route = {}): Navigation {
+  let route = start;
+  const listeners = new Set<() => void>();
+  return {
+    current: () => route,
+    navigate(next) {
+      route = next;
+      for (const listener of Array.from(listeners)) listener();
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return toDisposable(() => listeners.delete(listener));
+    },
+  } as Navigation;
+}
+
+/** One node whose `agents.catalog` calls wait until the test answers them. */
+function fakeConnections() {
+  const pending: { resolve(value: unknown): void; reject(error: unknown): void }[] = [];
+  const listeners = new Set<() => void>();
+  let state: NodeConnection["state"] = "open";
+  const connection = {
+    id: "a",
+    url: "ws://a",
+    label: "a",
+    get state() {
+      return state;
+    },
+    client: {
+      call: (method: string) => {
+        if (method !== "agents.catalog") return Promise.reject(new Error(`unexpected ${method}`));
+        return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+      },
+    },
+  } as unknown as NodeConnection;
+  const connections = {
+    list: () => [connection],
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return toDisposable(() => listeners.delete(listener));
+    },
+  } as unknown as Connections;
+  return {
+    connections,
+    /** The `agents.catalog` calls asked so far, oldest first. */
+    pending,
+    setState(next: NodeConnection["state"]) {
+      state = next;
+      for (const listener of Array.from(listeners)) listener();
+    },
+  };
+}
+
+/** Lets every queued promise reaction run: an answer's handling is then done. */
+const drain = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+async function start(options: { connections?: Connections; enabled?: string } = {}) {
+  let modes: Modes | undefined;
+  const kernel = await createTestKernel({
+    side: "client",
+    ...(options.enabled === undefined
+      ? {}
+      : { config: { node: { "jhin.civilization": { enabled: options.enabled } } } }),
+    plugins: [
+      mockCapability(NAVIGATION_CAPABILITY, fakeNavigation({ node: "a" })),
+      mockCapability(UI_SLOTS_CAPABILITY, createSlotRegistry()),
+      mockCapability(CONNECTIONS_CAPABILITY, options.connections ?? fakeConnections().connections),
+      modesPlugin,
+      civilizationPlugin,
+      {
+        manifest: testManifest("app.consumer", {
+          side: "client",
+          requires: { [MODES_CAPABILITY]: "^1" },
+        }),
+        definition: definePlugin({
+          activate(context) {
+            modes = context.services.get(MODES_CAPABILITY);
+          },
+        }),
+      },
+    ],
+  });
+  const ids = () => modes!.list().map((mode) => mode.id);
+  return { kernel, modes: modes!, ids };
+}
+
+describe("jhin.modes", () => {
+  it("offers ui.mode.next only while there are two modes or more (D746)", async () => {
+    const { kernel, modes } = await start({ enabled: "off" });
+    const names = () => kernel.commands.list().map((command) => command.name);
+    expect(names()).toContain("ui.mode.switch");
+    expect(names()).not.toContain("ui.mode.next");
+
+    const other: Mode = {
+      id: "other",
+      title: "Other",
+      order: 50,
+      sidebarSlot: "o.s",
+      mainSlot: "o.m",
+    };
+    const registration = modes.register(other);
+    expect(names()).toContain("ui.mode.next");
+    await kernel.commands.execute("ui.mode.next", {});
+    expect(modes.current()?.id).toBe("other");
+
+    registration.dispose();
+    expect(names()).not.toContain("ui.mode.next");
+    expect(modes.current()?.id).toBe("threads");
+    await kernel.stop();
+  });
+});
+
+describe("jhin.civilization (D747)", () => {
+  it("follows the config: off never offers the mode, on always does", async () => {
+    const { kernel, ids } = await start({ enabled: "off" });
+    expect(ids()).toEqual(["threads"]);
+    kernel.config.setLayer("node", { "jhin.civilization": { enabled: "on" } });
+    expect(ids()).toEqual(["threads", "civilization"]);
+    kernel.config.setLayer("node", { "jhin.civilization": { enabled: "off" } });
+    expect(ids()).toEqual(["threads"]);
+    await kernel.stop();
+  });
+
+  it("offers the mode while an open node has an agent, and asks again after it reopens or fails", async () => {
+    const node = fakeConnections();
+    const { kernel, ids } = await start({ connections: node.connections });
+    expect(node.pending).toHaveLength(1);
+    node.pending[0]!.resolve({ head: 1, agents: [{ id: "lead" }] });
+    await drain();
+    expect(ids()).toEqual(["threads", "civilization"]);
+
+    // Closed: no longer offered, and the old answer is not kept for the next opening.
+    node.setState("closed");
+    expect(ids()).toEqual(["threads"]);
+    node.setState("open");
+    expect(ids()).toEqual(["threads"]);
+    expect(node.pending).toHaveLength(2);
+
+    // A failure that is not a missing plugin is asked again on the next change, not at once.
+    node.pending[1]!.reject(Object.assign(new Error("slow"), { code: "TIMEOUT" }));
+    await drain();
+    expect(node.pending).toHaveLength(2);
+    node.setState("open");
+    expect(node.pending).toHaveLength(3);
+    node.pending[2]!.resolve({ head: 0, agents: [] });
+    await drain();
+    expect(ids()).toEqual(["threads"]);
+    await kernel.stop();
+  });
+
+  it("gives up on a node after three unknown answers in one opening", async () => {
+    const node = fakeConnections();
+    const { kernel, ids } = await start({ connections: node.connections });
+    for (let failure = 0; failure < 3; failure++) {
+      node.pending[failure]!.reject(Object.assign(new Error("slow"), { code: "TIMEOUT" }));
+      await drain();
+      node.setState("open");
+    }
+    expect(node.pending).toHaveLength(3);
+    expect(ids()).toEqual(["threads"]);
+
+    // A new opening asks again, and so does a changed setting.
+    node.setState("closed");
+    node.setState("open");
+    expect(node.pending).toHaveLength(4);
+    kernel.config.setLayer("node", { "jhin.civilization": { enabled: "auto" } });
+    expect(node.pending).toHaveLength(5);
+    await kernel.stop();
+  });
+
+  it("drops an answer from an earlier opening of the connection", async () => {
+    const node = fakeConnections();
+    const { kernel, ids } = await start({ connections: node.connections });
+    node.setState("closed");
+    node.setState("open");
+    expect(node.pending).toHaveLength(2);
+
+    node.pending[0]!.resolve({ head: 1, agents: [{ id: "lead" }] });
+    await drain();
+    expect(ids()).toEqual(["threads"]);
+    node.pending[1]!.resolve({ head: 0, agents: [] });
+    await drain();
+    expect(ids()).toEqual(["threads"]);
+    await kernel.stop();
+  });
+
+  it("registers nothing for an answer that arrives after it was deactivated", async () => {
+    const node = fakeConnections();
+    const { kernel, ids } = await start({ connections: node.connections });
+    await kernel.reload("jhin.civilization");
+    expect(node.pending).toHaveLength(2);
+
+    node.pending[0]!.resolve({ head: 1, agents: [{ id: "lead" }] });
+    await drain();
+    expect(ids()).toEqual(["threads"]);
+    // The live activation still offers it; a leaked one would make this register throw.
+    node.pending[1]!.resolve({ head: 1, agents: [{ id: "lead" }] });
+    await drain();
+    expect(ids()).toEqual(["threads", "civilization"]);
+    await kernel.stop();
+  });
+});

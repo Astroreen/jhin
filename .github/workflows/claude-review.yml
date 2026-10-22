@@ -1,0 +1,54 @@
+name: Claude review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request for the Jhin project.
+
+            First read AGENTS.md, GLOSSARY.md and docs/plans/foundation.md.
+            The PR description names the decisions (D-numbers) it implements.
+
+            Check, in order:
+            1. Correctness: bugs, edge cases, error handling, races.
+            2. Spec: the change matches the decisions it claims and the
+               "Done when" criteria of its PR in the foundation plan; flag
+               anything missing or out of scope.
+            3. Architecture rules from AGENTS.md: nothing product-shaped in the
+               kernel, kernel stays isomorphic, capabilities instead of plugin
+               ids, disposables, every operation is a command, stable ids.
+            4. Tests: real proof of the behaviour; no sleeps or timeouts.
+            5. Evidence: the PR description shows concrete proof.
+
+            Use inline comments for specific issues and one top-level summary
+            comment. Do not praise; report only what should change, ranked by
+            severity. If nothing should change, say so in one line.
+            Never @-mention anyone in comments.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"

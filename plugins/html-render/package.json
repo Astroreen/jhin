@@ -1,0 +1,60 @@
+{
+  "name": "@jhin/plugin-html-render",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-contained HTML pages an agent previews in the node's headless browser and renders into a thread",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
+  },
+  "dependencies": {
+    "@jhin/agent-api": "workspace:*",
+    "@jhin/preview-api": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@jhin/storage-api": "workspace:*",
+    "playwright-core": "catalog:"
+  },
+  "devDependencies": {
+    "@jhin/testing": "workspace:*",
+    "@types/node": "catalog:"
+  },
+  "jhin": {
+    "id": "jhin.html-render",
+    "version": "0.1.0",
+    "apiVersion": 1,
+    "name": "Rendered HTML",
+    "description": "html.preview and html.render: pages an agent checks in a headless browser and shows in the thread (T3 Code's html_preview and html_render)",
+    "side": "server",
+    "provides": {
+      "preview.html": "1.0.0"
+    },
+    "requires": {
+      "storage.eventlog": "^1"
+    },
+    "entry": "src/index.ts"
+  }
+}

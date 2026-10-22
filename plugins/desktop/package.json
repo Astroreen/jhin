@@ -1,0 +1,48 @@
+{
+  "name": "@jhin/plugin-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The desktop app's side of the web client: window chrome, menus, the badge and updates",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "typecheck": "tsc --noEmit",
+    "prepack": "vp build && node ../../scripts/pack.ts guard"
+  },
+  "dependencies": {
+    "@jhin/client-api": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@jhin/ui": "workspace:*",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@jhin/desktop-api": "workspace:*",
+    "@types/react": "catalog:",
+    "lucide-react": "catalog:",
+    "vite": "catalog:"
+  },
+  "jhin": {
+    "id": "jhin.desktop",
+    "version": "0.1.0",
+    "apiVersion": 1,
+    "name": "Desktop",
+    "description": "Window chrome, native menus, the notification badge and updates of the desktop app",
+    "side": "client",
+    "provides": {
+      "desktop.shell": "1.0.0"
+    },
+    "requires": {
+      "ui.slots": "^1"
+    },
+    "optional": {
+      "ui.settings": "^1",
+      "ui.toasts": "^1",
+      "ui.dialogs": "^1",
+      "client.notifications": "^1"
+    },
+    "entry": "dist/index.js"
+  }
+}

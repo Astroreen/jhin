@@ -1,0 +1,59 @@
+{
+  "name": "@jhin/plugin-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runs a mission wave by wave as a workflow, and refocuses agents on their intent chain",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
+  },
+  "dependencies": {
+    "@jhin/agent-api": "workspace:*",
+    "@jhin/host-api": "workspace:*",
+    "@jhin/missions-api": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@jhin/storage-api": "workspace:*"
+  },
+  "devDependencies": {
+    "@jhin/rpc": "workspace:*",
+    "@types/node": "catalog:"
+  },
+  "jhin": {
+    "id": "jhin.orchestrator",
+    "version": "0.1.0",
+    "apiVersion": 1,
+    "name": "Orchestrator",
+    "description": "Walks a mission's waves as a workflow (hands each ready slice to its assignee, waits for the proof) and refocuses agents on their intent chain (docs/plans/agents.md, A6)",
+    "side": "server",
+    "entry": "src/index.ts",
+    "requires": {
+      "host.identity": "^1",
+      "storage.kv": "^1",
+      "storage.eventlog": "^1"
+    }
+  }
+}

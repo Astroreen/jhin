@@ -1,0 +1,61 @@
+@import "tailwindcss";
+@import "@jhin/ui/theme.css";
+
+/* Tailwind only sees classes in files it scans: the app and the UI kit. */
+@source "../../../packages/ui/src";
+/* The desktop app's client plugin is built apart; its classes must exist here (docs/plans/desktop.md, D514). */
+@source "../../../plugins/desktop/src";
+
+/* The browser preview's loading bar, from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/index.css. */
+
+@keyframes preview-loading-progress {
+  from {
+    transform: scaleX(0.04);
+  }
+
+  to {
+    transform: scaleX(0.9);
+  }
+}
+
+.preview-loading-progress {
+  opacity: 0;
+  transform: scaleX(1);
+  transition:
+    transform 150ms ease-out,
+    opacity 150ms ease-out 220ms;
+}
+
+.preview-loading-progress[data-loading="true"] {
+  opacity: 1;
+  animation: preview-loading-progress 5.3s cubic-bezier(0.1, 0.5, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-loading-progress,
+  .preview-loading-progress[data-loading="true"] {
+    transition: none;
+    animation: none;
+  }
+
+  .preview-loading-progress[data-loading="true"] {
+    transform: scaleX(0.9);
+  }
+}
+
+/* Matches of the find in a thread, from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/index.css (D801). */
+
+::highlight(jhin-thread-find) {
+  color: oklch(0.216164 0.028283 77.423);
+  background-color: oklch(0.915 0.11 85);
+
+  @variant dark {
+    color: oklch(0.970151 0 0);
+    background-color: oklch(0.55 0.1 85);
+  }
+}
+
+::highlight(jhin-thread-find-active) {
+  color: oklch(0.216164 0.028283 77.423);
+  background-color: oklch(0.774202 0.151946 74.331);
+}

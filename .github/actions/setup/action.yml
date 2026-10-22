@@ -1,0 +1,11 @@
+name: Setup
+description: Install Node, pnpm, Vite+ and the workspace dependencies.
+runs:
+  using: composite
+  steps:
+    - name: Setup Vite+
+      uses: voidzero-dev/setup-vp@v1
+      with:
+        node-version-file: package.json
+        cache: true
+        run-install: true

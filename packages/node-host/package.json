@@ -1,0 +1,41 @@
+{
+  "name": "@jhin/node-host",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts"
+  },
+  "dependencies": {
+    "@jhin/host-api": "workspace:*",
+    "@jhin/kernel": "workspace:*",
+    "@jhin/rpc": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@jhin/secrets-api": "workspace:*",
+    "@jhin/storage-api": "workspace:*",
+    "jsonc-parser": "catalog:",
+    "pino": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "name": "@jhin/plugin-web-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Serves the Jhin web client from the node (jhin serve --ui)",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
+  },
+  "dependencies": {
+    "@jhin/client-api": "workspace:*",
+    "@jhin/host-api": "workspace:*",
+    "@jhin/http-api": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@jhin/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  },
+  "jhin": {
+    "id": "jhin.web-ui",
+    "version": "0.1.0",
+    "apiVersion": 1,
+    "name": "Web UI",
+    "description": "Serves the web client, its client-side plugins and their change notifications",
+    "side": "server",
+    "requires": {
+      "http.server": "^1",
+      "host.plugins": "^1"
+    },
+    "entry": "src/index.ts"
+  }
+}

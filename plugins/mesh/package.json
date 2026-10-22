@@ -1,0 +1,71 @@
+{
+  "name": "@jhin/plugin-mesh",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Connects one owner's nodes into a mesh: invites, gossip, routing with relay, jhin:// addresses",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
+  },
+  "dependencies": {
+    "@jhin/host-api": "workspace:*",
+    "@jhin/http-api": "workspace:*",
+    "@jhin/mesh-api": "workspace:*",
+    "@jhin/mesh-core": "workspace:*",
+    "@jhin/rpc": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@jhin/storage-api": "workspace:*",
+    "ws": "catalog:"
+  },
+  "devDependencies": {
+    "@jhin/testing": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/ws": "catalog:"
+  },
+  "jhin": {
+    "id": "jhin.mesh",
+    "version": "0.1.0",
+    "apiVersion": 1,
+    "name": "Mesh",
+    "description": "Nodes of one owner see each other and route calls through each other",
+    "side": "server",
+    "provides": {
+      "mesh.streams": "1.0.0"
+    },
+    "requires": {
+      "http.server": "^1.1",
+      "host.paths": "^1",
+      "host.identity": "^1",
+      "storage.kv": "^1",
+      "storage.eventlog": "^1"
+    },
+    "optional": {
+      "rpc.streams": "^1.2"
+    },
+    "entry": "src/index.ts"
+  }
+}
