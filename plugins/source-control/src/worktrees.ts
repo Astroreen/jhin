@@ -423,7 +423,11 @@ function notCheckedOut(output: string): string {
 }
 
 /** A URL's credentials (`https://user:token@host`) never reach the setup card. */
-export const redactUrls = (text: string) => text.replace(/(\w+:\/\/)[^/\s@]+@/g, "$1***@");
+export const redactUrls = (text: string) =>
+  text
+    // Up to the last `@` before the host, so a password with `@` in it goes whole.
+    .replace(/(\w+:\/\/)[^\s/]*@/g, "$1***@")
+    .replace(/([?&](?:access_)?(?:token|password|key|secret)=)[^&\s'"]+/gi, "$1***");
 
 /** Checks an existing branch out again at `path` (a managed worktree that went missing). */
 export async function recreateWorktree(

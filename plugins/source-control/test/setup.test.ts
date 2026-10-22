@@ -71,6 +71,12 @@ describe("submodule warnings", () => {
     expect(
       redactUrls("fatal: clone of 'https://bot:ghp_secret@github.com/acme/lib.git' failed"),
     ).toBe("fatal: clone of 'https://***@github.com/acme/lib.git' failed");
+    expect(redactUrls("fatal: 'https://user:p@ss@host/x.git' failed")).toBe(
+      "fatal: 'https://***@host/x.git' failed",
+    );
+    expect(redactUrls("fatal: 'https://host/x.git?access_token=abc&x=1' failed")).toBe(
+      "fatal: 'https://host/x.git?access_token=***&x=1' failed",
+    );
     expect(redactUrls("fatal: repository '/tmp/lib' not found")).toBe(
       "fatal: repository '/tmp/lib' not found",
     );
