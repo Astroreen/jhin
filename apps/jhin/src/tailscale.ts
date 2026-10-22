@@ -92,6 +92,20 @@ export function replaceable(statusJson: string, port: number, ours: readonly str
   );
 }
 
+/** Whether Funnel publishes HTTPS port `port` (or the status cannot be read). */
+export function funneled(statusJson: string, port: number): boolean {
+  try {
+    const status = JSON.parse(statusJson === "" ? "{}" : statusJson) as {
+      AllowFunnel?: Record<string, unknown>;
+    };
+    return Object.entries(status.AllowFunnel ?? {}).some(
+      ([host, on]) => on === true && host.endsWith(`:${port}`),
+    );
+  } catch {
+    return true;
+  }
+}
+
 /** The proxy targets `jhin pair --tailscale` mapped, so it repairs only its own (D1189). */
 export interface OwnMappings {
   targets(): readonly string[];
@@ -195,6 +209,22 @@ export async function publishOverTailscale(input: {
     `Tailscale Serve on HTTPS port ${port} already fronts a different Jhin node. Pass --tailscale-serve-port to publish this one on another port.`,
   );
 
+  let serveStatus: { code: number; stdout: string };
+  try {
+    serveStatus = await run(["serve", "status", "--json"], STATUS_TIMEOUT_MS);
+  } catch {
+    throw unavailable;
+  }
+  if (serveStatus.code !== 0) throw unavailable;
+  // Never pair through a port Funnel publishes to the internet, a kept mapping
+  // of this node included: the node is not meant to be public (D1189).
+  if (funneled(serveStatus.stdout, input.servePort)) {
+    throw new PairError(
+      "TAILSCALE_PORT_FUNNELED",
+      `HTTPS port ${port} is public through Tailscale Funnel. Turn Funnel off for it (\`tailscale funnel --https=${port} off\`) or pass --tailscale-serve-port.`,
+    );
+  }
+
   const existing = await probe(baseUrl);
   if (existing.kind === "node") {
     if (existing.instance !== input.node.instance) throw otherNode;
@@ -209,13 +239,6 @@ export async function publishOverTailscale(input: {
 
   // Nothing that answers as this node is there. Only an empty port, or a
   // mapping `jhin pair` made itself (a node's old address), is taken over.
-  let serveStatus: { code: number; stdout: string };
-  try {
-    serveStatus = await run(["serve", "status", "--json"], STATUS_TIMEOUT_MS);
-  } catch {
-    throw unavailable;
-  }
-  if (serveStatus.code !== 0) throw unavailable;
   if (!replaceable(serveStatus.stdout, input.servePort, input.mappings.targets())) {
     throw new PairError(
       "TAILSCALE_PORT_OCCUPIED",

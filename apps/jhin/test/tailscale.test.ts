@@ -116,7 +116,25 @@ describe("Tailscale Serve for jhin pair", () => {
     });
     expect(published.baseUrl).toBe("https://studio.tail1234.ts.net:8443");
     expect(published.notes).toEqual([expect.stringContaining("jhin.http.trustProxy")]);
-    expect(tailscale.calls).toEqual([["status", "--json"]]);
+    expect(tailscale.calls).toEqual([
+      ["status", "--json"],
+      ["serve", "status", "--json"],
+    ]);
+  });
+
+  it("never pairs through a funneled port, even one that already fronts this node", async () => {
+    await expect(
+      publishOverTailscale({
+        mappings: memoryMappings(),
+        node,
+        servePort: 443,
+        run: fakeTailscale({
+          serveStatus: JSON.stringify({ AllowFunnel: { "studio.tail1234.ts.net:443": true } }),
+        }).run,
+        probe: probes({ kind: "node", instance: "this-node" }).probe,
+        pause,
+      }),
+    ).rejects.toThrow("public through Tailscale Funnel");
   });
 
   it("never replaces a mapping that answers as something else", async () => {
@@ -141,7 +159,7 @@ describe("Tailscale Serve for jhin pair", () => {
         pause,
       }),
     ).rejects.toThrow("already serves something that is not this Jhin node");
-    expect(other.calls.some((call) => call[0] === "serve")).toBe(false);
+    expect(other.calls.some((call) => call[0] === "serve" && call[1] === "--bg")).toBe(false);
   });
 
   it("says why when Tailscale is missing, has no MagicDNS name, or serve fails", async () => {
