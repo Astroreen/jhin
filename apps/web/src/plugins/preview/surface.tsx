@@ -7,6 +7,8 @@ import type { RpcClient } from "@jhin/rpc";
 import { MousePointer2Icon } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
+import { createTouchGestures, type TouchAction, type TouchGestures } from "./touch.ts";
+
 interface Frame {
   readonly data: string;
   readonly width: number;
@@ -16,28 +18,6 @@ interface Frame {
 const RESIZE_THROTTLE_MS = 150;
 const MULTI_CLICK_MS = 500;
 const MULTI_CLICK_PX = 4;
-/** T3's touch constants: a tap moves less than this; a probe answer is reused near and soon. */
-const TAP_SLOP_PX = 8;
-const PROBE_REUSE_PX = 24;
-const PROBE_REUSE_MS = 10_000;
-
-interface TouchGesture {
-  readonly pointerId: number;
-  readonly startX: number;
-  readonly startY: number;
-  lastX: number;
-  lastY: number;
-  panning: boolean;
-}
-
-interface TouchProbe {
-  readonly x: number;
-  readonly y: number;
-  editable: boolean | null;
-  answered: boolean;
-  tapped: boolean;
-}
-
 /** Alt 1, ctrl 2, meta 4, shift 8: T3's (and CDP's) modifier bits. */
 function modifiersOf(event: {
   altKey: boolean;
@@ -271,13 +251,11 @@ export function BrowserSurface(props: SurfaceProps) {
   };
 
   // --- Touch: a tap clicks, a pan scrolls, and a tap on text raises the keyboard (T3's) ---
-  const touchRef = useRef<TouchGesture | null>(null);
-  const probeRef = useRef<TouchProbe | null>(null);
-  const lastProbe = useRef<{ x: number; y: number; editable: boolean; at: number } | null>(null);
+  const touch = useRef<TouchGestures | null>(null);
+  touch.current ??= createTouchGestures();
   useEffect(() => {
-    if (!canOperate) touchRef.current = probeRef.current = lastProbe.current = null;
+    if (!canOperate) touch.current?.reset();
   }, [canOperate]);
-  const focusInput = () => inputRef.current?.focus({ preventScroll: true });
   /** Page CSS pixels per client pixel on the canvas. */
   const pageScale = () => {
     const canvas = canvasRef.current;
@@ -286,126 +264,95 @@ export function BrowserSurface(props: SurfaceProps) {
     const fit = Math.min(rect.width / canvas.width, rect.height / canvas.height);
     return viewport.current.width / (canvas.width * fit);
   };
-  const probe = (point: { x: number; y: number }) => {
-    void client
-      .call<{ x: number; y: number; editable: boolean }>("preview.tab.probe", {
-        threadId,
-        tabId,
-        viewer,
-        ...point,
-      })
-      .then(
-        (result) => {
-          if (!canOperateRef.current) return;
-          lastProbe.current = { ...result, at: performance.now() };
-          const pending = probeRef.current;
-          if (pending === null || pending.x !== result.x || pending.y !== result.y) return;
-          pending.editable = result.editable;
-          pending.answered = true;
-          if (!pending.tapped) return;
-          // The tap already ended: a late answer raises Android's keyboard only.
-          probeRef.current = null;
-          if (result.editable) focusInput();
-          else inputRef.current?.blur();
-        },
-        // Without an answer the tap still clicks; only the keyboard stays down.
-        () => undefined,
-      );
+  const run = (actions: readonly TouchAction[], timeStamp: number) => {
+    for (const action of actions) {
+      switch (action.type) {
+        case "focus":
+          inputRef.current?.focus({ preventScroll: true });
+          break;
+        case "blur":
+          inputRef.current?.blur();
+          break;
+        case "wheel":
+          send({
+            type: "wheel",
+            ...action.point,
+            deltaX: action.deltaX,
+            deltaY: action.deltaY,
+            modifiers: 0,
+          });
+          break;
+        case "tap": {
+          const { point } = action;
+          const clickCount = countClick(point, timeStamp);
+          send({
+            type: "mouse",
+            action: "move",
+            ...point,
+            button: "none",
+            buttons: 0,
+            modifiers: 0,
+          });
+          send({
+            type: "mouse",
+            action: "down",
+            ...point,
+            button: "left",
+            buttons: 1,
+            clickCount,
+            modifiers: 0,
+          });
+          send({
+            type: "mouse",
+            action: "up",
+            ...point,
+            button: "left",
+            buttons: 0,
+            clickCount,
+            modifiers: 0,
+          });
+          break;
+        }
+        case "probe":
+          void client
+            .call<{ x: number; y: number; editable: boolean }>("preview.tab.probe", {
+              threadId,
+              tabId,
+              viewer,
+              ...action.point,
+            })
+            .then(
+              (result) => {
+                if (canOperateRef.current) run(touch.current!.answered(result), performance.now());
+              },
+              // Without an answer the tap still clicks; only the keyboard stays down.
+              () => touch.current!.failed(action.point),
+            );
+          break;
+      }
+    }
   };
   /** Handles a touch pointer; false for a mouse or a pen. */
   const onTouch = (event: PointerEvent<HTMLCanvasElement>): boolean => {
     if (event.pointerType !== "touch") return false;
-    const { type, pointerId, clientX, clientY } = event;
-    const touch = touchRef.current;
-    if (type === "pointercancel") {
-      if (touch?.pointerId === pointerId) touchRef.current = probeRef.current = null;
+    const gestures = touch.current!;
+    if (event.type === "pointercancel") {
+      gestures.cancel(event.pointerId);
       return true;
     }
-    const point = pagePoint(clientX, clientY);
-    if (type === "pointerdown") {
-      if (!event.isPrimary) return true;
-      event.preventDefault();
-      touchRef.current = {
-        pointerId,
-        startX: clientX,
-        startY: clientY,
-        lastX: clientX,
-        lastY: clientY,
-        panning: false,
-      };
-      const last = lastProbe.current;
-      const reusable =
-        point !== undefined &&
-        last !== null &&
-        performance.now() - last.at < PROBE_REUSE_MS &&
-        Math.hypot(point.x - last.x, point.y - last.y) < PROBE_REUSE_PX;
-      probeRef.current =
-        point === undefined
-          ? null
-          : {
-              ...point,
-              editable: reusable ? last.editable : null,
-              answered: false,
-              tapped: false,
-            };
-      if (point !== undefined) probe(point);
-      return true;
-    }
-    if (touch === null || touch.pointerId !== pointerId) return true;
-    if (type === "pointermove") {
-      if (
-        !touch.panning &&
-        Math.hypot(clientX - touch.startX, clientY - touch.startY) < TAP_SLOP_PX
-      )
-        return true;
-      touch.panning = true;
-      if (point !== undefined) {
-        const scale = pageScale();
-        send({
-          type: "wheel",
-          ...point,
-          deltaX: (touch.lastX - clientX) * scale,
-          deltaY: (touch.lastY - clientY) * scale,
-          modifiers: 0,
-        });
-      }
-      touch.lastX = clientX;
-      touch.lastY = clientY;
-      return true;
-    }
-    // pointerup
-    touchRef.current = null;
-    const pending = probeRef.current;
-    if (touch.panning) {
-      probeRef.current = null;
-      return true;
-    }
-    if (point === undefined) return true;
-    // iOS requires focus during the tap; late probe replies only raise Android's keyboard.
-    if (pending?.editable === true) focusInput();
-    else if (pending?.editable === false) inputRef.current?.blur();
-    if (pending !== null && !pending.answered) pending.tapped = true;
-    else probeRef.current = null;
-    const clickCount = countClick(point, event.timeStamp);
-    send({ type: "mouse", action: "move", ...point, button: "none", buttons: 0, modifiers: 0 });
-    send({
-      type: "mouse",
-      action: "down",
-      ...point,
-      button: "left",
-      buttons: 1,
-      clickCount,
-      modifiers: 0,
-    });
-    send({
-      type: "mouse",
-      action: "up",
-      ...point,
-      button: "left",
-      buttons: 0,
-      clickCount,
-      modifiers: 0,
-    });
+    const pointer = {
+      pointerId: event.pointerId,
+      isPrimary: event.isPrimary,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      point: pagePoint(event.clientX, event.clientY),
+    };
+    if (event.type === "pointerdown") {
+      if (event.isPrimary) event.preventDefault();
+      run(gestures.down(pointer), event.timeStamp);
+    } else if (event.type === "pointermove")
+      run(gestures.move(pointer, pageScale()), event.timeStamp);
+    else run(gestures.up(pointer), event.timeStamp);
     return true;
   };
 

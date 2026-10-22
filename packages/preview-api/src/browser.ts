@@ -819,7 +819,12 @@ export const PREVIEW_UPLOAD_MAX_BYTES = 64 * 1024 * 1024;
 export const PreviewUploadFile = z.object({
   name: z.string().min(1).max(255),
   mimeType: z.string().max(255).optional(),
-  data: z.string().max(Math.ceil(PREVIEW_UPLOAD_MAX_BYTES / 3) * 4),
+  data: z
+    .string()
+    .max(Math.ceil(PREVIEW_UPLOAD_MAX_BYTES / 3) * 4)
+    .refine((data) => data.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(data), {
+      message: "File data must be base64.",
+    }),
 });
 export type PreviewUploadFile = z.infer<typeof PreviewUploadFile>;
 

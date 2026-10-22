@@ -1504,15 +1504,25 @@ export function createTabs(options: TabsOptions) {
         if (!chooser.isMultiple() && input.files.length > 1) {
           throw new PreviewError("PREVIEW_EXECUTION", "This file picker accepts one file.");
         }
+        // Taken at once, so a second upload meanwhile finds no picker; given back if the files
+        // did not reach it, so the user can try again.
         tab.fileChooser = null;
         changed(tab);
-        await chooser.setFiles(
-          input.files.map((file) => ({
-            name: file.name,
-            mimeType: file.mimeType || "application/octet-stream",
-            buffer: Buffer.from(file.data, "base64"),
-          })),
-        );
+        try {
+          await chooser.setFiles(
+            input.files.map((file) => ({
+              name: file.name,
+              mimeType: file.mimeType || "application/octet-stream",
+              buffer: Buffer.from(file.data, "base64"),
+            })),
+          );
+        } catch (error) {
+          if (tab.fileChooser === null && !tab.page.isClosed()) {
+            tab.fileChooser = chooser;
+            changed(tab);
+          }
+          throw error;
+        }
         // The page may retitle itself on the files, as after a viewer's click.
         void refreshTitle(tab).catch(() => undefined);
         return summary(tab);

@@ -565,7 +565,12 @@ probe of `ServerBrowser.ts`.
   MB over HTTP; here an upload is one RPC message, which the WebSocket
   transport takes up to 100 MiB of, so it carries at most 64 MiB. A page
   that retitles itself on the files gets its new title in the tab, as
-  after a click. Both commands need the viewer to hold control.
+  after a click. Both commands need the viewer to hold control. The picker
+  is taken when an upload starts, so a second one finds none, and given
+  back when the files do not reach the page, so the user can try again;
+  file data that is not base64 is refused. The gestures are a pure state
+  machine (`apps/web/src/plugins/preview/touch.ts`, unit tested) the
+  surface runs.
 
 ### Proof
 

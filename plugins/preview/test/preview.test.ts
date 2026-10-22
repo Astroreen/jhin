@@ -57,6 +57,9 @@ const PAGES: Record<string, string> = {
     <input type="file" id="file" multiple onchange="out.textContent = 'got ' + [...this.files].map((f) => f.name + ':' + f.size).join(',')">
     <input aria-label="Text" id="text">
     <p id="out"></p>`,
+  "/pick-one": `<!doctype html><title>Pick one</title>
+    <style>body{margin:0} input{display:block;box-sizing:border-box;width:400px;height:100px}</style>
+    <input type="file" id="file">`,
   "/drag": `<!doctype html><title>Drag</title>
     <div draggable="true" id="source" style="width:80px;height:40px">Drag me</div>
     <div id="target" style="width:160px;height:80px;margin-top:40px">Drop here</div>
@@ -407,10 +410,61 @@ describe("jhin.preview", () => {
     await client.call("preview.wait.for", { threadId: thread, text: "got a.txt:5,b.bin:3" });
     await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser === null);
 
+    // Only the viewer holding control answers it.
+    await click();
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser !== null);
+    const stranger = await rejection(
+      client.call("preview.tab.upload", { threadId: thread, tabId, viewer: "v2", files: [] }),
+    );
+    expect(stranger.code).toBe("PREVIEW_CONTROL");
+    await client.call("preview.tab.upload", { threadId: thread, tabId, viewer: "v1", files: [] });
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser === null);
+
     // Cancelling with no files closes the next picker.
     await click();
     await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser !== null);
     await client.call("preview.tab.upload", { threadId: thread, tabId, viewer: "v1", files: [] });
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser === null);
+    tabsStream.subscription.dispose();
+  });
+
+  it("refuses two files for a picker of one, and keeps the picker open (D1203)", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/pick-one`,
+    });
+    const tabId = opened.tabId!;
+    await client.call("preview.wait.for", { threadId: thread, selector: "#file" });
+    const tabsStream = watch(client, previewTabsStream(thread));
+    await client.call("preview.tab.control", { threadId: thread, tabId, viewer: "v1", take: true });
+    await client.call("preview.tab.input", {
+      threadId: thread,
+      tabId,
+      viewer: "v1",
+      events: [
+        { type: "mouse", action: "down", x: 50, y: 50, button: "left", buttons: 1, clickCount: 1 },
+        { type: "mouse", action: "up", x: 50, y: 50, button: "left", clickCount: 1 },
+      ],
+    });
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser?.multiple === false);
+    const file = { name: "a.txt", data: Buffer.from("a").toString("base64") };
+    const two = await rejection(
+      client.call("preview.tab.upload", {
+        threadId: thread,
+        tabId,
+        viewer: "v1",
+        files: [file, file],
+      }),
+    );
+    expect(two.message).toBe("This file picker accepts one file.");
+    expect(lastTabs(tabsStream.events)[0]?.fileChooser).not.toBeNull();
+    await client.call("preview.tab.upload", {
+      threadId: thread,
+      tabId,
+      viewer: "v1",
+      files: [file],
+    });
     await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser === null);
     tabsStream.subscription.dispose();
   });
