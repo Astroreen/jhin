@@ -953,9 +953,10 @@ with screenshots).
   may be pushed nowhere, which a clean status does not show. Without `force`,
   `git.worktree.remove` says so ("remove it with force"), not git's own
   message. A submodule run git ends without a reason (killed at the timeout)
-  says its exit code. T3's per-project setting and its `t3.json` override, and pull request checkouts (D902), are Deferred. A
-  managed worktree made again from its branch (D256) gets its submodules the
-  same way; a failure there is logged. Cancelling a setup while its
+  says its exit code. T3's per-project setting and its `t3.json` override,
+  and pull request checkouts (D902), are Deferred. A managed worktree made
+  again from its branch (D256) gets its submodules the same way; a failure
+  there is logged. Cancelling a setup while its
   submodules are still being checked out ends the setup but lets that git
   run finish (Deferred).
 

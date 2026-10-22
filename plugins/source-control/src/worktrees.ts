@@ -436,7 +436,7 @@ export async function recreateWorktree(
   git: Git,
   path: string,
   branch: string,
-  submodules: "recursive" | "top-level" | "none" = "recursive",
+  submodules: "recursive" | "top-level" | "none",
 ): Promise<string | undefined> {
   await git(["worktree", "prune"]);
   await Fs.mkdir(Path.dirname(path), { recursive: true });
