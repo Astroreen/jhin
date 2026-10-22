@@ -3,7 +3,6 @@
 // The view shows what the stream says afterwards; a dialog never writes the fold.
 import { ownerAddress } from "@jhin/agent-api";
 import {
-  SLICE_STATUSES,
   MISSION_STATUSES,
   type Mission,
   type MissionStatus,
@@ -33,7 +32,8 @@ import {
 import { useId, useState, type ReactNode } from "react";
 
 import type { Directory } from "./directory.ts";
-import { assigneeLabel, formatSteps, parseSteps, sameSteps, STATUS_LABELS } from "./route.ts";
+import { intentChanges, missionChanges, sliceChanges, sliceStatusOptions } from "./changes.ts";
+import { assigneeLabel, formatSteps, parseSteps, STATUS_LABELS } from "./route.ts";
 
 /** Runs a command on the view's node and returns its output. */
 export type Call = <T = unknown>(method: string, input: unknown) => Promise<T>;
@@ -141,6 +141,7 @@ function TextField(props: {
           id={id}
           min={props.type === "number" ? 1 : undefined}
           nativeInput
+          step={props.type === "number" ? 1 : undefined}
           onChange={(event) => props.onChange(event.target.value)}
           required={props.required}
           type={props.type ?? "text"}
@@ -199,11 +200,10 @@ export function IntentDialog(props: {
       description={`What ${project} is for, in one paragraph; every mission serves it.`}
       onClose={onClose}
       submit={async () => {
-        await call("missions.intent.set", {
-          projectId,
-          intent: text,
-          process: parseSteps(process, intent?.process),
-        });
+        const changes = intentChanges(intent, { intent: text, process });
+        if (Object.keys(changes).length > 0) {
+          await call("missions.intent.set", { projectId, ...changes });
+        }
       }}
       submitLabel="Save intent"
       title="Project intent"
@@ -265,18 +265,16 @@ export function MissionDialog(props: {
           onCreated?.(created);
           return;
         }
-        const changed =
-          sameSteps(process.slice, mission.process.slice) &&
-          sameSteps(process.mission, mission.process.mission)
-            ? {}
-            : { process };
-        await call("missions.update", {
-          missionId: mission.id,
-          ...(title === mission.title ? {} : { title }),
-          ...(outcome === mission.outcome ? {} : { outcome }),
-          ...(status === mission.status ? {} : { status }),
-          ...changed,
+        const changes = missionChanges(mission, {
+          title,
+          outcome,
+          status,
+          sliceProcess,
+          missionProcess,
         });
+        if (Object.keys(changes).length > 0) {
+          await call("missions.update", { missionId: mission.id, ...changes });
+        }
       }}
       submitLabel={mission === undefined ? "Create mission" : "Save mission"}
       title={mission === undefined ? "New mission" : "Edit mission"}
@@ -362,9 +360,7 @@ export function SliceDialog(props: {
     (other) =>
       other.id !== slice?.id && (other.status !== "dropped" || dependsOn.includes(other.id)),
   );
-  const statuses = SLICE_STATUSES.filter((value) =>
-    value === "done" ? slice?.status === "done" : slice !== undefined || value !== "dropped",
-  );
+  const statuses = sliceStatusOptions(slice);
   const dependsId = useId();
   return (
     <EditDialog
@@ -389,21 +385,19 @@ export function SliceDialog(props: {
           onCreated?.(created);
           return;
         }
-        const nextAssignee = assignee === NONE ? undefined : assignee;
-        const nextStep = step === NONE ? undefined : step;
-        const sameDependencies =
-          dependsOn.length === slice.dependsOn.length &&
-          dependsOn.every((id) => slice.dependsOn.includes(id));
-        await call("slices.update", {
-          sliceId: slice.id,
-          ...(title === slice.title ? {} : { title }),
-          ...(spec === slice.spec ? {} : { spec }),
-          ...(nextAssignee === slice.assignee ? {} : { assignee: nextAssignee ?? null }),
-          ...(waveNumber === undefined || waveNumber === slice.wave ? {} : { wave: waveNumber }),
-          ...(sameDependencies ? {} : { dependsOn }),
-          ...(status === slice.status ? {} : { status }),
-          ...(nextStep === slice.step ? {} : { step: nextStep ?? null }),
+        // The wave is required when editing: an emptied field never saves silently.
+        const changes = sliceChanges(slice, {
+          title,
+          spec,
+          assignee: assignee === NONE ? undefined : assignee,
+          wave: waveNumber ?? slice.wave,
+          dependsOn,
+          status,
+          step: step === NONE ? undefined : step,
         });
+        if (Object.keys(changes).length > 0) {
+          await call("slices.update", { sliceId: slice.id, ...changes });
+        }
       }}
       submitLabel={slice === undefined ? "Add slice" : "Save slice"}
       title={slice === undefined ? "New slice" : "Edit slice"}
@@ -426,13 +420,18 @@ export function SliceDialog(props: {
         <SelectField
           label="Status"
           onChange={setStatus}
-          options={statuses.map((value) => ({ value, label: STATUS_LABELS[value] }))}
+          options={statuses.map((value) => ({
+            value,
+            // Dropped is final (D651): the option says so before it is saved.
+            label: value === "dropped" ? "Dropped (final)" : STATUS_LABELS[value],
+          }))}
           value={status}
         />
         <TextField
           hint={slice === undefined ? "Empty: the wave after its dependencies." : undefined}
           label="Wave"
           onChange={setWave}
+          required={slice !== undefined}
           type="number"
           value={wave}
         />
@@ -443,6 +442,11 @@ export function SliceDialog(props: {
             options={[
               { value: NONE, label: "None" },
               ...mission.process.slice.map((item) => ({ value: item.id, label: item.id })),
+              // A step the process no longer has still shows (D648 refuses it on save).
+              ...(slice.step === undefined ||
+              mission.process.slice.some((item) => item.id === slice.step)
+                ? []
+                : [{ value: slice.step, label: slice.step }]),
             ]}
             value={step}
           />

@@ -1272,9 +1272,10 @@ Decisions (C2):
   id, as before (D645). The assignee picker offers Unassigned, Owner and the
   node's agents, and keeps an assignee it does not list.
 - **D1083. A dialog sends only what changed, and the command decides.**
-  `missions.update` and `slices.update` get the fields the owner changed
-  (`null` clears an assignee or a step), so an untouched process is never
-  checked again. The client checks nothing the command checks: a refusal
+  `missions.intent.set`, `missions.update` and `slices.update` get the
+  fields the owner changed (`null` clears an assignee or a step), so an
+  untouched process is never checked again, and a dialog saved unchanged
+  calls nothing (`changes.ts`). The client checks nothing the command checks: a refusal
   (`SLICE_ORDER_INVALID`, `SLICE_STEP_INVALID`, `PROOF_REQUIRED`, …) stays in
   the dialog as an alert with the command's message, and the dialog stays
   open.
@@ -1285,8 +1286,10 @@ Decisions (C2):
   here (Deferred).
 - **D1085. Done takes a proof, dropped stays dropped.** The slice dialog
   offers Done only to a slice that is done already (D646: proof is recorded
-  with `slices.prove`), a new slice is planned, active or blocked, and a
-  dropped slice has no Edit (D651).
+  with `slices.prove`), a new slice is planned, active or blocked, Dropped
+  reads "Dropped (final)", and a dropped slice has no Edit (D651). An edited
+  slice's wave cannot be emptied, and a step its process no longer has
+  still shows.
 
 ### C3. Dogfood: a civilization end to end (D1101–D1120)
 
