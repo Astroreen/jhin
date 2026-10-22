@@ -1,0 +1,101 @@
+{
+  "name": "jhin-ai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Jhin: a self-hosted AI harness where everything is a plugin",
+  "bin": {
+    "jhin": "./bin/jhin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "bin": {
+      "jhin": "./dist/main.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts"
+  },
+  "dependencies": {
+    "@jhin/mcp-bridge": "workspace:*",
+    "@jhin/node-host": "workspace:*",
+    "@jhin/plugin-agent-claude": "workspace:*",
+    "@jhin/plugin-agent-codex": "workspace:*",
+    "@jhin/plugin-agent-fake": "workspace:*",
+    "@jhin/plugin-agent-opencode": "workspace:*",
+    "@jhin/plugin-agents": "workspace:*",
+    "@jhin/plugin-auth-token": "workspace:*",
+    "@jhin/plugin-context": "workspace:*",
+    "@jhin/plugin-devices": "workspace:*",
+    "@jhin/plugin-editors": "workspace:*",
+    "@jhin/plugin-example": "workspace:*",
+    "@jhin/plugin-health": "workspace:*",
+    "@jhin/plugin-html-render": "workspace:*",
+    "@jhin/plugin-http": "workspace:*",
+    "@jhin/plugin-mcp-oauth": "workspace:*",
+    "@jhin/plugin-mcp-server": "workspace:*",
+    "@jhin/plugin-mesh": "workspace:*",
+    "@jhin/plugin-missions": "workspace:*",
+    "@jhin/plugin-orchestration": "workspace:*",
+    "@jhin/plugin-orchestrator": "workspace:*",
+    "@jhin/plugin-preview": "workspace:*",
+    "@jhin/plugin-scheduler": "workspace:*",
+    "@jhin/plugin-secrets": "workspace:*",
+    "@jhin/plugin-source-control": "workspace:*",
+    "@jhin/plugin-storage-sqlite": "workspace:*",
+    "@jhin/plugin-teams": "workspace:*",
+    "@jhin/plugin-terminal": "workspace:*",
+    "@jhin/plugin-threads": "workspace:*",
+    "@jhin/plugin-transport-ws": "workspace:*",
+    "@jhin/plugin-web-ui": "workspace:*",
+    "@jhin/qr-code": "workspace:*",
+    "@jhin/rpc": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "catalog:"
+  },
+  "devDependencies": {
+    "@jhin/storage-api": "workspace:*",
+    "@types/node": "catalog:"
+  },
+  "jhinClient": [
+    "@jhin/plugin-http",
+    "@jhin/plugin-web-ui"
+  ],
+  "jhinDistribution": [
+    "@jhin/plugin-example",
+    "@jhin/plugin-storage-sqlite",
+    "@jhin/plugin-http",
+    "@jhin/plugin-auth-token",
+    "@jhin/plugin-secrets",
+    "@jhin/plugin-transport-ws",
+    "@jhin/plugin-threads",
+    "@jhin/plugin-missions",
+    "@jhin/plugin-health",
+    "@jhin/plugin-source-control",
+    "@jhin/plugin-editors",
+    "@jhin/plugin-terminal",
+    "@jhin/plugin-scheduler",
+    "@jhin/plugin-preview",
+    "@jhin/plugin-html-render",
+    "@jhin/plugin-devices",
+    "@jhin/plugin-agent-claude",
+    "@jhin/plugin-agent-codex",
+    "@jhin/plugin-agent-fake",
+    "@jhin/plugin-orchestration",
+    "@jhin/plugin-agent-opencode",
+    "@jhin/plugin-agents",
+    "@jhin/plugin-teams",
+    "@jhin/plugin-context",
+    "@jhin/plugin-orchestrator",
+    "@jhin/plugin-mcp-server",
+    "@jhin/plugin-mcp-oauth",
+    "@jhin/plugin-mesh"
+  ],
+  "jhinUi": [
+    "@jhin/plugin-web-ui"
+  ]
+}

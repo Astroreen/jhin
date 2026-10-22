@@ -1,0 +1,90 @@
+packages:
+  - packages/*
+  - plugins/*
+  - apps/*
+  - e2e
+
+catalog:
+  "@anthropic-ai/claude-agent-sdk": 0.3.302
+  "@base-ui/react": 1.9.0
+  "@dnd-kit/core": 6.3.1
+  "@dnd-kit/sortable": 10.0.0
+  "@dnd-kit/utilities": 3.2.2
+  "@modelcontextprotocol/sdk": 1.32.1
+  "@pierre/diffs": 1.5.2
+  "@pierre/trees": 1.0.0-beta.6
+  "@playwright/test": 1.61.1
+  "@tailwindcss/vite": 4.3.3
+  "@tiptap/core": 3.32.0
+  "@tiptap/extension-blockquote": 3.32.0
+  "@tiptap/extension-code": 3.32.0
+  "@tiptap/extension-code-block": 3.32.0
+  "@tiptap/extension-heading": 3.32.0
+  "@tiptap/extension-horizontal-rule": 3.32.0
+  "@tiptap/extension-list": 3.32.0
+  "@tiptap/pm": 3.32.0
+  "@tiptap/react": 3.32.0
+  "@tiptap/starter-kit": 3.32.0
+  "@types/node": 24.19.2
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  "@types/semver": 7.8.0
+  "@types/ws": 8.18.2
+  "@types/yauzl": 3.4.0
+  "@vitejs/plugin-react": 6.1.2
+  "@vitest/browser-playwright": 5.0.5
+  "@xterm/addon-fit": 0.11.0
+  "@xterm/xterm": 6.0.0
+  class-variance-authority: 0.7.1
+  electron: 44.4.5
+  electron-builder: 26.15.3
+  electron-updater: 6.8.9
+  heic-to: 1.5.2
+  jsonc-parser: 3.3.1
+  knip: 6.41.0
+  lucide-react: 1.59.0
+  node-pty: 1.2.0-beta.15
+  oxc-transform-react: 0.152.0
+  pino: 10.4.0
+  playwright: 1.61.1
+  playwright-core: 1.61.1
+  react: 19.3.1
+  react-dom: 19.3.1
+  react-markdown: 10.1.0
+  remark-breaks: 4.0.0
+  remark-gfm: 4.0.1
+  semver: 7.8.5
+  shiki: 4.5.0
+  tailwind-merge: 3.7.0
+  tailwindcss: 4.3.3
+  typescript: 7.0.2
+  vite: npm:@voidzero-dev/vite-plus-core@1.3.0
+  vite-plus: 1.3.0
+  ws: 8.22.0
+  yauzl: 3.4.0
+  zod: 4.6.7
+
+# Vite+ ships its own Vite core; route every `vite` request to it so the
+# toolchain has a single Vite and test-runner instance.
+overrides:
+  vite: "catalog:"
+
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"
+
+# node-pty (the terminal plugin) checks for a prebuilt addon at install and
+# builds one with node-gyp only where none ships (docs/plans/terminal.md).
+allowBuilds:
+  # Electron downloads its binary at install (the desktop app, docs/plans/desktop.md).
+  electron: true
+  node-pty: true
+  # electron-builder's Squirrel.Windows maker; Jhin builds NSIS installers only.
+  electron-winstaller: false
+
+# T3 Code's patch of @pierre/diffs (MIT, see THIRD_PARTY_NOTICES.md): find in a
+# code view and the package exports T3 imports (source-control.md D924).
+patchedDependencies:
+  "@pierre/diffs@1.5.2": patches/@pierre%2Fdiffs@1.5.2.patch

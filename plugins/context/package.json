@@ -1,0 +1,56 @@
+{
+  "name": "@jhin/plugin-context",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A project's Markdown as an addressable context library: sections by heading, composed views, route-to-leaf reachability, maturity, lore and a router skill",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
+  },
+  "dependencies": {
+    "@jhin/agent-api": "workspace:*",
+    "@jhin/host-api": "workspace:*",
+    "@jhin/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@jhin/testing": "workspace:*",
+    "@types/node": "catalog:",
+    "jsonc-parser": "catalog:"
+  },
+  "jhin": {
+    "id": "jhin.context",
+    "version": "0.1.0",
+    "apiVersion": 1,
+    "name": "Context library",
+    "description": "Reads a project's Markdown by path and heading, composes views, checks that every page is reachable from the trailhead, and serves its lore and a router skill",
+    "side": "server",
+    "requires": {
+      "host.paths": "^1.1"
+    },
+    "entry": "src/index.ts"
+  }
+}

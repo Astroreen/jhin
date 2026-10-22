@@ -1,0 +1,59 @@
+{
+  "name": "@jhin/plugin-mcp-oauth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP clients sign in to this node with OAuth (T3's /oauth/mcp/*)",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
+  },
+  "dependencies": {
+    "@jhin/auth-api": "workspace:*",
+    "@jhin/http-api": "workspace:*",
+    "@jhin/mcp-api": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@jhin/secrets-api": "workspace:*"
+  },
+  "devDependencies": {
+    "@jhin/testing": "workspace:*",
+    "@types/node": "catalog:"
+  },
+  "jhin": {
+    "id": "jhin.mcp-oauth",
+    "version": "0.1.0",
+    "apiVersion": 1,
+    "name": "MCP OAuth",
+    "description": "MCP clients sign in with OAuth; the owner approves in the browser and the client gets a device token",
+    "side": "server",
+    "requires": {
+      "http.server": "^1.2",
+      "auth.verifier": "^1.1",
+      "secrets.store": "^1.1"
+    },
+    "entry": "src/index.ts"
+  }
+}

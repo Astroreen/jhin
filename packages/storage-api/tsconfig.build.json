@@ -1,0 +1,5 @@
+{
+  "extends": ["./tsconfig.json", "../../tsconfig.build.json"],
+  // The contract suite runs under Vitest inside this workspace; it is not shipped.
+  "exclude": ["src/contract.ts"]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "@jhin/client-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contracts of the client-side capabilities: client.connections@1, client.navigation@1, client.mesh@1, client.machines@1",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts"
+  },
+  "dependencies": {
+    "@jhin/agent-api": "workspace:*",
+    "@jhin/host-api": "workspace:*",
+    "@jhin/rpc": "workspace:*",
+    "@jhin/sdk": "workspace:*"
+  }
+}

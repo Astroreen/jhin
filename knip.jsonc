@@ -1,0 +1,88 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.ts", "vite.config.ts"],
+      // scripts/package-desktop.ts runs its binary (docs/plans/desktop.md, D942).
+      "ignoreDependencies": ["electron-builder"],
+    },
+    "packages/*": {
+      // Test drivers run in child processes, so nothing imports them.
+      "entry": ["src/index.ts", "test/support/driver.ts"],
+    },
+    "plugins/*": {
+      "entry": ["src/index.ts"],
+    },
+    "plugins/agent-claude": {
+      // Measurements run by hand against the real Claude Code.
+      "entry": ["src/index.ts", "scripts/*.ts"],
+    },
+    "apps/jhin": {
+      "entry": ["bin/jhin.js", "src/main.ts"],
+      // Distribution plugins are resolved by name from "jhinDistribution".
+      "ignoreDependencies": [
+        "@jhin/plugin-example",
+        "@jhin/plugin-storage-sqlite",
+        "@jhin/plugin-http",
+        "@jhin/plugin-auth-token",
+        "@jhin/plugin-secrets",
+        "@jhin/plugin-transport-ws",
+        "@jhin/plugin-threads",
+        "@jhin/plugin-missions",
+        "@jhin/plugin-health",
+        "@jhin/plugin-source-control",
+        "@jhin/plugin-editors",
+        "@jhin/plugin-terminal",
+        "@jhin/plugin-scheduler",
+        "@jhin/plugin-preview",
+        "@jhin/plugin-html-render",
+        "@jhin/plugin-devices",
+        "@jhin/plugin-agent-claude",
+        "@jhin/plugin-agent-codex",
+        "@jhin/plugin-agent-fake",
+        "@jhin/plugin-context",
+        "@jhin/plugin-orchestration",
+        "@jhin/plugin-orchestrator",
+        "@jhin/plugin-agent-opencode",
+        "@jhin/plugin-agents",
+        "@jhin/plugin-teams",
+        "@jhin/plugin-mcp-server",
+        "@jhin/plugin-mcp-oauth",
+        "@jhin/plugin-web-ui",
+        "@jhin/plugin-mesh",
+      ],
+    },
+    "apps/desktop": {
+      // The main process and the preload are built apart (docs/plans/desktop.md, D511).
+      "entry": [
+        "src/main.ts",
+        "src/preload.ts",
+        "vite.config.ts",
+        "vite.preload.config.ts",
+        // Run as a child process by local-node.test.ts.
+        "test/fixtures/*.mjs",
+      ],
+    },
+    "plugins/teams": {
+      // A team bundle the tests load as a plugin (docs/plans/agents.md#D686).
+      "entry": ["src/index.ts", "test/fixtures/*/index.js"],
+    },
+    "plugins/desktop": {
+      // A client plugin built for the browser (D514).
+      "entry": ["src/index.tsx", "vite.config.ts"],
+    },
+    "apps/web": {
+      "entry": ["src/main.tsx", "vite.config.ts"],
+    },
+    "plugins/web-ui": {
+      // Located at runtime through require.resolve("@jhin/web/package.json").
+      "entry": ["src/index.ts"],
+      "ignoreDependencies": ["@jhin/web"],
+    },
+    "e2e": {
+      "entry": ["playwright.config.ts", "tests/**/*.spec.ts", "tests/support/*.ts"],
+      // The desktop test finds the app's node process with procps' pgrep.
+      "ignoreBinaries": ["pgrep"],
+    },
+  },
+}

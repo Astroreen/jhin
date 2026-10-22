@@ -1,0 +1,53 @@
+{
+  "name": "@jhin/plugin-agent-fake",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A deterministic agent runtime for tests and demos",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
+  },
+  "dependencies": {
+    "@jhin/agent-api": "workspace:*",
+    "@jhin/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  },
+  "jhin": {
+    "id": "jhin.agent-fake",
+    "version": "0.1.0",
+    "apiVersion": 1,
+    "name": "Fake agent",
+    "description": "Answers \"Echo: <message>\" word by word; /hold, /compact, /fail, /think, /tool, /approve, /ask, /plan and /write exercise the rest of a turn",
+    "side": "server",
+    "provides": {
+      "agent.runtime": "1.6.0"
+    },
+    "entry": "src/index.ts"
+  }
+}
