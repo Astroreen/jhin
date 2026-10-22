@@ -467,6 +467,24 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
+  it("keeps a change this client made during the first load", async () => {
+    const one = fakeClient();
+    const { connections } = fakeConnections(one.client);
+    const feeds = createNodeFeeds(connections, quiet, source);
+    // A change made (a dismissal) before the node's first answer…
+    feeds.apply("a", { type: "add", payload: "local" });
+    const ready = changes(feeds);
+    one.answer.resolve({ head: 1, items: ["x"] });
+    await ready;
+    // …is in what the feed shows once read.
+    expect(feeds.snapshot().get("a")).toEqual({
+      status: "ready",
+      value: ["x", "local"],
+      read: true,
+    });
+    feeds.dispose();
+  });
+
   it("tries a first load that failed again, telling nothing of it as new", async () => {
     const reads: (() => Promise<unknown>)[] = [
       () => Promise.reject(new Error("node busy")),

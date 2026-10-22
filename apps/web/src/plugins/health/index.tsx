@@ -67,8 +67,8 @@ export const healthPlugin = builtin(
       const open = (node: string, warningId?: string) =>
         navigation.navigate(healthRoute(node, warningId));
       /** A new warning: told the owner the way an ask is (D630, D731). */
-      const raised = (connection: NodeConnection, warning: Warning) =>
-        tellOwner(context.config, toasts, {
+      const raised = (connection: NodeConnection, warning: Warning) => {
+        const told = tellOwner(context.config, toasts, {
           title: `${detectorLabel(warning)}: ${groupLabel(warning.group)}`,
           body: warning.summary,
           tag: warning.warningId,
@@ -85,6 +85,10 @@ export const healthPlugin = builtin(
                 context.log.warn("opening a health warning failed", { error: String(error) }),
               ),
         });
+        // Not lost: it is in the sidebar; the log says it was not told.
+        if (!told)
+          context.log.info("a health warning was not told", { warningId: warning.warningId });
+      };
       const store = createHealthStore(connections, context.log, raised);
       context.subscriptions.add(store);
       const view: HealthView = { store, connections, navigation, toasts };

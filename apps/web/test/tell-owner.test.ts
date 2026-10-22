@@ -90,4 +90,16 @@ describe("telling the owner (D630, D731)", () => {
     tellOwner(config({ mode: "notifications" }), sink, news);
     expect(shown.map((toast) => toast.title)).toEqual([news.title]);
   });
+
+  it("says when it told nobody: no toasts in the client and no system notification", () => {
+    page(true);
+    expect(tellOwner(config({}), undefined, news)).toBe(false);
+    page(false);
+    expect(tellOwner(config({ mode: "off" }), undefined, news)).toBe(false);
+    expect(tellOwner(config({ mode: "notifications" }), undefined, news)).toBe(true);
+    const { toasts: sink } = toasts();
+    page(true);
+    expect(tellOwner(config({}), sink, news)).toBe(true);
+    expect(tellOwner(config({ inApp: false }), sink, news)).toBe(false);
+  });
 });

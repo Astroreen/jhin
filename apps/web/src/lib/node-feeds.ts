@@ -134,6 +134,8 @@ export function createNodeFeeds<S>(
       },
     });
     states.set(id, { status: "loading", value: source.empty });
+    // A change this client makes during the first load is kept for its state too.
+    rereads.set(id, []);
     changed();
     /** When this feed last read a dropped stream again (D731). */
     let lastRetry = Number.NEGATIVE_INFINITY;

@@ -68,7 +68,7 @@ export const inboxPlugin = builtin(
       /** A new item: a toast while the page has focus, else a system notification (D630). */
       const arrived = (connection: NodeConnection, item: InboxItem) => {
         const { message } = item;
-        tellOwner(context.config, toasts, {
+        const told = tellOwner(context.config, toasts, {
           title:
             message.kind === "ask"
               ? `${senderLabel(message.from)} asks you`
@@ -79,6 +79,8 @@ export const inboxPlugin = builtin(
           actionLabel: "Open inbox",
           open: () => open(connection.id, message.messageId),
         });
+        // Not lost: it is in the sidebar; the log says it was not told.
+        if (!told) context.log.info("an inbox item was not told", { messageId: message.messageId });
       };
       const store = createInboxStore(connections, context.log, arrived);
       context.subscriptions.add(store);

@@ -20,30 +20,34 @@ export interface OwnerNews {
   readonly open: () => void;
 }
 
-/** Tells the owner `news`: a toast with focus (unless `inApp` is off), else a system notification. */
+/**
+ * Tells the owner `news`: a toast with focus (unless `inApp` is off), else a
+ * system notification. Returns whether anything was shown: with no toasts in
+ * the client and no system notification, nothing was (the caller logs it).
+ */
 export function tellOwner(
   config: PluginContext["config"],
   toasts: Toasts | undefined,
   news: OwnerNews,
-): void {
+): boolean {
   let settings: { mode?: string; inApp?: boolean } = {};
   try {
     settings = config.get<{ mode?: string; inApp?: boolean }>(NOTIFICATIONS_SECTION);
   } catch {
     // No `jhin.notifications`: its defaults.
   }
-  const toast = () =>
-    toasts?.show({
+  const toast = () => {
+    if (settings.inApp === false || toasts === undefined) return false;
+    toasts.show({
       type: news.type ?? "warning",
       title: news.title,
       description: news.body,
       data: { hideCopyButton: true, leadingIcon: news.icon },
       action: { label: news.actionLabel, onClick: news.open },
     });
-  if (document.visibilityState === "visible" && document.hasFocus()) {
-    if (settings.inApp !== false) toast();
-    return;
-  }
+    return true;
+  };
+  if (document.visibilityState === "visible" && document.hasFocus()) return toast();
   if (
     (settings.mode === "notifications" || settings.mode === "notifications-and-sound") &&
     typeof Notification !== "undefined" &&
@@ -56,11 +60,11 @@ export function tellOwner(
         window.focus();
         news.open();
       });
-      return;
+      return true;
     } catch {
       // Some browsers refuse it (mobile, an insecure context): the page tells it instead.
     }
   }
   // No system notification: the toast waits on the page for the owner's return.
-  if (settings.inApp !== false) toast();
+  return toast();
 }
