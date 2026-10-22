@@ -682,8 +682,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
   through them too: today only full access gets the writing permissions.
-- ChatGPT sign-in from Jhin, several Codex accounts per node and shadow
-  homes; signing in is `codex login` on the node.
+- Several Codex accounts per node and shadow homes, and T3's own ChatGPT
+  sign-in (its OAuth client registered with OpenAI, subscription sharing,
+  the welcome flow): Jhin signs in through Codex's own login (D1151).
 - Models a newer Codex would list (T3's `updateRequiredModels`), and custom
   models with options of their own (T3's `capabilities` on an entry).
 - The manual check of Landing: a supervised turn against a signed-in Codex
@@ -871,6 +872,30 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   tokens") and objective; when idle, "Resume" (not for an active or complete
   goal) and "Clear" send `/goal resume` and `/goal clear`. The fake agent
   answers `/goal` for the end-to-end test.
+- **D1151. Signing an agent in from Jhin** (`agent.runtime@1.11`,
+  additive), T3's provider auth flow: a runtime's `auth` offers `methods`
+  (`browser`, `device-code`), `start`, `wait`, `cancel` and `signOut`, and
+  its status says `signedIn`. The commands `agents.sign-in.start` (`{
+  agentId?, method? }` → `{ flowId, url, userCode? }`), `agents.sign-in.wait`
+  (→ `{ success, error? }`, settles when the sign-in ends), `agents.sign-in.cancel`
+  and `agents.sign-out` need `auth.admin`, as the node's own credentials
+  change (an agent's MCP credential never has it, D341); `agents.list` says
+  `signIn` (the methods) and `signedIn`. Codex signs in through its own login
+  rather than T3's OpenAI app: on an app-server of its own,
+  `account/login/start` with `chatgptDeviceCode` (a code to enter at the
+  verification URL, which works wherever the browser is) or `chatgpt` (its
+  browser login, whose callback listens on the node), ended by
+  `account/login/completed`; `account/logout` signs out. A sign-in or sign-out
+  probes Codex again.
+- **D1152. "Sign in" in the node's settings**, T3's
+  `ProviderAuthenticationSection`: an agent with `signIn` that said whether it
+  is signed in gets "Sign in" (else "Change account", after a failure or
+  cancel "Retry sign-in") and, signed in, "Sign out" with T3's confirmation
+  ("Sign out of Codex on {node}? This stops running threads that share this
+  sign-in. Thread history is kept."). A device code shows as T3's "Enter code
+  {code} in your browser." with the page linked, and "Cancel" ("Cancel
+  sign-in"). The fake agent offers a device code that ends when cancelled,
+  for the end-to-end test.
 
 ### Deferred
 
@@ -888,6 +913,8 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
 - A revert Codex took for a turn that then failed to start is not recorded:
   the next turn sends it again, Codex refuses the unknown turn and the thread
   starts over with the transcript (D1147).
+- A sign-out does not end the app-servers already running with the old
+  sign-in (T3 stops the threads sharing it); they use it until they end.
 - T3's sidebar label "Goal" for a thread pursuing one, its goal checks
   count, and a goal turn Codex starts after the run settled (T3 stops it and
   pauses the goal; Jhin drops its frames).

@@ -783,6 +783,10 @@ export interface AgentInfo {
   readonly kind?: "runtime" | "defined";
   /** It reports usage limits (`agents.usage-limits`); absent from older nodes. */
   readonly usageLimits?: boolean;
+  /** How its account can be signed in from Jhin (`agents.sign-in.*`); absent when it cannot. */
+  readonly signIn?: readonly ("browser" | "device-code")[];
+  /** Whether its account is signed in, when it says. */
+  readonly signedIn?: boolean;
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   AGENT_REGISTRY_CAPABILITY,
   THREADS_STREAM,
   ThreadEvents,
+  type AgentAuth,
   type AgentModel,
   type AgentRegistry,
   type AgentRuntime,
@@ -95,6 +96,8 @@ const UNAVAILABLE_TTL_MS = 10_000;
 const MODEL_WAIT_MS = 3_000;
 /** A probe that takes longer reports Codex as unavailable (T3's CODEX_AUTH_PROBE_TIMEOUT_MS). */
 const PROBE_TIMEOUT_MS = 20_000;
+/** Sign-ins kept to answer a late `wait`. */
+const MAX_LOGINS = 20;
 /** How old a usage read `/usage-limits` answers from before it reads them again. */
 const USAGE_TTL_MS = 60_000;
 /** A usage read that takes longer is reported as failed (T3's RATE_LIMITS_PROBE_TIMEOUT_MS). */
@@ -256,7 +259,11 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
     const init = await initialize(running, VERSION);
     const version = codexVersion(init.userAgent);
     const account = ((await running.request("account/read", {})) ?? {}) as Account;
-    const status = accountStatus(account);
+    // Whether an account is signed in, for "Sign in" and "Sign out" (D1151).
+    const status = {
+      ...accountStatus(account),
+      signedIn: account.account !== undefined && account.account !== null,
+    };
     if (!status.available) {
       return { status: { ...status, ...(version === undefined ? {} : { version }) } };
     }
@@ -324,6 +331,9 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
     connection?.close();
   }
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** A permission that only reads: `threads.read`, `projects.browse`. */
 const readsOnly = (permission: string) =>
@@ -497,6 +507,120 @@ export function createCodexRuntime(options: {
     return probed.probe.status;
   };
 
+  // --- Signing in (D1151) -------------------------------------------------------------
+  /** Codex's own login (`account/login/start`), on an app-server of its own while it runs. */
+  const logins = new Map<
+    string,
+    { readonly done: Promise<{ success: boolean; error?: string }>; end(error?: string): void }
+  >();
+  /** An app-server for an account request, with the config's binary and home. */
+  const accountServer = async () => {
+    const config = options.config();
+    const connection = launch({
+      binaryPath: config.binaryPath,
+      args: config.args ?? [],
+      cwd: Os.tmpdir(),
+      env: codexEnvironment(config.env, expandHome(config.homePath), config.inheritEnv),
+    });
+    try {
+      await initialize(connection, VERSION);
+    } catch (error) {
+      connection.close();
+      throw error;
+    }
+    return connection;
+  };
+  /** The account changed: the next look at Codex probes it again. */
+  const accountChanged = () => {
+    probed = undefined;
+    liveRateLimits = undefined;
+  };
+  const auth: AgentAuth = {
+    methods: ["browser", "device-code"],
+    async start(method) {
+      const connection = await accountServer();
+      let settle!: (result: { success: boolean; error?: string }) => void;
+      const done = new Promise<{ success: boolean; error?: string }>((resolve) => {
+        settle = resolve;
+      });
+      let loginId: string | undefined;
+      connection.onNotification((notified, params) => {
+        if (notified !== "account/login/completed" || !isRecord(params)) return;
+        // One login per app-server: its end may come before `account/login/start` answered.
+        if (
+          loginId !== undefined &&
+          typeof params["loginId"] === "string" &&
+          params["loginId"] !== loginId
+        ) {
+          return;
+        }
+        settle({
+          success: params["success"] === true,
+          ...(typeof params["error"] === "string" ? { error: params["error"] } : {}),
+        });
+      });
+      void connection.exited.then(() =>
+        settle({ success: false, error: "Codex exited before the sign-in ended." }),
+      );
+      let started: Record<string, unknown>;
+      try {
+        started = ((await connection.request(
+          "account/login/start",
+          // T3's two interactions: Codex's own browser login, or a device code to enter.
+          method === "browser" ? { type: "chatgpt" } : { type: "chatgptDeviceCode" },
+        )) ?? {}) as Record<string, unknown>;
+      } catch (error) {
+        connection.close();
+        throw error;
+      }
+      loginId = typeof started["loginId"] === "string" ? started["loginId"] : undefined;
+      const url =
+        typeof started["authUrl"] === "string"
+          ? started["authUrl"]
+          : typeof started["verificationUrl"] === "string"
+            ? started["verificationUrl"]
+            : undefined;
+      if (loginId === undefined || url === undefined) {
+        connection.close();
+        throw new Error("Codex started no sign-in.");
+      }
+      const flowId = loginId;
+      logins.set(flowId, {
+        done,
+        end: (error) => settle({ success: false, ...(error === undefined ? {} : { error }) }),
+      });
+      // The last sign-ins stay, so a wait that comes after the end still learns it.
+      for (const old of [...logins.keys()].slice(0, Math.max(0, logins.size - MAX_LOGINS))) {
+        logins.delete(old);
+      }
+      void done.then((result) => {
+        connection.close();
+        if (result.success) accountChanged();
+      });
+      return {
+        flowId,
+        url,
+        ...(typeof started["userCode"] === "string" ? { userCode: started["userCode"] } : {}),
+      };
+    },
+    wait: async (flowId) =>
+      (await logins.get(flowId)?.done) ?? { success: false, error: "No such sign-in." },
+    async cancel(flowId) {
+      const login = logins.get(flowId);
+      if (login === undefined) return;
+      login.end("Sign-in cancelled.");
+    },
+    async signOut() {
+      const connection = await accountServer();
+      try {
+        await connection.request("account/logout", null);
+      } finally {
+        connection.close();
+        accountChanged();
+      }
+    },
+  };
+
   /** The latest snapshot: the updates since the last probe, else the probe's. */
   const rateLimits = () => liveRateLimits?.snapshot ?? current()?.rateLimits;
   /** The usage limits as Codex last reported them (D1142): the probe's, then its updates. */
@@ -586,6 +710,7 @@ export function createCodexRuntime(options: {
     },
     status,
     usageLimits,
+    auth,
     startTurn(request) {
       const config = options.config();
       const turn = codexTurn(request, {
@@ -629,6 +754,8 @@ export function createCodexRuntime(options: {
     },
     dispose() {
       for (const turn of turns.keys()) turn.interrupt();
+      // A sign-in under way ends with its app-server.
+      for (const login of logins.values()) login.end("Codex was stopped.");
       sessions.dispose();
     },
   };

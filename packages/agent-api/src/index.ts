@@ -426,12 +426,34 @@ export interface AgentRuntimeStatus {
   readonly available: boolean;
   readonly message?: string;
   readonly version?: string;
+  /** Since 1.11: whether an account is signed in, for a runtime with `auth`. */
+  readonly signedIn?: boolean;
+}
+
+/** How a sign-in goes on (providers.md D1151): T3's browser and device-code interactions. */
+export type AgentSignInMethod = "browser" | "device-code";
+
+/** A sign-in under way: open `url`, and enter `userCode` there for a device code. */
+export interface AgentSignIn {
+  readonly flowId: string;
+  readonly url: string;
+  readonly userCode?: string;
+}
+
+/** Since 1.11: signing the runtime's account in and out from Jhin (T3's provider auth). */
+export interface AgentAuth {
+  readonly methods: readonly AgentSignInMethod[];
+  start(method: AgentSignInMethod): Promise<AgentSignIn>;
+  /** Settles once the sign-in ends: signed in, failed or cancelled. */
+  wait(flowId: string): Promise<{ readonly success: boolean; readonly error?: string }>;
+  cancel(flowId: string): Promise<void>;
+  signOut(): Promise<void>;
 }
 
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -479,6 +501,8 @@ export interface AgentRuntime {
    * when it cannot tell now. A runtime without it has no usage limits to show.
    */
   usageLimits?(): Promise<AgentUsageLimits | undefined>;
+  /** Since 1.11: signing its account in and out (providers.md D1151). */
+  readonly auth?: AgentAuth;
   startTurn(request: TurnRequest): AgentTurn;
 }
 

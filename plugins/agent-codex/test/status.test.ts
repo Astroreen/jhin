@@ -54,6 +54,7 @@ describe("jhin.agent-codex: status", () => {
       available: true,
       message: "Signed in as dev@example.com",
       version: "0.200.0",
+      signedIn: true,
     });
     expect(codex.models?.map((entry) => entry.id)).toEqual([
       "gpt-5.6-terra",
@@ -399,6 +400,7 @@ describe("jhin.agent-codex: status", () => {
       available: false,
       message: "Codex CLI is not authenticated. Run `codex login` and try again.",
       version: "0.200.0",
+      signedIn: false,
     });
     expect(fake.received("model/list")).toEqual([]);
     expect(codex.models?.map((entry) => entry.id)).toEqual([

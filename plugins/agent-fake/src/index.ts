@@ -424,6 +424,11 @@ export function fakeTurn(
 export default definePlugin({
   activate(context) {
     const stops = new Map<string, () => void>();
+    let logins = 0;
+    const signIns = new Map<
+      string,
+      ReturnType<typeof latch<{ success: boolean; error?: string }>>
+    >();
     const runtime: AgentRuntime = {
       agentId: FAKE_AGENT_ID,
       name: "Fake agent",
@@ -497,6 +502,25 @@ export default definePlugin({
             },
           ],
         };
+      },
+      // A device-code sign-in that ends when cancelled, so the settings page has one to show
+      // (providers.md D1152).
+      status: async () => ({ available: true, signedIn: false }),
+      auth: {
+        methods: ["device-code"],
+        start: async () => {
+          const flowId = `fake-login-${++logins}`;
+          signIns.set(flowId, latch<{ success: boolean; error?: string }>());
+          return { flowId, url: "https://auth.example.invalid/device", userCode: "FAKE-1234" };
+        },
+        wait: (flowId) =>
+          signIns.get(flowId)?.wait() ??
+          Promise.resolve({ success: false, error: "No such sign-in." }),
+        cancel: async (flowId) => {
+          signIns.get(flowId)?.open({ success: false, error: "Sign-in cancelled." });
+          signIns.delete(flowId);
+        },
+        signOut: async () => {},
       },
       startTurn: (request) => fakeTurn(request, stops),
     };
