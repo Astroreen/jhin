@@ -137,9 +137,9 @@ async function node(health_: Record<string, unknown> = {}) {
   const { kernel, client, stop, probe } = await start(storage, data, health_, asked);
   const log = storage.storage.log;
   /** Stops this node and starts it again on the same storage. */
-  const restart = async () => {
+  const restart = async (config = health_) => {
     await stop();
-    return start(storage, data, health_, asked);
+    return start(storage, data, config, asked);
   };
   const project = await client.call<{ id: string }>("projects.create", { path: data });
   const mission = await client.call<Mission>("missions.create", {
@@ -578,5 +578,25 @@ describe("jhin.health", () => {
       analysis: { status: "failed", analyst: ONCE, error: expect.stringMatching(/cut short/) },
     });
     expect(asked.filter((item) => item.to === ONCE)).toHaveLength(1);
+  });
+
+  it("asks no analyst while health is turned off, also after a restart", async () => {
+    const { kernel, deliver, asked, restart, log } = await node({
+      ceremony: { ratio: 1, minCeremony: 1 },
+      analysts: { "*": ONCE },
+    });
+    const first = nextAsk();
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(OWNER, BUILDER, "status?", "t1");
+    await raised;
+    await first;
+    // Turned off, then restarted: the open warning without an analysis is not asked again.
+    const again = await restart({ enabled: false, analysts: { "*": ONCE } });
+    await again.client.call("health.status", {});
+    expect(asked.filter((ask) => ask.to === ONCE)).toHaveLength(1);
+    const analysed = (await log.read(HEALTH_STREAM)).filter(
+      (event) => event.type === HealthEvents.warningAnalysed,
+    );
+    expect(analysed).toEqual([]);
   });
 });

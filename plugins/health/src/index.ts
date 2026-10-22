@@ -299,11 +299,12 @@ export default definePlugin({
      */
     const analyse = async (warning: Warning) => {
       await nodeStarted;
-      const at = now;
+      // Health turned off asks nobody, also for warnings raised before.
+      if (!config().enabled) return;
       const analyst = analystOf(warning);
       let analysis: Analysis;
       if (analyst === undefined) {
-        analysis = { status: "none", at: at() };
+        analysis = { status: "none", at: now() };
       } else {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const forget = () => {
@@ -334,7 +335,7 @@ export default definePlugin({
             analyst: analyst.address,
             reason: analyst.reason,
             ...(result.answer === undefined ? {} : { answer: result.answer }),
-            at: at(),
+            at: now(),
           };
         } catch (error) {
           analysis = {
@@ -342,7 +343,7 @@ export default definePlugin({
             analyst: analyst.address,
             reason: analyst.reason,
             error: error instanceof Error ? error.message : String(error),
-            at: at(),
+            at: now(),
           };
         } finally {
           forget();

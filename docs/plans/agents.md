@@ -942,7 +942,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   commits since on the first-parent line (`git rev-list --count
   --first-parent`), only when the start is an ancestor of the new `HEAD`: a
   reset, rebase or branch switch inside the turn is no progress of its own.
-  The hooks never fail a turn: the start reads `HEAD` once (2 s at most),
+  Health runs `git` itself: `source-control.git@1` offers no read of `HEAD`
+  or count of commits to depend on. The hooks never fail a turn: the start reads `HEAD` once (2 s at most),
   the end counts off the turn's path and then emits the kernel event
   `health.commits.counted { turnId, count }`; a directory without git counts
   nothing.
