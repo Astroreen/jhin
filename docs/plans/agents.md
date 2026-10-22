@@ -1082,7 +1082,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   is over. A first load that fails (a node busy at start) is tried again the
   same way, telling nothing of it as new. A re-read tells at most the three
   newest of what came meanwhile; the rest is in the sidebar. A permission taken back, or a node
-  without the feed, is not retried.
+  without the feed (a node read before that restarted on a build without
+  it included), is not retried; a read feed keeps its items, not live.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 
@@ -1286,8 +1287,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
   answer that comes later stays in the analyst's thread, and the warning is
   not asked again.
-- A7: a feed whose read permission was taken back recovering by itself when
-  it is granted again; today it stays not live until the connection is
+- A7: a feed whose read permission was taken back, or whose node lost the
+  feed, recovering by itself when it is granted (or installed) again; today it stays not live until the connection is
   replaced (D731).
 - A7: a growing pause between retries of a feed whose node keeps failing:
   today it is read again once a minute for as long as its connection is

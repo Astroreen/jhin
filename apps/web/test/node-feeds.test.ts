@@ -117,6 +117,26 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
+  it("does not read again a node that no longer has a feed it was read from", async () => {
+    const one = fakeClient();
+    const { connections } = fakeConnections(one.client);
+    const feeds = createNodeFeeds(connections, quiet, source);
+    const ready = changes(feeds);
+    one.answer.resolve({ head: 1, items: ["x"] });
+    await ready;
+    // The node restarted on a build without the feed.
+    one.stream.onError!(Object.assign(new Error("no command"), { code: "COMMAND_NOT_FOUND" }));
+    expect(one.reads.count).toBe(1);
+    expect(feeds.snapshot().get("a")).toEqual({
+      status: "error",
+      read: true,
+      value: ["x"],
+      error: "this node no longer has it (no command)",
+      retrying: false,
+    });
+    feeds.dispose();
+  });
+
   it("reads and follows a dropped stream again, and marks a second drop at once not live", async () => {
     const one = fakeClient();
     const { connections } = fakeConnections(one.client);

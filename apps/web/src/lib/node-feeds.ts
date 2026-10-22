@@ -171,8 +171,9 @@ export function createNodeFeeds<S>(
       // node busy for a moment); from then on at most once a minute, so a
       // flapping stream does not loop on the node: a drop (or a failed read)
       // within that minute marks the feed not live and reads it again once
-      // the minute is over. A permission taken back is not retried.
-      const retrying = !absent && code !== "PERMISSION_DENIED";
+      // the minute is over. A permission taken back, or a node that no longer
+      // has the feed (restarted on a build without it), is not retried.
+      const retrying = code === undefined || !NOT_THERE.has(code);
       const wait = lastRetry + RETRY_GAP_MS - clock();
       if (retrying && wait <= 0) {
         retry();
@@ -199,7 +200,9 @@ export function createNodeFeeds<S>(
               error:
                 code === "PERMISSION_DENIED"
                   ? `this client may no longer read it (${message})`
-                  : message,
+                  : retrying
+                    ? message
+                    : `this node no longer has it (${message})`,
             },
       );
     };
