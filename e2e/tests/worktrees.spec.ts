@@ -307,3 +307,76 @@ test("D1121–D1125: a new worktree runs the project's setup script and shows it
   await expect(card.getByRole("button", { name: "Cancel" })).toBeHidden();
   await shot(page, info, "worktree-setup-failed");
 });
+
+test("D1128–D1130: with the delete rule on, deleting a thread asks nothing and the cleanup removes its worktree", async ({
+  page,
+}, info) => {
+  const node = await startNode({
+    mode: "ui",
+    config: { "jhin.source-control": { worktreeCleanup: { onDelete: true } } },
+  });
+  running.push(node);
+  const dir = Path.join(node.home, "acme");
+  Fs.mkdirSync(dir, { recursive: true });
+  git(dir, "init", "--quiet", "--initial-branch=main");
+  Fs.writeFileSync(Path.join(dir, "README.md"), "acme\n");
+  git(dir, "add", ".");
+  git(dir, "commit", "--quiet", "-m", "first");
+  const project = await node.client().call<{ id: string }>("projects.create", { path: dir });
+  const thread = await node.client().call<{ id: string; worktreePath: string }>("threads.create", {
+    projectId: project.id,
+    title: "Clean me up",
+    workspace: { type: "worktree", baseRef: "main" },
+  });
+
+  // T3's rules on the settings page, with its words.
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  await page.getByRole("combobox", { name: "Config section" }).click();
+  await page.getByRole("option", { name: /^Source control/ }).click();
+  const section = page.getByRole("region", { name: "Source control" });
+  // The node's own file shows the rules (this node has the delete rule from its project file).
+  await expect(
+    section.getByRole("switch", { name: "Delete worktrees with deleted threads" }),
+  ).toBeVisible();
+  await expect(section.getByRole("switch", { name: "Delete merged worktrees" })).toBeVisible();
+  await expect(
+    section.getByRole("combobox", { name: "Keep worktrees with local changes" }),
+  ).toHaveText("Uncommitted changes");
+  await section
+    .getByRole("switch", { name: "Delete unchanged worktrees" })
+    .scrollIntoViewIfNeeded();
+  await shot(page, info, "worktree-cleanup-settings");
+  await page.getByRole("button", { name: "Back" }).click();
+
+  // The node is done with the deleted thread once source control lets go of it.
+  const client = node.client();
+  const letGo = new Promise<void>((resolve) => {
+    const subscription = client.subscribe("source-control", {}, (event) => {
+      if (
+        event.type === "source-control.thread.removed" &&
+        (event.payload as { threadId: string }).threadId === thread.id
+      ) {
+        subscription.dispose();
+        resolve();
+      }
+    });
+  });
+  const card = threadRow(page, "Clean me up");
+  await card.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByRole("alertdialog", { name: "Delete the worktree too?" })).toHaveCount(0);
+  // The sweep that follows the deletion removes it (a cleanup asked for now waits for
+  // that one; that the deletion alone starts it is proven in cleanup.test.ts); the
+  // branch stays.
+  await letGo;
+  await client.call("git.worktree.cleanup", {});
+  expect(Fs.existsSync(thread.worktreePath)).toBe(false);
+  expect(git(dir, "branch", "--list", "jhin/*").trim()).not.toBe("");
+});

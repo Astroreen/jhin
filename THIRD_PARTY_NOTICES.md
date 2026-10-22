@@ -25,7 +25,7 @@ workspace selector, the worktree icon and clean-up, the worktree setup card
 (`plugins/source-control/worktree-setup.tsx`) with its tracker and setup
 script runner (`plugins/source-control/src/setup.ts`, the contracts in
 `packages/source-control-api/src/worktree-setup.ts` and
-`packages/agent-api/src/project-scripts.ts`), the "Checkout pull request"
+`packages/agent-api/src/project-scripts.ts`), the worktree cleanup rules and sweep (`plugins/source-control/src/cleanup.ts`), the "Checkout pull request"
 dialog, the forges' icons, the terminal drawer, its
 links (with the targets of path links, T3's `fileLinks.ts`), selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,

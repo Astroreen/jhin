@@ -303,6 +303,10 @@ Words about Jhin:
   scripts). The **setup script** is the one that runs in each new worktree of
   a thread, in a terminal of that thread; the **worktree setup** card under
   the thread's first message shows its stages.
+- **Worktree cleanup** — the node removing the worktrees its rules allow
+  (a deleted thread's, an inactive, settled, merged or unchanged one) in a
+  sweep every hour, keeping their branches and threads (T3 Code's storage
+  cleanup).
 - **Checkpoint** — a snapshot of a thread's working directory before its first
   turn and after each turn (a commit under `refs/jhin/checkpoints/`), from
   which a turn's diff is read and to which a thread can be reverted.
