@@ -943,7 +943,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
 
   /** Threads held by an open or unread link, so the hold is told once, not each lookup. */
   const heldThreads = new Set<string>();
+  /** Threads whose links settle nothing, told once until that changes. */
+  const unsettledByLinks = new Set<string>();
   const noteHold = (threadId: string) => {
+    unsettledByLinks.delete(threadId);
     if (heldThreads.has(threadId)) return;
     heldThreads.add(threadId);
     context.log.info("a thread waits on its open linked pull requests", { threadId });
@@ -956,7 +959,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       noteHold(threadId);
     } else if (decided === undefined) {
       heldThreads.delete(threadId);
-      context.log.info("no linked pull request settles the thread", { threadId });
+      if (!unsettledByLinks.has(threadId)) {
+        unsettledByLinks.add(threadId);
+        context.log.info("no linked pull request settles the thread", { threadId });
+      }
       // Its branch's pull request decides now, as read last (D447), not at the next lookup.
       const known = threads.get(threadId);
       const repo = known === undefined ? undefined : repos.get(known.projectId);
@@ -971,6 +977,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       }
     } else {
       heldThreads.delete(threadId);
+      unsettledByLinks.delete(threadId);
       announceSettle(threadId, decided);
     }
   };
@@ -1245,7 +1252,12 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       if (linksReading) return;
       linksReading = true;
       void (async () => {
-        for (const id of await links.threads()) await links.sync(id);
+        for (const id of await links.threads()) {
+          await links.sync(id);
+          // A settle the threads plugin turned down (a turn ran then) is asked again;
+          // one it took is not asked twice (`announceSettle` keeps its key).
+          await settleOnLinks(id).catch(() => undefined);
+        }
       })()
         .catch((error: unknown) =>
           context.log.warn("reading linked pull requests failed", { error: String(error) }),
