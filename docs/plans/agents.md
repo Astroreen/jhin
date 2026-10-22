@@ -1701,3 +1701,5 @@ Each workstream lists its PRs here as they merge.
   (D1086–D1090).
 - C3 #199: `teams.up` adds a member's home project named by a folder's path
   (D1105), found by the C3 run.
+- C3 #200: the orchestrator's handoffs are sent as the lead's thread, not as
+  the owner (D1106), found by the C3 run.
