@@ -172,6 +172,19 @@ export function TipButton(props: {
   );
 }
 
+/**
+ * The thread's subagents whose turn runs (D1163): delegated tasks, workflow
+ * agents and a runtime's own, as T3 counts its active subagent edges.
+ */
+export function runningSubagents(thread: ThreadRecord, threads: readonly ThreadRecord[]): number {
+  return threads.filter(
+    (child) =>
+      child.parentThreadId === thread.id &&
+      child.relationshipToParent === "subagent" &&
+      child.lastTurn?.status === "running",
+  ).length;
+}
+
 /** The Lineage section (`jhin.chat.lineage`), bound to what it reads and runs. */
 export function createLineage(deps: {
   readonly threads: ThreadsCatalog;
@@ -191,6 +204,7 @@ export function createLineage(deps: {
     };
     const open = (threadId: string) => deps.navigation.navigate({ ...target, thread: threadId });
     const ran = forkRan(thread);
+    const running = runningSubagents(thread, catalog.threads);
     const merge = async () => {
       if (merging) return;
       setMerging(true);
@@ -205,7 +219,10 @@ export function createLineage(deps: {
     // Other plugins' rows (delegated work, D866) follow the forks; the section shows while any does.
     return (
       <div className="[&:not(:has(li))]:hidden">
-        <ThreadDetailsSection headingId="thread-details-lineage-heading" title="Lineage">
+        <ThreadDetailsSection
+          headingId="thread-details-lineage-heading"
+          title={running > 0 ? `Lineage · ${running} running` : "Lineage"}
+        >
           <LineageRowList
             rows={rows}
             extra={

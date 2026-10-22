@@ -38,7 +38,8 @@ find in a thread with its highlights (`plugins/chat/thread-find.tsx`, `thread-fi
 thread details panel and its Lineage section (`plugins/chat/thread-details-panel.tsx`,
 `lineage.tsx`, `packages/ui/src/components/thread-details-section.tsx`), the
 scheduled tasks settings page, the subagent, workflow and created-thread rows
-of delegated work and their Lineage rows in `plugins/orchestration`, the
+of delegated work, the "N subagents" row and a subagent's hover card, and
+their Lineage rows in `plugins/orchestration`, the
 subagent bar `plugins/chat/subagent-bar.tsx`, the thread's automations
 `plugins/scheduler/automations.tsx`), the
 threads plugin's merge-back handoff and search snippets

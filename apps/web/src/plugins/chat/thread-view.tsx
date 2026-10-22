@@ -515,7 +515,7 @@ export function ThreadView(props: {
                     extension={
                       thread === undefined
                         ? undefined
-                        : (turn, event) => (
+                        : (turn, event, adjacent) => (
                             <Slot
                               name="chat.turn.item"
                               props={
@@ -524,6 +524,7 @@ export function ThreadView(props: {
                                   thread,
                                   turnId: turn.turnId,
                                   event,
+                                  adjacent,
                                 } satisfies ChatTurnItemProps
                               }
                             />
