@@ -7,6 +7,8 @@ import * as Path from "node:path";
 import { resolveHome } from "@jhin/node-host";
 import { renderTerminalQrCode } from "@jhin/qr-code";
 
+import type { Args } from "./args.ts";
+
 /** What `jhin.http` writes once it listens (docs/plans/security.md D1184). */
 export interface RuntimeState {
   readonly url: string;
@@ -190,28 +192,6 @@ export function formatPairOutput(input: {
 /** T3's default: Tailscale Serve on the tailnet's HTTPS port. */
 export const DEFAULT_TAILSCALE_SERVE_PORT = 443;
 
-/**
- * Every value of a repeatable `--key value` / `--key=value` option, in order;
- * `undefined` when one is given without a value.
- */
-function allValues(argv: readonly string[], key: string): string[] | undefined {
-  const values: string[] = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index]!;
-    if (token.startsWith(`--${key}=`)) {
-      const value = token.slice(key.length + 3);
-      if (value === "") return undefined;
-      values.push(value);
-    } else if (token === `--${key}`) {
-      const next = argv[index + 1];
-      if (next === undefined || next.startsWith("--")) return undefined;
-      values.push(next);
-      index += 1;
-    }
-  }
-  return values;
-}
-
 export interface PairFlags {
   readonly permissions: readonly string[];
   readonly ttlMinutes?: number;
@@ -225,15 +205,20 @@ export interface PairFlags {
  * `--permission` would otherwise pair with every permission the token holds.
  */
 export function parsePairFlags(
-  argv: readonly string[],
-  options: ReadonlyMap<string, string | true>,
+  args: Pick<Args, "options" | "repeated">,
   hasUrl: boolean,
 ): PairFlags | { readonly error: string } {
+  const { options } = args;
   const option = (key: string) => {
     const value = options.get(key);
     return typeof value === "string" ? value : undefined;
   };
-  const permissions = allValues(argv, "permission");
+  const given = args.repeated.get("permission") ?? [];
+  const permissions = given.every(
+    (value): value is string => typeof value === "string" && value !== "",
+  )
+    ? given
+    : undefined;
   const valueless = ["label", "ttl", "base-url", "tailscale-serve-port"].filter(
     (key) => options.get(key) === true,
   );

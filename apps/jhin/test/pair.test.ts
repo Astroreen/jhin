@@ -162,10 +162,8 @@ describe("jhin pair against a running node", () => {
 
 describe("jhin pair's flags (security.md D1185, D1189)", () => {
   /** The options as `jhin` parses them (`args.ts`). */
-  const flags = (...argv: string[]) => ({ argv, options: parseArgv(argv).options });
   const refusal = (hasUrl: boolean, ...argv: string[]) => {
-    const { options } = flags(...argv);
-    const parsed = parsePairFlags(argv, options, hasUrl);
+    const parsed = parsePairFlags(parseArgv(argv), hasUrl);
     return "error" in parsed ? parsed.error : undefined;
   };
 
@@ -204,7 +202,7 @@ describe("jhin pair's flags (security.md D1185, D1189)", () => {
       "--tailscale-serve-port",
       "8443",
     ];
-    expect(parsePairFlags(argv, flags(...argv).options, false)).toEqual({
+    expect(parsePairFlags(parseArgv(argv), false)).toEqual({
       permissions: ["threads.read", "git.*"],
       ttlMinutes: 10,
       tailscale: true,

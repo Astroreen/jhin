@@ -254,6 +254,24 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
     expect(Fs.statSync(file).mode & 0o777).toBe(0o600);
   });
 
+  it("keeps the link when the mapping cannot be recorded", async () => {
+    const published = await publishOverTailscale({
+      mappings: {
+        targets: () => [],
+        remember: () => {
+          throw new Error("read-only home");
+        },
+      },
+      node,
+      servePort: 443,
+      run: fakeTailscale().run,
+      probe: probes({ kind: "unreachable" }, { kind: "node", instance: "this-node" }).probe,
+      pause,
+    });
+    expect(published.baseUrl).toBe("https://studio.tail1234.ts.net");
+    expect(published.notes.join("\n")).toContain("Could not record this mapping");
+  });
+
   it("repeats what tailscale said when serve fails", async () => {
     await expect(
       publishOverTailscale({
@@ -320,16 +338,14 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
 
 describe("probing an address (security.md D1184, D1189)", () => {
   it("tells this node, a gone backend, something else and nothing apart", async () => {
-    const answers: Record<string, (response: Http.ServerResponse) => void> = {
-      // Keyed by what each server stands for; every one answers /.well-known/jhin.
-      "/node/.well-known/jhin": (response) =>
-        response.writeHead(200, { "content-type": "application/json" }).end('{"instance":"abc"}'),
-      "/gateway/.well-known/jhin": (response) => response.writeHead(502).end("Bad Gateway"),
-      "/json/.well-known/jhin": (response) =>
-        response.writeHead(200, { "content-type": "application/json" }).end('{"hello":1}'),
-      "/html/.well-known/jhin": (response) =>
-        response.writeHead(200, { "content-type": "text/html" }).end("<html></html>"),
-    };
+    const thisNode = (response: Http.ServerResponse) =>
+      response.writeHead(200, { "content-type": "application/json" }).end('{"instance":"abc"}');
+    const goneBackend = (response: Http.ServerResponse) =>
+      response.writeHead(502).end("Bad Gateway");
+    const otherJson = (response: Http.ServerResponse) =>
+      response.writeHead(200, { "content-type": "application/json" }).end('{"hello":1}');
+    const html = (response: Http.ServerResponse) =>
+      response.writeHead(200, { "content-type": "text/html" }).end("<html></html>");
     // Each case on its own server: probeNode always asks the origin's /.well-known/jhin.
     const servers: Http.Server[] = [];
     const listen = async (answer: (response: Http.ServerResponse) => void) => {
@@ -339,20 +355,20 @@ describe("probing an address (security.md D1184, D1189)", () => {
       return `http://127.0.0.1:${(one.address() as AddressInfo).port}`;
     };
     try {
-      expect(await probeNode(await listen(answers["/node/.well-known/jhin"]!))).toEqual({
+      expect(await probeNode(await listen(thisNode))).toEqual({
         kind: "node",
         instance: "abc",
       });
-      expect(await probeNode(await listen(answers["/gateway/.well-known/jhin"]!))).toEqual({
+      expect(await probeNode(await listen(goneBackend))).toEqual({
         kind: "unreachable",
       });
-      expect(await probeNode(await listen(answers["/json/.well-known/jhin"]!))).toEqual({
+      expect(await probeNode(await listen(otherJson))).toEqual({
         kind: "other",
       });
-      expect(await probeNode(await listen(answers["/html/.well-known/jhin"]!))).toEqual({
+      expect(await probeNode(await listen(html))).toEqual({
         kind: "other",
       });
-      const closed = await listen(answers["/node/.well-known/jhin"]!);
+      const closed = await listen(thisNode);
       await new Promise<void>((resolve) => servers.pop()!.close(() => resolve()));
       expect(await probeNode(closed)).toEqual({ kind: "unreachable" });
     } finally {

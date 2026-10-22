@@ -10,7 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CommandInfo } from "@jhin/sdk";
 
-import { parseArgv } from "./args.ts";
+import { parseArgv, type Args } from "./args.ts";
 import {
   PairError,
   discoverNode,
@@ -211,15 +211,15 @@ async function uiEndpoint(host: NodeHost): Promise<string> {
  * node (D1184) or `--url`, printed as T3's block with a terminal QR code.
  */
 async function pair(
-  argv: readonly string[],
-  options: ReadonlyMap<string, string | true>,
+  args: Args,
   remote: { home?: string; url?: string; token?: string },
 ): Promise<number> {
+  const { options } = args;
   const option = (key: string) => {
     const value = options.get(key);
     return typeof value === "string" ? value : undefined;
   };
-  const parsed = parsePairFlags(argv, options, remote.url !== undefined);
+  const parsed = parsePairFlags(args, remote.url !== undefined);
   if ("error" in parsed) {
     process.stderr.write(`${parsed.error}\n`);
     return 2;
@@ -378,7 +378,7 @@ async function main(argv: readonly string[]): Promise<number> {
       process.stderr.write(`Unexpected arguments: ${rest.join(" ")}\n${USAGE}\n`);
       return 2;
     }
-    return pair(argv, parsed.options, remote);
+    return pair(parsed, remote);
   }
 
   if (command === "inspect") {

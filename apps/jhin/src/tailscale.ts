@@ -93,7 +93,7 @@ export function replaceable(statusJson: string, port: number, ours: readonly str
 }
 
 /** Whether Funnel publishes HTTPS port `port` (or the status cannot be read). */
-export function funneled(statusJson: string, port: number): boolean {
+function funneled(statusJson: string, port: number): boolean {
   try {
     const status = JSON.parse(statusJson === "" ? "{}" : statusJson) as {
       AllowFunnel?: Record<string, unknown>;
@@ -260,7 +260,14 @@ export async function publishOverTailscale(input: {
       `tailscale serve failed for HTTPS port ${port}. Run \`tailscale serve --https=${port} --bg ${target}\` by hand to see why.${said(served.stderr)}`,
     );
   }
-  input.mappings.remember(target);
+  // The mapping exists now: failing to note it costs only a later repair.
+  try {
+    input.mappings.remember(target);
+  } catch (error) {
+    notes.push(
+      `Could not record this mapping (${String(error)}); a later run will not repair it on its own.`,
+    );
+  }
   notes.push(
     `Tailscale Serve now maps ${baseUrl} to this node and persists across restarts. Remove it with \`tailscale serve --https=${port} off\`.`,
     TRUST_PROXY_NOTE,
