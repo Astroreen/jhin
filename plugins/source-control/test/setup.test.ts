@@ -9,7 +9,7 @@ import {
 } from "@jhin/source-control-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { runSetupScript, wrapCommandForCompletion } from "../src/setup.ts";
+import { completionShellOf, runSetupScript, wrapCommandForCompletion } from "../src/setup.ts";
 import { node, repository, type Node } from "./support.ts";
 
 /** Resolves with the first snapshot of the thread's setup (kept or new) that `match` accepts. */
@@ -66,6 +66,13 @@ async function projectWithScript(sc: Node, script: Record<string, unknown> | und
 }
 
 describe("setup script wrapper", () => {
+  it("wraps for the shell the terminal starts", () => {
+    expect(completionShellOf("linux", "/usr/bin/fish")).toBe("fish");
+    expect(completionShellOf("linux", "/bin/zsh")).toBe("posix");
+    expect(completionShellOf("darwin", "/usr/local/bin/pwsh")).toBe("powershell");
+    expect(completionShellOf("win32", "/bin/bash")).toBe("powershell");
+  });
+
   it("sets the script's variables inside its block and prints the sentinel with its code", () => {
     const line = wrapCommandForCompletion('echo "$NAME"\nexit 4', "posix", "DONE:", {
       NAME: "it's here",

@@ -1814,6 +1814,16 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     },
   });
 
+  /** The terminal plugin's configured shell, when it has one (`jhin.terminal.shell`). */
+  const terminalShell = (): string | undefined => {
+    try {
+      const shell = (context.config.get("jhin.terminal") as { shell?: unknown } | undefined)?.shell;
+      return typeof shell === "string" && shell !== "" ? shell : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   /** A thread's setup script, from its start until its first turn reads how it ended. */
   interface SetupRun {
     readonly worktreePath: string;
@@ -1911,7 +1921,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         script,
         projectRoot: project.path,
         worktreePath,
-        shell: completionShellOf(process.platform, process.env.SHELL),
+        // The shell the terminal starts: the terminal plugin's setting, else $SHELL.
+        shell: completionShellOf(process.platform, terminalShell() ?? process.env.SHELL),
         onLine: (line) => setups.appendTail(threadId, "setup-script", line),
         // Checked once the terminal is open, right before the script is typed.
         wanted,
