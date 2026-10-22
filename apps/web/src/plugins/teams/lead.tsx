@@ -100,6 +100,9 @@ function Conversation(props: {
   const [draft, setDraft] = useState("");
   const [starting, setStarting] = useState(false);
   const log = useRef<HTMLDivElement>(null);
+  /** The latest entries, for a failed ask to tell whether it was recorded anyway. */
+  const entries = useRef(view.entries);
+  entries.current = view.entries;
 
   /** The asks this page sent and still waits on, by message id (D1063). */
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
@@ -148,12 +151,14 @@ function Conversation(props: {
       });
     setPending((now) => new Set(now).add(messageId));
     setDraft("");
-    // The ask lands on the stream at once; its answer when the lead's turn ends (D624).
-    client.call("agents.ask", { to: lead, question, messageId }).then(settle, (error: unknown) => {
+    // The ask lands on the stream at once; its answer when the lead's turn ends
+    // (D624). It stays pending on success: the answer shows once the stream has it.
+    client.call("agents.ask", { to: lead, question, messageId }).catch((error: unknown) => {
       settle();
       const silent = (error as { code?: unknown } | null)?.code === "NO_ANSWER";
+      const recorded = entries.current.some((entry) => entry.message.messageId === messageId);
       // A text that never reached the lead comes back to the composer, if it is still empty.
-      if (!silent) setDraft((now) => (now === "" ? question : now));
+      if (!silent && !recorded) setDraft((now) => (now === "" ? question : now));
       services.toasts?.show({
         type: silent ? "warning" : "error",
         title: silent ? "The lead's turn ended without an answer" : "Couldn't reach the lead",
