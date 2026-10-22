@@ -1312,14 +1312,14 @@ C3 decisions:
   spec in config, `teams.up`, the intent, a mission with two waves of
   slices, `missions.orchestrate` from the lead's generation, proofs, an ask
   to the owner answered through the inbox and a ceremony warning, until the
-  lead sets the mission done (D651). It follows the `missions`,
+  mission is set done, the lead's decision (D651) sent for it (D1102). It follows the `missions`,
   `orchestration`, `agents/inbox` and `health` streams from their start
   (`e2e/tests/support/streams.ts`) and waits for the record it expects; it
   never waits for time.
 - **D1102. The fake agents' own acts are commands sent for them.** The fake
   runtime calls no tools, so the test calls what an agent's MCP tools call:
-  `slices.prove`, and `agents.ask` and `agents.send` with the agent as
-  `from` (D622). Everything the node does by itself (handoffs, thread
+  `slices.prove`, `missions.update`, and `agents.ask` and `agents.send`
+  with the agent as `from` (D622). Everything the node does by itself (handoffs, thread
   links, the inbox item, the warning, its analysis, the orchestrator's
   outcomes) is asserted, never driven.
 - **D1103. The scenario proves the threshold, not just a warning.** Health

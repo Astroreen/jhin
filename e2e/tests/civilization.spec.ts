@@ -198,8 +198,8 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
   await messages.until(
     (event) =>
       event.type === "agents.message.delivered" &&
-      payloadOf(event).message.to === address.builder &&
-      String(payloadOf(event).message.body).includes("Roof"),
+      // A handoff's id is its slice as planned (D703).
+      String(payloadOf(event).message.messageId).startsWith(`handoff-${roof.id}-`),
   );
   const missionStatus = async () =>
     (

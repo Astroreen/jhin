@@ -49,7 +49,11 @@ export function follow(client: RpcClient, stream: string) {
       if (failure !== undefined) return Promise.reject(failure);
       return new Promise((resolve, reject) => waiters.push({ test, resolve, reject }));
     },
-    close: () => subscription.dispose(),
+    close() {
+      subscription.dispose();
+      failure ??= new Error(`stream ${stream} closed after ${events.length} events`);
+      for (const waiter of waiters.splice(0)) waiter.reject(failure);
+    },
   };
 }
 
