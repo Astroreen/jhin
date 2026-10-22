@@ -207,16 +207,29 @@ export default definePlugin({
     };
 
     /**
-     * Resolves once the node has started, so the agents plugin can take an
-     * ask made while plugins still activate; at once after a plugin reload.
+     * Resolves once `agents.ask` can take an ask: at once when it is already
+     * registered (health enabled on a running node, a plugin reload), else
+     * when a plugin activating brings it, or when the node has started (an ask
+     * then fails if no plugin offers it, and is recorded so).
      */
-    const nodeStarted = new Promise<void>((resolve) => {
-      if (context.state.get<boolean>("kernelStarted") === true) return resolve();
+    const asksReady = new Promise<void>((resolve) => {
+      const askable = () =>
+        context.commands.list().some((command) => command.name === "agents.ask");
+      if (askable() || context.state.get<boolean>("kernelStarted") === true) return resolve();
+      const done = () => {
+        activated.dispose();
+        started.dispose();
+        resolve();
+      };
+      const activated = context.subscriptions.add(
+        context.events.on("kernel.plugin.activated", () => {
+          if (askable()) done();
+        }),
+      );
       const started = context.subscriptions.add(
         context.events.on("kernel.started", () => {
-          started.dispose();
           context.state.set("kernelStarted", true);
-          resolve();
+          done();
         }),
       );
     });
@@ -300,7 +313,7 @@ export default definePlugin({
      * activation asks again for every open warning without an analysis.
      */
     const analyse = async (warning: Warning) => {
-      await nodeStarted;
+      await asksReady;
       // Health turned off asks nobody, also for warnings raised before.
       if (!config().enabled) return;
       const analyst = analystOf(warning);

@@ -244,10 +244,10 @@ export class Sensors {
 
   /** Commits recorded on the `health` stream (D723). */
   ingestProgress(progress: Progress, event: StoredEvent): void {
-    const slices = this.slicesOfThread(progress.threadId);
-    for (let index = 0; index < progress.count; index += 1) {
-      this.count(progress.kind, event, slices);
-    }
+    // A turn that commits is one piece of progress, however many commits it
+    // made: a rebase or an import is no more progress, and empty commits buy
+    // no room under the ceremony threshold (D723).
+    this.count(progress.kind, event, this.slicesOfThread(progress.threadId));
   }
 
   /** Counts per group of the signals in the window that `keep` keeps for that group. */

@@ -324,7 +324,8 @@ describe("jhin.health", () => {
     );
     expect(recordedProgress).toHaveLength(1);
 
-    const progress = { ceremony: 0, progress: 4, byKind: { "slice-done": 1, merge: 1, commit: 2 } };
+    // The turn with two commits is one piece of progress (D723).
+    const progress = { ceremony: 0, progress: 3, byKind: { "slice-done": 1, merge: 1, commit: 1 } };
     const status = await client.call<{ groups: GroupStatus[] }>("health.status", {});
     expect(status.groups.find((group) => group.group.kind === "mission")).toMatchObject(progress);
 
@@ -634,6 +635,18 @@ describe("jhin.health", () => {
     });
     await expect(client.call("health.ideas.correct", { idea: "fix it" })).resolves.toMatchObject({
       idea: "fix it",
+    });
+  });
+
+  it("asks the analyst when health activates on a node that has already started", async () => {
+    const { kernel, log, deliver } = await node({ ceremony: { ratio: 1, minCeremony: 1 } });
+    // A reload activates health again after kernel.started has fired.
+    await kernel.reload("jhin.health");
+    const analysed = nextAppended(log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await deliver(OWNER, BUILDER, "status?", "t1");
+    expect(((await analysed).payload as { analysis: Analysis }).analysis).toMatchObject({
+      status: "answered",
+      analyst: BUILDER,
     });
   });
 });

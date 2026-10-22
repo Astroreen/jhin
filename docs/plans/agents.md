@@ -942,6 +942,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   commits since on the first-parent line (`git rev-list --count
   --first-parent`), only when the start is an ancestor of the new `HEAD`: a
   reset, rebase or branch switch inside the turn is no progress of its own.
+  A turn that commits counts as one piece of progress, however many commits
+  it made (the count is kept on the record): a large rebase or import is not
+  more progress, and empty commits buy no room under the ceremony threshold.
   Health runs `git` itself: `source-control.git@1` offers no read of `HEAD`
   or count of commits to depend on. The hooks never fail a turn: the start reads `HEAD` once (2 s at most),
   the end counts off the turn's path and then emits the kernel event
@@ -978,7 +981,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   warning without an analysis is asked again, unless its ask had already
   been delivered (`agents/messages`): then its analysis is recorded `failed`,
   pointing to the analyst's thread, so no analyst is asked twice. Asks wait
-  for `kernel.started`, so the agents plugin can take them. The core streams
+  for `agents.ask` to be registered (or for `kernel.started`), so a node
+  starting, or health enabled on a running node, asks once the agents plugin
+  can take it. The core streams
   (`health`, `missions`, `agents/messages`, `source-control`) must be read on
   activation, or it fails; a slice's thread that cannot be read is tried again
   on the next change of the slices' threads. Agents hold `health.read` over MCP
