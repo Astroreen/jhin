@@ -1254,6 +1254,43 @@ Decisions (C1):
   client", "A3: an agent's title for an assignee" and "A6: the orchestrator
   in Civilization mode".
 
+Decisions (C2):
+
+- **D1081. The owner plans from the mission view, through the commands.**
+  `jhin.missions-view` adds New mission to the Missions section (any project
+  of the node's threads catalog; the shown mission's project first), Edit
+  intent, Edit mission and Add slice on a mission, and Edit slice on a slice.
+  Each is a dialog that calls `missions.create`, `missions.update`,
+  `missions.intent.set`, `slices.create` or `slices.update` on the view's
+  node and closes; what the view shows still comes from the stream (D655),
+  so nothing is written to the fold by hand and an edit made elsewhere shows
+  the same way. Creating a mission opens it.
+- **D1082. An assignee is shown by its agent's title.** The view reads
+  `host.identity` and `agents.catalog` of its node once per view: an address
+  the node lists shows its agent's title, the node's owner shows as Owner,
+  and any other address (an agent of another node, one not defined yet) its
+  id, as before (D645). The assignee picker offers Unassigned, Owner and the
+  node's agents, and keeps an assignee it does not list.
+- **D1083. A dialog sends only what changed, and the command decides.**
+  `missions.intent.set`, `missions.update` and `slices.update` get the
+  fields the owner changed (`null` clears an assignee or a step), so an
+  untouched process is never checked again, and a dialog saved unchanged
+  calls nothing (`changes.ts`). The client checks nothing the command checks: a refusal
+  (`SLICE_ORDER_INVALID`, `SLICE_STEP_INVALID`, `PROOF_REQUIRED`, …) stays in
+  the dialog as an alert with the command's message, and the dialog stays
+  open.
+- **D1084. A process is edited as one line of step ids** (`spec → build →
+  test`; arrows, commas and spaces separate), for the project between
+  missions, a mission's slices and the mission between waves. A step keeps
+  its description when its id stays; descriptions themselves are not edited
+  here (Deferred).
+- **D1085. Done takes a proof, dropped stays dropped.** The slice dialog
+  offers Done only to a slice that is done already (D646: proof is recorded
+  with `slices.prove`), a new slice is planned, active or blocked, Dropped
+  reads "Dropped (final)", and a dropped slice has no Edit (D651). An edited
+  slice's wave cannot be emptied, and a step its process no longer has
+  still shows.
+
 ### C3. Dogfood: a civilization end to end (D1101–D1120)
 
 - **An end-to-end scenario in `e2e/`** on the fake runtime: bring up a team
@@ -1319,12 +1356,16 @@ Decisions (C1):
   the mesh (D656).
 - A3: proof screenshots shown inline: a screenshot item is a link (D646 keeps
   URLs only) until proof files live on the node.
-- A3: an agent's title for an assignee (`agents.catalog`); the view shows
-  the agent id from the address (D645).
+- ~~A3: an agent's title for an assignee (`agents.catalog`); the view shows
+  the agent id from the address (D645).~~ C2, D1082.
 - A3: deleting missions and slices (D651 drops them), and what happens to
   the missions of a deleted project (they stay in the stream, unseen).
-- A3: editing intent, missions and slices from the client; the view reads
-  (D656), the commands edit.
+- ~~A3: editing intent, missions and slices from the client; the view reads
+  (D656), the commands edit.~~ C2, D1081–D1085.
+- C2: editing a step's description (D1084 keeps it by id), and proving a
+  slice from the client (`slices.prove` stays the agent's).
+- C2: titles and the assignee picker for agents of other nodes of the mesh;
+  the view lists its own node's agents, read once per view (D1082).
 - A3: proof stored on the node (screenshot files); a proof item names a URL.
 - A3: a project deleted between the project check and the append of
   `missions.create` or `missions.intent.set` (D643) still gets its record;
@@ -1522,3 +1563,7 @@ Each workstream lists its PRs here as they merge.
 - C1 #192: `agents.conversation`, the owner's conversation with an agent
   folded from `agents/messages` and the inbox, and the answer's text on
   `agents.message.answered` (D1061).
+- C2 #194: planning from the mission view (`jhin.missions-view`): New
+  mission, Edit intent, Edit mission, Add slice and Edit slice through the
+  `missions.*` and `slices.*` commands, assignees by their agent's title
+  (D1081–D1085).

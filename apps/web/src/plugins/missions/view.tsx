@@ -18,6 +18,7 @@ import {
   type Mission,
   type MissionStatus,
   type MissionsState,
+  type ProjectIntent,
   type ProofItem,
   type Slice,
   type SliceStatus,
@@ -25,6 +26,7 @@ import {
 } from "@jhin/missions-api";
 import {
   Badge,
+  Button,
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -42,6 +44,8 @@ import {
   ChevronRightIcon,
   ExternalLinkIcon,
   MessagesSquareIcon,
+  PencilIcon,
+  PlusIcon,
   TargetIcon,
 } from "lucide-react";
 import {
@@ -54,6 +58,8 @@ import {
 } from "react";
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
+import { useDirectory, type Directory } from "./directory.ts";
+import { IntentDialog, MissionDialog, SliceDialog, type Call } from "./edit.tsx";
 import {
   assigneeLabel,
   missionRank,
@@ -164,17 +170,54 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
       : place?.kind === "slice"
         ? view.state.slices[place.sliceId]?.missionId
         : undefined;
+  const shownProject =
+    shownMission === undefined ? undefined : view.state.missions[shownMission]?.projectId;
+
+  const [creating, setCreating] = useState(false);
 
   if (view.status === "unavailable") return <SidebarNote>This node has no missions.</SidebarNote>;
   if (view.status === "loading") return <SidebarNote>Loading missions…</SidebarNote>;
   const projects = projectsWithMissions(view.state);
+  // Planning a mission from the client (D1081): any project of the node's catalog.
+  const create =
+    connection === undefined ? null : (
+      <>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              className="text-sidebar-muted-foreground"
+              disabled={names.size === 0}
+              onClick={() => setCreating(true)}
+              size="sm"
+            >
+              <PlusIcon aria-hidden className="size-3.5" />
+              <span>New mission</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        {creating ? (
+          <MissionDialog
+            call={(method, input) => threads.call({ node: connection }, method, input)}
+            onClose={() => setCreating(false)}
+            onCreated={(mission) =>
+              navigation.navigate(routeOf(route, { kind: "mission", missionId: mission.id }))
+            }
+            projects={[...names].map(([id, name]) => ({ id, name }))}
+            {...(shownProject === undefined ? {} : { projectId: shownProject })}
+          />
+        ) : null}
+      </>
+    );
   if (projects.length === 0) {
     return (
-      <SidebarNote>
-        {view.status === "error"
-          ? `Couldn't load missions: ${view.error ?? "unknown error"}`
-          : "No missions yet. The lead and agents plan them with missions.create."}
-      </SidebarNote>
+      <>
+        <SidebarNote>
+          {view.status === "error"
+            ? `Couldn't load missions: ${view.error ?? "unknown error"}`
+            : "No missions yet."}
+        </SidebarNote>
+        {create}
+      </>
     );
   }
   return (
@@ -214,6 +257,7 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
           </SidebarMenu>
         </div>
       ))}
+      {create}
     </nav>
   );
 }
@@ -304,14 +348,21 @@ function Section({
   title,
   children,
   label,
+  action,
 }: {
   title: string;
   children: ReactNode;
   label?: string;
+  action?: ReactNode;
 }) {
   return (
     <section aria-label={label ?? title} className="flex flex-col gap-2">
-      <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h2>
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h2>
+        {action}
+      </div>
       {children}
     </section>
   );
@@ -381,6 +432,10 @@ export function MissionsMain({ services }: { services: MissionsServices }) {
         }
       : undefined;
   const threadTitle = useThreadTitle(threads, shownThread?.target, shownThread?.threadId);
+  const directory = useDirectory(
+    threads,
+    place === undefined || connection === undefined ? undefined : { node: connection },
+  );
   // Another contribution's panel (an agent's page): this view shows nothing.
   if (place === undefined) return null;
   if (connection === undefined) return null;
@@ -420,6 +475,7 @@ export function MissionsMain({ services }: { services: MissionsServices }) {
   if (crumbs.length === 0) crumbs.push({ label: "Missions" });
 
   const target: NodeTarget = { node: connection };
+  const call: Call = (method, input) => threads.call(target, method, input);
   const content =
     body ??
     (mission === undefined ? (
@@ -433,13 +489,18 @@ export function MissionsMain({ services }: { services: MissionsServices }) {
       />
     ) : place.kind === "mission" ? (
       <MissionPage
-        intent={state.intents[mission.projectId]?.intent}
+        call={call}
+        directory={directory}
+        intent={state.intents[mission.projectId]}
         mission={mission}
+        project={project ?? mission.projectId}
         open={(next) => navigation.navigate(routeOf(route, next))}
         slices={slicesOf(state, mission.id)}
       />
     ) : slice === undefined ? null : place.thread === undefined ? (
       <SlicePage
+        call={call}
+        directory={directory}
         mission={mission}
         open={(next) => navigation.navigate(routeOf(route, next))}
         services={services}
@@ -464,19 +525,40 @@ export function MissionsMain({ services }: { services: MissionsServices }) {
   );
 }
 
+/** A small action beside a heading, named for what it edits (D1083). */
+function EditButton(props: { label: string; onClick: () => void; add?: boolean }) {
+  const Icon = props.add === true ? PlusIcon : PencilIcon;
+  return (
+    <Button onClick={props.onClick} size="compact" type="button" variant="ghost-muted">
+      <Icon aria-hidden />
+      {props.label}
+    </Button>
+  );
+}
+
 function MissionPage(props: {
   mission: Mission;
-  intent: string | undefined;
+  project: string;
+  intent: ProjectIntent | undefined;
   slices: readonly Slice[];
+  directory: Directory;
+  call: Call;
   open: (place: MissionPlace) => void;
 }) {
-  const { mission, intent, slices, open } = props;
+  const { mission, project, intent, slices, directory, call, open } = props;
+  const [editing, setEditing] = useState<"intent" | "mission" | "slice" | undefined>();
+  const close = () => setEditing(undefined);
   const waves = wavesOf(slices);
+  const closed = mission.status === "done" || mission.status === "dropped";
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-6 px-4 py-6">
-        <Section title="Intent" label="Project intent">
-          <Prose empty="No intent yet." text={intent ?? ""} />
+        <Section
+          action={<EditButton label="Edit intent" onClick={() => setEditing("intent")} />}
+          label="Project intent"
+          title="Intent"
+        >
+          <Prose empty="No intent yet." text={intent?.intent ?? ""} />
         </Section>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
@@ -484,6 +566,9 @@ function MissionPage(props: {
               {mission.title}
             </h1>
             <StatusBadge status={mission.status} />
+            <span className="ms-auto">
+              <EditButton label="Edit mission" onClick={() => setEditing("mission")} />
+            </span>
           </div>
           <Section title="Outcome">
             <Prose empty="No outcome yet." text={mission.outcome} />
@@ -497,7 +582,14 @@ function MissionPage(props: {
             <Steps steps={mission.process.mission} />
           </Fact>
         </dl>
-        <Section title="Waves">
+        <Section
+          action={
+            closed ? undefined : (
+              <EditButton add label="Add slice" onClick={() => setEditing("slice")} />
+            )
+          }
+          title="Waves"
+        >
           {waves.length === 0 ? (
             <p className="text-sm text-muted-foreground">No slices yet.</p>
           ) : (
@@ -518,6 +610,7 @@ function MissionPage(props: {
                           <SliceRow
                             onOpen={() => open({ kind: "slice", sliceId: slice.id })}
                             slice={slice}
+                            titles={directory.titles}
                           />
                         </li>
                       ))}
@@ -529,14 +622,38 @@ function MissionPage(props: {
           )}
         </Section>
       </div>
+      {editing === "intent" ? (
+        <IntentDialog
+          call={call}
+          intent={intent}
+          onClose={close}
+          project={project}
+          projectId={mission.projectId}
+        />
+      ) : editing === "mission" ? (
+        <MissionDialog call={call} mission={mission} onClose={close} projects={[]} />
+      ) : editing === "slice" ? (
+        <SliceDialog
+          call={call}
+          directory={directory}
+          mission={mission}
+          onClose={close}
+          slices={slices}
+        />
+      ) : null}
     </div>
   );
 }
 
-function SliceRow({ slice, onOpen }: { slice: Slice; onOpen: () => void }) {
+function SliceRow(props: {
+  slice: Slice;
+  titles: ReadonlyMap<string, string>;
+  onOpen: () => void;
+}) {
+  const { slice, titles, onOpen } = props;
   return (
     <button
-      aria-label={`${slice.title}, ${STATUS_LABELS[slice.status]}, ${assigneeLabel(slice.assignee)}`}
+      aria-label={`${slice.title}, ${STATUS_LABELS[slice.status]}, ${assigneeLabel(slice.assignee, titles)}`}
       className="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
       data-slice={slice.id}
       onClick={onOpen}
@@ -569,7 +686,7 @@ function SliceRow({ slice, onOpen }: { slice: Slice; onOpen: () => void }) {
         className="w-24 shrink-0 truncate text-right text-xs text-muted-foreground"
         title={slice.assignee}
       >
-        {assigneeLabel(slice.assignee)}
+        {assigneeLabel(slice.assignee, titles)}
       </span>
     </button>
   );
@@ -581,19 +698,28 @@ function SlicePage(props: {
   state: MissionsState;
   target: NodeTarget;
   services: MissionsServices;
+  directory: Directory;
+  call: Call;
   open: (place: MissionPlace) => void;
 }) {
-  const { slice, mission, state, target, services, open } = props;
+  const { slice, mission, state, target, services, directory, call, open } = props;
+  const [editing, setEditing] = useState(false);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-6 px-4 py-6">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold tracking-tight text-foreground">{slice.title}</h1>
           <StatusBadge status={slice.status} />
+          {/* A dropped slice stays dropped (D651): plan a new one instead. */}
+          {slice.status === "dropped" ? null : (
+            <span className="ms-auto">
+              <EditButton label="Edit slice" onClick={() => setEditing(true)} />
+            </span>
+          )}
         </div>
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Fact label="Assignee">
-            <span title={slice.assignee}>{assigneeLabel(slice.assignee)}</span>
+            <span title={slice.assignee}>{assigneeLabel(slice.assignee, directory.titles)}</span>
           </Fact>
           <Fact label="Wave">{slice.wave}</Fact>
           <Fact label="Step">
@@ -670,6 +796,16 @@ function SlicePage(props: {
           )}
         </Section>
       </div>
+      {editing ? (
+        <SliceDialog
+          call={call}
+          directory={directory}
+          mission={mission}
+          onClose={() => setEditing(false)}
+          slice={slice}
+          slices={slicesOf(state, mission.id)}
+        />
+      ) : null}
     </div>
   );
 }

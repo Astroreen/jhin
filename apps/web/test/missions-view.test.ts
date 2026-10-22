@@ -13,11 +13,20 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   assigneeLabel,
+  formatSteps,
+  parseSteps,
   placeOf,
   routeOf,
+  sameSteps,
   threadTarget,
   type MissionPlace,
 } from "../src/plugins/missions/route.ts";
+import {
+  intentChanges,
+  missionChanges,
+  sliceChanges,
+  sliceStatusOptions,
+} from "../src/plugins/missions/changes.ts";
 import { createMissionsStore, type MissionsView } from "../src/plugins/missions/store.ts";
 
 const mission = (fields: Partial<Mission> = {}): Mission => ({
@@ -89,6 +98,100 @@ describe("the mission view's route (D653)", () => {
     expect(assigneeLabel(undefined)).toBe("Unassigned");
     expect(assigneeLabel("jhin://n1/agents/builder")).toBe("builder");
     expect(assigneeLabel("jhin://n1/owner")).toBe("Owner");
+  });
+
+  it("D1082: an assignee shows by its agent's title when its node lists it", () => {
+    const titles = new Map([["jhin://n1/agents/builder", "Builder"]]);
+    expect(assigneeLabel("jhin://n1/agents/builder", titles)).toBe("Builder");
+    expect(assigneeLabel("jhin://n2/agents/builder", titles)).toBe("builder");
+  });
+
+  it("D1084: a process is edited as one line of step ids, keeping descriptions", () => {
+    const previous = [{ id: "build", description: "Make it work" }, { id: "test" }];
+    expect(formatSteps(previous)).toBe("build → test");
+    expect(parseSteps("spec → build, test", previous)).toEqual([
+      { id: "spec" },
+      { id: "build", description: "Make it work" },
+      { id: "test" },
+    ]);
+    expect(parseSteps("spec->build  test")).toEqual([
+      { id: "spec" },
+      { id: "build" },
+      { id: "test" },
+    ]);
+    expect(parseSteps("  ")).toEqual([]);
+    expect(sameSteps(parseSteps("build test", previous), previous)).toBe(true);
+    expect(sameSteps(parseSteps("test build"), previous)).toBe(false);
+  });
+});
+
+describe("what an edit dialog sends (D1083, D1085)", () => {
+  const form = (target: Slice) => ({
+    title: target.title,
+    spec: target.spec,
+    assignee: target.assignee,
+    wave: target.wave,
+    dependsOn: target.dependsOn,
+    status: target.status,
+    step: target.step,
+  });
+
+  it("an untouched slice sends nothing; null clears an assignee or a step", () => {
+    const current = slice({
+      assignee: "jhin://n1/agents/builder",
+      step: "build",
+      dependsOn: ["s0"],
+    });
+    expect(sliceChanges(current, form(current))).toEqual({});
+    expect(
+      sliceChanges(current, { ...form(current), assignee: undefined, step: undefined }),
+    ).toEqual({ assignee: null, step: null });
+    expect(sliceChanges(current, { ...form(current), dependsOn: ["s0"] })).toEqual({});
+    expect(sliceChanges(current, { ...form(current), dependsOn: [], wave: 2 })).toEqual({
+      dependsOn: [],
+      wave: 2,
+    });
+  });
+
+  it("a mission sends its process only when its steps changed", () => {
+    const current = mission();
+    const same = {
+      title: current.title,
+      outcome: current.outcome,
+      status: current.status,
+      sliceProcess: "spec → build → test",
+      missionProcess: "merge",
+    };
+    expect(missionChanges(current, same)).toEqual({});
+    expect(missionChanges(current, { ...same, missionProcess: "merge release" })).toEqual({
+      process: {
+        slice: DEFAULT_MISSION_PROCESS.slice,
+        mission: [{ id: "merge" }, { id: "release" }],
+      },
+    });
+  });
+
+  it("an intent sends what changed, and everything when there is none yet", () => {
+    const previous = { projectId: "p1", intent: "A harbor.", process: [], updatedAt: "" };
+    expect(intentChanges(previous, { intent: "A harbor.", process: "" })).toEqual({});
+    expect(intentChanges(previous, { intent: "A quay.", process: "" })).toEqual({
+      intent: "A quay.",
+    });
+    expect(intentChanges(undefined, { intent: "A quay.", process: "plan" })).toEqual({
+      intent: "A quay.",
+      process: [{ id: "plan" }],
+    });
+  });
+
+  it("offers Done only to a done slice, and Dropped only to an existing one", () => {
+    expect(sliceStatusOptions(undefined)).toEqual(["planned", "active", "blocked"]);
+    expect(sliceStatusOptions(slice({ status: "active" }))).toEqual([
+      "planned",
+      "active",
+      "blocked",
+      "dropped",
+    ]);
+    expect(sliceStatusOptions(slice({ status: "done" }))).toContain("done");
   });
 });
 
