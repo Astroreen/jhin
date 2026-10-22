@@ -187,9 +187,9 @@ describe("node feeds (D630, D731)", () => {
     two.answer.resolve({ head: 9, items: ["new"] });
     await ready;
     expect(feeds.snapshot().get("a")).toMatchObject({ status: "ready", value: ["new"] });
-    // A live feed is left to its stream.
+    // A live feed takes the change too, whether or not its event follows.
     feeds.apply("a", { type: "add", payload: "local" });
-    expect(feeds.snapshot().get("a")?.value).toEqual(["new"]);
+    expect(feeds.snapshot().get("a")?.value).toEqual(["new", "local"]);
     expect(two.stream.after).toBe(9);
     feeds.dispose();
   });

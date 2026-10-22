@@ -24,10 +24,10 @@ export interface NodeFeeds<S> {
   snapshot(): ReadonlyMap<string, NodeFeed<S>>;
   subscribe(listener: () => void): Disposable;
   /**
-   * Applies a change this client made and knows succeeded to a feed whose
-   * stream is not live, or is being read again (kept for what that read
-   * brings), so what it shows does not wait for an event that may not come.
-   * A live feed is left to its stream.
+   * Applies a change this client made and knows succeeded to a feed, live
+   * or not, and keeps it for a read under way, so what it shows does not wait
+   * for an event that may not come. The stream may still bring the same
+   * change: the source's `apply` takes it twice as once (idempotent).
    */
   apply(id: string, event: { type: string; payload: unknown }): void;
 }
@@ -317,8 +317,7 @@ export function createNodeFeeds<S>(
     apply(id, event) {
       const pending = rereads.get(id);
       set(id, (feed) => {
-        // A feed being read again keeps the change for the state it gets (D731).
-        if (feed.status !== "error" && pending === undefined) return feed;
+        // A feed being read again also keeps the change for the state it gets (D731).
         const value = source.apply(feed.value, event);
         return value === feed.value ? feed : { ...feed, value };
       });

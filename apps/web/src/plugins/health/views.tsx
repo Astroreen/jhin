@@ -385,7 +385,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       return;
     }
     setDismissing(true);
-    // Dismissed, the button stays off until the warning's event takes it away.
+    // Dismissed, the button stays off: the answer takes the warning's "Open" away.
     let succeeded = false;
     try {
       const dismissed = await connection.client.call<Warning>("health.warnings.dismiss", {
@@ -393,8 +393,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       });
       // The answer says so at once, whether or not the stream's event follows.
       view.toasts?.show({ type: "success", title: "Warning dismissed" });
-      // When the stream is down no event will mark it: the feed learns it here,
-      // page and sidebar alike. A live feed is left to its stream.
+      // The feed learns it here, page and sidebar alike, even if no event
+      // follows; the stream's own event folds to the same warning (D724).
       view.store.apply(node, {
         type: HealthEvents.warningDismissed,
         // The node's record, as its event would carry it (D724).
