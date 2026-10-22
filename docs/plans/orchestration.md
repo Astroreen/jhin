@@ -519,8 +519,12 @@ runs in the background as a live child (`ClaudeAdapterV2.ts`: its
   subagent's thread (`threads.write`), finds its parent and the runtime's
   `subagentId` (kept on the child's record as `subagentId`) and asks the
   parent's runtime; it refuses `SUBAGENT_NOT_RUNNING` when the child's turn
-  does not run and `SUBAGENT_STOP_UNSUPPORTED` when the runtime cannot
-  stop it (no `stopSubagent`, or it answered false).
+  does not run or the runtime answered false (it ended meanwhile), and
+  `SUBAGENT_STOP_UNSUPPORTED` for a thread that is no runtime's subagent or a
+  runtime without `stopSubagent`. The threads plugin follows `afterwards`
+  until every backgrounded subagent ended, the parent is deleted or the
+  plugin stops, and then lets the runtime go (`return()`), which lets go of
+  the Claude Code session it read.
 - **D1167. "Stop subagent" in the Lineage section for a runtime's
   subagent**, as for a task (D867, D868): shown while its turn runs, it
   runs `threads.subagent.stop` and spins until the command answers; a

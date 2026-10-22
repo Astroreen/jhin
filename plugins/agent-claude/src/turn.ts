@@ -319,6 +319,8 @@ export function claudeTurn(
   const later = channel<AgentItem>(() => false);
   /** The session is followed past the turn for its subagents in the background. */
   let following = false;
+  /** Stops following the session: `afterwards` was given up on, or every subagent ended. */
+  let release = () => {};
   const runtimeMode = request.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode = request.interactionMode ?? "default";
   // The turn's model options (D298): the model id with its suffix, effort and settings.
@@ -439,8 +441,11 @@ export function claudeTurn(
   /** The tool call that started each task, from `task_started`. */
   const taskTools = new Map<string, string>();
   type Push = (item: AgentItem) => void;
+  /** Its subagents whose call returned in the foreground: ended, never moved afterwards. */
+  const endedInForeground = new Set<string>();
   const background = (subagentId: string, push: Push) => {
     if (!subagentIds.has(subagentId) || wentBackground.has(subagentId)) return;
+    if (endedInForeground.has(subagentId)) return;
     wentBackground.add(subagentId);
     backgrounded.add(subagentId);
     push({ kind: "subagent.backgrounded", subagentId });
@@ -642,6 +647,7 @@ export function claudeTurn(
           });
           // One in the background ends with its task, not with its call's quick result (D1165).
           if (SUBAGENT_TOOLS.has(tool.name) && !wentBackground.has(block.tool_use_id)) {
+            endedInForeground.add(block.tool_use_id);
             out.push({
               kind: "subagent.ended",
               subagentId: block.tool_use_id,
@@ -863,6 +869,7 @@ export function claudeTurn(
     const handOver = () => {
       if (backgrounded.size === 0 || !tapping) return untap();
       following = true;
+      release = untap;
       for (const message of unread.splice(0)) {
         if ((order.get(message) ?? 0) > read) follow(message);
       }
@@ -1009,10 +1016,16 @@ export function claudeTurn(
     done,
     items: out.read(),
     afterwards: (async function* () {
-      for await (const item of later.read()) {
-        if (item.kind === "subagent.item" || item.kind === "subagent.ended") {
-          yield item satisfies AfterwardsItem;
+      try {
+        for await (const item of later.read()) {
+          if (item.kind === "subagent.item" || item.kind === "subagent.ended") {
+            yield item satisfies AfterwardsItem;
+          }
         }
+      } finally {
+        // Read no further (also when its reader stopped early): the session is let go.
+        release();
+        later.end();
       }
     })(),
     interrupt() {

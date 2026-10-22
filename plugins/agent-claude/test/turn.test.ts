@@ -755,6 +755,72 @@ describe("jhin.agent-claude: a turn", () => {
     ]);
   });
 
+  it("reads a background subagent's frames once each, before and after the turn's result", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield toolUse("m1", "agent-bg", "Agent", {
+          description: "Dig",
+          prompt: "dig",
+          run_in_background: true,
+        });
+        yield system("background_tasks_changed", { tasks: [{ task_id: "task-1" }] });
+        yield toolResult("agent-bg", "Async agent launched");
+        // Its work while the turn still runs goes with the turn's items…
+        yield toolUse("sub1", "read-1", "Read", { file_path: "/a" }, "agent-bg");
+        yield result();
+        // …and after the result to afterwards, each frame once.
+        yield toolUse("sub2", "read-2", "Read", { file_path: "/b" }, "agent-bg");
+        yield system("task_notification", {
+          task_id: "task-1",
+          tool_use_id: "agent-bg",
+          status: "stopped",
+          summary: "",
+          output_file: "",
+        });
+        yield system("background_tasks_changed", { tasks: [] });
+      },
+    ]);
+    const items = await drain(turn);
+    const reads = (list: readonly AgentItem[]) =>
+      list.flatMap((item) =>
+        item.kind === "subagent.item" && item.item.kind === "tool.started"
+          ? [item.item.itemId]
+          : [],
+      );
+    expect(reads(items)).toEqual(["read-1"]);
+    const afterwards: AgentItem[] = [];
+    for await (const item of turn.afterwards!) afterwards.push(item);
+    expect(reads(afterwards)).toEqual(["read-2"]);
+    expect(afterwards.at(-1)).toEqual({
+      kind: "subagent.ended",
+      subagentId: "agent-bg",
+      status: "interrupted",
+    });
+  });
+
+  it("does not move a subagent whose call already returned to the background", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield toolUse("m1", "agent-1", "Agent", { description: "Look", prompt: "look" });
+        yield system("task_started", { task_id: "task-1", tool_use_id: "agent-1" });
+        yield toolResult("agent-1", "found it");
+        // A late move (a steer's Ctrl+B that came after the result) changes nothing.
+        yield system("task_updated", { task_id: "task-1", patch: { is_backgrounded: true } });
+        yield result();
+      },
+    ]);
+    const items = await drain(turn);
+    expect(items.filter((item) => item.kind.startsWith("subagent."))).toEqual([
+      { kind: "subagent.started", subagentId: "agent-1", title: "Look", prompt: "look" },
+      { kind: "subagent.ended", subagentId: "agent-1", status: "completed" },
+    ]);
+    const afterwards = [];
+    for await (const item of turn.afterwards!) afterwards.push(item);
+    expect(afterwards).toEqual([]);
+  });
+
   it("ends afterwards at once when no subagent went to the background", async () => {
     const { turn } = start([
       async function* () {

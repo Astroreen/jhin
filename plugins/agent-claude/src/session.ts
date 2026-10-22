@@ -630,6 +630,12 @@ export function createLiveSessions(options: {
           ) {
             live.tasks.set(message.tool_use_id, message.task_id);
           }
+          // An ended task is stopped no more: its entry goes.
+          if (message.type === "system" && message.subtype === "task_notification") {
+            for (const [tool, task] of live.tasks) {
+              if (task === message.task_id) live.tasks.delete(tool);
+            }
+          }
           live.holder?.push(message);
           for (const tap of live.taps) tap.message(message);
         }

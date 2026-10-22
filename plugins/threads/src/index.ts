@@ -1557,19 +1557,26 @@ export default definePlugin({
           await endSubagent(item.subagentId, item.status, item.error);
         }
       };
-      /** The later work of the backgrounded subagents; those still open after it end interrupted. */
+      /**
+       * The later work of the backgrounded subagents, until each ended, the parent is
+       * deleted or the plugin stops; those still open then end interrupted (D1164).
+       */
       const followAfterwards = async () => {
+        const later = turn.afterwards?.[Symbol.asyncIterator]();
+        let stop!: () => void;
+        const stopped = new Promise<undefined>((resolve) => (stop = () => resolve(undefined)));
+        const follower = context.subscriptions.add(toDisposable(stop));
         try {
-          if (turn.afterwards !== undefined) {
-            for await (const item of turn.afterwards) {
-              await projectSubagent(item).catch((error: unknown) =>
-                context.log.error("could not record a subagent", {
-                  threadId: thread.id,
-                  error: String(error),
-                }),
-              );
-              if (![...subagents.values()].some((child) => child.open)) break;
-            }
+          while (later !== undefined && !deleted.has(thread.id)) {
+            const next = await Promise.race([later.next(), stopped]);
+            if (next === undefined || next.done === true) break;
+            await projectSubagent(next.value).catch((error: unknown) =>
+              context.log.error("could not record a subagent", {
+                threadId: thread.id,
+                error: String(error),
+              }),
+            );
+            if (![...subagents.values()].some((child) => child.open)) break;
           }
         } catch (error) {
           context.log.warn("lost a background subagent's work", {
@@ -1577,6 +1584,9 @@ export default definePlugin({
             error: String(error),
           });
         } finally {
+          follower.dispose();
+          // The runtime lets go of what it followed for them.
+          void later?.return?.(undefined).catch(() => undefined);
           for (const subagentId of subagents.keys()) {
             await endSubagent(subagentId, "interrupted").catch((error: unknown) =>
               context.log.error("could not end a subagent's thread", {
@@ -3191,25 +3201,23 @@ export default definePlugin({
             { threadId },
           );
         }
-        if (child.lastTurn?.status !== "running") {
-          throw new ThreadsError("SUBAGENT_NOT_RUNNING", "The subagent does not run", {
+        const notRunning = () =>
+          new ThreadsError("SUBAGENT_NOT_RUNNING", "The subagent does not run", { threadId });
+        if (child.lastTurn?.status !== "running") throw notRunning();
+        const runtime = child.agentId === undefined ? undefined : registry.get(child.agentId);
+        if (runtime?.stopSubagent === undefined) {
+          throw new ThreadsError("SUBAGENT_STOP_UNSUPPORTED", "Its agent cannot stop subagents", {
             threadId,
           });
         }
-        const runtime = child.agentId === undefined ? undefined : registry.get(child.agentId);
-        const stopped =
-          runtime?.stopSubagent === undefined
-            ? false
-            : await runtime.stopSubagent({
-                threadId: child.parentThreadId,
-                subagentId: child.subagentId,
-              });
-        if (!stopped) {
-          throw new ThreadsError(
-            "SUBAGENT_STOP_UNSUPPORTED",
-            "Its agent cannot stop this subagent",
-            { threadId },
-          );
+        // The runtime knows it no more: it ended meanwhile.
+        if (
+          !(await runtime.stopSubagent({
+            threadId: child.parentThreadId,
+            subagentId: child.subagentId,
+          }))
+        ) {
+          throw notRunning();
         }
         return { stopped: true as const };
       },

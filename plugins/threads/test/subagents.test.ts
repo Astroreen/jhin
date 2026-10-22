@@ -152,9 +152,9 @@ describe("jhin.threads: subagents in the background (D1164, D1166)", () => {
     const running = await client.call<{ thread: Thread }>("threads.get", { threadId: dig });
     expect(running.thread.lastTurn).toMatchObject({ status: "running" });
 
-    // A runtime that cannot stop it, a thread that is no subagent.
+    // One its runtime no longer knows (it ended meanwhile), a thread that is no subagent.
     await expect(client.call("threads.subagent.stop", { threadId: wait })).rejects.toMatchObject({
-      code: "SUBAGENT_STOP_UNSUPPORTED",
+      code: "SUBAGENT_NOT_RUNNING",
     });
     await expect(
       client.call("threads.subagent.stop", { threadId: parent.id }),
