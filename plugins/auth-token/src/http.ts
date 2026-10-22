@@ -4,6 +4,8 @@ import { readCookie, sessionCookieName, type Principal } from "@jhin/auth-api";
 import type { HttpServer } from "@jhin/http-api";
 import { DisposableStore, z, type Disposable, type Logger } from "@jhin/sdk";
 
+import { DeviceType, deriveClientMetadata, type ClientMetadata } from "./metadata.ts";
+
 // The pairing endpoints follow T3 Code's (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/auth/http.ts — a one-time code becomes a token over HTTP,
 // answers are never cached, and the page's own session is an httpOnly cookie.
@@ -19,6 +21,9 @@ const ATTEMPTS_PER_MINUTE = 20;
 const PairRequest = z.object({
   code: z.string().min(1).max(64),
   label: z.string().trim().min(1).max(200).optional(),
+  /** What the device says it is (T3's presented metadata, security.md D1187). */
+  deviceType: DeviceType.optional(),
+  os: z.string().trim().min(1).max(64).optional(),
 });
 const SessionRequest = z.object({ credential: z.string().min(1).max(512) });
 
@@ -32,9 +37,9 @@ export interface AuthHttpOptions {
    */
   readonly attempts: Map<string, number>;
   /** A pairing code becomes a device token, or undefined for a wrong, used or expired code. */
-  pair(code: string, label: string | undefined): IssuedToken | undefined;
+  pair(code: string, label: string | undefined, metadata: ClientMetadata): IssuedToken | undefined;
   /** A token or pairing code becomes the page's own device token (security.md D421). */
-  openSession(credential: string): Promise<IssuedToken | undefined>;
+  openSession(credential: string, metadata: ClientMetadata): Promise<IssuedToken | undefined>;
   /** Who a token is, as the verifier sees it. */
   verify(token: string): Promise<Principal | undefined>;
   /** Revokes the device token behind a session cookie. */
@@ -157,6 +162,17 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
     if (count > 0) attempts.set(key, count - 1);
   };
 
+  /** What the request says about the device (security.md D1187). */
+  const metadataOf = (
+    request: IncomingMessage,
+    presented?: { deviceType?: ClientMetadata["deviceType"]; os?: string },
+  ) =>
+    deriveClientMetadata({
+      userAgent: request.headers["user-agent"],
+      ipAddress: http.clientAddress(request),
+      ...(presented === undefined ? {} : { presented }),
+    });
+
   const cookieHeader = (value: string, request: IncomingMessage, maxAge?: number) => {
     const secure =
       request.headers["x-forwarded-proto"] === "https" ||
@@ -198,7 +214,15 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       }
       let issued: IssuedToken | undefined;
       try {
-        issued = options.pair(parsed.data.code, parsed.data.label);
+        const { code, label, deviceType, os } = parsed.data;
+        issued = options.pair(
+          code,
+          label,
+          metadataOf(request, {
+            ...(deviceType === undefined ? {} : { deviceType }),
+            ...(os === undefined ? {} : { os }),
+          }),
+        );
       } catch (error) {
         // A JSON answer with CORS, so a page on another origin can read what went wrong.
         log.error("pairing failed", { error: String(error) });
@@ -261,7 +285,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       }
       let issued: IssuedToken | undefined;
       try {
-        issued = await options.openSession(parsed.data.credential);
+        issued = await options.openSession(parsed.data.credential, metadataOf(request));
       } catch (error) {
         log.error("opening a page session failed", { error: String(error) });
         send(response, 500, {

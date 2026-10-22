@@ -2,6 +2,7 @@
 // following T3 Code's connections settings (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/settings/ConnectionsSettings.tsx — its wording, the
 // "Create pairing link" dialog and the QR code of the link.
+import { AUTH_CLIENTS_STREAM } from "@jhin/auth-api";
 import type { NodeConnection } from "@jhin/client-api";
 import type { PermissionEntry } from "@jhin/sdk";
 import {
@@ -40,11 +41,32 @@ interface Client {
   readonly id: string;
   readonly label: string;
   readonly permissions: readonly string[];
-  readonly method: "pairing" | "issued";
+  readonly method: "pairing" | "issued" | "oauth";
   readonly createdAt: number;
   readonly expiresAt?: number;
   readonly lastSeenAt?: number;
   readonly current: boolean;
+  /** What the device said about itself when it paired (security.md D1187). */
+  readonly metadata?: {
+    readonly deviceType: "desktop" | "mobile" | "tablet" | "bot" | "unknown";
+    readonly os?: string;
+    readonly browser?: string;
+    readonly ipAddress?: string;
+  };
+}
+
+/** T3's device line: "Mobile · iOS · Safari · 192.168.1.20". */
+function deviceInfo(metadata: Client["metadata"]): string | undefined {
+  if (metadata === undefined) return undefined;
+  const bits = [
+    metadata.deviceType === "unknown"
+      ? undefined
+      : `${metadata.deviceType[0]!.toUpperCase()}${metadata.deviceType.slice(1)}`,
+    metadata.os,
+    metadata.browser,
+    metadata.ipAddress,
+  ].filter((bit): bit is string => bit !== undefined);
+  return bits.length === 0 ? undefined : bits.join(" · ");
 }
 
 interface PairingLink {
@@ -57,6 +79,8 @@ interface PairingLink {
 interface CreatedLink extends PairingLink {
   readonly code: string;
   readonly url: string;
+  /** The same code for a `jhin client` page (security.md D1190), when the node knows one. */
+  readonly clientLink?: string;
 }
 
 const when = (time: number) => new Date(time).toLocaleString();
@@ -254,6 +278,22 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                   <CopyIcon className="size-3.5" />
                 </Button>
               </div>
+              {created.clientLink === undefined ? null : (
+                <div className="flex w-full flex-col gap-1">
+                  <p className="text-xs text-muted-foreground">Or open it in a jhin client page:</p>
+                  <div className="flex w-full items-center gap-2">
+                    <Input aria-label="Client page link" readOnly value={created.clientLink} />
+                    <Button
+                      aria-label="Copy client page link"
+                      onClick={() => void copyText(created.clientLink!)}
+                      size="icon-sm"
+                      variant="outline"
+                    >
+                      <CopyIcon className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="flex w-full items-center gap-2">
                 <Input aria-label="Pairing code" readOnly value={created.code} />
                 <Button
@@ -291,21 +331,59 @@ function NodeClients({ node }: { node: NodeConnection }) {
     },
     [],
   );
+  // Changes come in bursts (create, pair, revoke): only the latest read may land.
+  const latest = useRef(0);
   const load = useCallback(() => {
+    const request = ++latest.current;
     Promise.all([
       node.client.call<{ clients: Client[] }>("auth.clients.list"),
       node.client.call<{ links: PairingLink[] }>("auth.pairing.list"),
     ]).then(
       ([listed, open]) => {
-        if (!mounted.current) return;
+        if (!mounted.current || request !== latest.current) return;
         setClients(listed.clients);
         setLinks(open.links);
         setError(undefined);
       },
-      (failure: unknown) => mounted.current && setError((failure as Error).message),
+      (failure: unknown) =>
+        mounted.current && request === latest.current && setError((failure as Error).message),
     );
   }, [node]);
   useEffect(load, [load]);
+  // Live updates, as T3 streams its client sessions (security.md D1188): every
+  // change of the node's clients or open links reads the lists again.
+  useEffect(() => {
+    const subscription = node.client.subscribe(
+      AUTH_CLIENTS_STREAM,
+      // Refused only for a token without `auth.read`, whose lists say why. A
+      // dropped connection is no error: the client resubscribes after the
+      // last event it saw, and the stream keeps its latest change for it.
+      { onError: () => {} },
+      () => load(),
+    );
+    return () => subscription.dispose();
+  }, [node, load]);
+  // An open link or a device token leaves the list when it expires: no event says so.
+  useEffect(() => {
+    const next = Math.min(
+      ...links.map((link) => link.expiresAt),
+      ...(clients ?? []).flatMap((client) =>
+        client.expiresAt === undefined ? [] : [client.expiresAt],
+      ),
+    );
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(
+      () => {
+        const now = Date.now();
+        setLinks((current) => current.filter((link) => link.expiresAt > now));
+        setClients((current) =>
+          current?.filter((client) => client.expiresAt === undefined || client.expiresAt > now),
+        );
+      },
+      Math.max(0, next - Date.now()) + 50,
+    );
+    return () => clearTimeout(timer);
+  }, [links, clients]);
   // One change at a time: the buttons wait for the node's answer.
   const run = (method: string, input: unknown) => {
     setPending(true);
@@ -391,6 +469,11 @@ function NodeClients({ node }: { node: NodeConnection }) {
                     : `Connected ${when(client.lastSeenAt)}`}
                   {client.expiresAt === undefined ? "" : ` · Expires ${when(client.expiresAt)}`}
                 </p>
+                {deviceInfo(client.metadata) === undefined ? null : (
+                  <p className="truncate text-xs text-muted-foreground">
+                    {deviceInfo(client.metadata)}
+                  </p>
+                )}
                 <p className="truncate text-xs text-muted-foreground">
                   Granted scopes: <code>{client.permissions.join(", ")}</code>
                 </p>

@@ -1,6 +1,7 @@
 import * as Crypto from "node:crypto";
 
 import {
+  AUTH_CLIENTS_STREAM,
   AUTH_VERIFIER_CAPABILITY,
   AuthEvents,
   OWNER_PRINCIPAL_ID,
@@ -16,6 +17,7 @@ import {
   PROTOCOL,
   TOKEN_PROTOCOL_PREFIX,
   createLiveStreams,
+  createMemoryStreams,
   serveRpc,
   webSocketPeer,
   type WebSocketLike,
@@ -135,6 +137,18 @@ export default definePlugin({
     // Streams other plugins keep in memory (terminal output), next to the event log's.
     const streams = createLiveStreams();
     context.services.provide(LIVE_STREAMS_CAPABILITY, streams);
+    // The token plugin cannot serve a stream of its own (this plugin depends on
+    // its verifier), so its changes reach clients here (security.md D1188).
+    const authClients = createMemoryStreams({ log: context.log });
+    context.subscriptions.add(
+      streams.serve(AUTH_CLIENTS_STREAM, authClients, { permissions: ["auth.read"] }),
+    );
+    context.events.on(AuthEvents.clientsChanged, () => {
+      // Only "it changed" matters: the latest event is all a subscriber needs.
+      // `clear` keeps the sequence counting, so the new event is above every old one.
+      authClients.clear(AUTH_CLIENTS_STREAM);
+      authClients.append(AUTH_CLIENTS_STREAM, AuthEvents.clientsChanged, {});
+    });
 
     // Only the protocol is echoed back, never the token subprotocol.
     const server = new WebSocketServer({

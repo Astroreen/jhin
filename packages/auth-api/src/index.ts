@@ -32,7 +32,15 @@ export const AuthEvents = {
   tokenRotated: "auth.token.rotated",
   /** `{ principal }`: a device token was revoked; its connections are dropped. */
   clientRevoked: "auth.client.revoked",
+  /**
+   * `{}`: device tokens or open pairing codes changed (security.md D1188);
+   * the transport turns it into the live stream `auth/clients`. Never carries a secret.
+   */
+  clientsChanged: "auth.clients.changed",
 } as const;
+
+/** The live stream that says the authorized clients changed (security.md D1188); needs `auth.read`. */
+export const AUTH_CLIENTS_STREAM = "auth/clients";
 
 /**
  * The httpOnly cookie that holds the device token of the node's own web page
@@ -55,4 +63,35 @@ export function readCookie(header: string | undefined, name: string): string | u
     }
   }
   return undefined;
+}
+
+/** The WHATWG URL parser both sides have (Node and browsers); the package has no DOM or Node types. */
+declare const URL: new (input: string) => PlainUrlParts;
+interface PlainUrlParts {
+  readonly protocol: string;
+  readonly username: string;
+  readonly password: string;
+  readonly search: string;
+  readonly hash: string;
+}
+
+/**
+ * A node's address for a pairing link (security.md D1190): http(s), perhaps
+ * under a path, never with credentials, a query or a fragment. The node and
+ * the web client check it alike.
+ */
+export function isPlainHttpUrl(value: string): boolean {
+  let url: PlainUrlParts;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    /^https?:$/.test(url.protocol) &&
+    url.username === "" &&
+    url.password === "" &&
+    url.search === "" &&
+    url.hash === ""
+  );
 }
