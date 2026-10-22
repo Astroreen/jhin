@@ -935,9 +935,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `health.<warningId>.<time>` (the ask's time in ms), naming a warning health raised before) are
   no ceremony: an ask from this node's owner, whom no agent can send as
   (D622), whose id names a warning health raised before. An agent that
-  copies such an id is counted like any other. The analyst's reply to that
-  ask (`inReplyTo` it, from the warning's analyst) is health's conversation
-  too: no ceremony, and no carrier of the idea it was asked to trace. The
+  copies such an id is counted like any other. The analyst's first reply to
+  an ask health delivered (`inReplyTo` its message, from the warning's
+  analyst) is health's conversation too: no ceremony, and no carrier of the idea it was asked to trace. The
   analyst's answer ends its turn (D624) and is not a delivered message.
 - **D723. Commits are the one progress no stream holds.** Every turn records
   its `HEAD` before it starts (turn-start hook,
@@ -1045,7 +1045,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `threads.read`; `events.read` for an unguarded stream), and names what it
   lacks (`withheld`) otherwise. The analyst's answer is health's own record and is
   read with `health.read`: the analyst writes it for whoever watches health,
-  agents included, as an agent writes any message.
+  agents included, as an agent writes any message. So are a warning's
+  summary and group (a mission's title, an idea's phrase and its carriers'
+  addresses): what health concludes is health's to read.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 

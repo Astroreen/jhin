@@ -493,13 +493,19 @@ export default definePlugin({
           message?: { inReplyTo?: string; from?: string };
         } | null
       )?.message;
+      // Only a reply to an ask health really delivered, and only its first
+      // reply: an id the sender merely writes into `inReplyTo` excludes nothing.
       const warningId =
-        message?.inReplyTo === undefined ? undefined : OWN_ASK.exec(message.inReplyTo)?.[1];
+        message?.inReplyTo === undefined ? undefined : asksDelivered.get(message.inReplyTo);
       const warning = warningId === undefined ? undefined : health.warnings[warningId];
       if (warning === undefined) return false;
       const analyst = warning.analysis?.analyst ?? analystOf(warning)?.address;
-      return analyst !== undefined && message?.from === analyst;
+      if (analyst === undefined || message?.from !== analyst) return false;
+      asksDelivered.delete(message!.inReplyTo!);
+      return true;
     };
+    /** Health's asks delivered on this node, by message id, until their first reply. */
+    const asksDelivered = new Map<string, string>();
     /** The warnings health already asked about, from the delivered asks (D725). */
     const askedBefore = new Set<string>();
     /** The warning a delivered message is health's own ask about, if it is one. */
@@ -540,8 +546,12 @@ export default definePlugin({
         handle: (event) => {
           if (event.type !== MessageEvents.delivered) return;
           const asked = ownAsk(event);
-          if (asked !== undefined) askedBefore.add(asked);
-          else if (!analystReply(event)) sensors.ingestMessage(event);
+          if (asked !== undefined) {
+            askedBefore.add(asked);
+            const messageId = (event.payload as { message?: { messageId?: string } } | null)
+              ?.message?.messageId;
+            if (messageId !== undefined) asksDelivered.set(messageId, asked);
+          } else if (!analystReply(event)) sensors.ingestMessage(event);
         },
       },
       { stream: SOURCE_CONTROL_STREAM, handle: (event) => sensors.ingestSourceControl(event) },

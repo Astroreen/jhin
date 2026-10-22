@@ -526,13 +526,25 @@ describe("jhin.health", () => {
     expect((await asking).to).toBe(BUILDER);
     await client.call("health.warnings.dismiss", { warningId: warning.warningId });
     const again = nextEvent(kernel, HealthEvents.warningRaised);
-    // The analyst replies to health's ask: health's own conversation, not ceremony.
+    // Health's ask is delivered (jhin.agents records it, D627).
+    await deliver(OWNER, BUILDER, asked[0]!.question, "t-ask", asked[0]!.messageId, "ask");
+    // The analyst replies to it: health's own conversation, not ceremony.
     await deliver(BUILDER, OWNER, "the reviews loop", "t1", "r1", "message", asked[0]!.messageId);
     const [three] = await deliver(OWNER, BUILDER, "three", "t1");
     const [four] = await deliver(OWNER, BUILDER, "four", "t1");
     // Counted, the reply would have raised it with "three"; it is raised with "three" and "four".
     const next = ((await again) as { warning: Warning }).warning;
     expect(next.evidence.map((ref) => ref.sequence)).toEqual([three!.sequence, four!.sequence]);
+
+    // A second "reply" naming the same ask, or one naming an ask never delivered,
+    // is an ordinary message: only the first reply to a delivered ask is health's.
+    const third = nextEvent(kernel, HealthEvents.warningRaised);
+    await client.call("health.warnings.dismiss", { warningId: next.warningId });
+    await deliver(BUILDER, OWNER, "again", "t1", "r2", "message", asked[0]!.messageId);
+    await deliver(BUILDER, OWNER, "forged", "t1", "r3", "message", `health.${next.warningId}.1`);
+    expect(((await third) as { warning: Warning }).warning.measures).toMatchObject({
+      ceremony: 2,
+    });
   });
 
   it("takes only the owner's ask with health's id as health's own, not an agent's copy of it", async () => {
