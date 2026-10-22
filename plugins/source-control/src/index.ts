@@ -973,6 +973,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return next;
   };
   const decideOnLinks = async (threadId: string) => {
+    // The threads as the node knows them: their branches decide when the links do not.
+    await loadThreads();
     const decided = await linkSettlement(threadId);
     // Removed meanwhile: its links are gone because it is, not because they closed.
     // Asked again after the read, so a removal that ended during it leaves nothing behind.
