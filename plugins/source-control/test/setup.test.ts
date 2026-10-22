@@ -535,6 +535,46 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     }
   });
 
+  it("lets the cleanup remove a deleted thread's worktree with clean submodules, and keep a dirty one (D1134)", async () => {
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "protocol.file.allow");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "always");
+    try {
+      const library = repository();
+      const dir = repository();
+      git(dir, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", library, "lib");
+      git(dir, "commit", "--quiet", "-m", "lib");
+      const sc = await node({ watch: false, worktreeCleanup: { onDelete: true } });
+      const projectId = await sc.project(dir);
+      const create = (threadId: string) =>
+        sc.client.call<{ worktreePath: string }>("threads.create", {
+          projectId,
+          threadId,
+          workspace: { type: "worktree", baseRef: "main" },
+        });
+      const clean = await create("clean-lib");
+      const dirty = await create("dirty-lib");
+      // Work inside the submodule only: the parent's status still shows it.
+      Fs.writeFileSync(Path.join(dirty.worktreePath, "lib", "notes.txt"), "mine\n");
+
+      // Clean, checked out submodules and all: the sweep after the deletion forces it away.
+      const swept = sc.logged("removed a worktree");
+      await sc.client.call("threads.delete", { threadId: "clean-lib" });
+      await swept;
+      expect(Fs.existsSync(clean.worktreePath)).toBe(false);
+
+      // The submodule's own changes keep the other one. Its record is decided by the
+      // sweep the deletion starts, which a cleanup asked for now waits for.
+      await sc.client.call("threads.delete", { threadId: "dirty-lib" });
+      await sc.client.call("git.worktree.cleanup", {});
+      expect(Fs.readFileSync(Path.join(dirty.worktreePath, "lib", "notes.txt"), "utf8")).toBe(
+        "mine\n",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("keeps a project's scripts and refuses two with one id", async () => {
     const sc = await node({ watch: false });
     const projectId = await projectWithScript(sc, { command: "pnpm install" });
