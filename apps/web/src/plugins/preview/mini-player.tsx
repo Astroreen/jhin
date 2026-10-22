@@ -150,6 +150,8 @@ export function MiniPlayer(props: MiniPlayerProps) {
     event: ReactPointerEvent<HTMLElement>,
     direction: PreviewMiniPlayerResizeDirection | null,
   ) => {
+    // A tap's click that never came does not toggle the pill on this press.
+    handleTappedRef.current = false;
     if (event.button !== 0 || frame === null) return;
     gestureRef.current = {
       pointerId: event.pointerId,
@@ -236,6 +238,7 @@ export function MiniPlayer(props: MiniPlayerProps) {
               handleTappedRef.current = false;
               setPillOpen((open) => !open);
             }}
+            onLostPointerCapture={endGesture}
             onPointerCancel={endGesture}
             onPointerDown={(event) => beginGesture(event, null)}
             onPointerMove={handlePointerMove}
@@ -325,6 +328,7 @@ export function MiniPlayer(props: MiniPlayerProps) {
               className={cn("pointer-events-auto absolute z-[49] touch-none", className)}
               data-preview-mini-player-resize={direction}
               key={direction}
+              onLostPointerCapture={endGesture}
               onPointerCancel={endGesture}
               onPointerDown={(event) => beginGesture(event, direction)}
               onPointerMove={handlePointerMove}

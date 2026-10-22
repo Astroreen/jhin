@@ -203,15 +203,60 @@ export const previewPanelPlugin = builtin(
         const chosen = active.get(key);
         return (tabs.find((tab) => tab.tabId === chosen) ?? tabs.at(-1))?.tabId;
       };
+      /** The route without the right panel (and the section it showed). */
+      const withoutPanel = (route: ReturnType<Navigation["current"]>) => {
+        const { panel: _panel, section: _section, ...rest } = route;
+        return rest;
+      };
       const closePanel = () => {
         const route = navigation.current();
-        if (route.panel !== BROWSER_PANEL) return;
-        const { panel: _panel, section: _section, ...rest } = route;
-        navigation.navigate(rest);
+        if (route.panel === BROWSER_PANEL) navigation.navigate(withoutPanel(route));
+      };
+      /** Feeds followed while their thread has a floating tab, so a tab closed off screen goes too. */
+      const following = new Map<string, Disposable>();
+      context.subscriptions.add({
+        dispose: () => {
+          for (const subscription of following.values()) subscription.dispose();
+          following.clear();
+        },
+      });
+      const follow = (key: string, node: string, threadId: string) => {
+        if (following.has(key)) return;
+        const feed = feeds.of(node, threadId);
+        const check = () => {
+          const state = players.get(key);
+          if (state === undefined) {
+            following.get(key)?.dispose();
+            following.delete(key);
+          } else if (feed.loaded() && !feed.tabs().some((tab) => tab.tabId === state.tabId)) {
+            // The floating tab closed, on screen or not (T3's ChatView closes the player).
+            players.close(key);
+          }
+        };
+        const onFeed = feed.subscribe(check);
+        const onPlayers = players.subscribe(check);
+        following.set(key, {
+          dispose: () => {
+            onFeed.dispose();
+            onPlayers.dispose();
+          },
+        });
+      };
+      /** Floats a tab of the thread on screen (by its key) and follows its feed. */
+      const floatTab = (key: string, tabId: string) => {
+        players.open(key, tabId);
+        const [node, threadId] = [
+          key.slice(0, key.lastIndexOf("|")),
+          key.slice(key.lastIndexOf("|") + 1),
+        ];
+        const route = navigation.current();
+        if (route.node !== undefined && targetKey({ node: route.node }) === node) {
+          follow(key, route.node, threadId);
+        }
       };
       /** T3's "Float preview over chat": the tab floats and the right panel closes. */
       const float = (key: string, tabId: string) => {
-        players.open(key, tabId);
+        floatTab(key, tabId);
         closePanel();
       };
 
@@ -235,9 +280,11 @@ export const previewPanelPlugin = builtin(
         });
 
       /** Opens or closes the right panel of the thread on screen. */
-      const toggle = () => {
+      /** Opens or closes the right panel; closing it floats the tab it showed (its id). */
+      const toggle = (): { toggled: boolean; floated: string | null } => {
         const route = navigation.current();
-        if (route.node === undefined || route.thread === undefined) return false;
+        if (route.node === undefined || route.thread === undefined)
+          return { toggled: false, floated: null };
         if (route.remote !== undefined) {
           toasts?.show({
             type: "info",
@@ -245,17 +292,18 @@ export const previewPanelPlugin = builtin(
             description:
               "The browser opens on nodes this client connects to; this thread is on another node of the mesh.",
           });
-          return false;
+          return { toggled: false, floated: null };
         }
-        const { panel, section: _section, ...rest } = route;
-        if (panel === BROWSER_PANEL) {
-          // Closing the panel floats the tab it showed, as T3's closePreviewPanel does (D1202).
-          const shown = threadOnScreen();
-          const tabId = shown === undefined ? undefined : shownTab(shown.key, shown.feed.tabs());
-          if (shown !== undefined && tabId !== undefined) players.open(shown.key, tabId);
+        if (route.panel !== BROWSER_PANEL) {
+          navigation.navigate({ ...withoutPanel(route), panel: BROWSER_PANEL });
+          return { toggled: true, floated: null };
         }
-        navigation.navigate(panel === BROWSER_PANEL ? rest : { ...rest, panel: BROWSER_PANEL });
-        return true;
+        // Closing the panel floats the tab it showed, as T3's closePreviewPanel does (D1202).
+        const shown = threadOnScreen();
+        const tabId = shown === undefined ? undefined : shownTab(shown.key, shown.feed.tabs());
+        if (shown !== undefined && tabId !== undefined) floatTab(shown.key, tabId);
+        navigation.navigate(withoutPanel(route));
+        return { toggled: true, floated: tabId ?? null };
       };
 
       context.commands.register({
@@ -264,8 +312,12 @@ export const previewPanelPlugin = builtin(
         description:
           "Opens or closes the right panel with the thread's browser tabs; closing it floats the tab it showed over the chat, as T3 does",
         input: z.object({}),
-        output: z.object({ toggled: z.boolean() }),
-        handler: () => ({ toggled: toggle() }),
+        output: z.object({
+          toggled: z.boolean(),
+          /** The tab that closing the panel floated over the chat (D1202). */
+          floated: z.string().nullable(),
+        }),
+        handler: () => toggle(),
       });
       context.commands.register({
         name: "preview.float",
