@@ -77,6 +77,23 @@ const FRAME_ACK_MS = 100;
 const FRAME_QUALITY = 70;
 const READ_OPERATIONS = new Set(["status", "snapshot", "waitFor"]);
 const VIEWER_NAVIGATION = { waitUntil: "commit", timeout: Ops.DEFAULT_TIMEOUT_MS } as const;
+/** T3's EDITABLE_AT_POINT_SCRIPT: whether a tap there should raise a soft keyboard (D1203). */
+const EDITABLE_AT_POINT_SCRIPT = `(x, y) => {
+  let element = document.elementFromPoint(x, y);
+  while (element && element.shadowRoot) {
+    const inner = element.shadowRoot.elementFromPoint(x, y);
+    if (!inner || inner === element) break;
+    element = inner;
+  }
+  if (element && element.tagName === "LABEL" && element.control) element = element.control;
+  if (!element) return false;
+  if (element.tagName === "IFRAME" || element.tagName === "FRAME") return true;
+  if (element.isContentEditable) return true;
+  if (element.tagName === "TEXTAREA") return !element.disabled && !element.readOnly;
+  if (element.tagName !== "INPUT") return false;
+  const nonText = ["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"];
+  return !nonText.includes(element.type) && !element.disabled && !element.readOnly;
+}`;
 
 interface Recording {
   readonly encoder: Page;
@@ -1460,6 +1477,67 @@ export function createTabs(options: TabsOptions) {
         }
         await answerDialog(tab, input.accept, input.promptText);
         return summary(tab);
+      });
+    },
+
+    /**
+     * The files the viewer holding control chose for the page's open file picker, or none to
+     * cancel it (T3's upload, D1203).
+     */
+    async uploadAsHuman(input: {
+      threadId: string;
+      tabId: string;
+      viewer: string;
+      files: readonly { name: string; mimeType?: string | undefined; data: string }[];
+    }): Promise<PreviewTab> {
+      return withErrors(async () => {
+        const tab = humanTab(input.threadId, input.tabId);
+        if (tab.control.controller !== input.viewer) {
+          throw new PreviewError("PREVIEW_CONTROL", "Take control to choose files.", {
+            reason: "humanControl",
+          });
+        }
+        const chooser = tab.fileChooser;
+        if (chooser === null) {
+          throw new PreviewError("PREVIEW_EXECUTION", "The page's file picker is no longer open.");
+        }
+        if (!chooser.isMultiple() && input.files.length > 1) {
+          throw new PreviewError("PREVIEW_EXECUTION", "This file picker accepts one file.");
+        }
+        tab.fileChooser = null;
+        changed(tab);
+        await chooser.setFiles(
+          input.files.map((file) => ({
+            name: file.name,
+            mimeType: file.mimeType || "application/octet-stream",
+            buffer: Buffer.from(file.data, "base64"),
+          })),
+        );
+        // The page may retitle itself on the files, as after a viewer's click.
+        void refreshTitle(tab).catch(() => undefined);
+        return summary(tab);
+      });
+    },
+
+    /** Whether the viewer holding control tapped something editable (T3's probe, D1203). */
+    async probe(input: {
+      threadId: string;
+      tabId: string;
+      viewer: string;
+      x: number;
+      y: number;
+    }): Promise<{ x: number; y: number; editable: boolean }> {
+      return withErrors(async () => {
+        const tab = humanTab(input.threadId, input.tabId);
+        if (tab.control.controller !== input.viewer) {
+          throw new PreviewError("PREVIEW_CONTROL", "Take control to use the page.", {
+            reason: "humanControl",
+          });
+        }
+        const editable = await tab.page.evaluate(
+          `(${EDITABLE_AT_POINT_SCRIPT})(${input.x}, ${input.y})`,
+        );
+        return { x: input.x, y: input.y, editable: editable === true };
       });
     },
 

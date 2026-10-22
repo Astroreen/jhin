@@ -807,6 +807,59 @@ export const PreviewTabDialogInput = z.object({
   promptText: z.string().max(10_000).optional(),
 });
 
+/** T3's most files a page's file picker takes in one upload (D1203). */
+export const PREVIEW_UPLOAD_MAX_FILES = 20;
+/**
+ * The most bytes one upload carries. T3 takes 100 MB through HTTP; an upload here is one RPC
+ * message of base64, which the WebSocket transport takes up to 100 MiB of (D1203).
+ */
+export const PREVIEW_UPLOAD_MAX_BYTES = 64 * 1024 * 1024;
+
+/** One file the user chose for a page's file picker, its bytes in base64. */
+export const PreviewUploadFile = z.object({
+  name: z.string().min(1).max(255),
+  mimeType: z.string().max(255).optional(),
+  data: z.string().max(Math.ceil(PREVIEW_UPLOAD_MAX_BYTES / 3) * 4),
+});
+export type PreviewUploadFile = z.infer<typeof PreviewUploadFile>;
+
+/** The bytes a base64 string decodes to. */
+function base64Bytes(data: string): number {
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.floor((data.length * 3) / 4) - padding;
+}
+
+/**
+ * Answers the open file picker of a tab with the files the viewer holding control chose,
+ * or cancels it with none (T3's upload of the stream, D1203).
+ */
+export const PreviewTabUploadInput = z
+  .object({
+    ...TabFields,
+    viewer: PreviewViewerId,
+    files: z.array(PreviewUploadFile).max(PREVIEW_UPLOAD_MAX_FILES),
+  })
+  .refine(
+    (input) =>
+      input.files.reduce((total, file) => total + base64Bytes(file.data), 0) <=
+      PREVIEW_UPLOAD_MAX_BYTES,
+    { message: `An upload carries at most ${PREVIEW_UPLOAD_MAX_BYTES / 1024 / 1024} MiB.` },
+  );
+
+/** Whether a tap at a page point lands on something editable (T3's probe, D1203). */
+export const PreviewTabProbeInput = z.object({
+  ...TabFields,
+  viewer: PreviewViewerId,
+  x: z.number().finite(),
+  y: z.number().finite(),
+});
+export const PreviewTabProbeResult = z.object({
+  x: z.number(),
+  y: z.number(),
+  editable: z.boolean(),
+});
+export type PreviewTabProbeResult = z.infer<typeof PreviewTabProbeResult>;
+
 /** Modifier bits of T3's stream input: alt 1, ctrl 2, meta 4, shift 8. */
 export const PreviewModifiers = z.number().int().min(0).max(15);
 

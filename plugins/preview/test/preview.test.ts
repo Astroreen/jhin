@@ -52,6 +52,11 @@ const PAGES: Record<string, string> = {
   "/second": `<!doctype html><title>Second</title><p>Second page text</p>`,
   "/popup": `<!doctype html><title>Opener</title><a href="/second" target="_blank">Open popup</a>`,
   "/upload": `<!doctype html><title>Upload</title><input type="file" aria-label="File" id="file">`,
+  "/pick": `<!doctype html><title>Pick</title>
+    <style>body{margin:0} input{display:block;box-sizing:border-box;width:400px;height:100px}</style>
+    <input type="file" id="file" multiple onchange="out.textContent = 'got ' + [...this.files].map((f) => f.name + ':' + f.size).join(',')">
+    <input aria-label="Text" id="text">
+    <p id="out"></p>`,
   "/drag": `<!doctype html><title>Drag</title>
     <div draggable="true" id="source" style="width:80px;height:40px">Drag me</div>
     <div id="target" style="width:160px;height:80px;margin-top:40px">Drop here</div>
@@ -332,6 +337,82 @@ describe("jhin.preview", () => {
       return tab?.visible === false && tab.controller === null;
     });
     await client.call("preview.press", { threadId: thread, key: "Tab" });
+  });
+
+  it("answers the page's file picker with a human's files, and probes what a tap edits (D1203)", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/pick`,
+    });
+    const tabId = opened.tabId!;
+    await client.call("preview.wait.for", { threadId: thread, selector: "#text" });
+    const tabsStream = watch(client, previewTabsStream(thread));
+    await client.call("preview.tab.control", { threadId: thread, tabId, viewer: "v1", take: true });
+
+    // The file input is not editable text; the text input is.
+    const probe = (x: number, y: number) =>
+      client.call<{ editable: boolean }>("preview.tab.probe", {
+        threadId: thread,
+        tabId,
+        viewer: "v1",
+        x,
+        y,
+      });
+    expect(await probe(50, 50)).toMatchObject({ editable: false });
+    expect(await probe(50, 110)).toMatchObject({ editable: true });
+    const notYours = await rejection(
+      client.call("preview.tab.probe", { threadId: thread, tabId, viewer: "v2", x: 1, y: 1 }),
+    );
+    expect(notYours.code).toBe("PREVIEW_CONTROL");
+
+    // Nothing to answer before the page asks.
+    const early = await rejection(
+      client.call("preview.tab.upload", { threadId: thread, tabId, viewer: "v1", files: [] }),
+    );
+    expect(early.message).toBe("The page's file picker is no longer open.");
+
+    // The human clicks the file input: the tab reports its picker.
+    const click = () =>
+      client.call("preview.tab.input", {
+        threadId: thread,
+        tabId,
+        viewer: "v1",
+        events: [
+          {
+            type: "mouse",
+            action: "down",
+            x: 50,
+            y: 50,
+            button: "left",
+            buttons: 1,
+            clickCount: 1,
+          },
+          { type: "mouse", action: "up", x: 50, y: 50, button: "left", clickCount: 1 },
+        ],
+      });
+    await click();
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser?.multiple === true);
+
+    // Their files reach the page, and the picker is answered.
+    await client.call("preview.tab.upload", {
+      threadId: thread,
+      tabId,
+      viewer: "v1",
+      files: [
+        { name: "a.txt", mimeType: "text/plain", data: Buffer.from("hello").toString("base64") },
+        { name: "b.bin", data: Buffer.from([1, 2, 3]).toString("base64") },
+      ],
+    });
+    await client.call("preview.wait.for", { threadId: thread, text: "got a.txt:5,b.bin:3" });
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser === null);
+
+    // Cancelling with no files closes the next picker.
+    await click();
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser !== null);
+    await client.call("preview.tab.upload", { threadId: thread, tabId, viewer: "v1", files: [] });
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.fileChooser === null);
+    tabsStream.subscription.dispose();
   });
 
   it("fills the viewer's size and resizes to a device preset", async () => {
