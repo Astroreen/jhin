@@ -159,7 +159,8 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 ## Apps, tests, scripts
 
 - `apps/jhin` — the CLI `jhin` (published as `jhin-ai`): `serve`, `inspect`,
-  `pair` (a pairing link and its QR code, `plans/security.md` D1185) and every
+  `pair` (a pairing link and its QR code, `plans/security.md` D1185; `--tailscale`
+  publishes the node over Tailscale Serve, D1189) and every
   command as a subcommand.
 - `apps/web` — the web client.
 - `apps/desktop` — the Electron desktop app: runs `jhin serve --ui`

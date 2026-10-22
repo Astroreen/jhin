@@ -1,9 +1,13 @@
+import * as Http from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { describe, expect, it } from "vite-plus/test";
 
-import type { Probe, RuntimeState } from "../src/pair.ts";
+import { probeNode, type Probe, type RuntimeState } from "../src/pair.ts";
 import {
   parseMagicDnsName,
   publishOverTailscale,
+  replaceable,
   tailscaleBaseUrl,
   type TailscaleRunner,
 } from "../src/tailscale.ts";
@@ -18,12 +22,19 @@ const STATUS = JSON.stringify({ Self: { DNSName: "studio.tail1234.ts.net." } });
 
 /** A fake `tailscale` that records its calls; `serve` succeeds unless told otherwise. */
 function fakeTailscale(
-  overrides: { status?: { code: number; stdout: string }; serve?: number } = {},
+  overrides: {
+    status?: { code: number; stdout: string };
+    serve?: number;
+    serveStatus?: string;
+  } = {},
 ) {
   const calls: string[][] = [];
   const run: TailscaleRunner = async (args) => {
     calls.push([...args]);
     if (args[0] === "status") return overrides.status ?? { code: 0, stdout: STATUS };
+    if (args[0] === "serve" && args[1] === "status") {
+      return { code: 0, stdout: overrides.serveStatus ?? "{}" };
+    }
     return { code: overrides.serve ?? 0, stdout: "" };
   };
   return { calls, run };
@@ -71,6 +82,7 @@ describe("Tailscale Serve for jhin pair", () => {
     expect(published.baseUrl).toBe("https://studio.tail1234.ts.net");
     expect(tailscale.calls).toEqual([
       ["status", "--json"],
+      ["serve", "status", "--json"],
       ["serve", "--bg", "--https=443", "http://127.0.0.1:7777"],
     ]);
     expect(seen).toHaveLength(3);
@@ -150,5 +162,109 @@ describe("Tailscale Serve for jhin pair", () => {
       pause,
     });
     expect(published.notes.at(-1)).toContain("The HTTPS endpoint has not answered yet.");
+  });
+});
+
+describe("what a fresh mapping may replace (security.md D1189)", () => {
+  const status = (tcp: object, handlers: object) =>
+    JSON.stringify({
+      TCP: { "443": tcp },
+      Web: { "studio.tail1234.ts.net:443": { Handlers: { "/": handlers } } },
+    });
+
+  it("takes an empty port or a stale loopback proxy, and nothing else", () => {
+    expect(replaceable("{}", 443)).toBe(true);
+    expect(replaceable("", 443)).toBe(true);
+    expect(replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 443)).toBe(
+      true,
+    );
+    expect(replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 8443)).toBe(
+      true,
+    );
+    expect(replaceable(status({ TCPForward: "127.0.0.1:22" }, {}), 443)).toBe(false);
+    expect(replaceable(status({ HTTPS: true }, { Proxy: "http://10.0.0.5:80" }), 443)).toBe(false);
+    expect(replaceable(status({ HTTPS: true }, { Path: "/srv/www" }), 443)).toBe(false);
+    expect(replaceable(status({ HTTPS: true }, { Text: "hello" }), 443)).toBe(false);
+    expect(replaceable("{not json", 443)).toBe(false);
+  });
+
+  it("leaves an occupied port alone, even when its backend is down", async () => {
+    const tailscale = fakeTailscale({
+      serveStatus: JSON.stringify({ TCP: { "443": { TCPForward: "127.0.0.1:22" } } }),
+    });
+    await expect(
+      publishOverTailscale({
+        node,
+        servePort: 443,
+        run: tailscale.run,
+        probe: probes({ kind: "unreachable" }).probe,
+        pause,
+      }),
+    ).rejects.toThrow("already serves something that is not this Jhin node");
+    expect(tailscale.calls.some((call) => call[0] === "serve" && call[1] === "--bg")).toBe(false);
+  });
+
+  it("never hands out a link when something else answers the fresh mapping", async () => {
+    await expect(
+      publishOverTailscale({
+        node,
+        servePort: 443,
+        run: fakeTailscale().run,
+        probe: probes({ kind: "unreachable" }, { kind: "other" }).probe,
+        pause,
+      }),
+    ).rejects.toThrow("answers as something that is not this Jhin node");
+    await expect(
+      publishOverTailscale({
+        node,
+        servePort: 443,
+        run: fakeTailscale().run,
+        probe: probes({ kind: "unreachable" }, { kind: "node", instance: "another-node" }).probe,
+        pause,
+      }),
+    ).rejects.toThrow("already fronts a different Jhin node");
+  });
+});
+
+describe("probing an address (security.md D1184, D1189)", () => {
+  it("tells this node, a gone backend, something else and nothing apart", async () => {
+    const answers: Record<string, (response: Http.ServerResponse) => void> = {
+      // Keyed by what each server stands for; every one answers /.well-known/jhin.
+      "/node/.well-known/jhin": (response) =>
+        response.writeHead(200, { "content-type": "application/json" }).end('{"instance":"abc"}'),
+      "/gateway/.well-known/jhin": (response) => response.writeHead(502).end("Bad Gateway"),
+      "/json/.well-known/jhin": (response) =>
+        response.writeHead(200, { "content-type": "application/json" }).end('{"hello":1}'),
+      "/html/.well-known/jhin": (response) =>
+        response.writeHead(200, { "content-type": "text/html" }).end("<html></html>"),
+    };
+    // Each case on its own server: probeNode always asks the origin's /.well-known/jhin.
+    const servers: Http.Server[] = [];
+    const listen = async (answer: (response: Http.ServerResponse) => void) => {
+      const one = Http.createServer((_request, response) => answer(response));
+      servers.push(one);
+      await new Promise<void>((resolve) => one.listen(0, "127.0.0.1", resolve));
+      return `http://127.0.0.1:${(one.address() as AddressInfo).port}`;
+    };
+    try {
+      expect(await probeNode(await listen(answers["/node/.well-known/jhin"]!))).toEqual({
+        kind: "node",
+        instance: "abc",
+      });
+      expect(await probeNode(await listen(answers["/gateway/.well-known/jhin"]!))).toEqual({
+        kind: "unreachable",
+      });
+      expect(await probeNode(await listen(answers["/json/.well-known/jhin"]!))).toEqual({
+        kind: "other",
+      });
+      expect(await probeNode(await listen(answers["/html/.well-known/jhin"]!))).toEqual({
+        kind: "other",
+      });
+      const closed = await listen(answers["/node/.well-known/jhin"]!);
+      await new Promise<void>((resolve) => servers.pop()!.close(() => resolve()));
+      expect(await probeNode(closed)).toEqual({ kind: "unreachable" });
+    } finally {
+      for (const one of servers) one.close();
+    }
   });
 });

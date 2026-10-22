@@ -545,8 +545,10 @@ The threat model comes first; the decisions after it implement it.
   `https://<name>:<port>/.well-known/jhin` (port 443 by default,
   `--tailscale-serve-port`); a mapping that answers with this node's
   `instance` is kept, one that answers 502–504 or not at all is
-  (re)created with `tailscale serve --bg --https=<port> <local url>`, and
-  one that answers anything else is never replaced ("… already serves
+  (re)created with `tailscale serve --bg --https=<port> <local url>` only
+  when `tailscale serve status --json` shows the port empty or proxying to
+  a loopback address (a node's old port), and one that answers anything
+  else, or a port with a TCP forward or another handler, is never replaced ("… already serves
   something that is not this Jhin node. Pass --tailscale-serve-port …").
   What it publishes: the node's whole HTTP server (web client, `/rpc`,
   `/auth/*`, `/mcp`, `/mesh/*`) to every device of the tailnet, over HTTPS

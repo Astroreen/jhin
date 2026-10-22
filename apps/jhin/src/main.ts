@@ -289,6 +289,14 @@ async function pair(
     return 2;
   }
   const tailscale = options.get("tailscale") === true;
+  if (options.has("tailscale") && !tailscale) {
+    process.stderr.write("--tailscale takes no value\n");
+    return 2;
+  }
+  if (options.has("tailscale-serve-port") && !tailscale) {
+    process.stderr.write("--tailscale-serve-port needs --tailscale\n");
+    return 2;
+  }
   const servePort = Number(option("tailscale-serve-port") ?? DEFAULT_TAILSCALE_SERVE_PORT);
   if (tailscale && (remote.url !== undefined || options.has("base-url"))) {
     process.stderr.write(

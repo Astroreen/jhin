@@ -187,6 +187,29 @@ describe("jhin pair against a running node", () => {
   });
 });
 
+describe("jhin pair's Tailscale options (security.md D1189)", () => {
+  it("refuses what would publish or pair somewhere else than asked", async () => {
+    const home = newHome();
+    const runs = await Promise.all(
+      [
+        [["--tailscale", "--url", "http://127.0.0.1:9"], "takes no --url or --base-url"],
+        [["--tailscale", "--base-url", "https://x.example"], "takes no --url or --base-url"],
+        [["--tailscale", "--tailscale-serve-port", "70000"], "takes a port"],
+        [["--tailscale", "--tailscale-serve-port"], "needs a value"],
+        [["--tailscale-serve-port", "8443"], "needs --tailscale"],
+        [["--tailscale", "yes"], "takes no value"],
+      ].map(async ([args, message]) => ({
+        message: message as string,
+        result: await jhin("pair", "--home", home, ...(args as string[])),
+      })),
+    );
+    for (const { message, result } of runs) {
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain(message);
+    }
+  }, 30_000);
+});
+
 describe("finding the running node (security.md D1184)", () => {
   it("says so when no node runs from the home, and when the recorded one is gone", async () => {
     const home = newHome();
