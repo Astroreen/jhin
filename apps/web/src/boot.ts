@@ -32,9 +32,9 @@ import { orchestrationViewPlugin } from "./plugins/orchestration/index.tsx";
 import { previewPanelPlugin } from "./plugins/preview/index.tsx";
 import { sourceControlPlugin } from "./plugins/source-control/index.tsx";
 import { terminalPlugin } from "./plugins/terminal/index.tsx";
+import { threadWorkPlugin } from "./plugins/thread-work.ts";
 import { threadsStorePlugin } from "./plugins/threads-store.ts";
 import { uiHostPlugin } from "./plugins/ui-host.tsx";
-import { threadWorkPlugin } from "./plugins/thread-work.ts";
 import { visitsPlugin } from "./plugins/visits.ts";
 import { threadActionsPlugin } from "./plugins/thread-actions.tsx";
 
