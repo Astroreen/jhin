@@ -31,12 +31,17 @@ export const threadKey = (target: NodeTarget, threadId: string): string =>
   `${targetKey(target)}|${threadId}`;
 
 /** Where a thread's latest turn is, as T3's sidebar names it. */
-export type SidebarThreadStatus = "approval" | "input" | "working" | "failed" | "ready";
+export type SidebarThreadStatus = "approval" | "input" | "working" | "waiting" | "failed" | "ready";
 
-export function sidebarThreadStatus(thread: ThreadRecord): SidebarThreadStatus {
+/**
+ * `waiting`: between its turns the thread waits on background work, such as a
+ * watched pull request (T3's `backgroundWorkHoldsCompletion`, D1131).
+ */
+export function sidebarThreadStatus(thread: ThreadRecord, waiting = false): SidebarThreadStatus {
   const turn = thread.lastTurn;
   if (turn?.status === "waiting") return turn.waitingFor === "user-input" ? "input" : "approval";
   if (turn?.status === "running") return "working";
+  if (waiting) return "waiting";
   if (turn?.status === "failed") return "failed";
   return "ready";
 }
@@ -50,7 +55,14 @@ export function isUnread(thread: ThreadRecord, lastVisitedAt: string | undefined
   return turn?.status === "completed" && lastVisitedAt !== undefined && lastVisitedAt < turn.at;
 }
 
-export type SidebarTopStatus = "working" | "approval" | "input" | "failed" | "woke" | "done";
+export type SidebarTopStatus =
+  | "working"
+  | "waiting"
+  | "approval"
+  | "input"
+  | "failed"
+  | "woke"
+  | "done";
 
 /** What the top line of a thread's card says instead of its time (T3's resolveSidebarV2TopStatus). */
 export function sidebarTopStatus(
@@ -71,7 +83,7 @@ export function shouldRecede(input: {
   woke?: boolean;
 }): boolean {
   if (input.active || input.status === "input") return false;
-  if (input.status === "working") return true;
+  if (input.status === "working" || input.status === "waiting") return true;
   if (input.status === "ready" || input.status === "approval") {
     return !input.unread && input.woke !== true;
   }
@@ -206,6 +218,8 @@ export function sidebarThreads<Node extends CatalogNode>(
     readonly scope?: string | undefined;
     /** T3's Working section (beta, a device setting): threads at work leave the inbox for it. */
     readonly working?: boolean | undefined;
+    /** A thread that waits on background work (D1131): it is at work too. */
+    readonly waiting?: ((node: Node, thread: ThreadRecord) => boolean) | undefined;
   },
 ): Record<ThreadSection, SidebarThread<Node>[]> {
   const lists: Record<ThreadSection, SidebarThread<Node>[]> = {
@@ -228,7 +242,13 @@ export function sidebarThreads<Node extends CatalogNode>(
         continue;
       }
       let section = threadSection(thread, options.nowMs);
-      if (section === "active" && options.working === true && isWorking(thread))
+      if (
+        section === "active" &&
+        options.working === true &&
+        (isWorking(thread) ||
+          // One that asks the user something stays in the inbox, watched or not.
+          (thread.lastTurn?.status !== "waiting" && options.waiting?.(node, thread) === true))
+      )
         section = "working";
       const at = section === "settled" ? settledAt(thread, options.nowMs) : undefined;
       lists[section].push({

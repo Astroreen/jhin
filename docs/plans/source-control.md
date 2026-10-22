@@ -901,6 +901,26 @@ with screenshots).
   (additive) and the client hook of D255 skips "Delete the worktree too?",
   the sweep removing the worktree instead.
 
+- **D1131. A watched pull request keeps its thread "Waiting"**, as T3's
+  pending background work (`pullRequestWatchTasks`): the new client
+  capability `client.thread-work@1` (`@jhin/client-api`, provided by
+  `jhin.thread-work`) joins the work plugins report per thread
+  (`ThreadWorkTask`: T3's task id, description and kind); source control
+  reports "Watching pull request #N" (`monitor`) for each watched link.
+  The sidebar shows a thread whose latest turn neither runs nor asks
+  anything, and that has work holding its completion (T3's
+  `backgroundWorkHoldsCompletion`: all but `command`), as "Waiting" with
+  T3's `CircleDotDashed` icon, also after a failed turn (T3's order: its
+  background-work Waiting comes before Failed, and the watch wakes the
+  thread on its next news); it recedes like a working thread and, with
+  the Working section on, sits there instead of the inbox. W32's
+  background subagent work can report through the same capability.
+- **D1132. A wake notifies as any turn does.** A watch wakes its thread
+  with a message (D271), whose turn ends with the chat's completion
+  notification; T3 has no notification of its own for a wake (at D53 its
+  `threadNotifications` know completion and input only), so neither has
+  Jhin.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1280,9 +1300,9 @@ with the node's token, and without one).
   reference forms and terminology), and a "Checkout pull request" offered
   while the node cannot write (T3's `canWriteSourceControl`).
 - Watching (D274): review thread comments on lines, required checks of
-  forges other than GitHub (D908), read fingerprints, rate limit pauses, a
-  notification for a wake and the sidebar's "Waiting" for a watched thread
-  (W14 may take it).
+  forges other than GitHub (D908), read fingerprints, rate limit pauses;
+  T3's hover list of a waiting thread's background tasks, and "Waiting" for
+  a thread on a mesh member (D1131 follows the client's own connections).
 - T3's right panel of a thread's pull requests, its chat header rows, native
   stacks of a forge (and their "Dismiss from thread") and the instructions
   that tell agents to link what they open.

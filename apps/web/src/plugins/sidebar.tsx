@@ -46,6 +46,9 @@ import {
   CHAT_DRAFTS_CAPABILITY,
   UNDO_CAPABILITY,
   VISITS_CAPABILITY,
+  THREAD_WORK_CAPABILITY,
+  workHoldsCompletion,
+  type ThreadWork,
   lastVisitOf,
   visitKey,
   type ChatDrafts,
@@ -111,6 +114,7 @@ import {
   CircleAlertIcon,
   CircleCheckIcon,
   CircleDashedIcon,
+  CircleDotDashedIcon,
   ClockIcon,
   CopyIcon,
   FolderIcon,
@@ -402,6 +406,7 @@ const TOP_STATUS: Record<
   { label: string; className: string; icon: ComponentType<{ className?: string }> }
 > = {
   working: { label: "Working", className: "text-info", icon: CircleDashedIcon },
+  waiting: { label: "Waiting", className: "text-muted-foreground", icon: CircleDotDashedIcon },
   approval: { label: "Approval", className: "text-warning-foreground", icon: ShieldQuestionIcon },
   input: {
     label: "Input",
@@ -476,11 +481,20 @@ export const sidebarPlugin = builtin(
       [MACHINES_CAPABILITY]: "^1",
       [CHAT_DRAFTS_CAPABILITY]: "^1",
       [UNDO_CAPABILITY]: "^1",
+      [THREAD_WORK_CAPABILITY]: "^1",
     },
   },
   definePlugin({
     activate(context) {
       const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
+      const work = context.services.tryGet<ThreadWork>(THREAD_WORK_CAPABILITY);
+      /** Bumped when background work changes, so lists and rows read it again (D1131). */
+      const workVersion = createValue(0);
+      if (work !== undefined) {
+        context.subscriptions.add(work.subscribe(() => workVersion.set(workVersion.get() + 1)));
+      }
+      const waitingOn = (target: NodeTarget, threadId: string) =>
+        work !== undefined && workHoldsCompletion(work.tasks(target, threadId));
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const mesh = context.services.get<MeshMembership>(MESH_CAPABILITY);
@@ -1007,7 +1021,12 @@ export const sidebarPlugin = builtin(
           ? state.scoped
           : undefined;
         const sections = withDrop(
-          sidebarThreads(nodes, { nowMs, scope: scopeKey, working: state.working }),
+          sidebarThreads(nodes, {
+            nowMs,
+            scope: scopeKey,
+            working: state.working,
+            waiting: (node, thread) => waitingOn(node.target, thread.id),
+          }),
           state.drop,
         );
         const { pinned, active, working, snoozed, settled } = sections;
@@ -1383,7 +1402,8 @@ export const sidebarPlugin = builtin(
         const [renaming, setRenaming] = useState<string | undefined>();
         const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false);
         const committed = useRef(false);
-        const status = sidebarThreadStatus(thread);
+        useExternal(workVersion, workVersion.get);
+        const status = sidebarThreadStatus(thread, waitingOn(target, thread.id));
         // The node's record wins: it is what every device saw (D485).
         const lastVisit = lastVisitOf(thread, seen[visitKey(target, thread.id)]);
         const unread = isUnread(thread, lastVisit);
@@ -2556,6 +2576,7 @@ export const sidebarPlugin = builtin(
         const drop = useExternal(optimistic, optimistic.get);
         const drag = useExternal(dragState, dragState.get);
         const now = useExternal(clock, clock.get);
+        useExternal(workVersion, workVersion.get);
         const sensors = useSensors(useSensor(PointerSensor, POINTER_SENSOR_OPTIONS));
         const current = routeThreadKey(route);
         const content = useExternal(contentSearch, contentSearch.get);

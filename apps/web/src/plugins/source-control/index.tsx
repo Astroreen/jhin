@@ -8,6 +8,8 @@ import {
   THREAD_DETAILS_SLOT,
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
+  THREAD_WORK_CAPABILITY,
+  type ThreadWork,
   type ChatComposerContextProps,
   type ChatHeaderActionProps,
   type ChatTurnFooterProps,
@@ -46,6 +48,7 @@ import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
 import { createRunningActions } from "./running.ts";
 import { createChangedFilesFooter } from "./checkpoints.tsx";
 import { createWorktreeSetupHeader } from "./worktree-setup.tsx";
+import { createWatchedWork } from "./work.ts";
 import { createEditors, pathInside, preferredEditor } from "./diff/editors.tsx";
 import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
 import { turnScopeProvider } from "./diff/turns.ts";
@@ -82,6 +85,7 @@ export const sourceControlPlugin = builtin(
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
       [SETTINGS_CAPABILITY]: "^1",
+      [THREAD_WORK_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -387,6 +391,12 @@ export const sourceControlPlugin = builtin(
       function DiffPanelSlot() {
         const route = useExternal(navigation, navigation.current);
         return route.panel === DIFF_PANEL ? <DiffPanel /> : null;
+      }
+      // A watched pull request keeps its thread waiting between turns (D1131).
+      const work = context.services.tryGet<ThreadWork>(THREAD_WORK_CAPABILITY);
+      if (work !== undefined) {
+        const watched = context.subscriptions.add(createWatchedWork(store, connections));
+        context.subscriptions.add(work.register(watched));
       }
       context.subscriptions.add(
         slots.contribute<ChatTurnHeaderProps>("chat.turn.header", {
