@@ -1993,9 +1993,12 @@ the sidebar's settling. The reference is D53's tag:
   off by default; "Inactivity does not settle threads with a pull request.
   Merge and close still do."), any pull request of the thread, linked or of
   its branch, in any state, keeps it. A merged or closed one still settles
-  it through `threads.auto-settle` (D447). What the sweep found is kept in
-  memory until the next sweep, so a thread kept by its pull request is not
-  on the Settled shelf meanwhile either. A thread whose pull requests cannot
+  it through `threads.auto-settle` (D447). A branch not looked up yet counts
+  as a pull request of unknown state: kept with "Keep threads with a PR",
+  ignored without it. What the sweep found is kept in memory until the next
+  sweep, which the node's other rules (pinning, un-settling) read too; after
+  a restart it is found again by the first sweep, which settles nothing it
+  keeps. A thread whose pull requests cannot
   be read (the lookup failed) stays where it is until a sweep can read them.
 - **D1173. Settling per project.** T3 resolves the four settle settings per
   project (`projectSettingsOverrides`); a Jhin node has one project config

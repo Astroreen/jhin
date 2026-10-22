@@ -2380,11 +2380,19 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         linked: true,
       }));
       const thread = threads.get(threadId);
-      const own =
-        thread?.branch == null
-          ? undefined
-          : repos.get(thread.projectId)?.pullRequests.get(thread.branch)?.pr;
-      return own == null ? linked : [...linked, { state: own.state, linked: false }];
+      const repo = thread === undefined ? undefined : repos.get(thread.projectId);
+      // The default branch has no pull request of its own.
+      if (
+        thread?.branch == null ||
+        repo === undefined ||
+        thread.branch === repo.status?.defaultBranch
+      ) {
+        return linked;
+      }
+      const cached = repo.pullRequests.get(thread.branch);
+      // Not looked up yet: whether it has one is not known.
+      if (cached === undefined) return [...linked, { state: "unknown" as const, linked: false }];
+      return cached.pr === null ? linked : [...linked, { state: cached.pr.state, linked: false }];
     },
   });
   return service;

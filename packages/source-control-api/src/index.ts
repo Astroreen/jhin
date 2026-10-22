@@ -9,7 +9,10 @@ export const SOURCE_CONTROL_CAPABILITY = "source-control.git";
  */
 export const PULL_REQUESTS_CAPABILITY = "source-control.pull-requests";
 
-/** A pull request of a thread as the node last saw it; `unknown`: linked, not read yet. */
+/**
+ * A pull request of a thread as the node last saw it; `unknown`: linked and not read
+ * yet, or its branch not looked up yet.
+ */
 export interface ThreadPullRequestState {
   readonly state: "open" | "merged" | "closed" | "unknown";
   /** Linked to the thread (D267); else the pull request of its branch. */

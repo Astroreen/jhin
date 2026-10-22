@@ -254,7 +254,7 @@ describe("jhin.threads: pull requests and projects in settling (D1172, D1173)", 
     expect((await get(merged.id)).settledOverride).toBeUndefined();
     expect((await get(branch.id)).settledOverride).toBeUndefined();
     expect((await get(none.id)).settledOverride).toBe("settled");
-    // A merge still settles it (D447), and a thread kept is not settled by a later arrange.
+    // A merge still settles it (D447).
     expect(
       await client.call("threads.auto-settle", {
         threadId: merged.id,

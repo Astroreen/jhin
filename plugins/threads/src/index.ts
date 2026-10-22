@@ -149,12 +149,14 @@ const Config = z
     projects: z
       .record(
         z.string(),
-        z.object({
-          autoSettleOnMerge: z.boolean().optional(),
-          autoSettleInactive: z.boolean().optional(),
-          autoSettleAfterDays: z.number().int().min(1).max(90).optional(),
-          autoSettleKeepPullRequests: z.boolean().optional(),
-        }),
+        z
+          .object({
+            autoSettleOnMerge: z.boolean().optional(),
+            autoSettleInactive: z.boolean().optional(),
+            autoSettleAfterDays: z.number().int().min(1).max(90).optional(),
+            autoSettleKeepPullRequests: z.boolean().optional(),
+          })
+          .strict(),
       )
       .default({})
       .meta({
