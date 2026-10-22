@@ -46,9 +46,8 @@ describe("jhin.agent-codex: /goal (D1149)", () => {
       { threadId: "codex-thread-1", objective: "Fix the tests", status: "paused" },
       { threadId: "codex-thread-1", status: "active" },
     ]);
-    expect((fake.received("turn/start")[0]?.params?.["input"] as { text: string }[])[0]?.text).toBe(
-      "Fix the tests",
-    );
+    const input = (fake.received("turn/start")[0]?.params?.["input"] ?? []) as { text: string }[];
+    expect(input[0]?.text).toBe("Fix the tests");
     expect(payloads(events, "agent.item.completed").map((item) => item["text"])).toEqual([
       "Working on it",
       "Tests pass now",
