@@ -14,6 +14,7 @@ import {
   PreviewDialogInput,
   PreviewDragInput,
   PreviewEvaluateInput,
+  PreviewError,
   PreviewEvaluateResult,
   PreviewHoverInput,
   PreviewListInput,
@@ -546,14 +547,13 @@ export default definePlugin({
           throw importFailed(input.sourceId, "sessionUnavailable");
         }
         const cookies = await browserImport.readCookies(input);
-        let opened = false;
         try {
-          return await chromium.withProfile(input.targetProfileId, (profile) => {
-            opened = true;
-            return writeCookies(profile, cookies);
-          });
+          return await chromium.withProfile(input.targetProfileId, (profile) =>
+            writeCookies(profile, cookies),
+          );
         } catch (cause) {
-          if (opened) throw cause;
+          // The profile did not start, or closed while it was written.
+          if (cause instanceof PreviewError && cause.code === "PREVIEW_IMPORT_FAILED") throw cause;
           throw importFailed(input.sourceId, "sessionUnavailable", cause);
         }
       },

@@ -5,6 +5,15 @@ import * as Dns from "node:dns";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+export interface RunOptions {
+  readonly stdin?: string;
+  readonly signal?: AbortSignal;
+}
+
+/** Whether a run failed because its signal aborted it (a timeout included). */
+export const isAborted = (error: unknown): boolean =>
+  (error as { name?: unknown } | null)?.name === "AbortError";
+
 export interface RunResult {
   readonly exitCode: number | null;
   readonly stdout: Buffer;
@@ -18,8 +27,11 @@ export interface ImportHost {
   hostname(): string;
   /** Every address of this machine (its interfaces and what its hostname resolves to). */
   addresses(): Promise<ReadonlySet<string>>;
-  /** Runs a program to its end; rejects when it cannot be started. */
-  run(command: string, args: readonly string[], options?: { stdin?: string }): Promise<RunResult>;
+  /**
+   * Runs a program to its end; rejects when it cannot be started, or when
+   * `signal` aborts it (the program is killed, the error is an `AbortError`).
+   */
+  run(command: string, args: readonly string[], options?: RunOptions): Promise<RunResult>;
   /** Signal 0: only ESRCH proves the process is gone. */
   isProcessAlive(pid: number): boolean;
 }
@@ -45,16 +57,18 @@ export function processIsAlive(
   }
 }
 
-function runProgram(
+export function runProgram(
   command: string,
   args: readonly string[],
-  options: { stdin?: string; env?: NodeJS.ProcessEnv } = {},
+  options: RunOptions & { env?: NodeJS.ProcessEnv } = {},
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = ChildProcess.spawn(command, args, {
       env: options.env ?? process.env,
       stdio: [options.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       windowsHide: true,
+      // An aborted run kills the program and fails with an AbortError.
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
@@ -71,6 +85,30 @@ function runProgram(
     );
     if (options.stdin !== undefined) child.stdin?.end(options.stdin);
   });
+}
+
+/**
+ * The host with identical runs going on at once shared: a second import while a
+ * Keychain prompt is open waits for the same `security`, it does not start
+ * another prompt. A run's own signal is the first caller's.
+ */
+export function sharingRuns(host: ImportHost): ImportHost {
+  const running = new Map<string, Promise<RunResult>>();
+  return {
+    ...host,
+    run(command, args, options) {
+      const key = JSON.stringify([command, args, options?.stdin ?? null]);
+      const current = running.get(key);
+      if (current !== undefined) return current;
+      const started = host.run(command, args, options);
+      running.set(key, started);
+      const forget = () => {
+        if (running.get(key) === started) running.delete(key);
+      };
+      started.then(forget, forget);
+      return started;
+    },
+  };
 }
 
 /** The node's own machine. */

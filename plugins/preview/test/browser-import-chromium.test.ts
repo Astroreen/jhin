@@ -390,7 +390,7 @@ describe("Linux Chromium secrets", () => {
   it("looks up the browser's libsecret application attribute", async () => {
     const host = fakeHost({ home: "/home/u", run: () => ran(0, "linux-secret") });
     const keys = await resolveChromiumKeys(host, request);
-    expect(host.calls).toEqual([
+    expect(host.calls).toMatchObject([
       { command: "secret-tool", args: ["lookup", "application", "msedge"], stdin: undefined },
     ]);
     expect(keys.cbcV10).toHaveLength(16);
@@ -432,6 +432,36 @@ describe("Linux Chromium secrets", () => {
     expect(keys.cbcV10).toEqual(Crypto.pbkdf2Sync("peanuts", "saltysalt", 1, 16, "sha1"));
     expect(keys.cbcV11).toBeUndefined();
     expect(keys.cbcV11Error?.reason).toBe("keychainItemMissing");
+  });
+});
+
+describe("an unanswered Keychain or keyring prompt", () => {
+  const aborted = () => {
+    throw Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
+  };
+
+  it("is bounded, and its end is a consent failure on macOS and Linux", async () => {
+    const mac = fakeHost({ platform: "darwin", home: "/Users/u", run: aborted });
+    await expect(
+      resolveChromiumKeys(mac, {
+        platform: "darwin",
+        keychainService: "Chrome Safe Storage",
+        keychainAccount: "Chrome",
+        linuxSecretApplication: undefined,
+      }),
+    ).rejects.toMatchObject({ reason: "needsKeychainApproval" });
+    expect(mac.calls[0]?.signal).toBeInstanceOf(AbortSignal);
+
+    const linux = fakeHost({ home: "/home/u", run: aborted });
+    await expect(
+      resolveChromiumKeys(linux, {
+        platform: "linux",
+        keychainService: undefined,
+        keychainAccount: undefined,
+        linuxSecretApplication: "chrome",
+      }),
+    ).rejects.toMatchObject({ reason: "needsKeychainApproval" });
+    expect(linux.calls[0]?.signal).toBeInstanceOf(AbortSignal);
   });
 });
 

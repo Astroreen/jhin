@@ -215,6 +215,7 @@ interface FakeCall {
   readonly command: string;
   readonly args: readonly string[];
   readonly stdin: string | undefined;
+  readonly signal: AbortSignal | undefined;
 }
 
 /** A machine with a home of the test's, programs answered by `run`, and no other process alive. */
@@ -235,7 +236,7 @@ export function fakeHost(options: {
     hostname: () => options.hostname ?? "test-host",
     addresses: async () => options.addresses ?? new Set(["127.0.0.1"]),
     async run(command, args, runOptions) {
-      calls.push({ command, args, stdin: runOptions?.stdin });
+      calls.push({ command, args, stdin: runOptions?.stdin, signal: runOptions?.signal });
       if (options.run === undefined) {
         throw Object.assign(new Error("spawn ENOENT"), { code: "ENOENT" });
       }

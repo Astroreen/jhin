@@ -4,7 +4,7 @@
 import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 
-import type { ImportHost } from "./host.ts";
+import { isAborted, type ImportHost } from "./host.ts";
 
 const KEY_SALT = "saltysalt";
 const KEY_LENGTH = 16;
@@ -13,6 +13,16 @@ const MAC_KEY_ITERATIONS = 1003;
 const LINUX_KEY_ITERATIONS = 1;
 /** Chromium's documented fallback passphrase when no Linux keyring is present. */
 const LINUX_FALLBACK_PASSPHRASE = "peanuts";
+/**
+ * How long a Keychain or keyring prompt may stay unanswered. T3 waits for the
+ * user without limit, who sits at its window; a node may be headless or
+ * unattended, where nobody ever answers and `preview.import.cookies` would never
+ * return. Long enough for a person to find and answer the prompt.
+ */
+const KEY_PROMPT_TIMEOUT_MS = 5 * 60_000;
+
+const promptSignal = () => AbortSignal.timeout(KEY_PROMPT_TIMEOUT_MS);
+
 /** `security`'s exit status for "The specified item could not be found in the keychain." */
 const SECURITY_ITEM_NOT_FOUND = 44;
 
@@ -52,8 +62,8 @@ const deriveChromiumKey = (passphrase: string, iterations: number): Buffer =>
 /**
  * The browser's "Safe Storage" secret from the login keychain, with macOS's own
  * `security` tool (T3 asks in-process through a keyring binding; the node has
- * none, so the prompt names `security`). Deliberately untimed: macOS answers
- * with a modal, and a timeout racing the user reads as "approving did nothing".
+ * none, so the prompt names `security`). Bounded by `KEY_PROMPT_TIMEOUT_MS`: a
+ * prompt nobody answered is `needsKeychainApproval`, as a denied one.
  */
 async function readKeychainSecret(
   host: ImportHost,
@@ -62,16 +72,15 @@ async function readKeychainSecret(
 ): Promise<string> {
   let result;
   try {
-    result = await host.run("/usr/bin/security", [
-      "find-generic-password",
-      "-w",
-      "-s",
-      service,
-      "-a",
-      account,
-    ]);
+    result = await host.run(
+      "/usr/bin/security",
+      ["find-generic-password", "-w", "-s", service, "-a", account],
+      { signal: promptSignal() },
+    );
   } catch (cause) {
-    throw new ChromiumKeyError("keychainUnavailable", { cause });
+    throw new ChromiumKeyError(isAborted(cause) ? "needsKeychainApproval" : "keychainUnavailable", {
+      cause,
+    });
   }
   if (result.exitCode === SECURITY_ITEM_NOT_FOUND)
     throw new ChromiumKeyError("keychainItemMissing");
@@ -92,9 +101,14 @@ async function readKeychainSecret(
 export async function readLinuxSecret(host: ImportHost, application: string): Promise<string> {
   let result;
   try {
-    result = await host.run("secret-tool", ["lookup", "application", application]);
+    result = await host.run("secret-tool", ["lookup", "application", application], {
+      signal: promptSignal(),
+    });
   } catch (cause) {
-    throw new ChromiumKeyError("keychainUnavailable", { cause });
+    // An unlock prompt nobody answered is a consent failure, as a cancelled one.
+    throw new ChromiumKeyError(isAborted(cause) ? "needsKeychainApproval" : "keychainUnavailable", {
+      cause,
+    });
   }
   if (result.exitCode !== 0) {
     const stderr = result.stderr.trim();
@@ -159,10 +173,10 @@ export async function unwrapWindowsDpapiKey(host: ImportHost, wrapped: Buffer): 
         "-Command",
         WINDOWS_DPAPI_SCRIPT,
       ],
-      { stdin: wrapped.toString("base64") },
+      { stdin: wrapped.toString("base64"), signal: promptSignal() },
     );
   } catch (cause) {
-    throw new ChromiumKeyError("keychainUnavailable", { cause });
+    throw new ChromiumKeyError(isAborted(cause) ? "readFailed" : "keychainUnavailable", { cause });
   }
   if (result.exitCode !== 0) throw new ChromiumKeyError("readFailed");
   const plain = Buffer.from(result.stdout.toString("utf8").trim(), "base64");

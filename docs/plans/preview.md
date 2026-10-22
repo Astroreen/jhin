@@ -449,7 +449,15 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   a cookie it refuses (SameSite=None without Secure) without an error, so
   the written cookies are read back: only one the profile holds counts as
   imported, the rest are skipped with their domains (at most 20, as T3).
-  Commands: `preview.import.sources {}` → `{ sources }` (T3's
+  Read cookies are written once per name, domain and path, the last read
+  winning, so an overwritten duplicate is not counted as skipped; a profile
+  that closes while it is written fails the import (`sessionUnavailable`).
+  T3 waits for a Keychain prompt without limit, as its user sits at its
+  window; a node may be unattended, so `security`, `secret-tool` and the
+  DPAPI call are killed after 5 minutes (no command takes an abort signal
+  yet), an unanswered prompt failing as `needsKeychainApproval`, and an
+  import that asks for a key already being asked for waits for the same
+  prompt instead of opening another. Commands: `preview.import.sources {}` → `{ sources }` (T3's
   `BrowserImportSource`) and `preview.import.cookies { sourceId,
   sourceProfileDirectory, targetProfileId }` → `{ imported, skipped,
   skippedDomains }`; a failure is `PREVIEW_IMPORT_FAILED` with T3's reason

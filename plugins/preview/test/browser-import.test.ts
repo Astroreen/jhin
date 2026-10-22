@@ -131,6 +131,63 @@ describe("toPlaywrightCookie", () => {
   });
 });
 
+describe("writeCookies with duplicates and a closed profile", () => {
+  /** A jar keyed as Chromium's: one cookie per name, domain and path. */
+  function jarContext() {
+    const jar = new Map<string, ReturnType<typeof toPlaywrightCookie>>();
+    return {
+      jar,
+      async addCookies(cookies: ReturnType<typeof toPlaywrightCookie>[]) {
+        for (const item of cookies) jar.set(`${item.name}|${item.domain}|${item.path}`, item);
+      },
+      cookies: async () =>
+        [...jar.values()].map((item) => ({
+          name: item.name,
+          value: item.value,
+          domain: item.domain ?? "",
+          path: item.path ?? "/",
+          expires: -1,
+          httpOnly: false,
+          secure: true,
+          sameSite: "Lax" as const,
+        })),
+    };
+  }
+
+  it("writes one cookie per name, domain and path, the last read winning, and skips none", async () => {
+    const context = jarContext();
+    const result = await writeCookies(context, {
+      cookies: [
+        cookie({ name: "session", value: "stale" }),
+        cookie({ name: "session", value: "fresh" }),
+        cookie({ name: "session", value: "other-path", path: "/app" }),
+      ],
+      undecryptable: 0,
+      undecryptableHosts: [],
+    });
+    expect(result).toEqual({ imported: 2, skipped: 0, skippedDomains: [] });
+    expect([...context.jar.values()].map((item) => item.value)).toEqual(["fresh", "other-path"]);
+  });
+
+  it("fails when the profile closed instead of counting every cookie skipped", async () => {
+    const closed = {
+      ...jarContext(),
+      async addCookies() {
+        throw new Error(
+          "browserContext.addCookies: Target page, context or browser has been closed",
+        );
+      },
+    };
+    await expect(
+      writeCookies(closed, {
+        cookies: [cookie({ name: "a" }), cookie({ name: "b" })],
+        undecryptable: 0,
+        undecryptableHosts: [],
+      }),
+    ).rejects.toThrow(/has been closed/);
+  });
+});
+
 describe("writeCookies", () => {
   it("counts a rejected cookie and its domain as skipped, beside the undecryptable ones", async () => {
     type Written = ReturnType<typeof toPlaywrightCookie>;

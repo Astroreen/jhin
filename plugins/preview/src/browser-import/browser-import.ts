@@ -14,7 +14,7 @@ import type { BrowserContext } from "playwright-core";
 import { readChromiumCookies } from "./chromium-cookies.ts";
 import { CookieReadError, type CookieReadResult, type ImportedCookie } from "./cookie-database.ts";
 import { readFirefoxCookies } from "./firefox-cookies.ts";
-import { nodeImportHost, type ImportHost } from "./host.ts";
+import { nodeImportHost, sharingRuns, type ImportHost } from "./host.ts";
 import { readSafariCookies, safariAccessDenied } from "./safari-cookies.ts";
 import {
   BROWSER_IMPORT_SOURCES,
@@ -75,7 +75,8 @@ export interface BrowserImport {
   ): Promise<CookieReadResult>;
 }
 
-export function createBrowserImport(host: ImportHost = nodeImportHost): BrowserImport {
+export function createBrowserImport(machine: ImportHost = nodeImportHost): BrowserImport {
+  const host = sharingRuns(machine);
   return {
     async listSources() {
       const context = sourcePathContext(host);
@@ -194,6 +195,38 @@ const cookieHost = (url: string): string => {
 const cookieKey = (cookie: { name: string; domain?: string; path?: string; value: string }) =>
   JSON.stringify([cookie.name, cookie.domain, cookie.path, cookie.value]);
 
+/** A context or browser that went away fails every write: the profile is gone, not the cookie. */
+const isClosed = (error: unknown): boolean =>
+  /has been closed|Target closed|Browser closed/i.test(
+    error instanceof Error ? error.message : String(error),
+  );
+
+/**
+ * One cookie per name, domain and path, the last read winning, as writing them
+ * in order would leave it: an overwritten duplicate is neither imported twice
+ * nor skipped.
+ */
+function distinctCookies(cookies: ReadonlyArray<ImportedCookie>): {
+  readonly cookies: ImportedCookie[];
+  readonly invalid: ImportedCookie[];
+} {
+  const byScope = new Map<string, ImportedCookie>();
+  const invalid: ImportedCookie[] = [];
+  for (const cookie of cookies) {
+    let mapped: PlaywrightCookie;
+    try {
+      mapped = toPlaywrightCookie(cookie);
+    } catch {
+      invalid.push(cookie);
+      continue;
+    }
+    const scope = JSON.stringify([mapped.name, mapped.domain, mapped.path]);
+    byScope.delete(scope);
+    byScope.set(scope, cookie);
+  }
+  return { cookies: [...byScope.values()], invalid };
+}
+
 /**
  * Writes read cookies into a profile's context. A rejected cookie costs only
  * itself: it is counted as skipped with its domain, as is every cookie that
@@ -211,23 +244,27 @@ export async function writeCookies(
     skipped += 1;
     skippedDomains.add(cookieHost(cookie.url));
   };
+  const { cookies, invalid } = distinctCookies(read.cookies);
+  invalid.forEach(skip);
   const written: Array<{ cookie: ImportedCookie; key: string }> = [];
   const writeOne = async (cookie: ImportedCookie) => {
     try {
       const mapped = toPlaywrightCookie(cookie);
       await context.addCookies([mapped]);
       written.push({ cookie, key: cookieKey(mapped) });
-    } catch {
+    } catch (error) {
+      if (isClosed(error)) throw error;
       skip(cookie);
     }
   };
-  for (let start = 0; start < read.cookies.length; start += WRITE_BATCH) {
-    const batch = read.cookies.slice(start, start + WRITE_BATCH);
+  for (let start = 0; start < cookies.length; start += WRITE_BATCH) {
+    const batch = cookies.slice(start, start + WRITE_BATCH);
     try {
       const mapped = batch.map(toPlaywrightCookie);
       await context.addCookies(mapped);
       batch.forEach((cookie, index) => written.push({ cookie, key: cookieKey(mapped[index]!) }));
-    } catch {
+    } catch (error) {
+      if (isClosed(error)) throw error;
       // Setting a cookie again overwrites it, so a batch partly written is safe to redo.
       for (const cookie of batch) await writeOne(cookie);
     }
