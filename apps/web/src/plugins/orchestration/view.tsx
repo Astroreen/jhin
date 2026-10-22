@@ -148,11 +148,23 @@ function useDelegation({ store }: DelegatedWorkServices, target: NodeTarget, thr
 }
 
 /** A subagent's row, or the "N subagents" row its group shows at the first of them (D1161). */
-function Subagents({ target, thread, event, adjacent, services }: Props) {
+function Subagents(props: Props) {
+  const marks = subagentRun(props.event, props.adjacent);
+  // The group's other marks show nothing, and follow nothing either.
+  return marks[0]!.sequence === props.event.sequence ? (
+    <SubagentRows {...props} marks={marks} />
+  ) : null;
+}
+
+function SubagentRows({
+  target,
+  thread,
+  event,
+  services,
+  marks,
+}: Props & { readonly marks: readonly Mark[] }) {
   const view = useDelegation(services, target, thread.id);
   const catalog = useCatalog(services.threads, target);
-  const marks = subagentRun(event, adjacent);
-  if (marks[0]!.sequence !== event.sequence) return null;
   const context = {
     view,
     threads: catalog?.threads ?? [],
