@@ -36,7 +36,7 @@ import {
 } from "@jhin/agent-api";
 import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, describePermissions, type Invocation } from "@jhin/sdk";
+import { definePlugin, describePermissions, holdsPermission, type Invocation } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -66,7 +66,7 @@ const WRITE_PERMISSIONS = [TEAMS_WRITE_PERMISSION, "agents.write"];
  */
 const joinGrants = (invocation: Invocation): string[] => {
   const held = invocation.caller?.permissions;
-  const mayAdd = held === undefined || held.includes("*") || held.includes("projects.write");
+  const mayAdd = held === undefined || holdsPermission(held, "projects.write");
   return mayAdd ? [...WRITE_PERMISSIONS, "projects.write"] : WRITE_PERMISSIONS;
 };
 

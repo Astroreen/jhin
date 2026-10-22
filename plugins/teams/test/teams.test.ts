@@ -494,7 +494,10 @@ describe("teams across the mesh (A5)", () => {
 
   it("adds a member's home project on the member's node, with the caller's grant (D1105)", async () => {
     const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-remote-"));
-    stops.push(async () => Fs.rmSync(home, { recursive: true, force: true }));
+    const other = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-remote-"));
+    stops.push(async () => {
+      for (const dir of [home, other]) Fs.rmSync(dir, { recursive: true, force: true });
+    });
     const network = createMemoryNetwork();
     const a = await meshNode(network, "a", {
       "jhin.teams": {
@@ -502,6 +505,10 @@ describe("teams across the mesh (A5)", () => {
           workshop: {
             lead: "lead",
             agents: { lead, builder: { ...builder, node: "b", project: home } },
+          },
+          elsewhere: {
+            lead: "lead",
+            agents: { lead, builder: { ...builder, node: "b", project: other } },
           },
         },
       },
@@ -518,5 +525,18 @@ describe("teams across the mesh (A5)", () => {
     expect(
       await b.kernel.commands.execute("agents.get", { agentId: "workshop-builder" }),
     ).toMatchObject({ status: "idle" });
+
+    // A caller that may not add projects gives the member's node no grant to (D416).
+    await a.kernel.commands
+      .execute(
+        "teams.up",
+        { teamId: "elsewhere" },
+        { caller: { id: "ops", permissions: ["teams.*", "agents.write", "mesh.call"] } },
+      )
+      .then((result) =>
+        expect((result as Up).members[1]).toMatchObject({
+          error: expect.objectContaining({ code: "PERMISSION_DENIED" }),
+        }),
+      );
   });
 });
