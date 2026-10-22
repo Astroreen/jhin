@@ -240,6 +240,39 @@ describe("teams (A5)", () => {
     ]);
   });
 
+  it("adds a home project named by a folder's path, and names a missing folder (D1105)", async () => {
+    const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-home-"));
+    const { client } = await node({
+      teams: {
+        workshop: { lead: "lead", project: home, agents: { lead } },
+        ghost: { lead: "lead", project: Path.join(home, "missing"), agents: { lead } },
+      },
+    });
+    const up = await client.call<Up>("teams.up", { teamId: "workshop" });
+    expect(up.members).toEqual([expect.objectContaining({ result: "defined" })]);
+    const projects = await client.call<{ id: string; path: string }[]>("projects.list", {});
+    const added = projects.find((project) => project.path === home);
+    expect(added).toBeDefined();
+    expect(
+      await client.call<AgentRecord>("agents.get", { agentId: "workshop-lead" }),
+    ).toMatchObject({ status: "idle", knowledgeDir: expect.stringContaining(home) });
+    // Up again, the project is there: none is added twice.
+    await client.call<Up>("teams.up", { teamId: "workshop" });
+    expect(
+      (await client.call<{ path: string }[]>("projects.list", {})).filter(
+        (project) => project.path === home,
+      ),
+    ).toHaveLength(1);
+
+    const ghost = await client.call<Up>("teams.up", { teamId: "ghost" });
+    expect(ghost.members).toEqual([
+      expect.objectContaining({
+        member: "lead",
+        error: expect.objectContaining({ code: "PROJECT_PATH_INVALID" }),
+      }),
+    ]);
+  });
+
   it("updates a member when the spec changes, and clears what it dropped (D685)", async () => {
     const { client, kernel, layers } = await node({
       teams: { workshop: { lead: "lead", agents: { lead, builder: { ...builder, model: "m1" } } } },

@@ -201,6 +201,22 @@ export default definePlugin({
     };
     context.subscriptions.add(context.services.provide(TEAM_BUNDLES_CAPABILITY, service));
 
+    /**
+     * A home project named by the absolute path of a folder this node has no
+     * project for is added, so the team that names it can work there (D1105).
+     * A folder that does not exist fails as `projects.create` does; an id this
+     * node does not know is left to the agent's status (`unavailable`, D608).
+     */
+    const ensureHome = async (project: string | undefined): Promise<void> => {
+      if (project === undefined) return;
+      const expanded = expandHome(project);
+      if (!Path.isAbsolute(expanded)) return;
+      const path = Path.resolve(expanded);
+      const projects = await run<ProjectInfo[]>("projects.list", {});
+      if (projects.some((item) => item.id === project || Path.resolve(item.path) === path)) return;
+      await run("projects.create", { path });
+    };
+
     /** The folder of a team's files: `dir` of the spec, else its bundle's (D686). */
     const filesDir = async (teamId: string, spec: TeamSpec): Promise<string | undefined> => {
       const configuredDir = configured()[teamId]?.dir;
@@ -346,6 +362,7 @@ export default definePlugin({
             { agentId, teamId: roster.teamId },
           );
         }
+        await ensureHome(definition.project);
         let result: "defined" | "updated" | "unchanged";
         if (existing === undefined) {
           await run("agents.define", { agentId, ...definition });
@@ -439,6 +456,9 @@ export default definePlugin({
       permissions: WRITE_PERMISSIONS,
       handler: async ({ teamId }, invocation) => {
         const spec = specOrThrow(teamId);
+        // Its files may live in the home project (D686); a folder that is not
+        // there fails each member's join below, with its reason.
+        await ensureHome(spec.project).catch(() => undefined);
         const files = readTeamFiles(await filesDir(teamId, spec));
         const culture = spec.culture ?? files.culture;
         const roster = rosterFor(teamId, spec);
