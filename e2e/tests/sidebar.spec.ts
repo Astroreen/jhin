@@ -759,3 +759,28 @@ test("D455: sweep Settle over several cards", async ({ page }, info) => {
     "Settled 3 threads, Ctrl+Z to undo",
   );
 });
+
+test("D1176: regenerate a thread's title, and the titles of a selection", async ({
+  page,
+}, info) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["one", "two", "three"]) await addThread(x, title);
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["three", "two", "one"]);
+
+  // One thread, from its menu.
+  await threadRow(page, "one").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Regenerate title" }).click();
+  await expect(threadRow(page, "About one")).toBeVisible();
+
+  // A selection, from its menu: every selected thread gets its title.
+  await threadRow(page, "three").click({ modifiers: ["Control"] });
+  await threadRow(page, "two").click({ modifiers: ["Shift"] });
+  await threadRow(page, "two").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Regenerate titles (2)" })).toBeVisible();
+  const shot = info.outputPath("regenerate-titles.png");
+  await page.screenshot({ path: shot });
+  await info.attach("regenerate-titles", { path: shot, contentType: "image/png" });
+  await page.getByRole("menuitem", { name: "Regenerate titles (2)" }).click();
+  await expect(cardTitles(page)).toHaveText(["About three", "About two", "About one"]);
+});

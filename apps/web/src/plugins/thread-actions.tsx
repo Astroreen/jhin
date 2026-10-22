@@ -53,6 +53,7 @@ import {
   LinkIcon,
   MailOpenIcon,
   PencilIcon,
+  RefreshCwIcon,
   PinIcon,
   PinOffIcon,
   SquarePenIcon,
@@ -263,6 +264,16 @@ export const threadActionsPlugin = builtin(
         async (input) => {
           const { target, thread } = threadOf(input);
           await actions.rename(target, thread, input.title);
+        },
+      );
+      register(
+        "thread.regenerate-title",
+        "Regenerate title",
+        "Has an agent write the thread a new title from its messages",
+        ThreadRef,
+        async (input) => {
+          const { target, thread } = threadOf(input);
+          await actions.regenerateTitle(target, thread);
         },
       );
       register(
@@ -700,6 +711,21 @@ export const threadActionsPlugin = builtin(
             rename === undefined ? null : (
               <ActionItem icon={PencilIcon} label="Rename thread" onClick={rename} />
             ),
+        ],
+        [
+          "regenerate-title",
+          15,
+          ({ target, thread }) => {
+            const busy = thread.titleRegeneration !== undefined;
+            return (
+              <ActionItem
+                disabled={busy}
+                icon={RefreshCwIcon}
+                label={busy ? "Regenerating…" : "Regenerate title"}
+                onClick={() => run("thread.regenerate-title", threadRef(target, thread.id))}
+              />
+            );
+          },
         ],
         [
           "mark-unread",

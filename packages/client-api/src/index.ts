@@ -299,6 +299,8 @@ export interface ThreadRecord {
   };
   /** Set while the thread never settles by itself (T3's per-thread "Auto-settle behavior"). */
   readonly autoSettleDisabledAt?: string;
+  /** Set while an agent writes the thread a new title (t3-parity.md D1175). */
+  readonly titleRegeneration?: { readonly requestedAt: string };
   /** When the user last sent it a message. */
   readonly lastMessageAt?: string;
   /** The defined agent this thread is a generation of (D606); Threads mode leaves it out (D741). */

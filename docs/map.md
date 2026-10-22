@@ -181,6 +181,11 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   `jhin.source-control`) — a thread's pull requests and their states, which
   settling reads; `jhin.threads`' `autoSettleKeepPullRequests` and
   per-project `projects` settle settings (`plans/t3-parity.md` D1171–D1173).
+- `askAgent` and `parseJsonObject` (`@jhin/agent-api`'s `writer.ts`) — a writer
+  turn on an agent runtime, as T3's text generation runs one; source
+  control's writer and `threads.title.regenerate` (`jhin.threads`, with the
+  client commands `thread.regenerate-title` and
+  `sidebar.selection.regenerate-titles`) use it (`plans/t3-parity.md` D1174–D1176).
 - `@jhin/agent-api`'s `citations.ts` — a quote of an agent's message in a user's
   (`jhin-citation://`), and what the agent reads of it (`plans/t3-parity.md`
   D1010).

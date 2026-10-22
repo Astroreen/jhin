@@ -122,6 +122,7 @@ import {
   PinIcon,
   MailOpenIcon,
   PinOffIcon,
+  RefreshCwIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -699,6 +700,42 @@ export const sidebarPlugin = builtin(
         },
       });
       context.commands.register({
+        name: "sidebar.selection.regenerate-titles",
+        title: "Regenerate titles of selected threads",
+        description:
+          'Has an agent write a new title for every selected thread not being retitled already (T3\'s "Regenerate titles (N)")',
+        input: SelectionInput,
+        output: z.object({}),
+        handler: async () => {
+          // All at once: each title is written by its own agent turn on its node (D1176).
+          const entries = selected().filter(
+            (entry) => entry.thread.titleRegeneration === undefined,
+          );
+          selection.set({ keys: [] });
+          const outcomes = await Promise.allSettled(
+            entries.map((entry) =>
+              threads.call(entry.node.target, "threads.title.regenerate", {
+                threadId: entry.thread.id,
+              }),
+            ),
+          );
+          const failed = entries.filter((_, index) => outcomes[index]!.status === "rejected");
+          if (failed.length > 0) {
+            // What failed stays selected, as T3 keeps it, to try again.
+            selection.set({ keys: failed.map((entry) => entry.key) });
+            const reason = outcomes.find((outcome) => outcome.status === "rejected") as
+              | PromiseRejectedResult
+              | undefined;
+            toasts?.show({
+              type: "error",
+              title: "Failed to regenerate thread titles",
+              description: (reason?.reason as Error | undefined)?.message ?? "",
+            });
+          }
+          return {};
+        },
+      });
+      context.commands.register({
         name: "sidebar.selection.mark-unread",
         title: "Mark selected threads unread",
         description:
@@ -818,6 +855,25 @@ export const sidebarPlugin = builtin(
                 </MenuSubPopup>
               </MenuSub>
             ) : null,
+        ],
+        [
+          "regenerate-titles",
+          25,
+          ({ threads: chosen }) => {
+            if (!hasCommand("thread.regenerate-title")) return null;
+            const ready = chosen.filter((item) => item.thread.titleRegeneration === undefined);
+            return (
+              <MenuItem
+                disabled={ready.length === 0}
+                onClick={() => run("sidebar.selection.regenerate-titles", {})}
+              >
+                <RefreshCwIcon />
+                {ready.length === 0
+                  ? `Regenerating… (${chosen.length})`
+                  : `Regenerate titles (${ready.length})`}
+              </MenuItem>
+            );
+          },
         ],
         [
           "mark-unread",
@@ -1348,6 +1404,7 @@ export const sidebarPlugin = builtin(
           () => !active && drafts?.hasThreadDraft(target, thread.id) === true,
         );
         const recede = shouldRecede({ status, unread, active, woke }) && !isSelected;
+        const retitling = thread.titleRegeneration !== undefined;
         const settled = section === "settled";
         const snoozed = section === "snoozed";
         const dragging = sortable?.isDragging === true;
@@ -1445,6 +1502,8 @@ export const sidebarPlugin = builtin(
                             ? "text-muted-foreground"
                             : "text-secondary-label/70",
                     ),
+                // T3's faded title while an agent writes a new one (D1176).
+                retitling && "opacity-55",
               )}
               data-thread-title
             >
@@ -1600,6 +1659,11 @@ export const sidebarPlugin = builtin(
           variant === "slim" ? (
             <>
               <span className="sr-only">{thread.title}</span>
+              {retitling ? (
+                <span className="sr-only" role="status">
+                  Regenerating title
+                </span>
+              ) : null}
               <span
                 className={cn(
                   "flex shrink-0 items-center transition-opacity",
@@ -1668,6 +1732,11 @@ export const sidebarPlugin = builtin(
           ) : (
             <>
               <span className="sr-only">{thread.title}</span>
+              {retitling ? (
+                <span className="sr-only" role="status">
+                  Regenerating title
+                </span>
+              ) : null}
               <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
                 <div className="flex h-5 min-w-0 items-center gap-1.5">
                   {draftIndicator}
@@ -1850,7 +1919,7 @@ export const sidebarPlugin = builtin(
                     <ContextMenuTrigger
                       render={
                         <div
-                          aria-busy={props.busy === true ? true : undefined}
+                          aria-busy={props.busy === true || retitling ? true : undefined}
                           aria-current={active ? "page" : undefined}
                           aria-label={label}
                           className={rowClassName}

@@ -39,6 +39,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/subagent <task>" runs a subagent titled after the task that answers "Echo: <task>" (D876);
  * - "/subagent-bg <task>" starts one in the background: it answers "Echo: <task>" once the
  *   turn ended and runs until it is stopped (D1164, D1166);
+ * - a title prompt (D1174) is answered with the title "About <the thread's first message>";
  * - anything else is answered "Echo: <text>", one word per delta.
  * A message steered into a turn (D204) is answered "Echo: <text>" before the
  * turn ends; it ends a "/hold" turn.
@@ -113,6 +114,12 @@ export function fakeTurn(
       yield { kind: "subagent.started", subagentId, title: task, prompt: task };
       yield { kind: "subagent.backgrounded", subagentId };
       yield* say(`Started ${task} in the background`);
+      return;
+    }
+    // A title to write (t3-parity.md D1174): named after the thread's first message.
+    if (text.startsWith("Regenerate the title for an existing Jhin thread")) {
+      const first = /\nUSER:\n(.*)/.exec(text)?.[1]?.trim() ?? "nothing";
+      yield* say(JSON.stringify({ title: `About ${first}`, needsRefinement: false }));
       return;
     }
     if (/^\/subagent(\s|$)/.test(text)) {

@@ -11,6 +11,8 @@ import * as Path from "node:path";
 import {
   AGENT_REGISTRY_CAPABILITY,
   AGENT_RUNTIME_CAPABILITY,
+  askAgent,
+  parseJsonObject,
   APPROVAL_DECISIONS,
   GenerationOf,
   INTERACTION_MODES,
@@ -67,6 +69,7 @@ import { registerDrafts } from "./drafts.ts";
 import { matchTexts, mergeBackMessage, searchTexts, type SearchText } from "./history.ts";
 import { AttachmentRef, MAX_ATTACHMENTS, createAttachments } from "./attachments.ts";
 import { createProjectEntries } from "./project-entries.ts";
+import { formatThreadTitleContext, regenerateTitlePrompt, titleMessages } from "./title.ts";
 
 export { THREADS_STREAM };
 
@@ -123,6 +126,18 @@ const Config = z
       title: "Turn hook timeout (seconds)",
       description:
         "How long a plugin's hook around a turn (a checkpoint) may take: a start hook that takes longer fails the turn, an end hook is given up on. 0 gives hooks no time: one that does not answer at once is given up on.",
+      advanced: true,
+    }),
+    // T3's text generation of titles (t3-parity.md D1174).
+    titleAgent: z.string().optional().meta({
+      title: "Title writer agent",
+      description:
+        "The agent runtime that regenerates thread titles, by id; the thread's own agent when unset.",
+      advanced: true,
+    }),
+    titleTimeoutSeconds: z.number().int().min(1).max(3600).default(120).meta({
+      title: "Title writer timeout (seconds)",
+      description: "How long the agent may take to regenerate a title; past it the title stays.",
       advanced: true,
     }),
     // T3 Code's "Organization" settings (D444): how threads settle by themselves.
@@ -260,6 +275,8 @@ const Thread = z.object({
   lastMessageAt: z.string().optional(),
   /** Set while the thread never settles by itself (T3's per-thread "Auto-settle behavior"). */
   autoSettleDisabledAt: z.string().optional(),
+  /** Set while an agent writes the thread a new title (T3's titleRegeneration, D1175). */
+  titleRegeneration: z.object({ requestedAt: z.string() }).optional(),
   /** The defined agent this thread is a generation of; set at creation, never changed (D606, D741). */
   generationOf: GenerationOf.optional(),
 });
@@ -1139,6 +1156,12 @@ export default definePlugin({
         { id: thread.id },
         [{ namespace: NAMESPACE, key: `queue/${thread.id}`, delete: true }],
       );
+    }
+
+    // A title the node stopped writing is written no more (D1175).
+    for (const thread of await listThreads()) {
+      if (thread.titleRegeneration === undefined) continue;
+      await updateThread(thread.id, ({ titleRegeneration: _left, ...rest }) => rest);
     }
 
     for (const thread of await listThreads()) {
@@ -2750,6 +2773,101 @@ export default definePlugin({
           head: await log.head(threadStream(threadId)),
           ...(turn === undefined ? {} : { running: turn.turnId }),
         };
+      },
+    });
+
+    context.commands.register({
+      name: "threads.title.regenerate",
+      description:
+        "Has an agent write the thread a new title from its messages (T3's \"Regenerate title\"): the thread's agent, or jhin.threads.titleAgent. Answers the title and whether it changed",
+      input: z.object({ threadId: z.string() }),
+      output: z.object({ title: z.string(), changed: z.boolean() }),
+      permissions: ["threads.write"],
+      handler: async ({ threadId }) => {
+        const unavailable = (reason: string) =>
+          new ThreadsError("TITLE_UNAVAILABLE", `Could not regenerate the title: ${reason}`, {
+            threadId,
+          });
+        let taken = false;
+        const before = await updateThread(threadId, (thread) => {
+          if (thread.titleRegeneration !== undefined) return thread;
+          taken = true;
+          return { ...thread, titleRegeneration: { requestedAt: now() } };
+        });
+        if (!taken) {
+          throw new ThreadsError("TITLE_REGENERATING", "The thread's title is being written", {
+            threadId,
+          });
+        }
+        let title: string | undefined;
+        let applied = false;
+        try {
+          const config = context.config.get<Config>(CONFIG_SECTION);
+          const contents = formatThreadTitleContext(
+            titleMessages(await log.read(threadStream(threadId))),
+          );
+          if (contents.trim() === "") throw unavailable("the thread has no messages");
+          const runtime =
+            (config.titleAgent === undefined ? undefined : registry.get(config.titleAgent)) ??
+            (before.agentId === undefined ? undefined : registry.get(before.agentId)) ??
+            (await defaultRuntime());
+          if (runtime === undefined) throw unavailable("no agent runtime is installed");
+          // The prompt carries the thread's text: the turn runs in a folder of its own.
+          const cwd = await Fs.promises.mkdtemp(Path.join(Os.tmpdir(), "jhin-title-"));
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          let giveUp!: () => void;
+          // Past its time, or when the plugin stops, the writer's turn is interrupted.
+          const reached = new Promise<void>((resolve) => {
+            giveUp = resolve;
+            timer = setTimeout(resolve, config.titleTimeoutSeconds * 1000);
+          });
+          const stopping = context.subscriptions.add(toDisposable(() => giveUp()));
+          let answer: string;
+          try {
+            answer = await askAgent(
+              runtime,
+              {
+                prompt: regenerateTitlePrompt(before.title, contents),
+                cwd,
+                id: Crypto.randomUUID(),
+                label: "jhin.threads.title",
+              },
+              {
+                reached,
+                dispose: () => {
+                  clearTimeout(timer);
+                  stopping.dispose();
+                },
+              },
+            );
+          } catch (error) {
+            throw unavailable(String((error as Error).message ?? error));
+          } finally {
+            await Fs.promises.rm(cwd, { recursive: true, force: true });
+          }
+          const written = parseJsonObject(answer)?.["title"];
+          if (typeof written !== "string") throw unavailable("the agent answered no title");
+          title = written.replace(/\s+/g, " ").trim().slice(0, 200).trim();
+        } finally {
+          const next = title;
+          const unchanged =
+            next === undefined ||
+            next === "" ||
+            next === DEFAULT_THREAD_TITLE ||
+            next === before.title.trim();
+          // A title the user gave meanwhile wins over the writer's.
+          await updateThread(threadId, ({ titleRegeneration: _done, ...rest }) => {
+            if (unchanged || rest.title !== before.title) return rest;
+            applied = true;
+            return { ...rest, title: next };
+          }).catch((error: unknown) =>
+            context.log.warn("could not record a regenerated title", {
+              threadId,
+              error: String(error),
+            }),
+          );
+        }
+        return { title: (await getThread(threadId)).title, changed: applied };
       },
     });
 
