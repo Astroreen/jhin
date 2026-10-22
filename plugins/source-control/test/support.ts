@@ -351,6 +351,8 @@ export async function node(
     storage?: ReturnType<typeof memoryStoragePlugin>;
     /** Gives the node fake terminals (`Node.terminals`). */
     terminals?: boolean;
+    /** The threads plugin's config (`jhin.threads`). */
+    threads?: Record<string, unknown>;
   } = {},
 ): Promise<Node> {
   const data = options.data ?? temp("jhin-sc-node-");
@@ -382,7 +384,12 @@ export async function node(
       { manifest: manifest("agent-fake"), definition: agent },
       { manifest: manifest("source-control"), definition: sourceControl },
     ],
-    config: { node: { "jhin.source-control": config } },
+    config: {
+      node: {
+        "jhin.source-control": config,
+        ...(options.threads === undefined ? {} : { "jhin.threads": options.threads }),
+      },
+    },
   });
   const { client } = connectInMemory(kernel, { log: storage.storage.log, streams: live });
   let stopped: Promise<void> | undefined;
@@ -430,7 +437,10 @@ export async function node(
         });
       }),
     configure: (values) =>
-      kernel.config.setLayer("node", { "jhin.source-control": { ...config, ...values } }),
+      kernel.config.setLayer("node", {
+        "jhin.source-control": { ...config, ...values },
+        ...(options.threads === undefined ? {} : { "jhin.threads": options.threads }),
+      }),
     logged: (message) =>
       new Promise((resolve) => {
         const list = logWaiters.get(message) ?? [];

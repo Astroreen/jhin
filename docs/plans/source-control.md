@@ -921,6 +921,24 @@ with screenshots).
   `threadNotifications` know completion and input only), so neither has
   Jhin.
 
+- **D1133. A thread's linked pull requests decide its settling**, as T3's
+  `settlementPullRequestLinks` and `resolveAutoSettlementAt`: while a linked
+  pull request is open, or not read yet, the thread does not settle on its
+  branch's pull request (D447) either; once all are merged or closed, the
+  latest of them settles it through `threads.auto-settle` (D447's rules:
+  `autoSettleOnMerge`, the user's last message, pins and snoozes), read as
+  soon as a link's state changes. A link made after its pull request had
+  merged or closed records work the thread did (an agent asked to merge
+  it), so it is left out; the forge's close time is compared with the
+  node's link time as T3 does, so clocks apart by more than a merge's
+  moment can misplace a link made right around it (the thread then settles
+  by hand). Unlinking a pull request asks again. A link
+  not read yet holds the thread, as in T3, unless no forge of this node reads
+  its host at all (then it can tell nothing and holds nothing). A thread
+  without links that count (none, or all left out, including one merged or
+  closed with no readable close time, as T3 leaves them out) settles on its
+  branch's pull request as before.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1332,12 +1350,13 @@ with the node's token, and without one).
   highlighted spans as soon as the text shows; highlighting comes later from
   a worker, so under load it can count none. It should wait for a
   highlighted token instead (seen in W22, D923).
-- Settling a thread on a merged pull request (T3's sidebar) and the
-  terminal indicator (the terminal plugin contributes it to
-  `sidebar.thread.indicators`). The branch-mismatch warning is done
-  (`t3-parity.md` D443): source control contributes the hover card's
-  branch line and the warning to `sidebar.thread.details`, the hover card's
-  twin of `sidebar.thread.indicators`.
+- The terminal indicator (the terminal plugin contributes it to
+  `sidebar.thread.indicators`). Settling on linked pull requests is D1133;
+  T3's "Keep threads with a PR" (`autoSettleKeepPullRequests`) is W32's.
+  The branch-mismatch warning is done (`t3-parity.md` D443): source control
+  contributes the hover card's branch line and the warning to
+  `sidebar.thread.details`, the hover card's twin of
+  `sidebar.thread.indicators`.
 - Scoped permissions. Done in `security.md` (D410–D416): a device token
   holds `git.read` or `git.write` only when granted (`git.*` for both), and
   the `source-control` stream needs `git.read` (D415).
