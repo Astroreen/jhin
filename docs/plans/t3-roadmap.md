@@ -22,7 +22,7 @@ from the latest nightly; the plan that ports it names the tag it used.
   `GLOSSARY.md`, the plan the workstream continues and this file first.
 - Decisions are numbered from the workstream's range below, so parallel
   branches never take the same number. A workstream that needs more numbers
-  takes the next free block of 20 after D760 and writes it here.
+  takes the next free block of 20 (see the note under the round 2 table) and writes it here.
   D600–D760 belong to the agent workstreams A1–A8 in `agents.md`.
 - Each workstream records its decisions in the plan it continues (or in a new
   plan named below), moves the items it finishes out of that plan's
@@ -228,8 +228,9 @@ took D881–D900. W21 first had D640–D659, which `agents.md` gives to A2 and
 A3; it took D901–D920. W22, W25 and W26 first had D660–D679, D720–D739 and
 D740–D759, inside `agents.md`'s D600–D760; they take D921–D940, D941–D960
 and D961–D980. W20 took the
-next block, D981–D1000. A workstream that needs more numbers takes the next
-free block of 20 after D1060 and writes it here.
+next block, D981–D1000. `agents.md`'s phase 2 takes D1061–D1120 (C1–C3).
+A workstream that needs more numbers takes the next free block of 20 after
+D1120 and writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background

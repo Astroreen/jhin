@@ -1,6 +1,6 @@
 # Agents plan: teams of persistent agents
 
-Status: **in progress**. This file records how Jhin grows from "one thread,
+Status: **in progress** (A1–A8 landed; phase 2, C1–C3, running). This file records how Jhin grows from "one thread,
 one agent run" into persistent agents with addresses that message each other
 across the mesh, work in teams on missions, keep and inherit what they learn,
 and stay on the intent while nobody watches. It takes "Agent entity …",
@@ -75,6 +75,20 @@ to the Civilization side and never shows up among the owner's threads.
 A1, A3, A4 and A8 start together. A2 starts once A1 has settled its contract
 (`agent-api` types and the `agents.*` commands), A5 and A7 once A2 has, and
 A6 once A3 has and W10 has landed.
+
+A1–A8 landed by 2026-10-22 (see [Landing](#landing)). They left
+Civilization mode mostly read-only: it shows agents, teams, missions, the
+inbox and health, but the owner cannot yet run a civilization from it.
+[Phase 2](#phase-2-a-civilization-the-owner-can-run) closes that gap:
+
+| Id  | Workstream                         | Stacks on | Decisions   |
+| --- | ---------------------------------- | --------- | ----------- |
+| C1  | The owner's console                | `main`    | D1061–D1080 |
+| C2  | Missions from the client           | `main`    | D1081–D1100 |
+| C3  | Dogfood: a civilization end to end | `main`    | D1101–D1120 |
+
+C1, C2 and C3 start together. C3 drives the scenario through commands first
+and through C1's and C2's UI as it lands.
 
 ## Decisions
 
@@ -1181,6 +1195,61 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   components are a chunk of their own, loaded once the mode shows, as are
   the switcher's buttons once there are two modes (D440).
 
+## Phase 2: a Civilization the owner can run
+
+The goal of phase 2: the owner opens Civilization mode on an empty project,
+sets an intent, brings up a team, gives it a mission and from then on only
+talks to the lead and answers the inbox, while the team works the mission
+slice by slice. Everything below is Civilization mode only (D741), lazily
+loaded (the entry chunk budget of D440), and built from the commands A1–A8
+landed.
+
+### C1. The owner's console (D1061–D1080)
+
+- **The conversation with the lead** in `civilization.lead` (A5 left it
+  deferred): the owner writes to the team's lead, sees its answers, and sees
+  what the lead escalates. It is the owner's way into a running team, so it
+  is the one place in Civilization mode with a composer. It goes through
+  `agents.send` and `agents.ask` (A2), not through the lead's thread
+  composer: the owner talks to the agent, not to one of its generations.
+- **Defining agents and teams from the client**: create and edit an agent
+  definition (title, role, runtime, model, skills, instructions), start a new
+  generation, and bring a team up or down from a spec or an installed
+  bundle. The commands exist (`agents.define`, `agents.update`,
+  `agents.rotate`, `teams.up`, `teams.down`); the client has no UI for them.
+  A command that turns out to be missing is added first, so the CLI and MCP
+  get it too.
+- Takes from Deferred: "A1: starting a generation (`agents.rotate`),
+  defining, editing …" and "A5: the conversation with the lead in
+  `civilization.lead`".
+
+### C2. Missions from the client (D1081–D1100)
+
+- **Editing the intent chain**: the project intent, missions (outcome,
+  process per level) and slices (spec, assignee, dependencies) from the
+  mission view, through the existing `missions.*` and `slices.*` commands.
+  The view keeps reading the stream; editing goes through commands only.
+- **The orchestrator beside the mission view** (A6 left it deferred, D712):
+  which slice is next, who has it, what the run waits for, and start, pause
+  or stop the orchestrator run of a mission.
+- Takes from Deferred: "A3: editing intent, missions and slices from the
+  client", "A3: an agent's title for an assignee" and "A6: the orchestrator
+  in Civilization mode".
+
+### C3. Dogfood: a civilization end to end (D1101–D1120)
+
+- **An end-to-end scenario in `e2e/`** on the fake runtime: bring up a team
+  from a spec, set an intent and a mission with slices, start the
+  orchestrator, let the fake agents hand in proof, have one agent ask the
+  owner (inbox) and one push ceremony over the threshold (health warning).
+  It asserts on persisted records and events, not on timing. It starts on
+  commands and moves to the UI as C1 and C2 land.
+- **A real run** on Jhin itself: a small team on Claude (lead, builder,
+  reviewer) takes a real mission from a plan's Deferred list. The owner only
+  talks to the lead and answers the inbox. What goes wrong is fixed in
+  small PRs or written down as lore in `docs/lore/`; what is missing goes to
+  [Deferred](#deferred) with the run as its evidence.
+
 ## Deferred
 
 - Pods (groups inside a team).
@@ -1188,7 +1257,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   from npm or a path first.
 - An epidemiology team that traces a wrong idea through files and agents and
   fixes every copy ([`lore/mind-viruses.md`](../lore/mind-viruses.md)), as a bundle once A5 lands.
-- Chat integrations (Slack, Telegram) for reaching the owner. Notifications
+- Chat integrations (Slack, Telegram) for reaching the owner. Left out of
+  phase 2 by the owner (2026-10-22). Notifications
   come first.
 - Agents of runtimes without MCP.
 - Skills per agent: installing or limiting a runtime's skills for one agent
