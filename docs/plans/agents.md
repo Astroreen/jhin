@@ -1517,6 +1517,6 @@ Each workstream lists its PRs here as they merge.
   in W10's workflow scripts, and `context.compacted` from Claude Code, Codex
   and the fake agent (`agent.runtime@1.6`, `agent.registry` 1.3)
   (D701–D712).
-- C1 #<pr1>: `agents.conversation`, the owner's conversation with an agent
+- C1 #192: `agents.conversation`, the owner's conversation with an agent
   folded from `agents/messages` and the inbox, and the answer's text on
   `agents.message.answered` (D1061).
