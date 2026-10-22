@@ -768,4 +768,18 @@ describe("jhin.health", () => {
     );
     expect(await counted).toEqual({ turnId: "turn-9", count: 1 });
   });
+
+  it("evaluates again at once when the thresholds change", async () => {
+    const { kernel, deliver } = await node({ ceremony: { ratio: 1, minCeremony: 5 } });
+    await deliver(OWNER, BUILDER, "one", "t1");
+    await deliver(OWNER, BUILDER, "two", "t1");
+    // Under 5: nothing yet. Lowered to 2, the same two messages warn with no new event.
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    kernel.config.setLayer("project", {
+      "jhin.health": { ceremony: { ratio: 1, minCeremony: 2 } },
+    });
+    expect(((await raised) as { warning: Warning }).warning.measures).toMatchObject({
+      ceremony: 2,
+    });
+  });
 });

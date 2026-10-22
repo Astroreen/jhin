@@ -1248,6 +1248,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
   answer that comes later stays in the analyst's thread, and the warning is
   not asked again.
+- A7: reading a turn's commits through `source-control.git@1` once it offers
+  a read of `HEAD` and a count of commits; health runs `git` itself until
+  then (D723).
 - A7: commits of turns that overlap in one checkout (two linked threads, or
   a person committing meanwhile): each turn counts what landed between its
   start and its end (D723).

@@ -571,7 +571,13 @@ export default definePlugin({
     };
     askAgain();
     // Health turned on, or an analyst named: open warnings nobody analysed are asked.
-    context.subscriptions.add(context.config.onDidChange(HEALTH_CONFIG_SECTION, askAgain));
+    // New thresholds, or health turned on, are evaluated at once, not on the next event.
+    context.subscriptions.add(
+      context.config.onDidChange(HEALTH_CONFIG_SECTION, () => {
+        askAgain();
+        evaluateSoon();
+      }),
+    );
 
     // --- Progress no stream holds: the commits of a turn (D723) ---------------------
     /** Where each running turn of a linked thread started, kept across a reload. */
