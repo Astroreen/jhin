@@ -1311,17 +1311,19 @@ C3 decisions:
   team of three fake agents (lead, builder, reviewer) from a `jhin.teams`
   spec in config, `teams.up`, the intent, a mission with two waves of
   slices, `missions.orchestrate` from the lead's generation, proofs, an ask
-  to the owner answered through the inbox and a ceremony warning (the builder
-  reporting to the owner again and again), until the mission is set done, the lead's decision (D651) sent for it (D1102). It follows the `missions`,
-  `orchestration`, `agents/messages`, `agents/inbox` and `health` streams from their start
+  to the owner answered through the inbox, and a ceremony warning: the
+  builder reports to the owner again and again. It ends when the mission is
+  set done, which is the lead's decision (D651), sent for it (D1102). It
+  follows the `missions`, `orchestration`, `agents/messages`,
+  `agents/inbox` and `health` streams from their start
   (`e2e/tests/support/streams.ts`) and waits for the record it expects; it
   never waits for time.
 - **D1102. The fake agents' own acts are commands sent for them.** The fake
   runtime calls no tools, so the test calls what an agent's MCP tools call:
   `slices.prove`, `missions.update`, and `agents.ask` and `agents.send`
-  with the agent as `from` (D622). Everything the node does by itself (handoffs, thread
-  links, the inbox item, the warning, its analysis, the orchestrator's
-  outcomes) is asserted, never driven.
+  with the agent as `from` (D622). Everything the node does by itself
+  (handoffs, thread links, the inbox item, the warning, its analysis, the
+  orchestrator's outcomes) is asserted, never driven.
 - **D1103. The scenario proves the threshold, not just a warning.** Health
   runs with a low `ceremony` config. Health takes each event as the log
   appends it, so once the last handoff is in the log `health.status` is

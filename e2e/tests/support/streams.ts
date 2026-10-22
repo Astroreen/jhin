@@ -9,7 +9,8 @@ export interface StreamEvent {
 
 /**
  * Follows a stream of the node from its start: a subscription without `after`
- * gets every event after sequence 0, what the stream held before it too.
+ * gets every event after sequence 0, what the stream held before it too
+ * ("replays the backlog" in packages/rpc/test/rpc.test.ts).
  * `until` resolves with the first event, seen or future, that matches: a test
  * waits for the record it expects, never for time. If the node refuses or ends
  * the subscription, every wait rejects, naming the stream and what it saw.
