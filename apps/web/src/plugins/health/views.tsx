@@ -397,6 +397,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       return;
     }
     setDismissing(true);
+    // Dismissed, the button stays off until the warning's event takes it away.
+    let succeeded = false;
     try {
       const dismissed = await connection.client.call<Warning>("health.warnings.dismiss", {
         warningId,
@@ -416,6 +418,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
             : { dismissedAfter: dismissed.dismissedAfter }),
         },
       });
+      succeeded = true;
     } catch (error) {
       view.toasts?.show({
         type: "error",
@@ -423,7 +426,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
         description: errorText(error),
       });
     } finally {
-      if (mounted.current) setDismissing(false);
+      if (mounted.current && !succeeded) setDismissing(false);
     }
   };
   const { analysis } = warning;

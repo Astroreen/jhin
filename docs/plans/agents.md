@@ -1056,7 +1056,7 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   connection (the same per-node feed as the inbox, `lib/node-feeds.ts`), so a
   new warning is told in any mode the way an ask is (`lib/tell-owner.tsx`: a
   toast with focus, else a system notification, as `jhin.notifications`
-  allows); both open it. The open warnings of every node, newest first, and
+  allows, else a toast left on the page); both open it. The open warnings of every node, newest first, and
   an entry to the overview fill `civilization.sidebar.health`
   (`jhin.health.list`). The route panel `health` renders in
   `civilization.views` (`jhin.health.page`): without a `section` the overview

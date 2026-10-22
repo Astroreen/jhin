@@ -56,9 +56,11 @@ export function tellOwner(
         window.focus();
         news.open();
       });
+      return;
     } catch {
       // Some browsers refuse it (mobile, an insecure context): the page tells it instead.
-      if (settings.inApp !== false) toast();
     }
   }
+  // No system notification: the toast waits on the page for the owner's return.
+  if (settings.inApp !== false) toast();
 }

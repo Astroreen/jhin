@@ -65,11 +65,14 @@ describe("telling the owner (D630, D731)", () => {
     expect(shown).toEqual([]);
   });
 
-  it("sends a system notification without focus when the settings allow it, and only then", () => {
+  it("sends a system notification without focus when the settings allow it, else leaves a toast", () => {
     const notifications = page(false);
     const { shown, toasts: sink } = toasts();
     tellOwner(config({ mode: "off" }), sink, news);
     expect(notifications).toEqual([]);
+    // No system notification: the toast waits on the page instead of nothing.
+    expect(shown.map((toast) => toast.title)).toEqual([news.title]);
+    shown.length = 0;
     tellOwner(config({ mode: "notifications" }), sink, news);
     expect(notifications.map((item) => item.body)).toEqual([news.body]);
     expect(shown).toEqual([]);
