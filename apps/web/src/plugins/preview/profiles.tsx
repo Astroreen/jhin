@@ -1,14 +1,23 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): packages/contracts/src/browserProfile.ts
 // (built-in profiles, resolveBrowserProfiles) and the BrowserProfilesSetting of
-// apps/web/src/components/settings/IntegrationsSettings.tsx. docs/plans/preview.md, D953.
-import type { Connections, DeviceSettings } from "@jhin/client-api";
-import { DEFAULT_BROWSER_PROFILE_ID, INCOGNITO_BROWSER_PROFILE_ID } from "@jhin/preview-api";
+// apps/web/src/components/settings/IntegrationsSettings.tsx (with its "Import from" menu and
+// importBrowserCookiesIntoTarget). docs/plans/preview.md, D953 and D1205.
+import type { Connections, DeviceSettings, NodeConnection } from "@jhin/client-api";
+import {
+  DEFAULT_BROWSER_PROFILE_ID,
+  INCOGNITO_BROWSER_PROFILE_ID,
+  type BrowserImportSource,
+  type PreviewImportCookiesResult,
+  type PreviewImportSourcesResult,
+} from "@jhin/preview-api";
 import { z } from "@jhin/sdk";
 import {
   Badge,
   Button,
   Input,
   Menu,
+  MenuGroup,
+  MenuGroupLabel,
   MenuItem,
   MenuPopup,
   MenuSeparator,
@@ -20,7 +29,14 @@ import {
   type Toasts,
 } from "@jhin/ui";
 import { MoreVerticalIcon, PlusIcon } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+
+import {
+  BrowserImportWizard,
+  importFailureReason,
+  type ImportOutcome,
+  type WizardTarget,
+} from "./browser-import.tsx";
 
 /** This device's browser profiles (T3's `browserProfiles`, `browserDefaultProfileId`). */
 export const PREVIEW_BROWSER_SECTION = "jhin.preview.browser";
@@ -126,6 +142,24 @@ async function clearOnNodes(services: ProfilesServices, profileId: string): Prom
   }
 }
 
+/** One connected node's browsers to import from (D1205). */
+interface NodeSources {
+  readonly node: NodeConnection;
+  readonly sources: readonly BrowserImportSource[];
+}
+
+/** T3 lists a browser unless it is missing or cannot be read on this platform at all. */
+const importable = (sources: readonly BrowserImportSource[]) =>
+  sources.filter(
+    (source) =>
+      source.unavailable !== "notInstalled" && source.unavailable !== "unsupportedPlatform",
+  );
+
+async function listSources(node: NodeConnection): Promise<readonly BrowserImportSource[]> {
+  const result = await node.client.call<PreviewImportSourcesResult>("preview.import.sources", {});
+  return result.sources;
+}
+
 /** T3's "Browser profiles" row of the browser settings. */
 export function BrowserProfilesSection(props: { readonly services: ProfilesServices }) {
   const { services } = props;
@@ -136,6 +170,94 @@ export function BrowserProfilesSection(props: { readonly services: ProfilesServi
   const patch = (values: Partial<PreviewBrowserSettings>) =>
     services.settings?.patch(PREVIEW_BROWSER_SECTION, values);
   const atLimit = settings.profiles.length >= BROWSER_PROFILE_MAX_COUNT;
+  // T3's "Import from": every open node's browsers, each read on its node (D1205).
+  const [sources, setSources] = useState<readonly NodeSources[] | null>(null);
+  const [importSession, setImportSession] = useState<{
+    readonly node: NodeConnection;
+    readonly source: BrowserImportSource;
+  } | null>(null);
+  const importInFlight = useRef(false);
+  const loadSources = () => {
+    const open = services.connections.list().filter((node) => node.state === "open");
+    void Promise.all(
+      open.map(async (node) => ({
+        node,
+        sources: await listSources(node).catch(() => [] as readonly BrowserImportSource[]),
+      })),
+    ).then(setSources);
+  };
+  const refreshSource = async (
+    node: NodeConnection,
+    sourceId: BrowserImportSource["id"],
+  ): Promise<BrowserImportSource | undefined> => {
+    try {
+      const latest = await listSources(node);
+      setSources((previous) =>
+        (previous ?? []).map((entry) =>
+          entry.node.id === node.id ? { node, sources: latest } : entry,
+        ),
+      );
+      return latest.find((source) => source.id === sourceId);
+    } catch {
+      return undefined;
+    }
+  };
+  /** T3's importBrowserCookiesIntoTarget: a new profile is kept only once cookies landed in it. */
+  const runImport = async (
+    node: NodeConnection,
+    source: BrowserImportSource,
+    input: { readonly sourceProfileDirectory: string; readonly target: WizardTarget },
+  ): Promise<ImportOutcome> => {
+    const exists = (profileId: string) =>
+      resolveBrowserProfiles(services.read()).profiles.some((profile) => profile.id === profileId);
+    if (input.target.kind === "existing" && !exists(input.target.profileId)) {
+      return { kind: "blocked", reason: "readFailed" };
+    }
+    if (importInFlight.current) return { kind: "blocked", reason: "readFailed" };
+    importInFlight.current = true;
+    setBusy(true);
+    try {
+      const result = await node.client.call<PreviewImportCookiesResult>("preview.import.cookies", {
+        sourceId: source.id,
+        sourceProfileDirectory: input.sourceProfileDirectory,
+        targetProfileId: input.target.profileId,
+      });
+      let targetName = input.target.kind === "existing" ? input.target.name : source.name;
+      if (input.target.kind === "new" && result.imported > 0) {
+        const current = services.read();
+        // The wizard refuses a new target at the cap, but it can be reached while the
+        // import runs: the profile's cookies go again rather than stay unreachable.
+        const failure =
+          current.profiles.length >= BROWSER_PROFILE_MAX_COUNT
+            ? ("profileLimitReached" as const)
+            : services.settings === undefined
+              ? ("profileNotSaved" as const)
+              : undefined;
+        if (failure !== undefined) {
+          await node.client
+            .call("preview.profile.clear", { profileId: input.target.profileId })
+            .catch(() => undefined);
+          return { kind: "blocked", reason: failure };
+        }
+        targetName = freshProfileName(resolveBrowserProfiles(current).profiles, source.name);
+        patch({
+          profiles: [...current.profiles, { id: input.target.profileId, name: targetName }],
+        });
+      }
+      return {
+        kind: "imported",
+        imported: result.imported,
+        skipped: result.skipped,
+        skippedDomains: result.skippedDomains,
+        targetName,
+      };
+    } catch (error) {
+      return { kind: "blocked", reason: importFailureReason(error) };
+    } finally {
+      importInFlight.current = false;
+      setBusy(false);
+    }
+  };
 
   const create = () => {
     const current = services.read();
@@ -199,10 +321,52 @@ export function BrowserProfilesSection(props: { readonly services: ProfilesServi
     <SettingsSection title="Browser">
       <SettingsRow
         control={
-          <Button disabled={busy || atLimit} onClick={create} size="sm" variant="outline">
-            <PlusIcon />
-            Add profile
-          </Button>
+          <Menu onOpenChange={(open) => open && loadSources()}>
+            <MenuTrigger render={<Button disabled={busy} size="sm" variant="outline" />}>
+              <PlusIcon />
+              Add profile
+            </MenuTrigger>
+            <MenuPopup align="end">
+              <MenuItem disabled={atLimit} onClick={create}>
+                Blank profile
+              </MenuItem>
+              {atLimit ? (
+                <MenuItem disabled>You&rsquo;ve reached the profile limit</MenuItem>
+              ) : null}
+              <MenuSeparator />
+              {sources === null ? (
+                <MenuGroup>
+                  <MenuGroupLabel>Import from</MenuGroupLabel>
+                  <MenuItem disabled>Looking for browsers…</MenuItem>
+                </MenuGroup>
+              ) : sources.length === 0 ? (
+                <MenuGroup>
+                  <MenuGroupLabel>Import from</MenuGroupLabel>
+                  <MenuItem disabled>Connect to a node to import cookies</MenuItem>
+                </MenuGroup>
+              ) : (
+                sources.map(({ node, sources: nodeSources }) => (
+                  <MenuGroup key={node.id}>
+                    <MenuGroupLabel>
+                      {sources.length > 1 ? `Import from ${node.label}` : "Import from"}
+                    </MenuGroupLabel>
+                    {importable(nodeSources).length === 0 ? (
+                      <MenuItem disabled>No supported browsers found</MenuItem>
+                    ) : (
+                      importable(nodeSources).map((source) => (
+                        <MenuItem
+                          key={source.id}
+                          onClick={() => setImportSession({ node, source })}
+                        >
+                          {source.name}
+                        </MenuItem>
+                      ))
+                    )}
+                  </MenuGroup>
+                ))
+              )}
+            </MenuPopup>
+          </Menu>
         }
         description="Profiles separate cookies and logins. Incognito data is cleared when the browser closes."
         title="Browser profiles"
@@ -283,6 +447,17 @@ export function BrowserProfilesSection(props: { readonly services: ProfilesServi
           })}
         </ul>
       </SettingsRow>
+      {importSession ? (
+        <BrowserImportWizard
+          source={importSession.source}
+          destinationName={importSession.node.label}
+          targetProfiles={listed.map((profile) => ({ id: profile.id, name: profile.name }))}
+          canCreateProfile={services.settings !== undefined && !atLimit}
+          onImport={(input) => runImport(importSession.node, importSession.source, input)}
+          onRefreshSource={() => refreshSource(importSession.node, importSession.source.id)}
+          onClose={() => setImportSession(null)}
+        />
+      ) : null}
     </SettingsSection>
   );
 }

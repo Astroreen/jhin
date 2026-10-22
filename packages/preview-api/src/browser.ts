@@ -47,7 +47,9 @@ export type PreviewErrorCode =
   | "PREVIEW_INVALID_URL"
   /** The node has no browser to run, or it did not start. */
   | "PREVIEW_UNAVAILABLE"
-  | "PREVIEW_RECORDING";
+  | "PREVIEW_RECORDING"
+  /** `details.reason`: why a cookie import stopped (`BrowserImportFailureReason`, D1204). */
+  | "PREVIEW_IMPORT_FAILED";
 
 export const PreviewControlReason = z.enum([
   "agentMismatch",

@@ -1,5 +1,9 @@
+import * as Fs from "node:fs";
 import * as Http from "node:http";
 import type { AddressInfo } from "node:net";
+import * as Os from "node:os";
+import * as Path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
@@ -23,6 +27,12 @@ let origin = "";
 test.beforeAll(async () => {
   node = await startNode();
   server = Http.createServer((request, response) => {
+    // The cookies the browser sent, as the page's title.
+    if (request.url === "/cookie") {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end(`<title>${request.headers.cookie ?? "no cookie"}</title>`);
+      return;
+    }
     const page = PAGES[request.url ?? "/"];
     response.writeHead(page === undefined ? 404 : 200, { "content-type": "text/html" });
     response.end(page ?? "missing");
@@ -35,8 +45,8 @@ test.afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-async function startThread(page: Page, text: string): Promise<string> {
-  await page.goto(`${node.ui}#token=${node.token}`);
+async function startThread(page: Page, text: string, on: RunningNode = node): Promise<string> {
+  await page.goto(`${on.ui}#token=${on.token}`);
   await page.getByRole("button", { name: "Start a thread" }).click();
   const message = page.getByRole("textbox", { name: "Message" });
   await message.fill(text);
@@ -173,6 +183,7 @@ test("D953: a profile made in the settings opens a tab of its own, marked with i
   await page.getByRole("button", { name: "Browser" }).click();
   const section = page.getByRole("region", { name: "Browser" });
   await section.getByRole("button", { name: "Add profile" }).click();
+  await page.getByRole("menuitem", { name: "Blank profile" }).click();
   const name = section.getByRole("textbox", { name: "Rename New profile" });
   await name.fill("Work");
   await name.press("Enter");
@@ -206,6 +217,84 @@ test("D953: a profile made in the settings opens a tab of its own, marked with i
   await expect(list.getByRole("listitem").nth(1)).toContainText("Default");
   await page.getByRole("button", { name: "Back" }).click();
   await expect(panel.getByText("Work", { exact: true })).toHaveCount(0);
+});
+
+/** A machine whose only browser is a Firefox profile with a login for the test's pages. */
+function machineWithFirefox(): string {
+  const machine = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-e2e-machine-"));
+  const root = Path.join(machine, ".mozilla", "firefox");
+  Fs.mkdirSync(Path.join(root, "abcd.default-release"), { recursive: true });
+  Fs.writeFileSync(
+    Path.join(root, "profiles.ini"),
+    "[Profile0]\nName=Personal\nIsRelative=1\nPath=abcd.default-release\n",
+  );
+  const database = new DatabaseSync(Path.join(root, "abcd.default-release", "cookies.sqlite"));
+  // Firefox 129+ (schema 16) keeps expiries in milliseconds.
+  database.exec(`pragma user_version = 16;
+    create table moz_cookies (id integer primary key, host text, name text, value text,
+      path text, expiry integer, isSecure integer, isHttpOnly integer, sameSite integer,
+      originAttributes text not null default '')`);
+  database
+    .prepare(
+      "insert into moz_cookies (host, name, value, path, expiry, isSecure, isHttpOnly, sameSite) values (?, ?, ?, ?, ?, 0, 1, 1)",
+    )
+    .run("127.0.0.1", "login", "alice", "/", Date.now() + 86_400_000);
+  database.close();
+  return machine;
+}
+
+test("D1205: the node machine's Firefox cookies go into a new profile from Add profile", async ({
+  page,
+}, info) => {
+  const machine = machineWithFirefox();
+  // The node reads the browsers of its own machine: here a HOME of the test's.
+  const importing = await startNode({
+    env: {
+      HOME: machine,
+      PLAYWRIGHT_BROWSERS_PATH:
+        process.env.PLAYWRIGHT_BROWSERS_PATH ?? Path.join(Os.homedir(), ".cache", "ms-playwright"),
+    },
+  });
+  try {
+    await startThread(page, "import please", importing);
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Browser" }).click();
+    const section = page.getByRole("region", { name: "Browser" });
+    await section.getByRole("button", { name: "Add profile" }).click();
+    await expect(page.getByRole("menuitem", { name: "Blank profile" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Firefox" })).toBeVisible();
+    await shot(page, info, "import-menu");
+    await page.getByRole("menuitem", { name: "Firefox" }).click();
+
+    const wizard = page.getByRole("dialog", { name: "Import from Firefox" });
+    await expect(wizard.getByRole("button", { name: /Personal/ })).toContainText("1 cookie");
+    await expect(wizard.getByRole("button", { name: /New profile/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await shot(page, info, "import-configure");
+    await wizard.getByRole("button", { name: "Import" }).click();
+    const done = page.getByRole("dialog", { name: "Imported 1 cookie" });
+    await expect(done).toContainText("Added to Firefox for");
+    await shot(page, info, "import-done");
+    await done.getByRole("button", { name: "Done" }).click();
+    const list = section.getByRole("list", { name: "Browser profiles" });
+    await expect(list.getByRole("textbox", { name: "Rename Firefox" })).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();
+
+    // A tab of the new profile is signed in.
+    await page.getByRole("button", { name: "Toggle right panel" }).click();
+    const panel = page.getByRole("complementary", { name: "Right panel" });
+    await panel.getByRole("button", { name: "Open browser in a profile" }).click();
+    await page.getByRole("menuitem", { name: "Firefox" }).click();
+    const address = panel.getByRole("textbox", { name: "Address" });
+    await address.fill(`${origin}/cookie`);
+    await address.press("Enter");
+    await expect(panel.getByRole("tab", { name: "login=alice" })).toBeVisible();
+  } finally {
+    await importing.stop();
+    Fs.rmSync(machine, { recursive: true, force: true });
+  }
 });
 
 test("D403: the user opens a page from the address bar and sizes it like a device", async ({

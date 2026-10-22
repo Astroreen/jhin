@@ -14,6 +14,7 @@ import {
   PreviewDialogInput,
   PreviewDragInput,
   PreviewEvaluateInput,
+  PreviewError,
   PreviewEvaluateResult,
   PreviewHoverInput,
   PreviewListInput,
@@ -41,6 +42,10 @@ import {
   PreviewTabInputInput,
   PreviewTabNavigateInput,
   PreviewProfileClearInput,
+  PreviewImportCookiesInput,
+  PreviewImportCookiesResult,
+  PreviewImportSourcesResult,
+  INCOGNITO_BROWSER_PROFILE_ID,
   PreviewTabOpenInput,
   PreviewTarget,
   PreviewTypeInput,
@@ -57,6 +62,11 @@ import {
 import { definePlugin, toDisposable, z, type Invocation, describePermissions } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 
+import {
+  createBrowserImport,
+  importFailed,
+  writeCookies,
+} from "./browser-import/browser-import.ts";
 import { Chromium } from "./chromium.ts";
 import { createTabs, sessionKey } from "./tabs.ts";
 import { createLocalServerScanner, DiscoveredLocalServer, nodeScanHost } from "./local-servers.ts";
@@ -191,6 +201,11 @@ export default definePlugin({
       "preview.write": {
         title: "Control previews",
         description: "Open browser previews and host browser automation.",
+      },
+      "preview.import": {
+        title: "Import browser cookies",
+        description:
+          "Read the cookies of the browsers installed on this node's machine into a browser profile.",
       },
     });
     // T3's discovered local servers (D950): what terminals of this node serve.
@@ -500,6 +515,47 @@ export default definePlugin({
       handler: async ({ profileId }) => {
         await chromium.clearProfile(profileId);
         return {};
+      },
+    });
+    // T3's "Import from" (D1204): the node machine's browsers, read into a profile.
+    // Reading them hands over the machine user's sessions, so it takes the panel's
+    // `preview.control` and `preview.import` besides: the owner's `*` holds both, a
+    // device token only when it is granted `preview.import` (or `preview.*`).
+    const importing = [...control, "preview.import"];
+    const browserImport = createBrowserImport();
+    context.commands.register({
+      name: "preview.import.sources",
+      title: "List browsers to import from",
+      description:
+        "Lists the browsers installed on this node's machine that cookies can be imported from (T3's Import from), with their profiles and cookie counts, or why one cannot be read now",
+      input: z.object({}),
+      output: PreviewImportSourcesResult,
+      permissions: importing,
+      handler: async () => ({ sources: await browserImport.listSources() }),
+    });
+    context.commands.register({
+      name: "preview.import.cookies",
+      title: "Import browser cookies",
+      description:
+        "Imports the cookies of a browser profile on this node's machine into a browser profile of this node (T3's Import from); its open tabs see them at once. Fails with PREVIEW_IMPORT_FAILED and details.reason",
+      input: PreviewImportCookiesInput,
+      output: PreviewImportCookiesResult,
+      permissions: importing,
+      handler: async (input) => {
+        // Incognito keeps nothing past its browser: T3 imports only into kept profiles.
+        if (input.targetProfileId === INCOGNITO_BROWSER_PROFILE_ID) {
+          throw importFailed(input.sourceId, "sessionUnavailable");
+        }
+        const cookies = await browserImport.readCookies(input);
+        try {
+          return await chromium.withProfile(input.targetProfileId, (profile) =>
+            writeCookies(profile, cookies),
+          );
+        } catch (cause) {
+          // The profile did not start, or closed while it was written.
+          if (cause instanceof PreviewError && cause.code === "PREVIEW_IMPORT_FAILED") throw cause;
+          throw importFailed(input.sourceId, "sessionUnavailable", cause);
+        }
       },
     });
     context.commands.register({

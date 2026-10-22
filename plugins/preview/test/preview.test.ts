@@ -650,6 +650,33 @@ describe("jhin.preview", () => {
     agent.close();
   });
 
+  it("keeps the machine's browsers from a token without preview.import (D1204)", async () => {
+    const { client, other } = await node();
+    const panel = other("panel-token", ["preview.read", "preview.write", "preview.control"]);
+    for (const [name, input] of [
+      ["preview.import.sources", {}],
+      [
+        "preview.import.cookies",
+        { sourceId: "firefox", sourceProfileDirectory: "x", targetProfileId: "default" },
+      ],
+    ] as const) {
+      expect((await rejection(panel.call(name, input))).code).toBe("PERMISSION_DENIED");
+    }
+    panel.close();
+    // Incognito keeps nothing: it is refused before any browser of the machine is read.
+    const incognito = await rejection(
+      client.call("preview.import.cookies", {
+        sourceId: "firefox",
+        sourceProfileDirectory: "x",
+        targetProfileId: "incognito",
+      }),
+    );
+    expect(incognito).toMatchObject({
+      code: "PREVIEW_IMPORT_FAILED",
+      details: { reason: "sessionUnavailable" },
+    });
+  });
+
   it("lets only a session that may act stop a tab's recording", async () => {
     const { client } = await node();
     const opened = await client.call<PreviewStatus>("preview.open", {
