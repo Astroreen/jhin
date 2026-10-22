@@ -1264,7 +1264,9 @@ Decisions (C2):
   `missions.intent.set`, `slices.create` or `slices.update` on the view's
   node and closes; what the view shows still comes from the stream (D655),
   so nothing is written to the fold by hand and an edit made elsewhere shows
-  the same way. Creating a mission opens it.
+  the same way. Creating a mission opens it. A done or dropped mission takes no new
+  slice (`MISSION_CLOSED`, D651), so it has no Add slice; its slices still
+  edit, as the commands allow.
 - **D1082. An assignee is shown by its agent's title.** The view reads
   `host.identity` and `agents.catalog` of its node once per view: an address
   the node lists shows its agent's title, the node's owner shows as Owner,
@@ -1441,6 +1443,9 @@ with its report as a "C3 run" note here.
   slice from the client (`slices.prove` stays the agent's).
 - C2: titles and the assignee picker for agents of other nodes of the mesh;
   the view lists its own node's agents, read once per view (D1082).
+- C2: saying why titles fall back to ids: a failing `host.identity` or
+  `agents.catalog` leaves the picker without Owner or agents, silently
+  (D1082).
 - A3: proof stored on the node (screenshot files); a proof item names a URL.
 - A3: a project deleted between the project check and the append of
   `missions.create` or `missions.intent.set` (D643) still gets its record;
