@@ -847,6 +847,9 @@ describe("submodule warnings", () => {
     expect(redactUrls("fatal: 'https://host/x.git?access_token=abc&x=1' failed")).toBe(
       "fatal: 'https://host/x.git?access_token=***&x=1' failed",
     );
+    expect(redactUrls("fatal: 'https://host/x.git?private_token=abc&sig=def' failed")).toBe(
+      "fatal: 'https://host/x.git?private_token=***&sig=***' failed",
+    );
     expect(redactUrls("fatal: repository '/tmp/lib' not found")).toBe(
       "fatal: repository '/tmp/lib' not found",
     );

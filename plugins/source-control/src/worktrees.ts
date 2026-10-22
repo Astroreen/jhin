@@ -430,7 +430,10 @@ export const redactUrls = (text: string) =>
   text
     // Up to the last `@` before the host, so a password with `@` in it goes whole.
     .replace(/(\w+:\/\/)[^\s/]*@/g, "$1***@")
-    .replace(/([?&](?:access_)?(?:token|password|key|secret)=)[^&\s'"]+/gi, "$1***");
+    .replace(
+      /([?&](?:(?:access_|private_|api_)?(?:token|password|key|secret)|auth|sig)=)[^&\s'"]+/gi,
+      "$1***",
+    );
 
 /** Checks an existing branch out again at `path` (a managed worktree that went missing). */
 export async function recreateWorktree(
