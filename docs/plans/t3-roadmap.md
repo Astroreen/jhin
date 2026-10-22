@@ -336,3 +336,11 @@ free block of 20 after D1060 and writes it here.
   The composer.spec flake "implements the plan in build mode" (an Enter
   that sends already-cleared text) found at its cause and fixed, and the
   host.test watcher flake checked for the same cause.
+  Done: `t3-parity.md` D1041 (#187): the entry chunk went from 491 kB to
+  434 kB with the composer's banners, the palette's body, the add-project
+  form and the notifications section as chunks; D1042–D1043 (#191): the
+  build-mode flake was a key handled before ProseMirror read a scripted
+  selection, and a second composer flake was "Cite" missing a selection
+  made before its chunk loaded, both fixed in the product. The host.test
+  watcher flake is in `t3-parity.md` Deferred (no failing log left; not
+  the same cause).
