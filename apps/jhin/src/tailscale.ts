@@ -49,6 +49,16 @@ const runTailscale: TailscaleRunner = (args, timeoutMs) =>
     );
   });
 
+/** Two proxy targets compared as URLs: `http://127.0.0.1:7777/` is `http://127.0.0.1:7777`. */
+function sameTarget(shown: string, ours: string | undefined): boolean {
+  if (ours === undefined || !URL.canParse(shown) || !URL.canParse(ours)) return false;
+  const a = new URL(shown);
+  const b = new URL(ours);
+  return (
+    a.origin === b.origin && a.pathname.replace(/\/+$/u, "") === b.pathname.replace(/\/+$/u, "")
+  );
+}
+
 /**
  * Whether `tailscale serve status --json` leaves HTTPS port `port` to us: no
  * handler at all, or only web handlers proxying to targets `jhin pair` made
@@ -82,7 +92,7 @@ export function replaceable(statusJson: string, port: number, ours: string | und
         path === "/" &&
         Object.keys(handler).every((key) => key === "Proxy") &&
         typeof handler["Proxy"] === "string" &&
-        handler["Proxy"] === ours,
+        sameTarget(handler["Proxy"], ours),
     )
   );
 }

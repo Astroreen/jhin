@@ -224,6 +224,11 @@ describe("what a fresh mapping may replace (security.md D1189)", () => {
     expect(
       replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777" }), 8443, undefined),
     ).toBe(true);
+    // As tailscale may print it: with a trailing slash. (A real `serve status`
+    // printed `"Proxy": "http://127.0.0.1:9"` for a target given as that.)
+    expect(
+      replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:7777/" }), 443, ours),
+    ).toBe(true);
     // Someone's stopped dev server on loopback is not ours to take.
     expect(
       replaceable(status({ HTTPS: true }, { Proxy: "http://127.0.0.1:3000" }), 443, ours),
