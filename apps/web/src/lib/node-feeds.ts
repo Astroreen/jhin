@@ -44,6 +44,11 @@ export interface NodeFeedSource<S> {
     before: S,
     after: S,
   ): void;
+  /**
+   * Hears a read again after the stream dropped, with what the feed held
+   * before it and what the node holds now: what came meanwhile is new.
+   */
+  reread?(connection: NodeConnection, before: S, after: S): void;
 }
 
 const NOT_THERE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_DENIED"]);
@@ -119,18 +124,29 @@ export function createNodeFeeds<S>(
       if (wasRead && !retried && code !== "PERMISSION_DENIED") {
         retried = true;
         for (const subscription of subscriptions.splice(0)) subscription.dispose();
-        follow();
+        follow(true);
       }
     };
-    const follow = () =>
+    const follow = (again = false) =>
       void source
         .load(client)
         .then(({ head, state }) => {
           if (stopped) return;
+          const before = states.get(id)?.value ?? source.empty;
           set(id, () => ({ status: "ready", value: state }));
+          // What arrived while the stream was down is told now, not lost.
+          if (again) {
+            try {
+              source.reread?.(connection, before, state);
+            } catch (error) {
+              log.warn("a feed's listener failed", { stream: source.stream, error: String(error) });
+            }
+          }
           subscriptions.push(
             client.subscribe(source.stream, { after: head, onError: failed }, (event) => {
               if (stopped) return;
+              // The stream works again: a later drop may be retried once more.
+              retried = false;
               const before = states.get(id)?.value ?? source.empty;
               const after = source.apply(before, event);
               if (after !== before) set(id, (feed) => ({ ...feed, value: after }));

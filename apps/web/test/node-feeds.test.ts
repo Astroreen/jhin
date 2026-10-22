@@ -180,4 +180,56 @@ describe("node feeds (D630, D731)", () => {
     expect(one.stream.open).toBe(false);
     feeds.dispose();
   });
+
+  it("tells what arrived while the stream was down, and retries again once it delivered", async () => {
+    // Each read answers the next list; the stream is driven by the test.
+    const reads = [
+      { head: 1, items: ["a"] },
+      { head: 4, items: ["a", "b"] },
+      { head: 6, items: ["a", "b", "c", "d"] },
+    ];
+    const stream: { listener?: (event: Event) => void; onError?: (error: unknown) => void } = {};
+    const client = {
+      call: async () => reads.shift(),
+      subscribe: (
+        _stream: string,
+        options: { onError: (error: unknown) => void },
+        listener: (event: Event) => void,
+      ) => {
+        Object.assign(stream, { listener, onError: options.onError });
+        return toDisposable(() => {});
+      },
+    };
+    const { connections } = fakeConnections(client as never);
+    const told: string[] = [];
+    const feeds = createNodeFeeds(connections, quiet, {
+      ...source,
+      reread: (_connection, before, after) => {
+        for (const item of after) if (!before.includes(item)) told.push(item);
+      },
+    });
+    const ready = () =>
+      new Promise<void>((resolve) => {
+        const subscription = feeds.subscribe(() => {
+          if (feeds.snapshot().get("a")?.status !== "ready") return;
+          subscription.dispose();
+          resolve();
+        });
+      });
+    let next = ready();
+    await next;
+    // A drop: read again, and "b", which came meanwhile, is told.
+    next = ready();
+    stream.onError!(new Error("dropped"));
+    await next;
+    expect(told).toEqual(["b"]);
+    // The stream delivers again, so a later drop is retried too.
+    stream.listener!({ type: "add", payload: "c" });
+    next = ready();
+    stream.onError!(new Error("dropped again"));
+    await next;
+    expect(told).toEqual(["b", "d"]);
+    expect(feeds.snapshot().get("a")?.value).toEqual(["a", "b", "c", "d"]);
+    feeds.dispose();
+  });
 });

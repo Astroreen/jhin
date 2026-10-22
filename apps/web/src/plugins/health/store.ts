@@ -51,6 +51,13 @@ export function createHealthStore(
     // Progress events are skipped too, so `progress` never holds half a list.
     apply: (state, event) =>
       event.type === HealthEvents.progressRecorded ? state : applyHealthEvent(state, event),
+    reread: (connection, before, after) => {
+      for (const warning of Object.values(after.warnings)) {
+        if (warning.status === "open" && before.warnings[warning.warningId] === undefined) {
+          raised(connection, warning);
+        }
+      }
+    },
     seen: (connection, event, before) => {
       const warning = (event.payload as { warning?: Warning } | null)?.warning;
       // A warning told once: a replayed raise of a known warning is not news.

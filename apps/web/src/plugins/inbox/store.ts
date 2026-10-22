@@ -54,6 +54,13 @@ export function createInboxStore(
       return { head, state: items };
     },
     apply: applyInboxEvent,
+    reread: (connection, before, after) => {
+      for (const item of after) {
+        if (!before.some((known) => known.message.messageId === item.message.messageId)) {
+          arrived(connection, item);
+        }
+      }
+    },
     seen: (connection, event, before, after) => {
       if (event.type === MessageEvents.received && after !== before)
         arrived(connection, after.at(-1)!);

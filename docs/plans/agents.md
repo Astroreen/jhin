@@ -1279,11 +1279,12 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
 - A7: telling the owner, after a reconnect, the warnings (and the inbox
   items, D630) that arrived while the connection was down. The feed reloads
   them into the sidebar; only what arrives on a live stream is told (D731).
-- A7: following a node's stream again after it failed twice: the inbox's
-  and health's per-node feed (`lib/node-feeds.ts`, D731) reads and follows a
-  dropped stream once more; after a second failure, or a permission taken
-  back, it keeps what it showed, marked not live, until the connection is
-  replaced, and tells nothing new meanwhile.
+- A7: following a node's stream again after it failed twice in a row: the
+  inbox's and health's per-node feed (`lib/node-feeds.ts`, D731) reads a
+  dropped stream again, tells what arrived meanwhile, and follows it; a
+  stream that delivers again may be retried on a later drop. Two drops with
+  no event between them, or a permission taken back, keep what it showed,
+  marked not live, until the connection is replaced.
 - A7: commits made outside a turn (by hand, by a workflow) and pull requests
   merged without a link to a thread (D722, D723).
 - A8: mode places that survive a page reload (D744 keeps them for the page's
