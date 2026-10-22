@@ -792,6 +792,8 @@ Round 3 of `t3-roadmap.md` (D1161–D1180). The reference is D53's tag:
 - A public webhook URL through a relay, held deliveries while the node is
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.
+- A page-level test that the task editor keeps a task's model options on a
+  save that leaves its model as it was (D1178); the server's side is tested.
 - T3's ceiling on a task's modes from the calling agent's own (its
   `limits`): a task created from a thread takes the thread's modes (D1177),
   and one given wider modes keeps them.
