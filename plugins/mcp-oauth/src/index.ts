@@ -375,13 +375,7 @@ export default definePlugin({
         approver: approver.principal.id,
         scopes: authorization.scopes,
       });
-      redirect(
-        response,
-        oauth.approve(authorization, {
-          id: approver.principal.id,
-          permissions: approver.principal.permissions,
-        }),
-      );
+      redirect(response, oauth.approve(authorization, { id: approver.principal.id }));
     });
 
     add("POST", "/oauth/mcp/token", async (request, response) => {

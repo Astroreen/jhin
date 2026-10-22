@@ -30,7 +30,7 @@ describe("authorization codes (security.md D1195)", () => {
       now = at;
       const validated = oauth.validate(urls, params);
       if (validated.kind !== "ok") throw new Error("invalid request");
-      const back = new URL(oauth.approve(validated.request, { id: "owner", permissions: ["*"] }));
+      const back = new URL(oauth.approve(validated.request, { id: "owner" }));
       return back.searchParams.get("code")!;
     };
     const exchange = (code: string) =>

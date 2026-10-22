@@ -105,10 +105,9 @@ export interface AuthorizationRequest {
   readonly scopes: readonly string[];
 }
 
-/** Who approved, and with what: the token is issued as this caller (D1195). */
+/** Who approved: its grants are read again at exchange, and the token is issued as it (D1195). */
 export interface Approver {
   readonly id: string;
-  readonly permissions: readonly string[];
 }
 
 interface PendingCode {
@@ -335,7 +334,7 @@ export function createOAuth(options: {
         codeChallenge: request.codeChallenge,
         resource: request.resource,
         scopes: request.scopes,
-        approver: { id: approver.id, permissions: [...approver.permissions] },
+        approver: { id: approver.id },
         expiresAt: now() + AUTHORIZATION_CODE_TTL_MS,
       });
       return redirectWith(request.redirectUri, {
