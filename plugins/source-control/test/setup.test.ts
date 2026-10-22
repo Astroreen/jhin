@@ -278,6 +278,40 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     expect(await without.client.call("git.worktree.setup.get", { threadId: "local" })).toBeNull();
   });
 
+  it("lets only a caller that may run a shell save a script (D1121)", async () => {
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(repository());
+    const scripts = [{ id: "s", name: "S", command: "true", runOnWorktreeCreate: true }];
+    await expect(
+      sc.as(["projects.write"]).call("projects.scripts.set", { projectId, scripts }),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    await expect(
+      sc
+        .as(["projects.write", "terminals.write"])
+        .call("projects.scripts.set", { projectId, scripts }),
+    ).resolves.toMatchObject({ scripts: [{ id: "s" }] });
+  });
+
+  it("lets an async script that ended before the first turn go, ending the setup with the turn", async () => {
+    const sc = await node({ watch: false }, { terminals: true });
+    const projectId = await projectWithScript(sc, { command: "echo ready" });
+    const threadId = "early";
+    const exited = setupUntil(sc, threadId, (s) => stage(s, "setup-script")?.status === "done");
+    await sc.client.call("threads.create", {
+      projectId,
+      threadId,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await exited;
+    const finished = setupUntil(sc, threadId, (s) => s.phase === "done");
+    expect(await turn(sc, threadId, "hello")).toBe("completed");
+    await finished;
+    // Nothing is left to cancel.
+    expect(
+      await sc.client.call<{ cancelled: boolean }>("git.worktree.setup.cancel", { threadId }),
+    ).toEqual({ cancelled: false });
+  });
+
   it("keeps a project's scripts and refuses two with one id", async () => {
     const sc = await node({ watch: false });
     const projectId = await projectWithScript(sc, { command: "pnpm install" });

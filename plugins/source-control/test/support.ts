@@ -194,6 +194,8 @@ exit 1
 
 export interface Node {
   readonly client: RpcClient;
+  /** A client of the node holding only `permissions` (a narrow device token). */
+  as(permissions: string[]): RpcClient;
   /** The fake terminals, when the node has them. */
   readonly terminals?: FakeTerminals;
   /** Every event of the `source-control` stream from now on. */
@@ -367,6 +369,15 @@ export async function node(
   return {
     client,
     events,
+    as: (permissions) => {
+      const narrow = connectInMemory(kernel, {
+        log: storage.storage.log,
+        streams: live,
+        caller: { id: "narrow", permissions },
+      }).client;
+      cleanups.push(() => narrow.close());
+      return narrow;
+    },
     ...(terminals === undefined ? {} : { terminals: terminals.seen }),
     /** Resolves with the first event of `stream` from now on that `match` accepts. */
     next: (stream, match) =>
