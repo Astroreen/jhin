@@ -14,7 +14,10 @@ export function mergeByTime<T extends { readonly at: string }>(
     for (let index = 0; index < lists.length; index += 1) {
       const candidate = lists[index]![next[index]!];
       if (candidate === undefined) continue;
-      if (pick < 0 || candidate.at < lists[pick]![next[pick]!]!.at) pick = index;
+      // Compared as times, not as strings: any ISO 8601 form orders right.
+      if (pick < 0 || Date.parse(candidate.at) < Date.parse(lists[pick]![next[pick]!]!.at)) {
+        pick = index;
+      }
     }
     if (pick < 0) return merged;
     merged.push(lists[pick]![next[pick]!]!);

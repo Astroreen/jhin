@@ -210,12 +210,18 @@ export default definePlugin({
         subscription.dispose();
         followed.delete(stream);
       }
-      const sources = [...linked].map((threadId) => ({
-        stream: threadStream(threadId),
-        handle: (event: StoredEvent) => sensors.ingestThread(threadId, event),
-      }));
-      // What a newly followed thread replays is counted: the detectors run after it.
-      void follow(sources).then(evaluateSoon);
+      const sources = [...linked]
+        .filter((threadId) => !followed.has(threadStream(threadId)))
+        .map((threadId) => ({
+          stream: threadStream(threadId),
+          handle: (event: StoredEvent) => sensors.ingestThread(threadId, event),
+        }));
+      if (sources.length === 0) return;
+      // What a newly followed thread replays is counted: the detectors run after
+      // it, once it was read (a stream that failed waits for the next run).
+      void follow(sources).then((error) => {
+        if (error === undefined) evaluateSoon();
+      });
     };
 
     /**
@@ -424,6 +430,8 @@ export default definePlugin({
     const evaluate = async () => {
       const current = config();
       if (!current.enabled || !active) return;
+      // A linked thread that could not be read is tried again on every run.
+      followThreads();
       for (const finding of sensors.evaluate(current, health, Date.now())) await raise(finding);
     };
     function evaluateSoon() {

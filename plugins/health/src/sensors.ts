@@ -31,7 +31,7 @@ import {
   type MissionsState,
   type Slice,
 } from "@jhin/missions-api";
-import { OWNER_PRINCIPAL_ID } from "@jhin/auth-api";
+import { OWNER_PRINCIPAL_ID, clientPrincipalId } from "@jhin/auth-api";
 import { SourceControlEvents } from "@jhin/source-control-api";
 import type { StoredEvent } from "@jhin/storage-api";
 
@@ -131,7 +131,7 @@ export class Sensors {
     if (this.ideas.length === 0) return;
     const haystack = normalizeIdea(text);
     for (const idea of this.ideas) {
-      if (event.at < idea.correctedAt) continue;
+      if (Date.parse(event.at) < Date.parse(idea.correctedAt)) continue;
       if (idea.projectId !== undefined && !slices.some((s) => s.projectId === idea.projectId))
         continue;
       if (!carriesIdea(haystack, normalizeIdea(idea.idea))) continue;
@@ -164,7 +164,9 @@ export class Sensors {
       const by = (event.payload as { by?: string }).by;
       // The owner, or one of the owner's devices, writing the phrase (a "do not
       // do X" note) is the correction, not a carrier; so is the node itself.
-      const owners = by === undefined || by === OWNER_PRINCIPAL_ID || by.startsWith("client:");
+      // auth-api names the owner's devices: `client:<id>` (security.md D411).
+      const owners =
+        by === undefined || by === OWNER_PRINCIPAL_ID || by.startsWith(clientPrincipalId(""));
       if (
         !owners &&
         (before === undefined || before.spec !== slice.spec || before.title !== slice.title)

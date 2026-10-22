@@ -1029,7 +1029,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   a group warns when its ceremony in the window reaches both the minimum and
   ratio × progress (no progress counts as 1); `proofLoop.maxEdits` (2),
   `mindVirus.minOccurrences` (2), `analysisTimeoutMinutes` (30, a day at most) and
-  `analysts`. An invalid layer keeps the
+  `analysts`. A shorter window forgets what falls out of it; a longer one
+  counts from what was kept, so it fills as new events come. An invalid layer keeps the
   last good thresholds.
 - **D730. Permissions.** `health.read` reads status, warnings, ideas and the
   stream; `health.write` dismisses warnings and names corrected ideas, the
