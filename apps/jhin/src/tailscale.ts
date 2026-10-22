@@ -17,7 +17,7 @@ export type TailscaleRunner = (
   timeoutMs: number,
 ) => Promise<{ readonly code: number; readonly stdout: string }>;
 
-export const runTailscale: TailscaleRunner = (args, timeoutMs) =>
+const runTailscale: TailscaleRunner = (args, timeoutMs) =>
   new Promise((resolve, reject) => {
     ChildProcess.execFile(
       process.platform === "win32" ? "tailscale.exe" : "tailscale",
