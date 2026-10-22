@@ -1280,9 +1280,11 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
 - A7: commits of turns that overlap in one checkout (two linked threads, or
   a person committing meanwhile): each turn counts what landed between its
   start and its end (D723).
-- A7: telling the owner, after a reconnect, the warnings (and the inbox
-  items, D630) that arrived while the connection was down. The feed reloads
-  them into the sidebar; only what arrives on a live stream is told (D731).
+- A7: telling the owner, after a reconnect (a connection replaced or
+  reopened), the warnings and the inbox items (D630) that arrived while it
+  was down. The new feed loads them into the sidebar without telling them;
+  within one feed, a stream that drops and is read again tells what came
+  meanwhile (D731).
 - A7: following a node's stream again after two drops within a minute: the
   inbox's and health's per-node feed (`lib/node-feeds.ts`, D731) reads a
   dropped stream again, tells what arrived meanwhile, and follows it, at most
