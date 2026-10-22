@@ -101,10 +101,22 @@ export const healthPlugin = builtin(
           }),
           output: z.object({}),
           handler: ({ node, warningId }) => {
+            // The client's codes (`connections`, `machines`), and the node's for a warning.
             if (connections.get(node)?.state !== "open") {
-              throw Object.assign(new Error(`No open connection ${node}`), {
-                code: "NODE_NOT_CONNECTED",
+              throw Object.assign(new Error(`Not connected to ${node}`), {
+                code: "NODE_NOT_FOUND",
                 details: { node },
+              });
+            }
+            const feed = store.snapshot().get(node);
+            if (
+              warningId !== undefined &&
+              feed?.status === "ready" &&
+              feed.value.warnings[warningId] === undefined
+            ) {
+              throw Object.assign(new Error(`No warning ${warningId}`), {
+                code: "WARNING_NOT_FOUND",
+                details: { node, warningId },
               });
             }
             open(node, warningId);
