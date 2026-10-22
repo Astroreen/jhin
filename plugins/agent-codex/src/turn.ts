@@ -331,7 +331,11 @@ export function codexTurn(
       const ended = subagentEnd(state["status"]);
       if (ended === undefined) continue;
       const message = str(state["message"]);
-      endSubagent(threadId, ended, ended === "failed" ? (message ?? "The subagent failed.") : undefined);
+      endSubagent(
+        threadId,
+        ended,
+        ended === "failed" ? (message ?? "The subagent failed.") : undefined,
+      );
     }
   };
   /** A frame of a subagent's own Codex thread: its work, approvals asked through this turn. */
@@ -344,7 +348,8 @@ export function codexTurn(
     if (frame.method === "turn/completed") {
       const turn = isRecord(params["turn"]) ? params["turn"] : {};
       const error = isRecord(turn["error"]) ? str(turn["error"]["message"]) : undefined;
-      if (turn["status"] === "failed") endSubagent(threadId, "failed", error ?? "The subagent failed.");
+      if (turn["status"] === "failed")
+        endSubagent(threadId, "failed", error ?? "The subagent failed.");
       else if (turn["status"] === "interrupted") endSubagent(threadId, "interrupted");
       else endSubagent(threadId, "completed");
       return;
