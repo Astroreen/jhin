@@ -133,11 +133,13 @@ function pullRequestPrompt(input: PullRequestInput): string {
 function branchNamePrompt(input: BranchNameInput): string {
   const mode = input.naming?.mode;
   const instructions = mode === "custom" ? input.naming?.instructions.trim() : undefined;
+  // A name or type is one line of metadata: a newline in it cannot start another.
+  const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
   const attachments = (input.attachments ?? []).map((attachment) =>
     // An inline image has no recorded size: none is claimed for it.
     attachment.sizeBytes === undefined
-      ? `- ${attachment.name} (${attachment.mimeType})`
-      : `- ${attachment.name} (${attachment.mimeType}, ${attachment.sizeBytes} bytes)`,
+      ? `- ${oneLine(attachment.name)} (${oneLine(attachment.mimeType)})`
+      : `- ${oneLine(attachment.name)} (${oneLine(attachment.mimeType)}, ${attachment.sizeBytes} bytes)`,
   );
   return [
     "You generate concise git branch names.",
