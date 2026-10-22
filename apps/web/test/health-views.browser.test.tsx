@@ -157,6 +157,8 @@ describe("health views (D731)", () => {
     await render(<HealthPage node="a" view={view} warningId="w1" />);
     await expect.element(page.getByText(/Not live: stream gone/)).toBeVisible();
     await expect.element(page.getByText(warning.summary)).toBeVisible();
+    // No retry is under way for this feed, so none is promised.
+    await expect.element(page.getByText(/not read again until the connection is/)).toBeVisible();
   });
 
   it("offers each node's overview, named, once there are several", async () => {

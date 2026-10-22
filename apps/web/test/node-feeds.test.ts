@@ -111,6 +111,8 @@ describe("node feeds (D630, D731)", () => {
       read: true,
       value: ["x", "y", "z"],
       error: "this client may no longer read it (stream gone)",
+      // A permission taken back is not read again, and the page does not promise it.
+      retrying: false,
     });
     feeds.dispose();
   });
@@ -143,6 +145,7 @@ describe("node feeds (D630, D731)", () => {
       read: true,
       value: ["x"],
       error: "stream gone again",
+      retrying: true,
     });
     expect(one.reads.count).toBe(2);
     feeds.dispose();

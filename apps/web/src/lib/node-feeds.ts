@@ -11,6 +11,8 @@ export interface NodeFeed<S> {
   readonly error?: string;
   /** Whether the node was read once: a feed in `error` then still holds what it read. */
   readonly read?: boolean;
+  /** For a feed in `error`: whether it is read again (not after a permission taken back). */
+  readonly retrying?: boolean;
 }
 
 /** A feed that holds what its node answered: live, or failed after it was read. */
@@ -191,6 +193,7 @@ export function createNodeFeeds<S>(
               status: "error",
               value: feed.value,
               ...(feed.read === true ? { read: true } : {}),
+              retrying,
               // A permission taken back is not a dropped stream: say which.
               error:
                 code === "PERMISSION_DENIED"

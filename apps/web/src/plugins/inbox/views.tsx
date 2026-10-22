@@ -173,7 +173,10 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
       {state.status === "error" ? (
         <p className="text-xs text-destructive">
           Not live: {state.error ?? "the node's inbox stream failed"}. This item may be answered
-          already; the inbox is read again within a minute.
+          already;{" "}
+          {state.retrying === true
+            ? "the inbox is read again within a minute."
+            : "the inbox is not read again until the connection is."}
         </p>
       ) : null}
       <p className="max-w-3xl text-sm whitespace-pre-wrap">{message.body}</p>
