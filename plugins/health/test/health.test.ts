@@ -3,7 +3,13 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { MESSAGES_STREAM, MessageEvents, ThreadHooks } from "@jhin/agent-api";
+import {
+  MESSAGES_STREAM,
+  MessageEvents,
+  ThreadEvents,
+  ThreadHooks,
+  threadStream,
+} from "@jhin/agent-api";
 import {
   COMMITS_COUNTED_EVENT,
   HEALTH_STREAM,
@@ -674,5 +680,28 @@ describe("jhin.health", () => {
       analyst: REVIEWER,
       reason: "config",
     });
+  });
+
+  it("leaves a thread no slice links any more, and goes on where it left it when linked again", async () => {
+    const { client, log, slice } = await node();
+    const queue = () =>
+      log.append(threadStream("t1"), [{ type: ThreadEvents.queueUpdated, payload: {} as Json }]);
+    const nodeCeremony = async () =>
+      (await client.call<{ groups: GroupStatus[] }>("health.status", {})).groups.find(
+        (group) => group.group.kind === "node",
+      )?.ceremony ?? 0;
+    await queue();
+    expect(await nodeCeremony()).toBe(1);
+    await client.call("slices.unlink", { sliceId: slice.id, threadId: "t1" });
+    await queue();
+    // Unlinked: no longer followed, so its queue changes count nowhere.
+    expect(await nodeCeremony()).toBe(1);
+    await client.call("slices.link", { sliceId: slice.id, threadId: "t1" });
+    const counted = nextAppended(log, threadStream("t1"), ThreadEvents.queueUpdated);
+    await queue();
+    await counted;
+    // Linked again: read on from where it was left. The change made while it
+    // was unlinked is read now, and the first is not counted twice (3, not 4).
+    expect(await nodeCeremony()).toBe(3);
   });
 });

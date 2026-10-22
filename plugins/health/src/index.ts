@@ -40,6 +40,7 @@ import {
   describePermissions,
   missingPermissions,
   z,
+  type Disposable,
   type Invocation,
 } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog, type Json, type StoredEvent } from "@jhin/storage-api";
@@ -131,6 +132,8 @@ export default definePlugin({
       readonly handle: (event: StoredEvent) => void;
     }
     const heads = new Map<string, number>();
+    /** The subscription of every stream followed, so a thread no slice links is left. */
+    const followed = new Map<string, Disposable>();
     const deliver = ({ stream, handle }: Source, event: StoredEvent) => {
       if (event.sequence <= (heads.get(stream) ?? 0)) return;
       heads.set(stream, event.sequence);
@@ -153,24 +156,29 @@ export default definePlugin({
      * unfollowed, so the next try reads it again; returns the error, if any.
      */
     const follow = async (sources: readonly Source[]): Promise<unknown> => {
-      const fresh = sources.filter((source) => !heads.has(source.stream));
+      const fresh = sources.filter((source) => !followed.has(source.stream));
       if (fresh.length === 0) return undefined;
-      for (const source of fresh) heads.set(source.stream, 0);
       let waiting: { source: Source; event: StoredEvent }[] | undefined = [];
-      const subscriptions = fresh.map((source) =>
-        context.subscriptions.add(
+      const subscriptions = fresh.map((source) => {
+        const subscription = context.subscriptions.add(
           log.subscribe(source.stream, (event) => {
             if (waiting === undefined) {
               deliver(source, event);
               evaluateSoon();
             } else waiting.push({ source, event });
           }),
-        ),
-      );
+        );
+        followed.set(source.stream, subscription);
+        return subscription;
+      });
       try {
         const read = await Promise.all(
           fresh.map(async (source) =>
-            (await log.read(source.stream)).map((event) => ({ source, event })),
+            // A stream followed before (a thread linked again) goes on from
+            // where it was left: what was counted is not counted twice.
+            (await log.read(source.stream, { after: heads.get(source.stream) ?? 0 })).map(
+              (event) => ({ source, event }),
+            ),
           ),
         );
         for (const { source, event } of mergeByTime(
@@ -185,7 +193,7 @@ export default definePlugin({
       } catch (error) {
         waiting = undefined;
         for (const subscription of subscriptions) subscription.dispose();
-        for (const source of fresh) heads.delete(source.stream);
+        for (const source of fresh) followed.delete(source.stream);
         context.log.warn("health could not read a stream", {
           streams: fresh.map((source) => source.stream),
           error: String(error),
@@ -195,7 +203,14 @@ export default definePlugin({
     };
     /** A thread a slice links is followed for its approvals and queue (D722). */
     const followThreads = () => {
-      const sources = [...sensors.linkedThreads()].map((threadId) => ({
+      const linked = sensors.linkedThreads();
+      // A thread no slice links any more (unlinked, its slice gone) is left.
+      for (const [stream, subscription] of followed) {
+        if (!stream.startsWith("thread/") || linked.has(stream.slice("thread/".length))) continue;
+        subscription.dispose();
+        followed.delete(stream);
+      }
+      const sources = [...linked].map((threadId) => ({
         stream: threadStream(threadId),
         handle: (event: StoredEvent) => sensors.ingestThread(threadId, event),
       }));
