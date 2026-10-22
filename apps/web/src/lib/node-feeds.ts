@@ -218,11 +218,20 @@ export function createNodeFeeds<S>(
           if (stopped) return;
           const shown = states.get(id)?.value ?? source.empty;
           // What this client changed while the stream was read again may not
-          // be in what was read: it is applied to it once more.
-          const state = (rereads.get(id) ?? []).reduce(
-            (value, change) => source.apply(value, change),
-            read,
-          );
+          // be in what was read: it is applied to it once more. A change that
+          // does not apply is this client's bug, not a dropped stream: it is
+          // logged and left out, and the read stands.
+          const state = (rereads.get(id) ?? []).reduce((value, change) => {
+            try {
+              return source.apply(value, change);
+            } catch (error) {
+              log.warn("a feed's change did not apply", {
+                stream: source.stream,
+                error: String(error),
+              });
+              return value;
+            }
+          }, read);
           rereads.delete(id);
           everRead = true;
           set(id, () => ({ status: "ready", value: state, read: true }));
@@ -235,42 +244,52 @@ export function createNodeFeeds<S>(
             }
           }
           const mine = ++generation;
-          const subscription = client.subscribe(
-            source.stream,
-            {
-              after: head,
-              // Only the current subscription's failure counts: one given up
-              // on may still report, and is not a new drop.
-              onError: (error: unknown) => {
-                if (mine === generation) failed(error);
-              },
-            },
-            (event) => {
-              // A transport may still deliver what it buffered for a subscription
-              // already given up: the re-read holds it, so it is not told twice.
-              if (stopped || mine !== generation) return;
-              const before = states.get(id)?.value ?? source.empty;
-              const after = source.apply(before, event);
-              if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
-              // What hears the events (a notification) never breaks the feed.
-              try {
-                source.seen?.(connection, event, before, after);
-              } catch (error) {
-                log.warn("a feed's listener failed", {
-                  stream: source.stream,
-                  error: String(error),
-                });
-              }
-            },
-          );
+          let subscription: Disposable;
+          try {
+            subscription = subscribeTo(head, mine);
+          } catch (error) {
+            // A transport that throws instead of following is a dropped stream.
+            failed(error);
+            return;
+          }
           // A transport that fails inside `subscribe` has already started the
           // next read: this subscription is dead on arrival.
           if (mine === generation) subscriptions.push(subscription);
           else subscription.dispose();
-        })
-        // One load is under way at a time per feed (a retry starts after the
-        // previous read ended or failed), so a rejection is always this feed's.
-        .catch(failed);
+          // Only a failed load is a drop; what fails after a read is logged.
+        }, failed)
+        .catch((error: unknown) =>
+          log.warn("a feed failed after its read", { stream: source.stream, error: String(error) }),
+        );
+    const subscribeTo = (head: number, mine: number) =>
+      client.subscribe(
+        source.stream,
+        {
+          after: head,
+          // Only the current subscription's failure counts: one given up
+          // on may still report, and is not a new drop.
+          onError: (error: unknown) => {
+            if (mine === generation) failed(error);
+          },
+        },
+        (event) => {
+          // A transport may still deliver what it buffered for a subscription
+          // already given up: the re-read holds it, so it is not told twice.
+          if (stopped || mine !== generation) return;
+          const before = states.get(id)?.value ?? source.empty;
+          const after = source.apply(before, event);
+          if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
+          // What hears the events (a notification) never breaks the feed.
+          try {
+            source.seen?.(connection, event, before, after);
+          } catch (error) {
+            log.warn("a feed's listener failed", {
+              stream: source.stream,
+              error: String(error),
+            });
+          }
+        },
+      );
     follow();
   };
 

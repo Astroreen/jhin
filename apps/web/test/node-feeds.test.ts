@@ -427,6 +427,46 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
+  it("takes a read whose pending change does not apply as read, not as a drop", async () => {
+    let answer!: (value: unknown) => void;
+    const reads: Promise<unknown>[] = [
+      Promise.resolve({ head: 1, items: ["x"] }),
+      new Promise((resolve) => (answer = resolve)),
+    ];
+    let onError: ((error: unknown) => void) | undefined;
+    let subscribed = 0;
+    const client = {
+      call: () => reads.shift(),
+      subscribe: (_stream: string, options: { onError: (error: unknown) => void }) => {
+        subscribed += 1;
+        onError = options.onError;
+        return toDisposable(() => {});
+      },
+    };
+    // A change that applies to what was shown but not to what is read again.
+    const picky = {
+      ...source,
+      apply: (items: readonly string[], event: Event) => {
+        if (items.includes("y")) throw new Error("does not apply");
+        return source.apply(items, event);
+      },
+    };
+    const warned: string[] = [];
+    const { connections } = fakeConnections(client as never);
+    const feeds = createNodeFeeds(connections, { warn: (message) => warned.push(message) }, picky);
+    await changes(feeds);
+    onError!(new Error("dropped"));
+    feeds.apply("a", { type: "add", payload: "local" });
+    const ready = changes(feeds);
+    answer({ head: 2, items: ["x", "y"] });
+    await ready;
+    // The read stands and is followed; the change is logged and left out.
+    expect(feeds.snapshot().get("a")).toEqual({ status: "ready", value: ["x", "y"], read: true });
+    expect(subscribed).toBe(2);
+    expect(warned).toEqual(["a feed's change did not apply"]);
+    feeds.dispose();
+  });
+
   it("tries a first load that failed again, telling nothing of it as new", async () => {
     const reads: (() => Promise<unknown>)[] = [
       () => Promise.reject(new Error("node busy")),
