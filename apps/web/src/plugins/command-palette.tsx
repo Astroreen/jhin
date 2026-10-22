@@ -19,6 +19,8 @@ import {
   type SlotRegistry,
 } from "@jhin/ui";
 
+import { useEffect } from "react";
+
 import { builtin } from "../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../lib/lazy-chunk.tsx";
 import { useExternal } from "../lib/hooks.ts";
@@ -79,6 +81,8 @@ export const commandPalettePlugin = builtin(
 
       function Palette() {
         const isOpen = useExternal(open, open.get);
+        // Fetched after the first paint, so the first ⌘K rarely opens an empty palette.
+        useEffect(() => void import("./command-palette-body.tsx").catch(() => undefined), []);
         return (
           <CommandDialog onOpenChange={(next) => open.set(next)} open={isOpen}>
             {isOpen ? (

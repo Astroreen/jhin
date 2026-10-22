@@ -1982,8 +1982,9 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   palette's body (`command-palette-body.tsx`: its items, search and list;
   12 kB), the add-project form (`lib/add-project-form.tsx`; 5 kB) and the
   notifications settings section (`notifications-settings.tsx`; 2 kB).
-  The banners chunk is fetched once the first composer has mounted, so a
-  request or a menu rarely waits for it; until it is in, its place stays
+  The banners chunk is fetched once the first composer has mounted, and
+  the palette's once the page has painted, so a request, a menu or the
+  first ⌘K rarely waits for them; until it is in, its place stays
   empty. A failed load says "Couldn't load this approval." ("these
   questions", "the queue") with "Try again", while a trigger's menu and
   "Plan ready" stay out (the menu's keys still work); the palette says
@@ -2007,6 +2008,11 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
 
 ## Deferred
 
+- A browser test that fails the load of a real D1041 chunk (the approval
+  banner, the palette) and checks its message and "Try again" in place;
+  `lazy-chunk.browser.test.tsx` covers the helper only. Placeholders of a
+  banner's height or the palette's input while their chunk loads (they
+  show nothing for that moment).
 - Applying Fast Mode and Ultracode to a live Claude Code session through
   `applyFlagSettings` (T3 does): a change of them starts it again (D298).
 - The editor's parts T3 has and this port left out (D303):
