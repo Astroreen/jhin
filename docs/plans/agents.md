@@ -1069,7 +1069,7 @@ Each workstream lists its PRs here as they merge.
   `mesh.call`; aliases in `agents.send` and `agents.ask` (`jhin.agents`);
   agents hold `teams.read` (D681–D690). A bundle fixture in
   `plugins/teams/test/fixtures/workshop` is the example of a bundle.
-- A5 #PR3: `jhin.teams-view`, teams in Civilization mode: the Teams
+- A5 #188: `jhin.teams-view`, teams in Civilization mode: the Teams
   section, a team's page with its agents, culture, Start and Stop team and a
   message to the lead, `civilization.team.open` (D691).
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
