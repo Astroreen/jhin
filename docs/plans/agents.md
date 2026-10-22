@@ -1290,6 +1290,44 @@ Decisions (C2):
   reads "Dropped (final)", and a dropped slice has no Edit (D651). An edited
   slice's wave cannot be emptied, and a step its process no longer has
   still shows.
+- **D1086. `missions.orchestration { missionId }`** (`jhin.orchestrator`)
+  names a mission's run: the last workflow `missions.orchestrate` started for
+  it, with its thread, status, current phase, last five log lines, result and
+  error, plus the head of the `orchestration` stream, read before the run.
+  It takes `missions.read` and `threads.read`. It reads `workflows.list`, not
+  `workflows.status`, so a client looking never acknowledges the run's
+  wake-up (D376): the lead is still woken. A client follows the
+  `orchestration` stream after that head. When a mission run it has not seen
+  shows up (the lead orchestrating again), the client asks again.
+- **D1087. Beside a mission is a slot.** The mission page renders
+  `civilization.mission.aside` (the mission, its slices, the node's id and
+  the assignee titles) to the right of the mission on wide screens and above
+  it on narrow ones. `jhin.missions-view` contributes the orchestrator to it
+  as `jhin.orchestrator.panel`, a chunk of its own (D440). The panel is a
+  contribution, so another plugin can add to it or replace it.
+- **D1088. What the panel shows.** Next is `missionProgress` (D702) over
+  the client's fold: the wave, its ready slices with their assignee, the ones
+  at work and with whom, and what waits for a decision. Waits for follows
+  from the run: the proofs of the working slices while it runs, and the lead
+  once it ended with an outcome (D707: a decision, the mission's steps after
+  a wave, its last steps). A run reads as Not running, Running, Paused (W10's
+  `stopped`), Waiting for the lead (`completed`) or Failed.
+- **D1089. The owner starts a run from an agent's thread.** The owner has
+  no thread of their own, so Start (or Resume) calls `missions.orchestrate`
+  with `parentThreadId` set to the current generation of the agent picked
+  under Run from (D706 takes a named thread from a caller that has none).
+  Only agents with a generation can be picked. The default is the last run's
+  agent, then a team's lead (`teams.list`), then an agent of the mission's
+  project. W10 refuses a thread that is not full access, and the panel shows
+  that refusal.
+- **D1090. Pause ends the run, Stop halts the mission's work.** W10 has no
+  pause, and the orchestrator keeps no state (D707), so Pause is
+  `workflows.stop`: the slices already handed out keep going, and Resume
+  orchestrates again from where the mission is. Stop mission, once confirmed,
+  stops the run and calls `agents.stop` on every agent of this node working
+  on an active slice of the mission. Those agents are resumed on their own
+  page (D612). Stop does not change the mission's status; that stays an
+  edit (D1081).
 
 ### C3. Dogfood: a civilization end to end (D1101–D1120)
 
@@ -1516,7 +1554,12 @@ with its report as a "C3 run" note here.
   threads are followed (D710).
 - A6: a refocus interval in minutes for long turns (D711 counts turns).
 - A6: a row in the chat for `agent.context.compacted` (D709).
-- A6: the orchestrator in Civilization mode, beside A3's mission view (D712).
+- ~~A6: the orchestrator in Civilization mode, beside A3's mission view (D712).~~
+  C2, D1086–D1090.
+- C2: a real pause in W10 (a run that stops between steps and continues
+  itself); Pause ends the run for now (D1090).
+- C2: stopping agents of other nodes that hold a mission's slices, and
+  running the orchestrator from a thread on another node (D1089, D1090).
 - A6: ending a `missions.wait` when its caller goes away: commands get no
   cancellation signal (as W10's waits), so a stopped run's wait ends at its
   timeout.

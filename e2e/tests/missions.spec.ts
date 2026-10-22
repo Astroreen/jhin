@@ -19,6 +19,12 @@ test.beforeAll(async () => {
             role: "Builds slices and proves them",
             runtime: "jhin.agent-fake",
           },
+          lead: {
+            title: "Lead",
+            role: "Runs the missions",
+            runtime: "jhin.agent-fake",
+            runtimeMode: "full-access",
+          },
         },
       },
     },
@@ -236,4 +242,81 @@ test("D1081–D1085: the owner plans a mission, its intent and slices from the v
   await expect(
     client.call<{ intent: string }>("missions.intent.get", { projectId: project.id }),
   ).resolves.toMatchObject({ intent: "Every ship comes home." });
+});
+
+test("D1086–D1090: the orchestrator beside a mission: next, waits for, start, pause, stop", async ({
+  page,
+}, info) => {
+  const client = node.client();
+  const path = Path.join(node.home, "quay");
+  Fs.mkdirSync(path, { recursive: true });
+  const project = await client.call<{ id: string }>("projects.create", { path });
+  const { address: builder } = await client.call<{ address: string }>("agents.get", {
+    agentId: "builder",
+  });
+  const mission = await client.call<{ id: string }>("missions.create", {
+    projectId: project.id,
+    title: "Build the quay",
+    outcome: "Boats can moor.",
+    status: "active",
+  });
+  const piles = await client.call<{ id: string }>("slices.create", {
+    missionId: mission.id,
+    title: "Piles",
+    spec: "Piles stand in the water.",
+    assignee: builder,
+  });
+  await client.call("slices.create", {
+    missionId: mission.id,
+    title: "Deck",
+    spec: "Planks on the piles.",
+    dependsOn: [piles.id],
+  });
+  await client.call("agents.rotate", { agentId: "lead", reason: "run the quay" });
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page
+    .getByRole("group", { name: "Modes" })
+    .getByRole("button", { name: "Civilization" })
+    .click();
+  await page
+    .getByRole("region", { name: "Missions" })
+    .getByRole("button", { name: "Build the quay, Active" })
+    .click();
+  const panel = page.getByRole("complementary", { name: "Orchestrator" });
+  await expect(panel.getByText("Not running", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("region", { name: "Next" }).getByText("Piles")).toBeVisible();
+  // The owner picks whose thread runs it (D1089): the lead's.
+  await panel.getByRole("combobox", { name: "Run from" }).click();
+  await page.getByRole("option", { name: "Lead" }).click();
+  await expect(panel.getByRole("combobox", { name: "Run from" })).toHaveText("Lead");
+
+  await panel.getByRole("button", { name: "Start orchestrator" }).click();
+  await expect(panel.getByText("Running", { exact: true })).toBeVisible();
+  const waits = panel.getByRole("region", { name: "Waits for" });
+  await expect(waits.getByText("The proof of Piles.")).toBeVisible();
+  await expect(
+    page
+      .locator("[data-mission-view=mission]")
+      .getByRole("button", { name: "Piles, Active, Builder" }),
+  ).toBeVisible();
+  await page.screenshot({ path: info.outputPath("orchestrator-running.png") });
+
+  await panel.getByRole("button", { name: "Pause orchestrator" }).click();
+  await expect(panel.getByText("Paused", { exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "Resume orchestrator" }).click();
+  await expect(panel.getByText("Running", { exact: true })).toBeVisible();
+
+  await panel.getByRole("button", { name: "Stop mission" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Stop mission" }).click();
+  await expect(panel.getByText("Paused", { exact: true })).toBeVisible();
+  // The run and the agent at work on it stopped, as records say.
+  const { run } = await client.call<{ run: { status: string } }>("missions.orchestration", {
+    missionId: mission.id,
+  });
+  expect(run.status).toBe("stopped");
+  await expect(
+    client.call<{ stoppedAt?: string }>("agents.get", { agentId: "builder" }),
+  ).resolves.toMatchObject({ stoppedAt: expect.any(String) });
+  await page.screenshot({ path: info.outputPath("orchestrator-stopped.png") });
 });

@@ -310,6 +310,40 @@ describe("missions.orchestrate (D706, D707)", () => {
   });
 });
 
+describe("missions.orchestration (D1086)", () => {
+  it("names a mission's last run and the stream head to follow it from", async () => {
+    const { client, mission, slice } = await node();
+    expect(await client.call("missions.orchestration", { missionId: mission.id })).toMatchObject({
+      run: null,
+      head: expect.any(Number),
+    });
+    const lead = await client.call<{ id: string }>("threads.create", {
+      title: "Lead",
+      runtimeMode: "full-access",
+    });
+    await slice({ title: "Door" });
+    const workflows = watch(client, "orchestration");
+    const started = await client.call<{ workflowId: string }>("missions.orchestrate", {
+      missionId: mission.id,
+      parentThreadId: lead.id,
+    });
+    await workflowEnds(workflows, started.workflowId);
+    const answer = await client.call<{ head: number; run: unknown }>("missions.orchestration", {
+      missionId: mission.id,
+    });
+    expect(answer.run).toMatchObject({
+      workflowId: started.workflowId,
+      parentThreadId: lead.id,
+      status: "completed",
+      result: { outcome: "decide" },
+    });
+    expect(answer.head).toBeGreaterThan(0);
+    await expect(
+      client.call("missions.orchestration", { missionId: "nope" }),
+    ).rejects.toMatchObject({ code: "MISSION_NOT_FOUND" });
+  });
+});
+
 describe("refocus (D708–D711)", () => {
   it("briefs a slice's intent chain by slice and by thread", async () => {
     const { client, slice } = await node();
