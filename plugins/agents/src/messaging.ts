@@ -519,10 +519,11 @@ export function registerMessaging(
             answer?: string;
           };
           const at = asks.get(payload.messageId);
-          if (at === undefined || payload.answer === undefined) continue;
+          if (at === undefined) continue;
+          // An event recorded before D1061 has no text: the ask is answered all the same.
           entries[at] = {
             ...entries[at]!,
-            answer: payload.answer,
+            ...(payload.answer === undefined ? {} : { answer: payload.answer }),
             answeredBy: payload.answeredBy,
             answeredAt: payload.answeredAt,
           };

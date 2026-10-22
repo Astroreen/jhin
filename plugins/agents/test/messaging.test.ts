@@ -313,6 +313,14 @@ describe("messages between agents (A2)", () => {
       kind: "answer",
       inReplyTo: escalated.message.messageId,
     });
+    // It shows the owner's inbox: a caller without agents.inbox, as an agent is, may not read it.
+    await expect(
+      kernel.commands.execute(
+        "agents.conversation",
+        { with: address("lead") },
+        { caller: { id: "jhin.agent-claude:x", permissions: ["agents.message", "agents.read"] } },
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
     const last = await client.call<Conversation>("agents.conversation", {
       with: address("lead"),
       limit: 1,

@@ -1299,6 +1299,8 @@ Decisions (C1):
 - A1: starting a generation (`agents.rotate`), defining, editing or
   removing an agent from Civilization mode's views. Defining and editing go
   through the settings page (D604); the commands do the rest.
+- C1: `agents.conversation` folds the node's whole `agents/messages` stream
+  on each call (D1061); an index of messages by party once it grows.
 - C1: the owner's conversation with an agent on another node: the owner's
   messages are recorded on the agent's node (D627), so `agents.conversation`
   here misses them (D1061). Reading both nodes, through `mesh.call`, joins it.
