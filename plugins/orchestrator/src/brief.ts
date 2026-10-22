@@ -21,11 +21,10 @@ export function handoffText(input: {
   readonly mission: Mission;
   readonly intent: string | undefined;
   readonly step: string | undefined;
-  readonly from: string | undefined;
 }): string {
   const { slice, mission } = input;
   return [
-    `[Slice handed to you${input.from === undefined ? "" : ` by ${input.from}`}]`,
+    "[Slice handed to you]",
     "",
     `You are the assignee of a slice of the mission "${mission.title}". Work on it until its spec works, then record its proof.`,
     "",

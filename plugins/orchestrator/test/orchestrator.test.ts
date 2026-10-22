@@ -19,7 +19,13 @@ const OWNER = "jhin://node-a/owner";
 /** What a thread's agent holds over MCP (mcp-api's AGENT_PERMISSIONS, D341, D652). */
 const AGENT = {
   id: "lead-agent",
-  permissions: ["threads.read", "threads.write", "missions.read", "missions.write"],
+  permissions: [
+    "threads.read",
+    "threads.write",
+    "missions.read",
+    "missions.write",
+    "agents.message",
+  ],
 };
 
 async function node(config: Record<string, unknown> = {}) {
@@ -154,7 +160,7 @@ describe("slices.handoff (D703)", () => {
     expect(generations).toMatchObject([{ threadId: handed.threadId, current: true }]);
     const turn = await watch(client, threadStream(handed.threadId)).until(ThreadEvents.turnStarted);
     const text = payloadOf(turn).input.text as string;
-    expect(text).toContain("[Slice handed to you by owner]");
+    expect(text).toContain("[Slice handed to you]");
     expect(text).toContain(`Slice \`${walls.id}\`, wave 1.`);
     expect(text).toContain("Four walls stand");
     expect(text).toContain("Mission outcome: The dog has a shelter");

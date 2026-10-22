@@ -1,6 +1,6 @@
 import * as Crypto from "node:crypto";
 
-import { ThreadEvents, parseAgentAddress, threadStream } from "@jhin/agent-api";
+import { MESSAGE_PERMISSION, ThreadEvents, parseAgentAddress, threadStream } from "@jhin/agent-api";
 import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
 import {
   EMPTY_MISSIONS,
@@ -238,7 +238,7 @@ export default definePlugin({
     context.commands.register({
       name: "slices.handoff",
       description:
-        "Hands a ready slice to its assignee: an agent of this node gets it as a message in its current generation (the first one is started when it has none), which is linked to the slice; the owner's slice is only marked active. The slice becomes active at its process's first step. Handing an active slice again changes nothing",
+        "Hands a ready slice to its assignee with agents.send: an agent of this node gets it in its current generation (the first one is started when it has none), which is linked to the slice; the owner gets it in the inbox. The slice becomes active at its process's first step. Handing an active slice again changes nothing",
       input: z.object({ sliceId: z.string() }),
       output: z.object({
         slice: Slice,
@@ -247,7 +247,7 @@ export default definePlugin({
         /** False when the slice was already handed. */
         handed: z.boolean(),
       }),
-      permissions: ["missions.write", "threads.write"],
+      permissions: ["missions.write", MESSAGE_PERMISSION],
       handler: async ({ sliceId }, invocation) => {
         await sync();
         const slice = getSlice(sliceId);
@@ -277,7 +277,7 @@ export default definePlugin({
           if (decision?.reason === "elsewhere") {
             throw new OrchestratorError(
               "AGENT_ELSEWHERE",
-              `${slice.assignee} is on another node: hand it over with agents.send (A2)`,
+              `${slice.assignee} is on another node: its node orchestrates it`,
               { sliceId, assignee: slice.assignee },
             );
           }
@@ -296,39 +296,25 @@ export default definePlugin({
           );
         }
         const step = slice.step ?? mission.process.slice[0]?.id;
-        let threadId: string | undefined;
-        if (agent !== undefined) {
-          // The agent's current generation takes its work (D606); its first is started here.
-          // Seam: A2's agents.send { to, from, body } delivers this once it lands.
-          const generations = await run<{ threadId: string; current: boolean }[]>(
-            "agents.generations",
-            { agentId: agent.agentId },
-          );
-          threadId =
-            generations.find((generation) => generation.current)?.threadId ??
-            (
-              await run<{ generation: { threadId: string } }>("agents.rotate", {
-                agentId: agent.agentId,
-                reason: `Slice ${slice.title}`,
-              })
-            ).generation.threadId;
-          await run(
-            "threads.queue.add",
-            {
-              threadId,
-              messageId: `handoff-${Crypto.randomUUID()}`,
-              text: handoffText({
-                slice,
-                mission,
-                intent: state.intents[mission.projectId]?.intent,
-                step,
-                from: invocation.caller?.id,
-              }),
-            },
-            invocation,
-          );
-          await run("slices.link", { sliceId, threadId }, invocation);
-        }
+        // A2's agents.send delivers it: an agent's current generation (its first is
+        // started then, D606), queued while it works; the owner's inbox. The id is
+        // the slice as it was planned, so a retry delivers it once.
+        const { delivery } = await run<{ delivery?: { threadId: string } }>(
+          "agents.send",
+          {
+            to: slice.assignee,
+            messageId: `handoff-${slice.id}-${slice.updatedAt}`,
+            body: handoffText({
+              slice,
+              mission,
+              intent: state.intents[mission.projectId]?.intent,
+              step,
+            }),
+          },
+          invocation,
+        );
+        const threadId = agent === undefined ? undefined : delivery?.threadId;
+        if (threadId !== undefined) await run("slices.link", { sliceId, threadId }, invocation);
         const updated = await run<Slice>(
           "slices.update",
           { sliceId, status: "active", ...(step === undefined ? {} : { step }) },

@@ -810,23 +810,20 @@ Decisions:
   `head`, the mission's own steps and the project's. `slicesDone` means no
   slice is open; it never sets the mission done.
 - **D703. `slices.handoff { sliceId }` hands a ready slice to its
-  assignee.** An agent of this node gets it as a message in its current
-  generation (D606; its first generation is started with `agents.rotate` when
-  it has none), queued with `threads.queue.add` (W1) so a running turn is not
-  interrupted; the thread is linked to the slice. The owner's slice gets no
-  message. Either way the slice becomes `active` at its slice process's first
-  step. The message is the slice, what it serves (mission outcome, project
-  intent), its process, and how to close it: `slices_update` for each step,
-  `slices_prove` once with the smallest proof, `blocked` when stuck. Handing
-  an active slice again changes nothing (`handed: false`); a slice that is
-  not ready is `SLICE_NOT_READY` (with the decision it waits for) or
-  `AGENT_ELSEWHERE`. Delivery is at least once: a node stopping between the
-  message and the status hands it again. It takes `missions.write` and
-  `threads.write`, which a thread's agent holds; its writes run as the
-  caller (so `by` names it), its lookups and the first generation as the
-  node. **Seam with A2:** once `agents.send { to, from, body }` lands, the
-  handoff sends through it, which also reaches the owner's inbox and agents
-  on other nodes.
+  assignee** with A2's `agents.send` (D623), as the caller: an agent of this
+  node gets it in its current generation (its first is started when it has
+  none), queued while it works, and that thread is linked to the slice; the
+  owner gets it in the inbox (D626). Either way the slice becomes `active`
+  at its slice process's first step. The message is the slice, what it
+  serves (mission outcome, project intent), its process, and how to close
+  it: `slices_update` for each step, `slices_prove` once with the smallest
+  proof, `blocked` when stuck. Its message id is the slice as it was
+  planned, so a retry after a node stopped delivers it once. Handing an
+  active slice again changes nothing (`handed: false`); a slice that is not
+  ready is `SLICE_NOT_READY` (with the decision it waits for) or
+  `AGENT_ELSEWHERE`. It takes `missions.write` and `agents.message`, which
+  a thread's agent holds, and every write runs as the caller (so `by` and
+  the message's sender name it).
 - **D704. `missions.wait { missionId, after, timeoutMs? }`** returns when
   the mission or one of its slices changes after the stream's sequence
   `after` (`changed: true`), or after `timeoutMs` (default 10 minutes, at
@@ -1107,10 +1104,11 @@ Decisions:
   choose their node.
 - A8: leaving generations out of `threads.search` as well: D745 filters the lists
   and catalogs only, so a search can still find a generation's text.
-- A6: handing off and refocusing through A2's `agents.send` (the seam of
-  D703), which also reaches the owner's inbox and agents of other nodes;
-  today their slices wait for the lead as `elsewhere`, and the owner's are
-  only marked active.
+- A6: handing off a slice whose assignee is on another node (D702's
+  `elsewhere`): `agents.send` reaches it, but the slice's thread link and
+  refocus follow only this node's threads.
+- A6: refocus as an `agents.send` message rather than a steer or queued
+  message of the thread (D708), once a message can be steered.
 - A6: an orchestrator that survives a node restart by itself; today the run
   fails (D376) and the lead starts it again (D707).
 - A6: refocusing threads of other nodes linked to a slice; only this node's
@@ -1183,8 +1181,8 @@ Each workstream lists its PRs here as they merge.
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
   `includeGenerations` on `threads.list` and `threads.catalog` (D742–D750).
 - A6 #181: the `jhin.orchestrator` plugin (`missions.next`, `missions.wait`,
-  `missions.orchestrate`, `slices.handoff`, `refocus.brief`,
-  `refocus.send`), `missionProgress` in `@jhin/missions-api`, `command()`
+  `missions.orchestrate`, `slices.handoff` through `agents.send`,
+  `refocus.brief`, `refocus.send`), `missionProgress` in `@jhin/missions-api`, `command()`
   in W10's workflow scripts, and `context.compacted` from Claude Code, Codex
   and the fake agent (`agent.runtime@1.6`, `agent.registry` 1.3)
   (D701–D712).
