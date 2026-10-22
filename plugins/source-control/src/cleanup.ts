@@ -159,7 +159,9 @@ export async function localChangesReason(
           "git rev-list -n 1 HEAD --branches --not --remotes --tags; git stash list -n 1",
         ],
         { ok: [0, 1, 128] },
-      );
+      )
+        // Any other failure keeps the worktree the same way, not the sweep's entry failing.
+        .catch(() => ({ code: -1, stdout: "" }));
   if (unpushed.code !== 0) return "submodules could not be read";
   if (unpushed.stdout.trim() !== "")
     return "has submodule commits on no remote branch or tag, or stashes";
