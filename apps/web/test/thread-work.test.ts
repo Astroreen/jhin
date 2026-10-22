@@ -97,4 +97,17 @@ describe("client.thread-work (D1131)", () => {
     expect(warnings).toEqual(["a thread work source could not be followed"]);
     registration.dispose();
   });
+
+  it("tells every listener of a change, whatever another one throws", () => {
+    const warnings: string[] = [];
+    const work = createThreadWork((message) => warnings.push(message));
+    let heard = 0;
+    work.subscribe(() => {
+      throw new Error("listener");
+    });
+    work.subscribe(() => heard++);
+    work.register({ tasks: () => [], subscribe: () => ({ dispose: () => undefined }) });
+    expect(heard).toBe(1);
+    expect(warnings).toEqual(["a thread work listener failed"]);
+  });
 });
