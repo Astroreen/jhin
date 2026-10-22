@@ -56,10 +56,12 @@ function shell(title: string, body: string, nonce?: string, script?: string): st
 /** The page's security headers: nothing cached, framed, referred or run but the page's own script. */
 export const pageHeaders = (nonce?: string): Record<string, string> => ({
   "content-type": "text/html; charset=utf-8",
-  "content-security-policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'${nonce === undefined ? "" : `; script-src 'nonce-${nonce}'; connect-src 'self'`}`,
+  "content-security-policy": `default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'${nonce === undefined ? "" : `; script-src 'nonce-${nonce}'; connect-src 'self'`}`,
   "x-frame-options": "DENY",
   "cache-control": "no-store",
-  "referrer-policy": "no-referrer",
+  // `same-origin`: the page's own form post carries its `Origin` (with
+  // `no-referrer` Chromium sends `Origin: null`), and nothing leaks to the client.
+  "referrer-policy": "same-origin",
   "x-content-type-options": "nosniff",
 });
 

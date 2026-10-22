@@ -376,6 +376,7 @@ export function createOAuth(options: {
       if (parseClientId(clientId) === undefined) {
         return fail("invalid_client", "The client is unknown.");
       }
+      sweep();
       const codeHash = sha256(code);
       const pending = options.codes.get(codeHash);
       options.codes.delete(codeHash);

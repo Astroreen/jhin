@@ -210,6 +210,13 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
       body: new URLSearchParams({ ...form, decision: "approve" }),
     });
     expect(noOrigin.status).toBe(403);
+    const opaque = await fetch(`${base}/oauth/mcp/authorize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: "null" },
+      body: new URLSearchParams({ ...form, decision: "approve" }),
+    });
+    expect(opaque.status).toBe(403);
     // Another browser session of the same owner cannot reuse this page's value.
     const otherSession = await sessionCookie(base, token);
     const replayed = await fetch(`${base}/oauth/mcp/authorize`, {

@@ -84,6 +84,10 @@ function readBody(request: IncomingMessage): Promise<string> {
     request.on("data", onData);
     request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     request.on("error", reject);
+    // A client that goes away mid-body settles it too; nothing waits on it.
+    request.on("close", () => {
+      if (!request.complete) reject(new Error("aborted"));
+    });
   });
 }
 
@@ -303,9 +307,11 @@ export default definePlugin({
     add("POST", "/oauth/mcp/authorize", async (request, response) => {
       // The decision is posted by the approval page only (D1193). Browsers send
       // `Origin` with a form post; without it, only a same-origin fetch counts.
+      // An opaque `Origin: null` counts only with the browser's own word that
+      // the post is same-origin.
       const origin = request.headers.origin;
       const sameSite = request.headers["sec-fetch-site"] === "same-origin";
-      if (origin === undefined ? !sameSite : origin !== originOf(request)) {
+      if (origin === undefined || origin === "null" ? !sameSite : origin !== originOf(request)) {
         response.writeHead(403, pageHeaders()).end(renderErrorPage("This page is not the node's."));
         return;
       }

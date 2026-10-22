@@ -630,7 +630,7 @@ The threat model comes first; the decisions after it implement it.
   session, by its token's hash, and the request, so another session of the
   same owner cannot reuse it), refused from another origin and without an
   `Origin` unless `Sec-Fetch-Site` says same-origin. The
-  page is `no-store`, `frame-ancestors 'none'`, `no-referrer`. Without a
+  page is `no-store`, `frame-ancestors 'none'`, `same-origin` referrers (with `no-referrer` Chromium posts the form with `Origin: null`). Without a
   session it offers T3's "Pairing code" field, which opens the session
   through `POST /auth/session` from the same page, then approves.
 - **D1194. Scopes are Jhin permissions.** A client asks with `scope`: Jhin
