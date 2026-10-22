@@ -1,6 +1,6 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/ui/qr-code.tsx.
 import { memo } from "react";
-import { QrCode } from "./qr-code.ts";
+import { QrCode } from "@jhin/qr-code";
 
 type QRCodeSvgProps = {
   value: string;

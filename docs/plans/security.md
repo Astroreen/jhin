@@ -252,9 +252,8 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   another device token. A `jhin client` page, served by no node, keeps a
   `#token=` token in IndexedDB as before; a pairing link must be opened on
   the node's own address or pasted into the connect form.
-- **D425. `jhin pair` prints a pairing link and its QR code** (Deferred:
-  until then `jhin auth.pairing.create --label <name>` prints the link and
-  the code as JSON). As `t3 pair`:
+- **D425. `jhin pair` prints a pairing link and its QR code** (done in
+  W33, D1185, which details it). As `t3 pair`:
   `--label` (default `jhin pair`), `--ttl` (minutes, default 5),
   repeatable `--permission`; it prints "Pairing with <label> (<origin>).",
   the QR code in half-block characters, `Pairing URL:`, `Code:` and
@@ -439,6 +438,187 @@ The reference is T3 Code at D53 (`eb7b35ac`):
   output), `host.config.get`, and the config
   files, and find it in none; only `store.json` holds it, sealed.
 
+### Pairing and remote access (W33)
+
+The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/cli/pair.ts`,
+`apps/server/src/startupAccess.ts`, `packages/tailscale/src/*`,
+`apps/server/src/auth/utils.ts` (`deriveAuthClientMetadata`),
+`apps/web/src/hostedPairing.ts`, `apps/server/src/auth/McpOAuth.ts`,
+`mcpOAuthHttp.ts` and `mcpOAuthHtml.ts`. T3 Connect stays out of scope.
+
+The threat model comes first; the decisions after it implement it.
+
+- **D1181. Who pairing defends against.** What is protected: the owner
+  token (every permission), device tokens and open pairing codes. Who is
+  kept out: (1) someone who sees the owner's screen, terminal scrollback or
+  a photo of a QR code; (2) someone on the network path between a device and
+  the node; (3) a web page in the owner's browser (CSRF and DNS rebinding,
+  D418, D421); (4) an MCP client or device the owner authorized, kept to
+  what it was granted (D413); (5) another user of the node's machine, kept
+  out of the home by file modes (`0600`). Not defended: someone who controls
+  the node's machine or the owner's account on it, who reads the owner token
+  from the home anyway. A node listening beyond loopback without TLS sends
+  every token in clear: a device on such a network is reached through
+  Tailscale Serve (D1189) or a TLS proxy (D426), and the pairing output says
+  when a link is plain HTTP to another machine (D1185).
+- **D1182. A pairing code: short-lived, used once, worth guessing never.**
+  D419 stands: twelve characters of a 32-character alphabet (60 bits), 5
+  minutes by default and at most 24 hours, one use (redeemed and spent in
+  one synchronous step, so two devices racing get one token), kept only as
+  its SHA-256, and ended with the token that created it. Guessing is bounded
+  by the failed-attempt limit per client address on `/auth/pair` and
+  `/auth/session` (D420, D421): at most a few hundred guesses a minute
+  against 2⁶⁰ codes. The code never reaches a log: the node logs the link's
+  id, `jhin pair` prints it only to its own standard output. Whoever holds
+  the code during its life pairs once with the code's grants; afterwards
+  the code is worth nothing, and the device it made is listed with its
+  label (and D1187's metadata) and revoked with "Revoke".
+- **D1183. What a QR code shows.** Exactly the pairing URL: the node's base
+  address (host or MagicDNS name, port, path) and the code in the fragment
+  (`#token=`, D422), so it never reaches a server's access log. It carries
+  no owner token, node id or permission list. A photo of it is a pairing
+  code (D1182) plus the node's address; the address stays known after the
+  code is spent. The code defaults to every grant of its creator (D419), so a
+  code made by the owner pairs a device equal to the owner: `jhin pair
+  --permission` narrows it, and `--ttl` shortens it.
+- **D1184. A running node says where it listens.** `jhin.http` writes
+  `runtime.json` (`{url, pid, instance, startedAt}`, mode `0600`, written
+  whole and renamed into place) in its data directory once it listens, and
+  removes it when it stops. `instance` is 16 random bytes made at each
+  start; `GET /.well-known/jhin` answers `{instance}` with no token, so a
+  client can tell this node from another listener on the same address
+  (D1189) without learning anything lasting about it. The file holds no
+  token. A CLI command that needs the running node and has no `--url` reads
+  it, ignores it when its process is gone (a dead node's file, its port
+  maybe reused) and when the address does not answer with the same
+  `instance`.
+- **D1185. `jhin pair`, T3's `t3 pair`.** It finds the running node (D1184,
+  or `--url` and `--token` as every remote command), calls
+  `auth.pairing.create` with the home's owner token (reading it needs the
+  home already) and prints T3's block: "Pairing with <host name>
+  (<origin>).", the QR code in half-block characters (T3's
+  `renderTerminalQrCode`: margin 2, error correction medium), `Pairing URL:`,
+  `Code:`, `Expires:` (ISO time) and notes. Options: `--label` (default
+  `jhin pair`), `--ttl` (minutes, default 5), repeatable `--permission`,
+  `--base-url` (the address devices reach the node by), `--tailscale` and
+  `--tailscale-serve-port` (D1189), `--json` (the command's output as JSON
+  instead of the block). Notes, T3's wording where it has one: a loopback
+  link gets "This URL is only reachable from this machine. Set
+  jhin.http.host to an address other devices reach and restart the node."
+  (with D1189: "Re-run with --tailscale, or set …", T3's); a plain `http:` link to another machine gets "This URL
+  is plain HTTP: anyone on the network path can read the pairing code and
+  the token it becomes. Prefer --tailscale or an HTTPS proxy.". No running
+  node: "No running Jhin node found." with the paths it checked and "Start
+  one with `jhin serve`.".
+- **D1186. The QR encoder is a package, `@jhin/qr-code`.** T3's
+  `packages/shared/src/qrCode.ts` (Project Nayuki's encoder) moves from the
+  web client into an isomorphic package with no dependencies, next to
+  `renderTerminalQrCode`; the web client's SVG and the CLI both import it.
+
+### Clients and links (W33)
+
+- **D1187. A paired device's metadata, T3's.** When a code is redeemed or a
+  page session opened (D420, D421), the node records T3's
+  `deriveAuthClientMetadata` of the request: device type (`desktop`,
+  `mobile`, `tablet`, `bot`, `unknown`), OS, browser, the `User-Agent` and
+  the client address (`http.server`'s `clientAddress`, so behind a proxy
+  only with `jhin.http.trustProxy`). A device may present its own `deviceType`
+  and `os` in `POST /auth/pair` (T3's presented metadata). All of it is what
+  the device says about itself and is shown as such: it helps the owner
+  recognise a device, never decides access. It stays in `clients.json`,
+  read only with `auth.read`. Tokens issued by `auth.tokens.issue` carry
+  none. "Authorized clients" shows it as T3 does: "<browser> on <os>",
+  the device type's icon and the address.
+- **D1188. Live updates of the authorized clients list.** T3 streams
+  `clientUpserted` / `clientRemoved`. `jhin.auth-token` emits the kernel
+  event `auth.clients.changed {ids}` after every change of `clients.json`
+  or of the open pairing codes (never with a secret). The transport that
+  provides `rpc.streams` already depends on `auth.verifier` (the cycle of
+  security.md Deferred), so `jhin.transport-ws` turns that event into the
+  live stream `auth/clients`, guarded by `auth.read`, whose items say only
+  that the list changed; the settings page reads `auth.clients.list` and
+  `auth.pairing.list` again on each. Expiry of a pairing code needs no
+  event: the page drops it at its `expiresAt`.
+- **D1189. Tailscale Serve, from `jhin pair --tailscale`.** T3's flow: read
+  `tailscale status --json` for the machine's MagicDNS name ("This machine
+  has no MagicDNS name. Run `tailscale up` and enable MagicDNS."), probe
+  `https://<name>:<port>/.well-known/jhin` (port 443 by default,
+  `--tailscale-serve-port`); a mapping that answers with this node's
+  `instance` is kept, one that answers 502–504 or not at all is
+  (re)created with `tailscale serve --bg --https=<port> <local url>`, and
+  one that answers anything else is never replaced ("… already serves
+  something that is not this Jhin node. Pass --tailscale-serve-port …").
+  What it publishes: the node's whole HTTP server (web client, `/rpc`,
+  `/auth/*`, `/mcp`, `/mesh/*`) to every device of the tailnet, over HTTPS
+  with Tailscale's certificate; never to the internet (Funnel is not
+  offered). Access is still the node's tokens: a tailnet device without a
+  token or a code gets nothing more than `/auth/pair` and
+  `/.well-known/jhin`. Tailscale Serve proxies from loopback, so every
+  tailnet client shares one rate-limit bucket until `jhin.http.trustProxy`
+  names `127.0.0.1` (the note says so). The mapping outlives the node, as
+  in T3: the output prints how to remove it (`tailscale serve
+  --https=<port> off`). The node never runs `tailscale` itself.
+- **D1190. Pairing links for a `jhin client` page.** T3's hosted link,
+  without T3's host: `auth.pairing.create` takes `clientUrl` (where a
+  `jhin client` page is served; default `jhin.auth-token.clientUrl`, unset
+  by default) and then also returns `clientLink`:
+  `<clientUrl>/pair?host=<node base url>#token=<CODE>` (T3's
+  `buildHostedPairingUrl`, with `label` in the query when given). The page
+  pairs over `POST /auth/pair` (CORS without credentials, D420) and saves
+  the node (D423). The node's address is in the query, so the client page's
+  host may log it; the code stays in the fragment. A link from someone else
+  can name their own node: the page then saves that node (shown by its
+  address in the node list), whose answers are data, never code: client
+  plugins load only from the page's own origin (`boot.ts`).
+
+### MCP OAuth (W33)
+
+- **D1191. MCP clients sign in with OAuth, T3's `/oauth/mcp/*`.** An MCP
+  client that finds no token gets `401` with `WWW-Authenticate: Bearer
+  resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`
+  and follows the MCP authorization spec: protected resource metadata,
+  authorization server metadata (`/.well-known/oauth-authorization-server`),
+  dynamic client registration (`/oauth/mcp/register`), the authorization
+  code flow with PKCE `S256` only (`/oauth/mcp/authorize`,
+  `/oauth/mcp/token`), public clients only (`token_endpoint_auth_method`
+  `none`), no refresh tokens. Every URL comes from the request's origin, so
+  loopback, a proxy and Tailscale Serve each answer with their own.
+- **D1192. Registration is stateless and bounded.** As T3: a client id is
+  the client's metadata (name, at most 100 characters; at most 5 redirect
+  URIs of at most 512 characters) signed with an HMAC key, so an
+  unauthenticated caller cannot grow the node's state. Redirect URIs are
+  `https:` or `http:` on a loopback name (`localhost`, `127.0.0.1`,
+  `[::1]`), never with credentials or a fragment; a loopback redirect
+  matches on everything but its port (RFC 8252 §7.3), an `https:` one
+  exactly. The signing key is the secret `mcp-oauth-signing-key` in
+  `secrets.store@1` (W28), made on first use; without the store the OAuth
+  endpoints are not served and MCP clients keep using tokens.
+- **D1193. The owner approves in the browser, with the page's session.**
+  `GET /oauth/mcp/authorize` validates the request (client id signature,
+  redirect, `code_challenge`, `resource` naming this node's `/mcp`) and
+  shows T3's approval page; errors before the redirect is trusted are shown
+  on the page, never redirected. Approving needs the node's page session
+  (D421) of a caller holding `auth.write`, and a form posted from the node's
+  own origin with a per-request anti-forgery value bound to that session; a
+  caller grants only what it holds (D413). Without a session the page asks
+  the owner to open the node's page first.
+- **D1194. Scopes are Jhin permissions.** A client asks with `scope`: Jhin
+  grants separated by spaces (D410). An absent scope means the permissions
+  agents get (`AGENT_PERMISSIONS`, `@jhin/mcp-api`), T3's default of
+  orchestration read and operate. `scopes_supported` lists
+  `AGENT_PERMISSIONS`. The approval page lists what is asked with D961's
+  titles; the owner may approve or deny, not edit the list.
+- **D1195. Codes and tokens.** An authorization code is one-use, valid 60
+  seconds (T3), kept as its SHA-256 in memory, and bound to the client id,
+  the redirect URI, the PKCE challenge and the resource; a wrong verifier
+  spends it. The token endpoint returns a device token (`jhd1`, D411) with
+  method `oauth`, the client's name as label and 30 days' life
+  (`expires_in`), so it is listed under Authorized clients, revoked there,
+  and checked by `/mcp` on every request (D414) with nothing new.
+- **D1196. Nothing about OAuth is a UI-only path.** The approval's grants go
+  through the same `issue` as `auth.tokens.issue`; listing and revoking OAuth
+  clients are `auth.clients.list` / `auth.clients.revoke`.
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -486,7 +666,23 @@ Implements D419–D425, in two layers:
   pairing URL, the page's token is not readable by scripts, and revoking the
   client disconnects it.
 
-`jhin pair` (D425) is in Deferred.
+`jhin pair` (D425) is done in PR 5.
+
+### PR 5 — Pairing and remote access (W33)
+
+A stack, one slice a PR:
+
+- **PR 5a — `jhin pair`** (D1181–D1186): the threat model, `runtime.json`
+  and `/.well-known/jhin` in `jhin.http`, `@jhin/qr-code`, `jhin pair`.
+  **Done when:** a test starts a node, runs `jhin pair` from its home, reads
+  T3's block with a QR code whose modules match the encoder's, pairs once
+  over `POST /auth/pair` with the code's grants and is refused the second
+  time, finds the code in no log, and sees `runtime.json` (`0600`, no
+  token) gone after the node stops.
+- **PR 5b — Tailscale Serve** (D1189): `jhin pair --tailscale`.
+- **PR 5c — clients** (D1187, D1188, D1190): device metadata, the live
+  `auth/clients` stream, pairing links for a `jhin client` page.
+- **PR 5d — MCP OAuth** (D1191–D1196).
 
 ## Deferred
 
@@ -506,9 +702,6 @@ Implements D419–D425, in two layers:
 - `host.config.get` and `host.config.patch` convert every section's schema
   (`config.jsonSchema()`) to pick one; a kernel call for one section's
   schema, or a cache cleared on `kernel.config.changed`, would avoid it.
-- `jhin pair` (D425): a CLI subcommand printing T3's "Pairing with <label>
-  (<origin>)." block with a terminal QR code. The encoder lives in the web
-  client; the CLI would need it in a shared package.
 - Pairing links for a `jhin client` page (T3's hosted-app link
   `…/pair?host=<node>#token=<CODE>`): today the link names the node's own
   address only.

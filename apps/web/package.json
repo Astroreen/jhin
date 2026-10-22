@@ -28,6 +28,7 @@
     "@jhin/kernel": "workspace:*",
     "@jhin/missions-api": "workspace:*",
     "@jhin/preview-api": "workspace:*",
+    "@jhin/qr-code": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/scheduler-api": "workspace:*",
     "@jhin/sdk": "workspace:*",

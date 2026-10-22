@@ -98,6 +98,7 @@ export default defineConfig({
           "packages/rpc/src/**",
           "packages/storage-api/src/**",
           "packages/host-api/src/**",
+          "packages/qr-code/src/**",
         ],
         rules: {
           "eslint/no-restricted-imports": [

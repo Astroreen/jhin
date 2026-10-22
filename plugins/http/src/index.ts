@@ -1,5 +1,10 @@
+import * as Crypto from "node:crypto";
+import * as Fs from "node:fs";
 import * as Http from "node:http";
 import type { AddressInfo } from "node:net";
+import * as Path from "node:path";
+
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 
 import {
   HTTP_SERVER_CAPABILITY,
@@ -45,6 +50,37 @@ interface Route {
   readonly path: string;
   readonly prefix: boolean;
   readonly handler: HttpHandler;
+}
+
+/** Answers `{instance}` without a token (security.md D1184). */
+const WELL_KNOWN_PATH = "/.well-known/jhin";
+/** Where a running node says it listens, in this plugin's data directory (D1184). */
+const RUNTIME_FILE = "runtime.json";
+
+/**
+ * Writes `runtime.json` whole (mode 0600) and renamed into place; the
+ * disposable removes it, unless another start has replaced it since.
+ */
+function writeRuntimeFile(
+  file: string,
+  state: { url: string; pid: number; instance: string; startedAt: number },
+): { dispose(): void } {
+  const temporary = `${file}.${process.pid}.tmp`;
+  // A leftover temporary file would keep its mode: it is made anew, then 0600 for certain.
+  Fs.rmSync(temporary, { force: true });
+  Fs.writeFileSync(temporary, `${JSON.stringify(state)}\n`, { mode: 0o600, flag: "wx" });
+  Fs.chmodSync(temporary, 0o600);
+  Fs.renameSync(temporary, file);
+  return {
+    dispose() {
+      try {
+        const current = JSON.parse(Fs.readFileSync(file, "utf8")) as { instance?: unknown };
+        if (current.instance === state.instance) Fs.rmSync(file, { force: true });
+      } catch {
+        // Already gone or unreadable: nothing of ours to remove.
+      }
+    },
+  };
 }
 
 function pathOf(request: Http.IncomingMessage): string {
@@ -107,6 +143,38 @@ export default definePlugin({
         server.close();
       },
     });
+
+    // Tells this node from another listener on the same address, and nothing
+    // lasting about it (security.md D1184).
+    const instance = Crypto.randomBytes(16).toString("base64url");
+    routes.add({
+      method: "GET",
+      path: WELL_KNOWN_PATH,
+      prefix: false,
+      handler: (_request, response) => {
+        response
+          .writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+          .end(JSON.stringify({ instance }));
+      },
+    });
+    const paths = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY);
+    if (paths !== undefined) {
+      // A home that cannot take the file costs `jhin pair` its discovery, not the node its server.
+      try {
+        context.subscriptions.add(
+          writeRuntimeFile(Path.join(paths.dataDir(context.plugin.id), RUNTIME_FILE), {
+            url,
+            pid: process.pid,
+            instance,
+            startedAt: Date.now(),
+          }),
+        );
+      } catch (error) {
+        context.log.warn("could not record where this node listens; jhin pair needs --url", {
+          error: String(error),
+        });
+      }
+    }
 
     const api: HttpServer = {
       url,
