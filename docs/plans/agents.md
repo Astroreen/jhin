@@ -1183,7 +1183,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   the shell.
 - **D749. The Civilization sidebar is slots.** A Lead entry, then one
   section per workstream, each its own slot with an empty state naming who
-  fills it: `civilization.sidebar.projects` (A3), `.inbox` (A2), `.missions`
+  fills it (now: saying that no plugin does, D1107):
+  `civilization.sidebar.projects` (A3), `.inbox` (A2), `.missions`
   (A3), `.teams` (A5), `.agents` (A1), `.health` (A7); the footer is the
   slot `civilization.sidebar.footer`, where the plugin contributes Settings
   (`jhin.civilization.settings`) and the palette (`jhin.civilization.palette`).
@@ -1459,12 +1460,78 @@ C3 decisions:
   `parentThreadId` (the owner's token) acts from it only when it holds every
   permission and so could send as that thread anyway; any other keeps its own
   sender.
+- **D1107. An empty section says that no plugin fills it.** A section of
+  the Civilization sidebar shows its own empty text only while no plugin
+  contributes to its slot; each plugin's slot says itself when it has
+  nothing ("Nothing waits for you."). So the shell's text names the missing
+  plugin's subject ("No plugin shows missions here."), not a workstream that
+  has landed, and never "No missions yet", which is false with the plugin
+  off and missions on the node. This replaces D749's "naming who fills it".
+  `civilization.sidebar.projects` stays: a slot id is public API (AGENTS.md
+  rule 8), and no plugin fills it yet (A3's Deferred, "the Projects
+  section").
 
 Where C3 stands: the scenario (its first bullet) runs on commands, with every
-part the bullet names. Left: its steps through C1's console (the
+part the bullet names; the real run (the second bullet) is done, see "C3
+run" below. Left: the scenario's steps through C1's console (the
 conversation with the lead, bringing the team up) and C2's mission editing
-and orchestrator view once they land, and the real run (the second bullet),
-with its report as a "C3 run" note here.
+and orchestrator view once they land.
+
+#### C3 run
+
+On 2026-10-22 a team `crew` of three Claude Code agents (lead, builder,
+reviewer, all Sonnet 5.5, full access) ran on a node started from a checkout
+(`jhin serve --ui` with its own home), in a throwaway worktree of this
+repository. The owner only sent the lead one message and read the streams.
+The mission was the C3 Deferred item on the Projects section's empty text.
+
+- **What went right.** The lead set the intent, planned a mission of two
+  slices (build, then review) with a `commit` step, and ran it with
+  `missions_orchestrate`. The orchestrator handed out each wave, the builder
+  proved its slice with `vp check`, the web typecheck and the affected unit
+  tests, the reviewer sent four findings, and the lead committed and closed
+  the mission. It took 3 min 22 s from the owner's message to the closed
+  mission, with six messages and no health warning.
+- **Fixed.** `teams.up` came up `defined` with a home project the node did
+  not have, and the first message failed (D1105, #199). Every handoff
+  reached the builder and the reviewer from the owner, not the lead
+  (D1106, #200).
+- **Not landed as made.** The lead dropped the Projects section and its slot
+  id (`civilization.sidebar.projects`), a public id (AGENTS.md rule 8),
+  without asking the owner. The C3 Deferred item, written by this
+  workstream, offered "or drop the section" and named no rule. The reviewer
+  checked the list the lead gave it ("Projects removal leaves no dead
+  import"), not whether the removal was allowed
+  ([own homework](../lore/own-homework.md)). The texts said "No missions
+  yet", which is false whenever the section shows, since it shows only
+  without the plugin. The reviewer half caught that ("Health fallback
+  claims healthy"). The lead then made the texts vaguer after the review
+  ("Nothing here yet.") and committed them without another review. The
+  builder changed `e2e/tests/modes.spec.ts` without running it. The owner
+  landed D1107 instead, from the same diagnosis.
+- **Records.** The mission was `927129bd-4bb9-40e3-9638-e27f790107b5` on a
+  node whose home was thrown away with the run; the crew's two commits
+  (`ba7dbedd`, `45d40100`) are kept on the branch
+  `pr-assets/docs/c3-run-crew`. The streams as the owner read them, message
+  bodies cut:
+
+  ```
+  14:59:28 message owner -> crew-lead: Hi, I'm the owner. One small mission …
+  14:59:41 missions.intent.set
+  15:00:03 missions.mission.created  Civilization sidebar: honest empty texts
+  15:00:22 message owner -> crew-builder: [Slice handed to you] …  (D1106)
+  15:01:25 workflow mission completed: wave-done, wave 1
+  15:01:27 message crew-builder -> crew-lead: Slice … done and proven …
+  15:01:35 message owner -> crew-reviewer: [Slice handed to you] …
+  15:02:03 message crew-reviewer -> crew-lead: … 2 findings to fix, 2 minor
+  15:02:05 workflow mission completed: slices-done
+  15:02:50 missions.mission.updated  done
+  15:03:00 answer crew-lead -> crew-builder: … committed as ba7dbedd; mission closed
+  ```
+
+- **Missing.** The owner heard nothing back: the lead reported to the
+  builder, and its turn's answer stayed in its thread (Deferred, C1). No
+  agent wrote to its knowledge folder in so short a run.
 
 ## Deferred
 
@@ -1667,10 +1734,14 @@ with its report as a "C3 run" note here.
   node is quiet but its open warning stays: two warnings for one cause, which
   D724 means to avoid. Seen running the scenario (D1101): its Health
   section lists both; the test asserts only the mission's.
-- C3: Civilization mode's Projects section still says it arrives with A3,
-  which landed without filling it; the Missions section already groups by
-  project. Fill it (projects with their intent, C2's intent editing) or drop
-  the section.
+- C3: a reply from the lead to the owner's message. An `agents.send`
+  from the owner starts the lead's turn, but what the lead answers stays in
+  its thread: only an ask's answer comes back (D624), so the owner's
+  conversation (D1061) shows nothing of it. In the C3 run the lead closed the
+  mission and told the builder, never the owner. Either the lead's
+  instructions (D688) ask it to report to the owner with `agents_send`, or
+  the turn a message of the owner starts records its last answer as an
+  ask's does. C1 decides.
 
 ## Landing
 
@@ -1772,3 +1843,5 @@ Each workstream lists its PRs here as they merge.
 - C1 #196: defining and editing agents from Civilization mode
   (`jhin.agents.form`, `civilization.agent.define`, New agent in the roster),
   and New generation, Edit and Remove on an agent's page (D1065–D1067).
+- C3 #201: the C3 run, its report and D1107 (honest empty sections in
+  Civilization mode), the lore story "own homework".
