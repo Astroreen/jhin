@@ -1385,8 +1385,11 @@ Each workstream lists its PRs here as they merge.
   against progress per mission, project and node, the ceremony, recursive
   proof loop and mind-virus detectors, the analyst asked with `agents.ask`,
   `health.*` commands; agents read health over MCP (D721–D730). The owner's
-  notification of a warning is the client's (#190, D731). The Health
-  view in Civilization mode follows.
+  notification of a warning is the client's (#190, D731).
+- A7 #190: `jhin.health` in the web client: warnings in Civilization
+  mode's sidebar, the overview, a warning's page with its analysis and the
+  events behind it, a notification per new warning; the inbox and health
+  share `lib/node-feeds.ts` and `lib/tell-owner.tsx` (D731).
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
