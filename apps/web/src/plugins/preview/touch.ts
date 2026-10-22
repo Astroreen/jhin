@@ -9,7 +9,7 @@ const TAP_SLOP_PX = 8;
 const PROBE_REUSE_PX = 24;
 const PROBE_REUSE_MS = 10_000;
 
-export interface PagePoint {
+interface PagePoint {
   readonly x: number;
   readonly y: number;
 }
@@ -27,7 +27,7 @@ export type TouchAction =
   | { readonly type: "focus" }
   | { readonly type: "blur" };
 
-export interface TouchPointer {
+interface TouchPointer {
   readonly pointerId: number;
   readonly isPrimary: boolean;
   readonly clientX: number;
