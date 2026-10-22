@@ -1300,7 +1300,10 @@ Decisions (C2):
   `workflows.status`, so a client looking never acknowledges the run's
   wake-up (D376): the lead is still woken. A client follows the
   `orchestration` stream after that head. When a mission run it has not seen
-  shows up (the lead orchestrating again), the client asks again.
+  shows up (the lead orchestrating again), the client asks again. A run
+  the node no longer lists (`workflows.list` lost it, e.g. after a restart)
+  reads as none, so the panel offers Start; its outcome is in the lead's
+  chat (W20).
 - **D1087. Beside a mission is a slot.** The mission page renders
   `civilization.mission.aside` (the mission, its slices, the node's id and
   the assignee titles) to the right of the mission on wide screens and above
@@ -1329,7 +1332,9 @@ Decisions (C2):
   stops the run and calls `agents.stop` on every agent of this node working
   on an active slice of the mission. Those agents are resumed on their own
   page (D612). Stop does not change the mission's status; that stays an
-  edit (D1081).
+  edit (D1081). After a Stop the run reads Paused too (W10 has one `stopped`),
+  and the stopped agents show on their pages. Without a dialog host
+  (`ui.dialogs`) there is no Stop, since it is never done unconfirmed.
 
 ### C3. Dogfood: a civilization end to end (D1101–D1120)
 

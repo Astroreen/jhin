@@ -44,7 +44,8 @@ const runOf = (record: OrchestratorRun): OrchestratorRun => ({
   workflowId: record.workflowId,
   parentThreadId: record.parentThreadId,
   status: record.status,
-  logs: record.logs.slice(-5),
+  // A record is read as it comes; a missing list is none.
+  logs: Array.isArray(record.logs) ? record.logs.slice(-5) : [],
   updatedAt: record.updatedAt,
   ...(record.currentPhase === undefined ? {} : { currentPhase: record.currentPhase }),
   ...(record.result === undefined ? {} : { result: record.result }),
@@ -63,7 +64,8 @@ function useMissionRun(connections: Connections, connection: string, missionId: 
   const client = node?.state === "open" ? node.client : undefined;
   const [view, setView] = useState<{ key: string; view: RunView }>();
   const [round, setRound] = useState(0);
-  const key = `${connection}|${missionId}|${round}`;
+  // A reload keeps showing the last answer until the new one comes: no flash.
+  const key = `${connection}|${missionId}`;
   useEffect(() => {
     if (client === undefined) return;
     let stopped = false;
@@ -109,7 +111,7 @@ function useMissionRun(connections: Connections, connection: string, missionId: 
       stopped = true;
       subscription?.dispose();
     };
-  }, [client, key]);
+  }, [client, key, round]);
   return {
     view: view?.key === key ? view.view : ({ status: "loading" } as RunView),
     reload: () => setRound((value) => value + 1),
@@ -219,6 +221,8 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
         if (!mounted.current) return;
         setPending(false);
         setError(failure instanceof Error ? failure.message : String(failure));
+        // Part of a stop may have happened: show what the node says now.
+        reload();
       },
     );
   };
@@ -248,17 +252,17 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
     const names = working
       .map((id) => directory.agents.find((agent) => agent.agentId === id)?.title ?? id)
       .join(", ");
-    const confirmed =
-      services.dialogs === undefined ||
-      (await services.dialogs.confirm({
-        title: `Stop ${mission.title}?`,
-        description:
-          working.length === 0
-            ? "The orchestrator run stops; no slice is handed off until it runs again."
-            : `The orchestrator run stops, and so do ${names}: they take no new work until resumed on their page.`,
-        confirmLabel: "Stop mission",
-        variant: "destructive",
-      }));
+    // Stop is confirmed or not done (D1090): without a dialog host it is unavailable.
+    if (services.dialogs === undefined) return;
+    const confirmed = await services.dialogs.confirm({
+      title: `Stop ${mission.title}?`,
+      description:
+        working.length === 0
+          ? "The orchestrator run stops; no slice is handed off until it runs again."
+          : `The orchestrator run stops, and so do ${names}: they take no new work until resumed on their page.`,
+      confirmLabel: "Stop mission",
+      variant: "destructive",
+    });
     if (!confirmed) return;
     act(async () => {
       if (running) {
@@ -392,7 +396,9 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
                   </Button>
                 )}
                 <Button
-                  disabled={pending || (!running && working.length === 0)}
+                  disabled={
+                    pending || services.dialogs === undefined || (!running && working.length === 0)
+                  }
                   onClick={() => void stop()}
                   size="compact"
                   type="button"
