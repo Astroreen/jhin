@@ -39,6 +39,11 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await node.stop();
 });
+/** The streams a test follows, closed after it whether it passed or not. */
+const onClose: { close(): void }[] = [];
+test.afterEach(() => {
+  for (const stream of onClose.splice(0)) stream.close();
+});
 
 interface Slice {
   id: string;
@@ -52,10 +57,15 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
 }, info) => {
   const client = node.client();
   const missions = follow(client, "missions");
+  onClose.push(missions);
   const workflows = follow(client, "orchestration");
+  onClose.push(workflows);
   const inbox = follow(client, "agents/inbox");
+  onClose.push(inbox);
   const health = follow(client, "health");
+  onClose.push(health);
   const messages = follow(client, "agents/messages");
+  onClose.push(messages);
 
   // 1. The team comes up from its spec.
   const up = await client.call<{ members: { member: string; address: string }[] }>("teams.up", {
@@ -100,11 +110,12 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
   });
 
   // 3. The owner talks to the lead; the lead's thread runs the orchestrator.
-  await client.call("agents.send", { to: address.lead, body: "Run the doghouse mission." });
-  const [leadGeneration] = await client.call<{ threadId: string }[]>("agents.generations", {
-    agentId: "workshop-lead",
+  // The message starts the lead's first generation and lands in its thread.
+  const sent = await client.call<{ delivery?: { threadId: string } }>("agents.send", {
+    to: address.lead,
+    body: "Run the doghouse mission.",
   });
-  expect(leadGeneration).toBeDefined();
+  const leadThread = sent.delivery!.threadId;
   const sliceIs = (sliceId: string, status: string) =>
     missions
       .until(
@@ -126,7 +137,7 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
 
   const first = await client.call<{ workflowId: string }>("missions.orchestrate", {
     missionId: mission.id,
-    parentThreadId: leadGeneration!.threadId,
+    parentThreadId: leadThread,
   });
   // Each slice of wave 1 is handed to its assignee, and their threads are linked.
   const handedWalls = await sliceIs(walls.id, "active");
@@ -173,7 +184,7 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
   // The lead ran the wave's steps and goes on: wave 2.
   const second = await client.call<{ workflowId: string }>("missions.orchestrate", {
     missionId: mission.id,
-    parentThreadId: leadGeneration!.threadId,
+    parentThreadId: leadThread,
   });
   // The builder's current generation gets it, the thread of its walls.
   expect((await sliceIs(roof.id, "active")).threads?.[0]?.threadId).toBe(
@@ -262,6 +273,4 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
     }),
   ).toBeVisible();
   await page.screenshot({ path: info.outputPath("civilization.png") });
-
-  for (const stream of [missions, workflows, inbox, health, messages]) stream.close();
 });

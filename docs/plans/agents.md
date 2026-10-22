@@ -1521,8 +1521,8 @@ with its report as a "C3 run" note here.
   owner's messages to the lead count only for the node (the lead holds no
   slice), so the node crosses first, and when the mission crosses later the
   node is quiet but its open warning stays: two warnings for one cause, which
-  D724 means to avoid. The scenario (D1101) shows it; it asserts the
-  mission's warning by name.
+  D724 means to avoid. Seen running the scenario (D1101): its Health
+  section lists both; the test asserts only the mission's.
 - C3: Civilization mode's Projects section still says it arrives with A3,
   which landed without filling it; the Missions section already groups by
   project. Fill it (projects with their intent, C2's intent editing) or drop
