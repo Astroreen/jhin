@@ -32,8 +32,7 @@ export function tellOwner(
   } catch {
     // No `jhin.notifications`: its defaults.
   }
-  if (document.visibilityState === "visible" && document.hasFocus()) {
-    if (settings.inApp === false) return;
+  const toast = () =>
     toasts?.show({
       type: news.type ?? "warning",
       title: news.title,
@@ -41,6 +40,8 @@ export function tellOwner(
       data: { hideCopyButton: true, leadingIcon: news.icon },
       action: { label: news.actionLabel, onClick: news.open },
     });
+  if (document.visibilityState === "visible" && document.hasFocus()) {
+    if (settings.inApp !== false) toast();
     return;
   }
   if (
@@ -48,11 +49,16 @@ export function tellOwner(
     typeof Notification !== "undefined" &&
     Notification.permission === "granted"
   ) {
-    const notification = new Notification(news.title, { body: news.body, tag: news.tag });
-    notification.addEventListener("click", () => {
-      notification.close();
-      window.focus();
-      news.open();
-    });
+    try {
+      const notification = new Notification(news.title, { body: news.body, tag: news.tag });
+      notification.addEventListener("click", () => {
+        notification.close();
+        window.focus();
+        news.open();
+      });
+    } catch {
+      // Some browsers refuse it (mobile, an insecure context): the page tells it instead.
+      if (settings.inApp !== false) toast();
+    }
   }
 }

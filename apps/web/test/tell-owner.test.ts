@@ -74,4 +74,17 @@ describe("telling the owner (D630, D731)", () => {
     expect(notifications.map((item) => item.body)).toEqual([news.body]);
     expect(shown).toEqual([]);
   });
+
+  it("falls back to a toast when the browser refuses a system notification", () => {
+    page(false);
+    globals["Notification"] = class {
+      static permission = "granted";
+      constructor() {
+        throw new TypeError("Illegal constructor");
+      }
+    };
+    const { shown, toasts: sink } = toasts();
+    tellOwner(config({ mode: "notifications" }), sink, news);
+    expect(shown.map((toast) => toast.title)).toEqual([news.title]);
+  });
 });
