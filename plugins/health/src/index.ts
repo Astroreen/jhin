@@ -35,6 +35,7 @@ import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, describePermissions, z, type Invocation } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog, type Json, type StoredEvent } from "@jhin/storage-api";
 
+import { mergeByTime } from "./merge.ts";
 import { Sensors, type Finding } from "./sensors.ts";
 
 export { HEALTH_STREAM };
@@ -163,9 +164,11 @@ export default definePlugin({
             (await log.read(source.stream)).map((event) => ({ source, event })),
           ),
         );
-        // Stable: events of one time keep the order of the sources, then of their stream.
-        const merged = read.flat().toSorted((a, b) => a.event.at.localeCompare(b.event.at));
-        for (const { source, event } of merged) deliver(source, event);
+        for (const { source, event } of mergeByTime(
+          read.map((events) => events.map((item) => ({ ...item, at: item.event.at }))),
+        )) {
+          deliver(source, event);
+        }
         const held = waiting;
         waiting = undefined;
         for (const { source, event } of held) deliver(source, event);
