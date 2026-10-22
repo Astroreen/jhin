@@ -85,6 +85,9 @@ export function CiteSelection(props: {
     window.addEventListener("blur", up);
     document.addEventListener("selectionchange", update);
     viewport.addEventListener("scroll", scrolled);
+    // A selection made before this chunk loaded (or before the thread changed) had its
+    // selectionchange already (D1043).
+    update();
     return () => {
       document.removeEventListener("pointerdown", down);
       document.removeEventListener("pointerup", up);

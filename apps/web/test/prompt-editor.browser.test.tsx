@@ -168,6 +168,51 @@ describe("the prompt editor (D303)", () => {
     expect(editor.submits).toEqual(["a\nb"]);
   });
 
+  it("acts on a selection made just before a key, before the page says it changed (D1042)", () => {
+    const editor = mount("also tests");
+    editor.handle.focus();
+    const textbox = editor.editable();
+    // As Playwright's fill("") does: the text selected from a script, then Delete, in one task,
+    // so the key comes before the selectionchange event.
+    const range = document.createRange();
+    range.selectNodeContents(textbox);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(range);
+    const key = (name: string) =>
+      textbox.dispatchEvent(
+        new KeyboardEvent("keydown", { key: name, code: name, bubbles: true, cancelable: true }),
+      );
+    key("Delete");
+    expect(editor.handle.value()).toBe("");
+    key("Enter");
+    expect(editor.submits).toEqual([""]);
+  });
+
+  it("tells nobody of a selection change on a key when there is none (D1042)", async () => {
+    const editor = mount("read [a.ts](src/a.ts)");
+    editor.handle.focus();
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    let told = 0;
+    const count = () => (told += 1);
+    document.addEventListener("selectionchange", count);
+    try {
+      const key = () =>
+        editor
+          .editable()
+          .dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Shift", bubbles: true, cancelable: true }),
+          );
+      key();
+      // The chip as a node selection: its DOM selection maps to other positions.
+      tiptap.commands.setNodeSelection(6);
+      told = 0;
+      key();
+      expect(told).toBe(0);
+    } finally {
+      document.removeEventListener("selectionchange", count);
+    }
+  });
+
   it("lets the parent take a key first, which then neither sends nor edits", async () => {
     const seen: string[] = [];
     const editor = mount("pick", {

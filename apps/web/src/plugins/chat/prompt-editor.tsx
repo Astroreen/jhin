@@ -1873,6 +1873,33 @@ function exitCodeBlockOnTrailingBlankLines(view: EditorView): boolean {
   return exitCode(view.state, (next) => view.dispatch(next.scrollIntoView()));
 }
 
+/**
+ * Lets ProseMirror read a selection it has not been told of yet (D1042). It
+ * reads the page's selection on `selectionchange`, which comes after the
+ * change, so a key pressed right after a script selected the text (Playwright's
+ * `fill`, an assistive tool) acted on the old caret: Delete over a selected
+ * prompt deleted nothing, and the Enter after it sent the prompt.
+ */
+function readPendingSelection(view: EditorView): void {
+  // A chip's node selection maps to other DOM positions: only a text selection can be stale.
+  if (!(view.state.selection instanceof TextSelection)) return;
+  const selection = view.dom.ownerDocument.getSelection();
+  const { anchorNode, focusNode } = selection ?? {};
+  if (!selection || !anchorNode || !focusNode) return;
+  if (!view.dom.contains(anchorNode) || !view.dom.contains(focusNode)) return;
+  let anchor: number;
+  let head: number;
+  try {
+    anchor = view.posAtDOM(anchorNode, selection.anchorOffset);
+    head = view.posAtDOM(focusNode, selection.focusOffset);
+  } catch {
+    return;
+  }
+  if (anchor === view.state.selection.anchor && head === view.state.selection.head) return;
+  // ProseMirror's own handler reads it, with its rules for what a selection is.
+  view.dom.ownerDocument.dispatchEvent(new Event("selectionchange"));
+}
+
 /** Enter after a typed closing fence ends the block there. */
 function exitCodeBlockOnClosingFence(
   state: EditorState,
@@ -2064,6 +2091,7 @@ export function PromptEditor(props: PromptEditorProps) {
   const handleKeyDown = (view: EditorView, event: KeyboardEvent): boolean => {
     // Enter while an input method composes confirms the composition; it never sends.
     if (event.isComposing || event.keyCode === 229) return event.key === "Enter";
+    readPendingSelection(view);
     const current = latest.current;
     if (current.onKeyDown?.(event) === true) return true;
     const dispatch = (tr: Transaction) => view.dispatch(tr.scrollIntoView());
