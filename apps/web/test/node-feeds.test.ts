@@ -1,6 +1,6 @@
 import type { Connections, NodeConnection } from "@jhin/client-api";
 import { toDisposable } from "@jhin/sdk";
-import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
 import { createNodeFeeds, type NodeFeeds } from "../src/lib/node-feeds.ts";
 
@@ -201,19 +201,21 @@ describe("node feeds (D630, D731)", () => {
         return toDisposable(() => {});
       },
     };
-    // Only the clock is faked: a retry waits a minute after the last one.
-    vi.useFakeTimers({ toFake: ["Date"] });
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
+    // The feed's clock is the test's: a retry waits a minute after the last one.
+    let time = 0;
     const { connections } = fakeConnections(client as never);
     const told: string[] = [];
-    const feeds = createNodeFeeds(connections, quiet, {
-      ...source,
-      reread: (_connection, before, after) => {
-        for (const item of after) if (!before.includes(item)) told.push(item);
+    const feeds = createNodeFeeds(
+      connections,
+      quiet,
+      {
+        ...source,
+        reread: (_connection, before, after) => {
+          for (const item of after) if (!before.includes(item)) told.push(item);
+        },
       },
-    });
+      () => time,
+    );
     const ready = () =>
       new Promise<void>((resolve) => {
         const subscription = feeds.subscribe(() => {
@@ -231,7 +233,7 @@ describe("node feeds (D630, D731)", () => {
     expect(told).toEqual(["b"]);
     // A minute later a drop is retried too, quiet stream or not.
     stream.listener!({ type: "add", payload: "c" });
-    vi.setSystemTime(Date.now() + 60_000);
+    time += 60_000;
     next = ready();
     stream.onError!(new Error("dropped again"));
     await next;
@@ -280,6 +282,31 @@ describe("node feeds (D630, D731)", () => {
     // The new one is heard.
     listeners[1]!({ type: "add", payload: "c" });
     expect(feeds.snapshot().get("a")?.value).toEqual(["a", "b", "c"]);
+    feeds.dispose();
+  });
+
+  it("keeps a second drop within a minute of the last retry not live", async () => {
+    let time = 0;
+    const one = fakeClient();
+    const { connections } = fakeConnections(one.client);
+    const feeds = createNodeFeeds(connections, quiet, source, () => time);
+    let ready = changes(feeds);
+    one.answer.resolve({ head: 1, items: ["x"] });
+    await ready;
+    ready = new Promise<void>((resolve) => {
+      const subscription = feeds.subscribe(() => {
+        if (feeds.snapshot().get("a")?.status !== "ready") return;
+        subscription.dispose();
+        resolve();
+      });
+    });
+    one.stream.onError!(new Error("dropped"));
+    await ready;
+    // 59.999 s later: within the minute, so no retry.
+    time += 59_999;
+    one.stream.onError!(new Error("dropped again"));
+    expect(feeds.snapshot().get("a")?.status).toBe("error");
+    expect(one.reads.count).toBe(2);
     feeds.dispose();
   });
 });

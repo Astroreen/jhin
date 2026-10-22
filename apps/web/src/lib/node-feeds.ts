@@ -61,6 +61,8 @@ export function createNodeFeeds<S>(
   connections: Connections,
   log: { warn(message: string, fields?: Record<string, unknown>): void },
   source: NodeFeedSource<S>,
+  /** The time in ms, for the once-a-minute retry; given by tests. */
+  clock: () => number = Date.now,
 ): NodeFeeds<S> & Disposable {
   const states = new Map<string, NodeFeed<S>>();
   const feeds = new Map<string, { client: NodeConnection["client"]; stop: () => void }>();
@@ -110,9 +112,9 @@ export function createNodeFeeds<S>(
       // "not live". At most once a minute, so a flapping stream does not loop
       // on the node: a second drop within it stays not live. A permission
       // taken back is not retried.
-      const rested = Date.now() - lastRetry >= RETRY_GAP_MS;
+      const rested = clock() - lastRetry >= RETRY_GAP_MS;
       if (wasRead && rested && code !== "PERMISSION_DENIED") {
-        lastRetry = Date.now();
+        lastRetry = clock();
         for (const subscription of subscriptions.splice(0)) subscription.dispose();
         follow(true);
         return;
