@@ -243,7 +243,14 @@ export default definePlugin({
           : undefined;
       const configured =
         (projectId === undefined ? undefined : analysts[projectId]) ?? analysts["*"];
-      if (configured !== undefined) return { address: configured, reason: "config" };
+      // Only an agent analyses: the owner is told anyway, and an ask to the
+      // owner only waits in the inbox (D626).
+      if (configured !== undefined && parseMessageAddress(configured)?.kind === "agent") {
+        return { address: configured, reason: "config" };
+      }
+      if (configured !== undefined) {
+        context.log.warn("a configured analyst is not an agent's address", { configured });
+      }
       if (projectId === undefined) return undefined;
       const tally = new Map<string, number>();
       for (const slice of Object.values(sensors.missions.slices)) {
@@ -304,6 +311,9 @@ export default definePlugin({
               );
             }),
           ])) as { status: string; answer?: string };
+          if (result.status !== "answered") {
+            throw new Error(`the ask is ${result.status}, not answered`);
+          }
           analysis = {
             status: "answered",
             analyst: analyst.address,
@@ -358,6 +368,24 @@ export default definePlugin({
     });
 
     /** Whether a delivered message is health's own ask to an analyst (D725). */
+    /**
+     * A message the analyst of a warning sent in reply to health's ask about
+     * it: health's own conversation, no ceremony, and not a carrier of the
+     * idea it was asked to trace (D725, D727).
+     */
+    const analystReply = (event: StoredEvent): boolean => {
+      const message = (
+        event.payload as {
+          message?: { inReplyTo?: string; from?: string };
+        } | null
+      )?.message;
+      const warningId =
+        message?.inReplyTo === undefined ? undefined : OWN_ASK.exec(message.inReplyTo)?.[1];
+      const warning = warningId === undefined ? undefined : health.warnings[warningId];
+      if (warning === undefined) return false;
+      const analyst = warning.analysis?.analyst ?? analystOf(warning)?.address;
+      return analyst !== undefined && message?.from === analyst;
+    };
     /** The warnings health already asked about, from the delivered asks (D725). */
     const askedBefore = new Set<string>();
     /** The warning a delivered message is health's own ask about, if it is one. */
@@ -398,8 +426,8 @@ export default definePlugin({
         handle: (event) => {
           if (event.type !== MessageEvents.delivered) return;
           const asked = ownAsk(event);
-          if (asked === undefined) sensors.ingestMessage(event);
-          else askedBefore.add(asked);
+          if (asked !== undefined) askedBefore.add(asked);
+          else if (!analystReply(event)) sensors.ingestMessage(event);
         },
       },
       { stream: SOURCE_CONTROL_STREAM, handle: (event) => sensors.ingestSourceControl(event) },

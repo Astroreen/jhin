@@ -26,7 +26,7 @@ import {
   nextEvent,
   testManifest,
 } from "@jhin/testing";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import missions from "@jhin/plugin-missions";
 import threads from "@jhin/plugin-threads";
@@ -46,6 +46,7 @@ const OWNER = "jhin://node-a/owner";
 const SILENT = "jhin://node-a/agents/silent";
 const BROKEN = "jhin://node-a/agents/broken";
 const ONCE = "jhin://node-a/agents/once";
+const PENDING = "jhin://node-a/agents/pending";
 /** Who waits for the next ask health makes: a fact, not a wait. */
 const askWaiters: ((ask: Asked) => void)[] = [];
 const nextAsk = () => new Promise<Asked>((resolve) => askWaiters.push(resolve));
@@ -99,7 +100,7 @@ async function start(
                 question: z.string(),
                 messageId: z.string().optional(),
               }),
-              output: z.object({ status: z.string(), answer: z.string() }),
+              output: z.object({ status: z.string(), answer: z.string().optional() }),
               handler: (input) => {
                 asked.push(input);
                 for (const waiter of askWaiters.splice(0)) waiter(input);
@@ -110,6 +111,7 @@ async function start(
                   return new Promise<never>(() => {});
                 }
                 if (input.to === BROKEN) throw new Error("the analyst is gone");
+                if (input.to === PENDING) return { status: "pending" };
                 return { status: "answered", answer: `${input.to} says: stop re-proving` };
               },
             });
@@ -161,6 +163,7 @@ async function node(health_: Record<string, unknown> = {}) {
     threadId?: string,
     messageId = `m${messages + 1}`,
     kind: "message" | "ask" = "message",
+    inReplyTo?: string,
   ) => {
     messages += 1;
     return log.append(MESSAGES_STREAM, [
@@ -170,6 +173,7 @@ async function node(health_: Record<string, unknown> = {}) {
           message: {
             messageId,
             kind,
+            ...(inReplyTo === undefined ? {} : { inReplyTo }),
             from,
             to,
             body,
@@ -446,18 +450,61 @@ describe("jhin.health", () => {
       error: "the analyst is gone",
     });
 
+    // The timeout fires on a faked clock: the test waits for facts, not time.
     const silent = await node({
       ceremony: { ratio: 1, minCeremony: 1 },
       analysts: { "*": SILENT },
-      analysisTimeoutMinutes: 0.0005,
     });
-    const timedOut = nextAppended(silent.log, HEALTH_STREAM, HealthEvents.warningAnalysed);
-    await silent.deliver(OWNER, BUILDER, "status?", "t1");
-    expect(((await timedOut).payload as { analysis: Analysis }).analysis).toMatchObject({
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const asking = nextAsk();
+      const timedOut = nextAppended(silent.log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+      await silent.deliver(OWNER, BUILDER, "status?", "t1");
+      await asking;
+      vi.advanceTimersByTime(30 * 60_000);
+      expect(((await timedOut).payload as { analysis: Analysis }).analysis).toMatchObject({
+        status: "failed",
+        analyst: SILENT,
+        error: "no answer within 30 minutes",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // An ask that only waits (`pending`) is no answer either.
+    const pending = await node({
+      ceremony: { ratio: 1, minCeremony: 1 },
+      analysts: { "*": PENDING },
+    });
+    const waits = nextAppended(pending.log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await pending.deliver(OWNER, BUILDER, "status?", "t1");
+    expect(((await waits).payload as { analysis: Analysis }).analysis).toMatchObject({
       status: "failed",
-      analyst: SILENT,
-      error: expect.stringMatching(/^no answer within/),
+      error: "the ask is pending, not answered",
     });
+  });
+
+  it("asks an agent, never the owner, and does not count the analyst's reply", async () => {
+    const { kernel, client, deliver, asked } = await node({
+      ceremony: { ratio: 1, minCeremony: 2 },
+      analysts: { "*": OWNER },
+    });
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    const asking = nextAsk();
+    await deliver(OWNER, BUILDER, "one", "t1");
+    await deliver(OWNER, BUILDER, "two", "t1");
+    const { warning } = (await raised) as { warning: Warning };
+    // The owner configured as analyst is no agent: the mission's assignee is asked.
+    expect((await asking).to).toBe(BUILDER);
+    await client.call("health.warnings.dismiss", { warningId: warning.warningId });
+    const again = nextEvent(kernel, HealthEvents.warningRaised);
+    // The analyst replies to health's ask: health's own conversation, not ceremony.
+    await deliver(BUILDER, OWNER, "the reviews loop", "t1", "r1", "message", asked[0]!.messageId);
+    const [three] = await deliver(OWNER, BUILDER, "three", "t1");
+    const [four] = await deliver(OWNER, BUILDER, "four", "t1");
+    // Counted, the reply would have raised it with "three"; it is raised with "three" and "four".
+    const next = ((await again) as { warning: Warning }).warning;
+    expect(next.evidence.map((ref) => ref.sequence)).toEqual([three!.sequence, four!.sequence]);
   });
 
   it("takes only the owner's ask with health's id as health's own, not an agent's copy of it", async () => {

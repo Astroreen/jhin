@@ -931,7 +931,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   `health.<warningId>.<attempt>`, naming a warning health raised before) are
   no ceremony: an ask from this node's owner, whom no agent can send as
   (D622), whose id names a warning health raised before. An agent that
-  copies such an id is counted like any other. The
+  copies such an id is counted like any other. The analyst's reply to that
+  ask (`inReplyTo` it, from the warning's analyst) is health's conversation
+  too: no ceremony, and no carrier of the idea it was asked to trace. The
   analyst's answer ends its turn (D624) and is not a delivered message.
 - **D723. Commits are the one progress no stream holds.** A turn on a thread
   a slice links records its `HEAD` before it starts (turn-start hook,
@@ -965,7 +967,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   asks its analyst (D726) through `agents.ask` (A2, D624) as this node's
   owner, with the warning, its measures, its last events and what to look at
   (the lore of bureaucracy or of mind viruses), and records the answer
-  (`health.warning.analysed`: `answered`, `failed` with the error or after
+  (`health.warning.analysed`: `answered`; `failed` with the error, when the ask is not answered (an ask
+  that only waits, `pending`), or after
   `analysisTimeoutMinutes`, or `none` when no agent has the context). An ask
   past its timeout is not cancelled (commands have no abort); its late answer
   is dropped. An ask cut short by a deactivation records nothing. On activation an open
@@ -977,8 +980,9 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   activation, or it fails; a slice's thread that cannot be read is tried again
   on the next change of the slices' threads. Agents hold `health.read` over MCP
   (`AGENT_PERMISSIONS`), so the analyst can open the drill-down itself.
-- **D726. Who has the context.** In order: the address configured for the
-  project in `jhin.health.analysts` (or for `*`); the team's lead once A5
+- **D726. Who has the context.** In order: the agent address configured for
+  the project in `jhin.health.analysts` (or for `*`; an address that is no
+  agent's, such as the owner's, is skipped with a warning in the log); the team's lead once A5
   lands (the seam: a team group and its lead replace the next step); else
   the agent assigned the most of the group's slices that are not dropped, a
   tie going to the first address in order. A node-wide warning without a
