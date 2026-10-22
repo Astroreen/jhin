@@ -278,7 +278,7 @@ async function pair(
   }
   const ttl = option("ttl");
   const ttlMinutes = ttl === undefined ? undefined : Number(ttl);
-  if (ttlMinutes !== undefined && !(ttlMinutes > 0)) {
+  if (ttlMinutes !== undefined && !(Number.isFinite(ttlMinutes) && ttlMinutes > 0)) {
     process.stderr.write(`--ttl takes minutes, e.g. --ttl 10; got ${ttl}\n`);
     return 2;
   }

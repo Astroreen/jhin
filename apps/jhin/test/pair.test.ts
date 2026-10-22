@@ -7,7 +7,15 @@ import * as Path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
-import { discoverNode, formatPairOutput, pairingNotes, reachableBaseUrl } from "../src/pair.ts";
+import { renderTerminalQrCode } from "@jhin/qr-code";
+
+import {
+  discoverNode,
+  formatPairOutput,
+  localUrl,
+  pairingNotes,
+  reachableBaseUrl,
+} from "../src/pair.ts";
 import { seedToken } from "./support/token.ts";
 
 const BIN = Path.resolve(import.meta.dirname, "../bin/jhin.js");
@@ -105,7 +113,9 @@ describe("jhin pair against a running node", () => {
     expect(output.stdout.split("\n")[0]).toMatch(
       /^Pairing with .+ \(http:\/\/127\.0\.0\.1:\d+\)\.$/,
     );
-    expect(output.stdout).toMatch(/[█▀▄]/u);
+    // The QR code printed is the encoder's for the pairing URL, module for module.
+    const pairingUrl = /^Pairing URL: (\S+)$/m.exec(output.stdout)![1]!;
+    expect(output.stdout).toContain(`\n${renderTerminalQrCode(pairingUrl)}\n`);
     expect(code).toMatch(/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/);
     expect(/^Pairing URL: (\S+)$/m.exec(output.stdout)![1]).toBe(
       `${runtime.url}/pair#token=${code}`,
@@ -148,13 +158,23 @@ describe("jhin pair against a running node", () => {
     { timeout: 30_000 },
     async () => {
       const runs = await Promise.all(
-        [["--permission"], ["--permission", "--json"], ["--ttl"], ["--label"]].map((args) =>
-          jhin("pair", "--home", home, ...args),
-        ),
+        [
+          ["--permission"],
+          ["--permission", "--json"],
+          ["--ttl"],
+          ["--label"],
+          ["--ttl", "Infinity"],
+          ["--ttl", "-3"],
+          ["--ttl", "soon"],
+        ].map((args) => jhin("pair", "--home", home, ...args)),
       );
-      for (const refused of runs) {
+      for (const refused of runs.slice(0, 4)) {
         expect(refused.status).toBe(2);
         expect(refused.stderr).toContain("needs a value");
+      }
+      for (const refused of runs.slice(4)) {
+        expect(refused.status).toBe(2);
+        expect(refused.stderr).toContain("--ttl takes minutes");
       }
     },
   );
@@ -206,6 +226,15 @@ describe("finding the running node (security.md D1184)", () => {
     // Nothing answers at all.
     writeRuntime(home, { url, pid: process.pid, instance: "the-listener" });
     await expect(discoverNode(home)).rejects.toMatchObject({ code: "NO_RUNNING_NODE" });
+    // A file without an instance is never trusted, even with nothing to compare against.
+    Fs.writeFileSync(runtimeFile(home), JSON.stringify({ url, pid: process.pid, startedAt: 0 }));
+    await expect(discoverNode(home)).rejects.toMatchObject({ code: "NO_RUNNING_NODE" });
+  });
+
+  it("probes a wildcard listener over loopback", () => {
+    expect(localUrl("http://0.0.0.0:7777")).toBe("http://127.0.0.1:7777");
+    expect(localUrl("http://[::]:7777")).toBe("http://127.0.0.1:7777");
+    expect(localUrl("http://100.64.0.5:7777")).toBe("http://100.64.0.5:7777");
   });
 });
 

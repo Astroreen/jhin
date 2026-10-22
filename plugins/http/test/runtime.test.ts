@@ -76,3 +76,21 @@ describe("where a running node listens (security.md D1184)", () => {
     expect(read(data)).toEqual(secondState);
   });
 });
+
+describe("a home that cannot take runtime.json (security.md D1184)", () => {
+  it("still serves, without the file", async () => {
+    const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-http-runtime-"));
+    // The data directory is a file: nothing can be written under it.
+    Fs.writeFileSync(Path.join(data, "jhin.http"), "");
+    const kernel = await createTestKernel({
+      plugins: [
+        mockCapability("host.paths", { home: data, dataDir: (id: string) => Path.join(data, id) }),
+        { manifest, definition: http },
+      ],
+      config: { node: { "jhin.http": { port: 0 } } },
+    });
+    kernels.push(kernel);
+    const { url } = (await kernel.commands.execute("http.info", {})) as { url: string };
+    expect((await fetch(`${url}/.well-known/jhin`)).status).toBe(200);
+  });
+});

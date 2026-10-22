@@ -66,7 +66,10 @@ function writeRuntimeFile(
   state: { url: string; pid: number; instance: string; startedAt: number },
 ): { dispose(): void } {
   const temporary = `${file}.${process.pid}.tmp`;
-  Fs.writeFileSync(temporary, `${JSON.stringify(state)}\n`, { mode: 0o600 });
+  // A leftover temporary file would keep its mode: it is made anew, then 0600 for certain.
+  Fs.rmSync(temporary, { force: true });
+  Fs.writeFileSync(temporary, `${JSON.stringify(state)}\n`, { mode: 0o600, flag: "wx" });
+  Fs.chmodSync(temporary, 0o600);
   Fs.renameSync(temporary, file);
   return {
     dispose() {
@@ -156,14 +159,21 @@ export default definePlugin({
     });
     const paths = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY);
     if (paths !== undefined) {
-      context.subscriptions.add(
-        writeRuntimeFile(Path.join(paths.dataDir(context.plugin.id), RUNTIME_FILE), {
-          url,
-          pid: process.pid,
-          instance,
-          startedAt: Date.now(),
-        }),
-      );
+      // A home that cannot take the file costs `jhin pair` its discovery, not the node its server.
+      try {
+        context.subscriptions.add(
+          writeRuntimeFile(Path.join(paths.dataDir(context.plugin.id), RUNTIME_FILE), {
+            url,
+            pid: process.pid,
+            instance,
+            startedAt: Date.now(),
+          }),
+        );
+      } catch (error) {
+        context.log.warn("could not record where this node listens; jhin pair needs --url", {
+          error: String(error),
+        });
+      }
     }
 
     const api: HttpServer = {

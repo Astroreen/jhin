@@ -90,10 +90,27 @@ export async function discoverNode(home: string | undefined): Promise<RuntimeSta
   } catch {
     throw missing;
   }
-  if (typeof state.url !== "string" || typeof state.pid !== "number") throw missing;
+  // Without an instance to compare, any listener on the address would pass,
+  // and the owner token would go to it.
+  if (
+    typeof state.url !== "string" ||
+    typeof state.pid !== "number" ||
+    typeof state.instance !== "string" ||
+    state.instance === ""
+  ) {
+    throw missing;
+  }
   if (!isProcessAlive(state.pid)) throw missing;
-  if ((await probeInstance(state.url)) !== state.instance) throw missing;
+  const answered = await probeInstance(localUrl(state.url));
+  if (answered === undefined || answered !== state.instance) throw missing;
   return state;
+}
+
+/** The node's address as this machine reaches it: loopback for a wildcard listener. */
+export function localUrl(nodeUrl: string): string {
+  const url = new URL(nodeUrl);
+  if (isWildcardHost(url.hostname) || url.hostname === "") url.hostname = "127.0.0.1";
+  return url.origin;
 }
 
 /**
