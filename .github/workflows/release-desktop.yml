@@ -1,7 +1,8 @@
 # Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): .github/workflows/release.yml
 # and release-desktop.yml, reduced to the desktop app (docs/plans/desktop.md, D945).
 #
-# Builds the desktop app on Linux, macOS and Windows and publishes the
+# Builds the desktop app on Linux, macOS and Windows, each for x64 and arm64 on a
+# runner of that arch (D1210), and publishes the
 # installers with electron-updater's feed files to this repository's releases,
 # which is where the app looks for updates (D519):
 #   - a pushed tag v1.2.3, or "stable", publishes the stable release of
@@ -29,6 +30,7 @@ on:
       - .github/workflows/release-desktop.yml
       - scripts/desktop-release.ts
       - scripts/package-desktop.ts
+      - scripts/update-manifests.ts
       - scripts/pack.ts
       - scripts/packing.ts
       - scripts/workspace-packages.ts
@@ -115,10 +117,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Packaging builds for the runner's own system and arch (D944): native addons are
+        # installed for it, never rebuilt, so each arch has a runner of its own (D1210).
         include:
           - { os: ubuntu-latest, platform: linux, arch: x64 }
+          - { os: ubuntu-24.04-arm, platform: linux, arch: arm64 }
           - { os: macos-latest, platform: mac, arch: arm64 }
+          - { os: macos-15-intel, platform: mac, arch: x64 }
           - { os: windows-latest, platform: win, arch: x64 }
+          - { os: windows-11-arm, platform: win, arch: arm64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -167,10 +174,11 @@ jobs:
           # The feed must name an installer that is uploaded beside it.
           channel=latest
           if [[ "$VERSION" == *-nightly.* ]]; then channel=nightly; fi
-          case "${{ matrix.platform }}" in
-            linux) feed="$channel-linux.yml" ;;
-            mac) feed="$channel-mac.yml" ;;
-            win) feed="$channel.yml" ;;
+          case "${{ matrix.platform }}-${{ matrix.arch }}" in
+            linux-x64) feed="$channel-linux.yml" ;;
+            linux-arm64) feed="$channel-linux-arm64.yml" ;;
+            mac-*) feed="$channel-mac.yml" ;;
+            win-*) feed="$channel.yml" ;;
           esac
           feed="apps/desktop/release/$feed"
           test -f "$feed" || { echo "missing $feed" >&2; exit 1; }
@@ -178,20 +186,97 @@ jobs:
           for file in $(sed -n 's/^ *- url: //p' "$feed"); do
             test -f "apps/desktop/release/$file" || { echo "$feed names missing $file" >&2; exit 1; }
           done
+          # macOS and Windows write one feed file name for every arch: named by arch here,
+          # merged back into one by the release job (T3's, D1210). Linux names arm64's itself.
+          case "${{ matrix.platform }}-${{ matrix.arch }}" in
+            mac-x64) mv "$feed" "${feed%.yml}-x64.yml" ;;
+            win-*) mv "$feed" "apps/desktop/release/$channel-win-${{ matrix.arch }}.yml" ;;
+          esac
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: error
+          path: apps/desktop/release/Jhin-${{ needs.meta.outputs.version }}-*
+      - name: Upload the feed file
+        uses: actions/upload-artifact@v7
+        with:
+          name: feed-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
           path: |
-            apps/desktop/release/Jhin-${{ needs.meta.outputs.version }}-*
             apps/desktop/release/latest*.yml
             apps/desktop/release/nightly*.yml
             !apps/desktop/release/builder-*.yml
 
+  feeds:
+    name: Merge the feed files
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The merge script, run by Node 24 as it is.
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts/update-manifests.ts
+            package.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: feed-*
+          path: feeds
+          merge-multiple: true
+      # electron-updater reads one feed file per platform and channel and picks the
+      # entry whose name carries the running arch (T3's merge, D1210). Dry runs merge
+      # too, so a pull request proves what a release publishes.
+      - name: Merge the macOS and Windows feed files
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for x64 in feeds/*-mac-x64.yml; do
+            arm64="${x64%-x64.yml}.yml"
+            test -f "$arm64" || { echo "$x64 has no arm64 feed $arm64 to merge into" >&2; exit 1; }
+            node scripts/update-manifests.ts --platform mac "$arm64" "$x64"
+            rm "$x64"
+          done
+          for x64 in feeds/*-win-x64.yml; do
+            arm64="${x64%-x64.yml}-arm64.yml"
+            merged="${x64%-win-x64.yml}.yml"
+            test -f "$arm64" || { echo "$x64 has no arm64 feed $arm64 to merge" >&2; exit 1; }
+            node scripts/update-manifests.ts --platform win "$x64" "$arm64" "$merged"
+            rm "$x64" "$arm64"
+          done
+          # One feed per platform and channel is left, with both arches where they share one.
+          for feed in feeds/*.yml; do
+            echo "== $feed"
+            cat "$feed"
+          done
+          # Every feed the matrix promises is there, of one channel, before its arches are checked.
+          channel=latest
+          if [[ -f feeds/nightly.yml || -f feeds/nightly-mac.yml ]]; then channel=nightly; fi
+          for feed in "$channel.yml" "$channel-mac.yml" "$channel-linux.yml" "$channel-linux-arm64.yml"; do
+            test -f "feeds/$feed" || { echo "missing feeds/$feed" >&2; exit 1; }
+          done
+          test "$(ls feeds/*.yml | wc -l)" -eq 4 || { echo "unexpected feed files" >&2; ls feeds >&2; exit 1; }
+          # The per-build check made sure each feed's installers were uploaded beside it; the
+          # merge only unions those entries, so here each merged feed must hold both arches.
+          for feed in "feeds/$channel-mac.yml" "feeds/$channel.yml"; do
+            for arch in arm64 x64; do
+              grep -q -- "-$arch\." "$feed" || { echo "$feed lacks the $arch build" >&2; exit 1; }
+            done
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: feeds
+          if-no-files-found: error
+          path: feeds/*.yml
+
   release:
     name: Publish the release
-    needs: [meta, build]
+    needs: [meta, build, feeds]
     if: needs.meta.outputs.channel != 'dry-run'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -200,8 +285,13 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
+          pattern: desktop-*
           path: release
           merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: feeds
+          path: release
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

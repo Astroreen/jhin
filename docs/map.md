@@ -210,7 +210,8 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   checkout, see its README).
 - `scripts/package-desktop.ts` (`pnpm package:desktop`) — the desktop app's
   installers with electron-builder; `.github/workflows/release-desktop.yml`
-  publishes them and the update feed to GitHub releases (`plans/desktop.md#D942`).
+  publishes them and the update feed to GitHub releases (`plans/desktop.md#D942`);
+  `scripts/update-manifests.ts` merges the per-arch feed files (`#D1210`).
 
 ## In progress
 

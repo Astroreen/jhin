@@ -256,7 +256,8 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   addons are installed for it and never rebuilt (D942).
 
 - **D945. The release workflow.** `.github/workflows/release-desktop.yml`
-  builds Linux x64, macOS arm64 and Windows x64 in parallel. A pushed tag
+  builds Linux x64, macOS arm64 and Windows x64 in parallel (each system
+  for both arches since D1210). A pushed tag
   `v1.2.3` or a manual "stable" run publishes the stable release of
   `apps/desktop/package.json`'s version (a tag that names another version
   fails), only from a commit on `main`; stable versions are plain `x.y.z`,
@@ -344,6 +345,30 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
   the restart scheduled after 500 ms in the app's log and the page come
   back without a dialog.
 
+- **D1210. Six release builds, with T3's merged feed files.** The release
+  workflow builds every system for x64 and arm64, each on a runner of that
+  arch, since packaging installs native addons for the host and never
+  rebuilds them (D944): Linux on `ubuntu-latest` and `ubuntu-24.04-arm`,
+  macOS on `macos-latest` (arm64) and `macos-15-intel`, Windows on
+  `windows-latest` and `windows-11-arm`. electron-updater reads one feed
+  file per platform and channel and picks the entry whose name carries the
+  running arch: Linux names arm64's feed itself (`latest-linux-arm64.yml`),
+  while macOS and Windows write one name for both. So each build names its
+  feed by arch (`latest-mac-x64.yml`, `latest-win-x64.yml`,
+  `latest-win-arm64.yml`) and uploads it as an artifact of its own, and the
+  new `feeds` job merges them back into `latest-mac.yml` and `latest.yml`
+  (the nightly ones likewise) with T3's merge
+  (`scripts/update-manifests.ts`, from T3's `scripts/lib/update-manifest.ts`
+  and `merge-update-manifests.ts`, with T3's tests). Unlike T3's, a
+  file entry's other keys (electron-builder's `blockMapSize`) are carried
+  through. The job fails when one of the four feeds of the channel is
+  missing, when a merged feed lacks one of its arches, or on different
+  versions or conflicting entries.
+  The job runs on dry runs too, so a pull request proves the files a
+  release publishes; the release job uploads the installers with the
+  merged feeds. Signing is unchanged (D944): the arm64 Windows and the x64
+  macOS builds sign with the same secrets once the owner adds them.
+
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
@@ -361,10 +386,10 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
   inset, full screen), Paste as Text's shortcut reaching the page before
   the menu (D946), and the Windows overlay badge on those systems: CI proves
   Linux only.
-- Release builds beyond D945's three: macOS x64 (T3 merges the two
-  `latest-mac.yml` files), Linux and Windows arm64; T3's scheduled nightly
-  that skips days without changes, its preview channel, and promoting a
-  nightly's commit to stable; T3's DMG background; the AUR package.
+- T3's scheduled nightly that skips days without changes, its preview
+  channel, and promoting a nightly's commit to stable; T3's DMG background;
+  the AUR package; T3's x64 macOS build on arm64 hardware (D1210 builds it
+  on an Intel runner, since packaging installs native addons for the host).
 - Proof of the signed and publishing paths: pull request dry runs are
   unsigned and publish nothing, so the first nightly (and the first run with
   the signing secrets) is what proves notarization, Azure Trusted Signing,
@@ -382,8 +407,7 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
   secrets and the publishing job: today they are repository secrets, reachable
   by anyone who may dispatch a workflow on `main`.
 - Pinning the release workflow's actions to commit SHAs (the repository's
-  workflows use version tags today), and an Intel build for macOS: the feed
-  offers the arm64 build only, which no Intel install exists to update from.
+  workflows use version tags today).
 - Trimming the packaged app (about 400 MB unpacked: every agent SDK's
   binaries) and an asar archive with the node's files unpacked (D942).
 - Attaching to a node of the same home that already runs (`jhin serve`), and
