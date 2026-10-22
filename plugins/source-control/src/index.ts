@@ -933,12 +933,21 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return latest;
   };
 
+  /** Threads held by an open or unread link, so the hold is told once, not each lookup. */
+  const heldThreads = new Set<string>();
+  const noteHold = (threadId: string) => {
+    if (heldThreads.has(threadId)) return;
+    heldThreads.add(threadId);
+    context.log.info("a thread waits on its open linked pull requests", { threadId });
+  };
+
   /** A linked pull request changed: its thread may settle on its links (D1133). */
   const settleOnLinks = async (threadId: string) => {
     const decided = await linkSettlement(threadId);
     if (decided === "hold") {
-      context.log.info("a thread waits on its open linked pull requests", { threadId });
+      noteHold(threadId);
     } else if (decided === undefined) {
+      heldThreads.delete(threadId);
       context.log.info("no linked pull request settles the thread", { threadId });
       // Its branch's pull request decides now, as read last (D447), not at the next lookup.
       const known = threads.get(threadId);
@@ -953,6 +962,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         await settleOnPullRequest(repo, known.branch, cached);
       }
     } else {
+      heldThreads.delete(threadId);
       announceSettle(threadId, decided);
     }
   };
@@ -975,9 +985,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         return "hold" as const;
       });
       if (decided === "hold") {
-        context.log.info("a thread waits on its open linked pull requests", {
-          threadId: thread.threadId,
-        });
+        noteHold(thread.threadId);
         continue;
       }
       announceSettle(thread.threadId, decided ?? { number: pr.number, state: pr.state, closedAt });
