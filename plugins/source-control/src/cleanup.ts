@@ -244,7 +244,9 @@ export async function judge(
   if (rules.unchanged || rules.onMerge) {
     // One fetch per project and sweep, however many of its worktrees are asked.
     const known = options.defaults?.get(candidate.projectPath);
-    const pending = known ?? defaultCommit(options.git(candidate.projectPath));
+    // A lookup that fails counts as no default branch, for this worktree and the rest.
+    const pending =
+      known ?? defaultCommit(options.git(candidate.projectPath)).catch(() => undefined);
     options.defaults?.set(candidate.projectPath, pending);
     const base = await pending;
     if (base === undefined) return keep("default branch is unavailable");
