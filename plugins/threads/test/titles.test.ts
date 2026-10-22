@@ -169,9 +169,11 @@ describe("jhin.threads: who writes a title, and when it fails (D1174)", () => {
     const failing: AgentRuntime = {
       agentId: "acme.broken",
       startTurn: () => ({
-        items: (async function* (): AsyncGenerator<AgentItem> {
-          throw new Error("no model");
-        })(),
+        items: {
+          [Symbol.asyncIterator]: () => ({
+            next: (): Promise<IteratorResult<AgentItem>> => Promise.reject(new Error("no model")),
+          }),
+        },
         interrupt() {},
       }),
     };
