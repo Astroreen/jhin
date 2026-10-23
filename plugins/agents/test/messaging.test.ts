@@ -339,6 +339,48 @@ describe("messages between agents (A2)", () => {
     expect(last.entries.map((entry) => entry.message.messageId)).toEqual([reply.message.messageId]);
   });
 
+  it("records an answer to the owner's message once, and none for a silent turn (D1221)", async () => {
+    const { client } = await node({
+      agents: { lead },
+      capture: {
+        answer: (request) => {
+          const text = request.input.text.split("\n\n")[1] ?? "";
+          return text === "Quiet." ? "" : `answer to: ${text}`;
+        },
+      },
+    });
+    const messages = watch(client, MESSAGES_STREAM);
+    const answeredFor = (messageId: string) =>
+      messages.untilMatch(
+        (event) =>
+          event.type === MessageEvents.answered &&
+          (event.payload as { messageId?: string }).messageId === messageId,
+      );
+    const send = (body: string, messageId?: string) =>
+      client.call<Sent>("agents.send", {
+        to: address("lead"),
+        body,
+        ...(messageId === undefined ? {} : { messageId }),
+      });
+    const first = await send("Go on.");
+    expect((await answeredFor(first.message.messageId)).payload).toMatchObject({
+      answer: "answer to: Go on.",
+      answeredBy: address("lead"),
+    });
+    // A retry of the same message is delivered once and followed once.
+    await send("Go on.", first.message.messageId);
+    const quiet = await send("Quiet.");
+    // Turns run one after another: once the last one's answer is recorded, the
+    // silent turn before it has ended, and so has anything the retry followed.
+    const last = await send("Last.");
+    await answeredFor(last.message.messageId);
+    const answered = messages.events
+      .filter((event) => event.type === MessageEvents.answered)
+      .map((event) => (event.payload as { messageId: string }).messageId);
+    expect(answered).toEqual([first.message.messageId, last.message.messageId]);
+    expect(answered).not.toContain(quiet.message.messageId);
+  });
+
   it("lets a caller send only as who it is (D622) and refuses what cannot take messages", async () => {
     const { client, kernel } = await node({ agents: { builder, lead } });
     const { generation } = await client.call<{ generation: { threadId: string } }>(

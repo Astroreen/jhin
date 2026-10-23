@@ -408,7 +408,9 @@ export function registerMessaging(
         delivery?.agentId !== undefined
       ) {
         void answerIn(delivery.threadId, message.messageId)
-          .then((answer) => (answer === undefined ? undefined : answered(message, to, answer)))
+          .then((answer) =>
+            answer === undefined ? undefined : answered(message, message.to, answer),
+          )
           .catch((error: unknown) => {
             context.log.warn("no answer recorded for the owner's message", {
               messageId: message.messageId,

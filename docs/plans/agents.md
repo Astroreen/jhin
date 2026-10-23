@@ -1808,7 +1808,10 @@ Decisions (L1):
   D724 means to avoid. Seen running the scenario (D1101): its Health
   section lists both; the test asserts only the mission's.
 - L1: the answer to the owner's message (D1221) is followed while the node
-  runs; a node that stops before the turn starts records none for it.
+  runs; a node that stops before the turn ends records none for it. Only
+  this node's owner is answered: a message the owner of another node sends
+  here stays unanswered in its conversation, which misses it anyway (C1's
+  item on agents on another node).
 
 ## Landing
 
