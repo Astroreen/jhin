@@ -306,4 +306,15 @@ describe("the devices panel's setup (D1328)", () => {
     await shown.showNode(declined);
     await expect.element(wizard).not.toBeInTheDocument();
   });
+
+  it("offers the wizard again after Cancel on a node whose hub is on", async () => {
+    const nodeUrl = `ws://hub-on-${crypto.randomUUID()}.test/rpc`;
+    const wizard = page.getByRole("dialog", { name: "Set up devices" });
+    await panel(nodeUrl, state({ setup: { hubEnabled: true } }));
+    await click(page.getByRole("button", { name: "Cancel" }));
+    await expect.element(wizard).not.toBeInTheDocument();
+    await expect.element(page.getByText("The device setup is not finished.")).toBeInTheDocument();
+    await click(page.getByRole("button", { name: "Set up devices" }));
+    await expect.element(wizard).toBeInTheDocument();
+  });
 });

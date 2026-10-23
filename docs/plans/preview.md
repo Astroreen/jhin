@@ -721,7 +721,8 @@ The reference is T3 Code `eb7b35ac`: `apps/web/src/components/device/{DeviceSetu
   `devices` stream and `device.state` carry the setup (`setup`:
   `hubEnabled`, `agentAccessEnabled`, `onboardingCompleted`,
   `agentToolsReady`, additive). Cancel closes the wizard and leaves the
-  panel with D1207's screenshots, its notice now offering "Set up devices";
+  panel with D1207's screenshots, its notice now offering "Set up devices"
+  (with the hub off, or on and the setup not finished);
   Cancel is kept on this device per node, so it is not asked again on each
   visit (T3 has no screenshots to fall back on and closes its panel
   instead). Escape or a click outside closes it for this visit only, so a
