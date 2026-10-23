@@ -111,3 +111,26 @@ fix whichever is wrong and say which.
   [`lore/`](lore/README.md), not one more rule.
 - A new kind of page → a row in [Find your way](#find-your-way), so it has a
   route.
+
+## Deprecating a public id
+
+Capability ids, command names, slot ids, contribution ids and event types are
+public API (AGENTS.md rule 8). Renaming or removing one is the owner's
+decision: ask, and record it as a decision in the plan that owns the area.
+Then:
+
+1. **Deprecate.** Keep the old id working (register it beside the new one,
+   or keep rendering the slot), and add an entry to
+   [`deprecations.json`](../deprecations.json):
+   `{ "kind": "command", "id": "x.old", "replacedBy": "x.new", "since": "2026-10-23", "removeAfter": "2026-12-01", "decision": "D1234" }`.
+   `kind` is `capability`, `command`, `slot`, `contribution` or `event`;
+   `since` and `removeAfter` are dates. Land it on main.
+2. **Remove** in a later PR, after `removeAfter`. Leave the entry in the
+   file, as the record.
+
+`scripts/public-ids.ts` reads the ids from the source at the merge base
+with `origin/main` and in the change, and fails on an id that is gone and
+not deprecated on main, deprecated only in the same change, or removed
+before its `removeAfter`. It runs as CI's "Public ids" job and in
+`pnpm verify`. `node scripts/public-ids.ts --list` prints the ids it sees.
+An id built at run time (a template literal) is invisible to it.

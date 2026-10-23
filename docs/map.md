@@ -221,6 +221,10 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   `pnpm-workspace.yaml`): T3's `@pierre/diffs` patch, find in the diff
   (`plans/source-control.md#D924`).
 - `e2e/` — Playwright end-to-end tests; `tests/support/` starts nodes (`node.ts`) and follows a node's streams to the record a test waits for (`streams.ts`).
+- `scripts/public-ids.ts` — fails when a public id of `main` is renamed or
+  removed without a deprecation in `deprecations.json` (AGENTS.md rule 8,
+  `README.md#deprecating-a-public-id`); CI's "Public ids" job and a
+  `pnpm verify` step.
 - `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
   `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a
   checkout, see its README).
