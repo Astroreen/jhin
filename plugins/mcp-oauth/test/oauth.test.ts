@@ -402,7 +402,7 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
   });
 
   it("issues what the access level the approver picked grants (security.md D1369)", async () => {
-    const { base, token } = await startNode();
+    const { kernel, base, token } = await startNode();
     const { client_id: clientId } = (await (await register(base)).json()) as {
       client_id: string;
     };
@@ -450,6 +450,38 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     expect((await approve(undefined, "threads.read")).status).toBe(400);
     expect((await approve("auto", "threads.read")).status).toBe(400);
     expect((await approve("read-only", "threads.write")).status).toBe(400);
+    // A pattern keeps the level's ceiling beside it, which it never lifts
+    // (D1370, agent-api's modes.test.ts).
+    expect(await scopeOf(await approve("approval-required", "threads.*"))).toBe(
+      "threads.* threads.mode.approval-required",
+    );
+
+    // A session gives only what it holds, the ceiling included, and says what it lacks.
+    const { token: narrow } = (await kernel.commands.execute("auth.tokens.issue", {
+      label: "narrow",
+      permissions: ["auth.write", "threads.read", "threads.write"],
+    })) as { token: string };
+    const narrowCookie = await sessionCookie(base, narrow);
+    const html = await (
+      await fetch(authorizeUrl(base, clientId, { scope: "threads.read threads.write" }), {
+        headers: { cookie: narrowCookie },
+      })
+    ).text();
+    const { access: _chosen, ...form } = formOf(html);
+    const refused = await fetch(`${base}/oauth/mcp/authorize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: narrowCookie,
+        origin: base,
+      },
+      body: new URLSearchParams({ ...form, access: "approval-required", decision: "approve" }),
+    });
+    expect(refused.status).toBe(403);
+    expect(await refused.text()).toContain(
+      "This session cannot grant threads.mode.approval-required",
+    );
   });
 
   it("never lets a session approve more than it holds, nor without auth.write", async () => {

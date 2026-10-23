@@ -21,16 +21,13 @@ export const RUNTIME_MODE_GRANT_PREFIX = "threads.mode.";
 
 /**
  * The most a caller with `grants` may run a turn with: the highest mode its
- * grants name explicitly, or undefined (no ceiling) when they name none or
- * cover them all (`*`, `threads.*`, `threads.mode.*`).
+ * grants name explicitly, or undefined (no ceiling) when they name none.
+ * An explicit mode wins over a pattern that covers more (`threads.*`,
+ * `threads.mode.*`, `*`): a ceiling is a limit, so a grant beside it never
+ * lifts it.
  */
 export function ceilingOf(grants: readonly string[] | undefined): RuntimeMode | undefined {
   if (grants === undefined) return undefined;
-  if (
-    grants.some((grant) => grant === "*" || grant === "threads.*" || grant === "threads.mode.*")
-  ) {
-    return undefined;
-  }
   const named = RUNTIME_MODES.filter((mode) =>
     grants.includes(`${RUNTIME_MODE_GRANT_PREFIX}${mode}`),
   );

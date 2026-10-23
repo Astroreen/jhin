@@ -892,15 +892,23 @@ Connect stays out of scope.
 - **D1370. A runtime mode ceiling is a grant.** `threads.mode.<mode>`
   (`approval-required`, `auto-accept-edits`, `full-access`) names a mode
   a caller's turns may run in. A caller whose grants name one or more of
-  them explicitly is held to the highest it names; one that names none,
-  or holds `*`, `threads.*` or `threads.mode.*`, is not held at all, so
-  every token issued before keeps working as it did (`ceilingOf`
-  in `@jhin/agent-api`). `jhin.threads` applies it where a caller sets
-  the mode of a turn or of a thread: `threads.create` and
+  them explicitly is held to the highest it names, whatever patterns stand
+  beside them (`threads.*`, `threads.mode.*`, `*` never lift a ceiling, so
+  an MCP client that asked for `threads.*` and was approved as Supervised
+  stays held); one that names none is not held at all, so every token
+  issued before keeps working as it did (`ceilingOf` in
+  `@jhin/agent-api`). It applies wherever a caller sets the mode of a
+  turn, of a thread or of later turns: `threads.create` and
   `threads.update` lower a mode they are given; `threads.send`,
   `threads.queue.add`, `threads.steer` and `threads.regenerate` give the
   message the thread's mode (or the default) lowered to the ceiling, so
-  a queued message keeps it after its caller is gone. Like any grant it
+  a queued message keeps it after its caller is gone; `tasks.delegate`
+  lowers the parent's mode its child inherits; `jhin.scheduler` refuses a
+  task broader than the ceiling as it refuses one broader than the
+  calling thread (D1352). The other commands carry no mode:
+  `threads.queue.edit` and `reorder` change text and order, `threads.fork`
+  copies its thread's settings and starts no turn, `threads.respond`
+  answers an approval within a running turn. Like any grant it
   travels with mesh calls (D416); a member that narrows
   `memberPermissions` below the mode grants drops them, and the ceiling
   with them (Deferred).
@@ -1018,10 +1026,12 @@ A slice a PR, in the order of D1361's risks:
 - **PR 6d — MCP access levels** (D1369, D1370). **Done when:** the
   approval page offers T3's levels, a "Read only" approval issues only the
   asked `*.read` permissions, a "Supervised" one adds
-  `threads.mode.approval-required`, a missing or unknown level is
-  refused, and a held caller's thread runs no turn above its
-  ceiling (send, queue, steer, regenerate, create, update) while an
-  unheld caller is unchanged.
+  `threads.mode.approval-required` (beside `threads.*` too), a missing or
+  unknown level is refused after the session check, a session that does
+  not hold the ceiling's grant is told so, and a held caller's thread runs
+  no turn above its ceiling (send, queue, steer, regenerate, create,
+  update, a delegated child, a scheduled task) while an unheld caller is
+  unchanged.
 
 ## Deferred
 
@@ -1099,9 +1109,7 @@ A slice a PR, in the order of D1361's risks:
 - MCP OAuth (D1191–D1196): T3's access levels came with W39 (D1369,
   D1370) without T3's "Auto" mode, which Jhin's agents do not have. A
   ceiling (D1370) is carried by grants, so a mesh member whose
-  `memberPermissions` do not cover `threads.mode.*` drops it with them;
-  the orchestrator's delegated children inherit their parent thread's
-  mode, which a held caller already lowered. No refresh tokens: a
+  `memberPermissions` do not cover `threads.mode.*` drops it with them. No refresh tokens: a
   client signs in again after 30 days. The approval page is the node's own
   HTML, not a web client route, and assumes the node at the root of its
   origin (a proxy path prefix breaks its form and its `/auth/session`

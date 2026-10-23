@@ -389,6 +389,21 @@ export default definePlugin({
           .end(renderErrorPage("The page sent no decision. Open the sign-in link again."));
         return;
       }
+      // The session and its anti-forgery value first, so nothing else is told to another page.
+      const approver = await approverOf(request, { ...authorization, scopes: [] });
+      if (
+        approver.kind !== "ok" ||
+        !oauth.csrfMatches(params["csrf"] ?? "", approver.session, authorization)
+      ) {
+        response
+          .writeHead(403, pageHeaders())
+          .end(
+            renderErrorPage(
+              "Your session cannot approve this request. Open the sign-in link again and approve it from this node's page.",
+            ),
+          );
+        return;
+      }
       // T3's access level (security.md D1369): what the approver picked on the page.
       const level = ACCESS_LEVELS.find((entry) => entry.access === params["access"])?.access;
       if (level === undefined) {
@@ -408,16 +423,16 @@ export default definePlugin({
           );
         return;
       }
-      const approver = await approverOf(request, { ...authorization, scopes: granted });
-      if (
-        approver.kind !== "ok" ||
-        !oauth.csrfMatches(params["csrf"] ?? "", approver.session, authorization)
-      ) {
+      // The approver gives only what it holds (D413), the level's ceiling included.
+      const missing = granted.filter(
+        (permission) => !holdsPermission(approver.principal.permissions, permission),
+      );
+      if (missing.length > 0) {
         response
           .writeHead(403, pageHeaders())
           .end(
             renderErrorPage(
-              "Your session cannot approve this request. Open the sign-in link again and approve it from this node's page.",
+              `This session cannot grant ${missing.join(", ")}. Choose another access level, or approve with a session that holds it.`,
             ),
           );
         return;
