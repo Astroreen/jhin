@@ -344,6 +344,28 @@ describe("jhin.source-control: listing and watching on Azure DevOps (D1288)", ()
     expect(await search()).toEqual([14, 13]);
   });
 
+  it("names a server's collection in the organization", async () => {
+    const az = fakeCli("az");
+    az.answer(
+      "repos pr list --organization https://tfs.acme.dev/DefaultCollection --project web --repository demo --status all --top 30",
+      [
+        pull({
+          pullRequestId: 21,
+          repository: { webUrl: "https://tfs.acme.dev/DefaultCollection/web/_git/demo" },
+        }),
+      ],
+    );
+    const sc = await node({ forgeHosts: { "tfs.acme.dev": "azure-devops" } });
+    const projectId = await sc.project(
+      repositoryAt("https://tfs.acme.dev/DefaultCollection/web/_git/demo"),
+    );
+    const { pullRequests } = await sc.client.call<{ pullRequests: PullRequest[] }>(
+      "git.pr.search",
+      { projectId },
+    );
+    expect(pullRequests.map((pr) => pr.number)).toEqual([21]);
+  });
+
   it("watches a pull request: its threads' comments and a conflict wake the thread", async () => {
     const az = fakeCli("az");
     const show = "repos pr show --id 12 --organization https://dev.azure.com/acme";

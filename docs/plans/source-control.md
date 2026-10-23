@@ -1381,7 +1381,7 @@ out, with a screenshot).
   reads the merge request (`projects/<path>/merge_requests/<iid>`): its head
   `sha`, its head pipeline as the one check named "Pipeline" with its URL
   (T3's `toChecks`), and a conflict from `has_conflicts` or `merge_status`
-  (T3's `toMergeability`). It reads the notes (`…/notes?per_page=100&order_by=created_at&sort=asc`,
+  (T3's `toMergeability`). It reads the notes (the newest hundred, `…/notes?per_page=100&order_by=created_at&sort=desc`,
   without system or empty notes, a diff note with its path; T3's
   `decodeNotesJson`) and the node's account (`glab api user`, asked again
   after ten minutes as D272's). `git.pr.watch` no longer refuses GitLab.
@@ -1451,7 +1451,9 @@ nothing).
   repositories of one name apart.
 - Forges (D275–D279): watching and listing pull requests on Bitbucket and
   Forgejo (GitLab and Azure DevOps: D1287, D1288), the checks of an Azure
-  DevOps pull request's policies,
+  DevOps pull request's policies, Azure DevOps words matched past its latest
+  100 pull requests (`az` searches no text), notes of a merge request past
+  its newest hundred,
   Bitbucket Server and Data Center, forges' names in the client (T3's
   `providerName`: D904 brings their marks only),
   tokens kept as the node's secrets instead of its environment, creating a

@@ -278,9 +278,10 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Vi
           "--hostname",
           host,
           `${path}/notes?${queryString([
+            // The newest hundred: what a watch has not told yet is among them.
             ["per_page", "100"],
             ["order_by", "created_at"],
-            ["sort", "asc"],
+            ["sort", "desc"],
           ])}`,
         ]),
         viewerOf(viewers, `glab\u0000${host}`, async () => {
@@ -320,7 +321,8 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Vi
         viewer,
         remarks: (Array.isArray(notes) ? notes : [])
           .map((item) => gitlabRemark(item as Record<string, unknown>))
-          .filter((item) => item !== undefined),
+          .filter((item) => item !== undefined)
+          .toReversed(),
       };
     },
     templatePaths: [
@@ -368,11 +370,16 @@ function azureRequest(raw: Record<string, unknown>): ForgePullRequest | undefine
  * the folder's (`--detect`).
  */
 function azureWhere(site: ForgeSite): string[] {
-  const match = /^(?:([^/]+)\/)?([^/]+)\/_git\/([^/]+)$/.exec(site.repository);
-  if (match === null) return ["--detect", "true"];
-  const organization =
-    site.host === "dev.azure.com" ? `https://dev.azure.com/${match[1]}` : `https://${site.host}`;
-  return ["--organization", organization, "--project", match[2]!, "--repository", match[3]!];
+  const location = azureLocation(site.host, site.repository);
+  if (location === undefined) return ["--detect", "true"];
+  return [
+    "--organization",
+    location.organization,
+    "--project",
+    location.project,
+    "--repository",
+    location.repository,
+  ];
 }
 
 /** T3's toMergeability for Azure DevOps. */
@@ -436,14 +443,20 @@ function azureRemarks(raw: unknown): Remark[] {
   return remarks.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
 }
 
-/** The organization, project and repository of an Azure DevOps pull request's URL. */
+/**
+ * The organization (with its collection on a server), project and repository of an Azure
+ * DevOps repository path: `org/project/_git/repo` on dev.azure.com, `project/_git/repo` on
+ * `<org>.visualstudio.com`, `collection/project/_git/repo` on a server.
+ */
 function azureLocation(host: string, repository: string) {
-  const match = /^(?:([^/]+)\/)?([^/]+)\/_git\/([^/]+)$/.exec(repository);
+  const match = /^(?:(.+)\/)?([^/]+)\/_git\/([^/]+)$/.exec(repository);
+  if (match === null) return undefined;
+  const prefix = match[1];
   const organization =
     host === "dev.azure.com"
-      ? `https://dev.azure.com/${repository.split("/")[0]}`
-      : `https://${host}`;
-  return { organization, project: match?.[2], repository: match?.[3] };
+      ? `https://dev.azure.com/${prefix ?? ""}`
+      : `https://${host}${prefix === undefined ? "" : `/${prefix}`}`;
+  return { organization, project: match[2]!, repository: match[3]! };
 }
 
 export function azureForge(azPath: () => string, site: ForgeSite, viewers: Viewers): Forge {
@@ -557,7 +570,7 @@ export function azureForge(azPath: () => string, site: ForgeSite, viewers: Viewe
     watch: async (url) => {
       const { host, repository, number } = reference(url);
       const location = azureLocation(host, repository);
-      if (location.project === undefined || location.repository === undefined) {
+      if (location === undefined) {
         throw new ForgeUnavailable("failed", `${url} names no Azure DevOps repository`);
       }
       const [raw, threads, viewer] = await Promise.all([
