@@ -169,7 +169,8 @@ describe("what an edit dialog sends (D1083, D1085)", () => {
     expect(missionChanges(current, { ...same, missionProcess: "merge release" })).toEqual({
       process: {
         slice: DEFAULT_MISSION_PROCESS.slice,
-        mission: [{ id: "merge" }, { id: "release" }],
+        // The step kept keeps what it had: merge needs a review (D1241).
+        mission: [{ id: "merge", review: true }, { id: "release" }],
       },
     });
   });

@@ -62,6 +62,7 @@ function fakeGit() {
         activate(context) {
           context.commands.register({
             name: "git.tree",
+            description: "The fake files' tree",
             input: z.object({ projectId: z.string().optional(), threadId: z.string().optional() }),
             output: z.object({ projectId: z.string(), path: z.string(), tree: z.string() }),
             handler: ({ projectId, threadId }) => ({
