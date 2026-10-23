@@ -1157,6 +1157,23 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   is a feed that failed ten times in a row with no read between (an error
   that will not pass, such as an answer failing its schema): it is given up
   until its connection is replaced.
+- **D1383. A warning clears itself when its measure is back under the
+  threshold.** Dismissal is no longer the only exit of an open warning (D724).
+  Each run of the sensors, before it raises, closes every open warning whose
+  detector no longer finds its subject at or over its own threshold:
+  `health.warning.cleared { warningId, clearedAt, reason }` on the `health`
+  stream, folded to `status: "cleared"` with `clearedAt` and `clearedReason`.
+  `reason` is a short machine-readable string and may grow (`under-threshold`
+  is the one so far). Only the detector's own measure decides, with no
+  hysteresis: a project kept quiet by a narrower mission that crosses still
+  crosses, so it stays open; a withdrawn idea is not a measure dropping. The
+  clear is decided on the fold right before the write like a raise, so two
+  runs, or a dismissal landing meanwhile, make one exit. A cleared warning is
+  history, analysis kept, the analyst not asked again; as after a dismissal the
+  subject counts again from the clear's time (`clearedAt`), so a later crossing
+  raises a new warning. `health.warnings.list` takes `status: "cleared"`; the
+  client drops a cleared warning from the open list and its page says "Cleared:
+  back under the threshold" with the time.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 
@@ -1983,8 +2000,8 @@ Decisions (L3):
   across agents' notes and messages); D727 needs the correction first.
 - A7: an agent naming a corrected idea (`health.write` for an epidemiology
   team, see the item above) and tracing copies written before the correction.
-- A7: warnings that clear themselves when the measure drops back under the
-  threshold; today the owner dismisses them (D724).
+- ~~A7: warnings that clear themselves when the measure drops back under the
+  threshold; today the owner dismisses them (D724).~~ A7, D1383.
 - A7: queue activity of threads no slice links (an agent's other
   generations); D722 follows only the threads slices link.
 - A7: linking a late answer back to its warning. An ask past

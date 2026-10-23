@@ -405,6 +405,39 @@ describe("jhin.health", () => {
     expect(all.map((item) => item.status)).toEqual(["open", "dismissed"]);
   });
 
+  it("leaves a cleared warning cleared when it is dismissed (D1383)", async () => {
+    const { client, kernel, log, slice } = await node({ proofLoop: { maxEdits: 2 } });
+    const prove = (output: string) =>
+      client.call("slices.prove", {
+        sliceId: slice.id,
+        items: [{ kind: "command", command: "vp test run", output }],
+      });
+    await prove("1 passed");
+    await prove("1 passed, again");
+    const raised = nextEvent(kernel, HealthEvents.warningRaised);
+    await prove("1 passed, once more");
+    const { warning } = (await raised) as { warning: Warning };
+    await log.append(HEALTH_STREAM, [
+      {
+        type: HealthEvents.warningCleared,
+        payload: {
+          warningId: warning.warningId,
+          clearedAt: new Date().toISOString(),
+          reason: "under-threshold",
+        },
+      },
+    ]);
+    const result = await client.call<Warning>("health.warnings.dismiss", {
+      warningId: warning.warningId,
+    });
+    expect(result.status).toBe("cleared");
+    expect(
+      (await log.read(HEALTH_STREAM)).filter(
+        (event) => event.type === HealthEvents.warningDismissed,
+      ),
+    ).toHaveLength(0);
+  });
+
   it("detects a corrected idea coming back as a mind virus, naming its carriers", async () => {
     const { client, kernel, log, project, deliver, asked } = await node({
       mindVirus: { minOccurrences: 2 },

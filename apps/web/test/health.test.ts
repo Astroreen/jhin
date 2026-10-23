@@ -135,6 +135,17 @@ describe("health in Civilization mode (D731)", () => {
     });
     expect(store.snapshot().get("a")!.value).toBe(before);
     expect(openWarnings(store.snapshot()).map((entry) => entry.warning.warningId)).toEqual(["w1"]);
+    // Cleared by the sensors, a warning leaves the open list too, and keeps its why.
+    push({
+      type: HealthEvents.warningCleared,
+      payload: { warningId: "w1", clearedAt: "y", reason: "under-threshold" },
+    });
+    expect(store.snapshot().get("a")!.value.warnings.w1).toMatchObject({
+      status: "cleared",
+      clearedAt: "y",
+      clearedReason: "under-threshold",
+    });
+    expect(openWarnings(store.snapshot())).toEqual([]);
 
     // A closed connection's warnings are not live any more, nor is its stream.
     node.close();
