@@ -1336,8 +1336,9 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   option or `true`), with the form's labels for both allowances (D1146's
   session label). The banner's menu says the label, else T3's "Always allow
   this session" and "Always allow"; the timeline counts it as approved.
-  Codex's own command and file approvals take it as their session allowance,
-  as T3 maps `acceptAlways`. The fake agent's `/access-always <app>` offers
+  Codex's own command and file approvals name no decisions, so they never
+  offer it (the mapping to their session allowance, T3's for `acceptAlways`,
+  is kept for when one does). The fake agent's `/access-always <app>` offers
   both, for the end-to-end test.
 
 ### Deferred

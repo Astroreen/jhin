@@ -656,7 +656,8 @@ export function fileChangePrompt(input: {
 export function approvalDecision(
   decision: ApprovalDecision,
 ): "accept" | "acceptForSession" | "decline" | "cancel" {
-  // T3 takes "Always allow" for the session where Codex has no lasting allowance (D1316).
+  // Codex's command and file approvals name no decisions, so they are never offered
+  // "Always allow" (D1316); should one be, T3 takes it for the session.
   return decision === "accept-for-session" || decision === "accept-always"
     ? "acceptForSession"
     : decision;
