@@ -11,9 +11,19 @@ import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import { MessagesSquareIcon } from "lucide-react";
 
 import { builtin } from "../lib/builtin.ts";
-import { createModes } from "../lib/modes.ts";
+import { createModes, persistedPlaces } from "../lib/modes.ts";
 
 const PLACES_KEY = "places";
+const STORAGE_KEY = "jhin.modes.places";
+
+/** The browser's storage, or none where there is not one or touching it throws. */
+function browserStorage(): Storage | undefined {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * `jhin.modes`: the client's modes (D741, D742). It registers Threads mode,
@@ -34,11 +44,13 @@ export const modesPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const places = context.state.get<Record<string, Route>>(PLACES_KEY) ?? {};
       context.state.set(PLACES_KEY, places);
+      // Also kept in the browser (D1389), where a reload of the page finds them.
+      const kept = persistedPlaces(places, browserStorage(), STORAGE_KEY);
       const modes = context.subscriptions.add(
         createModes(navigation, {
-          get: (id) => places[id],
+          get: kept.get,
           set: (id, route) => {
-            places[id] = route;
+            kept.set(id, route);
             // Written back each time: the state need not keep this object's reference.
             context.state.set(PLACES_KEY, places);
           },
