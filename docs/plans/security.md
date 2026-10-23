@@ -883,7 +883,9 @@ Connect stays out of scope.
   first, and T3's note "Beyond read only, it can start, message and stop
   threads, and none of them can run with more than the mode you pick."
   "Read only" grants only the asked permissions named `*.read`; the
-  others grant what was asked (D1194) and the level's mode grant (D1370).
+  others grant what was asked (D1194), less any `threads.mode.*` the client
+  asked for, and the level's mode grant (D1370): the ceiling is the
+  approver's choice, never the client's.
   The level is posted with the approval (a level the page does not offer
   is refused), and the approver must hold everything it grants (D413);
   "Read only" of a request that asked for nothing readable issues
@@ -908,7 +910,8 @@ Connect stays out of scope.
   task broader than the ceiling as it refuses one broader than the
   calling thread (D1352). The other commands carry no mode:
   `threads.queue.edit` and `reorder` change text and order, `threads.fork`
-  copies its thread's settings and starts no turn. `threads.respond`
+  copies its thread's settings (a held caller's fork lowered to its
+  ceiling) and starts no turn. `threads.respond`
   refuses a held caller's "accept" of a permission request
   (`APPROVAL_NOT_ALLOWED`, T3's "This cannot approve a permission
   request."): the mode asks a person for it; declining and answering

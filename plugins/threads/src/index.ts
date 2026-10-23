@@ -5450,7 +5450,7 @@ export default definePlugin({
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: async ({ threadId, turnId, title }) => {
+      handler: async ({ threadId, turnId, title }, invocation) => {
         const parent = await getThread(threadId);
         const { events, turns } = await visibleTurns(threadId);
         const current = active.get(threadId);
@@ -5484,7 +5484,8 @@ export default definePlugin({
             {
               ...(agentId === undefined ? {} : { agentId }),
               ...(model === undefined ? {} : { model }),
-              ...(runtimeMode === undefined ? {} : { runtimeMode }),
+              // A held caller's fork starts at no more than its ceiling (security.md D1370).
+              ...heldTo(runtimeMode === undefined ? {} : { runtimeMode }, {}, invocation),
               ...(interactionMode === undefined ? {} : { interactionMode }),
               // A fork of a generation is its agent's too: Threads mode leaves it out (agents.md D625).
               ...(generationOf === undefined ? {} : { generationOf }),
@@ -5746,7 +5747,7 @@ export default definePlugin({
         ) {
           throw new ThreadsError(
             "APPROVAL_NOT_ALLOWED",
-            "This caller cannot approve a permission request: its runtime mode asks a person for that",
+            "This caller cannot approve a permission request: a caller held to a runtime mode leaves approvals to a person, at every level",
             { threadId, requestId },
           );
         }

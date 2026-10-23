@@ -44,7 +44,9 @@ const MAX_BODY = 16 * 1024;
  */
 export function grantsFor(level: AccessLevel, asked: readonly string[]): string[] {
   if (level === "read-only") return asked.filter((scope) => scope.endsWith(".read"));
-  return [...new Set([...asked, `threads.mode.${level}`])];
+  // The ceiling is the approver's choice, never the client's: a mode it asked for goes.
+  const chosen = asked.filter((scope) => !scope.startsWith("threads.mode."));
+  return [...new Set([...chosen, `threads.mode.${level}`])];
 }
 
 /** Approving issues tokens: the approver needs `auth.write` (D1193). */

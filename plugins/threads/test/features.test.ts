@@ -580,6 +580,13 @@ describe("jhin.threads: agents", () => {
       "approval-required",
       "full-access",
     ]);
+    // The thread runs in full access again; a held caller's fork of it does not.
+    const forked = (await kernel.commands.execute(
+      "threads.fork",
+      { threadId: thread.id },
+      held,
+    )) as Thread;
+    expect(forked.runtimeMode).toBe("approval-required");
   });
 
   it("runs a turn with the model's options, keeps them for the thread and drops what the model does not declare", async () => {

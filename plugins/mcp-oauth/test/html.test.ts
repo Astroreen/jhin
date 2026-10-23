@@ -92,5 +92,13 @@ describe("T3's access levels (security.md D1369)", () => {
       "threads.mode.approval-required",
     ]);
     expect(grantsFor("full-access", asked)).toEqual([...asked, "threads.mode.full-access"]);
+    // A mode the client asked for is dropped: the approver picks the ceiling.
+    expect(
+      grantsFor("approval-required", [
+        "threads.write",
+        "threads.mode.full-access",
+        "threads.mode.*",
+      ]),
+    ).toEqual(["threads.write", "threads.mode.approval-required"]);
   });
 });
