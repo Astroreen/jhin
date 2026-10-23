@@ -5593,19 +5593,21 @@ export default definePlugin({
     context.commands.register({
       name: "threads.search",
       description:
-        "Searches the messages of every thread that is not archived (case-insensitive): one match per thread, a user message first, user matches first, then the most recently changed threads",
+        "Searches the messages of every thread that is not archived (case-insensitive; agents' generations only with `includeGenerations`, D1276): one match per thread, a user message first, user matches first, then the most recently changed threads",
       input: z.object({
         query: z.string().trim().min(2).max(200),
         limit: z.number().int().min(1).max(50).default(50),
         projectId: z.string().optional(),
+        includeGenerations: IncludeGenerations,
       }),
       output: z.object({ matches: z.array(SearchMatch) }),
       permissions: ["threads.read"],
-      handler: async ({ query, limit, projectId }) => {
+      handler: async ({ query, limit, projectId, includeGenerations }) => {
         const threads = (await listThreads()).filter(
           (thread) =>
             thread.archivedAt === undefined &&
             !deleted.has(thread.id) &&
+            (includeGenerations || thread.generationOf === undefined) &&
             (projectId === undefined || thread.projectId === projectId),
         );
         const found: z.infer<typeof SearchMatch>[] = [];

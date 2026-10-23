@@ -1223,6 +1223,12 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   filled. The shell's
   components are a chunk of their own, loaded once the mode shows, as are
   the switcher's buttons once there are two modes (D440).
+- **D1276. `threads.search` leaves generations out too.** It takes the same
+  optional `includeGenerations` as `threads.list` and `threads.catalog`
+  (default false) and, unless it is true, skips threads with `generationOf`,
+  the predicate of D745. The input is additive and the output unchanged. The
+  web client's thread search (Threads mode) keeps the default; nothing else
+  calls the command.
 
 ## Phase 2: a Civilization the owner can run
 
@@ -1975,8 +1981,8 @@ Decisions (L3):
 - A8: Civilization mode per node: the route's node without agents opens the
   shell with its empty states today (D747); the views A1 and A3 contribute
   choose their node.
-- A8: leaving generations out of `threads.search` as well: D745 filters the lists
-  and catalogs only, so a search can still find a generation's text.
+- ~~A8: leaving generations out of `threads.search` as well: D745 filters the lists
+  and catalogs only, so a search can still find a generation's text.~~ A8, D1276.
 - A6: handing off a slice whose assignee is on another node (D702's
   `elsewhere`): `agents.send` reaches it, but the slice's thread link and
   refocus follow only this node's threads.

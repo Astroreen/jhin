@@ -924,6 +924,23 @@ describe("jhin.threads: searching thread contents (D227)", () => {
     ).toHaveLength(1);
   });
 
+  it("leaves out an agent's generation unless includeGenerations is true (D1276)", async () => {
+    const { client } = await node();
+    const generation = await client.call<Fork>("threads.create", { generationOf: "lead" });
+    await turn(client, generation.id, "generation words");
+    const ordinary = await client.call<Fork>("threads.create", {});
+    await turn(client, ordinary.id, "generation of an ordinary thread");
+    const ids = async (extra: object) =>
+      (await client.call<SearchResult>("threads.search", { query: "generation", ...extra })).matches
+        .map((match) => match.threadId)
+        .toSorted();
+
+    expect(await ids({})).toEqual([ordinary.id]);
+    expect(await ids({ includeGenerations: true })).toEqual(
+      [generation.id, ordinary.id].toSorted(),
+    );
+  });
+
   it("leaves out archived threads, other projects and dropped turns, and sees new turns", async () => {
     const { client, data } = await node();
     const thread = await client.call<Fork>("threads.create", {});
