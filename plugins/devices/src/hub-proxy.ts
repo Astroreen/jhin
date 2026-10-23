@@ -152,7 +152,6 @@ export function createTickets(now: () => number = Date.now) {
       return { ticket, expiresAt };
     },
     verify(ticket: string, kind: TicketKind): Ticket | undefined {
-      sweep();
       const found = issued.get(digest(ticket));
       if (found === undefined || found.expiresAt <= now() || found.kind !== kind) return undefined;
       return found;
