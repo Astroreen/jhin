@@ -91,6 +91,11 @@ export interface ApprovalPage {
     readonly description?: string;
     readonly shellAccess?: boolean;
   }[];
+  /**
+   * The node could not describe the permissions (D1364): the page says it
+   * cannot tell which of them run commands, rather than showing none.
+   */
+  readonly permissionsUnknown?: boolean;
   /** Set when the page's session may approve: its anti-forgery value. */
   readonly csrf?: string;
   /** Why the session cannot approve, when it has one. */
@@ -165,7 +170,11 @@ export function renderApprovalPage(page: ApprovalPage): string {
     `<p class="eyebrow">Agent sign-in</p>
     <h1>Connect ${escapeHtml(page.clientName)}</h1>
     <p>This agent wants to use <strong>${escapeHtml(page.nodeHost)}</strong> with these permissions:</p>
-    <ul aria-label="Permissions asked for">${permissions}</ul>
+    <ul aria-label="Permissions asked for">${permissions}</ul>${
+      page.permissionsUnknown === true
+        ? `\n    <p role="alert">This node could not describe these permissions, so it cannot tell which of them run commands on this machine. Approve only what you would give shell access.</p>`
+        : ""
+    }
     <p class="note">${note}</p>
     ${decide}`,
     page.nonce,
