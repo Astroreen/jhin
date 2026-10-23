@@ -260,6 +260,12 @@ export default definePlugin({
       context.subscriptions.add(serveRelays(mesh, live));
     }
     mesh.setUrls(config.advertise ?? [`${http.url.replace(/^http/, "ws")}${MESH_PATH}`]);
+    // Browsers may reach this node by the names it advertises (security.md D1362).
+    for (const advertised of config.advertise ?? []) {
+      if (!URL.canParse(advertised)) continue;
+      const allowed = http.allowHost?.(new URL(advertised).host);
+      if (allowed !== undefined) context.subscriptions.add(allowed);
+    }
 
     context.subscriptions.add(
       mesh.onChange(() => {

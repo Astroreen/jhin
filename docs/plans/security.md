@@ -662,6 +662,76 @@ The threat model comes first; the decisions after it implement it.
   `auth.clients.list` / `auth.clients.revoke`; the HTTP endpoints are the
   protocol MCP clients speak, as `/auth/pair` is for devices.
 
+### Hardening (W39)
+
+The threat model comes first; the decisions after it implement it. T3
+Connect stays out of scope.
+
+- **D1361. What W39 hardens, against whom.** D1181's list stands; W39
+  closes the gaps it left, ordered by what an attacker gains:
+  (1) _DNS rebinding_ (D1181's attacker 3): a page the owner visits
+  re-points its own name at the node's address. Its requests then carry
+  the attacker's name as `Host` and `Origin`, so D418 counts it as the
+  node's own page. It gets no session cookie (the browser keeps that for
+  the node's host) and holds no token, so today it reaches only what needs
+  none: the web client's files, `/auth/pair` (rate limited), the OAuth
+  metadata and `/.well-known/jhin`. A `Host` allowlist (D1362) refuses it
+  before any route, so a later route that trusts the same-origin check
+  cannot be reached from such a page. (2) _A forged `X-Forwarded-Proto`_:
+  the session cookie's `Secure` flag (D421) followed the header from any
+  client; a client could only change its own cookie, so the gain is
+  nothing, but the node's idea of "this request came over HTTPS" must come
+  from one place (D1363). (3) _Shell access_: `terminals.write` runs input
+  in a shell as the node's OS user, so whoever holds it holds the machine
+  as that user: a device token, a pairing code's grants, an MCP client
+  (D1364). (4) _One connection holding the node's memory_: windowed
+  subscriptions each hold 16 MiB of waiting events, with no bound per
+  connection (D470, D1365). (5) _A stolen bearer token_: a device token
+  read from a device's storage, a proxy log or a screen works from
+  anywhere until it expires or is revoked (DPoP and WebSocket tickets).
+  (6) _An MCP client granted too much_, and permissions guarded only on
+  streams that a client cannot offer. (7) _Secrets at rest_: Windows keeps
+  the store's key in a file, and number or boolean config secrets stay in
+  clear. Not defended, as in D1181: whoever controls the node's machine or
+  the owner's account on it.
+
+- **D1362. The node answers only to its own names: a `Host` allowlist for
+  browsers.** `jhin.http` refuses, before any route or upgrade handler,
+  a request that carries a browser's marks (an `Origin` or a
+  `Sec-Fetch-Site` header; not `Sec-Fetch-Mode`, which Node's `fetch` sends
+  too) when the host it asked for
+  (`requestedHost`, D418) is a name the node does not answer to: `403`
+  with "Blocked request: this node does not answer to the host <host>. Add
+  it to jhin.http.allowedHosts." (the upgrade gets the same status before
+  the WebSocket opens), and one warning per host in the log. A node
+  answers to: every IP address (IPv4 or bracketed IPv6; a rebinding page
+  always uses a name), `localhost` and every name under `.localhost`, the
+  machine's host name (`os.hostname()`, its first label and both with
+  `.local`), Tailscale's MagicDNS names (under `.ts.net`, which Tailscale
+  answers, never a page's author: Tailscale Serve keeps them as `Host`,
+  D1189), the hosts of `jhin.mesh.advertise` (the mesh plugin adds them
+  through `http.server` 1.4 `allowHost(host)`, which returns a
+  disposable), and `jhin.http.allowedHosts`: exact names, or `.example.com`
+  for that name and every name under it, or `*` to turn the check off.
+  Names are compared without their port and case.
+  A request from a peer of `jhin.http.trustProxy` is not checked: a
+  reverse proxy chooses which names reach the node (its virtual hosts), as
+  it terminates TLS. Requests without a browser's marks (the CLI, nodes,
+  MCP clients, `curl`) are not checked: they choose their `Host` freely
+  anyway, so a check would only break a node reached by a name nobody
+  listed. Every browser in use sends `Sec-Fetch-Site` on every request
+  (Chromium 76, Firefox 90, Safari 16.4) and `Origin` on every `POST` and
+  WebSocket upgrade; an older browser's same-origin `GET` without either
+  reaches only what is public anyway (D1361). This is a change in
+  behaviour: a browser that opens the node by a name outside the list
+  (a LAN name such as `nas.lan`) is refused until the owner lists it.
+- **D1363. Whether a request came over HTTPS has one answer.** The session
+  cookie (D421) is `Secure` when `http.server`'s `requestOrigin` (1.3,
+  D1191) says `https`: a TLS socket, or `X-Forwarded-Proto: https` from a
+  peer of `jhin.http.trustProxy` or loopback (Tailscale Serve and a local
+  proxy). A header from any other peer no longer counts. Without 1.3 only
+  a TLS socket does.
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -743,18 +813,21 @@ A stack, one slice a PR:
   client listed and revoked, and never lets a session approve more than it
   holds.
 
+### PR 6 — Hardening (W39)
+
+A slice a PR, in the order of D1361's risks:
+
+- **PR 6a — names and HTTPS** (D1361–D1363): the threat model, the `Host`
+  allowlist, `http.server` 1.4 `allowHost`, the mesh's advertised names and
+  the cookie's `Secure` from `requestOrigin`. **Done when:** tests over real
+  HTTP refuse a browser's request and upgrade for a rebound name with 403
+  before any route, answer non-browsers, addresses, loopback, the machine's
+  and Tailscale's names, listed and advertised ones, leave a trusted
+  proxy's requests alone, and set `Secure` only for HTTPS as `http.server`
+  tells it.
+
 ## Deferred
 
-- DNS rebinding (D418): a page on a name re-pointed at the node's address
-  sends `Origin` and `Host` with that name, so it counts as the node's own
-  page. It gets no session cookie (the browser keeps the node's cookie for
-  the node's own host) and has no token, so it can call nothing; a `Host`
-  allowlist (`jhin.http.allowedHosts`: loopback names, the bound and
-  advertised addresses) would refuse it outright.
-- The session cookie's `Secure` flag (D421) follows `x-forwarded-proto`
-  from any client; a client can only change its own cookie this way. Read
-  only from a trusted proxy once `http.server` tells the protocol it trusts,
-  next to the `Host` allowlist.
 - A secret whose real value starts with the marker and `#`
   (`••••••#note`) reads as an addressed marker and is refused on save
   (D417); such a value has to be changed to be saved.

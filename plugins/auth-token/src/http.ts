@@ -180,9 +180,11 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
     });
 
   const cookieHeader = (value: string, request: IncomingMessage, maxAge?: number) => {
+    // Over HTTPS as `http.server` 1.3 tells it: a forwarded protocol only from a trusted peer (D1363).
     const secure =
-      request.headers["x-forwarded-proto"] === "https" ||
-      (request.socket as { encrypted?: boolean }).encrypted === true;
+      http.requestOrigin === undefined
+        ? (request.socket as { encrypted?: boolean }).encrypted === true
+        : http.requestOrigin(request).startsWith("https:");
     return [
       `${cookie}=${encodeURIComponent(value)}`,
       "Path=/",

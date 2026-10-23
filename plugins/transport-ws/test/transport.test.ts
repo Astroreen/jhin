@@ -678,6 +678,21 @@ describe("pairing (security.md D419–D422)", () => {
     expect((await fetch(`${own}/auth/session`, { headers: { cookie } })).status).toBe(401);
   });
 
+  it("marks the cookie Secure only when the request came over HTTPS as http.server says (D1363)", async () => {
+    const node = await startNode();
+    const own = httpUrl(node);
+    const open = async (headers: Record<string, string>) => {
+      const { code } = await createCode(node);
+      const opened = await post(`${own}/auth/session`, { credential: code }, headers);
+      expect(opened.status).toBe(200);
+      return opened.headers.get("set-cookie")!;
+    };
+    expect(await open({})).not.toContain("Secure");
+    // Loopback forwards the protocol (Tailscale Serve, a local proxy); the HTTP plugin's
+    // test shows the header ignored from any other untrusted peer.
+    expect(await open({ "x-forwarded-proto": "https" })).toContain("Secure");
+  });
+
   it("answers the preflight, refuses a malformed body and limits attempts per route", async () => {
     const node = await startNode();
     const preflight = await fetch(`${httpUrl(node)}/auth/pair`, { method: "OPTIONS" });
