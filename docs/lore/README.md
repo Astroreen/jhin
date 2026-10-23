@@ -16,6 +16,8 @@ is enough: "this is a moonbase" means the whole story below.
 | [just following orders](just-following-orders.md) | an approval from someone who lacked the context is not an approval    |
 | [mind virus](mind-viruses.md)                     | a wrong idea written down spreads to every agent that reads it        |
 | [own homework](own-homework.md)                   | a review whose checklist the author wrote finds only what it foresaw  |
+| [workaround](workaround.md)                       | a workaround nobody reported outlives the bug, in every copy of it    |
+| [toll road](toll-road.md)                         | a guard that makes the honest path costly gets routed around          |
 
 Most of these come from OpenRig's experience
 ([`../research/openrig.md`](../research/openrig.md)). Jhin's own stories go
