@@ -484,6 +484,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
               <span className="font-mono break-all">{analysis.analyst}</span>
               {analysis.reason === "assignee" ? ", assigned the most slices" : null}
               {analysis.reason === "config" ? ", the configured analyst" : null}
+              {analysis.late === true ? ", answered late: after the ask was given up" : null}
             </p>
             <p className="text-sm whitespace-pre-wrap">
               {analysis.status === "answered"

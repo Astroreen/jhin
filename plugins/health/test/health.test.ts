@@ -612,6 +612,58 @@ describe("jhin.health", () => {
     });
   });
 
+  it("links a late answer back to its warning, once, and leaves an answered one alone (D1291)", async () => {
+    const { log, deliver, asked } = await node({
+      ceremony: { ratio: 1, minCeremony: 1 },
+      analysts: { "*": SILENT },
+    });
+    const answer = (messageId: string, text: string) =>
+      log.append(MESSAGES_STREAM, [
+        {
+          type: MessageEvents.answered,
+          payload: {
+            messageId,
+            traceId: "t",
+            answeredBy: SILENT,
+            answeredAt: new Date().toISOString(),
+            answer: text,
+          },
+        },
+      ]);
+    const analyses = async () =>
+      (await log.read(HEALTH_STREAM))
+        .filter((event) => event.type === HealthEvents.warningAnalysed)
+        .map((event) => (event.payload as { analysis: Analysis }).analysis);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const asking = nextAsk();
+      const failed = nextAppended(log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+      await deliver(OWNER, BUILDER, "status?", "t1");
+      await asking;
+      // The ask is delivered as jhin.agents records it, then the timeout gives it up.
+      await deliver(OWNER, SILENT, asked[0]!.question, "t-ask", asked[0]!.messageId, "ask");
+      vi.advanceTimersByTime(30 * 60_000);
+      expect(((await failed).payload as { analysis: Analysis }).analysis.status).toBe("failed");
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // The answer arrives after the give-up: the warning is linked to it, marked late.
+    const linked = nextAppended(log, HEALTH_STREAM, HealthEvents.warningAnalysed);
+    await answer(asked[0]!.messageId!, "Too late, but: stop re-proving.");
+    expect(((await linked).payload as { analysis: Analysis }).analysis).toMatchObject({
+      status: "answered",
+      analyst: SILENT,
+      answer: "Too late, but: stop re-proving.",
+      late: true,
+    });
+    // An answer again, for a warning already answered, changes nothing; nor is the analyst asked again.
+    await answer(asked[0]!.messageId!, "Again.");
+    const all = await analyses();
+    expect(all.map((analysis) => analysis.status)).toEqual(["failed", "answered"]);
+    expect(asked).toHaveLength(1);
+  });
+
   it("asks an agent, never the owner, and does not count the analyst's reply", async () => {
     const { kernel, client, deliver, asked } = await node({
       ceremony: { ratio: 1, minCeremony: 2 },

@@ -1215,6 +1215,19 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   raises a new warning. `health.warnings.list` takes `status: "cleared"`; the
   client drops a cleared warning from the open list and its page says "Cleared:
   back under the threshold" with the time.
+- **D1291. A late answer is linked back to its warning.** An ask past
+  `analysisTimeoutMinutes` is still recorded `failed` and not cancelled
+  (D725), and so is one a restart cut short. Health also follows
+  `agents.message.answered` on `agents/messages`: when the answer of its own
+  ask (`health.<warningId>.<time>`, delivered as its own)
+  comes while that warning's analysis is `failed`, it appends
+  `health.warning.analysed` with status `answered`, the answer cut as
+  `analyseOnce` cuts it (`MAX_ANSWER_LENGTH`) and `late: true`, an additive
+  optional field of `Analysis`. An answer seen before the failure is recorded
+  (a replay after a restart) waits for it. It is decided on the fold right
+  before the write, so it is recorded once and never overwrites an
+  `answered` analysis; the analyst is not asked again. The warning's page
+  says the answer came late.
 
 ### A8. Modes and the Civilization shell (D742–D760)
 
@@ -2011,10 +2024,10 @@ Decisions (L2):
   threshold; today the owner dismisses them (D724).~~ A7, D1283.
 - A7: queue activity of threads no slice links (an agent's other
   generations); D722 follows only the threads slices link.
-- A7: linking a late answer back to its warning. An ask past
+- ~~A7: linking a late answer back to its warning. An ask past
   `analysisTimeoutMinutes` is recorded `failed` and not cancelled (D725); an
   answer that comes later stays in the analyst's thread, and the warning is
-  not asked again.
+  not asked again.~~ A7, D1291.
 - A7: a feed whose read permission was taken back, or whose node lost the
   feed, recovering by itself when it is granted (or installed) again; today it stays not live until the connection is
   replaced (D731).

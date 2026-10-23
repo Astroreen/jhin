@@ -114,6 +114,8 @@ export const Analysis = z.object({
   reason: z.string().optional(),
   answer: z.string().optional(),
   error: z.string().optional(),
+  /** The answer came after the ask was recorded `failed` (D1291). */
+  late: z.boolean().optional(),
   at: z.string(),
 });
 export type Analysis = z.infer<typeof Analysis>;

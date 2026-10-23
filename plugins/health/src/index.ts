@@ -118,6 +118,10 @@ export default definePlugin({
         } else if (event.type === HealthEvents.progressRecorded) {
           const progress = (event.payload as { progress?: Progress }).progress;
           if (progress !== undefined) sensors.ingestProgress(progress, event);
+        } else if (event.type === HealthEvents.warningAnalysed) {
+          // An answer that came first waits for the failure it is late for (D1291).
+          const warningId = (event.payload as { warningId?: string } | null)?.warningId;
+          if (warningId !== undefined) linkLate(warningId);
         } else if (event.type === HealthEvents.warningDismissed) {
           // A dismissed warning's asks wait for no reply any more.
           const warningId = (event.payload as { warningId?: string } | null)?.warningId;
@@ -127,6 +131,40 @@ export default definePlugin({
           }
         }
       }
+    };
+
+    /** The answers of health's own asks seen on the messages stream, by warning (D1291). */
+    const answersSeen = new Map<string, { answer: string; answeredBy: string }>();
+    /**
+     * Links a late answer back to its warning (D1291): the ask outlasted its
+     * timeout, or a restart cut it short, so the analysis is `failed`; the
+     * answer that came after it replaces that, once, marked `late`. An answered
+     * analysis is never overwritten, and the analyst is not asked again.
+     */
+    const linkLate = (warningId: string) => {
+      const seen = answersSeen.get(warningId);
+      if (seen === undefined || health.warnings[warningId]?.analysis?.status !== "failed") return;
+      void appendIf(() => {
+        const failed = health.warnings[warningId]?.analysis;
+        if (failed?.status !== "failed") return undefined;
+        const analysis: Analysis = {
+          status: "answered",
+          analyst: failed.analyst ?? seen.answeredBy,
+          ...(failed.reason === undefined ? {} : { reason: failed.reason }),
+          answer:
+            seen.answer.length > MAX_ANSWER_LENGTH
+              ? `${seen.answer.slice(0, MAX_ANSWER_LENGTH)}…`
+              : seen.answer,
+          late: true,
+          at: now(),
+        };
+        return { type: HealthEvents.warningAnalysed, payload: { warningId, analysis } };
+      }).catch((error: unknown) =>
+        context.log.warn("a late answer could not be recorded", {
+          warningId,
+          error: String(error),
+        }),
+      );
     };
 
     /** Appends to `health` one at a time, so the fold never misses its own events. */
@@ -636,6 +674,28 @@ export default definePlugin({
       {
         stream: MESSAGES_STREAM,
         handle: (event) => {
+          if (event.type === MessageEvents.answered) {
+            const answered = event.payload as {
+              messageId?: string;
+              answeredBy?: string;
+              answer?: string;
+            } | null;
+            const warningId =
+              answered?.messageId === undefined ? undefined : OWN_ASK.exec(answered.messageId)?.[1];
+            if (
+              warningId !== undefined &&
+              askedBefore.has(warningId) &&
+              answered?.answer !== undefined &&
+              answered.answeredBy !== undefined
+            ) {
+              answersSeen.set(warningId, {
+                answer: answered.answer,
+                answeredBy: answered.answeredBy,
+              });
+              linkLate(warningId);
+            }
+            return;
+          }
           if (event.type !== MessageEvents.delivered) return;
           const asked = ownAsk(event);
           if (asked !== undefined) {
