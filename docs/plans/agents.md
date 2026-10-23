@@ -601,7 +601,8 @@ Decisions:
   nodeId? }` does. This is what A6's refocus hands an agent.
 - **D651. Statuses.** A mission is `planned`, `active`, `done` or
   `dropped`; a slice `planned`, `active`, `blocked`, `done` or `dropped`.
-  Nothing is deleted: a mistake is dropped, and a dropped slice stays
+  Nothing is deleted (a record can be, as a tombstone: D1395): a mistake is
+  dropped, and a dropped slice stays
   dropped (`SLICE_DROPPED`), unchanged by `slices.update`, `slices.link` or
   `slices.prove`: plan a new one instead. A mission's status is set by
   whoever runs it, not derived from its slices: a mission may be done or
@@ -644,6 +645,29 @@ Decisions:
   (A1's seam, D614), with no composer (D741). A breadcrumb leads back up. A
   thread on another node of the mesh (`nodeId`) is read through it. Nothing
   edits; the commands do (Deferred).
+
+- **D1395. A mission or a slice can be deleted, as a tombstone.** This
+  amends D651's "nothing is deleted": a mistake is still dropped, and a
+  record that should not be there at all can be deleted. `missions.delete
+  {missionId}` and `slices.delete {sliceId}` (`missions.write`) append
+  `missions.mission.deleted` or `missions.slice.deleted`, each carrying the
+  record as it was. The fold (`applyMissionEvent`) removes the record, and a
+  deleted mission's slices with it, so it is one append; it vanishes from
+  `missions.catalog`, `missions.list`, `missions.get` and the view. The log
+  stays append-only: nothing is erased. Deleting is refused with
+  `SLICE_IN_USE` for a slice another slice of the mission, not deleted,
+  depends on or reviews, and while an orchestrator run of the mission is
+  active: the missions plugin runs the hook `missions.deleting` with
+  `{ mission, sliceId? }` (like `missions.step`, D1241), and the
+  orchestrator refuses with `RUN_ACTIVE` while the mission's last workflow is
+  running, so the missions plugin never learns of the orchestrator (rules
+  3–4). What referred to a deleted record stays: health warnings and their
+  history, the orchestrator's records, inbox reports and threads. The folds
+  of health, the orchestrator and the client simply no longer find it; health
+  counts a deletion as no slice work. The view offers Delete mission and
+  Delete slice with a confirmation (and none without a dialog host), shows
+  the command's refusal, and a link to a deleted record reads "Not found:
+  it may have been deleted".
 
 ### A4. Context library and lore (D661–D680)
 
@@ -2170,8 +2194,9 @@ three agents, and otherwise read the streams.
   URLs only) until proof files live on the node.
 - ~~A3: an agent's title for an assignee (`agents.catalog`); the view shows
   the agent id from the address (D645).~~ C2, D1082.
-- A3: deleting missions and slices (D651 drops them), and what happens to
-  the missions of a deleted project (they stay in the stream, unseen).
+- ~~A3: deleting missions and slices (D651 drops them).~~ A3, D1395.
+- A3: what happens to the missions of a deleted project (they stay in the
+  stream, unseen).
 - ~~A3: editing intent, missions and slices from the client; the view reads
   (D656), the commands edit.~~ C2, D1081–D1085.
 - ~~C2: editing a step's description (D1084 keeps it by id).~~ C2, D1388.

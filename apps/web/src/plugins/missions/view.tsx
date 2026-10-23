@@ -39,6 +39,7 @@ import {
   Slot,
   Spinner,
   useSlot,
+  type Dialogs,
 } from "@jhin/ui";
 import {
   BadgeCheckIcon,
@@ -61,7 +62,7 @@ import {
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useDirectory, type Directory } from "./directory.ts";
 import { DirectoryNotices } from "./notice.tsx";
-import { IntentDialog, MissionDialog, SliceDialog, type Call } from "./edit.tsx";
+import { DeleteButton, IntentDialog, MissionDialog, SliceDialog, type Call } from "./edit.tsx";
 import {
   assigneeLabel,
   MISSION_ASIDE_SLOT,
@@ -87,6 +88,7 @@ export interface MissionsServices {
   readonly connections: Connections;
   readonly threads: ThreadsCatalog;
   readonly mesh: MeshMembership | undefined;
+  readonly dialogs: Dialogs | undefined;
   readonly store: MissionsStore;
 }
 
@@ -495,13 +497,14 @@ export function MissionsMain({ services }: { services: MissionsServices }) {
         text={
           view.status === "error"
             ? `Couldn't load missions: ${view.error ?? "unknown error"}`
-            : "No mission or slice has this id on this node."
+            : "No mission or slice has this id on this node. It may have been deleted."
         }
         title="Not found"
       />
     ) : place.kind === "mission" ? (
       <MissionPage
         call={call}
+        dialogs={services.dialogs}
         directory={directory}
         target={target}
         intent={state.intents[mission.projectId]}
@@ -557,9 +560,10 @@ function MissionPage(props: {
   slices: readonly Slice[];
   directory: Directory;
   call: Call;
+  dialogs: Dialogs | undefined;
   open: (place: MissionPlace) => void;
 }) {
-  const { target, mission, project, intent, slices, directory, call, open } = props;
+  const { target, mission, project, intent, slices, directory, call, dialogs, open } = props;
   const aside = useSlot(MISSION_ASIDE_SLOT).length > 0;
   const [editing, setEditing] = useState<"intent" | "mission" | "slice" | undefined>();
   const close = () => setEditing(undefined);
@@ -599,8 +603,15 @@ function MissionPage(props: {
                 {mission.title}
               </h1>
               <StatusBadge status={mission.status} />
-              <span className="ms-auto">
+              <span className="ms-auto flex items-center gap-1">
                 <EditButton label="Edit mission" onClick={() => setEditing("mission")} />
+                <DeleteButton
+                  description={`The mission and its ${slices.length} slice${slices.length === 1 ? "" : "s"} leave the missions view and the state. The event log keeps what happened. Refused while the mission is being orchestrated.`}
+                  dialogs={dialogs}
+                  label="Delete mission"
+                  run={() => call("missions.delete", { missionId: mission.id })}
+                  title={`Delete ${mission.title}?`}
+                />
               </span>
             </div>
             <Section title="Outcome">
@@ -805,11 +816,19 @@ function SlicePage(props: {
           <h1 className="text-lg font-semibold tracking-tight text-foreground">{slice.title}</h1>
           <StatusBadge status={slice.status} />
           {/* A dropped slice stays dropped (D651): plan a new one instead. */}
-          {slice.status === "dropped" ? null : (
-            <span className="ms-auto">
+          <span className="ms-auto flex items-center gap-1">
+            {slice.status === "dropped" ? null : (
               <EditButton label="Edit slice" onClick={() => setEditing(true)} />
-            </span>
-          )}
+            )}
+            <DeleteButton
+              description="The slice leaves the missions view and the state. The event log keeps what happened. Refused while another slice depends on it or reviews it, or the mission is being orchestrated."
+              dialogs={services.dialogs}
+              label="Delete slice"
+              onDone={() => open({ kind: "mission", missionId: mission.id })}
+              run={() => call("slices.delete", { sliceId: slice.id })}
+              title={`Delete ${slice.title}?`}
+            />
+          </span>
         </div>
         <DirectoryNotices notices={directory.notices} />
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">

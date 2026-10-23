@@ -430,6 +430,33 @@ describe("the missions store (D641)", () => {
     store.dispose();
   });
 
+  it("D1395: a deleted slice or mission leaves the folded state, and a link to it reads as gone", async () => {
+    const node = fakeNode(async () => ({
+      head: 4,
+      intents: [],
+      missions: [mission(), mission({ id: "m2", title: "Kept" })],
+      slices: [slice(), slice({ id: "s2" }), slice({ id: "s3", missionId: "m2" })],
+    }));
+    const store = createMissionsStore(node.connections, quiet);
+    const feed = follow(store);
+    await feed.next();
+
+    const sliceGone = feed.next();
+    node.subscriptions[0]!.onEvent(event(5, MissionEvents.sliceDeleted, { slice: slice() }));
+    expect(Object.keys((await sliceGone).state.slices)).toEqual(["s2", "s3"]);
+
+    const missionGone = feed.next();
+    node.subscriptions[0]!.onEvent(event(6, MissionEvents.missionDeleted, { mission: mission() }));
+    const { state } = await missionGone;
+    // The mission goes with its slices; the other mission's stay.
+    expect(Object.keys(state.missions)).toEqual(["m2"]);
+    expect(Object.keys(state.slices)).toEqual(["s3"]);
+    // The view finds nothing at a route to either: "Not found", no crash.
+    expect(state.missions["m1"]).toBeUndefined();
+    expect(state.slices["s1"]).toBeUndefined();
+    store.dispose();
+  });
+
   it("tells a node without missions, or without the right to read them", async () => {
     const node = fakeNode(() =>
       Promise.reject(Object.assign(new Error("no"), { code: "PERMISSION_DENIED" })),
