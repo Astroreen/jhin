@@ -726,6 +726,9 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   so is clearing an emulator's location, which T3 answers with nothing. A
   URL to open must carry its scheme. Turning the network off on Android
   takes when Wi-Fi did: mobile data is turned with it where there is one.
+  Android's appearance is read from a definite `Night mode: yes` or `no`
+  (`auto` follows the clock, so it is not shown). A push payload, as text
+  or as JSON, carries at most 4096 characters, as agents send it too.
 
 - **D1333. T3's tools panel beside an open device.** The rail gets T3's
   "Device tools" toggle (lucide `SlidersHorizontal`), which opens "Tools" at
