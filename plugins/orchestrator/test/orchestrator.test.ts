@@ -565,6 +565,8 @@ describe("the reviewer's brief (D1244–D1246)", () => {
       "moonbase",
       "plugins/kennel/src/walls.ts (+1 −0)",
       "+export const walls = 4;",
+      // The reviewed slice names who built it (D1266).
+      `Built by ${BUILDER}.`,
     ])
       expect(markdown).toContain(text);
     expect(markdown.indexOf("Ids are public API")).toBeLessThan(

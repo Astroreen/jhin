@@ -103,6 +103,8 @@ export function reviewBriefText(input: {
       head: [
         `### ${work.title} (\`${work.id}\`, ${work.status})`,
         "",
+        // Who to send changes to: one review slice may cover several assignees' work (L3, D1266).
+        ...(work.assignee === undefined ? [] : [`Built by ${work.assignee}.`, ""]),
         cut(work.spec, BUDGET.work, `slices_get { sliceId: "${work.id}" }`),
         ...(proof === undefined || proof === "" ? [] : ["", "Its proof:", "", proof]),
         "",
@@ -123,6 +125,7 @@ export function reviewBriefText(input: {
     "- A rename or removal of a public id (capability, command, slot, contribution, event type) is the owner's decision, made with a deprecation (AGENTS.md rule 8): say so, and ask through the lead.",
     "- Name what you checked (the rules and decisions by number), so a reader sees what you did not check.",
     '- Record your verdict on each slice you review with slices_review { sliceId, verdict, notes }: "approved" or "changes-requested", and in notes what you checked and found. The mission\'s commit or merge waits for an approval after the last change.',
+    "- Send the changes you ask for to the slice's builder, named under its heading.",
     "",
     "## The project's rules",
     "",

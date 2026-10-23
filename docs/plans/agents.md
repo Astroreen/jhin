@@ -1778,6 +1778,12 @@ Decisions (L3):
   re-recorded every done slice of a mission on the new tree before each
   commit step (the shared checkout's guard, L2 Deferred), dozens of reviews
   of unchanged work per mission, and health counted none of it.
+- **D1266. The reviewer's brief names who built each reviewed slice.**
+  Under each reviewed slice's heading the brief (D1244) says `Built by
+  <assignee>`, and its rules tell the reviewer to send the changes it asks
+  for there. In the L3 run one review slice covered two builders' work, and
+  the reviewer sent a change request for builder2's slice to builder, who
+  forwarded it.
 
 ## Deferred
 
