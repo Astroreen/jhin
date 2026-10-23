@@ -625,7 +625,10 @@ export default definePlugin({
                   .slice(0, 100)
               : [];
             const plain = permission !== "*" && !permission.endsWith(".*") && isGrant(permission);
-            if (named.length > 0 && plain) guarded.set(permission, named);
+            // Two items for one permission add up, as two hooks may each name streams.
+            if (named.length > 0 && plain) {
+              guarded.set(permission, [...(guarded.get(permission) ?? []), ...named].slice(0, 100));
+            }
             if (typeof title !== "string" || title === "") continue;
             titles.set(permission, {
               title,

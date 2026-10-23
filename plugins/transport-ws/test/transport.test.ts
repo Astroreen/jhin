@@ -458,6 +458,14 @@ describe("device tokens (security.md D411–D414)", () => {
                 : entry,
             ),
             { permission: "app.*", commands: [], streams: ["app/feed/"] },
+            // A second item for one permission adds its streams.
+            { permission: "app.watch", commands: [], streams: ["app/other"] },
+            // At most 100 names a permission.
+            {
+              permission: "app.many",
+              commands: [],
+              streams: Array.from({ length: 150 }, (_, n) => `app/many/${n}`),
+            },
             { permission: "*", commands: [], streams: ["app/feed/"] },
             { permission: "", commands: [], streams: ["app/feed/"] },
           ]);
@@ -472,7 +480,7 @@ describe("device tokens (security.md D411–D414)", () => {
       permission: "app.watch",
       commands: [],
       title: "Watch the feed",
-      streams: ["app/feed/"],
+      streams: ["app/feed/", "app/other"],
     });
     expect(permissions.find((entry) => entry.permission === "app.write")).toMatchObject({
       commands: ["app.write"],
@@ -484,6 +492,7 @@ describe("device tokens (security.md D411–D414)", () => {
     ]);
     expect(permissions.map((entry) => entry.permission)).not.toContain("app.*");
     expect(permissions.map((entry) => entry.permission)).not.toContain("*");
+    expect(permissions.find((entry) => entry.permission === "app.many")?.streams).toHaveLength(100);
     expect(permissions.map((entry) => entry.permission)).not.toContain("");
   });
 
