@@ -242,16 +242,21 @@ export function ThreadDetailsInline(
     const element = card.current;
     // Without room it is the popover anyway: what the card held stays known across a resize.
     if (!room || element === null) return;
+    // A section shows something to read; one that renders an empty element shows nothing.
     const report = () =>
       visibility.setFilled(
         key,
-        (element.querySelector("[data-thread-details-content]")?.childNodes.length ?? 0) > 0,
+        (element.querySelector("[data-thread-details-content]")?.textContent ?? "").trim() !== "",
       );
     report();
     const observer = new MutationObserver(report);
-    observer.observe(element, { childList: true, subtree: true });
+    observer.observe(element, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
   }, [key, room]);
+  const filled = useSyncExternalStore(
+    visibility.subscribe,
+    () => visibility.effective(key) === "inline",
+  );
   // Forgotten when the thread is left, with its room.
   useLayoutEffect(() => () => visibility.setFilled(key, false), [key]);
   return (
@@ -262,10 +267,7 @@ export function ThreadDetailsInline(
           ref={card}
           // Closed, or with nothing to show (T3's always has its workspace), it stays out of the
           // way; mounted all the same, so it is known whether it has something.
-          className={cn(
-            "pointer-events-auto absolute has-[[data-thread-details-content]:empty]:hidden",
-            !open && "hidden",
-          )}
+          className={cn("pointer-events-auto absolute", (!open || !filled) && "hidden")}
           data-thread-details-panel="inline"
           style={{
             right: placement.right,

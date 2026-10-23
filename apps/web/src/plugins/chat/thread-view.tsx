@@ -492,12 +492,16 @@ export function ThreadView(props: {
       setLaneInset(inset > 0 ? padding + inset : 0);
     };
     const observer = new ResizeObserver(() => measure());
+    // Only until the lane is there: after that its own size is observed, and the streamed text
+    // below it is not watched.
     const children = new MutationObserver(() => {
-      if (element.querySelector(".chat-content-lane") !== observedLane) measure();
+      if (element.querySelector(".chat-content-lane") === null) return;
+      children.disconnect();
+      measure();
     });
     measure();
     observer.observe(element);
-    children.observe(element, { childList: true, subtree: true });
+    if (observedLane === null) children.observe(element, { childList: true, subtree: true });
     wide.addEventListener("change", measure);
     return () => {
       observer.disconnect();

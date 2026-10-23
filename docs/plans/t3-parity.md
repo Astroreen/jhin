@@ -2264,7 +2264,8 @@ says. The other W38 decisions land in their own pull requests.
   shortcut and `chat.thread-details.toggle` work the presentation the
   thread has room for. The toggle names it (`data-details-presentation`)
   once the view has measured. Unlike T3's card, which always holds its
-  workspace, a card with no section to show stays out of the way inline,
+  workspace, a card with no section to show (no text in it: a section may
+  render an empty element) stays out of the way inline,
   and until it has one the toggle works the popover, which says "No details
   for this thread"; the card is mounted wherever there is room, open or
   not, to know. While the card
