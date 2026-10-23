@@ -494,7 +494,8 @@ export function claudeTurn(
     } else if (message.subtype === "task_progress") {
       // T3's progress line of a running subagent (D1343): its frame's description.
       const tool = message.tool_use_id ?? taskTools.get(message.task_id);
-      const progress = message.description.trim();
+      // An older or newer CLI may leave the description out: nothing to say then.
+      const progress = typeof message.description === "string" ? message.description.trim() : "";
       if (tool === undefined || !subagentIds.has(tool) || progress === "") return;
       push({ kind: "subagent.progress", subagentId: tool, progress });
     } else if (message.subtype === "task_notification") {

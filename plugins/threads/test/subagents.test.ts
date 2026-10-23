@@ -120,7 +120,8 @@ function backgroundRuntime() {
       async function* afterwards(): AsyncGenerator<
         Extract<AgentItem, { kind: "subagent.item" | "subagent.progress" | "subagent.ended" }>
       > {
-        yield { kind: "subagent.progress", subagentId: "b1", progress: "  Digging  " };
+        // Cut to one line of 280 characters on the record (D1344).
+        yield { kind: "subagent.progress", subagentId: "b1", progress: `  ${"x".repeat(300)}  ` };
         yield {
           kind: "subagent.item",
           subagentId: "b1",
@@ -152,7 +153,7 @@ describe("jhin.threads: subagents in the background (D1164, D1166)", () => {
     expect((await digEvents.until("agent.item.completed")).payload).toMatchObject({ text: "dug" });
     const running = await client.call<{ thread: Thread }>("threads.get", { threadId: dig });
     // What it is doing now is on its running turn (D1344).
-    expect(running.thread.lastTurn).toMatchObject({ status: "running", progress: "Digging" });
+    expect(running.thread.lastTurn).toMatchObject({ status: "running", progress: "x".repeat(280) });
 
     // One its runtime no longer knows (it ended meanwhile), a thread that is no subagent.
     await expect(client.call("threads.subagent.stop", { threadId: wait })).rejects.toMatchObject({
@@ -171,7 +172,10 @@ describe("jhin.threads: subagents in the background (D1164, D1166)", () => {
     await watch(client, wait!).until("agent.turn.interrupted");
     // Its end (recorded before the other's) keeps its last progress on that turn.
     const ended = await client.call<{ thread: Thread }>("threads.get", { threadId: dig });
-    expect(ended.thread.lastTurn).toMatchObject({ status: "interrupted", progress: "Digging" });
+    expect(ended.thread.lastTurn).toMatchObject({
+      status: "interrupted",
+      progress: "x".repeat(280),
+    });
     await expect(client.call("threads.subagent.stop", { threadId: dig })).rejects.toMatchObject({
       code: "SUBAGENT_NOT_RUNNING",
     });
