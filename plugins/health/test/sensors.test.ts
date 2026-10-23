@@ -71,8 +71,10 @@ describe("health's sensors (D722)", () => {
       );
     }
     const config = HealthConfig.parse({ windowHours: 24 });
-    const mission = sensors.status(config, NOW).find((entry) => entry.group.kind === "mission");
-    expect(mission).toMatchObject({ ceremony: 3, progress: 0, byKind: { review: 3 } });
+    for (const kind of ["mission", "project", "node"]) {
+      const group = sensors.status(config, NOW).find((entry) => entry.group.kind === kind);
+      expect(group).toMatchObject({ ceremony: 3, progress: 0, byKind: { review: 3 } });
+    }
   });
 
   it("counts a thread followed after a dismissal from the dismissal's time, not from its start", () => {

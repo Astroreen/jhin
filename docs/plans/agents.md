@@ -1761,7 +1761,9 @@ Decisions (L3):
   guard made the honest escalation the costly one, so it was routed around.
 - **D1265. A recorded review is ceremony.** Health counts every
   `missions.slice.reviewed` (D1242) as the ceremony kind `review` for the
-  slice's missions, its project and the node. L2 added reviews after A7
+  slice's missions, its project and the node, the first review as much as
+  one recorded again: a review is a check, which D722 counts, and the
+  ratio's threshold leaves room for one per slice. L2 added reviews after A7
   wrote D722, so health did not see them: in the L3 run the reviewer
   re-recorded every done slice of a mission on the new tree before each
   commit step (the shared checkout's guard, L2 Deferred), dozens of reviews
