@@ -434,3 +434,28 @@ describe("forks and merges (D225, D226)", () => {
     expect(fold.apply(events.slice(4))).toEqual(timeline);
   });
 });
+
+describe("a message between agents (D1281)", () => {
+  it("carries the origin onto the turn it started, and ignores a malformed one", () => {
+    const origin = {
+      messageId: "m1",
+      kind: "answer",
+      from: "jhin://n1/agents/builder",
+      traceId: "tr1",
+      inReplyTo: "m0",
+    };
+    const timeline = reduceTimeline(
+      stream(
+        [ThreadEvents.turnStarted, { turnId: "u1", agentId: "a", input: { text: "hi" }, origin }],
+        [ThreadEvents.turnStarted, { turnId: "u2", agentId: "a", input: { text: "x" } }],
+        [
+          ThreadEvents.turnStarted,
+          { turnId: "u3", agentId: "a", input: { text: "y" }, origin: { kind: "nonsense" } },
+        ],
+      ),
+    );
+    expect(timeline.turns[0]?.origin).toEqual(origin);
+    expect(timeline.turns[1]).not.toHaveProperty("origin");
+    expect(timeline.turns[2]).not.toHaveProperty("origin");
+  });
+});

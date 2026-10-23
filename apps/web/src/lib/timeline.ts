@@ -1,6 +1,7 @@
 // The work-log summary follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // packages/client-runtime/src/work-log/presentation.ts.
 import {
+  MessageOrigin,
   ThreadEvents,
   type AgentRequest,
   type AgentGoal,
@@ -169,6 +170,8 @@ export interface TimelineTurn {
   readonly usage?: TokenUsage;
   /** A fork merged back that the agent got before this message (D226). */
   readonly handoff?: { readonly kind: "merge-back"; readonly threadId: string };
+  /** The message between agents that started the turn: who sent it (agents.md D623, D1281). */
+  readonly origin?: MessageOrigin;
 }
 
 export interface Timeline {
@@ -220,6 +223,13 @@ interface Payload {
   readonly threadId?: string;
   readonly inheritedAt?: string;
   readonly handoff?: { readonly kind?: string; readonly threadId?: string };
+  readonly origin?: unknown;
+}
+
+/** The turn's `origin` when the record is one; a malformed record shows the message as the user's. */
+function originOf(raw: unknown): { origin: MessageOrigin } | Record<string, never> {
+  const parsed = raw === undefined ? undefined : MessageOrigin.safeParse(raw);
+  return parsed?.success === true ? { origin: parsed.data } : {};
 }
 
 /**
@@ -344,6 +354,7 @@ export function createTimeline() {
           payload.handoff.threadId !== undefined
             ? { handoff: { kind: "merge-back" as const, threadId: payload.handoff.threadId } }
             : {}),
+          ...originOf(payload.origin),
           startedAt: at,
           state: "running",
           items: [],

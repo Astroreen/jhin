@@ -3,6 +3,7 @@
 import {
   type AgentResponse,
   contextReferencesAsLabels,
+  parseMessageAddress,
   type MessageContext,
   type TurnAttachment,
 } from "@jhin/agent-api";
@@ -27,6 +28,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { buildPromptHistory, newThreadDraftKey, threadDraftKey } from "../../lib/composer.ts";
 import { useCatalog } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
+import type { TimelineOrigin } from "../../lib/message-origin.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
@@ -159,6 +161,40 @@ export function ThreadView(props: {
   // The thread's node, which a quote of its messages names (D1012).
   const members = useMeshMembers(chat.mesh, target.node);
   const nodeId = target.remote ?? members?.find((member) => member.self)?.nodeId;
+  // The sender of a message between agents, opened where this client can reach it (D1281).
+  const openSender = (origin: TimelineOrigin) => {
+    const party = parseMessageAddress(origin.from);
+    if (party === undefined || party.kind === "owner") return undefined;
+    if (party.kind === "thread") {
+      if (party.nodeId === nodeId) {
+        return () => chat.navigation.navigate({ ...target, thread: party.threadId });
+      }
+      return members?.some((member) => member.nodeId === party.nodeId)
+        ? () =>
+            chat.navigation.navigate({
+              node: target.node,
+              remote: party.nodeId,
+              thread: party.threadId,
+            })
+        : undefined;
+    }
+    // An agent's page is on the connection whose node it is: the thread's own, or another open one.
+    const connection =
+      target.remote === undefined && party.nodeId === nodeId
+        ? target.node
+        : chat.connections
+            .list()
+            .find(
+              (item) =>
+                item.state === "open" &&
+                chat.mesh?.members(item.id)?.find((member) => member.self)?.nodeId === party.nodeId,
+            )?.id;
+    if (connection === undefined) return undefined;
+    return () =>
+      void chat.context.commands
+        .execute("civilization.agent.open", { node: connection, agentId: party.agentId })
+        .catch(() => undefined);
+  };
   // T3's find in the thread (D801): mod+f opens its bar over the messages.
   const find = useThreadFind(scroller, `${targetKey(target)}|${threadId}`);
   useEffect(() => {
@@ -576,6 +612,7 @@ export function ThreadView(props: {
                         .catch(() => undefined)
                     }
                     onOpenThread={(id) => chat.navigation.navigate({ ...target, thread: id })}
+                    onOpenSender={openSender}
                     thread={{ target, threadId }}
                     timeline={timeline}
                     {...(savePlan === undefined || props.project === undefined

@@ -477,6 +477,19 @@ the message, the inbox, events and the schemas of `agents.send`,
   arrive, are answered or dismissed (D1274). The switcher knows no plugin.
   The page title stays with `notifications.tsx`: this adds no second writer
   of `document.title`.
+- **D1281. The transcript shows a message as from its sender.** The client's
+  timeline keeps the turn's `origin` (D623) on `TimelineTurn`, and the chat
+  shows such a message with the sender as its accessible name ("builder,
+  question" instead of "You") and a small caption: the sender (an agent's id
+  as its address gives it, "Owner", or a thread's title), the kind (message,
+  question, answer) and, for an answer, which message it answers. The caption
+  is a link when this client can reach the sender: an agent opens its page
+  through the command `civilization.agent.open` on the open connection whose
+  node it is (so the link switches to Civilization mode), a thread of this
+  node or of one of its mesh members opens in Threads mode; the owner, and a
+  sender no open connection reaches, have no link. The chat knows no agents
+  plugin: it runs a command (rules 3 and 4). The header line D621 writes into
+  the text stays, since the agent's runtime reads it.
 
 ### A3. Missions and slices (D641–D660)
 
@@ -1848,9 +1861,11 @@ Decisions (L2):
   `forkSession`) instead of handing the fork its parent's turns as history
   (D625).
 - ~~A2: dismissing an inbox item without answering it (D626).~~ A2, D1274.
-- A2: the transcript showing a message as from its sender, with a link back.
+- ~~A2: the transcript showing a message as from its sender, with a link back.
   The turn carries `origin` (D623); until a view renders it, the header line
-  of the message names the sender and the trace.
+  of the message names the sender and the trace.~~ A2, D1281.
+- A2: hiding the header line of a delivered message in the transcript, now the
+  sender shows (D1281).
 - ~~A2: a count of open inbox items on the mode switcher or the page title
   (D630 notifies once per item).~~ A2, D1273 (the mode switcher; the title
   stays with `notifications.tsx`).
