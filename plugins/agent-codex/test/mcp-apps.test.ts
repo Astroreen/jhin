@@ -151,10 +151,10 @@ describe("jhin.agent-codex: MCP apps (D1401, D1402)", () => {
     await expect(call("delete_board")).rejects.toMatchObject({ code: "MCP_APP_TOOL_NOT_CALLABLE" });
     await expect(call("rm_rf")).rejects.toMatchObject({ code: "MCP_APP_TOOL_NOT_CALLABLE" });
     expect(fake.received("mcpServer/tool/call")).toHaveLength(0);
-    // An app no tool call of the thread returned names nothing: not even the thread's own
-    // app's id on another thread.
+    // The same app on another thread has the same id (the hash of what is kept)...
     const other = await showBoard(client);
     expect(other.app!["documentId"]).toBe(documentId);
+    // ...and an id no tool call of the thread returned names nothing.
     await expect(call("move_card", thread.id, "f".repeat(64))).rejects.toMatchObject({
       code: "MCP_APP_NOT_FOUND",
     });

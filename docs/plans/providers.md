@@ -1479,6 +1479,14 @@ history. The reference is T3 Code `eb7b35ac` (D53).
 
 ### Deferred
 
+- MCP apps (D1402): an app's call needs `threads.write` only, and is not
+  held to the caller's runtime mode ceiling (`security.md` D1370): a capped
+  caller confirming an app's call in the client runs it as the app's server
+  allows. T3 has no ceiling to hold it to; holding a call to it needs the
+  tool's `readOnlyHint` read through (T3's `toolInfo`).
+- MCP apps (D1401): a thread's documents are kept until the thread is
+  deleted, one per distinct document of each server and tool, with no cap
+  per thread.
 - MCP apps (D1401): the 20 s limit of an app's read has no test of its own
   (it would need a timeout to wait for; the abandoned read of an interrupted
   turn is tested), and a read given up is not cancelled in Codex
