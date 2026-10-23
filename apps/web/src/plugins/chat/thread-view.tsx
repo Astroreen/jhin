@@ -50,6 +50,7 @@ import { AttachmentLoaderContext, useAttachmentLoader } from "./attachment-media
 import { inlineSkillTokens } from "../../lib/composer-trigger.ts";
 import { useAgentSkills } from "./agent-skills.ts";
 import { FILE_PANEL, openFilePanel } from "./file-panel-route.ts";
+import { detailsKey, lanePadding, laneInsetBesideCard } from "./thread-details.tsx";
 import { TimelineView } from "./timeline.tsx";
 
 /** T3's ProviderSubagentBar, a chunk of its own: few threads show it (D440, D880). */
@@ -69,6 +70,12 @@ const CiteSelection = lazyChunk(
 /** T3's find bar, a chunk of its own (D440): the find itself stays with the view. */
 const ThreadFindBar = lazyChunk(
   () => import("./thread-find-bar.tsx").then((module) => module.ThreadFindBar),
+  { loading: () => null, failed: () => null },
+);
+
+/** T3's thread details beside a wide chat (D1350), in the details panel's chunk (D440). */
+const ThreadDetailsInline = lazyChunk(
+  () => import("./thread-details-panel.tsx").then((module) => module.ThreadDetailsInline),
   { loading: () => null, failed: () => null },
 );
 
@@ -454,6 +461,51 @@ export function ThreadView(props: {
   const loadAttachment = useAttachmentLoader(target);
 
   const shownError = openError ?? error;
+  // The lane moves left of the inline details card while it shows (T3's chat canvas, D1350).
+  const canvas = useRef<HTMLDivElement>(null);
+  const cardKey = detailsKey(target, threadId);
+  const cardShown = useSyncExternalStore(chat.threadDetails.subscribe, () =>
+    chat.threadDetails.shown(cardKey),
+  );
+  const [laneInset, setLaneInset] = useState(0);
+  useLayoutEffect(() => {
+    const element = canvas.current;
+    if (!cardShown || element === null) {
+      setLaneInset(0);
+      return;
+    }
+    // The lane's padding follows Tailwind's `sm`, a media query of the viewport.
+    const wide = window.matchMedia("(min-width: 40rem)");
+    let observedLane: HTMLElement | null = null;
+    const measure = () => {
+      const lane = element.querySelector<HTMLElement>(".chat-content-lane");
+      // The lane may come after the card (a thread still loading): measured again then.
+      if (lane !== observedLane) {
+        if (observedLane !== null) observer.unobserve(observedLane);
+        if (lane !== null) observer.observe(lane);
+        observedLane = lane;
+      }
+      const max = lane === null ? "" : getComputedStyle(lane).maxWidth;
+      const maxWidth = max.endsWith("px") ? Number.parseFloat(max) : Number.POSITIVE_INFINITY;
+      const padding = lanePadding();
+      const inset = laneInsetBesideCard(element.clientWidth, maxWidth, padding);
+      setLaneInset(inset > 0 ? padding + inset : 0);
+    };
+    const observer = new ResizeObserver(() => measure());
+    const children = new MutationObserver(() => {
+      if (element.querySelector(".chat-content-lane") !== observedLane) measure();
+    });
+    measure();
+    observer.observe(element);
+    children.observe(element, { childList: true, subtree: true });
+    wide.addEventListener("change", measure);
+    return () => {
+      observer.disconnect();
+      children.disconnect();
+      wide.removeEventListener("change", measure);
+    };
+  }, [cardShown]);
+  const laneStyle = laneInset > 0 ? { paddingInlineEnd: laneInset } : undefined;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
       <ChatHeader
@@ -464,7 +516,7 @@ export function ThreadView(props: {
         title={thread?.title ?? "Thread"}
       />
       <div className="relative flex min-h-0 min-w-0 flex-1">
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" ref={canvas}>
           <ThreadFindBar
             {...find.bar}
             // Focus goes back to the composer, so its shortcuts work again.
@@ -473,6 +525,15 @@ export function ThreadView(props: {
               handle.current?.focus();
             }}
           />
+          {thread === undefined || timeline.deleted ? null : (
+            <ThreadDetailsInline
+              findOpen={find.bar.open}
+              target={target}
+              thread={thread}
+              visibility={chat.threadDetails}
+              {...(props.project === undefined ? {} : { project: props.project })}
+            />
+          )}
           {(unconfirmed.message === undefined || count === 0) && shownError === undefined ? null : (
             <div className="pointer-events-none absolute top-0 inset-x-0 z-20 flex flex-col gap-2 pt-3">
               {/* Shown once the thread's stream has answered: until then nothing is known. */}
@@ -541,6 +602,7 @@ export function ThreadView(props: {
             onScroll={onScroll}
             ref={scroller}
             role="log"
+            style={laneStyle}
             // Scrollable by keyboard too.
             tabIndex={0}
           >
@@ -685,7 +747,10 @@ export function ThreadView(props: {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
             ref={composer.ref}
           >
-            <div className="w-full px-[calc(env(safe-area-inset-left)+0.75rem)] sm:px-12">
+            <div
+              className="w-full px-[calc(env(safe-area-inset-left)+0.75rem)] sm:px-12"
+              style={laneStyle}
+            >
               <div className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)">
                 {timeline.deleted ? null : thread?.archivedAt !== undefined ? (
                   <ArchivedNotice

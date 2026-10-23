@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
+import { hideThreadDetails, showThreadDetails } from "./support/ui.ts";
 
 let node: RunningNode;
 test.beforeAll(async () => {
@@ -138,7 +139,10 @@ test("forks a thread from a response and merges the fork back into its source", 
   await expect(
     log.getByRole("status").filter({ hasText: "Forked from conversation" }),
   ).toBeVisible();
-  const mergeBack = page.getByRole("button", { name: "Merge back to plan the trip" });
+  // The header's button (the details card beside the chat has one too, D1350).
+  const mergeBack = page
+    .locator("header")
+    .getByRole("button", { name: "Merge back to plan the trip" });
   await expect(mergeBack).toBeDisabled();
   await shoot(page, info, "fork");
 
@@ -270,9 +274,8 @@ test("lists a thread's parent and forks in the thread details panel, and merges 
   await expect(heading).toHaveText("plan a picnic fork");
 
   const toggle = page.getByRole("button", { name: "Toggle thread details panel" });
-  const panel = page.getByRole("region", { name: "Thread details" });
+  const panel = await showThreadDetails(page);
   const related = panel.getByRole("list", { name: "Related threads" });
-  await toggle.click();
   await expect(panel.getByRole("heading", { name: "Lineage" })).toBeVisible();
   await expect(related.getByRole("listitem")).toHaveText([/plan a picnic.*Idle/]);
   const merge = panel.getByRole("button", { name: "Merge back to plan a picnic" });
@@ -280,7 +283,7 @@ test("lists a thread's parent and forks in the thread details panel, and merges 
   // An unavailable button still says why (aria-disabled, so it keeps its pointer and focus).
   await merge.hover();
   await expect(page.getByText("Complete a run in this fork before merging it back")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await hideThreadDetails(page);
 
   await message.fill("bring lemonade");
   await message.press("Enter");
@@ -295,18 +298,25 @@ test("lists a thread's parent and forks in the thread details panel, and merges 
   await expect(heading).toHaveText("plan a picnic");
 
   // The parent lists its fork, which opens from the row.
-  await toggle.click();
+  await showThreadDetails(page);
   await expect(related.getByRole("listitem")).toHaveText([/plan a picnic fork.*Done/]);
   await shoot(page, info, "lineage-parent");
   await related.getByRole("button", { name: /plan a picnic fork/ }).click();
   await expect(heading).toHaveText("plan a picnic fork");
-  // Leaving a thread closes its panel: back in it, the panel stays closed.
-  await toggle.click();
-  await expect(panel).toBeVisible();
   // The parent row opens the parent.
+  await showThreadDetails(page);
   await related.getByRole("button", { name: /^plan a picnic / }).click();
   await expect(heading).toHaveText("plan a picnic");
+  // Each thread keeps whether its details show (T3's per-thread visibility, D1350).
+  await page.goBack();
+  await expect(heading).toHaveText("plan a picnic fork");
+  await expect(panel).toBeVisible();
+  await hideThreadDetails(page);
+  await page.goForward();
+  await expect(heading).toHaveText("plan a picnic");
+  await expect(panel).toBeVisible();
   await page.goBack();
   await expect(heading).toHaveText("plan a picnic fork");
   await expect(panel).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
 });

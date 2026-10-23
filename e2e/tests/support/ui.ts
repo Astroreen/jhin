@@ -38,3 +38,32 @@ export async function expectOpenConnections(page: Page, count: number): Promise<
   await expect(page.getByLabel("Connection open")).toHaveCount(count);
   await page.getByRole("button", { name: "Back", exact: true }).click();
 }
+
+/**
+ * Shows the open thread's details (t3-parity.md D802, D1350), wherever they go. Beside a wide
+ * chat the card is open already unless it was closed (T3's inline card): its sections come a
+ * moment later, so the card is waited for, not toggled. Elsewhere the header's toggle opens the
+ * popover. The toggle names the presentation once the thread's view has measured its room.
+ */
+export async function showThreadDetails(page: Page): Promise<Locator> {
+  const toggle = page.getByRole("button", { name: "Toggle thread details panel" });
+  const details = page.getByRole("region", { name: "Thread details" });
+  await expect(toggle).toHaveAttribute("data-details-presentation", /^(inline|popover)$/);
+  if ((await toggle.getAttribute("data-details-presentation")) !== "inline") {
+    await toggle.click();
+  } else if ((await toggle.getAttribute("data-details-inline-open")) !== "true") {
+    // A closed card opens again from the toggle once it knows it has a section to show.
+    await expect(toggle).toHaveAttribute("data-details-effective", "inline");
+    await toggle.click();
+  }
+  await expect(details).toBeVisible();
+  return details;
+}
+
+/** Hides them again: the toggle closes the inline card or the popover alike. */
+export async function hideThreadDetails(page: Page): Promise<void> {
+  const toggle = page.getByRole("button", { name: "Toggle thread details panel" });
+  await expect(page.getByRole("region", { name: "Thread details" })).toBeVisible();
+  await toggle.click();
+  await expect(page.getByRole("region", { name: "Thread details" })).toHaveCount(0);
+}

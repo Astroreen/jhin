@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
-import { threadRow } from "./support/ui.ts";
+import { hideThreadDetails, showThreadDetails, threadRow } from "./support/ui.ts";
 
 let node: RunningNode;
 test.beforeAll(async () => {
@@ -34,7 +34,7 @@ test("D862–D865: delegated work shows in its turn and opens its thread, which 
 }, info) => {
   const parentId = await startThread(page, "coordinate");
   await node.client().call("tasks.delegate", { task: "look around", parentThreadId: parentId });
-  const subagent = page.getByRole("button", { name: "Open look around" });
+  const subagent = page.getByRole("button", { name: "Open look around", exact: true });
   // The row follows the task to its result.
   await expect(subagent).toContainText("Echo: look around");
   await expect(threadRow(page, "coordinate")).toBeVisible();
@@ -76,13 +76,17 @@ return await parallel(['north', 'south'].map((place) => () => agent('look ' + pl
 test("D866–D868: the Lineage section lists delegated work and stops it", async ({ page }, info) => {
   const parentId = await startThread(page, "lineage parent");
   // A thread without related threads shows no Lineage section (D866).
-  const toggle = page.getByRole("button", { name: "Toggle thread details panel" });
-  await toggle.click();
-  await expect(page.getByRole("region", { name: "Thread details" })).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Thread details" }).getByText("Lineage", { exact: true }),
-  ).toBeHidden();
-  await page.keyboard.press("Escape");
+  // Beside the wide chat its card stays out of the way while it has nothing to show (D1350).
+  await expect(page.getByRole("button", { name: "Toggle thread details panel" })).toHaveAttribute(
+    "data-details-presentation",
+    "inline",
+  );
+  // Room for it, but nothing to show: the toggle works the popover instead.
+  await expect(page.getByRole("button", { name: "Toggle thread details panel" })).toHaveAttribute(
+    "data-details-effective",
+    "popover",
+  );
+  await expect(page.getByRole("region", { name: "Thread details" })).toBeHidden();
   const held = await node.client().call<{ childThreadId: string }>("tasks.delegate", {
     task: "/hold digging",
     title: "Digger",
@@ -96,8 +100,7 @@ return await parallel(['east', 'west'].map((place) => () => agent('/hold ' + pla
     "2 agents · 2 working",
   );
 
-  await toggle.click();
-  const details = page.getByRole("region", { name: "Thread details" });
+  const details = await showThreadDetails(page);
   const related = details.getByRole("list", { name: "Related threads" });
   await expect(related.getByRole("button", { name: "Open Digger chat" })).toContainText("Running");
   // D1163: the title counts the subagents that run.
@@ -124,10 +127,9 @@ return await parallel(['east', 'west'].map((place) => () => agent('/hold ' + pla
   // The child's own panel leads back to its parent.
   await related.getByRole("button", { name: "Open Digger chat" }).click();
   await expect(page).toHaveURL(new RegExp(encodeURIComponent(held.childThreadId)));
-  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
-  const back = page
-    .getByRole("region", { name: "Thread details" })
-    .getByRole("button", { name: "lineage parent Stopped" });
+  const back = (await showThreadDetails(page)).getByRole("button", {
+    name: "lineage parent Stopped",
+  });
   await back.click();
   await expect(page).toHaveURL(new RegExp(encodeURIComponent(parentId)));
 });
@@ -147,14 +149,11 @@ test("D879–D880: a subagent the agent runs itself is a child thread that runs 
   await expect(row).toContainText("Completed");
   await expect(threadRow(page, "survey the land")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
-  const related = page
-    .getByRole("region", { name: "Thread details" })
-    .getByRole("list", { name: "Related threads" });
+  const related = (await showThreadDetails(page)).getByRole("list", { name: "Related threads" });
   await expect(related.getByRole("button", { name: "Open survey the land chat" })).toContainText(
     "Done",
   );
-  await page.keyboard.press("Escape");
+  await hideThreadDetails(page);
 
   await row.click();
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: survey the land");
@@ -191,8 +190,7 @@ test("D1164–D1167: a subagent in the background works past its turn and stops 
   await page.mouse.move(0, 0);
   await expect(card).toBeHidden();
 
-  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
-  const details = page.getByRole("region", { name: "Thread details" });
+  const details = await showThreadDetails(page);
   const related = details.getByRole("list", { name: "Related threads" });
   const child = related.getByRole("button", { name: "Open dig deep chat" });
   await expect(child).toContainText("Running");

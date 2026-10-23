@@ -5,7 +5,7 @@ import * as Path from "node:path";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
-import { threadRow } from "./support/ui.ts";
+import { showThreadDetails, threadRow } from "./support/ui.ts";
 
 const running: RunningNode[] = [];
 test.afterEach(async () => {
@@ -214,8 +214,7 @@ test("D260–D274, D1281–D1283: the chat header's git actions commit, push and
 
   // The thread details panel shows the current one, the other behind "Show 1 more" (D1283),
   // and stops the watch.
-  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
-  const details = page.getByRole("region", { name: "Thread details" });
+  const details = await showThreadDetails(page);
   await expect(details.getByRole("button", { name: "Show 1 more" })).toBeVisible();
   await details.getByRole("button", { name: "Show 1 more" }).click();
   await expect(details.getByRole("button", { name: "Stop watching #42" })).toBeVisible();

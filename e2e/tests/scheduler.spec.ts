@@ -5,6 +5,7 @@ import * as Path from "node:path";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
+import { showThreadDetails } from "./support/ui.ts";
 
 let node: RunningNode | undefined;
 test.afterEach(async () => {
@@ -121,7 +122,7 @@ test("D981: the thread details list the thread's automations, pause and run them
     threadId,
   });
 
-  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
+  await showThreadDetails(page);
   const automations = page.getByRole("region", { name: "Automations" });
   await expect(automations).toContainText("Nightly check");
   await expect(automations).toContainText("· next");

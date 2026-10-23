@@ -21,6 +21,7 @@ import { createContext, useContext, useEffect, useSyncExternalStore } from "reac
 import type { ComposerDraft, Drafts } from "../../lib/composer.ts";
 import type { ModelOptionsMemory } from "../../lib/model-options.ts";
 import type { AttachmentUrls } from "../../lib/uploads.ts";
+import type { DetailsVisibility } from "./thread-details.tsx";
 import type { Unconfirmed } from "./unconfirmed.ts";
 
 /** Agents of each node, from `agents.list`, refreshed when a picker opens or after a while. */
@@ -134,6 +135,8 @@ export interface ChatServices {
   readonly composer: ComposerHandle;
   /** The open thread's find bar (D801), for `chat.find`. */
   readonly threadFind: { current: { open(): void } | undefined };
+  /** Whether each thread's details show, inline or in the header's popover (D1350). */
+  readonly threadDetails: DetailsVisibility;
 }
 
 /**
