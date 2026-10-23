@@ -19,7 +19,12 @@ import type {
   RuntimeMode,
   TurnRequest,
 } from "@jhin/agent-api";
-import { DEFAULT_RUNTIME_MODE, ThreadEvents, historyTranscript } from "@jhin/agent-api";
+import {
+  DEFAULT_RUNTIME_MODE,
+  ThreadEvents,
+  UsageLimitError,
+  historyTranscript,
+} from "@jhin/agent-api";
 import { MCP_SERVER_NAME, jhinToolsInstructions } from "@jhin/mcp-api";
 import type {
   CanUseTool,
@@ -27,6 +32,7 @@ import type {
   PermissionMode,
   PermissionResult,
   SDKMessage,
+  SDKRateLimitInfo,
   SDKResultMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -62,6 +68,7 @@ import {
 } from "./mapping.ts";
 import { planSkillDispatch } from "./commands.ts";
 import { applyUltrathinkPrefix, compileClaudeSelection } from "./models.ts";
+import { TurnLimits, USAGE_LIMIT_MESSAGE, gatewayLimitResetAt } from "./usage-limits.ts";
 
 export type { QueryFunction } from "./session.ts";
 
@@ -104,6 +111,8 @@ export interface ClaudeTurnDependencies {
   /** The skills a `$name` in the message can invoke (D301). */
   readonly skills?: () => Promise<ReadonlySet<string>>;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
+  /** Takes each `rate_limit_event` the turn reads (D1302). */
+  readonly rateLimit?: (info: SDKRateLimitInfo) => void;
   /** The node's MCP server for a Claude Code started for the thread (D340); none when unset. */
   readonly mcp?: {
     attach(threadId: string): Attachment;
@@ -929,6 +938,14 @@ export function claudeTurn(
           finished = true;
           break;
         }
+        if (message.type === "rate_limit_event") {
+          limits.event(message.rate_limit_info);
+          deps.rateLimit?.(message.rate_limit_info);
+          continue;
+        }
+        if (message.type === "assistant" && !message.parent_tool_use_id) {
+          limits.assistantRateLimited = message.error === "rate_limit";
+        }
         project(message);
       }
     } catch (error) {
@@ -960,6 +977,9 @@ export function claudeTurn(
   const stop = (lease: Lease) => {
     void lease.interrupt().catch(() => lease.release(false));
   };
+
+  /** The limits the turn ran into (D1303). */
+  const limits = new TurnLimits();
 
   /** The skills a `$name` may invoke, read once per turn. */
   let skills: ReadonlySet<string> = new Set();
@@ -1022,8 +1042,16 @@ export function claudeTurn(
       throw new Error(resultError(result) ?? "Claude Code stopped the turn.");
     }
     out.push({ kind: "usage", usage: resultUsage(result, contextTokens) });
-    const error = resultError(result);
-    if (error !== undefined) throw new Error(error);
+    // A turn a usage limit stopped fails as one (D1303), with the latest reset it knows.
+    const limited = limits.limited(result);
+    const error = resultError(result, limited ? USAGE_LIMIT_MESSAGE : undefined);
+    if (error === undefined) return;
+    const gateway = gatewayLimitResetAt(result, Date.now());
+    if (gateway !== undefined) {
+      throw new UsageLimitError("Claude API rate limit reached. Try again later.", gateway);
+    }
+    if (limited) throw new UsageLimitError(error, limits.resetAt());
+    throw new Error(error);
   };
 
   const done = run().then(

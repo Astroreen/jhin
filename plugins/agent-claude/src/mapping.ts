@@ -309,10 +309,13 @@ export function toolResultText(content: unknown): string {
 const CONTEXT_WINDOW_FULL =
   "Claude stopped: the prompt exceeds the model's context window. Start a new thread or ask it to compact.";
 
-function terminalReasonError(reason: SDKResultMessage["terminal_reason"]): string | undefined {
+function terminalReasonError(
+  reason: SDKResultMessage["terminal_reason"],
+  hint?: string,
+): string | undefined {
   switch (reason) {
     case "api_error":
-      return "Claude gave up after repeated API errors.";
+      return hint ?? "Claude gave up after repeated API errors.";
     case "malformed_tool_use_exhausted":
       return "Claude gave up after repeated malformed tool calls.";
     case "budget_exhausted":
@@ -324,6 +327,9 @@ function terminalReasonError(reason: SDKResultMessage["terminal_reason"]): strin
     case "turn_setup_failed":
       return "Claude could not start the turn.";
     case "blocking_limit":
+      // Claude Code also ends a turn with blocking_limit once the context window is full:
+      // only a usage limit's evidence gives the hint (D1303).
+      return hint ?? CONTEXT_WINDOW_FULL;
     case "prompt_too_long":
       return CONTEXT_WINDOW_FULL;
     case "rapid_refill_breaker":
@@ -355,7 +361,11 @@ export function isAbortedResult(result: SDKResultMessage): boolean {
  * failures (401, 429, 529) as subtype "success" with `is_error` set; its
  * "[ede_diagnostic]" entries are internal telemetry and never the message.
  */
-export function resultError(result: SDKResultMessage): string | undefined {
+/**
+ * The error a result reports, if any. `hint` is what a failure without its own words says
+ * (T3's failureHint): the usage limit's text when a limit stopped the turn (D1303).
+ */
+export function resultError(result: SDKResultMessage, hint?: string): string | undefined {
   const listed =
     result.subtype === "success" && !result.is_error
       ? undefined
@@ -364,7 +374,12 @@ export function resultError(result: SDKResultMessage): string | undefined {
             typeof error === "string" && !error.startsWith("[ede_diagnostic]"),
         );
   if (result.subtype !== "success") {
-    return listed ?? terminalReasonError(result.terminal_reason) ?? result.errors.join("\n");
+    return (
+      listed ??
+      terminalReasonError(result.terminal_reason, hint) ??
+      hint ??
+      result.errors.join("\n")
+    );
   }
   const status = result.api_error_status ?? undefined;
   const structured =
@@ -372,9 +387,9 @@ export function resultError(result: SDKResultMessage): string | undefined {
       ? "Claude API is overloaded (529). Try again shortly."
       : status === 429
         ? "Claude API rate limit reached. Try again later."
-        : terminalReasonError(result.terminal_reason);
+        : terminalReasonError(result.terminal_reason, hint);
   if (!result.is_error && structured === undefined) return undefined;
-  return listed ?? structured ?? (result.result || "Claude failed without a message.");
+  return listed ?? structured ?? hint ?? (result.result || "Claude failed without a message.");
 }
 
 /** The usage a result reports, with the context the conversation occupies. */

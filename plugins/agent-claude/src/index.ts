@@ -11,6 +11,7 @@ import {
   type AgentRuntimeStatus,
   type AgentSlashCommand,
   type AgentTurn,
+  type AgentUsageLimits,
 } from "@jhin/agent-api";
 import { AGENT_PERMISSIONS, MCP_SERVER_CAPABILITY, type McpServer } from "@jhin/mcp-api";
 import { definePlugin, z } from "@jhin/sdk";
@@ -21,7 +22,11 @@ import {
   type Json,
   type KeyValueStore,
 } from "@jhin/storage-api";
-import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query as sdkQuery,
+  type SDKRateLimitInfo,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 
 import { COMPACT_SLASH_COMMAND, discoverSkills, parseInitializationCommands } from "./commands.ts";
 import { claudeConfigDir, deleteSessionFiles } from "./files.ts";
@@ -37,6 +42,13 @@ import {
   type LiveSessions,
   type QueryFunction,
 } from "./session.ts";
+import {
+  applyUsageWindow,
+  claudeRateLimitEventToWindow,
+  claudeUsageResponseToLimits,
+  type ClaudeScopedLimitNames,
+  type ClaudeUsageResponse,
+} from "./usage-limits.ts";
 import {
   CLAUDE_AGENT_ID,
   MCP_SERVER_NAME,
@@ -73,6 +85,10 @@ const STATUS_TTL_MS = 5 * 60_000;
 const UNAVAILABLE_TTL_MS = 10_000;
 /** A probe that takes longer reports Claude Code as unavailable. */
 const PROBE_TIMEOUT_MS = 25_000;
+/** The usage read of a probe is given up after this (T3's DEFAULT_TIMEOUT_MS, D1301). */
+const USAGE_TIMEOUT_MS = 4_000;
+/** `agents.usage-limits` reads them again when what it knows is older (D1304). */
+const USAGE_TTL_MS = 60_000;
 
 /** What a thread's Claude Code may do through the node's MCP server (D341): `@jhin/mcp-api`'s. */
 export { AGENT_PERMISSIONS };
@@ -179,6 +195,10 @@ interface Probe {
   readonly models?: readonly AgentModel[];
   /** The slash commands of the folder it ran in (D300). */
   readonly commands?: readonly AgentSlashCommand[];
+  /** The account's usage limits, read by a status probe of a signed-in Claude Code (D1301). */
+  readonly usageLimits?: AgentUsageLimits;
+  /** The model-scoped window names that read saw, for the rate-limit events (D1302). */
+  readonly limitNames?: ClaudeScopedLimitNames;
 }
 
 /** Commands are asked of Claude Code again after this (T3's PROVIDER_WORKSPACE_SNAPSHOT_TTL_MS). */
@@ -201,7 +221,12 @@ export interface ProbeStore {
  * Starts Claude Code without a prompt and reads its initialization (account and models),
  * as T3 Code's ClaudeProvider capability probe does; nothing reaches the API.
  */
-async function probe(query: QueryFunction, config: Config, cwd = Os.tmpdir()): Promise<Probe> {
+async function probe(
+  query: QueryFunction,
+  config: Config,
+  cwd = Os.tmpdir(),
+  withUsage = false,
+): Promise<Probe> {
   let release!: () => void;
   const finished = new Promise<void>((resolve) => (release = resolve));
   // Sends nothing: the probe only needs Claude Code's initialization (T3 does the same).
@@ -221,6 +246,9 @@ async function probe(query: QueryFunction, config: Config, cwd = Os.tmpdir()): P
       models?: { value: string; displayName: string; description?: string }[];
       commands?: unknown[];
     }>;
+    usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: (opts?: {
+      skipBehaviors?: boolean;
+    }) => Promise<ClaudeUsageResponse>;
   };
   let running: Initializing | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -266,7 +294,9 @@ async function probe(query: QueryFunction, config: Config, cwd = Os.tmpdir()): P
           ...(model.description ? { description: model.description } : {}),
         }),
       );
+    const usage = signedIn && withUsage ? await readUsage(running) : undefined;
     return {
+      ...usage,
       status: signedIn
         ? {
             available: true,
@@ -290,6 +320,47 @@ async function probe(query: QueryFunction, config: Config, cwd = Os.tmpdir()): P
     clearTimeout(timer);
     release();
     running?.close();
+  }
+}
+
+/**
+ * The account's usage limits, T3's capability probe: only the rate limits are read, so the
+ * scan of local transcripts that fills `behaviors` is skipped (with a few GB of transcripts
+ * it outlasts the deadline). A Claude Code without the request, one that fails it or one
+ * that does not answer in time is `probeFailed` (D1301).
+ */
+async function readUsage(running: {
+  usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: (opts?: {
+    skipBehaviors?: boolean;
+  }) => Promise<ClaudeUsageResponse>;
+}): Promise<Pick<Probe, "usageLimits" | "limitNames">> {
+  const checkedAt = new Date().toISOString();
+  const failed = (message: string) => ({
+    usageLimits: {
+      checkedAt,
+      windows: [],
+      unavailable: { reason: "probeFailed" as const, message },
+    },
+  });
+  const read = running.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+  if (read === undefined) return failed("This Claude Code does not report usage.");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const response = await Promise.race([
+      read.call(running, { skipBehaviors: true }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Claude Code did not answer the usage request.")),
+          USAGE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    const { limits, names } = claudeUsageResponseToLimits(response, checkedAt);
+    return { usageLimits: limits, limitNames: names };
+  } catch (error) {
+    return failed(error instanceof Error ? error.message : String(error));
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -353,6 +424,99 @@ export function createClaudeRuntime(options: {
       ? BUNDLED_DEFAULT_MODEL
       : (all[0]?.id ?? BUNDLED_DEFAULT_MODEL);
   };
+  /** Probes Claude Code again (once at a time per config): its status, models and usage. */
+  const refresh = (key: string) => {
+    let running = probing.get(key);
+    if (running === undefined) {
+      running = probe(options.query, options.config(), undefined, true)
+        .then((result) => {
+          probed = { at: Date.now(), key, probe: result };
+          // A new read holds what the events before it said; one that came while it was
+          // read is newer and stays (D1302).
+          const readAt = result.usageLimits?.checkedAt;
+          if (
+            liveLimits !== undefined &&
+            readAt !== undefined &&
+            Date.parse(liveLimits.limits.checkedAt) <= Date.parse(readAt)
+          ) {
+            liveLimits = undefined;
+          }
+          void options.probes
+            ?.save(probed)
+            .catch((error: unknown) =>
+              options.log?.("could not keep the claude code probe", { error: String(error) }),
+            );
+          return result;
+        })
+        .finally(() => probing.delete(key));
+      probing.set(key, running);
+    }
+    return running;
+  };
+  const status = async (): Promise<AgentRuntimeStatus> => {
+    const key = probeKey();
+    if (probed === undefined && options.probes !== undefined) {
+      stored ??= options.probes.load().catch(() => undefined);
+      const kept = await stored;
+      // A probe that ran meanwhile is newer than the kept one.
+      if (probed === undefined && kept !== undefined) probed = kept;
+    }
+    if (probed === undefined || probed.key !== key) return (await refresh(key)).status;
+    // A stale answer is given at once while a new probe runs: picking the default agent
+    // (D96) never waits for Claude Code to start. "Unavailable" goes stale sooner, so a
+    // sign-in shows on the next look.
+    const ttl = probed.probe.status.available ? STATUS_TTL_MS : UNAVAILABLE_TTL_MS;
+    if (Date.now() - probed.at >= ttl) void refresh(key).catch(() => undefined);
+    return probed.probe.status;
+  };
+  /**
+   * What the `rate_limit_event`s said since the last read, merged onto it (D1302), while the
+   * config is the one Claude Code ran with: another config may be another account.
+   */
+  let liveLimits: { key: string; limits: AgentUsageLimits } | undefined;
+  const current = () => (probed?.key === probeKey() ? probed.probe : undefined);
+  const rateLimit = (info: SDKRateLimitInfo) => {
+    const key = probeKey();
+    const read = current();
+    const window = claudeRateLimitEventToWindow(
+      info,
+      read?.limitNames ?? { overageIncluded: undefined },
+    );
+    if (window === undefined) return;
+    const previous = liveLimits?.key === key ? liveLimits.limits : read?.usageLimits;
+    const merged = applyUsageWindow(previous, window, new Date().toISOString());
+    if (merged !== undefined && merged !== previous) liveLimits = { key, limits: merged };
+  };
+  const known = (): AgentUsageLimits | undefined =>
+    liveLimits?.key === probeKey() ? liveLimits.limits : current()?.usageLimits;
+  /** The usage limits as Claude Code last reported them: the probe's read, then its events. */
+  const usageLimits = async (): Promise<AgentUsageLimits | undefined> => {
+    // Read again when what is known is older than a minute, the read failed or was never
+    // made, or a window it shows has reset since (D1304), as Codex's (D1142).
+    const before = probed;
+    await status();
+    const key = probeKey();
+    const last = probed?.key === key ? probed : undefined;
+    // The look that just probed has read them.
+    if (last !== undefined && last !== before && probing.get(key) === undefined) {
+      return last.probe.status.available ? known() : undefined;
+    }
+    const now = Date.now();
+    const shown = known();
+    const stale =
+      last === undefined ||
+      (last.probe.status.available && last.probe.usageLimits === undefined) ||
+      now - Math.max(last.at, shown === undefined ? 0 : Date.parse(shown.checkedAt)) >=
+        USAGE_TTL_MS ||
+      shown?.unavailable?.reason === "probeFailed" ||
+      (shown?.windows ?? []).some(
+        (window) => window.resetsAt !== undefined && Date.parse(window.resetsAt) <= now,
+      );
+    if (stale) await refresh(key).catch(() => undefined);
+    // Signed out: it cannot tell.
+    if (current()?.status.available !== true) return undefined;
+    return known();
+  };
   return {
     live,
     agentId: CLAUDE_AGENT_ID,
@@ -367,40 +531,8 @@ export function createClaudeRuntime(options: {
     interactionModes: ["default", "plan"],
     // A message steered in goes into the live query the turn holds (D206).
     steering: true,
-    async status() {
-      const key = probeKey();
-      const refresh = () => {
-        let running = probing.get(key);
-        if (running === undefined) {
-          running = probe(options.query, options.config())
-            .then((result) => {
-              probed = { at: Date.now(), key, probe: result };
-              void options.probes
-                ?.save(probed)
-                .catch((error: unknown) =>
-                  options.log?.("could not keep the claude code probe", { error: String(error) }),
-                );
-              return result;
-            })
-            .finally(() => probing.delete(key));
-          probing.set(key, running);
-        }
-        return running;
-      };
-      if (probed === undefined && options.probes !== undefined) {
-        stored ??= options.probes.load().catch(() => undefined);
-        const kept = await stored;
-        // A probe that ran meanwhile is newer than the kept one.
-        if (probed === undefined && kept !== undefined) probed = kept;
-      }
-      if (probed === undefined || probed.key !== key) return (await refresh()).status;
-      // A stale answer is given at once while a new probe runs: picking the default agent
-      // (D96) never waits for Claude Code to start. "Unavailable" goes stale sooner, so a
-      // sign-in shows on the next look.
-      const ttl = probed.probe.status.available ? STATUS_TTL_MS : UNAVAILABLE_TTL_MS;
-      if (Date.now() - probed.at >= ttl) void refresh().catch(() => undefined);
-      return probed.probe.status;
-    },
+    status,
+    usageLimits,
     async commands({ cwd }) {
       const config = options.config();
       const key = `${probeKey()}|${cwd}`;
@@ -454,6 +586,7 @@ export function createClaudeRuntime(options: {
         settings: config,
         defaultModel: model,
         contextWindow: (name) => windows.get(name) ?? manifestContextWindow(name),
+        rateLimit,
         skills: async () =>
           new Set(
             (await discoverSkills(claudeConfigDir(config.env, config.inheritEnv), request.cwd)).map(

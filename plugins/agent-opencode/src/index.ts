@@ -13,6 +13,7 @@ import {
   type AgentRuntime,
   type AgentRuntimeStatus,
   type AgentTurn,
+  type AgentUsageLimits,
 } from "@jhin/agent-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
@@ -30,6 +31,7 @@ import {
   type OpenCodeClient,
 } from "./client.ts";
 import { variantOptions } from "./mapping.ts";
+import { readOpenCodeGoUsageLimits } from "./usage-limits.ts";
 import {
   createServerOwner,
   isSupportedVersion,
@@ -57,7 +59,11 @@ export {
 } from "./turn.ts";
 export * from "./mapping.ts";
 
+export { OPENCODE_GO_USAGE_URL, readOpenCodeGoUsageLimits } from "./usage-limits.ts";
+
 export const CONFIG_SECTION = "jhin.agent-opencode";
+/** `agents.usage-limits` reads OpenCode Go's again after this (D1305). */
+const USAGE_TTL_MS = 60_000;
 const NAMESPACE = "jhin.agent-opencode";
 
 /** How long a status probe is reused (as Claude's, D95). */
@@ -137,6 +143,8 @@ export function createOpenCodeRuntime(options: {
   readonly attachmentsDir?: string;
   /** Waits for a fresh server's model list; tests pass one they fire themselves. */
   readonly clock?: Clock;
+  /** Reads OpenCode Go's usage (D1305); tests pass a fake. */
+  readonly fetch?: typeof fetch;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): AgentRuntime & {
   settled(threadId: string): Promise<void>;
@@ -227,6 +235,8 @@ export function createOpenCodeRuntime(options: {
     }
   };
 
+  /** The last read of OpenCode Go's usage, and the config it was read with. */
+  let usageRead: { at: number; key: string; limits: AgentUsageLimits } | undefined;
   /** Undelivered steers of stopped turns, by session (D883). */
   const strandedSteers = new Map<string, Set<string>>();
   const models = () => probed?.probe.models ?? [];
@@ -272,6 +282,30 @@ export function createOpenCodeRuntime(options: {
       const ttl = probed.probe.status.available ? STATUS_TTL_MS : UNAVAILABLE_TTL_MS;
       if (Date.now() - probed.at >= ttl) void refresh().catch(() => undefined);
       return probed.probe.status;
+    },
+    // OpenCode Go's allowance (D1305), read again after a minute, a failed read, or a
+    // window's reset.
+    async usageLimits() {
+      const key = probeKey();
+      const now = Date.now();
+      const kept = usageRead?.key === key ? usageRead : undefined;
+      const stale =
+        kept === undefined ||
+        now - kept.at >= USAGE_TTL_MS ||
+        kept.limits.unavailable?.reason === "probeFailed" ||
+        kept.limits.windows.some(
+          (window) => window.resetsAt !== undefined && Date.parse(window.resetsAt) <= now,
+        );
+      if (!stale) return kept.limits;
+      const config = options.config();
+      const limits = await readOpenCodeGoUsageLimits({
+        enabled: config.enabled,
+        serverUrl: config.serverUrl,
+        env: env(),
+        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      });
+      usageRead = { at: now, key, limits };
+      return limits;
     },
     startTurn(request) {
       if (!options.config().enabled) {

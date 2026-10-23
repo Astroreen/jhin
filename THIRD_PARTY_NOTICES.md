@@ -62,7 +62,9 @@ list, finding and starting editors), the detection
 of a node's machine kind (`packages/node-host/src/machine.ts`), the Claude
 Code agent runtime (`plugins/agent-claude`: query options, permission modes,
 tool, question and plan mapping, result errors, the model catalog, live
-sessions kept between turns, the node's MCP server attached to Claude Code),
+sessions kept between turns, the node's MCP server attached to Claude Code,
+usage limits and a turn a usage limit stopped in
+`plugins/agent-claude/src/usage-limits.ts`),
 the agent credentials of the MCP server plugin (`plugins/mcp-server`), the
 Codex agent runtime (`plugins/agent-codex`: the app-server protocol and
 handshake, runtime and interaction modes, approval, question, plan, tool and
@@ -77,7 +79,8 @@ preferred defaults, usage limits and their windows in
 (`plugins/agent-opencode`: starting and reaching an OpenCode 2 server, its
 version probe, session rules, permission, form and tool mapping, usage and
 interrupts, reverting and forking a session, its pending requests after a
-reconnect), the
+reconnect, OpenCode Go's usage limits in
+`plugins/agent-opencode/src/usage-limits.ts`), the
 terminal plugin (`plugins/terminal`:
 loading node-pty, the shell's environment, sizes, scrollback and its
 history files, the limit on exited sessions and finding the program a
