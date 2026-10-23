@@ -557,6 +557,7 @@ describe("code blocks in the prompt (D841–D843)", () => {
     await userEvent.click(trigger);
     await userEvent.fill(page.getByRole("combobox", { name: "Search languages" }), "pyth");
     const python = page.getByRole("option", { name: "Python" });
+    await expect.element(python).toBeVisible();
     expect(
       python.element().querySelector("svg[data-pierre-icon]")?.getAttribute("data-pierre-icon"),
     ).toBe(resolvePierreIconForEntry("file.py", "file")?.name);

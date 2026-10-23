@@ -309,8 +309,13 @@ test("offers commands, skills and files from / $ and @, and inserts what is pick
   await expect(commands.getByRole("option")).toHaveText([/\/review/]);
   // The menu is the editor's list, its highlighted option the active one (D1348).
   await expect(message).toHaveAttribute("aria-controls", (await commands.getAttribute("id"))!);
-  const active = await message.getAttribute("aria-activedescendant");
-  await expect(page.locator(`[id="${active}"]`)).toHaveText(/\/review/);
+  // The highlighted option is the one the editor names (waited for, as the names change).
+  const highlighted = commands.locator('[role="option"][aria-selected="true"]');
+  await expect(highlighted).toHaveText(/\/review/);
+  await expect(message).toHaveAttribute(
+    "aria-activedescendant",
+    (await highlighted.getAttribute("id"))!,
+  );
   await message.press("Enter");
   await expect(commands).toBeHidden();
   await expect(message).not.toHaveAttribute("aria-activedescendant");
