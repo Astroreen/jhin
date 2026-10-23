@@ -288,6 +288,12 @@ describe("the device hub", () => {
     expect(await connect(ws).opened).toBe(401);
     const reader = await node.call<Access>("device.hub.access", {}, READER);
     expect(await connect(`${ws}&wsTicket=${reader.socketQuery.wsTicket}`).opened).toBe(403);
+    // A refused socket does not spend the ticket: it still opens the device list's.
+    const list = connect(
+      `${node.url.replace(/^http/, "ws")}/device-hub/api/devices/ws?wsTicket=${reader.socketQuery.wsTicket}`,
+    );
+    expect(await list.opened).toBe(101);
+    list.socket.close();
     // A media ticket opens no socket.
     expect(await connect(`${ws}&wsTicket=${access.query.wsTicket}`).opened).toBe(401);
 

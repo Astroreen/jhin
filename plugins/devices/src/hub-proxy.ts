@@ -155,9 +155,11 @@ export function createTickets(now: () => number = Date.now) {
       sweep();
       const found = issued.get(digest(ticket));
       if (found === undefined || found.expiresAt <= now() || found.kind !== kind) return undefined;
-      // A socket ticket opens one socket: a client that reconnects asks for a fresh one.
-      if (kind === "socket") issued.delete(digest(ticket));
       return found;
+    },
+    /** A socket ticket opens one socket: a client that reconnects asks for a fresh one. */
+    consume(ticket: string): void {
+      issued.delete(digest(ticket));
     },
     /** A revoked token's tickets go with it (security.md D414). */
     revoke(principal?: string) {
@@ -380,6 +382,9 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
       if (missingPermissions(caller.permissions, required).length > 0) {
         return refuse(socket, "403 Forbidden");
       }
+      // Spent only once it is good for this socket.
+      const ticket = url.searchParams.get(TICKET_PARAM);
+      if (ticket !== null && ticket.trim() !== "") tickets.consume(ticket);
       const origin = options.origin();
       if (origin === undefined) return refuse(socket, "503 Service Unavailable");
       if (socket.destroyed) return;

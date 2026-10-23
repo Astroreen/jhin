@@ -61,7 +61,7 @@ describe("the device toolchain", () => {
     expect(toolchain.installed(HUB_SPEC)).toBe(true);
   });
 
-  it("installs again over an entry without its sentinel and drops older versions", async () => {
+  it("installs again over an entry without its sentinel and keeps older versions", async () => {
     const tools = fakeTools();
     for (const [version, sentinel] of [
       ["0.9.0", "0.9.0"],
@@ -80,10 +80,8 @@ describe("the device toolchain", () => {
     expect(toolchain.installed(HUB_SPEC)).toBe(false);
     await toolchain.ensure(HUB_SPEC);
     expect(tools.npmCalls()).toHaveLength(1);
-    expect(installedVersions(tools.home, HUB_SPEC)).toEqual([HUB_SPEC.version]);
-    expect(Fs.readdirSync(Path.join(tools.home, "tools", "expo-device-hub"))).toEqual([
-      HUB_SPEC.version,
-    ]);
+    // Another node of this home may still run its hub from the older one.
+    expect(installedVersions(tools.home, HUB_SPEC)).toEqual(["0.9.0", HUB_SPEC.version]);
   });
 
   it("says what it installs the first time", () => {

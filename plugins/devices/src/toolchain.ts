@@ -101,13 +101,33 @@ export function runProgram(
   } = {},
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted === true) {
+      reject(new Error("The command was cancelled before it started."));
+      return;
+    }
+    // Its own process group off Windows, so a timeout or a cancel also ends what it started
+    // (npm's install scripts).
+    const group = process.platform !== "win32";
     const child = ChildProcess.spawn(command, [...args], {
       env: options.env ?? process.env,
       stdio: ["pipe", "pipe", "pipe"],
       shell: false,
-      ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      detached: group,
     });
+    const end = () => {
+      try {
+        if (group && child.pid !== undefined) process.kill(-child.pid, "SIGTERM");
+        else child.kill("SIGTERM");
+      } catch {
+        // Already gone.
+      }
+    };
+    const timer = options.timeoutMs === undefined ? undefined : setTimeout(end, options.timeoutMs);
+    options.signal?.addEventListener("abort", end, { once: true });
+    const settled = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      options.signal?.removeEventListener("abort", end);
+    };
     // A noisy program keeps only its last output: the callers read a JSON line or an exit code.
     const keep = (chunks: Buffer[], chunk: Buffer) => {
       chunks.push(chunk);
@@ -118,14 +138,19 @@ export function runProgram(
     const err: Buffer[] = [];
     child.stdout.on("data", (chunk: Buffer) => keep(out, chunk));
     child.stderr.on("data", (chunk: Buffer) => keep(err, chunk));
-    child.once("error", reject);
-    child.once("close", (code) =>
+    child.once("error", (error) => {
+      settled();
+      reject(error);
+    });
+    child.once("close", (code) => {
+      settled();
       resolve({
         code,
         stdout: Buffer.concat(out).toString("utf8"),
         stderr: Buffer.concat(err).toString("utf8"),
-      }),
-    );
+      });
+    });
+    child.stdin.on("error", () => undefined);
     child.stdin.end(options.stdin ?? "");
   });
 }
@@ -231,16 +256,17 @@ export function createToolchain(options: ToolchainOptions) {
     }
   };
 
-  /** Older versions and dead stagings go once a version is in place (D951's clean-up). */
+  /**
+   * Dead stagings go once a version is in place (D951's clean-up). Older versions stay:
+   * another node of this home may still run its hub from one.
+   */
   const prune = (spec: ToolSpec) => {
     const parent = Path.join(options.home, "tools", spec.name);
     for (const name of Fs.readdirSync(parent)) {
-      if (name === spec.version) continue;
+      if (!name.startsWith(".staging-")) continue;
       const full = Path.join(parent, name);
-      if (name.startsWith(".staging-")) {
-        const touched = Fs.statSync(full, { throwIfNoEntry: false })?.mtimeMs ?? 0;
-        if (Date.now() - touched < STAGING_STALE_AFTER_MS) continue;
-      }
+      const touched = Fs.statSync(full, { throwIfNoEntry: false })?.mtimeMs ?? 0;
+      if (Date.now() - touched < STAGING_STALE_AFTER_MS) continue;
       Fs.rmSync(full, { recursive: true, force: true });
     }
   };
@@ -286,7 +312,7 @@ export function createToolchain(options: ToolchainOptions) {
     try {
       prune(spec);
     } catch {
-      // A version another node still runs may not go; it goes with a later install.
+      // A staging that cannot go now goes with a later install.
     }
     return paths;
   };

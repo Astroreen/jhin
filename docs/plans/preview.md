@@ -562,7 +562,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   another version installs again, installs run one at a time, a failed one
   leaves nothing behind and says only its step ("Installing expo-device-hub
   failed while running npm install (exit code 1)."), and, as D951 cleans up,
-  older versions and stagings untouched for an hour go. The `devices` stream
+  stagings untouched for an hour go; older versions stay, as another node of
+  the home may still run its hub from one. npm runs in a process group of
+  its own, so a timeout or a stop also ends its install scripts. The `devices` stream
   carries T3's host status (`hostStatuses.local`: `installing` with "Installing
   device hub 0.15.3…" or "Updating … from … to …", `starting`, `ready`,
   `failed` with "Device support failed during {step}."), and a request waits
@@ -805,6 +807,8 @@ probe of `ServerBrowser.ts`.
   - Hub tickets that follow a caller's grants as they change: the node keeps
     no token to verify again, so a ticket keeps its grants for its five
     minutes, as T3's does.
+  - Removing older tool versions no node of the home runs any more (D951
+    removes its old browsers; a hub may run from an old version).
   - Proving that the process answering on the hub's port is the hub the node
     started: the port is reserved and freed before the hub binds it, as T3
     does, so a local process that takes it first would get the proxied
