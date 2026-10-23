@@ -65,6 +65,7 @@ import type {
 import { Chromium, RENDER_SCALE, presentAsChrome } from "./chromium.ts";
 import { ControlInterrupted, TabControl } from "./control.ts";
 import * as Ops from "./page.ts";
+import { readBounded } from "./read-bounded.ts";
 import { RECORDING_ENCODER_SCRIPT, RECORDING_SCREENCAST, type EncoderWindow } from "./recording.ts";
 
 const AGENT_TAB_LIMIT = 8;
@@ -1518,15 +1519,14 @@ export function createTabs(options: TabsOptions) {
           throw gone();
         });
         try {
-          const { size } = await file.stat();
           const max = options.downloadMaxBytes ?? PREVIEW_DOWNLOAD_MAX_BYTES;
-          if (size > max) {
-            throw new PreviewError(
+          const tooLarge = () =>
+            new PreviewError(
               "PREVIEW_RESULT_TOO_LARGE",
               `${saved.fileName} is too large to send to this client (at most ${Math.floor(max / 1024 / 1024)} MiB); it stays on the node at ${saved.path}.`,
             );
-          }
-          const data = await file.readFile();
+          const data = await readBounded(file, max);
+          if (data === undefined) throw tooLarge();
           return { fileName: saved.fileName, data: data.toString("base64") };
         } finally {
           await file.close();

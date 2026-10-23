@@ -760,7 +760,11 @@ probe of `ServerBrowser.ts`.
   gets it. Going back, forward or reloading onto a file is no failure
   either. A download Playwright reports but cannot save is logged on the
   node and not offered. A failed Save leaves the toast up, so Save can be
-  tried again.
+  tried again; a second click while one Save runs adds nothing. Save reads
+  the file with the bound itself, so one still growing past it is too
+  large. Every viewer watching then gets the offer, and each page shows it
+  only if it holds control by its own view of the tab: when control
+  changes hands as the file arrives, the offer may show on neither page.
 
 ### Proof
 
@@ -817,9 +821,11 @@ probe of `ServerBrowser.ts`.
   plugin's memory for the session (one small record per thread).
 - Downloads and uploads above 64 MiB (D1203, D1331): a binary channel or an
   HTTP route for them, which also spares the node and the page holding a
-  Save's file and its base64 at once, and bounds Saves running together; T3's in-tab state for a navigation that became a
-  download; offering a download again to a viewer that attaches after it
-  (the tab's downloads in its state, D1331).
+  Save's file and its base64 at once, and bounds Saves running together.
+- T3's in-tab state for a navigation that became a download (D1331).
+- Offering a download again to a viewer that attaches after it, or to the
+  viewer that took control as it arrived (D1331): the tab's downloads in
+  its state, and the offer addressed by the node to the controller.
 - T3's work-log presentation of preview tools ("Used browser N times").
 - Reading password values in isolated worlds of out-of-process frames: Jhin
   reads them in each frame's own world.

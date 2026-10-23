@@ -297,12 +297,16 @@ export const previewPanelPlugin = builtin(
         tab: { threadId: string; tabId: string },
         download: { id: string; fileName: string },
       ) => {
+        // One Save at a time: a second click while the file comes adds no second download.
+        let saving = false;
         const id = toasts?.show({
           type: "info",
           title: `Downloaded ${download.fileName}`,
           action: {
             label: "Save",
             onClick: () => {
+              if (saving) return;
+              saving = true;
               void client
                 .call<{ fileName: string; data: string }>("preview.tab.download", {
                   ...tab,
@@ -326,7 +330,10 @@ export const previewPanelPlugin = builtin(
                   // Saved: the offer is done. A failed Save keeps it, so Save can be tried again.
                   if (id !== undefined) toasts?.close(id);
                 })
-                .catch((error: unknown) => onError("Couldn't save the download", error));
+                .catch((error: unknown) => onError("Couldn't save the download", error))
+                .finally(() => {
+                  saving = false;
+                });
             },
           },
         });
