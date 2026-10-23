@@ -831,7 +831,11 @@ Connect stays out of scope.
   it). It never opens a page session (`/auth/session` refuses it). The device offers it as the
   WebSocket's token subprotocol, where Jhin already carries tokens, never
   in the URL (T3's `?wsTicket=` lands in access logs); `auth.verifier`
-  spends it, so a ticket works wherever a token does, once. Failed
+  spends it, so a ticket works wherever a token does, once. Like
+  `/auth/pair`, the endpoint is protocol, not an operation: it needs a
+  proof over HTTP, which no command, CLI or MCP call can carry (rule 6
+  gives way as for D1196). An unbound token may mint tickets too; they
+  protect only what is bound. Failed
   requests count against the client's attempts like `/auth/pair`'s.
 - **D1368. The web client binds what it pairs.** Where WebCrypto is
   available (a secure context: HTTPS or loopback), pairing a node by a
@@ -843,7 +847,9 @@ Connect stays out of scope.
   token as a bearer token. Only a refused token (`CREDENTIAL_INVALID`)
   stops the client; a refused proof (a clock minutes off, a busy node) is
   tried again like a network error. Without WebCrypto the page pairs as before.
-  Nodes saved before keep their bearer tokens; pairing again binds.
+  Nodes saved before keep their bearer tokens; pairing again binds. A
+  saved key that no longer reads as a `CryptoKey` keeps its node in the
+  list: its bound token is refused, and the node is paired again.
   `auth.clients.list` says `bound: true` for a bound token (additive).
 
 ## PR plan

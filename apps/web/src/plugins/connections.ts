@@ -5,7 +5,7 @@ import { definePlugin, toDisposable, z } from "@jhin/sdk";
 import { copyText } from "@jhin/ui";
 
 import { builtin } from "../lib/builtin.ts";
-import { createDeviceKey, isDeviceKey, type DeviceKey } from "../lib/dpop.ts";
+import { createDeviceKey, isDeviceKey } from "../lib/dpop.ts";
 import { createNodeStore } from "../lib/node-store.ts";
 import {
   closeSession,
@@ -35,7 +35,9 @@ const Saved = z.union([
     token: z.string().min(1),
     label: z.string().min(1),
     /** The key the token is bound to (security.md D1368): it connects through tickets. */
-    key: z.custom<DeviceKey>(isDeviceKey).optional(),
+    // Kept as stored: a key that no longer reads as one keeps its node listed;
+    // its bound token is then refused, and the node asks to pair again.
+    key: z.unknown().optional(),
   }),
   z.object({ url: WebSocketUrl, session: z.literal(true), label: z.string().min(1) }),
 ]);
@@ -141,7 +143,7 @@ export const connectionsPlugin = builtin(
       const open = (saved: Saved) => {
         // A session node sends no token: the browser adds its cookie to the upgrade.
         const token = "token" in saved ? saved.token : undefined;
-        const key = "key" in saved ? saved.key : undefined;
+        const key = "key" in saved && isDeviceKey(saved.key) ? saved.key : undefined;
         const client = createRpcClient({
           // A bound token never goes on the socket: a fresh ticket does (D1367).
           connect: async () =>

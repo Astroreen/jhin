@@ -1192,6 +1192,13 @@ describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D13
     expect(
       await refusal(sign("POST", pairUrl, { iat: Math.floor(Date.now() / 1000) - 301 })),
     ).toEqual([400, "The DPoP proof was refused (time_window)."]);
+    // Another port is another node.
+    const otherPort = new URL(httpUrl(node));
+    otherPort.port = String(Number(otherPort.port) + 1);
+    expect(await refusal(sign("POST", `${otherPort.origin}/auth/pair`))).toEqual([
+      400,
+      "The DPoP proof was refused (url_mismatch).",
+    ]);
     // The path matches whole segments only.
     expect(await refusal(sign("POST", `${httpUrl(node)}/xauth/pair`))).toEqual([
       400,
