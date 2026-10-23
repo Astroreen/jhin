@@ -118,6 +118,7 @@ function Host(
         <HostedWebview
           client={client}
           guests={guests.current}
+          onError={onError}
           key={`${tab.threadId}\u0000${tab.tabId}`}
           preview={preview}
           surfaces={surfaces}
@@ -134,8 +135,9 @@ function HostedWebview(props: {
   readonly surfaces: NativeSurfaces;
   readonly tab: DesktopTab;
   readonly guests: Map<number, DesktopTab>;
+  readonly onError: { current: (title: string, error: unknown) => void };
 }) {
-  const { client, preview, surfaces, tab, guests } = props;
+  const { client, preview, surfaces, tab, guests, onError } = props;
   const ref = useRef<ElectronWebview | null>(null);
   // Fixed for the tab's life: Electron reads the partition once, as the guest attaches.
   const [partition] = useState(tab.partition);
@@ -170,8 +172,12 @@ function HostedWebview(props: {
           tabId: tab.tabId,
           endpoint,
         });
-      })().catch(() => {
-        // The node waits for another attach until its deadline, then opens the tab headless.
+      })().catch((error: unknown) => {
+        // The next document of the webview tries again; until the node's deadline it waits,
+        // then opens the tab headless.
+        if (disposed) return;
+        attachedOnce.current = false;
+        onError.current("Couldn't show the browser tab in the app", error);
       });
     };
     webview.addEventListener("did-attach", register);

@@ -24,7 +24,8 @@ interface Attached {
   readonly guest: WebContents;
   readonly endpoint: string;
   downloadDirectory: string | null;
-  pendingDownloadGuid: string | null;
+  /** Downloads CDP named that Electron has not asked to place yet, oldest first. */
+  readonly pendingDownloadGuids: string[];
   close(): void;
 }
 
@@ -54,9 +55,9 @@ export function createWebviewHost(options: WebviewHostOptions) {
     // file the node asked for; CDP names the download just before this runs.
     guestSession.on("will-download", (_event, item, source) => {
       const tab = source === undefined ? undefined : attached.get(source.id);
-      if (tab?.downloadDirectory == null || tab.pendingDownloadGuid === null) return;
-      item.setSavePath(Path.join(tab.downloadDirectory, tab.pendingDownloadGuid));
-      tab.pendingDownloadGuid = null;
+      const guid = tab?.pendingDownloadGuids.shift();
+      if (tab?.downloadDirectory == null || guid === undefined) return;
+      item.setSavePath(Path.join(tab.downloadDirectory, guid));
     });
   };
 
@@ -95,10 +96,13 @@ export function createWebviewHost(options: WebviewHostOptions) {
       throw new Error("No webview of the app has this id.");
     }
     if (guest.hostWebContents !== host) throw new Error("The webview is not this page's.");
-    attached.get(webContentsId)?.close();
-    if (guest.isDevToolsOpened() || guest.debugger.isAttached()) {
+    // A debugger this host holds (an earlier attach of the guest) is let go only once the
+    // new attach can proceed, so a refused attach keeps the node's working connection.
+    const previous = attached.get(webContentsId);
+    if (guest.isDevToolsOpened() || (guest.debugger.isAttached() && previous === undefined)) {
       throw new Error("Another debugger holds the webview.");
     }
+    previous?.close();
     guest.debugger.attach("1.3");
     const secret = Crypto.randomBytes(24).toString("base64url");
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0, path: `/${secret}` });
@@ -125,7 +129,7 @@ export function createWebviewHost(options: WebviewHostOptions) {
     ) => {
       if (method === "Browser.downloadWillBegin") {
         const guid = (params as { guid?: unknown } | undefined)?.guid;
-        tab.pendingDownloadGuid = typeof guid === "string" ? guid : null;
+        if (typeof guid === "string") tab.pendingDownloadGuids.push(guid);
       }
       relay?.event(method, params, sessionId);
     };
@@ -147,7 +151,7 @@ export function createWebviewHost(options: WebviewHostOptions) {
       guest,
       endpoint: `ws://127.0.0.1:${address.port}/${secret}`,
       downloadDirectory: null,
-      pendingDownloadGuid: null,
+      pendingDownloadGuids: [],
       close,
     };
     attached.set(webContentsId, tab);
