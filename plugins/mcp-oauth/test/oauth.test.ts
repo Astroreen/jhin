@@ -132,12 +132,15 @@ async function sessionCookie(base: string, credential: string): Promise<string> 
   return opened.headers.get("set-cookie")!.split(";")[0]!;
 }
 
-/** The hidden fields of the page's approval form. */
+/** The fields of the page's approval form, as a browser posts it unchanged. */
 function formOf(html: string): Record<string, string> {
   const fields: Record<string, string> = {};
   for (const match of html.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)" \/>/g)) {
     fields[match[1]!] = match[2]!.replaceAll("&quot;", '"').replaceAll("&amp;", "&");
   }
+  // The access level the page has chosen (security.md D1369).
+  const checked = /<input type="radio" name="access" value="([^"]+)" checked \/>/.exec(html);
+  if (checked !== null) fields["access"] = checked[1]!;
   return fields;
 }
 
@@ -396,6 +399,57 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
     });
     expect(mcp.status).toBe(401);
+  });
+
+  it("issues what the access level the approver picked grants (security.md D1369)", async () => {
+    const { base, token } = await startNode();
+    const { client_id: clientId } = (await (await register(base)).json()) as {
+      client_id: string;
+    };
+    const cookie = await sessionCookie(base, token);
+    const approve = async (access: string | undefined, scope: string) => {
+      const html = await (
+        await fetch(authorizeUrl(base, clientId, { scope }), { headers: { cookie } })
+      ).text();
+      const { access: _chosen, ...form } = formOf(html);
+      return fetch(`${base}/oauth/mcp/authorize`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: base },
+        body: new URLSearchParams({
+          ...form,
+          ...(access === undefined ? {} : { access }),
+          decision: "approve",
+        }),
+      });
+    };
+    const scopeOf = async (approved: Response) => {
+      expect(approved.status).toBe(303);
+      const code = new URL(approved.headers.get("location")!).searchParams.get("code")!;
+      const exchanged = await fetch(`${base}/oauth/mcp/token`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          client_id: clientId,
+          redirect_uri: REDIRECT.replace("33418", "40000"),
+          code_verifier: verifier,
+          resource: `${base}/mcp`,
+        }),
+      });
+      return ((await exchanged.json()) as { scope: string }).scope;
+    };
+    expect(await scopeOf(await approve("approval-required", "threads.read threads.write"))).toBe(
+      "threads.read threads.write threads.mode.approval-required",
+    );
+    expect(await scopeOf(await approve("read-only", "threads.read threads.write"))).toBe(
+      "threads.read",
+    );
+    // No level, an unknown one, or read only of nothing readable issues nothing.
+    expect((await approve(undefined, "threads.read")).status).toBe(400);
+    expect((await approve("auto", "threads.read")).status).toBe(400);
+    expect((await approve("read-only", "threads.write")).status).toBe(400);
   });
 
   it("never lets a session approve more than it holds, nor without auth.write", async () => {

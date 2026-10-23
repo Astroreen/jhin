@@ -16,7 +16,10 @@ import {
   APPROVAL_DECISIONS,
   approvalDecisions,
   type ApprovalDecision,
+  DEFAULT_RUNTIME_MODE,
   GenerationOf,
+  capRuntimeMode,
+  ceilingOf,
   INTERACTION_MODES,
   RUNTIME_MODES,
   SUBAGENT_WORK_KINDS,
@@ -58,7 +61,14 @@ import {
 } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, holdsPermission, toDisposable, z, describePermissions } from "@jhin/sdk";
+import {
+  definePlugin,
+  holdsPermission,
+  toDisposable,
+  z,
+  describePermissions,
+  type Invocation,
+} from "@jhin/sdk";
 import { PULL_REQUESTS_CAPABILITY, type ThreadPullRequestStates } from "@jhin/source-control-api";
 import {
   BLOBS_CAPABILITY,
@@ -2859,7 +2869,21 @@ export default definePlugin({
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: async ({ projectId, title, threadId, worktreePath, workspace, ...rest }) => {
+      handler: async (
+        { projectId, title, threadId, worktreePath, workspace, ...given },
+        invocation,
+      ) => {
+        const rest = {
+          ...given,
+          ...(given.runtimeMode === undefined
+            ? {}
+            : {
+                runtimeMode: capRuntimeMode(
+                  given.runtimeMode,
+                  ceilingOf(invocation.caller?.permissions),
+                ),
+              }),
+        };
         if (worktreePath !== undefined && workspace !== undefined && workspace.type !== "root") {
           throw new ThreadsError(
             "WORKSPACE_INVALID",
@@ -3239,7 +3263,18 @@ export default definePlugin({
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: async ({ threadId, title, worktreePath, ...settings }) => {
+      handler: async ({ threadId, title, worktreePath, ...given }, invocation) => {
+        const settings = {
+          ...given,
+          ...(given.runtimeMode === undefined
+            ? {}
+            : {
+                runtimeMode: capRuntimeMode(
+                  given.runtimeMode,
+                  ceilingOf(invocation.caller?.permissions),
+                ),
+              }),
+        };
         if (settings.agentId !== undefined && registry.get(settings.agentId) === undefined) {
           throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${settings.agentId} on this node`, {
             agentId: settings.agentId,
@@ -4286,9 +4321,10 @@ export default definePlugin({
       input: Outgoing,
       output: z.object({ turnId: z.string() }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, ...given }) => {
-        const sent = withNamedContext(given);
-        assertMessage(sent.text, sent.attachments);
+      handler: async ({ threadId, ...given }, invocation) => {
+        const named = withNamedContext(given);
+        assertMessage(named.text, named.attachments);
+        const sent = heldTo(named, await getThread(threadId), invocation);
         // Uploads become the thread's: checked, then moved under it (D293).
         const message =
           sent.attachments === undefined || sent.attachments.length === 0
@@ -4692,16 +4728,37 @@ export default definePlugin({
      * thread. Its uploads become the thread's (D293): the message as returned
      * names them as the node knows them.
      */
-    const checkOutgoing = async (threadId: string, given: Outgoing): Promise<Outgoing> => {
-      const message = withNamedContext(given);
-      assertMessage(message.text, message.attachments);
-      if (message.agentId !== undefined && registry.get(message.agentId) === undefined) {
-        throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${message.agentId} on this node`, {
-          agentId: message.agentId,
+    /**
+     * A message from a caller held to a runtime mode ceiling (security.md
+     * D1370) names its mode: the one asked for, else the thread's or the
+     * default, lowered to the ceiling. Anyone else's message is unchanged.
+     */
+    function heldTo<M extends { runtimeMode?: RuntimeMode | undefined }>(
+      message: M,
+      thread: Pick<Thread, "runtimeMode">,
+      invocation: Invocation,
+    ): M {
+      const ceiling = ceilingOf(invocation.caller?.permissions);
+      if (ceiling === undefined) return message;
+      const asked = message.runtimeMode ?? thread.runtimeMode ?? DEFAULT_RUNTIME_MODE;
+      return { ...message, runtimeMode: capRuntimeMode(asked, ceiling) };
+    }
+
+    const checkOutgoing = async (
+      threadId: string,
+      given: Outgoing,
+      invocation: Invocation,
+    ): Promise<Outgoing> => {
+      const named = withNamedContext(given);
+      assertMessage(named.text, named.attachments);
+      if (named.agentId !== undefined && registry.get(named.agentId) === undefined) {
+        throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${named.agentId} on this node`, {
+          agentId: named.agentId,
         });
       }
       const thread = await getThread(threadId);
       if (thread.archivedAt !== undefined) throw archivedError(threadId);
+      const message = heldTo(named, thread, invocation);
       if (message.attachments === undefined || message.attachments.length === 0) return message;
       return {
         ...message,
@@ -4722,8 +4779,8 @@ export default definePlugin({
       input: Outgoing.extend({ messageId: MessageIdInput.optional() }),
       output: Sent,
       permissions: ["threads.write"],
-      handler: async ({ threadId, messageId, ...sent }) => {
-        const message = await checkOutgoing(threadId, sent);
+      handler: async ({ threadId, messageId, ...sent }, invocation) => {
+        const message = await checkOutgoing(threadId, sent, invocation);
         return enqueue(threadId, messageId ?? Crypto.randomUUID(), message);
       },
     });
@@ -4902,8 +4959,8 @@ export default definePlugin({
       input: Outgoing.extend({ messageId: MessageIdInput.optional() }),
       output: Sent.extend({ outcome: z.enum(["steered", "started", "queued"]) }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, messageId: given, ...outgoing }) => {
-        const message = await checkOutgoing(threadId, outgoing);
+      handler: async ({ threadId, messageId: given, ...outgoing }, invocation) => {
+        const message = await checkOutgoing(threadId, outgoing, invocation);
         const messageId = given ?? Crypto.randomUUID();
         const turnId = active.get(threadId)?.turnId;
         const steered =
@@ -5226,9 +5283,9 @@ export default definePlugin({
       input: z.object({ threadId: z.string(), turnId: z.string().optional() }),
       output: z.object({ turnId: z.string(), turnIds: z.array(z.string()) }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, turnId }) => {
+      handler: async ({ threadId, turnId }, invocation) => {
         // An unknown thread is THREAD_NOT_FOUND, not a thread without turns.
-        await getThread(threadId);
+        const regenerated = await getThread(threadId);
         const { events, turns } = await visibleTurns(threadId);
         const target = turnId ?? turns.at(-1);
         if (target === undefined) {
@@ -5259,7 +5316,11 @@ export default definePlugin({
             ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
             ...(own ? { agentId: payload.agentId } : {}),
             ...(own && payload.model !== undefined ? { model: payload.model } : {}),
-            ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),
+            ...heldTo(
+              payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode },
+              regenerated,
+              invocation,
+            ),
             ...(payload.interactionMode === undefined
               ? {}
               : { interactionMode: payload.interactionMode }),

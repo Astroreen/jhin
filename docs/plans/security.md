@@ -872,6 +872,39 @@ Connect stays out of scope.
   retrying), and the node is paired again.
   `auth.clients.list` says `bound: true` for a bound token (additive).
 
+- **D1369. An MCP client is approved at one of T3's access levels.** D1361
+  (6): an agent signed in over OAuth (D1191) got everything its `scope`
+  asked for, and its threads ran in whatever mode they had. T3's approval
+  page asks "What it may do" instead; Jhin's does too, with T3's levels
+  and wording for the runtime modes Jhin has (T3's nightly "Auto" is not
+  one): "Read only" ("Read projects and threads. Cannot start, message or
+  change anything."), "Supervised", "Auto-accept edits" and "Full access"
+  (`runtimeModeConfig`'s labels and descriptions), "Read only" chosen
+  first, and T3's note "Beyond read only, it can start, message and stop
+  threads, and none of them can run with more than the mode you pick."
+  "Read only" grants only the asked permissions named `*.read`; the
+  others grant what was asked (D1194) and the level's mode grant (D1370).
+  The level is posted with the approval (a level the page does not offer
+  is refused), and the approver must hold everything it grants (D413);
+  "Read only" of a request that asked for nothing readable issues
+  nothing. The
+  token endpoint answers the granted `scope`, as OAuth says.
+- **D1370. A runtime mode ceiling is a grant.** `threads.mode.<mode>`
+  (`approval-required`, `auto-accept-edits`, `full-access`) names a mode
+  a caller's turns may run in. A caller whose grants name one or more of
+  them explicitly is held to the highest it names; one that names none,
+  or holds `*`, `threads.*` or `threads.mode.*`, is not held at all, so
+  every token issued before keeps working as it did (`ceilingOf`
+  in `@jhin/agent-api`). `jhin.threads` applies it where a caller sets
+  the mode of a turn or of a thread: `threads.create` and
+  `threads.update` lower a mode they are given; `threads.send`,
+  `threads.queue.add`, `threads.steer` and `threads.regenerate` give the
+  message the thread's mode (or the default) lowered to the ceiling, so
+  a queued message keeps it after its caller is gone. Like any grant it
+  travels with mesh calls (D416); a member that narrows
+  `memberPermissions` below the mode grants drops them, and the ceiling
+  with them (Deferred).
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -982,6 +1015,14 @@ A slice a PR, in the order of D1361's risks:
   twice, and the web client pairs, saves its key and reconnects through a
   ticket.
 
+- **PR 6d — MCP access levels** (D1369, D1370). **Done when:** the
+  approval page offers T3's levels, a "Read only" approval issues only the
+  asked `*.read` permissions, a "Supervised" one adds
+  `threads.mode.approval-required`, a missing or unknown level is
+  refused, and a held caller's thread runs no turn above its
+  ceiling (send, queue, steer, regenerate, create, update) while an
+  unheld caller is unchanged.
+
 ## Deferred
 
 - A secret whose real value starts with the marker and `#`
@@ -1055,8 +1096,12 @@ A slice a PR, in the order of D1361's risks:
   owner token and page sessions stay bearer tokens; the CLI has no key of
   its own. T3's one-hour life of a DPoP token is not taken: a bound token
   lives as long as a bearer one, since a copy of it is worth nothing.
-- MCP OAuth (D1191–D1196) leaves out T3's access levels (its runtime
-  modes): a client asks for Jhin permissions instead. No refresh tokens: a
+- MCP OAuth (D1191–D1196): T3's access levels came with W39 (D1369,
+  D1370) without T3's "Auto" mode, which Jhin's agents do not have. A
+  ceiling (D1370) is carried by grants, so a mesh member whose
+  `memberPermissions` do not cover `threads.mode.*` drops it with them;
+  the orchestrator's delegated children inherit their parent thread's
+  mode, which a held caller already lowered. No refresh tokens: a
   client signs in again after 30 days. The approval page is the node's own
   HTML, not a web client route, and assumes the node at the root of its
   origin (a proxy path prefix breaks its form and its `/auth/session`
