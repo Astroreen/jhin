@@ -1626,7 +1626,7 @@ Decisions (L1):
   or removed without a deprecation (AGENTS.md rule 8). It runs for every PR,
   agents' and humans' alike.
 
-Decisions:
+Decisions (L2):
 
 - **D1241. A step that needs a review is refused until the work is
   reviewed after its last change.** Which mission steps need a review is
