@@ -400,12 +400,21 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
         "open url",
       );
       return;
-    case "launchApp":
-      await shell(
+    case "launchApp": {
+      const out = await shell(
         ["monkey", "-p", shellQuote(input.appId), "-c", "android.intent.category.LAUNCHER", "1"],
         "launch",
       );
+      // monkey exits 0 even when the package is missing or has nothing to launch.
+      if (/No activities found to run|monkey aborted/i.test(out)) {
+        throw new DeviceError(
+          "DEVICE_OPERATION_FAILED",
+          `Device action launch failed: ${input.appId} is not installed or has no launcher activity.`,
+          { operation: "launch", appId: input.appId },
+        );
+      }
       return;
+    }
     case "terminateApp":
       await shell(["am", "force-stop", shellQuote(input.appId)], "terminate");
       return;

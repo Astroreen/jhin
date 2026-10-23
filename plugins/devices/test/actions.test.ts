@@ -460,4 +460,20 @@ describe("readDeviceDetail", () => {
     expect(await textSize("extra-extra-large")).toBe("large");
     expect(await textSize("accessibility-large")).toBe("extra-large");
   });
+
+  it("fails a launch monkey aborts, though it exits 0", async () => {
+    const { host } = makeHost((call) =>
+      call.args.includes("monkey")
+        ? { stdout: "** No activities found to run, monkey aborted.\n" }
+        : {},
+    );
+    const failed = await failure(
+      runDeviceAction(host, "android", "emulator-5554", {
+        type: "launchApp",
+        appId: "com.example.missing",
+      }),
+    );
+    expect(failed.code).toBe("DEVICE_OPERATION_FAILED");
+    expect(failed.message).toContain("com.example.missing");
+  });
 });
