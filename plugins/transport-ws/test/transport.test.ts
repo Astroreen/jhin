@@ -1192,6 +1192,11 @@ describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D13
     expect(
       await refusal(sign("POST", pairUrl, { iat: Math.floor(Date.now() / 1000) - 301 })),
     ).toEqual([400, "The DPoP proof was refused (time_window)."]);
+    // The path matches whole segments only.
+    expect(await refusal(sign("POST", `${httpUrl(node)}/xauth/pair`))).toEqual([
+      400,
+      "The DPoP proof was refused (url_mismatch).",
+    ]);
     expect(await refusal(sign("POST", "http://evil.example/auth/pair"))).toEqual([
       400,
       "The DPoP proof was refused (url_mismatch).",
@@ -1248,6 +1253,21 @@ describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D13
     expect(((await replayed.json()) as { message: string }).message).toBe(
       "The DPoP proof was refused (replay).",
     );
+  });
+
+  it("holds at most 16 open tickets per device (security.md D1367)", async () => {
+    const node = await startNode();
+    const sign = deviceKey();
+    const issued = (await (
+      await pair(node, await createCode(node), sign("POST", `${httpUrl(node)}/auth/pair`))
+    ).json()) as { token: string };
+    const ticketUrl = `${httpUrl(node)}/auth/ws-ticket`;
+    const mint = () =>
+      ticketFor(node, `DPoP ${issued.token}`, sign("POST", ticketUrl, { ath: sha(issued.token) }));
+    for (let n = 0; n < 16; n += 1) expect((await mint()).status).toBe(200);
+    const refused = await mint();
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toMatchObject({ code: "TOO_MANY_TICKETS" });
   });
 
   it("ends a ticket with its token, and never turns one into a page session", async () => {

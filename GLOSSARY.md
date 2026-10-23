@@ -69,6 +69,11 @@ Words about Jhin:
 - **Shell access** — a permission whose holder runs commands on the node's
   machine as the node's OS user (`terminals.write`); marked `shellAccess`
   and named as such wherever it is granted (security.md D1364).
+- **Bound token** — a device token bound to a key its device keeps (DPoP,
+  `tokenType: "DPoP"`): never accepted alone, used only with a fresh proof
+  to get a **WebSocket ticket** (`jht1.…`), a one-use, 60-second
+  credential for one socket, offered as the token subprotocol
+  (security.md D1366, D1367). Not the device hub's **hub ticket**.
 - **Host allowlist** — the names a node answers to for browsers
   (`jhin.http.allowedHosts`, plus its addresses, loopback, the machine's
   and Tailscale's names and the mesh's advertised hosts); a browser's

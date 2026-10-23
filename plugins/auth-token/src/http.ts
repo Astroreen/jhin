@@ -239,10 +239,9 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
             ? "The node is checking too many proofs; try again in a minute"
             : `The DPoP proof was refused (${failure}).`,
       },
-      {
-        ...headers,
-        "www-authenticate": `DPoP algs="ES256", error="invalid_dpop_proof"`,
-      },
+      failure === "busy"
+        ? { ...headers, "retry-after": "60" }
+        : { ...headers, "www-authenticate": `DPoP algs="ES256", error="invalid_dpop_proof"` },
     );
 
   /** What the request says about the device (security.md D1187). */
@@ -327,6 +326,8 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
           return;
         }
       }
+      // The proof is spent already: a refused mint is retried with a new proof,
+      // as every request makes one.
       const minted = holder.issue();
       if (minted === undefined) {
         send(
