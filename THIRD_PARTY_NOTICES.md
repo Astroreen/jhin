@@ -77,7 +77,9 @@ preferred defaults, usage limits and their windows in
 `plugins/agent-codex/src/goal.ts`), the goal banner
 (`apps/web/src/lib/goal.ts`), an agent's usage limits and the composer's
 `/usage-limits` banner (`packages/agent-api/src/usage-limits.ts`,
-`apps/web/src/lib/usage-limits.ts`), the OpenCode agent runtime
+`apps/web/src/lib/usage-limits.ts`, `apps/web/src/lib/pace-icon.tsx`), the
+Usage page's limits (`apps/web/src/plugins/usage.tsx`,
+`apps/web/src/lib/usage-pools.ts`), the OpenCode agent runtime
 (`plugins/agent-opencode`: starting and reaching an OpenCode 2 server, its
 version probe, session rules, permission, form and tool mapping, usage and
 interrupts, reverting and forking a session, its pending requests after a

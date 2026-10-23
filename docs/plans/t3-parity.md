@@ -2130,6 +2130,34 @@ Code at `eb7b35ac` (D53).
   failed one; its card says "Usage limit reached" in the warning colour
   instead of "Error occurred". A working thread whose goal is `active` says
   "Goal" instead of "Working", with the same icon and the working time.
+- **D1308. T3's Usage page**, its "Limits" view (`UsagePage.tsx`,
+  `routes/usage.tsx`): the client plugin `jhin.usage` adds the client
+  command `usage.open` ("Open usage", in the palette with T3's chart icon),
+  T3's "Usage" item in the sidebar's footer (the `sidebar.footer` slot,
+  contribution `jhin.usage.sidebar-item`) and the page in `app.main`
+  (contribution `jhin.usage.page`, the route's `panel: "usage"`), with T3's
+  "Usage" heading, "Refresh limits" and a "Back" that, as Escape, closes it.
+  The page is read when it opens and on "Refresh limits"; T3 advances its
+  clock only on a refresh too. Each runtime reads its limits again once what
+  it knows is a minute old (`providers.md` D1142, D1304), so a refresh asks
+  them, never forces a read.
+- **D1309. Limits pooled per agent across nodes**, T3's `UsageLimitsPooled`
+  and `collectLimitPools`: every open node's available agents with limits
+  (`agents.list`, `agents.usage-limits`) are accounts; an agent's accounts
+  pool per window (Codex's by kind, as its ids are slots), ordered by the
+  reset of their first window, then by node. Each window is T3's card: its
+  label, "{n}% left" (the members' mean) with the pace icon, and a bar per
+  account, named by its node when there are several, with "↻ 1h 10m" and a
+  tooltip of its node, what is left and when it resets. A node is the
+  account: T3's pooling by account email is not ported (a runtime names no
+  email).
+- **D1310. What cannot be shown** is T3's warning alert: a read that failed
+  ("{agent}: Could not read limits.", or its reason) or reported no windows,
+  named by node when there are several, and a node whose agents cannot be
+  listed. An account without subscription limits is left out, as T3 does;
+  with nothing to show the page says "No agent on the connected nodes
+  reports subscription limits." (T3's "No provider on the selected
+  environments …", without its environment filter, which is deferred).
 
 ### The composer, thread panels and subagents (W38, `t3-roadmap.md`)
 
@@ -2240,6 +2268,13 @@ says. The other W38 decisions land in their own pull requests.
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
   offers, with its "Usage limit reached" recovery banner (resume at the reset
   time, snooze): `providers.md` D1143 tells such a failure apart now.
+- The Usage page (D1308–D1310): T3's token and cost metrics, their charts,
+  periods, breakdowns and price overrides (Jhin keeps no usage history to
+  read them from), its environment and provider filters, redeeming a reset
+  credit ("Use reset", T3's `consumeResetCredit`; no runtime redeems one),
+  usage-limit sources such as CLIProxy, the links to manage usage elsewhere
+  (ChatGPT) and pooling one account seen on several nodes (by its email or
+  T3's credential fingerprint).
 - The thread details panel (D802): T3's inline presentation, a card beside
   the chat when it is wide enough (here it is always the popover), and the
   heights T3 measures to drop rows on a short window.

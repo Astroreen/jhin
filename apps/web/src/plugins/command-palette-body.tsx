@@ -42,6 +42,7 @@ import {
   ArrowUpIcon,
   BotIcon,
   BugIcon,
+  ChartNoAxesColumnIcon,
   ChevronRightIcon,
   FolderPlusIcon,
   HashIcon,
@@ -135,6 +136,7 @@ const COMMAND_ICONS: Record<string, LucideIcon> = {
   "ui.appearance.cycle": MonitorIcon,
   "ui.mode.next": LayersIcon,
   "ui.sidebar.toggle": PanelLeftIcon,
+  "usage.open": ChartNoAxesColumnIcon,
 };
 
 /**

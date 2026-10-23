@@ -33,13 +33,12 @@ import {
   PencilIcon,
   ShieldIcon,
   TargetIcon,
-  TrendingDownIcon,
-  TrendingUpIcon,
 } from "lucide-react";
 import { Fragment, useId, useRef, useState, type ComponentProps } from "react";
 
 import type { TimestampFormat } from "../../lib/format.ts";
 import { presentGoal } from "../../lib/goal.ts";
+import { PaceIcon } from "../../lib/pace-icon.tsx";
 import {
   elapsedShare,
   formatResetsIn,
@@ -47,7 +46,6 @@ import {
   limitsNotice,
   paceOf,
   remainingPercent,
-  type LimitPace,
 } from "../../lib/usage-limits.ts";
 import type { RequestItem, ThreadQueue } from "../../lib/timeline.ts";
 import { useAttachmentUrl, type AttachmentLoader } from "./attachment-media.tsx";
@@ -606,33 +604,8 @@ export function QueueBanner(props: {
 
 // `/usage-limits` (providers.md D1144): T3's usageLimitsBannerItem (ComposerUsageLimits.tsx) and
 // LimitWindows with its WindowBar and PaceIcon (components/usage/UsageLimits.tsx).
-const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof GaugeIcon }> = {
-  ahead: { label: "Ahead of pace: spending faster than the window elapses", icon: TrendingUpIcon },
-  on: { label: "On pace with the window", icon: GaugeIcon },
-  under: { label: "Under pace: headroom left for the rest of the window", icon: TrendingDownIcon },
-};
 /** T3's bar colour for Codex; one colour for every agent, as the client knows no agent ids. */
 const BAR_COLOR = "var(--contrast-foreground, var(--foreground))";
-
-function PaceIcon({ pace }: { readonly pace: LimitPace }) {
-  const Icon = PACE[pace].icon;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            aria-label={PACE[pace].label}
-            className="inline-flex text-muted-foreground"
-            role="img"
-          />
-        }
-      >
-        <Icon aria-hidden className="size-3.5" />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{PACE[pace].label}</TooltipPopup>
-    </Tooltip>
-  );
-}
 
 function WindowBar(props: {
   readonly window: AgentUsageWindow;
