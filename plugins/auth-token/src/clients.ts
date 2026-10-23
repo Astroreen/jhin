@@ -25,6 +25,11 @@ export const ClientRecord = z.object({
   parent: z.string().optional(),
   /** What the device said about itself when it paired (security.md D1187). */
   metadata: ClientMetadata.optional(),
+  /**
+   * The RFC 7638 thumbprint of the key the token is bound to (DPoP,
+   * security.md D1366): the token is then only used with a proof.
+   */
+  jkt: z.string().optional(),
 });
 export type ClientRecord = z.infer<typeof ClientRecord>;
 
@@ -50,6 +55,7 @@ export interface ClientStore {
     expiresAt?: number;
     parent?: string;
     metadata?: ClientMetadata;
+    jkt?: string;
     now: number;
   }): { record: ClientRecord; token: string };
   /** The record a token belongs to, if the token is one of ours and still valid at `now`. */
@@ -100,7 +106,7 @@ export function createClientStore(
   return {
     list: () => records,
     get: (id) => records.find((record) => record.id === id),
-    issue({ label, permissions, method, expiresAt, now, parent, metadata }) {
+    issue({ label, permissions, method, expiresAt, now, parent, metadata, jkt }) {
       const id = Crypto.randomBytes(9).toString("base64url");
       const secret = Crypto.randomBytes(32).toString("base64url");
       const record: ClientRecord = {
@@ -112,6 +118,7 @@ export function createClientStore(
         ...(expiresAt === undefined ? {} : { expiresAt }),
         ...(parent === undefined ? {} : { parent }),
         ...(metadata === undefined ? {} : { metadata }),
+        ...(jkt === undefined ? {} : { jkt }),
         secretHash: hash(secret),
       };
       // Expired tokens go with the next write; nothing can use them any more.

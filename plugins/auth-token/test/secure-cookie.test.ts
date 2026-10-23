@@ -5,6 +5,7 @@ import type { HttpHandler, HttpServer } from "@jhin/http-api";
 import { toDisposable, type Logger } from "@jhin/sdk";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
+import { ReplayGuard } from "../src/dpop.ts";
 import { serveAuthHttp } from "../src/http.ts";
 
 const quiet = (): Logger => ({
@@ -56,6 +57,8 @@ async function sessionCookie(origin: string | undefined, tls = false): Promise<s
     log: quiet(),
     attempts: new Map(),
     pair: () => undefined,
+    replay: new ReplayGuard(),
+    ticket: () => undefined,
     openSession: async () => ({ id: "c", token: "jhd1.c.secret", permissions: ["*"] }),
     verify: async () => undefined,
     closeSession: () => undefined,

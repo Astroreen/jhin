@@ -10,6 +10,7 @@ import {
 import type { HttpServer } from "@jhin/http-api";
 import { DisposableStore, z, type Disposable, type Logger } from "@jhin/sdk";
 
+import { verifyDpopProof, type ReplayGuard } from "./dpop.ts";
 import { DeviceType } from "./metadata.ts";
 
 // The pairing endpoints follow T3 Code's (MIT, see THIRD_PARTY_NOTICES.md):
@@ -42,8 +43,27 @@ export interface AuthHttpOptions {
    * in its kernel-scoped state, so a reload does not reset the limit.
    */
   readonly attempts: Map<string, number>;
-  /** A pairing code becomes a device token, or undefined for a wrong, used or expired code. */
-  pair(code: string, label: string | undefined, metadata: ClientMetadata): IssuedToken | undefined;
+  /**
+   * A pairing code becomes a device token, or undefined for a wrong, used or
+   * expired code; bound to the key with thumbprint `jkt` when given (D1366).
+   */
+  pair(
+    code: string,
+    label: string | undefined,
+    metadata: ClientMetadata,
+    jkt?: string,
+  ): IssuedToken | undefined;
+  /** The DPoP proofs seen (D1366), in the plugin's kernel-scoped state. */
+  readonly replay: ReplayGuard;
+  /**
+   * A device token that may ask for a WebSocket ticket (D1367): its key's
+   * thumbprint when bound, and how to mint one (undefined when too many are open).
+   */
+  ticket(
+    token: string,
+  ):
+    | { readonly jkt?: string; issue(): { ticket: string; expiresAt: number } | undefined }
+    | undefined;
   /** A token or pairing code becomes the page's own device token (security.md D421). */
   openSession(credential: string, metadata: ClientMetadata): Promise<IssuedToken | undefined>;
   /** Who a token is, as the verifier sees it. */
@@ -57,9 +77,17 @@ interface IssuedToken {
   readonly token: string;
   readonly permissions: readonly string[];
   readonly expiresAt?: number;
+  /** `DPoP` for a token bound to a key (D1366), else `Bearer`. */
+  readonly tokenType?: "DPoP" | "Bearer";
 }
 
 class BodyTooLarge extends Error {}
+
+/** One header's value; a repeated one counts as none (a proof is one JWT). */
+function headerOf(request: IncomingMessage, name: string): string | undefined {
+  const value = request.headers[name];
+  return typeof value === "string" ? value : undefined;
+}
 
 /**
  * The body as JSON. Past `MAX_BODY` it stops at once with `BodyTooLarge`; the
@@ -110,7 +138,7 @@ function send(
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, OPTIONS",
-  "access-control-allow-headers": "content-type",
+  "access-control-allow-headers": "content-type, authorization, dpop",
   "access-control-max-age": "600",
 };
 
@@ -154,11 +182,16 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       response,
       429,
       {
-        code: route === "pair" ? "TOO_MANY_PAIRING_ATTEMPTS" : "TOO_MANY_SESSION_ATTEMPTS",
+        code:
+          route === "pair"
+            ? "TOO_MANY_PAIRING_ATTEMPTS"
+            : route === "ticket"
+              ? "TOO_MANY_TICKET_ATTEMPTS"
+              : "TOO_MANY_SESSION_ATTEMPTS",
         message: "Try again in a minute",
       },
-      // Only the pairing endpoint answers other origins (D420).
-      { ...(route === "pair" ? CORS : {}), "retry-after": "60" },
+      // Only the pairing and ticket endpoints answer other origins (D420, D1367).
+      { ...(route === "session" ? {} : CORS), "retry-after": "60" },
     );
     return undefined;
   };
@@ -167,6 +200,44 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
     const count = attempts.get(key) ?? 0;
     if (count > 0) attempts.set(key, count - 1);
   };
+
+  /** A proof for this request (D1366), as `verifyDpopProof` judges it. */
+  const checkProof = (
+    request: IncomingMessage,
+    proof: string | undefined,
+    expected: { expectedThumbprint?: string; accessToken?: string } = {},
+  ) =>
+    verifyDpopProof({
+      proof,
+      method: request.method ?? "POST",
+      host: http.requestedHost(request),
+      path: new URL(request.url ?? "/", "http://node").pathname,
+      nowSeconds: Math.floor(Date.now() / 1000),
+      replay: options.replay,
+      ...expected,
+    });
+  /** Refuses a proof, saying why in RFC 9449's words (`invalid_dpop_proof`). */
+  const refuseProof = (
+    response: ServerResponse,
+    failure: string,
+    headers: Record<string, string>,
+    status = 400,
+  ) =>
+    send(
+      response,
+      failure === "busy" ? 503 : status,
+      {
+        code: failure === "busy" ? "DPOP_BUSY" : "DPOP_PROOF_INVALID",
+        message:
+          failure === "busy"
+            ? "The node is checking too many proofs; try again in a minute"
+            : `The DPoP proof was refused (${failure}).`,
+      },
+      {
+        ...headers,
+        "www-authenticate": `DPoP algs="ES256", error="invalid_dpop_proof"`,
+      },
+    );
 
   /** What the request says about the device (security.md D1187). */
   const metadataOf = (
@@ -201,6 +272,70 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
     }),
   );
   store.add(
+    http.route("OPTIONS", "/auth/ws-ticket", (_request, response) => {
+      response.writeHead(204, CORS).end();
+    }),
+  );
+  store.add(
+    http.route("POST", "/auth/ws-ticket", (request, response) => {
+      // The body is not read: everything is in the headers (D1367).
+      request.resume();
+      const counted = admit("ticket", request, response);
+      if (counted === undefined) return;
+      const authorization = headerOf(request, "authorization") ?? "";
+      const scheme = /^(DPoP|Bearer) +(\S+)$/i.exec(authorization.trim());
+      const given = scheme?.[2];
+      const holder = given === undefined ? undefined : options.ticket(given);
+      if (scheme === null || given === undefined || holder === undefined) {
+        send(
+          response,
+          401,
+          { code: "CREDENTIAL_INVALID", message: "This token is not valid here." },
+          { ...CORS, "www-authenticate": 'DPoP algs="ES256", Bearer' },
+        );
+        return;
+      }
+      const dpop = scheme[1]!.toLowerCase() === "dpop";
+      if (holder.jkt !== undefined || dpop) {
+        // A bound token needs its key's proof; DPoP names a bound token (RFC 9449 §7.1).
+        if (!dpop || holder.jkt === undefined) {
+          send(
+            response,
+            401,
+            {
+              code: "DPOP_PROOF_INVALID",
+              message: dpop
+                ? "This token is not bound to a key; send it as Bearer."
+                : "This token is bound to a key; send it as DPoP with a proof.",
+            },
+            { ...CORS, "www-authenticate": 'DPoP algs="ES256"' },
+          );
+          return;
+        }
+        const checked = checkProof(request, headerOf(request, "dpop"), {
+          expectedThumbprint: holder.jkt,
+          accessToken: given,
+        });
+        if (!checked.ok) {
+          refuseProof(response, checked.failure, CORS, 401);
+          return;
+        }
+      }
+      const minted = holder.issue();
+      if (minted === undefined) {
+        send(
+          response,
+          429,
+          { code: "TOO_MANY_TICKETS", message: "Too many open tickets; try again in a minute" },
+          { ...CORS, "retry-after": "60" },
+        );
+        return;
+      }
+      succeeded(counted);
+      send(response, 200, minted, CORS);
+    }),
+  );
+  store.add(
     http.route("POST", "/auth/pair", async (request, response) => {
       const counted = admit("pair", request, response);
       if (counted === undefined) return;
@@ -220,6 +355,17 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         send(response, 400, { code: "INVALID", message: "Expected { code, label? }" }, CORS);
         return;
       }
+      // A proof binds the token to the device's key (DPoP, D1366); none pairs a bearer token.
+      let jkt: string | undefined;
+      const proof = headerOf(request, "dpop");
+      if (proof !== undefined) {
+        const checked = checkProof(request, proof);
+        if (!checked.ok) {
+          refuseProof(response, checked.failure, CORS);
+          return;
+        }
+        jkt = checked.thumbprint;
+      }
       let issued: IssuedToken | undefined;
       try {
         const { code, label, deviceType, os } = parsed.data;
@@ -230,6 +376,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
             ...(deviceType === undefined ? {} : { deviceType }),
             ...(os === undefined ? {} : { os }),
           }),
+          jkt,
         );
       } catch (error) {
         // A JSON answer with CORS, so a page on another origin can read what went wrong.

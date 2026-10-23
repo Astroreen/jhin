@@ -102,7 +102,7 @@ headless shell, browser profiles and the import of the machine's browser cookies
 inlining, the public proxy, console capture and measuring; the web client's
 frame), devices (`plugins/devices`: finding the Android SDK, the device tools'
 wording and the Device panel), pairing (`plugins/auth-token`:
-pairing codes, the pairing and session endpoints, a device's metadata; the web client's pairing
+pairing codes, the pairing and session endpoints, a device's metadata, DPoP proofs and WebSocket tickets; the web client's pairing
 links, saved nodes in IndexedDB, Authorized clients settings and QR code
 component; `packages/qr-code`: the terminal rendering of a QR code;
 `apps/jhin`: `jhin pair`, its output, notes and Tailscale Serve flow;

@@ -785,6 +785,59 @@ Connect stays out of scope.
   Subscriptions without a window are unchanged (the socket's own buffer
   holds them, as before D470).
 
+- **D1366. A device token may be bound to a key the device never shows
+  (DPoP, RFC 9449, T3's).** The theft D1361 (5) names: a device token read
+  from a device's storage, a backup, a proxy log or a screen works from
+  anywhere. A device that pairs with `POST /auth/pair` may send a `DPoP`
+  proof: a compact JWT, `typ` `dpop+jwt`, `alg` `ES256` only, its public
+  key as `jwk` (P-256, no private part), with `htm` (`POST`), `htu`, `jti`
+  and `iat`. The node checks T3's way (`packages/shared/src/dpop.ts`): the
+  signature, the method, the URL, `iat` no more than 5 seconds ahead and
+  300 seconds behind, and a `jti` never seen before from that key in that
+  window (kept in the plugin's kernel-scoped state, at most 10 000 at
+  once: past that a proof is refused, `DPOP_BUSY`, rather than an old one
+  forgotten). `htu` names the node as the device reached it: its host must
+  be the requested host (`requestedHost`) and its path must end with the
+  request's path, so a proxy that strips a path prefix keeps working; its
+  scheme is not compared (a TLS proxy the node does not trust tells it
+  `http`). The device token is then bound: its record keeps the key's RFC
+  7638 thumbprint (`jkt`, additive), and the answer says `tokenType:
+  "DPoP"` (else `"Bearer"`, additive). A bound token is never accepted on
+  its own: not on the WebSocket, not at `/mcp`, not for a page session
+  (`auth.verifier` refuses it, so every transport does without a change).
+  It is used only with a fresh proof, to get a WebSocket ticket (D1367).
+  A proof that does not verify is refused (`DPOP_PROOF_INVALID`, 400) and
+  counts as a failed attempt (D420). A pairing without a proof is the
+  bearer pairing it was: older clients and the CLI keep working.
+  What it does not defend: a script running in the page that holds the
+  key can use it while it runs (the key cannot be read out, D1368), and
+  whoever controls the device.
+- **D1367. A WebSocket ticket, T3's, carried where Jhin carries tokens.** A
+  browser cannot put an `Authorization` header on a WebSocket, so a bound
+  device asks first: `POST /auth/ws-ticket` with `Authorization: DPoP
+  <token>` and a proof for that request whose `ath` is the token's SHA-256
+  (or `Authorization: Bearer <token>` for an unbound one, as T3 allows)
+  answers `{ticket, expiresAt}`, `no-store`, with CORS without
+  credentials (a `jhin client` page on another origin, D420). A ticket is
+  `jht1.<id>.<secret>`, used once, valid 60 seconds (T3: 5 minutes; Jhin
+  mints one right before each connect), kept only as its SHA-256 in the
+  plugin's kernel-scoped state, and acts as its device token's principal
+  (its grants, its expiry, revoked with it). The device offers it as the
+  WebSocket's token subprotocol, where Jhin already carries tokens, never
+  in the URL (T3's `?wsTicket=` lands in access logs); `auth.verifier`
+  spends it, so a ticket works wherever a token does, once. Failed
+  requests count against the client's attempts like `/auth/pair`'s.
+- **D1368. The web client binds what it pairs.** Where WebCrypto is
+  available (a secure context: HTTPS or loopback), pairing a node by a
+  code (D424's connect form, a `jhin client` link, D1190) makes a P-256
+  key that is not extractable, sends a proof, and saves the key with the
+  node in IndexedDB (D423; a `CryptoKey` is stored as is, never as bytes).
+  A node that answers `tokenType: "DPoP"` is reached through a ticket on
+  every connect; one that answers otherwise (an older node) keeps the
+  token as a bearer token. Without WebCrypto the page pairs as before.
+  Nodes saved before keep their bearer tokens; pairing again binds.
+  `auth.clients.list` says `bound: true` for a bound token (additive).
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -887,6 +940,14 @@ A slice a PR, in the order of D1361's risks:
   subscriptions on one connection ends the one that takes it past 32 MiB
   while the others go on.
 
+- **PR 6c — DPoP and WebSocket tickets** (D1366–D1368). **Done when:**
+  tests over real HTTP bind a paired token to a proof's key, refuse a
+  replayed, stale, foreign-URL or wrongly signed proof, refuse the bound
+  token alone on the socket, `/mcp` and a page session, mint a ticket with
+  a fresh proof (and with a bearer token), connect with it once and never
+  twice, and the web client pairs, saves its key and reconnects through a
+  ticket.
+
 ## Deferred
 
 - A secret whose real value starts with the marker and `#`
@@ -937,8 +998,11 @@ A slice a PR, in the order of D1361's risks:
   mapping another home made is refused, not repaired. When `jhin pair
   --tailscale` fails after `auth.pairing.create` succeeded (printing, an
   unreachable node mid-run), the mapping's notes are not repeated.
-- DPoP-bound tokens and T3's WebSocket tickets: a device token is a bearer
-  token.
+- DPoP (D1366–D1368) binds what the web client pairs by a code. Tokens
+  from `auth.tokens.issue`, `jhin pair` used by other programs, the
+  owner token and page sessions stay bearer tokens; the CLI has no key of
+  its own. T3's one-hour life of a DPoP token is not taken: a bound token
+  lives as long as a bearer one, since a copy of it is worth nothing.
 - MCP OAuth (D1191–D1196) leaves out T3's access levels (its runtime
   modes): a client asks for Jhin permissions instead. No refresh tokens: a
   client signs in again after 30 days. The approval page is the node's own

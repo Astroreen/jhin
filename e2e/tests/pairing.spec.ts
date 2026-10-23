@@ -146,9 +146,40 @@ test("pairs from the connect form with a pairing code", async ({ browser }) => {
   const { clients } = await node
     .client()
     .call<{ clients: { label: string; method: string }[] }>("auth.clients.list");
+  // The browser bound the token to a key it cannot read out (security.md D1366, D1368).
   expect(clients).toContainEqual(
-    expect.objectContaining({ label: "Typed code", method: "pairing" }),
+    expect.objectContaining({ label: "Typed code", method: "pairing", bound: true }),
   );
+  const saved = await page.evaluate(
+    () =>
+      new Promise<{ token: string; extractable: boolean }>((resolve) => {
+        const opening = indexedDB.open("jhin.connections", 1);
+        opening.addEventListener("success", () => {
+          const read = opening.result
+            .transaction("nodes", "readonly")
+            .objectStore("nodes")
+            .get("list");
+          read.addEventListener("success", () => {
+            const [saved] = read.result as { token: string; key: { privateKey: CryptoKey } }[];
+            resolve({ token: saved!.token, extractable: saved!.key.privateKey.extractable });
+          });
+        });
+      }),
+  );
+  expect(saved.extractable).toBe(false);
+  // A copy of the token alone opens nothing.
+  const alone = await page.evaluate(
+    ([url, token]) =>
+      new Promise<number>((resolve) => {
+        const socket = new WebSocket(url, ["jhin.v1", `jhin.token.${token}`]);
+        socket.addEventListener("close", (event) => resolve(event.code));
+      }),
+    [node.rpc, saved.token] as const,
+  );
+  expect(alone).toBe(4401);
+  // The page itself reconnects through a fresh ticket after a reload.
+  await page.reload();
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
   await context.close();
 });
 
