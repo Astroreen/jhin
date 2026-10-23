@@ -1769,6 +1769,14 @@ Decisions (L3):
   message ("an open ask of mine would hold the whole mission, including the
   seven items that don't need you") and set the item blocked itself. The
   guard made the honest escalation the costly one, so it was routed around.
+- **D1264. A mission planned from the client keeps the default steps'
+  fields.** The mission dialog (C2, D1083) parsed its process text into
+  bare steps, so a mission it created had `merge` without `review: true`
+  (D648): the default process lost its own guard, and only the
+  orchestrator's `reviewSteps` (D1241) still held the step. A new mission's
+  steps now take their fields from `DEFAULT_MISSION_PROCESS` by id
+  (`newMissionProcess`), and the dialog starts from that process's text.
+  Found by the L3 run's reviewer while it reviewed D1288.
 - **D1265. A recorded review is ceremony.** Health counts every
   `missions.slice.reviewed` (D1242) as the ceremony kind `review` for the
   slice's missions, its project and the node, the first review as much as

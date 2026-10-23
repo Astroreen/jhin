@@ -3,6 +3,7 @@
 // The view shows what the stream says afterwards; a dialog never writes the fold.
 import { ownerAddress } from "@jhin/agent-api";
 import {
+  DEFAULT_MISSION_PROCESS,
   MISSION_STATUSES,
   type Mission,
   type MissionStatus,
@@ -32,8 +33,14 @@ import {
 import { useId, useState, type ReactNode } from "react";
 
 import type { Directory } from "./directory.ts";
-import { intentChanges, missionChanges, sliceChanges, sliceStatusOptions } from "./changes.ts";
-import { assigneeLabel, formatSteps, parseSteps, STATUS_LABELS } from "./route.ts";
+import {
+  intentChanges,
+  missionChanges,
+  newMissionProcess,
+  sliceChanges,
+  sliceStatusOptions,
+} from "./changes.ts";
+import { assigneeLabel, formatSteps, STATUS_LABELS } from "./route.ts";
 
 /** Runs a command on the view's node and returns its output. */
 export type Call = <T = unknown>(method: string, input: unknown) => Promise<T>;
@@ -236,10 +243,10 @@ export function MissionDialog(props: {
   const [outcome, setOutcome] = useState(mission?.outcome ?? "");
   const [status, setStatus] = useState<MissionStatus>(mission?.status ?? "planned");
   const [sliceProcess, setSliceProcess] = useState(
-    mission === undefined ? "spec → build → test" : formatSteps(mission.process.slice),
+    formatSteps(mission?.process.slice ?? DEFAULT_MISSION_PROCESS.slice),
   );
   const [missionProcess, setMissionProcess] = useState(
-    mission === undefined ? "merge" : formatSteps(mission.process.mission),
+    formatSteps(mission?.process.mission ?? DEFAULT_MISSION_PROCESS.mission),
   );
   return (
     <EditDialog
@@ -250,17 +257,13 @@ export function MissionDialog(props: {
       }
       onClose={onClose}
       submit={async () => {
-        const process = {
-          slice: parseSteps(sliceProcess, mission?.process.slice),
-          mission: parseSteps(missionProcess, mission?.process.mission),
-        };
         if (mission === undefined) {
           const created = await call<Mission>("missions.create", {
             projectId,
             title,
             outcome,
             status,
-            process,
+            process: newMissionProcess({ sliceProcess, missionProcess }),
           });
           onCreated?.(created);
           return;

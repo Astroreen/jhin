@@ -1,6 +1,7 @@
 // What an edit dialog sends (docs/plans/agents.md, C2: D1083–D1085): only the
 // fields the owner changed, so the command checks only what is new.
 import {
+  DEFAULT_MISSION_PROCESS,
   SLICE_STATUSES,
   type Mission,
   type MissionStatus,
@@ -20,6 +21,21 @@ export function intentChanges(
   return {
     ...(previous !== undefined && form.intent === previous.intent ? {} : { intent: form.intent }),
     ...(previous !== undefined && sameSteps(process, previous.process) ? {} : { process }),
+  };
+}
+
+/**
+ * A new mission's process from the dialog's text: a step the default process
+ * has keeps its fields there, so the default `merge` still needs a review
+ * (D648, D1241; L3 D1264).
+ */
+export function newMissionProcess(form: {
+  readonly sliceProcess: string;
+  readonly missionProcess: string;
+}): Mission["process"] {
+  return {
+    slice: parseSteps(form.sliceProcess, DEFAULT_MISSION_PROCESS.slice),
+    mission: parseSteps(form.missionProcess, DEFAULT_MISSION_PROCESS.mission),
   };
 }
 
