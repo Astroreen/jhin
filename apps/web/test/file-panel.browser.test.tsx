@@ -169,7 +169,7 @@ describe("the file panel (D1342)", () => {
       .toBeVisible();
   });
 
-  it("waits for a thread the node's catalog does not have yet", async () => {
+  it("says so for a thread the node's catalog does not have", async () => {
     const node = fakeNode();
     await mount(
       <FilePanel
@@ -177,11 +177,13 @@ describe("the file panel (D1342)", () => {
         path="a.ts"
         projectId={undefined}
         target={target}
-        threadId="later"
+        threadId="gone"
       />,
       services(node, catalog),
     );
-    await expect.element(page.getByRole("status", { name: "Loading file" })).toBeVisible();
+    await expect
+      .element(page.getByRole("alert").getByText("This file's thread is not available."))
+      .toBeVisible();
     expect(node.calls).toEqual([]);
   });
 
