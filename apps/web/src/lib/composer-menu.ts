@@ -487,3 +487,8 @@ export function menuInsertion(
       return undefined;
   }
 }
+
+/** The element id of a menu item, T3's `composerSuggestionOptionId` (D1348). */
+export function composerSuggestionOptionId(listId: string, itemId: string): string {
+  return `${listId}-${encodeURIComponent(JSON.stringify(itemId))}`;
+}

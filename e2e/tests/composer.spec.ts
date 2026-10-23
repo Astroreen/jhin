@@ -307,8 +307,18 @@ test("offers commands, skills and files from / $ and @, and inserts what is pick
   await info.attach("slash menu", { path: shot, contentType: "image/png" });
   await message.pressSequentially("rev");
   await expect(commands.getByRole("option")).toHaveText([/\/review/]);
+  // The menu is the editor's list, its highlighted option the active one (D1348).
+  await expect(message).toHaveAttribute("aria-controls", (await commands.getAttribute("id"))!);
+  // The highlighted option is the one the editor names (waited for, as the names change).
+  const highlighted = commands.locator('[role="option"][aria-selected="true"]');
+  await expect(highlighted).toHaveText(/\/review/);
+  await expect(message).toHaveAttribute(
+    "aria-activedescendant",
+    (await highlighted.getAttribute("id"))!,
+  );
   await message.press("Enter");
   await expect(commands).toBeHidden();
+  await expect(message).not.toHaveAttribute("aria-activedescendant");
   await expect(message).toHaveText("/review");
 
   // $ offers skills; the pick is a chip that sends as $deploy.
@@ -391,6 +401,39 @@ test("shows T3's chips with their details: a file's preview and a skill's instru
   const dialogShot = info.outputPath("skill-instructions.png");
   await page.screenshot({ path: dialogShot });
   await info.attach("skill instructions", { path: dialogShot, contentType: "image/png" });
+});
+
+test("spaces a heading as T3 does, and shows a code block's language with its icon", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.click();
+  await message.pressSequentially("intro");
+  await message.press("Shift+Enter");
+  await message.pressSequentially("## Plan");
+  const heading = message.locator("h2");
+  await expect(heading).toHaveText("Plan");
+  // T3's `.composer-tiptap` headings: 1.25rem above, 0.5rem below (D1347).
+  expect(
+    await heading.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return [style.marginTop, style.marginBottom];
+    }),
+  ).toEqual(["20px", "8px"]);
+  await message.press("Shift+Enter");
+  await message.pressSequentially("```ts");
+  await message.press("Enter");
+  await message.pressSequentially("const a = 1;");
+  const language = page.getByRole("combobox", { name: "Code language: TypeScript" });
+  await expect(language.locator("svg[data-pierre-icon]")).toBeVisible();
+  const shot = info.outputPath("editor-details.png");
+  await page.screenshot({ path: shot });
+  await info.attach("heading spacing and the language icon", {
+    path: shot,
+    contentType: "image/png",
+  });
 });
 
 test("cites a selection of the agent's answer, with a comment, as T3's quote", async ({

@@ -2198,6 +2198,27 @@ Code at `eb7b35ac` (D53).
 Round 4 of `t3-roadmap.md` (D1341–D1360), at T3 Code `eb7b35ac` as D290
 says. The other W38 decisions land in their own pull requests.
 
+- **D1346. The language picker shows each language's file icon,** as T3's
+  `LanguageIcon`: the header's button and every option draw the Pierre icon
+  of a file in that language (T3's `syntheticFileNameForLanguageId`, in
+  `lib/pierre-icons.ts`: `typescript` is `file.ts`, `dockerfile`
+  `Dockerfile`, plain text `file.txt`).
+- **D1347. A heading in the prompt has T3's spacing:** 1.25rem above and
+  0.5rem below (T3's `.composer-tiptap` headings), a first one too: T3 zeroes
+  the first child's margin in a message (`.chat-markdown > :first-child`),
+  not in the composer. The composer's other blocks keep none, as in T3.
+- **D1348. The editor names the menu's highlighted option,** as T3's
+  `ComposerPromptEditorTiptap`: while the `/`, `@`, `$` or `#` menu shows,
+  the editor has `aria-autocomplete="list"` and `aria-haspopup="listbox"`,
+  and with a highlighted option `aria-controls` (the listbox) and
+  `aria-activedescendant` (that option, T3's `composerSuggestionOptionId`),
+  so a screen reader follows the highlight while focus stays in the text.
+- **D1349. No other keyboard way out of a code block,** as in T3: the caret
+  leaves a block by moving below it (ArrowDown at its end, tiptap's
+  `exitOnArrowDown`, which T3 keeps; `prompt-editor.browser.test.tsx` proves
+  it). D843's Deferred
+  item asked for one T3 does not have; it is closed by porting T3's
+  behaviour as it is.
 - **D1351. Find opens a finished turn's folded work,** as T3's find opens
   the work its match is in. While the find bar is open, a finished turn
   renders the work it folds as well, hidden (`hidden`,
@@ -2242,11 +2263,6 @@ says. The other W38 decisions land in their own pull requests.
 - Applying Fast Mode and Ultracode to a live Claude Code session through
   `applyFlagSettings` (T3 does): a change of them starts it again (D298).
 - The editor's parts T3 has and this port left out (D303):
-  - the file icons of the code-block language picker (D842; with the chips'
-    file icons);
-  - a keyboard way out of a code block other than moving the caret (D843;
-    T3 has none);
-  - the vertical spacing T3 gives headings (the composer's blocks have none);
   - visible marks at the caret;
   - T3's citations (D1010–D1012) as T3 has them besides: the comment
     editor opening at the quote's place in the message right after "Cite",
@@ -2264,8 +2280,7 @@ says. The other W38 decisions land in their own pull requests.
     recalled message's records;
   - listing pull requests on Bitbucket and Forgejo (D849; GitLab and Azure
     DevOps list since `source-control.md` D1287, D1288), and a typed number
-    found off GitHub (`git.pr.resolve` reads GitHub only);
-  - `aria-activedescendant` from the editor to the menu.
+    found off GitHub (`git.pr.resolve` reads GitHub only).
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's captured window context on screenshots (D1013: with

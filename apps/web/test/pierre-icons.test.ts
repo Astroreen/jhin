@@ -1,7 +1,11 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/pierre-icons.test.ts.
 import { describe, expect, it } from "vite-plus/test";
 
-import { T3_PIERRE_ICONS, resolvePierreIconForEntry } from "../src/lib/pierre-icons.ts";
+import {
+  T3_PIERRE_ICONS,
+  resolvePierreIconForEntry,
+  syntheticFileNameForLanguageId,
+} from "../src/lib/pierre-icons.ts";
 
 describe("T3's file icons (D923)", () => {
   it("uses Pierre's file name and complete-set extension icons", () => {
@@ -32,5 +36,19 @@ describe("T3's file icons (D923)", () => {
   it("falls back to Pierre's default for an unknown type, and to Lucide's for a folder", () => {
     expect(resolvePierreIconForEntry("artifact.unknown-ext", "file")?.token).toBe("default");
     expect(resolvePierreIconForEntry("packages/client", "directory")).toBeNull();
+  });
+});
+
+describe("a code language's file icon (D1346, T3's syntheticFileNameForLanguageId)", () => {
+  it("names a file in that language", () => {
+    expect(syntheticFileNameForLanguageId("typescript")).toBe("file.ts");
+    expect(syntheticFileNameForLanguageId("TypeScript")).toBe("file.ts");
+    expect(syntheticFileNameForLanguageId("python")).toBe("file.py");
+    expect(syntheticFileNameForLanguageId("shellscript")).toBe("file.sh");
+    expect(syntheticFileNameForLanguageId("dockerfile")).toBe("Dockerfile");
+    expect(syntheticFileNameForLanguageId("go")).toBe("file.go");
+    expect(resolvePierreIconForEntry(syntheticFileNameForLanguageId("python"), "file")?.name).toBe(
+      resolvePierreIconForEntry("main.py", "file")?.name,
+    );
   });
 });
