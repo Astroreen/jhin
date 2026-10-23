@@ -21,6 +21,8 @@ export const MissionEvents = {
   sliceUpdated: "missions.slice.updated",
   /** `{ slice, by?, traceId? }`: the slice's proof was recorded (again, if it already had one). */
   sliceProved: "missions.slice.proved",
+  /** `{ slice, by?, traceId? }`: a review of the slice's work was recorded (L2, D1242). */
+  sliceReviewed: "missions.slice.reviewed",
 } as const;
 export type MissionEventType = (typeof MissionEvents)[keyof typeof MissionEvents];
 
@@ -32,6 +34,7 @@ export const MISSION_EVENT_RECORD = {
   [MissionEvents.sliceCreated]: "slice",
   [MissionEvents.sliceUpdated]: "slice",
   [MissionEvents.sliceProved]: "slice",
+  [MissionEvents.sliceReviewed]: "slice",
 } as const satisfies Record<MissionEventType, "intent" | "mission" | "slice">;
 
 /** Error codes of the `missions.*` and `slices.*` commands. */
@@ -43,6 +46,8 @@ export type MissionErrorCode =
   | "SLICE_ORDER_INVALID"
   /** `step` is not a step of the mission's slice process. */
   | "SLICE_STEP_INVALID"
+  /** `step` is not a step of the mission's own process (between its slices). */
+  | "MISSION_STEP_INVALID"
   /** A slice is marked done without a proof: record one with `slices.prove`. */
   | "PROOF_REQUIRED"
   /** A dropped slice stays dropped (D651): plan a new one instead. */
@@ -71,6 +76,12 @@ export const Step = z.object({
     .regex(/^[a-z][a-z0-9-]{0,39}$/, "lowercase letters, digits and -")
     .describe("The step's id, e.g. build"),
   description: z.string().max(2000).optional().describe("What the step means here"),
+  review: z
+    .boolean()
+    .optional()
+    .describe(
+      "Taken only once the work is reviewed after its last change, e.g. commit or merge (D1241)",
+    ),
 });
 export type Step = z.infer<typeof Step>;
 
@@ -95,8 +106,16 @@ export type MissionProcess = z.infer<typeof MissionProcess>;
 
 export const DEFAULT_MISSION_PROCESS: MissionProcess = {
   slice: [{ id: "spec" }, { id: "build" }, { id: "test" }],
-  mission: [{ id: "merge" }],
+  mission: [{ id: "merge", review: true }],
 };
+
+/**
+ * Before a mission takes a step of its own process (`missions.update { step }`),
+ * this hook runs with `{ mission, step }`: a plugin refuses the step by
+ * throwing. The orchestrator refuses a step that needs a review while a slice
+ * changed after its last one (D1241).
+ */
+export const MISSION_STEP_HOOK = "missions.step";
 
 /** A project's intent (D643): what the project is for, and its process between missions. */
 export const ProjectIntent = z.object({
@@ -121,6 +140,8 @@ export const Mission = z.object({
   outcome: z.string(),
   status: MissionStatus,
   process: MissionProcess,
+  /** The step of its own process the mission took last (D1241). */
+  step: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -174,6 +195,35 @@ export const Proof = z.object({
 });
 export type Proof = z.infer<typeof Proof>;
 
+/**
+ * The files a review saw (D1242): where the slice's work lives (a thread's
+ * worktree, else its project) and the git tree of its content then, from
+ * `git.tree`. The same tree there later means nothing changed since.
+ */
+export const ReviewedWork = z.object({
+  projectId: z.string(),
+  threadId: z.string().optional(),
+  path: z.string(),
+  tree: z.string(),
+});
+export type ReviewedWork = z.infer<typeof ReviewedWork>;
+
+export const REVIEW_VERDICTS = ["approved", "changes-requested"] as const;
+export const ReviewVerdict = z.enum(REVIEW_VERDICTS);
+
+/** The last review of a slice's work (D1242). */
+export const SliceReview = z.object({
+  verdict: ReviewVerdict,
+  /** What the reviewer checked, and what it found. */
+  notes: z.string().max(20_000).optional(),
+  /** The files reviewed; absent on a node without `git.tree`. */
+  work: ReviewedWork.optional(),
+  recordedAt: z.string(),
+  /** Who recorded it: the caller's id. */
+  by: z.string().optional(),
+});
+export type SliceReview = z.infer<typeof SliceReview>;
+
 export const Slice = z.object({
   id: z.string(),
   missionId: z.string(),
@@ -191,6 +241,10 @@ export const Slice = z.object({
   step: z.string().optional(),
   threads: z.array(SliceThread),
   proof: Proof.optional(),
+  /** Slices of the same mission, in earlier waves, whose work this slice reviews (D1243). */
+  reviews: z.array(z.string()).optional(),
+  /** The last review of this slice's work (D1242). */
+  review: SliceReview.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -352,6 +406,87 @@ export function missionProgress(
 const slicesInOrder = (slices: readonly Slice[]) =>
   slices.toSorted((a, b) => a.wave - b.wave || a.createdAt.localeCompare(b.createdAt));
 
+// --- Review after the last change (agents.md D1241) ------------------------------
+
+/**
+ * Why a slice keeps a step that needs a review from being taken: it was never
+ * reviewed, its last review asked for changes, it changed after its last
+ * review, or the files its review saw cannot be read now.
+ */
+export const UNREVIEWED_REASONS = [
+  "unreviewed",
+  "changes-requested",
+  "changed-after-review",
+  "work-unknown",
+] as const;
+export const Unreviewed = z.object({
+  sliceId: z.string(),
+  reason: z.enum(UNREVIEWED_REASONS),
+  /** Where the work lives, when the review recorded it. */
+  path: z.string().optional(),
+});
+export type Unreviewed = z.infer<typeof Unreviewed>;
+
+export const ReviewCheck = z.object({
+  /** No slice keeps a step that needs a review from being taken. */
+  clear: z.boolean(),
+  unreviewed: z.array(Unreviewed),
+});
+export type ReviewCheck = z.infer<typeof ReviewCheck>;
+
+/** The places a mission's reviews saw, so their trees can be read again. */
+export function reviewedWork(slices: readonly Slice[]): ReviewedWork[] {
+  const byPath = new Map<string, ReviewedWork>();
+  for (const slice of slices) {
+    const work = slice.review?.work;
+    if (work !== undefined && !byPath.has(work.path)) byPath.set(work.path, work);
+  }
+  return [...byPath.values()];
+}
+
+/**
+ * Which done slices of a mission were not reviewed after their last change
+ * (D1241). A review slice (one with `reviews`, D1243) needs no review itself.
+ * A slice is reviewed when its last review approved it after its proof and the
+ * files where it lives are still those the latest review there saw: `trees`
+ * holds each reviewed path's tree now (`git.tree`), so a change by anyone after
+ * the review, the lead's included, shows. A review recorded without its files
+ * (no `git.tree` on the node) is checked by its time alone.
+ */
+export function reviewCheck(
+  slices: readonly Slice[],
+  trees: ReadonlyMap<string, string>,
+): ReviewCheck {
+  const latest = new Map<string, SliceReview & { work: ReviewedWork }>();
+  for (const slice of slices) {
+    const review = slice.review;
+    if (review?.work === undefined) continue;
+    const seen = latest.get(review.work.path);
+    if (seen === undefined || seen.recordedAt < review.recordedAt)
+      latest.set(review.work.path, { ...review, work: review.work });
+  }
+  const unreviewed: Unreviewed[] = [];
+  for (const slice of slicesInOrder(slices)) {
+    if (slice.status !== "done" || (slice.reviews?.length ?? 0) > 0) continue;
+    const review = slice.review;
+    const path = review?.work?.path;
+    const at = path === undefined ? {} : { path };
+    const last = path === undefined ? review : latest.get(path);
+    if (review === undefined) unreviewed.push({ sliceId: slice.id, reason: "unreviewed" });
+    else if (review.verdict !== "approved" || last?.verdict !== "approved")
+      unreviewed.push({ sliceId: slice.id, reason: "changes-requested", ...at });
+    else if (slice.proof !== undefined && review.recordedAt < slice.proof.recordedAt)
+      unreviewed.push({ sliceId: slice.id, reason: "changed-after-review", ...at });
+    else if (path !== undefined) {
+      const now = trees.get(path);
+      if (now === undefined) unreviewed.push({ sliceId: slice.id, reason: "work-unknown", path });
+      else if (now !== last?.work?.tree)
+        unreviewed.push({ sliceId: slice.id, reason: "changed-after-review", path });
+    }
+  }
+  return { clear: unreviewed.length === 0, unreviewed };
+}
+
 // --- Markdown (D649) ------------------------------------------------------------
 
 const steps = (list: readonly Step[]) =>
@@ -445,6 +580,14 @@ function renderSlice(slice: Slice, titles: ReadonlyMap<string, string>): string[
       `- Depends on: ${slice.dependsOn.map((id) => literal(titles.get(id) ?? id)).join(", ")}`,
     );
   }
+  if (slice.reviews !== undefined && slice.reviews.length > 0) {
+    facts.push(`- Reviews: ${slice.reviews.map((id) => literal(titles.get(id) ?? id)).join(", ")}`);
+  }
+  if (slice.review !== undefined) {
+    facts.push(
+      `- Review: ${slice.review.verdict} (${literal(slice.review.recordedAt)}${slice.review.by === undefined ? "" : `, ${literal(slice.review.by)}`})`,
+    );
+  }
   if (slice.threads.length > 0) {
     facts.push(
       `- Threads: ${slice.threads
@@ -483,7 +626,7 @@ export function renderMission(mission: Mission, slices: readonly Slice[]): strin
     "",
     prose(mission.outcome),
     "",
-    `**Process**: slice ${steps(mission.process.slice)}; mission ${steps(mission.process.mission)}`,
+    `**Process**: slice ${steps(mission.process.slice)}; mission ${steps(mission.process.mission)}${mission.step === undefined ? "" : ` (step: ${mission.step})`}`,
     "",
   ];
   for (const { wave, slices: members } of wavesOf(slices)) {

@@ -45,6 +45,14 @@ export function handoffText(input: {
     `The slice goes through ${steps(mission)}${input.step === undefined ? "" : `; it is at ${input.step}`}. Record each step you reach with slices_update { sliceId, step }.`,
     "When the spec works, record the proof once with slices_prove { sliceId, items }: the smallest proof that shows it works (a command with its output, a screenshot, a link).",
     `If you cannot go on, set the slice blocked with slices_update { sliceId, status: "blocked" } and say why: whoever runs the mission decides.`,
+    ...(slice.reviews === undefined || slice.reviews.length === 0
+      ? []
+      : [
+          "",
+          "## Review",
+          "",
+          `This slice reviews the work of ${slice.reviews.map((id) => `\`${id}\``).join(", ")}. Record each review with slices_review { sliceId, verdict, notes }: approved or changes-requested, and in notes what you checked and what you found. A commit or merge of the mission is refused until each is approved after its last change.`,
+        ]),
     "",
   ].join("\n");
 }

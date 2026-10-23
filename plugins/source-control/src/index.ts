@@ -104,6 +104,7 @@ import {
   normalizeReference,
 } from "./checkout.ts";
 import { followTurns } from "./turns.ts";
+import { writeWorkingTree } from "./checkpoints.ts";
 import {
   createWorktree,
   firstMessageInputOf,
@@ -1163,7 +1164,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     }
   };
 
-  const gitOf = async (repo: Repo): Promise<{ git: Git; root: string }> => {
+  const gitOf = async (repo: Repo): Promise<{ git: Git; root: string; commonDir: string }> => {
     const status = await statusOf(repo);
     const location = repo.location;
     if (!status.isRepo || location?.isRepo !== true || repo.git === undefined) {
@@ -1173,7 +1174,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         { projectId: repo.project.id },
       );
     }
-    return { git: repo.git, root: location.root };
+    return { git: repo.git, root: location.root, commonDir: location.commonDir };
   };
 
   // --- Following the threads index ------------------------------------------------------
@@ -2839,6 +2840,21 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     output: z.object({ checkpoints: z.array(TurnCheckpoint) }),
     permissions: ["git.read"],
     handler: async ({ threadId }) => ({ checkpoints: await service.checkpoints(threadId) }),
+  });
+
+  context.commands.register({
+    name: "git.tree",
+    description:
+      "The git tree of the files where a thread works (its worktree, else its project) or of a project, committed or not (untracked in, ignored out): the same content has the same tree, so a different tree means the files changed",
+    input: Target,
+    output: z.object({ projectId: z.string(), path: z.string(), tree: z.string() }),
+    permissions: ["git.read"],
+    handler: async (input) => {
+      const projectId = await projectOf(input);
+      const repo = await repoFor(projectId, input.threadId);
+      const { git, root, commonDir } = await gitOf(repo);
+      return { projectId, path: root, tree: await writeWorkingTree(git, commonDir) };
+    },
   });
 
   context.commands.register({

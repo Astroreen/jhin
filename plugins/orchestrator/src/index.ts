@@ -17,14 +17,18 @@ import {
   EMPTY_MISSIONS,
   IntentChain,
   MISSIONS_STREAM,
+  MISSION_STEP_HOOK,
   Mission,
   MissionEvents,
   MissionProgress,
+  ReviewCheck,
   Slice,
   Step,
   applyMissionEvent,
   intentChain,
   missionProgress,
+  reviewCheck,
+  reviewedWork,
   slicesOf,
   type MissionsState,
 } from "@jhin/missions-api";
@@ -68,6 +72,15 @@ const Config = z
           "Hand an agent working on a slice its intent chain every this many turns of its thread; 0 turns it off.",
         examples: [10],
       }),
+    reviewSteps: z
+      .array(z.string())
+      .default(["commit", "merge"])
+      .meta({
+        title: "Steps that need a review",
+        description:
+          "Mission steps taken only once every slice was reviewed after its last change, whatever the mission's process says; a step marked review in the process needs one too.",
+        examples: [["commit", "merge"]],
+      }),
   })
   .meta({
     title: "Orchestrator",
@@ -87,7 +100,9 @@ export type OrchestratorErrorCode =
   /** No thread to run the workflow from, or to refocus. */
   | "THREAD_REQUIRED"
   /** The mission's lead asked the owner, and the team waits for the answer (D1223). */
-  | "ESCALATION_OPEN";
+  | "ESCALATION_OPEN"
+  /** The step needs a review, and a slice changed after its last one (D1241). */
+  | "REVIEW_REQUIRED";
 
 class OrchestratorError extends Error {
   readonly code: OrchestratorErrorCode;
@@ -506,6 +521,70 @@ export default definePlugin({
         };
       },
     });
+
+    // --- Review after the last change (D1241) -------------------------------------
+    /** Whether taking `step` needs the mission's work reviewed after its last change. */
+    const needsReview = (mission: Mission, step: string) =>
+      config().reviewSteps.includes(step) ||
+      mission.process.mission.some((candidate) => candidate.id === step && candidate.review);
+    /** The reviewed files read again (`git.tree`, as the node): a path that cannot be read is left out. */
+    const checkReviews = async (mission: Mission) => {
+      const slices = slicesOf(state, mission.id);
+      const trees = new Map<string, string>();
+      for (const work of reviewedWork(slices)) {
+        try {
+          const now = await run<{ tree: string }>(
+            "git.tree",
+            work.threadId === undefined
+              ? { projectId: work.projectId }
+              : { threadId: work.threadId },
+          );
+          trees.set(work.path, now.tree);
+        } catch (error) {
+          context.log.warn("A reviewed slice's files could not be read", {
+            missionId: mission.id,
+            path: work.path,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      return reviewCheck(slices, trees);
+    };
+    context.commands.register({
+      name: "missions.review.check",
+      description:
+        "Whether every done slice of a mission was reviewed after its last change (its files are still those its latest review saw), and, with a step, whether that step needs it: a step that needs a review is refused until this is clear",
+      input: z.object({ missionId: z.string(), step: z.string().optional() }),
+      output: ReviewCheck.extend({
+        /** Whether `step` needs a review; true without a step. */
+        needed: z.boolean(),
+      }),
+      permissions: ["missions.read"],
+      handler: async ({ missionId, step }) => {
+        await sync();
+        const mission = getMission(missionId);
+        return {
+          needed: step === undefined || needsReview(mission, step),
+          ...(await checkReviews(mission)),
+        };
+      },
+    });
+    // The missions plugin runs this hook before a mission takes a step of its own process.
+    context.subscriptions.add(
+      context.hooks.before<{ mission: Mission; step: string }>(MISSION_STEP_HOOK, async (input) => {
+        if (!needsReview(input.mission, input.step)) return input;
+        await sync();
+        const check = await checkReviews(input.mission);
+        if (check.clear) return input;
+        throw new OrchestratorError(
+          "REVIEW_REQUIRED",
+          `Step ${input.step} of mission ${input.mission.id} needs a review after the last change: ${check.unreviewed
+            .map((item) => `${state.slices[item.sliceId]?.title ?? item.sliceId} (${item.reason})`)
+            .join(", ")}. Have the slices reviewed again (slices.review), then take the step`,
+          { missionId: input.mission.id, step: input.step, unreviewed: check.unreviewed },
+        );
+      }),
+    );
 
     // --- The orchestrator workflow (D706) ----------------------------------------
     context.commands.register({

@@ -90,6 +90,29 @@ describe("jhin.source-control: checkpoints", () => {
     expect(checkpoints).toEqual([first]);
   });
 
+  it("names the working tree's content with git.tree, committed or not, without touching the index", async () => {
+    const dir = repository();
+    write(dir, "draft.txt", "mine\n");
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    const tree = () =>
+      sc.client.call<{ projectId: string; path: string; tree: string }>("git.tree", { projectId });
+
+    const first = await tree();
+    expect(first.projectId).toBe(projectId);
+    expect(Fs.realpathSync(first.path)).toBe(Fs.realpathSync(dir));
+    expect(git(dir, "status", "--porcelain")).toBe("?? draft.txt\n");
+    // The untracked file is in the tree.
+    expect(git(dir, "cat-file", "-p", first.tree)).toContain("draft.txt");
+
+    // Committing the same files keeps the tree; changing one does not.
+    git(dir, "add", "draft.txt");
+    git(dir, "commit", "-q", "-m", "draft");
+    expect((await tree()).tree).toBe(first.tree);
+    write(dir, "draft.txt", "changed\n");
+    expect((await tree()).tree).not.toBe(first.tree);
+  });
+
   it("diffs a turn against the one before it, or from any earlier turn", async () => {
     const dir = repository();
     const sc = await node({ watch: false });
