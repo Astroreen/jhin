@@ -732,7 +732,10 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   panel's controls wait for its first read.
   Android's appearance is read from a definite `Night mode: yes` or `no`
   (`auto` follows the clock, so it is not shown). A push payload, as text
-  or as JSON, carries at most 4096 characters, as agents send it too.
+  or as JSON, carries at most 4096 characters, as agents send it too. A
+  failed step answers `DEVICE_OPERATION_FAILED` with the tool's own output
+  (up to 2000 characters, host paths included), as D408's device errors do,
+  for a `devices.write` caller of the owner's one trust domain (D22).
 
 - **D1333. T3's tools panel beside an open device.** The rail gets T3's
   "Device tools" toggle (lucide `SlidersHorizontal`), which opens "Tools" at
@@ -744,7 +747,10 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   permission, Grant, Revoke, Reset on iOS) and Push notification (iOS). It
   reads the settings when it opens ("Reading device settings…"), runs one
   action at a time, shows the settings each action answers, and an error at
-  its top. A setting the node could not read cannot be switched.
+  its top. A setting the node could not read cannot be switched. On iOS the
+  node reads no foreground app (as T3's), so there the App section shows
+  none and Push notification stays off in the panel; `device.action` sends
+  a push to any app id (Deferred).
 
 ### Touch and uploads (W34)
 
