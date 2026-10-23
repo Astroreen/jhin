@@ -36,6 +36,7 @@ export function openFilePanel(
   ) {
     return;
   }
-  // The mode stays (a thread opens in Threads mode only where the route already is).
-  navigation.navigate(current.mode === undefined ? route : { ...route, mode: current.mode });
+  // In Threads mode, where the file panel shows beside the thread (another mode's shell shows
+  // only its own panels).
+  navigation.navigate(route);
 }

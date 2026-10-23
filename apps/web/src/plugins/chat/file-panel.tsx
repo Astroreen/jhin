@@ -111,7 +111,8 @@ export function FilePanel(props: FilePanelProps) {
         </div>
       </div>
       {projectId === undefined ? (
-        catalog === undefined ? (
+        // Until the node's catalog has the thread (a link opened before it loaded).
+        catalog === undefined || (props.threadId !== undefined && record === undefined) ? (
           <FileSurfaceLoading />
         ) : (
           <FileSurfaceFailure message="This file's project is not available." />

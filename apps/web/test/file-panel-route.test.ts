@@ -26,11 +26,11 @@ describe("opening a file beside a thread (D1342)", () => {
     ]);
   });
 
-  it("opens a draft's file beside the project's draft, and keeps the mode", () => {
+  it("opens a draft's file beside the project's draft, in Threads mode", () => {
     const { nav, visited } = navigation({ node: "a", project: "p1", mode: "civilization" });
     openFilePanel(nav, { target: { node: "a" }, projectId: "p1" }, "README.md");
     expect(visited).toEqual([
-      { node: "a", project: "p1", panel: FILE_PANEL, section: "README.md", mode: "civilization" },
+      { node: "a", project: "p1", panel: FILE_PANEL, section: "README.md" },
     ]);
   });
 
