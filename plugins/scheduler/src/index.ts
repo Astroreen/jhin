@@ -814,9 +814,19 @@ function activateScheduler(context: PluginContext): void {
    * broader, nor when its bound thread cannot be read, so one failed read hides one URL instead
    * of failing the whole list.
    */
-  const urlShown = async (limits: Modes | undefined, task: Modes & { threadId: string | null }) => {
+  const urlShown = async (
+    limits: Modes | undefined,
+    task: Modes & { readonly id: string; readonly threadId: string | null },
+  ) => {
     if (limits === undefined) return true;
-    const modes = await runModes(task).catch(() => undefined);
+    const modes = await runModes(task).catch((error: unknown) => {
+      context.log.warn("hid a task's webhook URL: its bound thread could not be read", {
+        taskId: task.id,
+        threadId: task.threadId,
+        error: String(error),
+      });
+      return undefined;
+    });
     return modes !== undefined && within(limits, modes);
   };
 
