@@ -51,4 +51,63 @@ describe("the preview's webviews (D1323)", () => {
       expect(openLinkUrl(url)).toBeUndefined();
     }
   });
+
+  it("resets every preference a page's webview params may have set (D1323)", () => {
+    const hostile: Electron.WebPreferences = {
+      preload: "/tmp/evil.js",
+      nodeIntegration: true,
+      nodeIntegrationInSubFrames: true,
+      contextIsolation: false,
+      sandbox: false,
+      webSecurity: false,
+      allowRunningInsecureContent: true,
+      experimentalFeatures: true,
+      enableBlinkFeatures: "Serial",
+      webviewTag: true,
+    };
+    const params: Record<string, string> = {
+      partition: "jhin-preview-incognito-tab_1_abcd1234",
+      src: "https://example.com/",
+      preload: "file:///tmp/evil.js",
+      nodeintegration: "on",
+      nodeintegrationinsubframes: "on",
+      disablewebsecurity: "on",
+      webpreferences: "contextIsolation=no, sandbox=no",
+    };
+    expect(hardenWebview(hostile, params)).toBe(true);
+    expect(hostile).toEqual({
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      disableHtmlFullscreenWindowResize: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      enableBlinkFeatures: "",
+      webviewTag: false,
+    });
+    for (const param of [
+      "preload",
+      "nodeintegration",
+      "nodeintegrationinsubframes",
+      "disablewebsecurity",
+      "webpreferences",
+    ]) {
+      expect(params[param]).toBeUndefined();
+    }
+  });
+
+  it("refuses partitions near the preview's but not its own", () => {
+    for (const partition of [
+      "persist:jhin-preview-",
+      "jhin-preview-agent-",
+      "persist:jhin-preview-a/b",
+      "jhin-preview-other-tab_1",
+      "persist:JHIN-PREVIEW-x",
+      " persist:jhin-preview-x",
+    ]) {
+      expect(hardenWebview({}, { partition, src: "about:blank" })).toBe(false);
+    }
+  });
 });

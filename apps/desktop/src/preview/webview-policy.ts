@@ -35,13 +35,29 @@ export function hardenWebview(
   if (typeof partition !== "string" || !PREVIEW_PARTITION.test(partition)) return false;
   const src = params["src"] ?? "";
   if (src !== "" && src !== "about:blank" && !/^https?:/i.test(src)) return false;
+  // Electron has merged the page's own `preload`, `nodeintegration`,
+  // `disablewebsecurity` and `webpreferences` params into `preferences` by now:
+  // each is reset here, whatever the page asked for.
   delete preferences.preload;
+  for (const param of [
+    "preload",
+    "nodeintegration",
+    "nodeintegrationinsubframes",
+    "disablewebsecurity",
+    "webpreferences",
+  ]) {
+    delete params[param];
+  }
   preferences.sandbox = true;
   preferences.nodeIntegration = false;
   preferences.nodeIntegrationInSubFrames = false;
   preferences.contextIsolation = true;
   preferences.webSecurity = true;
   preferences.disableHtmlFullscreenWindowResize = true;
+  preferences.allowRunningInsecureContent = false;
+  preferences.experimentalFeatures = false;
+  preferences.enableBlinkFeatures = "";
+  preferences.webviewTag = false;
   return true;
 }
 

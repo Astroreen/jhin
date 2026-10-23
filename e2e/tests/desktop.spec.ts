@@ -661,6 +661,22 @@ test("the app shows its node's browser tabs in a webview the agent and the user 
     // Closing the tab removes its webview.
     await client.call("preview.tab.close", { threadId: thread.id, tabId: opened.tabId });
     await expect(webview).toHaveCount(0);
+
+    // DevTools taking a webview's debugger ends its relay: the node drops that tab (D1322).
+    const second = panel.getByRole("tab", { name: "Second page" });
+    await expect(second).toBeVisible();
+    const relays = () =>
+      app.evaluate(({ webContents }) =>
+        webContents
+          .getAllWebContents()
+          .filter((contents) => contents.getType() === "webview" && contents.debugger.isAttached())
+          .map((contents) => contents.id),
+      );
+    const [guest] = await relays();
+    expect(guest).toBeDefined();
+    await app.evaluate(({ webContents }, id) => webContents.fromId(id)!.debugger.detach(), guest!);
+    await expect(second).toHaveCount(0);
+    expect(await relays()).toEqual([]);
   } finally {
     await new Promise((resolve) => page.close(resolve));
   }
