@@ -113,7 +113,7 @@ describe("jhin.source-control: checkpoints", () => {
     expect((await tree()).tree).not.toBe(first.tree);
   });
 
-  it("leaves an excluded folder out of git.tree at any depth, keeping what HEAD has (D1261)", async () => {
+  it("leaves an excluded folder out of git.tree at any depth, committed or not (D1261)", async () => {
     const dir = repository();
     write(dir, "work.txt", "work\n");
     write(dir, ".jhin/agents/crew-builder/notes.md", "first\n");
@@ -138,9 +138,18 @@ describe("jhin.source-control: checkpoints", () => {
     expect(await tree([".jhin/agents"])).toBe(before);
     expect(await tree()).not.toBe(before);
 
+    // Committing notes does not change it either.
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "notes");
+    expect(await tree([".jhin/agents"])).toBe(before);
+
     // The work beside it still counts.
     write(dir, "work.txt", "changed\n");
     expect(await tree([".jhin/agents"])).not.toBe(before);
+    // A folder is a relative path, never a glob or a way out.
+    for (const folder of ["**", "../x", "/abs", "a/"]) {
+      await expect(tree([folder])).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
+    }
   });
 
   it("diffs a turn against the one before it, or from any earlier turn", async () => {

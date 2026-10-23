@@ -63,7 +63,15 @@ export async function writeWorkingTree(
   const env = { GIT_INDEX_FILE: index };
   try {
     if (await headExists(git)) await git([...INDEX_CONFIG, "read-tree", "HEAD"], { env });
-    // An excluded folder keeps what HEAD has, so its edits never change the tree.
+    // An excluded folder is left out whole, committed or not, so neither its
+    // edits nor its commits change the tree.
+    if (exclude.length > 0) {
+      const folders = exclude.map((folder) => `:(glob)**/${folder}/**`);
+      await git(
+        [...INDEX_CONFIG, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ...folders],
+        { env },
+      );
+    }
     const excluded = exclude.map((folder) => `:(exclude,glob)**/${folder}/**`);
     await git([...INDEX_CONFIG, ...DURABLE, "add", "-A", "--", ".", ...excluded], { env });
     const tree = (await git([...INDEX_CONFIG, ...DURABLE, "write-tree"], { env })).stdout.trim();

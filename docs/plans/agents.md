@@ -1735,9 +1735,9 @@ Decisions (L2):
 Decisions (L3):
 
 - **D1261. A review's tree leaves the agents' knowledge out.**
-  `git.tree` takes `exclude`, folders left out wherever they are in the
-  tree: they keep what HEAD has, so editing, adding or deleting files there
-  never changes the tree. `slices.review` and the review check (D1242) pass
+  `git.tree` takes `exclude`, relative folder paths (no globs, no `..`)
+  left out of the tree wherever they are, committed or not, so editing,
+  adding, deleting or committing files there never changes it. `slices.review` and the review check (D1242) pass
   `REVIEW_TREE_EXCLUDE` (`@jhin/missions-api`): the agents' inherited
   knowledge, `.jhin/agents/` (D607). Before, it was untracked work like any
   other: in the L3 run the reviewer wrote a note for its next generation,
