@@ -204,6 +204,16 @@ const Project = z.object({
 });
 type Project = z.infer<typeof Project>;
 
+/** The statuses of `AgentGoal`, one list for the record's schema (D1306). */
+const GOAL_STATUSES = [
+  "active",
+  "paused",
+  "blocked",
+  "usage_limited",
+  "budget_limited",
+  "complete",
+] as const satisfies readonly AgentGoal["status"][];
+
 const TurnStatus = z.enum(["running", "waiting", "completed", "interrupted", "failed"]);
 type TurnStatus = z.infer<typeof TurnStatus>;
 const ENDED: ReadonlySet<TurnStatus> = new Set(["completed", "interrupted", "failed"]);
@@ -246,9 +256,7 @@ const Thread = z.object({
     })
     .optional(),
   /** The status of the goal the thread's agent pursues (D1306); absent without one. */
-  goalStatus: z
-    .enum(["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"])
-    .optional(),
+  goalStatus: z.enum(GOAL_STATUSES).optional(),
   // Where the sidebar keeps the thread (D75–D78). These are the user's
   // arrangement, not activity: changing them leaves `updatedAt` alone.
   /** Settled or kept active by hand; overrides the automatic rule until the next turn. */
@@ -1130,6 +1138,8 @@ export default definePlugin({
     /** Records the status of the thread's goal; failures are logged, never thrown. */
     const setGoalStatus = (threadId: string, goal: AgentGoal | null) =>
       updateThread(threadId, (thread) => {
+        // Progress (tokens, time) of the same status writes nothing.
+        if (thread.goalStatus === goal?.status) return thread;
         const { goalStatus: _previous, ...rest } = thread;
         return goal === null ? rest : { ...rest, goalStatus: goal.status };
       }).then(

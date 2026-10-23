@@ -138,6 +138,42 @@ describe("jhin.threads: thread management", () => {
     );
   });
 
+  it("records an active goal once, however often its progress is reported (D1306)", async () => {
+    const pursuing: AgentRuntime = {
+      agentId: "acme.goal",
+      status: async () => ({ available: true }),
+      startTurn: () => ({
+        interrupt: () => undefined,
+        items: (async function* () {
+          for (const tokensUsed of [100, 200, 300]) {
+            yield {
+              kind: "goal.updated" as const,
+              goal: { objective: "Ship it", status: "active" as const, tokensUsed },
+            };
+          }
+          yield { kind: "message.completed" as const, itemId: "m", text: "Working on it" };
+        })(),
+      }),
+    };
+    const { client } = await node({ agent: false, plugins: [registering(pursuing)] });
+    const thread = await client.call<Thread>("threads.create", { agentId: "acme.goal" });
+    const index = watch(client, "stream:threads");
+    await client.call("threads.send", { threadId: thread.id, text: "go" });
+    await index.untilMatch((event) => {
+      const payload = event.payload as unknown as Thread;
+      return payload.id === thread.id && payload.lastTurn?.status === "completed";
+    });
+    const active = index.events.filter((event) => {
+      const payload = event.payload as unknown as Thread;
+      return payload.id === thread.id && payload.goalStatus === "active";
+    });
+    // Written when it became active and kept by the turn's end, never for progress.
+    expect(active.map((event) => (event.payload as unknown as Thread).lastTurn?.status)).toEqual([
+      "running",
+      "completed",
+    ]);
+  });
+
   it("shortens long titles at a word", () => {
     expect(titleFromText("   \n  short ")).toBe("short");
     expect(titleFromText("")).toBe("New thread");

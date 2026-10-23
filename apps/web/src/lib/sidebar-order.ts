@@ -40,6 +40,10 @@ export type SidebarThreadStatus =
   | "failed"
   | "ready";
 
+/** Whether the thread's latest turn failed on a usage limit (D1306). */
+export const isUsageLimited = (thread: ThreadRecord): boolean =>
+  thread.lastTurn?.status === "failed" && thread.lastTurn.failure?.class === "usage_limit";
+
 /**
  * `waiting`: between its turns the thread waits on background work, such as a
  * watched pull request (T3's `backgroundWorkHoldsCompletion`, D1131).
@@ -50,8 +54,7 @@ export function sidebarThreadStatus(thread: ThreadRecord, waiting = false): Side
   if (turn?.status === "running") return "working";
   if (waiting) return "waiting";
   // A turn that hit a usage limit is "limited", not "failed" (t3-parity.md D1307).
-  if (turn?.status === "failed")
-    return turn.failure?.class === "usage_limit" ? "limited" : "failed";
+  if (turn?.status === "failed") return isUsageLimited(thread) ? "limited" : "failed";
   return "ready";
 }
 

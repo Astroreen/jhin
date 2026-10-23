@@ -190,6 +190,7 @@ import {
   sidebarThreadStatus,
   sidebarThreads,
   sidebarTopStatus,
+  isUsageLimited,
   threadActivityAt,
   threadKey,
   wokeAt,
@@ -1180,16 +1181,12 @@ export const sidebarPlugin = builtin(
                 <div
                   className={cn(
                     "flex min-w-0 items-center gap-2",
-                    thread.lastTurn.failure?.class === "usage_limit"
-                      ? "text-warning"
-                      : "text-error",
+                    isUsageLimited(thread) ? "text-warning" : "text-error",
                   )}
                 >
                   <CircleAlertIcon className="size-3 shrink-0 stroke-current" />
                   <div className="min-w-0 truncate">
-                    {thread.lastTurn.failure?.class === "usage_limit"
-                      ? "Usage limit reached"
-                      : "Error occurred"}
+                    {isUsageLimited(thread) ? "Usage limit reached" : "Error occurred"}
                   </div>
                 </div>
               ) : null}
