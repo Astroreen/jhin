@@ -46,6 +46,7 @@ type Handlers = {
     | undefined;
   check?: ((contents: unknown, permission: string) => boolean) | undefined;
 };
+const cleared: string[] = [];
 const sessions = new Map<string, EventEmitter & { handlers: Handlers }>();
 vi.mock("electron", () => ({
   webContents: { fromId: (id: number) => guests.get(id) },
@@ -61,6 +62,12 @@ vi.mock("electron", () => ({
           },
           setPermissionCheckHandler: (handler: Handlers["check"]) => {
             known.handlers.check = handler;
+          },
+          clearStorageData: async () => {
+            cleared.push(`${partition} storage`);
+          },
+          clearCache: async () => {
+            cleared.push(`${partition} cache`);
           },
         }),
       );
@@ -294,5 +301,33 @@ describe("the app's webview relay (D1322)", () => {
     expect(granted("fullscreen")).toBe(true);
     expect(granted("clipboard-read")).toBe(false);
     expect(granted("local-fonts")).toBe(false);
+  });
+
+  it("hands a guest attached twice at once to the later attach, with one relay (D1322)", async () => {
+    const webviews = host();
+    const webview = guest(13);
+    const [first, second] = await Promise.all([
+      webviews.attach(page as never, 13),
+      webviews.attach(page as never, 13),
+    ]);
+    expect(webview.debugger.isAttached()).toBe(true);
+    // One relay is left: the earlier one was closed by the later.
+    expect(await refused(first.endpoint)).toBe("refused");
+    await connect(second.endpoint);
+    expect(webview.listenerCount("destroyed")).toBe(1);
+    expect(webview.debugger.listenerCount("detach")).toBe(1);
+  });
+
+  it("clears only a partition of the preview, its storage and its cache (D1323)", async () => {
+    const webviews = host();
+    await expect(webviews.clearPartition("persist:other-app")).rejects.toThrow(
+      "Not a partition of the preview.",
+    );
+    cleared.length = 0;
+    await webviews.clearPartition("persist:jhin-preview-ZGVmYXVsdA");
+    expect(cleared).toEqual([
+      "persist:jhin-preview-ZGVmYXVsdA storage",
+      "persist:jhin-preview-ZGVmYXVsdA cache",
+    ]);
   });
 });
