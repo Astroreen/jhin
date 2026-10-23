@@ -3507,14 +3507,21 @@ export default definePlugin({
           if (thread.archivedAt === undefined) return thread;
           const { archivedAt: _archivedAt, ...rest } = thread;
           return { ...rest, updatedAt: now() };
-        }).then((thread) => {
+        }).then(async (thread) => {
           // A continuation armed before it was archived waits for its reset again (D1312); one
           // whose reset passed while archived is not sent by unarchiving: the banner offers it.
           const recovery = thread.limitRecovery;
-          if (recovery?.autoResume === true && Date.parse(recovery.resetAt) > Date.now()) {
+          if (recovery?.autoResume !== true) return thread;
+          if (Date.parse(recovery.resetAt) > Date.now()) {
             armRecovery(thread);
+            return thread;
           }
-          return thread;
+          // Its reset passed while archived: the resume is off, and the banner offers it.
+          return updateThread(threadId, (current) =>
+            current.limitRecovery?.turnId === recovery.turnId
+              ? { ...current, limitRecovery: { ...current.limitRecovery, autoResume: false } }
+              : current,
+          );
         }),
     });
 

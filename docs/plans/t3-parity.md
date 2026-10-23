@@ -2182,7 +2182,8 @@ Code at `eb7b35ac` (D53).
   on a timer of the node, armed again when the node starts (for a recovery
   still of the thread's latest turn) and when the thread is unarchived
   before its reset (one whose reset passed while archived is not sent by
-  unarchiving: the banner still offers it); then, if the thread's latest
+  unarchiving: its resume is turned off and the banner offers it again);
+  then, if the thread's latest
   turn is still that one and the thread is neither archived nor settled by
   hand (a thread the node settled by itself is still resumed, as T3 checks
   only the hand), it sends "Continue where you left off." as the user's

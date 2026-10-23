@@ -204,9 +204,10 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     const back = await client.call<Thread>("threads.unarchive", { threadId: thread.id });
     expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
-    // Nothing was sent: the recovery stays for the banner to offer.
+    // Nothing was sent.
     expect(back.lastTurn?.status).toBe("failed");
-    expect(back.limitRecovery).toMatchObject({ autoResume: true });
+    // Its resume is off, so the banner offers it again instead of claiming one is armed.
+    expect(back.limitRecovery).toMatchObject({ autoResume: false });
   });
 
   it("keeps a snooze of the user's that ends after the reset", async () => {
