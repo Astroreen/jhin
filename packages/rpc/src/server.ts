@@ -39,6 +39,11 @@ const BACKLOG_PAGE = 500;
  * and the client reads a snapshot again (D470).
  */
 export const MAX_WAITING_CHARACTERS = 16 * 1024 * 1024;
+/**
+ * Most one connection keeps waiting over all its windowed subscriptions
+ * (security.md D1365): the one that takes it past ends as above.
+ */
+export const MAX_CONNECTION_WAITING_CHARACTERS = 32 * 1024 * 1024;
 
 /** A subscription of the connection; a windowed one takes acknowledgements. */
 interface Subscription extends Disposable {
@@ -66,6 +71,8 @@ export interface RpcServerOptions {
 export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
   const store = new DisposableStore();
   const subscriptions = new Map<string, Subscription>();
+  /** What every windowed subscription of this connection keeps waiting (D1365). */
+  let connectionWaiting = 0;
   const traced = options.traced ?? (<T>(_trace: string, work: () => Promise<T>) => work());
 
   const reply = (message: ResponseMessage) => {
@@ -142,7 +149,12 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       }
       waiting.push({ sequence: event.sequence, text });
       waitingSize += text.length;
-      if (waitingSize <= MAX_WAITING_CHARACTERS) return;
+      connectionWaiting += text.length;
+      if (
+        waitingSize <= MAX_WAITING_CHARACTERS &&
+        connectionWaiting <= MAX_CONNECTION_WAITING_CHARACTERS
+      )
+        return;
       if (live) overflow();
       else overflowed = true;
     };
@@ -151,8 +163,6 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       if (!active()) return;
       subscription.dispose();
       subscriptions.delete(id);
-      waiting.length = 0;
-      waitingSize = 0;
       try {
         peer.send(
           JSON.stringify({
@@ -176,8 +186,22 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     const keep = (event: StoredEvent) => {
       buffered.push(event);
       if (window === undefined) return;
-      bufferedSize += JSON.stringify(event).length;
-      if (bufferedSize > MAX_WAITING_CHARACTERS) overflowed = true;
+      const size = JSON.stringify(event).length;
+      bufferedSize += size;
+      connectionWaiting += size;
+      if (
+        bufferedSize > MAX_WAITING_CHARACTERS ||
+        connectionWaiting > MAX_CONNECTION_WAITING_CHARACTERS
+      )
+        overflowed = true;
+    };
+    /** Gives what this subscription keeps back to the connection's bound. */
+    const release = () => {
+      connectionWaiting -= waitingSize + bufferedSize;
+      waiting.length = 0;
+      waitingSize = 0;
+      buffered.length = 0;
+      bufferedSize = 0;
     };
     if (log.follow !== undefined) {
       // A source that reads elsewhere (D500): it replays and follows on its own.
@@ -232,7 +256,10 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     // in the buffer, in the backlog, or both; `lastSent` drops duplicates.
     const live$ = log.subscribe(stream, (event) => (live ? deliver(event) : keep(event)));
     const subscription: Subscription = {
-      dispose: () => live$.dispose(),
+      dispose: () => {
+        live$.dispose();
+        release();
+      },
       ...(window === undefined
         ? {}
         : {
@@ -243,6 +270,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
               while (waiting.length > 0 && fits(waiting[0]!.text.length)) {
                 const next = waiting.shift()!;
                 waitingSize -= next.text.length;
+                connectionWaiting -= next.text.length;
                 send(next.sequence, next.text);
               }
             },
@@ -268,17 +296,21 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     } catch (error) {
       // A failed replay leaves nothing behind, so the client can retry with the same id.
       live$.dispose();
+      release();
       if (active()) subscriptions.delete(id);
       throw error;
     }
     if (active() && !overflowed) {
-      for (const event of buffered) deliver(event);
-      buffered.length = 0;
+      const kept = buffered.splice(0);
+      connectionWaiting -= bufferedSize;
+      bufferedSize = 0;
+      for (const event of kept) deliver(event);
     }
     if (overflowed) {
       // More waits than a windowed subscriber may hold before it even started:
       // it reads a snapshot instead (D470).
       live$.dispose();
+      release();
       if (active()) subscriptions.delete(id);
       throw Object.assign(new Error(`Subscription ${id} to ${stream} fell too far behind`), {
         code: "SUBSCRIPTION_OVERFLOW",

@@ -22,6 +22,7 @@ const STYLES = `
   li { padding: 8px 12px; border-top: 1px solid #d9dce3; font-size: 13px; }
   li:first-child { border-top: 0; }
   li span { display: block; color: #4b5060; font-size: 12px; }
+  li .shell { display: block; color: #b42318; font-size: 12px; font-weight: 600; }
   code { font-size: 11px; color: #4b5060; }
   label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
   input[type=text] { box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #c4c8d2; border-radius: 6px; font: inherit; margin-bottom: 6px; }
@@ -32,6 +33,7 @@ const STYLES = `
   @media (prefers-color-scheme: dark) {
     body { background: #0f1115; color: #e6e8ee; }
     p, li span, code { color: #a0a6b4; }
+    li .shell { color: #ff8787; }
     ul, li { border-color: #2a2e38; }
     input[type=text] { background: #171a21; border-color: #2a2e38; color: inherit; }
   }
@@ -87,6 +89,7 @@ export interface ApprovalPage {
     readonly permission: string;
     readonly title?: string;
     readonly description?: string;
+    readonly shellAccess?: boolean;
   }[];
   /** Set when the page's session may approve: its anti-forgery value. */
   readonly csrf?: string;
@@ -111,6 +114,11 @@ export function renderApprovalPage(page: ApprovalPage): string {
       (entry) =>
         `<li>${escapeHtml(entry.title ?? entry.permission)}${
           entry.description === undefined ? "" : `<span>${escapeHtml(entry.description)}</span>`
+        }${
+          // security.md D1364: whoever holds it holds the machine as the node's user.
+          entry.shellAccess === true
+            ? `<strong class="shell">Shell access: runs commands on this machine as the node's user.</strong>`
+            : ""
         }${entry.title === undefined ? "" : `<code>${escapeHtml(entry.permission)}</code>`}</li>`,
     )
     .join("");

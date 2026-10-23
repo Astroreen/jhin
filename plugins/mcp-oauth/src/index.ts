@@ -199,11 +199,19 @@ export default definePlugin({
     const titles = async () => {
       try {
         const { permissions } = (await context.commands.execute("auth.permissions.list", {})) as {
-          permissions: { permission: string; title?: string; description?: string }[];
+          permissions: {
+            permission: string;
+            title?: string;
+            description?: string;
+            shellAccess?: boolean;
+          }[];
         };
         return new Map(permissions.map((entry) => [entry.permission, entry]));
       } catch {
-        return new Map<string, { permission: string; title?: string; description?: string }>();
+        return new Map<
+          string,
+          { permission: string; title?: string; description?: string; shellAccess?: boolean }
+        >();
       }
     };
 

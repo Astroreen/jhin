@@ -503,15 +503,14 @@ read again from a snapshot).
   second (a ref to the latest prompt fixes it); the live font settings
   (D472) and the ⌘/Ctrl-click activation of a URL have no test of their
   own (the e2e run and the extraction tests cover the rest).
-- A per-connection bound on waiting events (D470): each windowed
-  subscription holds at most 16 MiB, so a client that opens many and never
-  acknowledges costs that many times 16 MiB (before D470 the socket's own
-  buffer held all of it, unbounded).
+- A per-connection bound on waiting events (D470). Done in `security.md`
+  (D1365): 32 MiB per connection.
 - A terminal that cannot keep up with a flood (D470) re-reads its
   snapshot once per 16 MiB with no back-off; T3 blocks the stream instead.
-- `terminals.write` is in effect shell access as the node's user, whoever
-  holds it (an MCP client included); grant it only where that is meant.
-  D461 narrows what a shell inherits, not what it can read on the machine.
+- `terminals.write` is shell access as the node's user. Done in
+  `security.md` (D1364): it is named as such wherever it is granted; it
+  stays one permission, and D461 narrows what a shell inherits, not what
+  it can read on the machine.
 - A path in a thread's worktree (D965): `editors.open` opens files of a
   project's folder only, so a terminal in a worktree opens none of its own
   files.

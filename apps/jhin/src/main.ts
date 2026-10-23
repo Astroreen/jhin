@@ -8,7 +8,7 @@ import { createMcpServer } from "@jhin/mcp-bridge";
 import { connectWebSocket, createRpcClient } from "@jhin/rpc";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { CommandInfo } from "@jhin/sdk";
+import type { CommandInfo, PermissionEntry } from "@jhin/sdk";
 
 import { parseArgv, type Args } from "./args.ts";
 import {
@@ -16,6 +16,7 @@ import {
   discoverNode,
   formatPairOutput,
   pairingNotes,
+  shellAccessNotes,
   parsePairFlags,
   reachableBaseUrl,
   type PairingLink,
@@ -264,6 +265,14 @@ async function pair(
       // A Tailscale mapping made above stays: say so, and how to remove it.
       for (const note of notes) process.stderr.write(`Note: ${note}\n`);
       throw error;
+    }
+    try {
+      const { permissions: entries } = (await target.execute("auth.permissions.list", {})) as {
+        permissions: PermissionEntry[];
+      };
+      notes.push(...shellAccessNotes(link.permissions, entries));
+    } catch {
+      // A token without auth.read still pairs, without this note.
     }
     if (options.get("json") === true) {
       // The notes too: a Tailscale mapping outlives this run and says how to remove it.

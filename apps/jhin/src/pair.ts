@@ -6,6 +6,7 @@ import * as Path from "node:path";
 
 import { resolveHome } from "@jhin/node-host";
 import { renderTerminalQrCode } from "@jhin/qr-code";
+import { holdsPermission, type PermissionEntry } from "@jhin/sdk";
 
 import type { Args } from "./args.ts";
 
@@ -165,6 +166,23 @@ export function pairingNotes(pairingUrl: string): string[] {
     ];
   }
   return [];
+}
+
+/**
+ * A note when the code's grants cover a permission with shell access
+ * (security.md D1364), as `auth.permissions.list` marks them.
+ */
+export function shellAccessNotes(
+  granted: readonly string[],
+  entries: readonly Pick<PermissionEntry, "permission" | "shellAccess">[],
+): string[] {
+  const shell = entries
+    .filter((entry) => entry.shellAccess === true && holdsPermission(granted, entry.permission))
+    .map((entry) => entry.permission);
+  if (shell.length === 0) return [];
+  return [
+    `This link grants shell access (${shell.join(", ")}): the device can run commands on this machine as the node's user. Narrow it with --permission.`,
+  ];
 }
 
 /** T3's `formatPairOutput`, with Jhin's `Code:` for T3's `Token:`. */

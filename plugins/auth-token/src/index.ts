@@ -526,6 +526,8 @@ export default definePlugin({
             commands: z.array(z.string()),
             title: z.string().min(1).optional(),
             description: z.string().min(1).optional(),
+            /** Runs commands on this machine as the node's user (security.md D1364). */
+            shellAccess: z.boolean().optional(),
           }),
         ),
       }),
@@ -552,13 +554,17 @@ export default definePlugin({
             () => entries,
           );
           for (const item of Array.isArray(output) ? (output as unknown[]) : []) {
-            const { permission, title, description } = (item ?? {}) as Record<string, unknown>;
+            const { permission, title, description, shellAccess } = (item ?? {}) as Record<
+              string,
+              unknown
+            >;
             if (typeof permission !== "string" || typeof title !== "string" || title === "") {
               continue;
             }
             titles.set(permission, {
               title,
               ...(typeof description === "string" && description !== "" ? { description } : {}),
+              ...(shellAccess === true ? { shellAccess } : {}),
             });
           }
         } catch (error) {
