@@ -74,6 +74,10 @@ Words about Jhin:
   to get a **WebSocket ticket** (`jht1.…`), a one-use, 60-second
   credential for one socket, offered as the token subprotocol
   (security.md D1366, D1367). Not the device hub's **hub ticket**.
+- **Runtime mode ceiling** — the highest runtime mode a caller's turns may
+  run in, named by its `threads.mode.<mode>` grants (security.md D1370);
+  an MCP client approved at an access level other than "Read only" holds
+  one. A held caller cannot approve permission requests.
 - **Host allowlist** — the names a node answers to for browsers
   (`jhin.http.allowedHosts`, plus its addresses, loopback, the machine's
   and Tailscale's names and the mesh's advertised hosts); a browser's

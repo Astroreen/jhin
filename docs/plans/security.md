@@ -907,8 +907,12 @@ Connect stays out of scope.
   task broader than the ceiling as it refuses one broader than the
   calling thread (D1352). The other commands carry no mode:
   `threads.queue.edit` and `reorder` change text and order, `threads.fork`
-  copies its thread's settings and starts no turn, `threads.respond`
-  answers an approval within a running turn. Like any grant it
+  copies its thread's settings and starts no turn. `threads.respond`
+  refuses a held caller's "accept" of a permission request
+  (`APPROVAL_NOT_ALLOWED`, T3's "This cannot approve a permission
+  request."): the mode asks a person for it; declining and answering
+  questions stay open to it. A request that asks for nothing readable
+  offers "Read only" disabled and chooses "Supervised" first. Like any grant it
   travels with mesh calls (D416); a member that narrows
   `memberPermissions` below the mode grants drops them, and the ceiling
   with them (Deferred).

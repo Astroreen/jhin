@@ -101,6 +101,11 @@ export interface ApprovalPage {
    * cannot tell which of them run commands, rather than showing none.
    */
   readonly permissionsUnknown?: boolean;
+  /**
+   * The request asks for nothing "Read only" could grant (D1369): that level
+   * is offered disabled and "Supervised" is chosen first.
+   */
+  readonly nothingReadable?: boolean;
   /** Set when the page's session may approve: its anti-forgery value. */
   readonly csrf?: string;
   /** Why the session cannot approve, when it has one. */
@@ -177,10 +182,11 @@ export function renderApprovalPage(page: ApprovalPage): string {
       <input type="hidden" name="csrf" value="${escapeHtml(page.csrf)}" />
       <fieldset role="radiogroup" aria-labelledby="access-label">
         <legend id="access-label">What it may do</legend>
-        ${ACCESS_LEVELS.map(
-          ({ access, label, description }, index) =>
-            `<label class="level"><input type="radio" name="access" value="${access}"${index === 0 ? " checked" : ""} /><span><strong>${label}</strong><span>${description}</span></span></label>`,
-        ).join("\n        ")}
+        ${ACCESS_LEVELS.map(({ access, label, description }, index) => {
+          const chosen = index === (page.nothingReadable === true ? 1 : 0);
+          const disabled = page.nothingReadable === true && access === "read-only";
+          return `<label class="level"><input type="radio" name="access" value="${access}"${chosen ? " checked" : ""}${disabled ? " disabled" : ""} /><span><strong>${label}</strong><span>${description}</span></span></label>`;
+        }).join("\n        ")}
         <p class="note">Beyond read only, it can start, message and stop threads, and none of them can run with more than the mode you pick.</p>
       </fieldset>
       <div class="actions">

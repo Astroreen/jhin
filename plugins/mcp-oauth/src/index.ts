@@ -320,6 +320,9 @@ export default definePlugin({
           nodeHost: new URL(urls.issuer).host,
           params: kept,
           ...(described === undefined ? { permissionsUnknown: true } : {}),
+          ...(grantsFor("read-only", authorization.scopes).length === 0
+            ? { nothingReadable: true }
+            : {}),
           permissions: authorization.scopes.map((scope) => {
             const entry = known.get(scope) ?? { permission: scope };
             // A pattern (`terminals.*`) grants shell access when it covers a permission

@@ -5738,7 +5738,20 @@ export default definePlugin({
       input: z.object({ threadId: z.string(), requestId: z.string(), response: Response }),
       output: z.object({ resolved: z.boolean() }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, requestId, response }) => {
+      handler: async ({ threadId, requestId, response }, invocation) => {
+        // A caller held to a mode (security.md D1370) cannot approve what that mode
+        // asks a person for; as T3's MCP tool, "This cannot approve a permission request."
+        if (
+          response.kind === "approval" &&
+          (response.decision === "accept" || response.decision === "accept-for-session") &&
+          ceilingOf(invocation.caller?.permissions) !== undefined
+        ) {
+          throw new ThreadsError(
+            "APPROVAL_NOT_ALLOWED",
+            "This caller cannot approve a permission request: its runtime mode asks a person for that",
+            { threadId, requestId },
+          );
+        }
         const current = active.get(threadId);
         // The request may still be being recorded: its answer comes after it.
         if (current?.recording !== undefined) await Promise.allSettled([current.recording]);

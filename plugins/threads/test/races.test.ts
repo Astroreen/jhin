@@ -466,7 +466,7 @@ describe("jhin.threads: deletions that fail or overlap", () => {
 
 describe("jhin.threads: answering requests", () => {
   it("refuses an answer of the wrong kind and keeps the request open", async () => {
-    const { client } = await node();
+    const { client, kernel } = await node();
     const thread = await client.call<Thread>("threads.create", {});
     const { events, until } = watch(client, thread.id);
 
@@ -483,6 +483,14 @@ describe("jhin.threads: answering requests", () => {
       code: "RESPONSE_MISMATCH",
       details: { expected: "approval", received: "user-input" },
     });
+    // A caller held to a runtime mode cannot approve (security.md D1370).
+    await expect(
+      kernel.commands.execute(
+        "threads.respond",
+        { threadId: thread.id, requestId, response: { kind: "approval", decision: "accept" } },
+        { caller: { id: "client:agent", permissions: ["*", "threads.mode.approval-required"] } },
+      ),
+    ).rejects.toMatchObject({ code: "APPROVAL_NOT_ALLOWED" });
     expect(
       await client.call("threads.respond", {
         threadId: thread.id,

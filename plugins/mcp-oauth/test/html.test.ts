@@ -66,6 +66,19 @@ describe("T3's access levels (security.md D1369)", () => {
       ["full-access", false],
     ]);
     expect(page).toContain("<strong>Supervised</strong>");
+    // Nothing readable asked for: "Read only" is offered disabled, "Supervised" chosen.
+    const unreadable = renderApprovalPage({
+      clientName: "Agent",
+      redirectHost: "127.0.0.1:9999",
+      nodeHost: "127.0.0.1:7777",
+      params: {},
+      permissions: [],
+      csrf: "c",
+      nonce: "n",
+      nothingReadable: true,
+    });
+    expect(unreadable).toContain('value="read-only" disabled');
+    expect(unreadable).toContain('value="approval-required" checked');
     expect(page).toContain(
       "Beyond read only, it can start, message and stop threads, and none of them can run with more than the mode you pick.",
     );
