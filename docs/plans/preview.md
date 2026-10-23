@@ -446,6 +446,64 @@ and `closePreviewPanel` and `shouldRenderPreviewMiniPlayer` in
   on screen. The e2e drives the buttons, the pill, both commands through
   the palette, and a floating tab closed on the node.
 
+### The chat canvas and the pop-out (W37)
+
+Workstream W37 continues D1202 with decisions from its range D1321–D1340
+(D1321–D1325 are the desktop app's, in `desktop.md`). The reference is T3
+Code `eb7b35ac`: `apps/web/src/components/chat/{ChatCanvas.tsx,chatCanvasLayout.ts}`,
+the `.chat-composer-lane` and `.messages-timeline-scroll` rules of
+`index.css`, `ThreadPreviewMiniPlayer.tsx` and `browser/serverPictureInPicture.ts`.
+
+- **D1326. T3's chat canvas: the chat's lane makes room for a floating
+  tab.** The thread view measures the area of its messages and composer and
+  the lane's padding and widths (T3's width probe), and lays a floating
+  player out with T3's `resolveChatCanvasLayout` (`apps/web/src/lib/chat-canvas-layout.ts`,
+  with T3's cases but those of its thread details card): a player in the
+  bottom corner sits beside the composer when a readable lane (at least
+  40rem) fits beside it, the lane moving left and narrowing only as far as
+  it must (`--chat-lane-inset-start`/`-end` on the messages and the
+  composer lane, T3's rules); otherwise the player stays clear of the
+  composer as D1202 placed it. A drag stops before the player would push the
+  lane, and the open find bar is an obstacle the player keeps clear of.
+  `ChatThreadOverlayProps` gets the optional `canvas` (`ChatCanvas`:
+  `report`, `clear`, the `frame` it lays out and its `container`), so any
+  overlay contribution can float beside the chat; the mini player reports
+  itself and goes where the canvas puts it, and lays itself out as before
+  without one. D1202's layout moves to `apps/web/src/lib/mini-player-layout.ts`,
+  shared by the two. With W38's inline details card (D1350) the lane's end
+  moves in by the larger of the card's inset and the player's, both through
+  `--chat-lane-inset-end`; the player does not yet keep clear of the card
+  itself (T3's `detailsCard` obstacle, Deferred).
+
+- **D1327. "Pop into separate window", as T3's for a server tab.** The mini
+  player's pill gets T3's toggle ("Pop preview into separate window" /
+  "Close popped-out preview", tooltips "Pop into separate window" / "Close
+  separate window", lucide `PictureInPicture2`) wherever the browser floats
+  a canvas's video (T3's `supportsServerPictureInPicture`). Pressing it
+  opens the browser's picture-in-picture window during the gesture, seeded
+  with the frame on screen, and then paints the tab's frames from its
+  `preview/<thread>/<tab>` stream, which makes the window a viewer (D401).
+  One tab pops out at a time, kept in the panel plugin's state, so the
+  window outlives the player and the panel; it closes when the user leaves
+  it, presses the toggle again, or the tab closes. The client commands
+  `preview.pop-out` ("Pop into separate window", the floating tab of the
+  thread on screen) and `preview.pop-out.close` ("Close separate window") do
+  the same; the browser opens the window only during a user's gesture, so
+  they work from the palette or a keybinding, not over RPC. This is a
+  departure from "every operation is a command reachable from RPC, the CLI
+  and MCP", pending the owner's confirmation: `preview.pop-out` is a command
+  that opens a window only with the user's activation, and without it
+  (`navigator.userActivation`) it answers `poppedOut: false` with `reason:
+  "needs-gesture"`; where a browser has no `userActivation`, the browser's
+  own refusal answers instead, as an error.
+  `poppedOut: false` means there was nothing to pop out, and `reason` says
+  which: `needs-gesture`, `nothing-floats`, `in-panel` (the right panel
+  shows the tab), `app-tab` (the app's webview), `unsupported`, or
+  `superseded` (closed or replaced while it opened). A tab the desktop app
+  hosts (D1321) has no node frames: it gets no toggle (Deferred). The
+  canvas lays out one player at a time, as T3's: a second overlay that
+  reports displaces the first (Deferred).
+
 ### Cookie import (W34)
 
 The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/*`,
@@ -942,11 +1000,12 @@ probe of `ServerBrowser.ts`.
   client's 3 s rescans (T3's subscription), and a favicon per local server.
 - Tests of the panel's local server polling (backoff, the hidden-page pause)
   and of the node's shared scan; the e2e covers the path end to end.
-- Around the floating mini player (D1202): T3's chat canvas that narrows
-  the chat beside a player and keeps it clear of the find bar and the
-  details card; "Pop into separate window" (the browser's
-  picture-in-picture of the frames, T3's `serverPictureInPicture`); a
-  floating device (`jhin.device-panel` shows devices in a panel of its own);
+- Around the floating mini player (D1202, D1326, D1327): keeping it clear
+  of T3's inline thread details card (with that card, W38): the layout keeps
+  T3's card branches as T3 wrote them, unused until the thread view passes a
+  card, and its own card cases come with it; popping out a
+  tab the desktop app hosts (T3's separate always-on-top window fed by the
+  guest's captured frames); a floating device (`jhin.device-panel` shows devices in a panel of its own);
   the control strip inside the player (control is taken in the panel);
   moving and resizing the player from the keyboard (T3's are pointer only
   too); dropping a deleted thread's floating entry, which stays in the
@@ -958,6 +1017,25 @@ probe of `ServerBrowser.ts`.
 - Offering a download again to a viewer that attaches after it, or to the
   viewer that took control as it arrived (D1331): the tab's downloads in
   its state, and the offer addressed by the node to the controller.
+- The floating player keeping clear of W38's inline details card (D1326,
+  D1350): the layout already takes T3's `detailsCard` and returns
+  `overlapsDetailsCard` (with `data-preview-overlaps-chat`, kept as T3's);
+  the card's rectangle is not passed to it yet. Until then the player may
+  sit over the card, and the lane's end moves in by the larger of the two
+  insets, which holds only while they do not stand side by side.
+- More than one player on the chat canvas at a time (D1326): the last to
+  report is the one laid out, as in T3.
+- A popped-out window of a remote node's tab following that tab (D1327):
+  a remote thread has no tab feed here, so its window closes when the tab's
+  frames stream ends rather than as the tab goes.
+- A right-to-left chat canvas (D1326): the layout places the player and
+  moves the lane in left-to-right terms, as T3's does.
+- `preview.pop-out` from RPC, the CLI or MCP (D1327): the browser opens
+  the window only during a user's gesture, so the command refuses without
+  one and works from the palette or a keybinding only.
+- The picture-in-picture window proven in Safari and Firefox (D1327): it
+  asks as T3 does, after `play()` and the metadata, and only Chromium runs
+  the tests.
 - T3's work-log presentation of preview tools ("Used browser N times").
 - Reading password values in isolated worlds of out-of-process frames: Jhin
   reads them in each frame's own world.

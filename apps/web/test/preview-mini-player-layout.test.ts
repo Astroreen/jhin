@@ -7,7 +7,7 @@ import {
   type PreviewMiniPlayerObstacles,
   resizePreviewMiniPlayer,
   resolvePreviewMiniPlayerFrame,
-} from "../src/plugins/preview/mini-player-layout.ts";
+} from "../src/lib/mini-player-layout.ts";
 
 const container = { width: 1_000, height: 700 };
 const source = { width: 1_600, height: 1_000 };

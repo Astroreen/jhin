@@ -2,10 +2,11 @@
 // (the floating browser preview: its drag handle and pill, its eight resize handles and the
 // server tab's surface at the page's own size) and components/chat/chatCanvasLayout.ts (a player
 // not yet moved sits in the bottom corner, above the composer) (docs/plans/preview.md, D1202).
+import type { ChatCanvas } from "@jhin/client-api";
 import type { PreviewTab } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
-import { PanelRightIcon, XIcon } from "lucide-react";
+import { PanelRightIcon, PictureInPicture2Icon, XIcon } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -17,6 +18,7 @@ import {
 
 import {
   clampPreviewMiniPlayerPosition,
+  NO_PREVIEW_MINI_PLAYER_OBSTACLES,
   PREVIEW_MINI_PLAYER_CORNER_RADIUS,
   PREVIEW_MINI_PLAYER_EDGE_GAP,
   resizePreviewMiniPlayer,
@@ -25,11 +27,17 @@ import {
   type PreviewMiniPlayerObstacles,
   type PreviewMiniPlayerResizeDirection,
   type PreviewMiniPlayerSize,
-} from "./mini-player-layout.ts";
+} from "../../lib/mini-player-layout.ts";
 import type { MiniPlayerState, MiniPlayers } from "./mini-player-store.ts";
 import { BrowserSurface } from "./surface.tsx";
 import { NativeSurface } from "./native-surface.tsx";
+import type { TabsFeed } from "./feed.ts";
 import type { NativeSurfaces } from "./native-surfaces.ts";
+import {
+  pictureInPictureKey,
+  supportsPictureInPicture,
+  type PictureInPicture,
+} from "./picture-in-picture.ts";
 
 interface PointerGesture {
   readonly pointerId: number;
@@ -75,7 +83,17 @@ export interface MiniPlayerProps {
   readonly onDownload?: (download: { id: string; fileName: string }) => void;
   /** The desktop app's webviews of its own node's tabs (D1324). */
   readonly surfaces: NativeSurfaces;
+  /** The chat's canvas, which lays the player out beside the chat's lane (D1326). */
+  readonly canvas?: ChatCanvas | undefined;
+  /** The browser's picture-in-picture window of a tab (D1327). */
+  readonly pictureInPicture?: PictureInPicture;
+  /** The thread's tabs, which the popped-out window follows to close with its tab. */
+  readonly tabs?: TabsFeed | undefined;
+  /** The window could not open. */
+  readonly onPopOutError?: (error: unknown) => void;
 }
+
+const noSubscription = () => () => undefined;
 
 /** The size of the layer the player floats in, kept while it resizes. */
 function useContainerSize(): [
@@ -105,7 +123,8 @@ function useContainerSize(): [
 /** T3's floating browser preview of a thread's tab, over the chat (D1202). */
 export function MiniPlayer(props: MiniPlayerProps) {
   const { tab, state, players, threadKey } = props;
-  const [containerRef, container] = useContainerSize();
+  const [containerRef, measuredContainer] = useContainerSize();
+  const canvas = props.canvas;
   const [measured, setSource] = useState<PreviewMiniPlayerSize>(
     tab.size.width > 0 && tab.size.height > 0 ? tab.size : DEFAULT_SOURCE,
   );
@@ -130,13 +149,47 @@ export function MiniPlayer(props: MiniPlayerProps) {
     return () => document.removeEventListener("pointerdown", dismiss, true);
   }, [pillOpen]);
 
-  // The composer spans the chat's width at the bottom of the layer.
-  const obstacles: PreviewMiniPlayerObstacles = {
-    composer:
-      container === null ? null : { left: 0, right: container.width, height: props.composerHeight },
-    detailsCard: null,
-  };
+  // With the chat's canvas the player reports itself and goes where the layout puts it (T3's).
+  const report = canvas?.report;
+  const clear = canvas?.clear;
+  useLayoutEffect(() => {
+    report?.({
+      key: tab.tabId,
+      width: state.width,
+      position: state.position,
+      lastInteraction: state.lastInteraction,
+      source: { width: source.width, height: source.height },
+    });
+  }, [
+    report,
+    tab.tabId,
+    state.width,
+    state.position,
+    state.lastInteraction,
+    source.width,
+    source.height,
+  ]);
+  useLayoutEffect(() => () => clear?.(tab.tabId), [clear, tab.tabId]);
+  const container =
+    canvas === undefined
+      ? measuredContainer
+      : canvas.container.width > 0 && canvas.container.height > 0
+        ? canvas.container
+        : null;
+
+  // The composer spans the chat's width at the bottom of the layer; the canvas keeps clear of it itself.
+  const obstacles: PreviewMiniPlayerObstacles =
+    canvas !== undefined
+      ? NO_PREVIEW_MINI_PLAYER_OBSTACLES
+      : {
+          composer:
+            container === null
+              ? null
+              : { left: 0, right: container.width, height: props.composerHeight },
+          detailsCard: null,
+        };
   const frame = (() => {
+    if (canvas !== undefined) return canvas.previewKey === tab.tabId ? canvas.frame : null;
     if (container === null) return null;
     const resolved = resolvePreviewMiniPlayerFrame({
       width: state.width,
@@ -223,6 +276,30 @@ export function MiniPlayer(props: MiniPlayerProps) {
     }
   };
 
+  // T3's "Pop into separate window" for a tab the node streams (D1327).
+  const pip = props.pictureInPicture;
+  const pipKey = useSyncExternalStore(pip?.subscribe ?? noSubscription, () => pip?.key() ?? null);
+  const poppedOut = pipKey === pictureInPictureKey(props.threadId, tab.tabId);
+  const canPopOut = pip !== undefined && !native && supportsPictureInPicture();
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const togglePopOut = () => {
+    if (pip === undefined) return;
+    if (poppedOut) {
+      pip.close();
+      return;
+    }
+    void pip
+      .open({
+        client: props.client,
+        threadId: props.threadId,
+        tabId: tab.tabId,
+        seed: sectionRef.current?.querySelector<HTMLCanvasElement>("[data-preview-canvas]") ?? null,
+        ...(props.tabs === undefined ? {} : { tabs: props.tabs }),
+        onStreamError: (error: unknown) => props.onPopOutError?.(error),
+      })
+      .catch((error: unknown) => props.onPopOutError?.(error));
+  };
+
   const radius = PREVIEW_MINI_PLAYER_CORNER_RADIUS;
   const pillInset = Math.max(8, Math.round(radius * 0.55));
   const recording = tab.recording;
@@ -230,6 +307,7 @@ export function MiniPlayer(props: MiniPlayerProps) {
     <div className="pointer-events-none absolute inset-0" ref={containerRef}>
       {frame === null ? null : (
         <section
+          ref={sectionRef}
           aria-label="Floating browser preview"
           className="pointer-events-none absolute select-none"
           data-preview-mini-player={tab.tabId}
@@ -278,6 +356,30 @@ export function MiniPlayer(props: MiniPlayerProps) {
                 <span aria-hidden className="flex size-6 shrink-0 items-center justify-center">
                   <span className="size-2 rounded-full bg-destructive motion-safe:animate-status-pulse" />
                 </span>
+              ) : null}
+              {canPopOut ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        aria-label={
+                          poppedOut
+                            ? "Close popped-out preview"
+                            : "Pop preview into separate window"
+                        }
+                        onClick={togglePopOut}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        size="icon-xs"
+                        variant={poppedOut ? "secondary" : "ghost"}
+                      />
+                    }
+                  >
+                    <PictureInPicture2Icon />
+                  </TooltipTrigger>
+                  <TooltipPopup side="top">
+                    {poppedOut ? "Close separate window" : "Pop into separate window"}
+                  </TooltipPopup>
+                </Tooltip>
               ) : null}
               <Tooltip>
                 <TooltipTrigger

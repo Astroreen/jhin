@@ -2278,6 +2278,8 @@ says. The other W38 decisions land in their own pull requests.
   shows, the chat's lane (messages and composer) moves left to end 32px
   before it, only as far as it must (T3's `resolveChatCanvasLayout` with
   its `detailsCard`). The card is in the details panel's chunk (D440).
+  A floating player (W37's chat canvas, `preview.md` D1326) does not keep
+  clear of the card yet; that is in `preview.md#deferred`.
 - **D1351. Find opens a finished turn's folded work,** as T3's find opens
   the work its match is in. While the find bar is open, a finished turn
   renders the work it folds as well, hidden (`hidden`,
