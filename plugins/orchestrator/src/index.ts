@@ -1,6 +1,7 @@
 import * as Crypto from "node:crypto";
 
 import {
+  MAX_MESSAGE_LENGTH,
   MESSAGE_PERMISSION,
   ORCHESTRATION_STREAM,
   OrchestrationEvents,
@@ -43,6 +44,14 @@ import {
 
 import { handoffText, refocusText, type RefocusReason } from "./brief.ts";
 import { reportText, type ReportEnd } from "./report.ts";
+import {
+  REVIEW_BRIEF_LENGTH,
+  cut,
+  owningPlans,
+  reviewBriefText,
+  type Part,
+  type ReviewedWork,
+} from "./review.ts";
 import { ORCHESTRATOR_WORKFLOW } from "./workflow.ts";
 
 export { ORCHESTRATOR_WORKFLOW };
@@ -102,7 +111,9 @@ export type OrchestratorErrorCode =
   /** The mission's lead asked the owner, and the team waits for the answer (D1223). */
   | "ESCALATION_OPEN"
   /** The step needs a review, and a slice changed after its last one (D1241). */
-  | "REVIEW_REQUIRED";
+  | "REVIEW_REQUIRED"
+  /** The slice reviews no slice (D1244). */
+  | "NOT_A_REVIEW";
 
 class OrchestratorError extends Error {
   readonly code: OrchestratorErrorCode;
@@ -419,6 +430,103 @@ export default definePlugin({
       },
     });
 
+    // --- The reviewer's brief (D1244–D1246) ------------------------------------
+    /** A command's output as the node, or why there is none: a missing plugin is no failure. */
+    const attempt = async <T>(name: string, input: unknown): Promise<T | { missing: string }> => {
+      try {
+        return await run<T>(name, input);
+      } catch (error) {
+        const { code, message } = error as { code?: unknown; message?: unknown };
+        return {
+          missing:
+            code === "COMMAND_NOT_FOUND"
+              ? `this node has no ${name}`
+              : `${name} failed: ${String(message ?? error)}`,
+        };
+      }
+    };
+    const failed = (value: unknown): value is { missing: string } =>
+      typeof value === "object" && value !== null && "missing" in value;
+    type Section = { address: string; content: string };
+    const section = async (projectId: string, address: string): Promise<Part> => {
+      const read = await attempt<Section>("context.read", { projectId, path: address });
+      return failed(read) ? { address, missing: read.missing } : { address, text: read.content };
+    };
+    type GitDiff = NonNullable<ReviewedWork["diff"]>;
+    /** Where a reviewed slice's work lives (its first thread here, else its project) and its diff. */
+    const workOf = async (reviewed: Slice): Promise<ReviewedWork> => {
+      const threadId = reviewed.threads.find((thread) => thread.nodeId === undefined)?.threadId;
+      const target = threadId === undefined ? { projectId: reviewed.projectId } : { threadId };
+      // The branch against its base holds commits and edits alike; on the default branch, edits.
+      let diff = await attempt<GitDiff>("git.diff", { ...target, scope: "branch" });
+      if (failed(diff) || (diff.files.length === 0 && diff.baseRef === null))
+        diff = await attempt<GitDiff>("git.diff", { ...target, scope: "uncommitted" });
+      return failed(diff) ? { slice: reviewed, missing: diff.missing } : { slice: reviewed, diff };
+    };
+    const reviewBrief = async (slice: Slice) => {
+      const { projectId } = slice;
+      const work = await Promise.all(
+        (slice.reviews ?? []).flatMap((id) => {
+          const reviewed = state.slices[id];
+          return reviewed === undefined ? [] : [workOf(reviewed)];
+        }),
+      );
+      const library = await attempt<{ map: string; content?: string; trailhead: string }>(
+        "context.map",
+        { projectId, content: true },
+      );
+      const paths = work.flatMap((item) => item.diff?.files.map((file) => file.path) ?? []);
+      const rules: Part = failed(library)
+        ? { address: "AGENTS.md", missing: library.missing }
+        : await section(projectId, library.trailhead);
+      const plans = failed(library)
+        ? []
+        : await Promise.all(
+            owningPlans(library.content ?? "", library.map, paths).map((address) =>
+              section(projectId, address),
+            ),
+          );
+      const loreBrief = await attempt<{ markdown: string }>("lore.brief", {
+        projectId,
+        reason: "request",
+      });
+      const lore: Part = failed(loreBrief)
+        ? { address: "lore.brief", missing: loreBrief.missing }
+        : { address: "lore.brief", text: loreBrief.markdown };
+      const markdown = reviewBriefText({ slice, rules, plans, lore, work });
+      return {
+        markdown: cut(markdown, REVIEW_BRIEF_LENGTH, `review_brief { sliceId: "${slice.id}" }`),
+        sources: [rules, ...plans, lore].map((part) => ({
+          address: part.address,
+          ...(part.missing === undefined ? {} : { missing: part.missing }),
+        })),
+      };
+    };
+    context.commands.register({
+      name: "review.brief",
+      description:
+        "What the reviewer of a review slice reads: the project's rules (its trailhead), the plans that own the changed files, the lore, the reviewed slices with their proof and diff, and the lead's notes after them, as Markdown. Its handoff sends it",
+      input: z.object({ sliceId: z.string() }),
+      output: z.object({
+        markdown: z.string(),
+        /** Each source of the brief, and why it is missing when it is. */
+        sources: z.array(z.object({ address: z.string(), missing: z.string().optional() })),
+      }),
+      permissions: ["missions.read"],
+      handler: async ({ sliceId }) => {
+        await sync();
+        const slice = getSlice(sliceId);
+        if (slice.reviews === undefined || slice.reviews.length === 0) {
+          throw new OrchestratorError(
+            "NOT_A_REVIEW",
+            `Slice ${sliceId} reviews no slice: name them with slices.update { reviews }`,
+            { sliceId },
+          );
+        }
+        return reviewBrief(slice);
+      },
+    });
+
     // --- Handing a slice to its assignee (D703) --------------------------------
     context.commands.register({
       name: "slices.handoff",
@@ -497,12 +605,22 @@ export default definePlugin({
           {
             to: slice.assignee,
             messageId: `handoff-${slice.id}-${slice.updatedAt}`,
-            body: handoffText({
-              slice,
-              mission,
-              intent: state.intents[mission.projectId]?.intent,
-              step,
-            }),
+            body: cut(
+              [
+                handoffText({
+                  slice,
+                  mission,
+                  intent: state.intents[mission.projectId]?.intent,
+                  step,
+                }),
+                // A review slice gets the project to review against (D1246).
+                ...(slice.reviews === undefined || slice.reviews.length === 0
+                  ? []
+                  : [(await reviewBrief(slice)).markdown]),
+              ].join("\n"),
+              MAX_MESSAGE_LENGTH,
+              `review_brief { sliceId: "${slice.id}" }`,
+            ),
           },
           invocation,
         );
