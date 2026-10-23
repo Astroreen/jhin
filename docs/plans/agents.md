@@ -1997,3 +1997,6 @@ Each workstream lists its PRs here as they merge.
   `missions.close`, and the mission held while the lead's escalation is
   open (`escalations`, `ESCALATION_OPEN`, outcome `waiting`); the
   civilization scenario asserts both (D1222, D1223).
+- L2 #236: public ids in CI: `scripts/public-ids.ts`, `deprecations.json`,
+  the "Public ids" CI job and `pnpm verify` step; how to deprecate in
+  `docs/README.md` and AGENTS.md rule 8 (D1247–D1249).
