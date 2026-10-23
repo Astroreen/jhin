@@ -31,6 +31,14 @@ let origin = "";
 test.beforeAll(async () => {
   node = await startNode();
   server = Http.createServer((request, response) => {
+    if (request.url === "/report.txt") {
+      response.writeHead(200, {
+        "content-type": "text/plain",
+        "content-disposition": 'attachment; filename="report.txt"',
+      });
+      response.end("the report");
+      return;
+    }
     // The cookies the browser sent, as the page's title.
     if (request.url === "/cookie") {
       response.writeHead(200, { "content-type": "text/html" });
@@ -430,6 +438,33 @@ test("D1202: a tab floats over the chat, moves, and goes back to the right panel
     .call<{ tabs: { tabId: string }[] }>("preview.list", { threadId });
   await node.client().call("preview.tab.close", { threadId, tabId: tabs[0]!.tabId });
   await expect(player).toBeHidden();
+});
+
+test("D1331: a page's download is offered to the user, who saves it to this device", async ({
+  page,
+}, info) => {
+  await startThread(page, "download please");
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  const panel = page.getByRole("complementary", { name: "Right panel" });
+  const address = panel.getByRole("textbox", { name: "Address" });
+  await address.fill(`${origin}/second`);
+  await address.press("Enter");
+  await expect(panel.getByRole("tab", { name: "Second page" })).toBeVisible();
+  await expect(panel.getByRole("status")).toHaveText("You have control");
+
+  // The page's file downloads on the node; T3's toast offers it here.
+  await address.fill(`${origin}/report.txt`);
+  await address.press("Enter");
+  const toast = page.getByText("Downloaded report.txt");
+  await expect(toast).toBeVisible();
+  // A navigation that became a download is no failure.
+  await expect(page.getByText("Download is starting")).toHaveCount(0);
+  await shot(page, info, "download-toast");
+  const saved = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save" }).click();
+  const download = await saved;
+  expect(download.suggestedFilename()).toBe("report.txt");
+  expect(Fs.readFileSync(await download.path(), "utf8")).toBe("the report");
 });
 
 test.describe("on a touch screen", () => {

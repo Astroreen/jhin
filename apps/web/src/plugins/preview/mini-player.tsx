@@ -68,6 +68,8 @@ export interface MiniPlayerProps {
   readonly composerHeight: number;
   readonly onOpenInPanel: () => void;
   readonly onError: (error: unknown) => void;
+  /** The page downloaded a file, while this viewer holds control (D1331). */
+  readonly onDownload?: (download: { id: string; fileName: string }) => void;
 }
 
 /** The size of the layer the player floats in, kept while it resizes. */
@@ -308,6 +310,9 @@ export function MiniPlayer(props: MiniPlayerProps) {
               canOperate={tab.controller === props.viewer}
               client={props.client}
               followSize={false}
+              onDownload={(download) => {
+                if (tab.controller === props.viewer) props.onDownload?.(download);
+              }}
               humanControls={tab.controller !== null}
               onError={props.onError}
               onViewport={(size) =>

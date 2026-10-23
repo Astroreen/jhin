@@ -729,6 +729,23 @@ probe of `ServerBrowser.ts`.
   machine (`apps/web/src/plugins/preview/touch.ts`, unit tested) the
   surface runs.
 
+### Downloads to the client (W37)
+
+- **D1331. A page's download is offered to the user, as T3 offers it.** T3
+  pushes a saved download to the viewer holding control and shows a toast,
+  "Downloaded <file>" with "Save", which fetches it from the node. Here each
+  saved download gets an id (`PreviewDownload.id`, additive), and the tab's
+  frames stream carries `preview.download` (`{ id, fileName, sizeBytes }`);
+  the panel or mini player of the viewer holding control shows T3's toast.
+  "Save" calls `preview.tab.download { threadId, tabId, id }`
+  (`preview.control`) → `{ fileName, data }` (base64) and hands the file to
+  the browser's download. A download travels in one RPC message, as an
+  upload does (D1203), so it carries at most 64 MiB; a larger one stays on
+  the node for the agent, and Save says it is too large for this client. A
+  download whose file the node dropped (beyond the 20 it keeps) answers
+  `PREVIEW_TAB_NOT_FOUND`. The user's own navigation to such a file (the
+  address bar) is no failure: the page stays, and the file is offered.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -782,8 +799,9 @@ probe of `ServerBrowser.ts`.
   moving and resizing the player from the keyboard (T3's are pointer only
   too); dropping a deleted thread's floating entry, which stays in the
   plugin's memory for the session (one small record per thread).
-- Saving a page's downloads to the client (T3's `onDownload`), and uploads
-  above 64 MiB (D1203): a binary channel or an HTTP route for them.
+- Downloads and uploads above 64 MiB (D1203, D1331): a binary channel or an
+  HTTP route for them; T3's in-tab state for a navigation that became a
+  download.
 - T3's work-log presentation of preview tools ("Used browser N times").
 - Reading password values in isolated worlds of out-of-process frames: Jhin
   reads them in each frame's own world.

@@ -50,6 +50,7 @@ const PAGES: Record<string, string> = {
     <a href="/second">Second page</a>
     <script>setTimeout(() => console.log("page ready"), 0)</script>`,
   "/second": `<!doctype html><title>Second</title><p>Second page text</p>`,
+  "/download": `<!doctype html><title>Download</title><a href="/report.txt" download>Get report</a>`,
   "/popup": `<!doctype html><title>Opener</title><a href="/second" target="_blank">Open popup</a>`,
   "/upload": `<!doctype html><title>Upload</title><input type="file" aria-label="File" id="file">`,
   "/pick": `<!doctype html><title>Pick</title>
@@ -79,6 +80,15 @@ let server: Http.Server;
 let origin = "";
 beforeAll(async () => {
   server = Http.createServer((request, response) => {
+    if (request.url === "/report.txt") {
+      response
+        .writeHead(200, {
+          "content-type": "text/plain",
+          "content-disposition": 'attachment; filename="report.txt"',
+        })
+        .end("the report");
+      return;
+    }
     if (request.url === "/hold") {
       holding.push(() => response.writeHead(200).end("released"));
       held();
@@ -953,5 +963,36 @@ describe("jhin.preview", () => {
       return status?.state === "success" && status.title === "Clicked";
     });
     tabsStream.subscription.dispose();
+  });
+
+  it("offers a page's download to its watchers and gives the file to the client (D1331)", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/download`,
+    });
+    await client.call("preview.wait.for", { threadId: thread, text: "Get report" });
+    const frames = watch(client, previewFramesStream(thread, opened.tabId));
+    await client.call("preview.click", {
+      threadId: thread,
+      locator: "role=link[name='Get report']",
+    });
+    await frames.until(() => frames.events.some((event) => event.type === PreviewEvents.download));
+    const offered = frames.events.find((event) => event.type === PreviewEvents.download)!
+      .payload as { id: string; fileName: string; sizeBytes: number };
+    expect(offered).toMatchObject({ fileName: "report.txt", sizeBytes: 10 });
+    frames.subscription.dispose();
+
+    const saved = await client.call<{ fileName: string; data: string }>("preview.tab.download", {
+      threadId: thread,
+      tabId: opened.tabId,
+      id: offered.id,
+    });
+    expect(saved.fileName).toBe("report.txt");
+    expect(Buffer.from(saved.data, "base64").toString()).toBe("the report");
+    const missing = await rejection(
+      client.call("preview.tab.download", { threadId: thread, tabId: opened.tabId, id: "nope" }),
+    );
+    expect(missing.code).toBe("PREVIEW_TAB_NOT_FOUND");
   });
 });

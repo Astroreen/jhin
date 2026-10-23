@@ -42,6 +42,8 @@ import {
   PreviewTabProbeInput,
   PreviewTabProbeResult,
   PreviewTabUploadInput,
+  PreviewTabDownloadInput,
+  PreviewTabDownloadResult,
   PreviewTabInputInput,
   PreviewTabNavigateInput,
   PreviewProfileClearInput,
@@ -626,6 +628,16 @@ export default definePlugin({
       output: PreviewTab,
       permissions: control,
       handler: (input) => tabs.uploadAsHuman(input),
+    });
+    context.commands.register({
+      name: "preview.tab.download",
+      title: "Save a browser page's download",
+      description:
+        "A file a tab's page downloaded, for the user's own device (base64, at most 64 MiB); the node keeps the last 20 of each tab.",
+      input: PreviewTabDownloadInput,
+      output: PreviewTabDownloadResult,
+      permissions: control,
+      handler: (input) => tabs.download(input),
     });
     context.commands.register({
       name: "preview.tab.probe",

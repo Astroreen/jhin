@@ -10,6 +10,7 @@ import * as Path from "node:path";
 import {
   DEFAULT_PREVIEW_VIEWPORT,
   PREVIEW_CONTROL_MESSAGES,
+  PREVIEW_DOWNLOAD_MAX_BYTES,
   PREVIEW_RECORDING_MAX_BYTES,
   PreviewError,
   PreviewEvents,
@@ -171,6 +172,7 @@ interface Tab {
   /** The open chooser's `accept` attribute. */
   fileChooserAccept: string;
   readonly downloads: {
+    id: string;
     fileName: string;
     path: string;
     sizeBytes: number;
@@ -592,15 +594,28 @@ export function createTabs(options: TabsOptions) {
       );
       await Fs.mkdir(folder, { recursive: true });
       const fileName = Path.basename(download.suggestedFilename()) || "download";
-      const path = Path.join(folder, `${Crypto.randomUUID()}-${fileName}`);
+      const id = Crypto.randomUUID();
+      const path = Path.join(folder, `${id}-${fileName}`);
       await download.saveAs(path);
       const { size } = await Fs.stat(path);
+      const dropped = tab.downloads.length >= DOWNLOADS_KEPT ? tab.downloads[0] : undefined;
       pushBounded(
         tab.downloads,
-        { fileName, path, sizeBytes: size, url: download.url(), completedAt: now() },
+        { id, fileName, path, sizeBytes: size, url: download.url(), completedAt: now() },
         DOWNLOADS_KEPT,
       );
+      // Beyond the kept ones, a file goes with its entry.
+      if (dropped !== undefined) await Fs.rm(dropped.path, { force: true }).catch(() => undefined);
       changed(tab);
+      // The viewer holding control is offered the file (T3's download toast, D1331): told
+      // once to whoever watches now, never replayed to a later subscriber.
+      const frames = previewFramesStream(tab.threadId, tab.tabId);
+      const offered = streams.append(frames, PreviewEvents.download, {
+        id,
+        fileName,
+        sizeBytes: size,
+      });
+      streams.remove(frames, offered.sequence);
     } catch (error) {
       log.warn("download not saved", { tabId: tab.tabId, error: String(error) });
     }
@@ -1465,6 +1480,32 @@ export function createTabs(options: TabsOptions) {
       });
     },
 
+    /** A saved download's file, for the client to save (D1331). */
+    async download(input: {
+      threadId: string;
+      tabId: string;
+      id: string;
+    }): Promise<{ fileName: string; data: string }> {
+      return withErrors(async () => {
+        const tab = humanTab(input.threadId, input.tabId);
+        const saved = tab.downloads.find((download) => download.id === input.id);
+        if (saved === undefined) {
+          throw new PreviewError(
+            "PREVIEW_TAB_NOT_FOUND",
+            `Download ${input.id} is no longer kept for this tab.`,
+          );
+        }
+        if (saved.sizeBytes > PREVIEW_DOWNLOAD_MAX_BYTES) {
+          throw new PreviewError(
+            "PREVIEW_RESULT_TOO_LARGE",
+            `${saved.fileName} is too large to send to this client (at most ${PREVIEW_DOWNLOAD_MAX_BYTES / 1024 / 1024} MiB); it stays on the node at ${saved.path}.`,
+          );
+        }
+        const data = await Fs.readFile(saved.path);
+        return { fileName: saved.fileName, data: data.toString("base64") };
+      });
+    },
+
     async control(input: { threadId: string; tabId: string; viewer: string; take: boolean }) {
       return withErrors(async () => {
         const tab = humanTab(input.threadId, input.tabId);
@@ -1486,7 +1527,13 @@ export function createTabs(options: TabsOptions) {
         const tab = humanTab(input.threadId, input.tabId);
         await tab.control.human(input.viewer, async () => {
           if (input.url !== undefined) {
-            await tab.page.goto(targetUrl({ url: input.url }), VIEWER_NAVIGATION);
+            await tab.page
+              .goto(targetUrl({ url: input.url }), VIEWER_NAVIGATION)
+              .catch((error: unknown) => {
+                // A file the page cannot show downloads instead: the user is offered it (D1331).
+                if (/Download is starting/i.test(String(error))) return null;
+                throw error;
+              });
           } else if (input.delta !== undefined) {
             await (input.delta < 0
               ? tab.page.goBack(VIEWER_NAVIGATION)

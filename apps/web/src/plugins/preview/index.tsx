@@ -19,6 +19,7 @@ import {
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import type { PreviewTab } from "@jhin/preview-api";
+import type { RpcClient } from "@jhin/rpc";
 import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import {
   Toggle,
@@ -278,6 +279,43 @@ export const previewPanelPlugin = builtin(
           title,
           description: error instanceof Error ? error.message : String(error),
         });
+
+      /** T3's download toast: "Downloaded <file>", and Save fetches it from the node (D1331). */
+      const offerDownload = (
+        client: RpcClient,
+        tab: { threadId: string; tabId: string },
+        download: { id: string; fileName: string },
+      ) => {
+        const id = toasts?.show({
+          type: "info",
+          title: `Downloaded ${download.fileName}`,
+          action: {
+            label: "Save",
+            onClick: () => {
+              if (id !== undefined) toasts?.close(id);
+              void client
+                .call<{ fileName: string; data: string }>("preview.tab.download", {
+                  ...tab,
+                  id: download.id,
+                })
+                .then(({ fileName, data }) => {
+                  const binary = atob(data);
+                  const bytes = new Uint8Array(binary.length);
+                  for (let index = 0; index < binary.length; index += 1) {
+                    bytes[index] = binary.charCodeAt(index);
+                  }
+                  const url = URL.createObjectURL(new Blob([bytes]));
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = fileName;
+                  anchor.click();
+                  setTimeout(() => URL.revokeObjectURL(url), 0);
+                })
+                .catch((error: unknown) => onError("Couldn't save the download", error));
+            },
+          },
+        });
+      };
 
       /** Opens or closes the right panel of the thread on screen. */
       /** Opens or closes the right panel; closing it floats the tab it showed (its id). */
@@ -548,6 +586,7 @@ export const previewPanelPlugin = builtin(
             else float(panelKey, tabId);
           },
           useProfiles: () => resolveBrowserProfiles(profiles.use()),
+          offerDownload,
         };
         return (
           <BrowserPanel
@@ -598,6 +637,9 @@ export const previewPanelPlugin = builtin(
             client={connection.client}
             composerHeight={composerHeight}
             key={tab.tabId}
+            onDownload={(download) =>
+              offerDownload(connection.client, { threadId: thread.id, tabId: tab.tabId }, download)
+            }
             onError={(error) => onError("Unable to change the browser tab", error)}
             onOpenInPanel={() => {
               players.close(key);
