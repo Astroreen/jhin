@@ -255,6 +255,13 @@ export default definePlugin({
     };
     /** Sends the lead's report to the owner, once per id (D1222). */
     async function report(missionId: string, end: ReportEnd, id: string, error?: string) {
+      const closed = end === "done" || end === "dropped";
+      // The lead's word belongs to this close only: taken now, whatever happens next.
+      const summaryKey = `summary/${missionId}`;
+      const summary = closed
+        ? ((await kv.get(NAMESPACE, summaryKey)) as string | undefined)
+        : undefined;
+      if (summary !== undefined) await kv.delete(NAMESPACE, summaryKey);
       if (!hasCommand("agents.send")) return;
       const lead = await leadOf(missionId);
       if (lead === undefined) {
@@ -263,11 +270,6 @@ export default definePlugin({
       }
       await sync();
       const mission = getMission(missionId);
-      const closed = end === "done" || end === "dropped";
-      const summaryKey = `summary/${missionId}`;
-      const summary = closed
-        ? ((await kv.get(NAMESPACE, summaryKey)) as string | undefined)
-        : undefined;
       await run(
         "agents.send",
         {
@@ -278,7 +280,6 @@ export default definePlugin({
         // As the lead's thread, so the owner hears it from the lead (D622).
         { threadId: lead.threadId },
       );
-      if (summary !== undefined) await kv.delete(NAMESPACE, summaryKey);
     }
     let reporting: Promise<unknown> = Promise.resolve();
     function reportLater(missionId: string, end: ReportEnd, id: string, error?: string) {
@@ -312,6 +313,11 @@ export default definePlugin({
               | { missionId?: string }
               | undefined;
             if (owned?.missionId === undefined) return;
+            // Only the mission's current run speaks for it: an older one ending late is no news.
+            const current = (await kv.get(NAMESPACE, `run/${owned.missionId}`)) as
+              | { workflowId?: string }
+              | undefined;
+            if (current?.workflowId !== workflowId) return;
             await sync();
             const mission = state.missions[owned.missionId];
             if (mission === undefined || isClosed(mission.status)) return;
@@ -629,9 +635,15 @@ export default definePlugin({
           );
         }
         if (summary !== undefined && summary.trim() !== "") {
+          // Before the update: its event reports at once and reads it (D1222).
           await kv.set(NAMESPACE, `summary/${missionId}`, summary);
         }
-        return run<Mission>("missions.update", { missionId, status }, invocation);
+        try {
+          return await run<Mission>("missions.update", { missionId, status }, invocation);
+        } catch (error) {
+          await kv.delete(NAMESPACE, `summary/${missionId}`);
+          throw error;
+        }
       },
     });
 

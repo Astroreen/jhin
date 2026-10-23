@@ -1595,7 +1595,9 @@ Decisions (L1):
   where; the orchestrator's `slices-done` outcome names it. A plain
   `missions.update` is reported too, saying the lead said nothing about
   it. The message id is the mission and how it ended (`report-<mission>-…`),
-  so it is delivered once. A mission no lead's thread ran is not reported,
+  so it is delivered once. Only the mission's current run is reported when
+  it ends; an older one ending late is not. A mission no lead's thread ran
+  is not reported,
   and only what happens after the node caught up with the `missions` stream
   is.
 - **D1223. An escalation holds the lead's mission.** The lead escalates as
@@ -1848,6 +1850,9 @@ Decisions (L1):
 - L1: a member's escalation that the lead passes up holds the mission only
   as the lead's own ask (D1223); members asking the owner directly hold
   nothing (fencing them is A5's Deferred item).
+- L1: `missions.next` and `slices.handoff` read the open inbox to find the
+  lead's escalations (D1223); a filter by sender on `agents.inbox.list`
+  once inboxes grow.
 - L1: the report as a card of its own in the Lead view (today the lead's
   Markdown text), and a way to clear a report from the inbox without an
   answer (A2, D626).
