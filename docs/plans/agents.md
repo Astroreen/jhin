@@ -1746,6 +1746,16 @@ Decisions (L2):
   job (full history, `node scripts/public-ids.ts`) is required through the
   `CI` job. `pnpm verify` runs it too, and `--affected` skips it when only
   Markdown changed.
+- **D1278. The mission view shows the process and the reviews.** The mission
+  page marks the mission's own `step` in its "Mission process" steps. A slice
+  row shows its latest review's verdict, and the slice page a "Review"
+  section (verdict, who, when, notes) and, for a review slice, links to the
+  slices it `reviews`. A "Reviews" section on the mission page shows
+  `missions.review.check`: clear, or the slices not reviewed after their
+  last change with the reason; it is asked again when the mission or one of
+  its slices changes on the `missions` stream, and a node without the
+  orchestrator (or a refusal) says "not known", a failed call says why.
+  Editing `reviews` stays out of C2's dialogs.
 
 ### L3. A long run (D1261–D1280)
 
@@ -2040,8 +2050,9 @@ Decisions (L3):
   step (D1241), not git itself. A `pre-commit` hook in the node's managed
   worktrees asking `missions.review.check`, or refusing `git.action.run`'s
   commit for a thread of a mission, would close it.
-- L2: the mission view shows a mission's `step`, its slices' reviews and
-  `missions.review.check` (C2's dialogs edit `reviews` neither).
+- ~~L2: the mission view shows a mission's `step`, its slices' reviews and
+  `missions.review.check`.~~ L2, D1278.
+- L2: editing a slice's `reviews` in C2's dialogs.
 - L2: the owning plan is found by the map's rows (D1244); a project whose
   map names plans differently, or a change in a directory no row names,
   gets none, and the reviewer finds it through the trailhead. An agent's own

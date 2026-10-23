@@ -19,6 +19,7 @@ import {
   type MissionStatus,
   type MissionsState,
   type ProjectIntent,
+  type ReviewCheck,
   type ProofItem,
   type Slice,
   type SliceStatus,
@@ -65,11 +66,15 @@ import {
   MISSION_ASIDE_SLOT,
   missionRank,
   placeOf,
+  reviewCheckFailed,
+  reviewCheckLines,
   routeOf,
   sameThread,
   STATUS_LABELS,
   statusVariant,
   threadTarget,
+  VERDICT_LABELS,
+  type ReviewCheckView,
   type MissionAsideProps,
   type MissionPlace,
 } from "./route.ts";
@@ -602,9 +607,10 @@ function MissionPage(props: {
               <Steps steps={mission.process.slice} />
             </Fact>
             <Fact label="Mission process">
-              <Steps steps={mission.process.mission} />
+              <Steps current={mission.step} steps={mission.process.mission} />
             </Fact>
           </dl>
+          <ReviewCheckSection call={call} mission={mission} slices={slices} />
           <Section
             action={
               closed ? undefined : (
@@ -669,6 +675,54 @@ function MissionPage(props: {
   );
 }
 
+/**
+ * Whether the mission may take a step that needs a review (D1278):
+ * `missions.review.check`, asked again whenever the mission or one of its
+ * slices changes on the `missions` stream. A node without the orchestrator,
+ * or a failing call, says so here.
+ */
+function ReviewCheckSection(props: { call: Call; mission: Mission; slices: readonly Slice[] }) {
+  const { call, mission, slices } = props;
+  const [view, setView] = useState<ReviewCheckView>({ status: "loading" });
+  // Any change of the mission or of a slice's work, proof or review changes this key.
+  const key = [
+    mission.updatedAt,
+    ...slices.map((slice) => `${slice.id}:${slice.updatedAt}:${slice.review?.recordedAt ?? ""}`),
+  ].join("|");
+  useEffect(() => {
+    let current = true;
+    call<ReviewCheck>("missions.review.check", { missionId: mission.id }).then(
+      (answer) =>
+        current && setView({ status: "ready", clear: answer.clear, unreviewed: answer.unreviewed }),
+      (error: unknown) => current && setView(reviewCheckFailed(error)),
+    );
+    return () => {
+      current = false;
+    };
+  }, [mission.id, key]);
+  const titles = new Map(slices.map((slice) => [slice.id, slice.title]));
+  const lines = reviewCheckLines(view, (id) => titles.get(id) ?? id);
+  return (
+    <Section label="Review check" title="Reviews">
+      <p
+        className="text-sm text-foreground"
+        data-review-check={
+          view.status === "ready" ? (view.clear ? "clear" : "unreviewed") : view.status
+        }
+      >
+        {lines.headline}
+      </p>
+      {lines.unreviewed.length === 0 ? null : (
+        <ul className="list-disc ps-5 text-sm text-muted-foreground">
+          {lines.unreviewed.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
 function SliceRow(props: {
   slice: Slice;
   titles: ReadonlyMap<string, string>;
@@ -705,6 +759,16 @@ function SliceRow(props: {
       )}
       {slice.proof === undefined ? null : (
         <BadgeCheckIcon aria-label="Proven" className="size-4 shrink-0 text-success-foreground" />
+      )}
+      {slice.review === undefined ? null : (
+        <Badge
+          aria-label={`Review: ${VERDICT_LABELS[slice.review.verdict]}`}
+          data-review={slice.review.verdict}
+          size="sm"
+          variant={slice.review.verdict === "approved" ? "success" : "warning"}
+        >
+          {VERDICT_LABELS[slice.review.verdict]}
+        </Badge>
       )}
       <span
         className="w-24 shrink-0 truncate text-right text-xs text-muted-foreground"
@@ -772,6 +836,27 @@ function SlicePage(props: {
             </ul>
           </Section>
         )}
+        {slice.reviews === undefined || slice.reviews.length === 0 ? null : (
+          <Section title="Reviews">
+            <ul className="flex flex-wrap gap-1.5">
+              {slice.reviews.map((id) => {
+                const reviewed = state.slices[id];
+                return (
+                  <li key={id}>
+                    <button
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-xs hover:bg-accent/40"
+                      onClick={() => open({ kind: "slice", sliceId: id })}
+                      type="button"
+                    >
+                      {reviewed === undefined ? null : <StatusBadge status={reviewed.status} />}
+                      {reviewed?.title ?? id}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </Section>
+        )}
         <Section title="Spec">
           <Prose empty="No spec yet." text={slice.spec} />
         </Section>
@@ -795,6 +880,26 @@ function SlicePage(props: {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+        </Section>
+        <Section title="Review">
+          {slice.review === undefined ? (
+            <p className="text-sm text-muted-foreground">Not reviewed yet.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Badge
+                  data-review={slice.review.verdict}
+                  size="sm"
+                  variant={slice.review.verdict === "approved" ? "success" : "warning"}
+                >
+                  {VERDICT_LABELS[slice.review.verdict]}
+                </Badge>
+                {new Date(slice.review.recordedAt).toLocaleString()}
+                {slice.review.by === undefined ? "" : ` by ${slice.review.by}`}
+              </p>
+              <Prose empty="No notes." text={slice.review.notes ?? ""} />
             </div>
           )}
         </Section>
