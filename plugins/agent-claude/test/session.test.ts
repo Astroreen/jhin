@@ -933,6 +933,7 @@ describe("jhin.agent-claude: Claude Code's native rewind and fork (D1314, D1315)
 
   it("starts over with the transcript when Claude Code no longer has the rewound session", async () => {
     const { turn, calls, sessions } = node([
+      // oxlint-disable-next-line require-yield -- Claude Code refuses before its first frame.
       async function* () {
         throw new Error("No conversation found with session ID: x");
       },
