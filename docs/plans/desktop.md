@@ -408,7 +408,10 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   subscriber to `preview-desktop` counts as a hosting page: a client with
   `preview.control` that subscribes and never attaches makes each new tab
   wait the 10 s before it opens headless. When the last subscriber goes,
-  the stream forgets its tabs, since their webviews went with the page.
+  the tabs still waiting give up; attached tabs stay listed, so a page
+  whose connection drops and comes back keeps its webviews, while a page
+  that really went took them along, and their relays dropping end the
+  tabs (D1322).
   `PreviewTab` gets `desktop: true` for such a tab (additive). The node does
   not size, zoom or screencast a desktop page: the webview's size is the
   page's viewport, so `fill` follows the panel by itself, and a preset or a

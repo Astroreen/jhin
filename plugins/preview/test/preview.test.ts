@@ -1294,7 +1294,7 @@ describe("jhin.preview in the desktop app (D1321)", () => {
     expect(remote.code).not.toBe("PREVIEW_TAB_NOT_FOUND");
   });
 
-  it("tells a page that hosts after a reload of none of the earlier page's tabs (D1321)", async () => {
+  it("keeps an attached tab listed for a page whose connection drops and comes back (D1321)", async () => {
     const streams = createMemoryStreams({});
     const desktop = createDesktopHost(streams);
     const first = desktop.source.subscribe(PREVIEW_DESKTOP_STREAM, (event) => {
@@ -1308,11 +1308,19 @@ describe("jhin.preview in the desktop app (D1321)", () => {
     expect(endpoint).toBe("ws://127.0.0.1:1/x");
     desktop.confirm("t", "a");
     first.dispose();
-    // The page of the reloaded window subscribes and reads the stream.
+    // A page that does not attach: a tab still waiting when it goes gives up at once.
+    const idle = desktop.source.subscribe(PREVIEW_DESKTOP_STREAM, () => undefined);
+    const waiting = desktop.request({ threadId: "t", tabId: "b", partition: "p" } as never, 60_000);
+    idle.dispose();
+    expect(await waiting).toBeNull();
+    desktop.forget("t", "b");
+    // The page subscribes again: its attached tab is still there, so it keeps its webview.
     const second = desktop.source.subscribe(PREVIEW_DESKTOP_STREAM, () => undefined);
     try {
       const head = await desktop.source.read(PREVIEW_DESKTOP_STREAM, { after: 0 });
-      expect(head.at(-1)!.payload).toEqual({ tabs: [] });
+      expect(head.at(-1)!.payload).toMatchObject({
+        tabs: [{ threadId: "t", tabId: "a", attached: true }],
+      });
     } finally {
       second.dispose();
       desktop.dispose();
