@@ -724,7 +724,14 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   took (an app declares the one of its Android version), and Reset, which
   Android has not, is refused there, as T3's panel offers it on iOS only;
   so is clearing an emulator's location, which T3 answers with nothing, and
-  setting a phone's, which only an emulator's console places. A
+  setting a phone's, which only an emulator's console places. Wi-Fi and
+  mobile data are two commands, not one: a mobile-data step the device
+  refuses leaves Wi-Fi as set, and Wi-Fi failing after data took leaves
+  data as set. iOS's `extra-small` text reads back as small (T3 reads it
+  as large). `devices.write` is enough for every action, opening a URL and
+  sending a push included, as it is for a tap: they act on the owner's
+  simulator or emulator through the host's own tools, which the node
+  already runs for the device panel. A
   URL to open must carry its scheme. Turning the network off on Android
   takes when Wi-Fi did: mobile data is turned with it where there is one.
   The node runs one action at a time per device, its read-back included,

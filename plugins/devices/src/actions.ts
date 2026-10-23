@@ -125,10 +125,10 @@ const textSizeFromIos = (category: string): DeviceTextSize | undefined => {
   );
   if (entry) return entry[0];
   if (category.startsWith("accessibility")) return "extra-large";
+  // The small ones first: `extra-small` contains "extra" too (T3 reads it as large).
+  if (category === "extra-small" || category === "small" || category === "medium") return "small";
   if (category.includes("extra")) return "large";
-  return category === "extra-small" || category === "small" || category === "medium"
-    ? "small"
-    : "default";
+  return "default";
 };
 
 const textSizeFromAndroid = (scale: number): DeviceTextSize => {

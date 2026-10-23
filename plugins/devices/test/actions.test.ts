@@ -447,4 +447,17 @@ describe("readDeviceDetail", () => {
     expect(push({ aps: { alert: "x".repeat(4096) } })).toBe(false);
     expect(push("x".repeat(4097))).toBe(false);
   });
+
+  it("reads iOS's small text categories as small, extra-small included", async () => {
+    const textSize = async (category: string) => {
+      const { host } = makeHost((call) =>
+        call.args.includes("content_size") ? { stdout: `${category}\n` } : { code: 1 },
+      );
+      return (await readDeviceDetail(host, "ios", "SIM-1")).settings.textSize;
+    };
+    expect(await textSize("extra-small")).toBe("small");
+    expect(await textSize("medium")).toBe("small");
+    expect(await textSize("extra-extra-large")).toBe("large");
+    expect(await textSize("accessibility-large")).toBe("extra-large");
+  });
 });
