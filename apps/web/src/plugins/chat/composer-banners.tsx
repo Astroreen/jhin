@@ -860,6 +860,12 @@ export function LimitRecoveryBanner(props: { readonly state: LimitRecoveryState 
               ) : null}
             </ComposerBanner.Actions>
           ) : null}
+        </ComposerBanner.Row>
+      </ComposerBanner.Root>
+    </ComposerBanner.Attachment>
+  );
+}
+
 /** T3's feedbackBannerItem (ComposerFeedback.tsx): a `/feedback` as it goes (D1317). */
 export function FeedbackBanner(props: {
   readonly submission: FeedbackSubmission;

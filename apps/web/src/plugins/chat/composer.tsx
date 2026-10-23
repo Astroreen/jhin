@@ -193,10 +193,12 @@ const PlanFollowUpBanner = lazyChunk(
   quiet,
 );
 const GoalBanner = lazyChunk(() => bannersChunk().then((module) => module.GoalBanner), quiet);
-const LimitRecoveryBanner = lazyChunk(
-  () => bannersChunk().then((module) => module.LimitRecoveryBanner),
 const FeedbackBanner = lazyChunk(
   () => bannersChunk().then((module) => module.FeedbackBanner),
+  quiet,
+);
+const LimitRecoveryBanner = lazyChunk(
+  () => bannersChunk().then((module) => module.LimitRecoveryBanner),
   quiet,
 );
 const UsageLimitsBanner = lazyChunk(
@@ -1664,8 +1666,6 @@ export function Composer(props: ComposerProps) {
           />
         ) : planFollowUp !== undefined ? (
           <PlanFollowUpBanner planTitle={planFollowUp.title} />
-        ) : props.limitRecovery !== undefined ? (
-          <LimitRecoveryBanner state={props.limitRecovery} />
         ) : feedback !== undefined ? (
           <FeedbackBanner
             onCopy={(feedbackId) => {
@@ -1682,6 +1682,8 @@ export function Composer(props: ComposerProps) {
             onDismiss={() => setFeedback(undefined)}
             submission={feedback.submission}
           />
+        ) : props.limitRecovery !== undefined ? (
+          <LimitRecoveryBanner state={props.limitRecovery} />
         ) : usagePanel !== undefined ? (
           <UsageLimitsBanner
             agentName={usagePanel.agentName}
