@@ -77,6 +77,7 @@ import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { usageLimitFailureLabel } from "../../lib/usage-limits.ts";
 import { type MessageContextChips, MessageContextChipsContext } from "./message-context.ts";
 import { ChatContext } from "./services.ts";
+import { THREAD_FIND_UNFOLD_EVENT } from "./thread-find.tsx";
 import { MessageText } from "./message-text.tsx";
 import type { SavePlan } from "./proposed-plan-card.tsx";
 
@@ -189,6 +190,9 @@ function useMessageContextChips(
     };
   }, [context, citations, where, chat, selfNodeId]);
 }
+
+/** Whether the thread's find bar is open: folded work is then there to be found (D1351). */
+const FindOpenContext = createContext(false);
 
 /** The clock of the timeline: "today" and "yesterday" labels roll over with it. */
 const NowContext = createContext(Date.now());
@@ -692,17 +696,27 @@ function TurnView(props: {
   const finalIndex = blocks.findIndex((block) => block.kind === "message" && block.final);
   // A proposed plan is never folded away (it is what the turn is for), nor a
   // message the user steered in.
-  const visible =
-    folds && !unfolded
-      ? blocks.filter(
-          (block, index) =>
-            index >= finalIndex ||
-            block.kind === "proposed-plan" ||
-            block.kind === "steer" ||
-            // What a plugin put into the turn (a rendered page) is part of the answer.
-            block.kind === "extension",
-        )
-      : blocks;
+  /** A block the finished turn folds away: before its answer, and none of what always shows. */
+  const foldable = (block: (typeof blocks)[number], index: number) =>
+    folds &&
+    index < finalIndex &&
+    block.kind !== "proposed-plan" &&
+    block.kind !== "steer" &&
+    // What a plugin put into the turn (a rendered page) is part of the answer.
+    block.kind !== "extension";
+  const shownFolded = (block: (typeof blocks)[number], index: number) =>
+    unfolded || !foldable(block, index);
+  // While the find bar is open the folded work is there too, hidden, so its text is found; the
+  // fold opens once the current match is in it (T3's find opens it, D1351).
+  const findOpen = useContext(FindOpenContext);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = root.current;
+    if (element === null) return;
+    const unfold = () => setUnfolded(true);
+    element.addEventListener(THREAD_FIND_UNFOLD_EVENT, unfold);
+    return () => element.removeEventListener(THREAD_FIND_UNFOLD_EVENT, unfold);
+  }, []);
   const duration =
     turn.endedAt === undefined
       ? undefined
@@ -719,8 +733,64 @@ function TurnView(props: {
   // Not rebuilt on every tick of a running turn's clock.
   const adjacent = useMemo(() => adjacentExtensions(turnBlocks(turn)), [turn]);
 
+  const renderBlock = (block: (typeof blocks)[number], index: number) => {
+    if (block.kind === "work") {
+      return <WorkGroup entries={block.entries} key={`work-${index}`} live={running} />;
+    }
+    if (block.kind === "plan") return <PlanCard item={block.item} key={`plan-${index}`} />;
+    if (block.kind === "extension") {
+      return (
+        <Fragment key={`extension-${block.item.event.sequence}`}>
+          {props.extension?.(
+            block.item.event,
+            adjacent.get(block.item.event.sequence) ?? [block.item.event],
+          )}
+        </Fragment>
+      );
+    }
+    if (block.kind === "steer") {
+      return (
+        <UserMessage
+          format={format}
+          key={`steer-${block.item.messageId}`}
+          turn={{
+            text: block.item.text,
+            attachments: block.item.attachments,
+            ...(block.item.context === undefined ? {} : { context: block.item.context }),
+            startedAt: block.item.at,
+          }}
+        />
+      );
+    }
+    if (block.kind === "proposed-plan") {
+      return (
+        <div className="min-w-0 px-1 py-0.5 pb-4" key={block.item.itemId}>
+          <Suspense fallback={null}>
+            <ProposedPlanCard
+              planMarkdown={block.item.markdown}
+              {...(props.onSavePlan === undefined ? {} : { onSave: props.onSavePlan })}
+              {...(props.projectPath === undefined ? {} : { workspaceRoot: props.projectPath })}
+            />
+          </Suspense>
+        </div>
+      );
+    }
+    const streaming = running && block.item === lastMessage?.item && !block.item.completed;
+    return (
+      <AssistantMessage
+        format={format}
+        item={block.item}
+        latest={props.latest}
+        turnId={turn.turnId}
+        key={block.item.itemId}
+        paddingClass={block.final ? "pb-4" : "pb-2"}
+        showMeta={block.final}
+        streaming={streaming}
+      />
+    );
+  };
   return (
-    <div className="flex flex-col" data-turn={turn.turnId}>
+    <div className="flex flex-col" data-turn={turn.turnId} ref={root}>
       <UserMessage format={format} latest={props.latest} turn={turn} />
       {props.header}
       {running ? (
@@ -759,62 +829,21 @@ function TurnView(props: {
         </div>
       ) : null}
       <div className="pt-2">
-        {visible.map((block, index) => {
-          if (block.kind === "work") {
-            return <WorkGroup entries={block.entries} key={`work-${index}`} live={running} />;
-          }
-          if (block.kind === "plan") return <PlanCard item={block.item} key={`plan-${index}`} />;
-          if (block.kind === "extension") {
-            return (
-              <Fragment key={`extension-${block.item.event.sequence}`}>
-                {props.extension?.(
-                  block.item.event,
-                  adjacent.get(block.item.event.sequence) ?? [block.item.event],
-                )}
-              </Fragment>
-            );
-          }
-          if (block.kind === "steer") {
-            return (
-              <UserMessage
-                format={format}
-                key={`steer-${block.item.messageId}`}
-                turn={{
-                  text: block.item.text,
-                  attachments: block.item.attachments,
-                  ...(block.item.context === undefined ? {} : { context: block.item.context }),
-                  startedAt: block.item.at,
-                }}
-              />
-            );
-          }
-          if (block.kind === "proposed-plan") {
-            return (
-              <div className="min-w-0 px-1 py-0.5 pb-4" key={block.item.itemId}>
-                <Suspense fallback={null}>
-                  <ProposedPlanCard
-                    planMarkdown={block.item.markdown}
-                    {...(props.onSavePlan === undefined ? {} : { onSave: props.onSavePlan })}
-                    {...(props.projectPath === undefined
-                      ? {}
-                      : { workspaceRoot: props.projectPath })}
-                  />
-                </Suspense>
-              </div>
-            );
-          }
-          const streaming = running && block.item === lastMessage?.item && !block.item.completed;
+        {blocks.map((block, index) => {
+          // What never folds renders as before; what can fold keeps one wrapper, open or not, so
+          // opening the fold keeps the block (and the find's place in it) where it was.
+          if (!foldable(block, index)) return renderBlock(block, index);
+          const folded = !shownFolded(block, index);
+          if (folded && !findOpen) return null;
           return (
-            <AssistantMessage
-              format={format}
-              item={block.item}
-              latest={props.latest}
-              turnId={turn.turnId}
-              key={block.item.itemId}
-              paddingClass={block.final ? "pb-4" : "pb-2"}
-              showMeta={block.final}
-              streaming={streaming}
-            />
+            <div
+              className={folded ? undefined : "contents"}
+              data-thread-find-fold={folded ? "" : undefined}
+              hidden={folded}
+              key={`foldable-${index}`}
+            >
+              {renderBlock(block, index)}
+            </div>
           );
         })}
       </div>
@@ -877,6 +906,8 @@ export function TimelineView(props: {
   format: TimestampFormat;
   /** The thread shown: its messages get the `chat.message.actions` slot. */
   thread?: { target: NodeTarget; threadId: string };
+  /** The find bar is open: folded work renders hidden so its text is found (D1351). */
+  findOpen?: boolean;
   /** Runs a failed turn's message again (D224). */
   onRetry?(turn: TimelineTurn): Promise<unknown>;
   /** The thread's project folder, where "Save to workspace" writes. */
@@ -917,52 +948,54 @@ export function TimelineView(props: {
   }
   return (
     <NowContext.Provider value={now}>
-      <MessageActionsContext.Provider value={where}>
-        {turns.map((turn, index) => (
-          <Fragment key={turn.turnId}>
-            {turn.handoff === undefined ? null : (
-              <SystemDivider
-                detail={props.titleOf?.(turn.handoff.threadId)}
-                icon={GitMergeIcon}
-                label="Merged back from fork"
-                {...(props.onOpenThread === undefined
-                  ? {}
-                  : {
-                      actionLabel: "Open fork",
-                      onAction: () => props.onOpenThread!(turn.handoff!.threadId),
-                    })}
+      <FindOpenContext value={props.findOpen === true}>
+        <MessageActionsContext.Provider value={where}>
+          {turns.map((turn, index) => (
+            <Fragment key={turn.turnId}>
+              {turn.handoff === undefined ? null : (
+                <SystemDivider
+                  detail={props.titleOf?.(turn.handoff.threadId)}
+                  icon={GitMergeIcon}
+                  label="Merged back from fork"
+                  {...(props.onOpenThread === undefined
+                    ? {}
+                    : {
+                        actionLabel: "Open fork",
+                        onAction: () => props.onOpenThread!(turn.handoff!.threadId),
+                      })}
+                />
+              )}
+              <TurnView
+                format={props.format}
+                latest={index === turns.length - 1}
+                turn={turn}
+                {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
+                {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
+                header={props.header?.(turn, index === 0)}
+                footer={props.footer?.(turn, index === turns.length - 1)}
+                extension={
+                  props.extension === undefined
+                    ? undefined
+                    : (event, adjacent) => props.extension?.(turn, event, adjacent)
+                }
+                {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
               />
-            )}
-            <TurnView
-              format={props.format}
-              latest={index === turns.length - 1}
-              turn={turn}
-              {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
-              {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
-              header={props.header?.(turn, index === 0)}
-              footer={props.footer?.(turn, index === turns.length - 1)}
-              extension={
-                props.extension === undefined
-                  ? undefined
-                  : (event, adjacent) => props.extension?.(turn, event, adjacent)
-              }
-              {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
-            />
-            {forkedFrom?.turnId === turn.turnId ? (
-              <SystemDivider
-                icon={GitForkIcon}
-                label="Forked from conversation"
-                {...(props.onOpenThread === undefined
-                  ? {}
-                  : {
-                      actionLabel: "Open source conversation",
-                      onAction: () => props.onOpenThread!(forkedFrom.threadId),
-                    })}
-              />
-            ) : null}
-          </Fragment>
-        ))}
-      </MessageActionsContext.Provider>
+              {forkedFrom?.turnId === turn.turnId ? (
+                <SystemDivider
+                  icon={GitForkIcon}
+                  label="Forked from conversation"
+                  {...(props.onOpenThread === undefined
+                    ? {}
+                    : {
+                        actionLabel: "Open source conversation",
+                        onAction: () => props.onOpenThread!(forkedFrom.threadId),
+                      })}
+                />
+              ) : null}
+            </Fragment>
+          ))}
+        </MessageActionsContext.Provider>
+      </FindOpenContext>
     </NowContext.Provider>
   );
 }

@@ -569,6 +569,7 @@ export function ThreadView(props: {
                             />
                           )
                     }
+                    findOpen={find.bar.open}
                     format={settings.timestampFormat}
                     onRetry={(turn) =>
                       chat.context.commands
