@@ -90,6 +90,8 @@ interface CodexSettings {
 }
 
 export interface CodexTurnDependencies {
+  /** The runtime's id, another account's (D1319); Codex's when absent. */
+  readonly agentId?: string;
   readonly sessions: Sessions;
   readonly threads: ThreadStore;
   readonly settings: CodexSettings;
@@ -1222,7 +1224,10 @@ export function codexTurn(
       const fresh = recorded !== codexThreadId && !current.session.delivered && !forkedNatively;
       current.session.model = model;
       // A Codex thread that never saw the thread's earlier turns gets them as a transcript.
-      const preface = historyTranscript(request.history, fresh ? undefined : CODEX_AGENT_ID);
+      const preface = historyTranscript(
+        request.history,
+        fresh ? undefined : (deps.agentId ?? CODEX_AGENT_ID),
+      );
       // Codex parses only `$name` as a skill (T3's codexSkillMentionText).
       const typed = codexSkillMentionText(request.input.text);
       const text = preface === undefined ? typed : `${preface}${typed}`;

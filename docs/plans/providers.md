@@ -682,9 +682,13 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
   through them too: today only full access gets the writing permissions.
-- Several Codex accounts per node and shadow homes, and T3's own ChatGPT
-  sign-in (its OAuth client registered with OpenAI, subscription sharing,
-  the welcome flow): Jhin signs in through Codex's own login (D1151).
+- T3's own ChatGPT sign-in (its OAuth client registered with OpenAI,
+  subscription sharing, the welcome flow): it needs an OAuth client the
+  owner registers with OpenAI, so Jhin signs in through Codex's own login
+  (D1151), also for each account of D1319. Pooling the accounts of one
+  agent on the Usage page (T3 pools by account) and moving a thread to
+  another account without the transcript of its turns there (the Codex
+  thread is shared, but an account's turns count as another agent's).
 - Models a newer Codex would list (T3's `updateRequiredModels`), and custom
   models with options of their own (T3's `capabilities` on an entry).
 - The manual check of Landing: a supervised turn against a signed-in Codex
@@ -1306,22 +1310,6 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   refuses, starts a new session with the whole transcript, as before. The
   plugin passes the SDK's `forkSession`; `claudePlugin(query, forkSession?)`
   takes it as a second argument.
-- **D1318. Codex's subagents outlive their turn**, as T3 follows a child
-  thread past its parent's turn (D1164's `subagent.backgrounded` and
-  `afterwards`): when Codex ends a turn (`turn/completed`) with subagents of
-  it still open, each is backgrounded and the turn follows the thread's
-  app-server past its end (`Lease.follow`), reading its subagents' frames
-  (messages, reasoning, tools, its `turn/completed`) into `afterwards` until
-  each has ended, also while a later turn of the thread holds the
-  app-server; a subagent's `subAgentActivity` or `agentsStates` that came
-  through a later turn of the parent are that turn's. While followed, an
-  idle app-server is kept up; when it ends, `afterwards` ends and the
-  subagents still open end `interrupted` (D1164). A turn that was stopped
-  or broke off still ends its subagents with it, as before (D1145). A
-  subagent's approval or question after its parent's turn ended is refused
-  as before: no turn is there to ask it. As Claude's (D1165), `afterwards`
-  holds at most 10 000 unread items: a reader that never reads lets go of
-  the app-server. A subagent a followed one starts is not shown.
 - **D1316. T3's "Always allow" and an app's own labels**
   (`CodexMcpElicitation.ts`'s `acceptAlways`, `agent.runtime@1.13`,
   additive): `accept-always` joins the approval decisions and an approval
@@ -1340,6 +1328,45 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   offer it (the mapping to their session allowance, T3's for `acceptAlways`,
   is kept for when one does). The fake agent's `/access-always <app>` offers
   both, for the end-to-end test.
+- **D1318. Codex's subagents outlive their turn**, as T3 follows a child
+  thread past its parent's turn (D1164's `subagent.backgrounded` and
+  `afterwards`): when Codex ends a turn (`turn/completed`) with subagents of
+  it still open, each is backgrounded and the turn follows the thread's
+  app-server past its end (`Lease.follow`), reading its subagents' frames
+  (messages, reasoning, tools, its `turn/completed`) into `afterwards` until
+  each has ended, also while a later turn of the thread holds the
+  app-server; a subagent's `subAgentActivity` or `agentsStates` that came
+  through a later turn of the parent are that turn's. While followed, an
+  idle app-server is kept up; when it ends, `afterwards` ends and the
+  subagents still open end `interrupted` (D1164). A turn that was stopped
+  or broke off still ends its subagents with it, as before (D1145). A
+  subagent's approval or question after its parent's turn ended is refused
+  as before: no turn is there to ask it. As Claude's (D1165), `afterwards`
+  holds at most 10 000 unread items: a reader that never reads lets go of
+  the app-server. A subagent a followed one starts is not shown.
+- **D1319. More Codex accounts on one node**, T3's several Codex provider
+  instances with a shadow home (`CodexHomeLayout.ts`'s auth overlay, ported
+  as `plugins/agent-codex/src/accounts.ts`): the Codex config's `accounts`
+  (`{ id, name, homePath }`, "More accounts") each register a runtime of
+  their own, `jhin.agent-codex:<id>` named "Codex · <name>", that runs
+  Codex with `CODEX_HOME` the account's shadow home. Before each start of
+  its Codex the shadow home is linked over the main home (`homePath`, else
+  `~/.codex`) as T3 does: every entry of the main home and T3's known shared
+  folders (`sessions`, `skills`, `plugins`, …) are links, so threads, skills
+  and config are shared, while `auth.json` and `models_cache.json` stay the
+  account's own and `log`, `memories` and `tmp` stay apart; a file in a
+  link's place (but Codex's own locks), the main home itself, a home inside
+  the other or a linked `auth.json` are refused, as a failed turn saying
+  why; a link to an entry the main home no longer has goes. Two accounts
+  with one id or one home are refused by the config. Each account signs in on its own (D1151: the
+  settings page's "Sign in" per agent), reports its own usage limits and
+  takes its own turns; its turns are recorded with its agent id. Accounts
+  added, changed or removed in the config register and go at once (a
+  changed one starts again, also its running turn); their running Codex
+  are listed and closed with the main one's, a deleted thread waits for
+  every account's turns, and a changed idle time reaches them all. Jhin
+  keeps no token of its own for them: each account's sign-in is Codex's
+  `auth.json` in its shadow home.
 
 ### Deferred
 
