@@ -202,4 +202,31 @@ describe("jhin.agent-codex: subagents (D1145)", () => {
     );
     expect(events.some((event) => event.type === "agent.turn.interrupted")).toBe(false);
   });
+
+  it("interrupts a followed subagent when its app-server ends (D1318)", async () => {
+    const fake = fakeCodex({
+      turns: [
+        [
+          parentItem("item/completed", {
+            type: "collabAgentToolCall",
+            id: "spawn-1",
+            tool: "spawnAgent",
+            status: "completed",
+            senderThreadId: "$thread",
+            receiverThreadIds: ["child-d"],
+            prompt: "Watch forever",
+            agentsStates: {},
+          }),
+          { complete: "completed" },
+          { exit: 0 },
+        ],
+      ],
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const first = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "watch" });
+    const [startedChild] = payloads(await first, "threads.subagent.started");
+    await until(client, String(startedChild!["childThreadId"]), "agent.turn.interrupted");
+  });
 });

@@ -699,8 +699,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   allowance, ported as is (D314), accepts every later command (or file
   change) on the thread's app-server in that mode, not only the approved one;
   the approval's wording does not say so yet.
-- A cap on running app-servers (one with subagents in the background is kept
-  up, D1318).
+- A cap on running app-servers, and a bound on following one: an app-server
+  whose subagent in the background never ends is kept up (D1318) until the
+  thread is archived or deleted or the node stops.
 - A time limit on `thread/start`, `thread/resume` and `turn/start`: a Codex
   that stays up but never answers them holds the turn until it is stopped
   (the stop then frees it, D320). They may legitimately wait on Codex's MCP
@@ -1318,7 +1319,9 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   subagents still open end `interrupted` (D1164). A turn that was stopped
   or broke off still ends its subagents with it, as before (D1145). A
   subagent's approval or question after its parent's turn ended is refused
-  as before: no turn is there to ask it.
+  as before: no turn is there to ask it. As Claude's (D1165), `afterwards`
+  holds at most 10 000 unread items: a reader that never reads lets go of
+  the app-server. A subagent a followed one starts is not shown.
 
 ### Deferred
 
