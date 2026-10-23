@@ -123,6 +123,7 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
   const nodes = useExternal(view.store, view.store.snapshot);
   const [answer, setAnswer] = useState("");
   const [sending, setSending] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
   const state = nodes.get(node);
   const item: InboxItem | undefined = state?.value.find(
     (entry) => entry.message.messageId === messageId,
@@ -133,7 +134,7 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
   if (item === undefined) {
     return (
       <PageEmpty
-        text="This message is answered already, or the node no longer has it."
+        text="This message is answered or dismissed already, or the node no longer has it."
         title="Nothing to answer"
       />
     );
@@ -154,6 +155,23 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
       });
     } finally {
       setSending(false);
+    }
+  };
+  const dismiss = async () => {
+    const connection = view.connections.get(node);
+    if (connection === undefined) return;
+    setDismissing(true);
+    try {
+      await connection.client.call("agents.inbox.dismiss", { messageId });
+      view.toasts?.show({ type: "success", title: "Dismissed", description: message.from });
+    } catch (error) {
+      view.toasts?.show({
+        type: "error",
+        title: "Couldn't dismiss it",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setDismissing(false);
     }
   };
   return (
@@ -197,6 +215,15 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
         <div>
           <Button disabled={answer.trim() === "" || sending} type="submit">
             Send answer
+          </Button>
+          <Button
+            className="ml-2"
+            disabled={dismissing || sending}
+            onClick={() => void dismiss()}
+            type="button"
+            variant="outline"
+          >
+            Dismiss
           </Button>
         </div>
       </form>
