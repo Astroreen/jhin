@@ -1,6 +1,7 @@
 import * as Http from "node:http";
 
-import type { GitActionResult, ProjectStatus } from "@jhin/source-control-api";
+import type { GitActionResult, ProjectStatus, PullRequest } from "@jhin/source-control-api";
+import type { StoredEvent } from "@jhin/storage-api";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { forgeKindOf, matchesHead } from "../src/index.ts";
@@ -19,6 +20,30 @@ function repositoryAt(url: string) {
   git(dir, "fetch", "--quiet", remote, "+refs/heads/*:refs/remotes/origin/*");
   git(dir, "switch", "--quiet", "--create", "feature");
   return dir;
+}
+
+/**
+ * A node that watches only on request, a thread of a project on `remote`, and a wait for the
+ * thread's next turn whose text matches.
+ */
+async function watching(remote: string) {
+  const sc = await node({ watchSweepSeconds: 0 });
+  const projectId = await sc.project(repositoryAt(remote));
+  const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
+  const texts: string[] = [];
+  const waiters = new Set<{ match: (text: string) => boolean; resolve(): void }>();
+  sc.client.subscribe(`thread/${thread.id}`, {}, (event: StoredEvent) => {
+    if (event.type !== "agent.turn.started") return;
+    const text = (event.payload as { input?: { text?: string } }).input?.text ?? "";
+    texts.push(text);
+    for (const waiter of waiters) if (waiter.match(text)) waiter.resolve();
+  });
+  const until = (match: (text: string) => boolean) =>
+    new Promise<void>((resolve) => {
+      if (texts.some(match)) resolve();
+      else waiters.add({ match, resolve });
+    });
+  return { sc, thread, until };
 }
 
 describe("which forge a host is", () => {
@@ -176,20 +201,65 @@ describe("jhin.source-control: GitLab through glab", () => {
     );
   });
 
-  it("does not offer to watch a merge request yet", async () => {
-    fakeCli("glab");
+  it("lists a project's merge requests for the composer, searched on GitLab (D1287)", async () => {
+    const glab = fakeCli("glab");
+    glab.answer(
+      "api --hostname gitlab.com projects/acme%2Fdemo/merge_requests?state=all&search=toolbar&order_by=updated_at&sort=desc&per_page=30",
+      [mr({ iid: 8, title: "Port the toolbar", state: "merged" }), mr({ iid: 7 })],
+    );
     const sc = await node();
     const projectId = await sc.project(repositoryAt("git@gitlab.com:acme/demo.git"));
-    const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    const { pullRequests } = await sc.client.call<{ pullRequests: PullRequest[] }>(
+      "git.pr.search",
+      { projectId, query: "toolbar" },
+    );
+    expect(pullRequests.map((pr) => [pr.number, pr.state])).toEqual([
+      [8, "merged"],
+      [7, "open"],
+    ]);
+  });
+
+  it("watches a merge request: its pipeline, notes and conflicts wake the thread (D1287)", async () => {
+    const glab = fakeCli("glab");
+    const path = "api --hostname gitlab.com projects/acme%2Fdemo/merge_requests/5";
+    glab.answer(path, mr({ sha: "abcdef1234", head_pipeline: { status: "running" } }));
+    glab.answer(`${path}/notes`, []);
+    glab.answer("api --hostname gitlab.com user", { username: "me" });
+    const { sc, thread, until } = await watching("git@gitlab.com:acme/demo.git");
+    const url = "https://gitlab.com/acme/demo/-/merge_requests/5";
     await expect(
-      sc.client.call("git.pr.watch", {
-        threadId: thread.id,
-        url: "https://gitlab.com/acme/demo/-/merge_requests/5",
+      sc.client.call("git.pr.watch", { threadId: thread.id, url }),
+    ).resolves.toMatchObject({ watching: true });
+    expect(await sc.client.call("git.pr.watch.check", {})).toEqual({ checked: 1, woken: 0 });
+    glab.answer(
+      path,
+      mr({
+        sha: "abcdef1234",
+        author: { username: "author" },
+        head_pipeline: { status: "failed", web_url: "https://gitlab.com/acme/demo/-/pipelines/3" },
+        has_conflicts: true,
       }),
-    ).rejects.toMatchObject({
-      code: "ACTION_UNAVAILABLE",
-      message: "Watching pull requests on GitLab is not supported on this node yet.",
-    });
+    );
+    glab.answer(`${path}/notes`, [
+      { id: 1, system: true, body: "added 1 commit", created_at: "2099-01-01T00:00:00Z" },
+      { id: 2, body: "Mine", author: { username: "me" }, created_at: "2099-01-01T00:00:00Z" },
+      {
+        id: 3,
+        body: "Looks off",
+        author: { username: "reviewer" },
+        created_at: "2099-01-01T00:00:01Z",
+      },
+    ]);
+    expect(await sc.client.call("git.pr.watch.check", {})).toEqual({ checked: 1, woken: 1 });
+    await until(
+      (text) =>
+        text.startsWith(`Update on pull request #5 (${url}), which Jhin is watching for you:`) &&
+        text.includes(
+          "- Checks failed on abcdef1:\n  - Pipeline https://gitlab.com/acme/demo/-/pipelines/3",
+        ) &&
+        text.includes('- 1 new comment:\n  - reviewer: "Looks off"') &&
+        text.includes("- The branch now conflicts with main."),
+    );
   });
 
   it("says when glab is missing", async () => {
@@ -232,6 +302,110 @@ describe("jhin.source-control: Azure DevOps through az", () => {
       mergedAt: "2026-10-20T10:00:00Z",
       checks: { state: null },
     });
+  });
+});
+
+describe("jhin.source-control: listing and watching on Azure DevOps (D1288)", () => {
+  const pull = (fields: Record<string, unknown> = {}) => ({
+    pullRequestId: 12,
+    title: "Add a",
+    status: "active",
+    isDraft: false,
+    sourceRefName: "refs/heads/feature",
+    targetRefName: "refs/heads/main",
+    creationDate: "2026-10-19T10:00:00Z",
+    repository: { webUrl: "https://dev.azure.com/acme/web/_git/demo" },
+    forkSource: null,
+    ...fields,
+  });
+  const where = "--organization https://dev.azure.com/acme --project web --repository demo";
+
+  it("lists a repository's pull requests, matching words against their titles", async () => {
+    const az = fakeCli("az");
+    az.answer(`repos pr list ${where} --status all --top 100`, [
+      pull({ pullRequestId: 14, title: "Port the toolbar" }),
+      pull({ pullRequestId: 13, title: "Fix the sidebar" }),
+    ]);
+    az.answer(`repos pr list ${where} --status all --top 30`, [
+      pull({ pullRequestId: 14, title: "Port the toolbar" }),
+      pull({ pullRequestId: 13, title: "Fix the sidebar" }),
+    ]);
+    const sc = await node();
+    const projectId = await sc.project(repositoryAt("https://dev.azure.com/acme/web/_git/demo"));
+    const search = (query?: string) =>
+      sc.client
+        .call<{ pullRequests: PullRequest[] }>("git.pr.search", {
+          projectId,
+          ...(query === undefined ? {} : { query }),
+        })
+        .then(({ pullRequests }) => pullRequests.map((pr) => pr.number));
+    expect(await search("toolbar")).toEqual([14]);
+    expect(await search("#13")).toEqual([13]);
+    expect(await search()).toEqual([14, 13]);
+  });
+
+  it("watches a pull request: its threads' comments and a conflict wake the thread", async () => {
+    const az = fakeCli("az");
+    const show = "repos pr show --id 12 --organization https://dev.azure.com/acme";
+    const threads =
+      "devops invoke --organization https://dev.azure.com/acme --area git --resource pullRequestThreads --api-version 7.1 --route-parameters project=web repositoryId=demo pullRequestId=12";
+    az.answer(show, pull({ mergeStatus: "succeeded" }));
+    az.answer(threads, { value: [] });
+    az.answer("account show --query user", { name: "me@acme.dev", type: "user" });
+    const { sc, thread, until } = await watching("https://dev.azure.com/acme/web/_git/demo");
+    const url = "https://dev.azure.com/acme/web/_git/demo/pullrequest/12";
+    await sc.client.call("git.pr.watch", { threadId: thread.id, url });
+    expect(await sc.client.call("git.pr.watch.check", {})).toEqual({ checked: 1, woken: 0 });
+    az.answer(
+      show,
+      pull({
+        mergeStatus: "conflicts",
+        createdBy: { uniqueName: "author@acme.dev" },
+        lastMergeSourceCommit: { commitId: "1234567abc" },
+      }),
+    );
+    az.answer(threads, {
+      value: [
+        {
+          id: 1,
+          comments: [
+            {
+              id: 1,
+              commentType: "system",
+              content: "Policy",
+              publishedDate: "2099-01-01T00:00:00Z",
+            },
+            {
+              id: 2,
+              commentType: "text",
+              content: "Mine",
+              author: { uniqueName: "me@acme.dev" },
+              publishedDate: "2099-01-01T00:00:00Z",
+            },
+          ],
+        },
+        {
+          id: 2,
+          threadContext: { filePath: "/src/a.ts" },
+          comments: [
+            {
+              id: 1,
+              commentType: "text",
+              content: "Why?",
+              author: { uniqueName: "reviewer@acme.dev" },
+              publishedDate: "2099-01-01T00:00:01Z",
+            },
+          ],
+        },
+      ],
+    });
+    expect(await sc.client.call("git.pr.watch.check", {})).toEqual({ checked: 1, woken: 1 });
+    await until(
+      (text) =>
+        text.startsWith(`Update on pull request #12 (${url}), which Jhin is watching for you:`) &&
+        text.includes("- 1 new comment:\n  - reviewer@acme.dev on /src/a.ts") &&
+        text.includes("- The branch now conflicts with main."),
+    );
   });
 });
 

@@ -209,3 +209,28 @@ export function rollup(statuses: readonly CheckWord[]): PullRequest["checks"] {
     total: statuses.length,
   };
 }
+
+/** How long the node's forge account is taken as known: a switch of accounts shows within it. */
+const VIEWER_TTL_MS = 10 * 60_000;
+
+/** The plugin's answers of who the node's forge account is, by tool and host. */
+export type Viewers = Map<string, { readonly at: number; readonly login: Promise<string | null> }>;
+
+/**
+ * The node's account on a forge (D272's viewer), asked again once its answer is ten minutes
+ * old; a failed answer is asked again next time.
+ */
+export function viewerOf(
+  viewers: Viewers,
+  key: string,
+  ask: () => Promise<string | null>,
+): Promise<string | null> {
+  const known = viewers.get(key);
+  if (known !== undefined && Date.now() - known.at < VIEWER_TTL_MS) return known.login;
+  const asked = ask().catch(() => null);
+  viewers.set(key, { at: Date.now(), login: asked });
+  void asked.then((value) => {
+    if (value === null && viewers.get(key)?.login === asked) viewers.delete(key);
+  });
+  return asked;
+}
