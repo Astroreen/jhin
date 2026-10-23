@@ -3,7 +3,14 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import { definePlugin, z } from "@jhin/sdk";
-import { createTestKernel, mockCapability, testManifest, type TestKernel } from "@jhin/testing";
+import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
+import {
+  createTestKernel,
+  memoryStoragePlugin,
+  mockCapability,
+  testManifest,
+  type TestKernel,
+} from "@jhin/testing";
 import * as Jsonc from "jsonc-parser";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
@@ -568,5 +575,65 @@ describe("context.skill", () => {
     expect(Fs.readFileSync(Path.join(root, skill.installed[0]!), "utf8")).toBe(skill.content);
     // Written beside the target and renamed: nothing else is left in the directory.
     expect(Fs.readdirSync(Path.join(root, ".claude/skills/demo-map"))).toEqual(["SKILL.md"]);
+  });
+});
+
+describe("a removed project's cached library (D1385)", () => {
+  async function node() {
+    const dir = project({ "docs/a.md": "# A\n" });
+    const cwd = project({ "docs/b.md": "# B\n" });
+    const storage = memoryStoragePlugin();
+    const projects = definePlugin({
+      activate(ctx) {
+        ctx.commands.register({
+          name: "projects.list",
+          description: "Projects",
+          input: z.object({}),
+          output: z.array(z.object({ id: z.string(), path: z.string() })),
+          // The listing is stale on purpose: only the event tells that the project is gone.
+          handler: () => [{ id: "p1", path: dir }],
+        });
+      },
+    });
+    const kernel = await createTestKernel({
+      plugins: [
+        storage,
+        mockCapability("host.paths", { home: cwd, cwd, dataDir: () => cwd }, "1.1.0"),
+        { manifest: testManifest("test.projects", { side: "server" }), definition: projects },
+        { manifest, definition: context },
+      ],
+    });
+    cleanups.push(() => kernel.stop());
+    const read = () =>
+      kernel.commands.execute("context.read", { path: "docs/a.md", projectId: "p1" });
+    return { dir, storage, read };
+  }
+
+  it("is dropped when the project-deleted event arrives, not before", async () => {
+    const { dir, storage, read } = await node();
+    await read();
+    Fs.rmSync(dir, { recursive: true, force: true });
+    // Still cached: the library answers from its own state, not by opening the directory again.
+    const cached = await read().catch((error: unknown) => error);
+    expect((cached as { message?: string }).message ?? "").not.toMatch(/does not exist/);
+    await storage.storage.log.append(THREADS_STREAM, [
+      { type: ThreadEvents.projectDeleted, payload: { id: "p1" } },
+    ]);
+    // Dropped: reading asks for the library again, and its directory is gone.
+    await expect(read()).rejects.toMatchObject({
+      code: "PROJECT_NOT_FOUND",
+      message: expect.stringMatching(/does not exist/),
+    });
+  });
+
+  it("keeps the library of another project", async () => {
+    const { dir, storage, read } = await node();
+    await read();
+    Fs.rmSync(dir, { recursive: true, force: true });
+    await storage.storage.log.append(THREADS_STREAM, [
+      { type: ThreadEvents.projectDeleted, payload: { id: "other" } },
+    ]);
+    const kept = await read().catch((error: unknown) => error);
+    expect((kept as { message?: string }).message ?? "").not.toMatch(/does not exist/);
   });
 });

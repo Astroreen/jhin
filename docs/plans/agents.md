@@ -756,6 +756,14 @@ Decisions:
   (`deferredTurn`): an interrupt before then ends the turn at once and the
   runtime never starts, a failing brief is logged and the turn starts
   without it, and a steer before then gets a turn of its own.
+- **D1385. A removed project's library is dropped when the removal is
+  reported.** `jhin.context` follows the `threads` stream from its head at
+  activation (the optional `storage.eventlog@^1`; without it the next call
+  with a `projectId` still prunes, as before) and on `threads.project.deleted`
+  drops that project's cached library. The event names only the id, so the
+  plugin keeps the `projectId → root` pairs it last read from `projects.list`.
+  The node's own directory (`host.paths` `cwd`) and a root another project
+  still uses stay cached.
 
 D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
 
@@ -1986,9 +1994,9 @@ Decisions (L3):
   things). Only the ranks to settle one exist.
 - A4: a client view of the library (browse by address, the reachability
   report, the lore), in Civilization mode's slots (A8, D741).
-- A4: dropping the cached library of a removed project when `jhin.threads`
+- ~~A4: dropping the cached library of a removed project when `jhin.threads`
   reports the removal (its project-deleted event). Today it is dropped on the
-  next call with a `projectId` or when the plugin deactivates.
+  next call with a `projectId` or when the plugin deactivates.~~ A4, D1385.
 - A4: opening every directory of a skill's path without following links
   (`openat`-style), so a parent swapped for a symlink between the check and
   the write cannot redirect it. Today the path is checked again after

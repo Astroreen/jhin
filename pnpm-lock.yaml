@@ -937,6 +937,9 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
     devDependencies:
       '@jhin/testing':
         specifier: workspace:*
