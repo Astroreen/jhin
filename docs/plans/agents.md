@@ -1,6 +1,6 @@
 # Agents plan: teams of persistent agents
 
-Status: **in progress** (A1–A8 landed; phase 2, C1–C3, running). This file records how Jhin grows from "one thread,
+Status: **in progress** (A1–A8 and phase 2, C1–C3, landed; phase 3, L1–L3, running). This file records how Jhin grows from "one thread,
 one agent run" into persistent agents with addresses that message each other
 across the mesh, work in teams on missions, keep and inherit what they learn,
 and stay on the intent while nobody watches. It takes "Agent entity …",
@@ -89,6 +89,20 @@ inbox and health, but the owner cannot yet run a civilization from it.
 
 C1, C2 and C3 start together. C3 drives the scenario through commands first
 and through C1's and C2's UI as it lands.
+
+Phase 2 landed by 2026-10-23. Its real run ([C3 run](#c3-run)) closed a
+mission in minutes, but showed that a team cannot yet be left alone: the
+owner heard nothing back, a public id was dropped without asking, and a
+change was committed without a review after it.
+[Phase 3](#phase-3-trusting-a-long-run) makes a long unattended run safe:
+
+| Id  | Workstream                    | Stacks on | Decisions   |
+| --- | ----------------------------- | --------- | ----------- |
+| L1  | The lead reports to the owner | `main`    | D1221–D1240 |
+| L2  | Guards in the process         | `main`    | D1241–D1260 |
+| L3  | A long run                    | L1, L2    | D1261–D1280 |
+
+L1 and L2 start together; L3 starts once both have landed.
 
 ## Decisions
 
@@ -1532,6 +1546,52 @@ The mission was the C3 Deferred item on the Projects section's empty text.
 - **Missing.** The owner heard nothing back: the lead reported to the
   builder, and its turn's answer stayed in its thread (Deferred, C1). No
   agent wrote to its knowledge folder in so short a run.
+
+## Phase 3: trusting a long run
+
+The goal of phase 3: the owner can give a team a mission of hours, walk
+away, and come back to a report, a merged result that broke no rule, and an
+honest record of what happened. Rules a team must keep are enforced by the
+process and CI, not by asking agents nicely in a prompt
+([just following orders](../lore/just-following-orders.md),
+[own homework](../lore/own-homework.md)).
+
+### L1. The lead reports to the owner (D1221–D1240)
+
+- When a mission closes, fails or stops, the lead's report reaches the
+  owner: an item in the Lead view (C1) and in the inbox (A2), with the
+  mission, its slices, their proof and what was committed or merged.
+- Escalations the lead decides to send up (a decision only the owner may
+  take, a rule it would have to break) reach the owner the same way, and the
+  team waits for the answer instead of deciding alone.
+- A turn's answer meant for the owner never stays only in the lead's thread
+  (the C3 run's "Missing").
+
+### L2. Guards in the process (D1241–D1260)
+
+- **Review after the last change**: a mission's commit or merge step is
+  refused while a slice has changes made after its last review. The process
+  data (A3, A6) says which steps need a review; the orchestrator enforces it.
+- **The reviewer reviews against the project**, not against the list the
+  lead hands it: its brief is built from the project's rules (`AGENTS.md`,
+  the plan that owns the area, the lore) through the context library (A4),
+  plus the diff. The lead's notes are added, never a replacement.
+- **Public ids in CI**: a check that fails when a capability id, command
+  name, slot id, contribution id or event type present on `main` is renamed
+  or removed without a deprecation (AGENTS.md rule 8). It runs for every PR,
+  agents' and humans' alike.
+
+### L3. A long run (D1261–D1280)
+
+- After L1 and L2: a mission of 6–10 slices on Jhin itself, run for hours,
+  with an Opus lead and the C3 team shape. The owner talks only to the lead
+  and answers the inbox.
+- What it must exercise: refocus (A6) across compactions, health (A7) over
+  a long stream, knowledge kept across generations (A1, `agents.rotate`),
+  and L1's report at the end.
+- Fixes go into small PRs, new failure stories into `docs/lore/`, the rest
+  into [Deferred](#deferred); an "L3 run" note records the run like the C3
+  run.
 
 ## Deferred
 

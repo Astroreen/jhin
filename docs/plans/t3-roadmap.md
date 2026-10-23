@@ -229,8 +229,8 @@ A3; it took D901–D920. W22, W25 and W26 first had D660–D679, D720–D739 and
 D740–D759, inside `agents.md`'s D600–D760; they take D921–D940, D941–D960
 and D961–D980. W20 took the
 next block, D981–D1000. `agents.md`'s phase 2 takes D1061–D1120 (C1–C3).
-A workstream that needs more numbers takes the next free block of 20 after
-D1220 and writes it here.
+`agents.md`'s phase 3 takes D1221–D1280 (L1–L3). A workstream that needs
+more numbers takes the next free block of 20 after D1280 and writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background

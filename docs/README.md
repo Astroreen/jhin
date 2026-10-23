@@ -26,20 +26,20 @@ first move: you cannot search for something you do not know exists.
 A plan records decisions (numbered `D<n>`), what was left out on purpose,
 what is deferred, and how it landed. Plans are canon once implemented.
 
-| Plan                                           | Owns                                                                                                                         | Status      |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| [`foundation.md`](plans/foundation.md)         | kernel, plugins, config, mesh, transport, storage, process                                                                   | implemented |
-| [`t3-parity.md`](plans/t3-parity.md)           | T3 Code's client, threads, sidebar, machine icons                                                                            | implemented |
-| [`providers.md`](plans/providers.md)           | agent runtimes (Claude Code), agent registry, sessions                                                                       | implemented |
-| [`source-control.md`](plans/source-control.md) | git status, diffs, branches, pull requests, git actions                                                                      | implemented |
-| [`terminal.md`](plans/terminal.md)             | PTY terminals and the terminal drawer                                                                                        | implemented |
-| [`config-ui.md`](plans/config-ui.md)           | settings forms generated from config schemas                                                                                 | implemented |
-| [`orchestration.md`](plans/orchestration.md)   | delegated tasks, thread launches, workflows (W10); scheduled tasks and webhooks (W11)                                        | in progress |
-| [`desktop.md`](plans/desktop.md)               | the Electron desktop app: window chrome, menus, badge, auto update                                                           | in progress |
-| [`agents.md`](plans/agents.md)                 | Civilization mode: persistent agents, messaging, missions, teams, refocus, health (A1–A8); phase 2 makes it runnable (C1–C3) | in progress |
-| [`security.md`](plans/security.md)             | permissions and grants, device tokens, pairing, secrets in config, browser origins (W13)                                     | implemented |
-| [`mesh-streams.md`](plans/mesh-streams.md)     | relays of members' streams, trimming event log streams (W17)                                                                 | implemented |
-| [`t3-roadmap.md`](plans/t3-roadmap.md)         | the W1–W18 workstreams porting the rest of T3 Code                                                                           | in progress |
+| Plan                                           | Owns                                                                                                                                                              | Status      |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| [`foundation.md`](plans/foundation.md)         | kernel, plugins, config, mesh, transport, storage, process                                                                                                        | implemented |
+| [`t3-parity.md`](plans/t3-parity.md)           | T3 Code's client, threads, sidebar, machine icons                                                                                                                 | implemented |
+| [`providers.md`](plans/providers.md)           | agent runtimes (Claude Code), agent registry, sessions                                                                                                            | implemented |
+| [`source-control.md`](plans/source-control.md) | git status, diffs, branches, pull requests, git actions                                                                                                           | implemented |
+| [`terminal.md`](plans/terminal.md)             | PTY terminals and the terminal drawer                                                                                                                             | implemented |
+| [`config-ui.md`](plans/config-ui.md)           | settings forms generated from config schemas                                                                                                                      | implemented |
+| [`orchestration.md`](plans/orchestration.md)   | delegated tasks, thread launches, workflows (W10); scheduled tasks and webhooks (W11)                                                                             | in progress |
+| [`desktop.md`](plans/desktop.md)               | the Electron desktop app: window chrome, menus, badge, auto update                                                                                                | in progress |
+| [`agents.md`](plans/agents.md)                 | Civilization mode: persistent agents, messaging, missions, teams, refocus, health (A1–A8); phase 2 makes it runnable (C1–C3), phase 3 safe to leave alone (L1–L3) | in progress |
+| [`security.md`](plans/security.md)             | permissions and grants, device tokens, pairing, secrets in config, browser origins (W13)                                                                          | implemented |
+| [`mesh-streams.md`](plans/mesh-streams.md)     | relays of members' streams, trimming event log streams (W17)                                                                                                      | implemented |
+| [`t3-roadmap.md`](plans/t3-roadmap.md)         | the W1–W18 workstreams porting the rest of T3 Code                                                                                                                | in progress |
 
 Workstreams add new plans (`preview.md`, `mesh-streams.md`,
 `desktop.md`; [`security.md`](plans/security.md) has landed); [`t3-roadmap.md`](plans/t3-roadmap.md) names who owns which.
