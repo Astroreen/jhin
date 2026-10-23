@@ -2357,7 +2357,8 @@ says. The other W38 decisions land in their own pull requests.
   after 30 s; here the next change of the query or of the nodes does).
 - Sidebar (T3's layout, D70, D75–D79): T3's scope picker for a project's
   settle settings (D1173 edits them as a record of the node config, by
-  project id); a test of the selection's partial failure when regenerating
+  project id; W38 left it: T3 shows them in General with a page-wide scope,
+  all projects or one, and Jhin's settings page has no project scope yet); a test of the selection's partial failure when regenerating
   titles (D1176), whose toast names only the first error; a title writer
   stopped with the plugin is reported as having taken too long, and an
   unknown `titleAgent` falls back to the thread's agent without a warning

@@ -476,6 +476,12 @@ finishes out of the Deferred lists and leaves the rest there.
   subagent hover card's progress line, a background subagent's streamed
   text and progress, the mode ceiling of a task created from a thread;
   right-panel terminals as surfaces of their own.
+  Done: D1341–D1352 (#242, #246, #250, #255, #261, #264, #278); left in
+  the Deferred lists: T3's scope picker for a project's settle settings
+  (`t3-parity.md`; it needs a project scope on the settings page, which
+  T3's scoped settings have and Jhin's do not) and right-panel terminals as
+  surfaces of their own (`terminal.md`; they need T3's tabbed right panel,
+  which no surface of Jhin's has yet).
 - **W39:** DNS rebinding (D418), the session cookie's `Secure` flag behind a
   proxy (D421), DPoP-bound device tokens and T3's WebSocket tickets, MCP
   OAuth's access levels, the Windows keychain for the secret store, config
