@@ -531,6 +531,8 @@ export function ThreadView(props: {
           />
           {thread === undefined || timeline.deleted ? null : (
             <ThreadDetailsInline
+              // Measured afresh for each thread.
+              key={`${targetKey(target)}|${threadId}`}
               findOpen={find.bar.open}
               target={target}
               thread={thread}
