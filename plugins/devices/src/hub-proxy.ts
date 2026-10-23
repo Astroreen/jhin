@@ -285,11 +285,23 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
       outgoing.destroy();
       text(response, 413, "Payload Too Large");
     });
+    // A client that aborts its upload ends the hub's side too.
+    request.once("error", () => outgoing.destroy());
+    request.once("aborted", () => outgoing.destroy());
     request.pipe(outgoing);
   };
 
   const refuse = (socket: Duplex, status: string) => {
     socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  };
+
+  /** Closes a socket with a code it may send; a socket that cannot close is ended. */
+  const close = (socket: WebSocket, code: number, reason: Buffer) => {
+    try {
+      socket.close(sendableCode(code), reason.subarray(0, 123));
+    } catch {
+      socket.terminate();
+    }
   };
 
   /** Frames go both ways as they are; whichever side closes first closes the other. */
@@ -301,9 +313,9 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
     hub.on("message", forward(client));
     client.once("close", (code, reason) => {
       if (hub.readyState === WebSocket.CONNECTING) hub.terminate();
-      else hub.close(sendableCode(code), reason);
+      else close(hub, code, reason);
     });
-    hub.once("close", (code, reason) => client.close(sendableCode(code), reason));
+    hub.once("close", (code, reason) => close(client, code, reason));
     client.once("error", () => hub.terminate());
     hub.once("error", () => client.terminate());
   };
