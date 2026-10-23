@@ -2,6 +2,7 @@
 // apps/web/src/components/chat/MessagesTimeline.tsx, WorkLog.tsx, TimelineSystemDivider.tsx,
 // MessageCopyButton.tsx and ProposedPlanCard.tsx.
 import {
+  type AgentMcpApp,
   type AssistantCitation,
   contextReferencesAsLabels,
   messageBody,
@@ -73,6 +74,7 @@ import {
   type PlanItem,
   type Timeline,
   type TimelineTurn,
+  type ToolItem,
   type WorkEntry,
 } from "../../lib/timeline.ts";
 import { lazyChunk } from "../../lib/lazy-chunk.tsx";
@@ -91,6 +93,10 @@ import type { SavePlan } from "./proposed-plan-card.tsx";
 /** The plan card loads with the first proposed plan, not with the page (D440). */
 const ProposedPlanCard = lazy(() =>
   import("./proposed-plan-card.tsx").then((module) => ({ default: module.ProposedPlanCard })),
+);
+// An app's frame and its bridge load when a thread shows one (D1403).
+const McpAppFrame = lazy(() =>
+  import("./mcp-app-frame.tsx").then((module) => ({ default: module.McpAppFrame })),
 );
 
 export function MessageCopyButton({
@@ -719,6 +725,22 @@ function SystemDivider(props: {
   );
 }
 
+/** An MCP app a tool call returned, in the thread it belongs to (D1403). */
+function McpAppBlock({ item }: { item: ToolItem & { readonly app: AgentMcpApp } }) {
+  const where = useContext(MessageActionsContext);
+  if (where === undefined) return null;
+  return (
+    <Suspense fallback={null}>
+      <McpAppFrame
+        app={item.app}
+        target={where.target}
+        threadId={where.threadId}
+        toolCall={{ arguments: item.tool.input, output: item.output }}
+      />
+    </Suspense>
+  );
+}
+
 function TurnView(props: {
   turn: TimelineTurn;
   latest: boolean;
@@ -759,8 +781,9 @@ function TurnView(props: {
     block.kind !== "steer" &&
     // A compaction is a turn's quiet landmark, never folded away (D1271).
     block.kind !== "compaction" &&
-    // What a plugin put into the turn (a rendered page) is part of the answer.
-    block.kind !== "extension";
+    // What a plugin put into the turn (a rendered page) is part of the answer, as an app is.
+    block.kind !== "extension" &&
+    block.kind !== "mcp-app";
   const shownFolded = (block: (typeof blocks)[number], index: number) =>
     unfolded || !foldable(block, index);
   // While the find bar is open the folded work is there too, hidden, so its text is found; the
@@ -795,6 +818,8 @@ function TurnView(props: {
       return <WorkGroup entries={block.entries} key={`work-${index}`} live={running} />;
     }
     if (block.kind === "plan") return <PlanCard item={block.item} key={`plan-${index}`} />;
+    if (block.kind === "mcp-app")
+      return <McpAppBlock item={block.item} key={`app-${block.item.itemId}`} />;
     if (block.kind === "extension") {
       return (
         <Fragment key={`extension-${block.item.event.sequence}`}>

@@ -27,6 +27,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * Scripted, timer-free and deterministic:
  * - "/hold …" sends one delta, then waits until interrupted;
  * - "/fail …" fails the turn;
+ * - "/app" runs a tool call that returns an MCP app (D1401), then answers;
  * - "/limit" fails the turn on a usage limit that resets in two hours (providers.md D1143);
  * - "/think …" reasons first, then answers;
  * - "/tool <command>" runs a pretend command and reports its output;
@@ -51,6 +52,39 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * A message steered into a turn (D204) is answered "Echo: <text>" before the
  * turn ends; it ends a "/hold" turn.
  */
+/** The fake MCP app's document: a button that calls `move_card` through the host's bridge. */
+const FAKE_APP = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+<p id="status">Loading board</p><button id="move">Move card</button>
+<script>
+let next = 1;
+const pending = new Map();
+const request = (method, params) => new Promise((resolve) => {
+  const id = next++;
+  pending.set(id, resolve);
+  parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+});
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (message && message.id !== undefined && pending.has(message.id)) {
+    pending.get(message.id)(message);
+    pending.delete(message.id);
+  }
+  if (message && message.method === "ui/notifications/tool-result") {
+    document.getElementById("status").textContent = "Tool said: " + message.params.content[0].text;
+  }
+});
+request("ui/initialize", { protocolVersion: "2026-01-26", appCapabilities: {} }).then((answer) => {
+  document.getElementById("status").textContent = "Host: " + answer.result.hostInfo.name;
+  parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} }, "*");
+});
+document.getElementById("move").addEventListener("click", async () => {
+  const answer = await request("tools/call", { name: "move_card", arguments: { card: 3 } });
+  document.getElementById("status").textContent = answer.error
+    ? "Refused: " + answer.error.message
+    : "Moved: " + answer.result.content[0].text;
+});
+</script>`;
+
 export function fakeTurn(
   request: TurnRequest,
   /** Stops of its subagents in the background, by thread and subagent (D1166). */
@@ -127,6 +161,35 @@ export function fakeTurn(
     if (text.startsWith("Regenerate the title for an existing Jhin thread")) {
       const first = /\nUSER:\n(.*)/.exec(text)?.[1]?.trim() ?? "nothing";
       yield* say(JSON.stringify({ title: `About ${first}`, needsRefinement: false }));
+      return;
+    }
+    if (/^\/app(\s|$)/.test(text)) {
+      // A tool call that returns an MCP app (providers.md D1401): its document is FAKE_APP.
+      const itemId = nextId();
+      yield {
+        kind: "tool.started",
+        itemId,
+        tool: {
+          name: "board.show_board",
+          kind: "mcp",
+          title: "board: show_board",
+          input: { project: "jhin" },
+        },
+      };
+      yield {
+        kind: "tool.completed",
+        itemId,
+        status: "completed",
+        output: "Board shown",
+        app: {
+          server: "board",
+          tool: "show_board",
+          resourceUri: "ui://board/view",
+          documentId: "00000000-0000-4000-8000-00000000a001",
+          prefersBorder: true,
+        },
+      };
+      yield* say("Here is the board.");
       return;
     }
     if (text.startsWith("/limit")) {
@@ -501,6 +564,16 @@ export default definePlugin({
         return stop !== undefined;
       },
       // `/feedback` (D1317): "sent" as the thread's id, or failed when the reason says "fail".
+      // `/app`'s document (D1401–D1403): it asks to move a card through the host and shows
+      // what the tool answered.
+      mcpApps: {
+        document: async ({ documentId }) =>
+          documentId === "00000000-0000-4000-8000-00000000a001" ? FAKE_APP : undefined,
+        callTool: async ({ tool, arguments: args }) => ({
+          content: [{ type: "text", text: `${tool} done with ${JSON.stringify(args)}` }],
+        }),
+        readResource: async ({ uri }) => ({ contents: [{ uri, text: "resource" }] }),
+      },
       uploadFeedback: async ({ threadId, reason }) => {
         if (reason === "fail") throw new Error("The fake maker refused the feedback.");
         return { feedbackId: `feedback-${threadId.slice(0, 8)}` };

@@ -5,6 +5,7 @@ import {
   ThreadEvents,
   type AgentRequest,
   type AgentGoal,
+  type AgentMcpApp,
   type AgentResponse,
   type AgentTurnFailure,
   type MessageContext,
@@ -42,6 +43,8 @@ export interface ToolItem {
   readonly error?: string;
   readonly at: string;
   readonly endedAt?: string;
+  /** The MCP app the call returned (providers.md D1401). */
+  readonly app?: AgentMcpApp;
 }
 
 /** Something the agent asked the user; open until answered or until its turn ends. */
@@ -207,6 +210,7 @@ interface Payload {
   readonly reason?: string;
   readonly status?: string;
   readonly output?: string;
+  readonly app?: AgentMcpApp;
   readonly tool?: ToolCall;
   readonly request?: AgentRequest;
   readonly response?: AgentResponse;
@@ -445,6 +449,7 @@ export function createTimeline() {
               status,
               output: payload.output ?? existing.output,
               ...(payload.error === undefined ? {} : { error: payload.error }),
+              ...(payload.app === undefined ? {} : { app: payload.app }),
               endedAt: at,
             });
             break;
@@ -612,7 +617,9 @@ export type TurnBlock =
   | { readonly kind: "proposed-plan"; readonly item: ProposedPlanItem }
   | { readonly kind: "steer"; readonly item: SteerItem }
   | { readonly kind: "compaction"; readonly item: CompactionItem }
-  | { readonly kind: "extension"; readonly item: ExtensionItem };
+  | { readonly kind: "extension"; readonly item: ExtensionItem }
+  /** The MCP app a tool call returned, shown under its work (D1403). */
+  | { readonly kind: "mcp-app"; readonly item: ToolItem & { readonly app: AgentMcpApp } };
 
 /**
  * A turn's items as rendered: consecutive work entries become one work block;
@@ -652,6 +659,10 @@ export function turnBlocks(turn: TimelineTurn): TurnBlock[] {
       blocks.push({ kind: "extension", item });
     } else if (item.kind === "request" && item.state === "open") {
       continue;
+    } else if (item.kind === "tool" && item.app !== undefined) {
+      work.push(item);
+      flush();
+      blocks.push({ kind: "mcp-app", item: item as ToolItem & { readonly app: AgentMcpApp } });
     } else {
       work.push(item);
     }

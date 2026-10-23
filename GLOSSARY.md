@@ -206,6 +206,11 @@ Words about Jhin:
   usage windows (Session, Weekly, Monthly), each with how much is used and
   when it resets (`agents.usage-limits`, `/usage-limits`). A turn that hits
   one fails with a **usage-limit failure**, which says when to retry.
+- **MCP app** — an interactive page an MCP server returns with a tool call
+  (the MCP Apps extension's `ui://` resource), shown in the timeline in a
+  sandboxed frame. Its **app document** is the page as the agent's runtime
+  keeps it, named by a **document id**; the app's own calls name that id and
+  go only to the server that returned it (`providers.md` D1401–D1403).
 - **Model option** — something a turn chooses for its model besides the
   model itself: the reasoning effort, fast mode, the context window. A model
   declares its options; the composer's traits menu (T3's term) picks them.
