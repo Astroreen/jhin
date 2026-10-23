@@ -27,9 +27,13 @@ afterEach(async () => {
  * The session endpoints on a real listener, behind an `http.server` whose
  * `requestOrigin` answers `origin` (or which has none, as before 1.3).
  */
-async function sessionCookie(origin: string | undefined): Promise<string> {
+async function sessionCookie(origin: string | undefined, tls = false): Promise<string> {
   const routes = new Map<string, HttpHandler>();
   const server = Http.createServer((request, response) => {
+    // Stands for a TLS socket: what an HTTPS listener's sockets say.
+    if (request.headers["x-test-tls"] === "1") {
+      (request.socket as unknown as { encrypted: boolean }).encrypted = true;
+    }
     const path = new URL(request.url ?? "/", "http://x").pathname;
     void routes.get(`${request.method} ${path}`)?.(request, response);
   });
@@ -59,7 +63,11 @@ async function sessionCookie(origin: string | undefined): Promise<string> {
   const response = await fetch(`${url}/auth/session`, {
     method: "POST",
     // A forwarded protocol the client sent itself: never what decides (D1363).
-    headers: { "content-type": "application/json", "x-forwarded-proto": "https" },
+    headers: {
+      "content-type": "application/json",
+      "x-forwarded-proto": "https",
+      ...(tls ? { "x-test-tls": "1" } : {}),
+    },
     body: JSON.stringify({ credential: "anything" }),
   });
   expect(response.status).toBe(200);
@@ -74,5 +82,6 @@ describe("the session cookie's Secure flag (security.md D1363)", () => {
 
   it("without requestOrigin, is Secure on a TLS socket only", async () => {
     expect(await sessionCookie(undefined)).not.toContain("Secure");
+    expect(await sessionCookie(undefined, true)).toContain("Secure");
   });
 });

@@ -111,10 +111,12 @@ export default definePlugin({
      */
     const blockedHost = (request: Http.IncomingMessage): string | undefined => {
       if (!fromBrowser(request.headers)) return undefined;
-      // Behind a trusted proxy this is the forwarded host, checked as well: a
-      // rebinding page reaches the node over loopback, which may be trusted.
-      const host = api.requestedHost(request);
-      if (host === undefined || hosts.allows(host)) return undefined;
+      // Every name the request gives: `Host`, and behind a trusted proxy the
+      // forwarded host too. A rebinding page reaches the node over loopback,
+      // which may be trusted, and may set X-Forwarded-Host on its own fetch.
+      const named = [request.headers.host?.toLowerCase(), api.requestedHost(request)];
+      const host = named.find((name) => name !== undefined && !hosts.allows(name));
+      if (host === undefined) return undefined;
       if (!warned.has(host) && warned.size < 64) {
         warned.add(host);
         context.log.warn("refused a browser request for a host this node does not answer to", {

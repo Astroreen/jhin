@@ -170,10 +170,20 @@ describe("the names a node answers to (security.md D1362)", () => {
     });
     const status = async (headers: Record<string, string>) =>
       (await get(proxied.port, { "sec-fetch-site": "same-origin", ...headers })).status;
-    expect(await status({ host: "internal", "x-forwarded-host": "jhin.example.org" })).toBe(200);
-    expect(await status({ host: "internal", "x-forwarded-host": "other.example.org" })).toBe(403);
-    // A rebinding page in the owner's browser comes from loopback too, with no forwarded host.
+    expect(await status({ host: "127.0.0.1", "x-forwarded-host": "jhin.example.org" })).toBe(200);
+    expect(await status({ host: "jhin.example.org", "x-forwarded-host": "jhin.example.org" })).toBe(
+      200,
+    );
+    expect(await status({ host: "127.0.0.1", "x-forwarded-host": "other.example.org" })).toBe(403);
+    // A rebinding page in the owner's browser comes from loopback too, with no forwarded host,
     expect(await status({ host: `evil.example:${proxied.port}` })).toBe(403);
+    // or with one it set itself on a same-origin fetch: its own Host still names it.
+    expect(
+      await status({
+        host: `evil.example:${proxied.port}`,
+        "x-forwarded-host": "jhin.example.org",
+      }),
+    ).toBe(403);
   });
 
   it("compares names without port, brackets, case or a trailing dot", () => {

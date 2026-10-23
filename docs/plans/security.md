@@ -714,14 +714,15 @@ Connect stays out of scope.
   disposable), and `jhin.http.allowedHosts`: exact names, or `.example.com`
   for that name and every name under it, or `*` to turn the check off.
   Names are compared without their port and case.
-  Behind a peer of `jhin.http.trustProxy` the forwarded host
-  (`X-Forwarded-Host`) is the one checked, never skipped: a rebinding page
-  in the owner's browser reaches the node over loopback, and loopback is
-  the usual trusted proxy (Tailscale Serve, a local proxy). A page may set
-  `X-Forwarded-Host` on its own same-origin `fetch`, so from a trusted
-  loopback it can name an allowed host; the request then still carries
-  the page's `Origin`, which D418's checks compare with that host and
-  refuse, and no cookie (D1361). Requests without a browser's marks (the CLI, nodes,
+  Every name a request gives is checked, never skipped: its `Host`, and
+  behind a peer of `jhin.http.trustProxy` its `X-Forwarded-Host` too. A
+  rebinding page in the owner's browser reaches the node over loopback,
+  and loopback is the usual trusted proxy (Tailscale Serve, a local
+  proxy); it may set `X-Forwarded-Host` to an allowed name on its own
+  same-origin `fetch`, but its `Host` still names the rebound name. A
+  proxy that passes its public name as `Host` needs it listed too, once.
+  The mesh's advertised hosts are read when the mesh plugin activates
+  (a config change reactivates it). Requests without a browser's marks (the CLI, nodes,
   MCP clients, `curl`) are not checked: they choose their `Host` freely
   anyway, so a check would only break a node reached by a name nobody
   listed. Every browser in use sends `Sec-Fetch-Site` on every request
@@ -733,6 +734,10 @@ Connect stays out of scope.
   as `Host` or `X-Forwarded-Host`) is refused until the owner lists it;
   the 403 names the setting, and the log warns once per host (at most 64
   hosts, since the header is the client's).
+
+  Later slices of PR 6 define D1364–D1368: shell access and connection
+  bounds (6b), DPoP and WebSocket tickets (6c).
+
 - **D1363. Whether a request came over HTTPS has one answer.** The session
   cookie (D421) is `Secure` when `http.server`'s `requestOrigin` (1.3,
   D1191) says `https`: a TLS socket, or `X-Forwarded-Proto: https` from a
