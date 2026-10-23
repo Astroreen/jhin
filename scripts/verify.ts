@@ -4,6 +4,8 @@
 //   node scripts/verify.ts --affected   only what changed since the merge base with origin/main
 //   node scripts/verify.ts --json       print the summary as JSON (machine-readable)
 //   node scripts/verify.ts --skip e2e   skip a step (repeatable)
+//
+// Steps: check, typecheck, unit, knip, public-ids (scripts/public-ids.ts), e2e, pack.
 
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
@@ -146,6 +148,8 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
     { name: "typecheck", command: ["vp", "run", "-r", "typecheck"] },
     { name: "unit", command: ["vp", "test", "run"] },
     { name: "knip", command: ["knip", "--no-config-hints"] },
+    // Public ids of the merge base with origin/main still there (AGENTS.md rule 8).
+    { name: "public-ids", command: ["node", "scripts/public-ids.ts"] },
     { name: "e2e", command: ["pnpm", "e2e"] },
     { name: "pack", command: ["node", "scripts/pack-smoke.ts"] },
   ];
@@ -194,8 +198,10 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
   });
   steps.push({ name: "knip", command: ["knip", "--no-config-hints"] });
   if (codeChanged) {
+    steps.push({ name: "public-ids", command: ["node", "scripts/public-ids.ts", "--base", base] });
     steps.push({ name: "e2e", command: ["pnpm", "e2e"] });
   } else {
+    skippedSteps.push(skip("public-ids", "only Markdown changed"));
     skippedSteps.push(skip("e2e", "only Markdown changed"));
   }
   const packed = packedDirs(all);

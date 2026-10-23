@@ -48,7 +48,11 @@ in your PR.
    actions directly; contribute them.
 8. **Ids are public API.** Capability ids, command names, slot ids,
    contribution ids and event types are never renamed without a deprecation
-   period.
+   period. Renaming or removing one is the owner's decision. A deprecation
+   lands first: the old id keeps working and gets an entry in
+   `deprecations.json`. A later PR may remove it after its `removeAfter`.
+   CI's "Public ids" check (`scripts/public-ids.ts`) fails otherwise
+   (`docs/README.md#deprecating-a-public-id`).
 
 ## Verifying your work
 

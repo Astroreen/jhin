@@ -1626,6 +1626,34 @@ Decisions (L1):
   or removed without a deprecation (AGENTS.md rule 8). It runs for every PR,
   agents' and humans' alike.
 
+Decisions:
+
+- **D1247. Public ids are read from the source, at the merge base and
+  now.** `scripts/public-ids.ts` reads string literals where each kind is
+  declared: capabilities from the `provides` of a plugin's `package.json` and
+  `*_CAPABILITY` constants; commands from `commands.register({ name })` and
+  command definitions; slots from `<Slot name>`, `useSlot`,
+  `slots.contribute`, `slot:` keys and `*_SLOT` constants; contributions
+  from the `id` of `slots.contribute`; event types from `*Events` objects
+  and `events.emit`. Tests, fixtures and builds are left out. It compares the
+  merge base with `origin/main` (read from git's objects) with the working
+  tree. No snapshot of the ids is committed, so parallel branches adding ids
+  never conflict. Ids built at run time are not seen. On today's main it
+  finds 44 capabilities, 325 commands, 41 slots, 70 contributions and 87
+  event types, and no removal against any earlier commit except one it
+  missed until it read command definitions (`mesh.call`).
+- **D1248. A deprecation is an entry in `deprecations.json`, on main
+  first.** An entry names the `kind`, the `id`, `since`, `removeAfter` and
+  optionally `replacedBy` and the `decision`. An id may be gone only when
+  the merge base already lists it and the day is after its `removeAfter`.
+  Deprecating and removing in the same change is refused, so a rename always
+  passes through a period in which both ids work. How to deprecate is
+  written in `docs/README.md#deprecating-a-public-id` and AGENTS.md rule 8.
+- **D1249. It runs for every PR and in `pnpm verify`.** CI's "Public ids"
+  job (full history, `node scripts/public-ids.ts`) is required through the
+  `CI` job. `pnpm verify` runs it too, and `--affected` skips it when only
+  Markdown changed.
+
 ### L3. A long run (D1261–D1280)
 
 - After L1 and L2: a mission of 6–10 slices on Jhin itself, run for hours,
@@ -1856,6 +1884,9 @@ Decisions (L1):
 - L1: the report as a card of its own in the Lead view (today the lead's
   Markdown text), and a way to clear a report from the inbox without an
   answer (A2, D626).
+- L2: public ids the source does not spell out (template literals such as
+  `sidebar.thread.jump.${jump}`, D1247), and hook names and permission names,
+  which rule 8 does not list yet.
 
 ## Landing
 

@@ -1,0 +1,4 @@
+{
+  "$comment": "Public ids on their way out (AGENTS.md rule 8, docs/README.md#deprecating-a-public-id). An entry lands on main while the id still works; a later change may remove the id after removeAfter. scripts/public-ids.ts checks it.",
+  "deprecations": []
+}
