@@ -2179,13 +2179,16 @@ Code at `eb7b35ac` (D53).
   passed. Retry the thread manually." once it has); undoing it wakes the
   thread when it still sleeps until that reset. An armed resume waits for
   the reset (or a snooze that outlasts it, also one set after it was
-  armed) on a timer of the node, armed again when the node starts and when
-  the thread is unarchived; then, if the thread's latest turn is still that
+  armed) on a timer of the node, armed again when the node starts (for a
+  recovery still of the thread's latest turn) and when the thread is
+  unarchived before its reset (one whose reset passed while archived is not
+  sent by unarchiving: the banner still offers it); then, if the thread's latest turn is still that
   one and the thread is neither archived nor settled by hand (a thread the
   node settled by itself is still resumed, as T3 checks only the hand), it
   sends "Continue where you left off." as the user's message and drops
-  `limitRecovery` once it is sent (a send that fails leaves it, and the
-  banner still offers it). A change that fails is said under the timeline, T3's toast titles
+  `limitRecovery` once it is sent (a send that fails turns its resume off,
+  so the banner offers it again). A snooze for the reset leaves a snooze of
+  the user's that ends later as it is. A change that fails is said under the timeline, T3's toast titles
   ("Could not change auto-resume: …", "Could not snooze thread: …").
 - **D1313. T3's settings "Auto-resume limited threads" and "Snooze limited
   threads"**: `autoResumeLimitedThreads` and `snoozeLimitedThreads` of the

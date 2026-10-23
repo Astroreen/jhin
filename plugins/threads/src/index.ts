@@ -3508,8 +3508,12 @@ export default definePlugin({
           const { archivedAt: _archivedAt, ...rest } = thread;
           return { ...rest, updatedAt: now() };
         }).then((thread) => {
-          // A continuation armed before it was archived waits for its reset again (D1312).
-          armRecovery(thread);
+          // A continuation armed before it was archived waits for its reset again (D1312); one
+          // whose reset passed while archived is not sent by unarchiving: the banner offers it.
+          const recovery = thread.limitRecovery;
+          if (recovery?.autoResume === true && Date.parse(recovery.resetAt) > Date.now()) {
+            armRecovery(thread);
+          }
           return thread;
         }),
     });
@@ -3792,9 +3796,19 @@ export default definePlugin({
         armRecovery(thread);
         return;
       }
-      // As the user's message, as T3's continuation is. The record goes once it is sent: a
-      // send that fails leaves it, and the banner still offers it.
-      await startTurn(threadId, { text: RESUME_TEXT });
+      // As the user's message, as T3's continuation is. A send that fails (the thread just
+      // took a message, its agent is gone) turns the resume off, so the banner offers it
+      // again instead of saying one is armed.
+      try {
+        await startTurn(threadId, { text: RESUME_TEXT });
+      } catch (error) {
+        await updateThread(threadId, (current) =>
+          current.limitRecovery?.turnId === recovery.turnId
+            ? { ...current, limitRecovery: { ...current.limitRecovery, autoResume: false } }
+            : current,
+        );
+        throw error;
+      }
       await updateThread(threadId, (current) => {
         if (current.limitRecovery?.turnId !== recovery.turnId) return current;
         const { limitRecovery: _done, ...rest } = current;
@@ -3842,7 +3856,10 @@ export default definePlugin({
               { threadId },
             );
           }
-          next = { ...next, snoozedUntil: limited.resetAt, snoozedAt: at };
+          // A snooze of the user's that ends later stays: it is not woken early.
+          const later =
+            thread.snoozedUntil !== undefined && Date.parse(thread.snoozedUntil) > resetMs;
+          if (!later) next = { ...next, snoozedUntil: limited.resetAt, snoozedAt: at };
         } else if (
           !recovery.snooze &&
           previous?.snooze === true &&
@@ -3874,7 +3891,15 @@ export default definePlugin({
     // The continuations armed before the node stopped are armed again.
     void listThreads()
       .then((all) => {
-        for (const thread of all) if (thread.limitRecovery?.autoResume) armRecovery(thread);
+        for (const thread of all) {
+          // Only a recovery still of the thread's latest turn: an old record arms nothing.
+          if (
+            thread.limitRecovery?.autoResume &&
+            limitedTurn(thread)?.turnId === thread.limitRecovery.turnId
+          ) {
+            armRecovery(thread);
+          }
+        }
       })
       .catch((error: unknown) =>
         context.log.warn("could not arm the limited threads' continuations", {

@@ -103,8 +103,13 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     await armed(started);
     await client.call("threads.archive", { threadId: thread.id });
     reset();
-    // The next turn is the user's: the continuation found the thread archived.
+    // Back from the archive before the reset: its continuation waits for it again.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await client.call("threads.unarchive", { threadId: thread.id });
+    expect(vi.getTimerCount()).toBe(1);
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    // The next turn is the user's: the continuation found the thread archived.
     await client.call("threads.send", { threadId: thread.id, text: "hello" });
     const next = await stream.until("agent.turn.started", 1);
     expect(next.payload).toMatchObject({ input: { text: "hello" } });
@@ -151,6 +156,19 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     });
     expect(woken.snoozedUntil).toBeUndefined();
     expect(woken.limitRecovery).toEqual({ turnId, resetAt, autoResume: false, snooze: false });
+  });
+
+  it("keeps a snooze of the user's that ends after the reset", async () => {
+    const { client, thread, turnId, resetAt } = await limited();
+    const later = new Date(Date.parse(resetAt) + 24 * 3_600_000).toISOString();
+    await client.call("threads.snooze", { threadId: thread.id, until: later });
+    const snoozed = await client.call<Thread>("threads.limit-recovery.set", {
+      threadId: thread.id,
+      turnId,
+      resetAt,
+      snooze: true,
+    });
+    expect(snoozed.snoozedUntil).toBe(later);
   });
 
   it("refuses a turn that is not the latest limited one, or another reset", async () => {
