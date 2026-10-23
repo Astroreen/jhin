@@ -75,8 +75,7 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   offers them as checkboxes without a hard-coded list. Every first-party
   stream guard names a permission some command needs too (`threads.read`,
   `mesh.read`, `mesh.admin`, `git.read`, `terminals.read`), so the list has
-  them; a plugin that guards a stream with a permission no command uses
-  does not show in it (Deferred).
+  them; one that only a stream needs is listed too since D1371.
 - **D414. Revoking takes effect at once; expiry too.** A revoked or expired
   device token is refused at the next connect, and its open connections are
   closed with 4401: the kernel event `auth.client.revoked {principal}` tells
@@ -929,6 +928,24 @@ Connect stays out of scope.
   `memberPermissions` below the mode grants drops them, and the ceiling
   with them (Deferred).
 
+- **D1371. `auth.permissions.list` names the streams a permission guards.**
+  D413 listed only what commands need, so a plugin that guards a stream
+  with a permission no command uses could not offer it (D1361 (6)): a
+  client could not grant what reading that stream needs. The token
+  plugin still cannot depend on `rpc.streams` (the cycle of D1188), so
+  the plugin that provides it says what it serves: `rpc.streams` 1.3
+  adds `permissions()` (optional, additive), every stream (or `prefix/`)
+  served or guarded with fixed permissions and the permissions it needs
+  (one given as a function of the stream, as `mirror/`, is left out: it
+  asks for another stream's); `jhin.transport-ws` adds them through the
+  hook `auth.permissions.describe` (D961), and `auth.permissions.list`
+  takes from the hook's answer, besides titles, an entry's `streams`
+  (`PermissionEntry.streams`, additive) and an entry for a permission no
+  command needs, with `commands: []`. Only a permission (never a
+  pattern or `*`) is taken, and its streams only as strings, so a hook
+  cannot offer more than names; a hook that throws costs the streams with
+  the titles (D961).
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -1049,6 +1066,11 @@ A slice a PR, in the order of D1361's risks:
   update, a delegated child, a scheduled task) while an unheld caller is
   unchanged.
 
+- **PR 6e — permissions of streams** (D1371). **Done when:** a plugin
+  guarding a stream with a permission no command needs sees it offered by
+  `auth.permissions.list` with its stream, a command's permission lists
+  the streams it guards too, and a hook cannot add a pattern.
+
 ## Deferred
 
 - A secret whose real value starts with the marker and `#`
@@ -1153,10 +1175,9 @@ A slice a PR, in the order of D1361's risks:
   `lastSeenAt` changes with no event, so "Connected …" updates with the next
   change or reload, and a device that paired but has not connected yet
   reads "Not connected yet.".
-- `auth.permissions.list` reads commands only: a stream guarded with a
-  permission no command needs is not offered (the token plugin cannot
-  depend on `rpc.streams`: the transport that provides it depends on
-  `auth.verifier`, D1188).
+- `auth.permissions.list` names streams (D1371) only for a transport that
+  provides `rpc.streams` 1.3 and only with fixed permissions; a guard
+  given as a function of the stream is not listed.
 - Shell access (D1364) marks `terminals.write` only. Other permissions
   that end in commands run as the node's user are not marked yet:
   `projects.write` with project scripts needs `terminals.write` already,

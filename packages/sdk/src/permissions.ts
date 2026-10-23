@@ -74,6 +74,8 @@ export interface PermissionDescription {
 export interface PermissionEntry extends Partial<PermissionDescription> {
   readonly permission: string;
   readonly commands: string[];
+  /** Since security.md D1371: the streams (or `prefix/`) a subscriber needs it for. */
+  readonly streams?: string[];
 }
 
 /** The hook `auth.permissions.list` runs its entries through (D961). */

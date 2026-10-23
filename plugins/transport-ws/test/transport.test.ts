@@ -433,6 +433,69 @@ describe("device tokens (security.md D411–D414)", () => {
     });
   });
 
+  it("lists the streams a permission guards, and a permission only a stream needs (security.md D1371)", async () => {
+    const watcher = {
+      manifest: testManifest("app.watcher", {
+        side: "server",
+        requires: { "rpc.streams": "^1.3" },
+      }),
+      definition: definePlugin({
+        activate(context) {
+          const live = context.services.get<{
+            guard(name: string, permissions: readonly string[]): { dispose(): void };
+          }>("rpc.streams");
+          context.subscriptions.add(live.guard("app/feed/", ["app.watch"]));
+          context.subscriptions.add(live.guard("app/echoes", ["app.write"]));
+          describePermissions(context, { "app.watch": { title: "Watch the feed" } });
+          // A hook may name streams, never offer a pattern or `*`; only non-empty names count.
+          context.hooks.after<unknown, PermissionEntry[]>(PERMISSIONS_DESCRIBE_HOOK, (entries) => [
+            ...entries.map((entry) =>
+              entry.permission === "app.write"
+                ? ({
+                    ...entry,
+                    streams: [...(entry.streams ?? []), "app/echoes", "", 7],
+                  } as unknown as PermissionEntry)
+                : entry,
+            ),
+            { permission: "app.*", commands: [], streams: ["app/feed/"] },
+            // A second item for one permission adds its streams.
+            { permission: "app.watch", commands: [], streams: ["app/other"] },
+            // At most 100 names a permission.
+            {
+              permission: "app.many",
+              commands: [],
+              streams: Array.from({ length: 150 }, (_, n) => `app/many/${n}`),
+            },
+            { permission: "*", commands: [], streams: ["app/feed/"] },
+            { permission: "", commands: [], streams: ["app/feed/"] },
+          ]);
+        },
+      }),
+    };
+    const node = await startNode({ plugins: [watcher] });
+    const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
+      permissions: PermissionEntry[];
+    };
+    expect(permissions).toContainEqual({
+      permission: "app.watch",
+      commands: [],
+      title: "Watch the feed",
+      streams: ["app/feed/", "app/other"],
+    });
+    expect(permissions.find((entry) => entry.permission === "app.write")).toMatchObject({
+      commands: ["app.write"],
+      streams: ["app/echoes"],
+    });
+    // The transport's own stream of authorized clients (D1188).
+    expect(permissions.find((entry) => entry.permission === "auth.read")?.streams).toEqual([
+      "auth/clients",
+    ]);
+    expect(permissions.map((entry) => entry.permission)).not.toContain("app.*");
+    expect(permissions.map((entry) => entry.permission)).not.toContain("*");
+    expect(permissions.find((entry) => entry.permission === "app.many")?.streams).toHaveLength(100);
+    expect(permissions.map((entry) => entry.permission)).not.toContain("");
+  });
+
   it("lists the permissions without titles when a description hook throws (D961)", async () => {
     const broken = {
       manifest: testManifest("app.broken"),
