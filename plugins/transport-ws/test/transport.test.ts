@@ -433,6 +433,49 @@ describe("device tokens (security.md D411–D414)", () => {
     });
   });
 
+  it("lists the streams a permission guards, and a permission only a stream needs (security.md D1371)", async () => {
+    const watcher = {
+      manifest: testManifest("app.watcher", {
+        side: "server",
+        requires: { "rpc.streams": "^1.3" },
+      }),
+      definition: definePlugin({
+        activate(context) {
+          const live = context.services.get<{
+            guard(name: string, permissions: readonly string[]): { dispose(): void };
+          }>("rpc.streams");
+          context.subscriptions.add(live.guard("app/feed/", ["app.watch"]));
+          context.subscriptions.add(live.guard("app/echoes", ["app.write"]));
+          describePermissions(context, { "app.watch": { title: "Watch the feed" } });
+          // A hook may name streams, never offer a pattern.
+          context.hooks.after<unknown, PermissionEntry[]>(PERMISSIONS_DESCRIBE_HOOK, (entries) => [
+            ...entries,
+            { permission: "app.*", commands: [], streams: ["app/feed/"] },
+          ]);
+        },
+      }),
+    };
+    const node = await startNode({ plugins: [watcher] });
+    const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
+      permissions: PermissionEntry[];
+    };
+    expect(permissions).toContainEqual({
+      permission: "app.watch",
+      commands: [],
+      title: "Watch the feed",
+      streams: ["app/feed/"],
+    });
+    expect(permissions.find((entry) => entry.permission === "app.write")).toMatchObject({
+      commands: ["app.write"],
+      streams: ["app/echoes"],
+    });
+    // The transport's own stream of authorized clients (D1188).
+    expect(permissions.find((entry) => entry.permission === "auth.read")?.streams).toEqual([
+      "auth/clients",
+    ]);
+    expect(permissions.map((entry) => entry.permission)).not.toContain("app.*");
+  });
+
   it("lists the permissions without titles when a description hook throws (D961)", async () => {
     const broken = {
       manifest: testManifest("app.broken"),

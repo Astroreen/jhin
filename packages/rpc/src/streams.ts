@@ -78,6 +78,12 @@ export interface LiveStreams {
   ): Disposable;
   /** Since 1.1: what a subscriber to the event log's `stream` needs, when a guard says. */
   guardOf(stream: string): readonly string[] | undefined;
+  /**
+   * Since 1.3 (security.md D1371): every stream (or `prefix/`) served or
+   * guarded with fixed permissions, and what it needs; one whose
+   * permissions are a function of the stream is left out.
+   */
+  permissions?(): { readonly stream: string; readonly permissions: readonly string[] }[];
 }
 
 /** The entry for `stream`: its own name, else the longest prefix ending in `/`. */
@@ -96,10 +102,26 @@ function lookup<T>(entries: ReadonlyMap<string, T>, stream: string): T | undefin
 export function createLiveStreams(): LiveStreams {
   const sources = new Map<
     string,
-    { source: StreamSource; permissions: (stream: string) => readonly string[] }
+    {
+      source: StreamSource;
+      permissions: (stream: string) => readonly string[];
+      fixed?: readonly string[];
+    }
   >();
   const guards = new Map<string, (stream: string) => readonly string[]>();
+  const fixedGuards = new Map<(stream: string) => readonly string[], readonly string[]>();
   return {
+    permissions() {
+      const listed: { stream: string; permissions: readonly string[] }[] = [];
+      for (const [stream, served] of sources) {
+        if (served.fixed !== undefined) listed.push({ stream, permissions: served.fixed });
+      }
+      for (const [stream, guard] of guards) {
+        const fixed = fixedGuards.get(guard);
+        if (fixed !== undefined) listed.push({ stream, permissions: fixed });
+      }
+      return listed;
+    },
     serve(name, source, options = {}) {
       if (name.length === 0) throw new Error("A live stream needs a name");
       if (sources.has(name)) throw new Error(`The live stream ${name} is already served`);
@@ -108,6 +130,7 @@ export function createLiveStreams(): LiveStreams {
       const served = {
         source,
         permissions: typeof given === "function" ? given : () => fixed as readonly string[],
+        ...(fixed === undefined ? {} : { fixed }),
       };
       sources.set(name, served);
       return toDisposable(() => {
@@ -127,6 +150,7 @@ export function createLiveStreams(): LiveStreams {
       const entry =
         typeof permissions === "function" ? permissions : () => fixed as readonly string[];
       guards.set(name, entry);
+      if (fixed !== undefined) fixedGuards.set(entry, fixed);
       return toDisposable(() => {
         if (guards.get(name) === entry) guards.delete(name);
       });

@@ -22,7 +22,13 @@ import {
   webSocketPeer,
   type WebSocketLike,
 } from "@jhin/rpc";
-import { definePlugin, z, type Disposable } from "@jhin/sdk";
+import {
+  PERMISSIONS_DESCRIBE_HOOK,
+  definePlugin,
+  z,
+  type Disposable,
+  type PermissionEntry,
+} from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -137,6 +143,32 @@ export default definePlugin({
     // Streams other plugins keep in memory (terminal output), next to the event log's.
     const streams = createLiveStreams();
     context.services.provide(LIVE_STREAMS_CAPABILITY, streams);
+    // The streams each permission guards, for clients granting it (security.md D1371):
+    // the token plugin cannot read them itself (it is this plugin's dependency).
+    context.subscriptions.add(
+      context.hooks.after<unknown, PermissionEntry[]>(PERMISSIONS_DESCRIBE_HOOK, (entries) => {
+        if (!Array.isArray(entries)) return entries;
+        const guarded = new Map<string, string[]>();
+        for (const { stream, permissions } of streams.permissions?.() ?? []) {
+          for (const permission of permissions) {
+            guarded.set(permission, [...(guarded.get(permission) ?? []), stream]);
+          }
+        }
+        const listed = entries.map((entry) => {
+          const named = guarded.get(entry.permission);
+          guarded.delete(entry.permission);
+          return named === undefined
+            ? entry
+            : { ...entry, streams: [...new Set([...(entry.streams ?? []), ...named])].toSorted() };
+        });
+        const only = [...guarded].map(([permission, named]) => ({
+          permission,
+          commands: [],
+          streams: named.toSorted(),
+        }));
+        return [...listed, ...only];
+      }),
+    );
     // The token plugin cannot serve a stream of its own (this plugin depends on
     // its verifier), so its changes reach clients here (security.md D1188).
     const authClients = createMemoryStreams({ log: context.log });

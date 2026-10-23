@@ -582,6 +582,8 @@ export default definePlugin({
             description: z.string().min(1).optional(),
             /** Runs commands on this machine as the node's user (security.md D1364). */
             shellAccess: z.boolean().optional(),
+            /** The streams a subscriber needs it for (security.md D1371). */
+            streams: z.array(z.string()).optional(),
           }),
         ),
       }),
@@ -601,6 +603,9 @@ export default definePlugin({
         // the list (D961): only string titles and descriptions are read from
         // its answer, by permission, onto this node's own entries.
         const titles = new Map<string, PermissionDescription>();
+        // The streams each permission guards, as the transport says (security.md D1371);
+        // a permission only a stream needs is listed with no commands. Only names are taken.
+        const guarded = new Map<string, string[]>();
         try {
           const output = await context.hooks.run<object, unknown>(
             PERMISSIONS_DESCRIBE_HOOK,
@@ -608,13 +613,17 @@ export default definePlugin({
             () => entries,
           );
           for (const item of Array.isArray(output) ? (output as unknown[]) : []) {
-            const { permission, title, description, shellAccess } = (item ?? {}) as Record<
+            const { permission, title, description, shellAccess, streams } = (item ?? {}) as Record<
               string,
               unknown
             >;
-            if (typeof permission !== "string" || typeof title !== "string" || title === "") {
-              continue;
-            }
+            if (typeof permission !== "string") continue;
+            const named = Array.isArray(streams)
+              ? streams.filter((stream): stream is string => typeof stream === "string")
+              : [];
+            const plain = permission !== "*" && !permission.endsWith(".*") && isGrant(permission);
+            if (named.length > 0 && plain) guarded.set(permission, named);
+            if (typeof title !== "string" || title === "") continue;
             titles.set(permission, {
               title,
               ...(typeof description === "string" && description !== "" ? { description } : {}),
@@ -626,8 +635,20 @@ export default definePlugin({
             error: String(error),
           });
         }
+        const only = [...guarded.keys()]
+          .filter((permission) => !needed.has(permission))
+          .map((permission): PermissionEntry => ({ permission, commands: [] }));
         return {
-          permissions: entries.map((entry) => ({ ...entry, ...titles.get(entry.permission) })),
+          permissions: [...entries, ...only]
+            .toSorted((a, b) => a.permission.localeCompare(b.permission))
+            .map((entry) => {
+              const streams = guarded.get(entry.permission);
+              return {
+                ...entry,
+                ...titles.get(entry.permission),
+                ...(streams === undefined ? {} : { streams: [...new Set(streams)] }),
+              };
+            }),
         };
       },
     });
