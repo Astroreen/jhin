@@ -2046,3 +2046,9 @@ Each workstream lists its PRs here as they merge.
 - L2 #236: public ids in CI: `scripts/public-ids.ts`, `deprecations.json`,
   the "Public ids" CI job and `pnpm verify` step; how to deprecate in
   `docs/README.md` and AGENTS.md rule 8 (D1247–D1249).
+- L2 #234: review after the last change: `missions.update { step }` runs
+  the `missions.step` hook and `jhin.orchestrator` refuses a step that needs
+  a review (`reviewSteps`, `review: true`) with `REVIEW_REQUIRED`;
+  `missions.review.check`, `slices.review` with the files' tree from
+  `git.tree` (`jhin.source-control`), review slices (`reviews`)
+  (D1241–D1243).
