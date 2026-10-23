@@ -142,7 +142,7 @@ export function createSessions(options: {
     const holder = live.holder;
     live.holder = undefined;
     live.connection.close();
-    for (const follower of [...live.followers]) follower.end();
+    for (const follower of live.followers) follower.end();
     live.followers.clear();
     holder?.end(reason ?? new CodexEnded("Codex was ended while the turn was running."));
   };
@@ -212,7 +212,7 @@ export function createSessions(options: {
     connection.onNotification((method, params) => {
       options.notified?.(method, params);
       live.holder?.notification(method, params);
-      for (const follower of [...live.followers]) follower.notification(method, params);
+      for (const follower of live.followers) follower.notification(method, params);
     });
     connection.onRequest((method, params) =>
       live.holder === undefined
