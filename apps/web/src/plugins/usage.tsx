@@ -53,7 +53,7 @@ import {
 import { formatResetsIn, remainingPercent } from "../lib/usage-limits.ts";
 
 /** The panel the page shows in (`client.navigation@1`'s `panel`). */
-export const USAGE_PANEL = "usage";
+const USAGE_PANEL = "usage";
 
 /** One colour for every agent, as the composer's bars (D1144). */
 const BAR_COLOR = "var(--contrast-foreground, var(--foreground))";

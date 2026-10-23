@@ -15,7 +15,7 @@ export interface LimitAccount {
   readonly limits: AgentUsageLimits;
 }
 
-export interface LimitPoolMember {
+interface LimitPoolMember {
   readonly account: LimitAccount;
   readonly window: AgentUsageWindow;
 }
