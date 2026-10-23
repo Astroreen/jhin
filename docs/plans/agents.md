@@ -1746,6 +1746,15 @@ Decisions (L3):
   learnt to write knowledge only after a commit, which D605 asks them to
   keep current while they work. Reviews recorded before this change saw the
   folder, so a checkout with notes in it asks for one more review.
+- **D1262. An agent that answers the owner's message itself is not
+  answered for again.** When the turn the owner's message started ends,
+  D1221 records its last assistant message only if the agent sent no
+  answer to that message (`agents.send` with `inReplyTo` it, from the
+  agent) by then; an answer sent after the turn ended comes too late to
+  count. Before, the owner got both: in the L3 run the lead
+  answered each mission message with its plan through `agents_send`, and
+  its turn's closing words (a status note in another language, written for
+  whoever watches its thread) were recorded under the same message as well.
 - **D1263. An escalation about some slices holds only them.** While the
   lead has an open ask to the owner, D1223 holds the whole mission unless a
   slice of it is blocked: then the asks are taken to be about the blocked
@@ -1759,14 +1768,6 @@ Decisions (L3):
   message ("an open ask of mine would hold the whole mission, including the
   seven items that don't need you") and set the item blocked itself. The
   guard made the honest escalation the costly one, so it was routed around.
-- **D1262. An agent that answers the owner's message itself is not
-  answered for again.** When the turn the owner's message started ends,
-  D1221 records its last assistant message only if the agent sent no
-  answer to that message (`agents.send` with `inReplyTo` it, from the
-  agent) meanwhile. Before, the owner got both: in the L3 run the lead
-  answered each mission message with its plan through `agents_send`, and
-  its turn's closing words (a status note in another language, written for
-  whoever watches its thread) were recorded under the same message as well.
 
 ## Deferred
 
