@@ -17,6 +17,8 @@ export const HealthEvents = {
   warningAnalysed: "health.warning.analysed",
   /** `{ warningId, dismissedAt, dismissedAfter?, by? }`: the owner has seen it (D724). */
   warningDismissed: "health.warning.dismissed",
+  /** `{ warningId, clearedAt, reason }`: the measure is back under its threshold, the sensors closed it (D1383). */
+  warningCleared: "health.warning.cleared",
   /** `{ idea: Idea }`: a wrong idea, named when it was corrected (D727). */
   ideaCorrected: "health.idea.corrected",
   /** `{ ideaId, by? }`: a corrected idea named by mistake, no longer watched for (D727). */
@@ -130,8 +132,11 @@ export const Warning = z.object({
   /** The events behind it, newest last, at most `MAX_EVIDENCE`. */
   evidence: z.array(EventRef),
   raisedAt: z.string(),
-  status: z.enum(["open", "dismissed"]),
+  status: z.enum(["open", "dismissed", "cleared"]),
   dismissedAt: z.string().optional(),
+  /** When the sensors cleared it, and why: a short machine-readable reason, `under-threshold` (D1383). */
+  clearedAt: z.string().optional(),
+  clearedReason: z.string().optional(),
   /**
    * The last event of each followed stream when it was dismissed, by stream:
    * the subject counts again only from the events after them (D724).
@@ -259,6 +264,8 @@ export function applyHealthEvent(
     analysis?: Analysis;
     dismissedAt?: string;
     dismissedAfter?: Record<string, number>;
+    clearedAt?: string;
+    reason?: string;
     idea?: Idea;
   };
   switch (event.type) {
@@ -268,6 +275,23 @@ export function applyHealthEvent(
         ...state,
         warnings: { ...state.warnings, [payload.warning.warningId]: payload.warning },
       };
+    case HealthEvents.warningCleared: {
+      const warning =
+        payload.warningId === undefined ? undefined : state.warnings[payload.warningId];
+      if (warning === undefined) return state;
+      return {
+        ...state,
+        warnings: {
+          ...state.warnings,
+          [warning.warningId]: {
+            ...warning,
+            status: "cleared",
+            ...(payload.clearedAt === undefined ? {} : { clearedAt: payload.clearedAt }),
+            ...(payload.reason === undefined ? {} : { clearedReason: payload.reason }),
+          },
+        },
+      };
+    }
     case HealthEvents.warningAnalysed:
     case HealthEvents.warningDismissed: {
       const warning =
