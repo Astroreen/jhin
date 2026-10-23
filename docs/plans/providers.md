@@ -672,7 +672,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 
 ### Deferred
 
-- `/feedback` in the composer.
+- `/feedback`'s messages in the timeline (T3 anchors the command and its
+  outcome there as local messages; here only the banner shows them), and
+  sending it to the thread's running app-server instead of one of its own.
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Background terminals Codex keeps after a turn.
@@ -1367,6 +1369,27 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   every account's turns, and a changed idle time reaches them all. Jhin
   keeps no token of its own for them: each account's sign-in is Codex's
   `auth.json` in its shadow home.
+
+- **D1317. `/feedback`**, T3's `uploadFeedback` and `ComposerFeedback.tsx`
+  (`agent.runtime@1.14`, additive: `AgentRuntime.uploadFeedback?({
+  threadId, reason? })` answers `{ feedbackId }`). The node command
+  `agents.feedback.upload` (`{ threadId, reason? }`, `threads.write`) asks
+  the agent that ran the thread's latest turn ("Send a message before you
+  submit feedback." without one; "Provider 'X' does not support feedback
+  uploads." for an agent without it); `agents.list` says which agents take
+  it (`feedback`). Codex lists T3's `/feedback` ("Send this thread and Codex
+  logs to OpenAI", hint "Describe the issue (optional)") and sends
+  `feedback/upload` (`classification: "bug"`, `includeLogs`, the reason,
+  its own thread id) on an app-server of its own, as the status probe asks
+  (Codex reads the thread and its logs from its home; T3 asks the thread's
+  running one), within 120 s; its answer's thread id is the feedback id. In
+  the composer, `/feedback [reason]` sent alone (no attachments or context)
+  to an agent that takes it goes there, never to the agent; T3's banner
+  says "Sending feedback to OpenAI...", then "Feedback sent to OpenAI" with
+  "Thread ID: …" and "Copy ID", or "Could not send feedback to OpenAI" with
+  the reason, and can be dismissed once done. Without a turn yet T3's toast
+  says "Start a Codex thread first". The fake agent takes feedback (a
+  reason "fail" fails), for the end-to-end test.
 
 ### Deferred
 

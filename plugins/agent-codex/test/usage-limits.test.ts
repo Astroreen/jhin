@@ -84,6 +84,7 @@ describe("jhin.agent-codex: usage limits (D1142)", () => {
       "usage-limits",
       "compact",
       "goal",
+      "feedback",
     ]);
   });
 

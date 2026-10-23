@@ -10,6 +10,13 @@ export const GOAL_COMMAND: AgentSlashCommand = {
   input: { hint: "Objective, or pause, resume, clear" },
 };
 
+/** T3's `/feedback` of Codex (providers.md D1317): the client sends it, never Codex. */
+export const FEEDBACK_COMMAND: AgentSlashCommand = {
+  name: "feedback",
+  description: "Send this thread and Codex logs to OpenAI",
+  input: { hint: "Describe the issue (optional)" },
+};
+
 export type GoalCommand =
   | { readonly type: "show" }
   | { readonly type: "clear" }

@@ -706,6 +706,8 @@ const AgentInfo = z.object({
   role: z.string().optional(),
   /** It reports usage limits (`agents.usage-limits`, providers.md D1141). */
   usageLimits: z.boolean(),
+  /** It takes feedback on a thread (`agents.feedback.upload`, providers.md D1317). */
+  feedback: z.boolean().optional(),
   /** How its account can be signed in from Jhin (`agents.sign-in.*`, providers.md D1151). */
   signIn: z.array(z.enum(["browser", "device-code"])).optional(),
   /** Whether its account is signed in, when it says. */
@@ -2546,6 +2548,7 @@ export default definePlugin({
               runtimeId: runtime.runtimeId ?? runtime.agentId,
               ...(runtime.role === undefined ? {} : { role: runtime.role }),
               usageLimits: runtime.usageLimits !== undefined,
+              ...(runtime.uploadFeedback === undefined ? {} : { feedback: true }),
               ...(runtime.auth === undefined ? {} : { signIn: [...runtime.auth.methods] }),
               ...(status.signedIn === undefined ? {} : { signedIn: status.signedIn }),
             };
@@ -2712,6 +2715,38 @@ export default definePlugin({
         return {
           usageLimits: found === undefined ? null : usageLimitsOf(found),
         };
+      },
+    });
+
+    context.commands.register({
+      name: "agents.feedback.upload",
+      description:
+        "Sends a thread's conversation and its agent's logs to the agent's maker (Codex: OpenAI), with an optional reason; answers the id the maker knows it by",
+      input: z.object({ threadId: z.string(), reason: z.string().optional() }),
+      output: z.object({ feedbackId: z.string() }),
+      permissions: ["threads.write"],
+      handler: async ({ threadId, reason }) => {
+        const thread = await getThread(threadId);
+        // The agent that ran the thread's latest turn: feedback is about what it did.
+        const agentId = thread.lastTurn?.agentId;
+        if (agentId === undefined) {
+          throw new ThreadsError("NO_TURN", "Send a message before you submit feedback.", {
+            threadId,
+          });
+        }
+        const runtime = registry.get(agentId);
+        if (runtime?.uploadFeedback === undefined) {
+          throw new ThreadsError(
+            "FEEDBACK_UNSUPPORTED",
+            `Provider '${runtime?.name ?? agentId}' does not support feedback uploads.`,
+            { threadId, agentId },
+          );
+        }
+        const trimmed = reason?.trim();
+        return runtime.uploadFeedback({
+          threadId,
+          ...(trimmed === undefined || trimmed === "" ? {} : { reason: trimmed }),
+        });
       },
     });
 

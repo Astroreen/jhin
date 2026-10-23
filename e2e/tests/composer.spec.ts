@@ -684,6 +684,39 @@ test("offers an app's own allowances and T3's Always allow", async ({ page }, in
   ).toHaveText("Drive always allowed");
 });
 
+test("sends /feedback to the agent's maker and shows T3's banner", async ({ page }, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("hello");
+  await message.press("Enter");
+  const log = page.getByRole("log", { name: "Messages" });
+  await expect(log.getByRole("article", { name: "Agent" })).toHaveText("Echo: hello");
+  // The composer knows the thread's agent (its model's name comes from it): it takes feedback.
+  await expect(
+    page.getByRole("form", { name: "Composer" }).getByRole("button", { name: "Model" }),
+  ).toHaveText("Echo");
+  await message.fill("/feedback the diff was wrong");
+  await message.press("Enter");
+  // Answered by the maker, not the agent (providers.md D1317).
+  const banner = page.getByRole("status", { name: "Feedback" });
+  await expect(banner).toContainText("Feedback sent to OpenAI");
+  await expect(banner).toContainText(/Thread ID: feedback-/);
+  await expect(banner.getByRole("button", { name: "Copy ID" })).toBeVisible();
+  await expect(message).toHaveText("");
+  await expect(log.getByRole("article", { name: "Agent" })).toHaveCount(1);
+  const shot = info.outputPath("feedback.png");
+  await page.screenshot({ path: shot });
+  await info.attach("feedback", { path: shot, contentType: "image/png" });
+  await banner.getByRole("button", { name: "Dismiss feedback notice" }).click();
+  await expect(banner).toBeHidden();
+  await message.fill("/feedback fail");
+  await message.press("Enter");
+  await expect(page.getByRole("status", { name: "Feedback" })).toContainText(
+    "Could not send feedback to OpenAI",
+  );
+});
+
 test("shows the thread's goal above the composer, and resumes and clears it", async ({
   page,
 }, info) => {
