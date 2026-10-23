@@ -106,18 +106,20 @@ export function createWebviewHost(options: WebviewHostOptions) {
     guest.debugger.attach("1.3");
     const secret = Crypto.randomBytes(24).toString("base64url");
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0, path: `/${secret}` });
+    let address: ReturnType<WebSocketServer["address"]>;
     try {
       await new Promise<void>((resolve, reject) => {
         server.once("listening", resolve);
         server.once("error", reject);
       });
+      address = server.address();
+      if (address === null || typeof address === "string") throw new Error("No relay address.");
     } catch (error) {
+      // Nothing of a failed attach stays: no server, no debugger on the guest.
       server.close();
       if (guest.debugger.isAttached()) guest.debugger.detach();
       throw error;
     }
-    const address = server.address();
-    if (address === null || typeof address === "string") throw new Error("No relay address.");
     let connection: WebSocket | null = null;
     let relay: CdpRelayConnection | null = null;
     let closed = false;

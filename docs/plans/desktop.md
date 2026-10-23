@@ -436,8 +436,11 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   isolated `jhin-preview-agent-<tab>` in memory, as D394 isolates an agent's
   tab), no preload, sandboxed, no Node, HTML full screen kept inside the
   webview; any other attach is refused. A guest's sessions grant T3's preview
-  permissions (clipboard, notifications, geolocation, full screen) and
-  nothing else. A page that opens a window gets none: an http(s) URL opens as
+  permissions (clipboard read and write, notifications, geolocation, full
+  screen) and nothing else, without a prompt, as T3's `BrowserSession.ts`
+  grants them to every preview page, an agent's included: the preview is a
+  development browser for the user's own pages, which ask for these to be
+  tested. A prompt per permission, or a per-profile choice, is Deferred. A page that opens a window gets none: an http(s) URL opens as
   a new tab of the same thread and profile (T3's `onOpenLink`), anything else
   is dropped. A profile's cookies in the app are its partition's: removing a
   profile in Settings → Browser also clears the partition in the app
@@ -520,6 +523,8 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   origin stable, so the choice must be kept).
 - The trackpad
   scroll-end and window-fullscreen events beyond macOS's controls inset.
+- Asking the user before a preview page gets the clipboard, notifications
+  or the location (D1323 grants them as T3 does).
 - Around the preview in the app (D1321–D1324): a desktop tab that outlives
   its webview (T3 reconnects a tab after a reload of the window or once its
   DevTools close; here the tab closes); T3's DevTools, element annotation,
