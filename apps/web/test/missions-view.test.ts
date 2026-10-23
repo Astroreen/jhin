@@ -11,6 +11,7 @@ import { toDisposable } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
+import { directoryNotices, problemOf } from "../src/plugins/missions/directory.ts";
 import {
   assigneeLabel,
   formatSteps,
@@ -420,5 +421,27 @@ describe("D1278: the mission view shows reviews and the review check", () => {
       { status: "unavailable" },
     );
     expect(reviewCheckFailed(new Error("boom"))).toEqual({ status: "error", error: "boom" });
+  });
+});
+
+describe("D1277: the view says why titles fall back to ids", () => {
+  it("gives each failing source its notice, and none when both were read", () => {
+    expect(directoryNotices({})).toEqual([]);
+    expect(directoryNotices({ catalog: "boom" })).toEqual([
+      "Agent titles unavailable: agents.catalog failed: boom",
+    ]);
+    expect(directoryNotices({ identity: "down" })).toEqual([
+      "Owner unavailable: host.identity failed: down",
+    ]);
+    expect(directoryNotices({ identity: "down", catalog: "boom" })).toHaveLength(2);
+  });
+
+  it("takes a node without the command as having nothing to say", () => {
+    expect(problemOf(Object.assign(new Error("x"), { code: "COMMAND_NOT_FOUND" }))).toBeUndefined();
+    expect(problemOf(Object.assign(new Error("denied"), { code: "PERMISSION_DENIED" }))).toBe(
+      "denied",
+    );
+    expect(problemOf(new Error("boom"))).toBe("boom");
+    expect(problemOf("plain")).toBe("plain");
   });
 });

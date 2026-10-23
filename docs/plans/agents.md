@@ -1438,6 +1438,14 @@ Decisions (C2):
   edit (D1081). After a Stop the run reads Paused too (W10 has one `stopped`),
   and the stopped agents show on their pages. Without a dialog host
   (`ui.dialogs`) there is no Stop, since it is never done unconfirmed.
+- **D1277. The view says why titles fall back to ids.** `useDirectory` keeps
+  what failed and the command's message, and the mission page, the slice
+  page, the slice dialog (beside the assignee picker) and the orchestrator
+  panel show one quiet line for each source that failed: "Owner unavailable:
+  `host.identity` failed: …", "Agent titles unavailable: `agents.catalog`
+  failed: …". A node that has no such command (no agents plugin) says
+  nothing, as before: that is not a failure. A source is read once per view,
+  with no retry.
 
 ### C3. Dogfood: a civilization end to end (D1101–D1120)
 
@@ -1849,9 +1857,9 @@ Decisions (L2):
   slice from the client (`slices.prove` stays the agent's).
 - C2: titles and the assignee picker for agents of other nodes of the mesh;
   the view lists its own node's agents, read once per view (D1082).
-- C2: saying why titles fall back to ids: a failing `host.identity` or
+- ~~C2: saying why titles fall back to ids: a failing `host.identity` or
   `agents.catalog` leaves the picker without Owner or agents, silently
-  (D1082).
+  (D1082).~~ C2, D1277.
 - A3: proof stored on the node (screenshot files); a proof item names a URL.
 - A3: a project deleted between the project check and the append of
   `missions.create` or `missions.intent.set` (D643) still gets its record;

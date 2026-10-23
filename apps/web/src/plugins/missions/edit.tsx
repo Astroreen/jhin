@@ -32,6 +32,7 @@ import {
 import { useId, useState, type ReactNode } from "react";
 
 import type { Directory } from "./directory.ts";
+import { DirectoryNotices } from "./notice.tsx";
 import { intentChanges, missionChanges, sliceChanges, sliceStatusOptions } from "./changes.ts";
 import { assigneeLabel, formatSteps, parseSteps, STATUS_LABELS } from "./route.ts";
 
@@ -452,6 +453,7 @@ export function SliceDialog(props: {
           />
         )}
       </div>
+      <DirectoryNotices notices={directory.notices} />
       {others.length === 0 ? null : (
         <fieldset aria-labelledby={dependsId} className="flex flex-col gap-1.5">
           <legend className="text-sm font-medium" id={dependsId}>

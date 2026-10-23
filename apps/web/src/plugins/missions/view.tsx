@@ -60,6 +60,7 @@ import {
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useDirectory, type Directory } from "./directory.ts";
+import { DirectoryNotices } from "./notice.tsx";
 import { IntentDialog, MissionDialog, SliceDialog, type Call } from "./edit.tsx";
 import {
   assigneeLabel,
@@ -602,6 +603,7 @@ function MissionPage(props: {
               <Prose empty="No outcome yet." text={mission.outcome} />
             </Section>
           </div>
+          <DirectoryNotices notices={directory.notices} />
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Fact label="Slice process">
               <Steps steps={mission.process.slice} />
@@ -805,6 +807,7 @@ function SlicePage(props: {
             </span>
           )}
         </div>
+        <DirectoryNotices notices={directory.notices} />
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Fact label="Assignee">
             <span title={slice.assignee}>{assigneeLabel(slice.assignee, directory.titles)}</span>
