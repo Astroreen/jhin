@@ -1310,22 +1310,6 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   refuses, starts a new session with the whole transcript, as before. The
   plugin passes the SDK's `forkSession`; `claudePlugin(query, forkSession?)`
   takes it as a second argument.
-- **D1318. Codex's subagents outlive their turn**, as T3 follows a child
-  thread past its parent's turn (D1164's `subagent.backgrounded` and
-  `afterwards`): when Codex ends a turn (`turn/completed`) with subagents of
-  it still open, each is backgrounded and the turn follows the thread's
-  app-server past its end (`Lease.follow`), reading its subagents' frames
-  (messages, reasoning, tools, its `turn/completed`) into `afterwards` until
-  each has ended, also while a later turn of the thread holds the
-  app-server; a subagent's `subAgentActivity` or `agentsStates` that came
-  through a later turn of the parent are that turn's. While followed, an
-  idle app-server is kept up; when it ends, `afterwards` ends and the
-  subagents still open end `interrupted` (D1164). A turn that was stopped
-  or broke off still ends its subagents with it, as before (D1145). A
-  subagent's approval or question after its parent's turn ended is refused
-  as before: no turn is there to ask it. As Claude's (D1165), `afterwards`
-  holds at most 10 000 unread items: a reader that never reads lets go of
-  the app-server. A subagent a followed one starts is not shown.
 - **D1316. T3's "Always allow" and an app's own labels**
   (`CodexMcpElicitation.ts`'s `acceptAlways`, `agent.runtime@1.13`,
   additive): `accept-always` joins the approval decisions and an approval
@@ -1344,6 +1328,22 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   offer it (the mapping to their session allowance, T3's for `acceptAlways`,
   is kept for when one does). The fake agent's `/access-always <app>` offers
   both, for the end-to-end test.
+- **D1318. Codex's subagents outlive their turn**, as T3 follows a child
+  thread past its parent's turn (D1164's `subagent.backgrounded` and
+  `afterwards`): when Codex ends a turn (`turn/completed`) with subagents of
+  it still open, each is backgrounded and the turn follows the thread's
+  app-server past its end (`Lease.follow`), reading its subagents' frames
+  (messages, reasoning, tools, its `turn/completed`) into `afterwards` until
+  each has ended, also while a later turn of the thread holds the
+  app-server; a subagent's `subAgentActivity` or `agentsStates` that came
+  through a later turn of the parent are that turn's. While followed, an
+  idle app-server is kept up; when it ends, `afterwards` ends and the
+  subagents still open end `interrupted` (D1164). A turn that was stopped
+  or broke off still ends its subagents with it, as before (D1145). A
+  subagent's approval or question after its parent's turn ended is refused
+  as before: no turn is there to ask it. As Claude's (D1165), `afterwards`
+  holds at most 10 000 unread items: a reader that never reads lets go of
+  the app-server. A subagent a followed one starts is not shown.
 - **D1319. More Codex accounts on one node**, T3's several Codex provider
   instances with a shadow home (`CodexHomeLayout.ts`'s auth overlay, ported
   as `plugins/agent-codex/src/accounts.ts`): the Codex config's `accounts`
