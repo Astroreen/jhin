@@ -1,6 +1,6 @@
 // Cases follow T3 Code's apps/server/src/device/DeviceActions.test.ts (MIT, see
 // THIRD_PARTY_NOTICES.md), without Effect. docs/plans/preview.md, D1332.
-import { DeviceAction, type DeviceError } from "@jhin/preview-api";
+import { DeviceAction, DeviceError } from "@jhin/preview-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -247,6 +247,39 @@ describe("the tools' other actions", () => {
     expect(calls.map((call) => call.args)).toEqual([
       ["-s", "emulator-5554", "emu", "geo", "fix", "18.1", "59.3"],
     ]);
+  });
+
+  it("refuses a phone's location, which only an emulator's console places", async () => {
+    const { host, calls } = makeHost();
+    const refused = await failure(
+      runDeviceAction(host, "android", "R5CT1234", {
+        type: "setLocation",
+        latitude: 1,
+        longitude: 2,
+      }),
+    );
+    expect(refused.code).toBe("DEVICE_ACTION_UNAVAILABLE");
+    expect(calls).toEqual([]);
+  });
+
+  it("fails the network toggle when adb itself cannot run the mobile-data step", async () => {
+    const host: ActionHost = {
+      helpers: { serveSimAxSettings: "", serveSimCli: "" },
+      run: async (_command, args) => {
+        if (args.includes("data")) {
+          throw new DeviceError("DEVICE_OPERATION_FAILED", "Device adb could not be run: gone");
+        }
+        return { stdout: "", stderr: "", code: 0 };
+      },
+    };
+    const failed = await failure(
+      runDeviceAction(host, "android", "emulator-5554", {
+        type: "setToggle",
+        setting: "networkEnabled",
+        value: false,
+      }),
+    );
+    expect(failed.message).toContain("could not be run");
   });
 
   it("turns Wi-Fi off on a device without mobile data", async () => {

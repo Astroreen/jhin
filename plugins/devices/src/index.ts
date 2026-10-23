@@ -551,9 +551,11 @@ export default definePlugin({
       handler: async (input) => {
         const device = await runningDevice(input);
         // Behind any action under way on the device, so it never reads one half done.
-        const read = await actionQueue.run(`${device.hostId}\u0000${device.id}`, () =>
-          readDeviceDetail(actionHost(), device.platform, device.id),
-        );
+        const read = await actionQueue.run(`${device.hostId}\u0000${device.id}`, async () => {
+          // Still running once its turn comes.
+          await runningDevice(input);
+          return readDeviceDetail(actionHost(), device.platform, device.id);
+        });
         return {
           hostId: device.hostId,
           deviceId: device.id,
@@ -575,6 +577,8 @@ export default definePlugin({
         // One action at a time per device, its read-back included: an agent's and the panel's
         // steps (three settings, a permission group) do not interleave.
         return actionQueue.run(`${device.hostId}\u0000${device.id}`, async () => {
+          // Still running once its turn comes: one closed meanwhile says so, not adb's error.
+          await runningDevice(input);
           const actions = actionHost();
           await runDeviceAction(actions, device.platform, device.id, input.action);
           // The settings read back after the change, as T3's panel shows them.

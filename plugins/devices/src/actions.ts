@@ -324,9 +324,13 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
         // Mobile data only where there is telephony (most emulators have none): Wi-Fi took,
         // so a device that refuses it is no failure. adb itself failing still is.
         await shell(["svc", "data", state], "network").catch((error: unknown) => {
-          if (!(error instanceof DeviceError && error.code === "DEVICE_OPERATION_FAILED")) {
-            throw error;
-          }
+          // Only the device's refusal (an exit code) is tolerated; adb that could not run
+          // fails with the same code but no exit code.
+          const refused =
+            error instanceof DeviceError &&
+            error.code === "DEVICE_OPERATION_FAILED" &&
+            typeof error.details["exitCode"] === "number";
+          if (!refused) throw error;
         });
         return;
       }
@@ -361,6 +365,8 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
       );
       return;
     case "setLocation":
+      // The emulator console places it; a phone has no console to ask.
+      if (!serial.startsWith("emulator-")) throw unavailable(input.type, "android", "unsupported");
       await adb(["emu", "geo", "fix", String(input.longitude), String(input.latitude)], "location");
       return;
     case "clearLocation":
