@@ -2,7 +2,9 @@
 // T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac: packages/shared/src/usageLimits.ts
 // (collectLimitPools, poolWindows, collectLimitNotices, paceOfShares).
 import type { AgentUsageLimits, AgentUsageWindow } from "@jhin/agent-api";
+import { targetKey, type AgentInfo, type ThreadsCatalog } from "@jhin/client-api";
 
+import type { ShownNode } from "./nodes.ts";
 import { elapsedShare, limitsNotice, type LimitPace } from "./usage-limits.ts";
 
 /** One agent's limits on one node: a column of its agent's pool. */
@@ -64,11 +66,14 @@ function paceOfShares(usedPercent: number, elapsed: number): LimitPace {
 }
 
 /**
- * Codex's ids are slots, not allowances (a weekly-only plan reports its weekly window as
- * `primary`): its windows pool by kind. Other agents' ids name distinct allowances.
+ * The agents whose window ids are slots, not allowances: Codex's (a weekly-only plan reports
+ * its weekly window as `primary`, providers.md D1142). Their windows pool by kind; other
+ * agents' ids name distinct allowances. T3 decides this by its driver as well.
  */
+const SLOT_WINDOW_AGENTS: ReadonlySet<string> = new Set(["jhin.agent-codex"]);
+
 function poolKey(agentId: string, window: AgentUsageWindow): string {
-  return agentId === "jhin.agent-codex" ? window.kind : `${window.kind}:${window.id}`;
+  return SLOT_WINDOW_AGENTS.has(agentId) ? window.kind : `${window.kind}:${window.id}`;
 }
 
 function poolWindows(accounts: readonly LimitAccount[], now: number): LimitPoolWindow[] {
@@ -99,7 +104,9 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): LimitPoolW
     const meanElapsed =
       timed.length > 0 ? timed.reduce((sum, entry) => sum + entry.elapsed, 0) / timed.length : null;
     return {
-      id: members[0]!.account.agentId === "jhin.agent-codex" ? key : first.id,
+      // A slot agent's pool is named by its kind, unless two windows of one account split it.
+      id:
+        SLOT_WINDOW_AGENTS.has(members[0]!.account.agentId) && key === first.kind ? key : first.id,
       kind: first.kind,
       label: first.label,
       members,
@@ -169,4 +176,75 @@ export function limitNotices(accounts: readonly LimitAccount[], severalNodes: bo
       : account.agentName;
     return [`${subject}: ${notice}`];
   });
+}
+
+/** What the page read: every node's agents with limits, as of `now`. */
+export interface UsageRead {
+  readonly accounts: readonly LimitAccount[];
+  readonly severalNodes: boolean;
+  /** How many open nodes were asked. */
+  readonly nodes: number;
+  readonly now: number;
+  /** Nodes whose agents could not be listed. */
+  readonly failures: readonly string[];
+}
+
+/** Reads the limits of every agent that has them, on every open node. */
+export async function readUsage(
+  threads: ThreadsCatalog,
+  nodes: readonly ShownNode[],
+): Promise<UsageRead> {
+  const open = nodes.filter((node) => node.state === "open");
+  const failures: string[] = [];
+  const perNode = await Promise.all(
+    open.map(async (node): Promise<LimitAccount[]> => {
+      let agents: AgentInfo[];
+      try {
+        agents = await threads.call<AgentInfo[]>(node.target, "agents.list");
+      } catch (error) {
+        failures.push(`${node.label}: ${(error as Error).message}`);
+        return [];
+      }
+      const read = await Promise.all(
+        agents
+          .filter((agent) => agent.usageLimits === true && agent.available)
+          .map(async (agent): Promise<LimitAccount | undefined> => {
+            const key = `${targetKey(node.target)}|${agent.agentId}`;
+            try {
+              const { usageLimits } = await threads.call<{
+                usageLimits: AgentUsageLimits | null;
+              }>(node.target, "agents.usage-limits", { agentId: agent.agentId });
+              if (usageLimits === null) return undefined;
+              return {
+                key,
+                agentId: agent.agentId,
+                agentName: agent.name,
+                nodeLabel: node.label,
+                limits: usageLimits,
+              };
+            } catch (error) {
+              return {
+                key,
+                agentId: agent.agentId,
+                agentName: agent.name,
+                nodeLabel: node.label,
+                limits: {
+                  checkedAt: new Date().toISOString(),
+                  windows: [],
+                  unavailable: { reason: "probeFailed", message: (error as Error).message },
+                },
+              };
+            }
+          }),
+      );
+      return read.filter((account): account is LimitAccount => account !== undefined);
+    }),
+  );
+  return {
+    accounts: perNode.flat(),
+    severalNodes: open.length > 1,
+    nodes: open.length,
+    now: Date.now(),
+    failures,
+  };
 }

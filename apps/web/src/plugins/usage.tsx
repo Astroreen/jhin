@@ -3,14 +3,12 @@
 // "Limits" view: the breadcrumb, "Refresh limits"), UsageLimitsPooled.tsx (PoolSection,
 // PoolWindowCard, PoolBar, PoolSegment, LimitNotices) and the sidebar's "Usage" item
 // (SidebarChrome.tsx).
-import type { AgentUsageLimits } from "@jhin/agent-api";
 import {
   CONNECTIONS_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
   targetKey,
-  type AgentInfo,
   type Connections,
   type MeshMembership,
   type Navigation,
@@ -36,19 +34,21 @@ import {
   ChartNoAxesColumnIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AgentIcon } from "../lib/agent-icon.tsx";
 import { builtin } from "../lib/builtin.ts";
 import { useExternal } from "../lib/hooks.ts";
-import { createShownNodes, type ShownNode } from "../lib/nodes.ts";
+import { createShownNodes } from "../lib/nodes.ts";
 import { PaceIcon } from "../lib/pace-icon.tsx";
 import {
   collectLimitPools,
   limitNotices,
+  readUsage,
   type LimitAccount,
   type LimitPool,
   type LimitPoolWindow,
+  type UsageRead,
 } from "../lib/usage-pools.ts";
 import { formatResetsIn, remainingPercent } from "../lib/usage-limits.ts";
 
@@ -57,66 +57,6 @@ const USAGE_PANEL = "usage";
 
 /** One colour for every agent, as the composer's bars (D1144). */
 const BAR_COLOR = "var(--contrast-foreground, var(--foreground))";
-
-/** What the page read: every node's agents with limits, as of `now`. */
-interface UsageRead {
-  readonly accounts: readonly LimitAccount[];
-  readonly severalNodes: boolean;
-  readonly now: number;
-  /** Nodes whose agents could not be listed. */
-  readonly failures: readonly string[];
-}
-
-/** Reads the limits of every agent that has them, on every open node. */
-async function readUsage(threads: ThreadsCatalog, nodes: readonly ShownNode[]): Promise<UsageRead> {
-  const open = nodes.filter((node) => node.state === "open");
-  const failures: string[] = [];
-  const perNode = await Promise.all(
-    open.map(async (node): Promise<LimitAccount[]> => {
-      let agents: AgentInfo[];
-      try {
-        agents = await threads.call<AgentInfo[]>(node.target, "agents.list");
-      } catch (error) {
-        failures.push(`${node.label}: ${(error as Error).message}`);
-        return [];
-      }
-      const read = await Promise.all(
-        agents
-          .filter((agent) => agent.usageLimits === true && agent.available)
-          .map(async (agent): Promise<LimitAccount | undefined> => {
-            const key = `${targetKey(node.target)}|${agent.agentId}`;
-            try {
-              const { usageLimits } = await threads.call<{
-                usageLimits: AgentUsageLimits | null;
-              }>(node.target, "agents.usage-limits", { agentId: agent.agentId });
-              if (usageLimits === null) return undefined;
-              return {
-                key,
-                agentId: agent.agentId,
-                agentName: agent.name,
-                nodeLabel: node.label,
-                limits: usageLimits,
-              };
-            } catch (error) {
-              return {
-                key,
-                agentId: agent.agentId,
-                agentName: agent.name,
-                nodeLabel: node.label,
-                limits: {
-                  checkedAt: new Date().toISOString(),
-                  windows: [],
-                  unavailable: { reason: "probeFailed", message: (error as Error).message },
-                },
-              };
-            }
-          }),
-      );
-      return read.filter((account): account is LimitAccount => account !== undefined);
-    }),
-  );
-  return { accounts: perNode.flat(), severalNodes: open.length > 1, now: Date.now(), failures };
-}
 
 function PoolSegment(props: {
   readonly account: LimitAccount;
@@ -306,25 +246,38 @@ export const usagePlugin = builtin(
         const [read, setRead] = useState<UsageRead | undefined>();
         const [refreshing, setRefreshing] = useState(false);
         const showing = route.panel === USAGE_PANEL;
-        const nodesKey = nodes
-          .filter((node) => node.state === "open")
-          .map((node) => targetKey(node.target))
-          .join(",");
-        // Each runtime reads its limits again once what it knows is a minute old (D1304).
-        const load = useCallback(
-          () => {
-            setRefreshing(true);
-            void readUsage(threads, nodes)
-              .then(setRead)
-              .finally(() => setRefreshing(false));
-          },
-          // The open nodes, not the catalogs' every change.
-          // eslint-disable-next-line react-hooks/exhaustive-deps
-          [nodesKey],
+        // The open nodes and their names, not their catalogs' every change.
+        const nodesKey = JSON.stringify(
+          nodes
+            .filter((node) => node.state === "open")
+            .map((node) => [targetKey(node.target), node.label]),
         );
+        const latest = useRef({ nodes, request: 0 });
+        latest.current.nodes = nodes;
+        // Each runtime reads its limits again once what it knows is a minute old (D1304).
+        // Only the latest read is shown: one a later one superseded is dropped.
+        const load = useCallback(() => {
+          const request = ++latest.current.request;
+          setRefreshing(true);
+          readUsage(threads, latest.current.nodes)
+            .then(
+              (next) => {
+                if (latest.current.request === request) setRead(next);
+              },
+              (error: unknown) =>
+                context.log.warn("could not read the usage limits", { error: String(error) }),
+            )
+            .finally(() => {
+              if (latest.current.request === request) setRefreshing(false);
+            });
+        }, []);
         useEffect(() => {
           if (showing) load();
-        }, [showing, load]);
+        }, [showing, nodesKey, load]);
+        // Closed: a read still running is not shown when the page opens again.
+        useEffect(() => {
+          if (!showing) latest.current.request++;
+        }, [showing]);
         useEffect(() => {
           if (!showing) return;
           const onKeyDown = (event: KeyboardEvent) => {
@@ -368,8 +321,12 @@ export const usagePlugin = builtin(
               <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-5 pt-6 pb-12 sm:px-6">
                 {read === undefined ? (
                   <Spinner size="sm" tone="muted" />
-                ) : nodesKey === "" ? (
-                  <p className="text-sm text-muted-foreground">Connect a node to see limits.</p>
+                ) : read.nodes === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {nodes.length === 0
+                      ? "Connect a node to see limits."
+                      : "Waiting for a node to connect…"}
+                  </p>
                 ) : (
                   <>
                     {pools.length === 0 && notices.length === 0 ? (
@@ -383,8 +340,10 @@ export const usagePlugin = builtin(
                     {notices.length > 0 ? (
                       <Alert variant="warning">
                         <AlertTriangleIcon />
-                        {notices.map((notice) => (
-                          <AlertTitle className="break-words" key={notice}>
+                        {notices.map((notice, index) => (
+                          // The same text may come from two nodes.
+                          // oxlint-disable-next-line react/no-array-index-key
+                          <AlertTitle className="break-words" key={index}>
                             {notice}
                           </AlertTitle>
                         ))}
