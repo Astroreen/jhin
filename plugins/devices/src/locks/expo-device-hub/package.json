@@ -1,0 +1,7 @@
+{
+  "name": "jhin-device-tool-expo-device-hub",
+  "private": true,
+  "dependencies": {
+    "expo-device-hub": "0.15.3"
+  }
+}

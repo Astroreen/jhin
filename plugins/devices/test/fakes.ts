@@ -151,7 +151,11 @@ const Fs = require("node:fs");
 const Path = require("node:path");
 const args = process.argv.slice(2);
 const prefix = args[args.indexOf("--prefix") + 1];
-const [name, version] = args.at(-1).split(/@(?=[^@]*$)/);
+// \`npm ci\` of the plugin's lockfile (D1330): the tool is the manifest's one dependency.
+if (args[0] !== "ci" || !Fs.existsSync(Path.join(prefix, "package-lock.json"))) process.exit(2);
+const [[name, version]] = Object.entries(
+  JSON.parse(Fs.readFileSync(Path.join(prefix, "package.json"), "utf8")).dependencies,
+);
 Fs.appendFileSync(${JSON.stringify(at("npm.log"))}, JSON.stringify({ name, version }) + "\\n");
 if (Fs.existsSync(${JSON.stringify(at("npm-fails"))})) {
   Fs.rmSync(${JSON.stringify(at("npm-fails"))});

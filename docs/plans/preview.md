@@ -674,6 +674,25 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   as in T3, since a command per pointer move would lag; they are the same
   inputs these commands give.
 
+### The tools' integrity (W37)
+
+- **D1330. The hub's tools install from lockfiles the plugin ships.** T3
+  installs `expo-device-hub` and `agent-device` with `npm install
+  <package>@<version>`, so their dependencies resolve from the registry at
+  install time. The plugin ships one lockfile per pinned tool
+  (`plugins/devices/src/locks/<package>/`, imported as JSON modules: a `package.json` that depends on the
+  pin and npm's `package-lock.json` for it, every package with its
+  `sha512` integrity), and D1206's install copies both into the staging
+  folder and runs `npm ci` there: npm installs exactly that tree and fails
+  on any download whose hash differs. A lockfile that does not pin the
+  version or lacks a hash installs nothing ("…failed while checking its
+  lockfile."); T3's step wording stays otherwise. The install scripts still
+  run (the hub's `node-datachannel` fetches its native build there), so what
+  those scripts download is as trustworthy as their own checks. Bumping a
+  pin regenerates its lockfile: in an empty folder with the `package.json`,
+  `npm install --package-lock-only --ignore-scripts`, whose output a unit
+  test checks against `DEVICE_TOOL_VERSIONS`.
+
 ### Touch and uploads (W34)
 
 Workstream W34 continues this plan with decisions from D1201–D1220. The
@@ -784,14 +803,8 @@ probe of `ServerBrowser.ts`.
   - T3's setup wizard (enable device support, agent access, onboarding) and
     its consent before the first download; until then the hub is opt-in
     (`jhin.devices.hub`, off by default).
-  - An integrity pin for the hub's runtime installs: npm resolves the pinned
-    versions' dependencies from the registry at install time, with no
-    lockfile or hashes of T3's, so what is downloaded is only as trustworthy
-    as the registry then, and npm runs their lifecycle scripts as the node's
-    user. T3 installs the same way; `--ignore-scripts` is not an option, as
-    the hub's `node-datachannel` fetches its native build in its install
-    script. A shipped lockfile or shrinkwrap installed with `npm ci` would
-    pin it.
+  - Pinning what the install scripts download (the hub's `node-datachannel`
+    native build): `npm ci` pins the npm tree only (D1330).
   - The device tools panel (appearance, text size, toggles, location,
     permissions, push, open URL, launch and terminate) and `DeviceActions`
     with `device.detail`, the Android orientation menu among them; the
