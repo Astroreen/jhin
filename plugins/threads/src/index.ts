@@ -3489,11 +3489,14 @@ export default definePlugin({
       const thread = await getThread(threadId);
       if (thread.archivedAt !== undefined) return thread;
       await stopTurn(threadId);
-      return updateThread(threadId, (latest) => ({
+      const archived = await updateThread(threadId, (latest) => ({
         ...latest,
         archivedAt: now(),
         updatedAt: now(),
       }));
+      // An archived thread's armed resume waits for it to come back (D1312).
+      armRecovery(archived);
+      return archived;
     }
 
     context.commands.register({
@@ -3502,16 +3505,32 @@ export default definePlugin({
       input: z.object({ threadId: z.string() }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId }) =>
-        updateThread(threadId, (thread) => {
+      handler: ({ threadId }) => {
+        let unarchived = false;
+        return updateThread(threadId, (thread) => {
           if (thread.archivedAt === undefined) return thread;
+          unarchived = true;
           const { archivedAt: _archivedAt, ...rest } = thread;
           return { ...rest, updatedAt: now() };
-        }).then((thread) => {
-          // A continuation armed before it was archived waits for its reset again (D1312).
-          armRecovery(thread);
-          return thread;
-        }),
+        }).then(async (thread) => {
+          // A thread that was not archived keeps its recovery as it is.
+          if (!unarchived) return thread;
+          // A continuation armed before it was archived waits for its reset again (D1312); one
+          // whose reset passed while archived is not sent by unarchiving: the banner offers it.
+          const recovery = thread.limitRecovery;
+          if (recovery?.autoResume !== true) return thread;
+          if (recoveryDueAt(thread, recovery) > Date.now()) {
+            armRecovery(thread);
+            return thread;
+          }
+          // Its reset passed while archived: the resume is off, and the banner offers it.
+          return updateThread(threadId, (current) =>
+            current.limitRecovery?.turnId === recovery.turnId
+              ? { ...current, limitRecovery: { ...current.limitRecovery, autoResume: false } }
+              : current,
+          );
+        });
+      },
     });
 
     // --- Arrangement (D75–D78) --------------------------------------------------
@@ -3738,6 +3757,12 @@ export default definePlugin({
       if (resetAt === undefined || !(Date.parse(resetAt) > Date.parse(turn.at))) return undefined;
       return { turnId: turn.turnId, resetAt };
     };
+    /** When an armed resume is sent: at the reset, or the end of a snooze that outlasts it. */
+    const recoveryDueAt = (thread: Thread, recovery: NonNullable<Thread["limitRecovery"]>) =>
+      Math.max(
+        Date.parse(recovery.resetAt),
+        thread.snoozedUntil === undefined ? 0 : Date.parse(thread.snoozedUntil),
+      );
     /**
      * Arms the thread's continuation at its reset (or the end of a snooze that outlasts it),
      * or disarms it. The timer is what says the time came: it is not asked of the clock again.
@@ -3747,8 +3772,7 @@ export default definePlugin({
       recoveryTimers.delete(thread.id);
       const recovery = thread.limitRecovery;
       if (recovery === undefined || !recovery.autoResume || thread.archivedAt !== undefined) return;
-      const snoozed = thread.snoozedUntil === undefined ? 0 : Date.parse(thread.snoozedUntil);
-      const wait = Math.max(0, Math.max(Date.parse(recovery.resetAt), snoozed) - Date.now());
+      const wait = Math.max(0, recoveryDueAt(thread, recovery) - Date.now());
       const timer = setTimeout(
         () => {
           recoveryTimers.delete(thread.id);
@@ -3792,9 +3816,20 @@ export default definePlugin({
         armRecovery(thread);
         return;
       }
-      // As the user's message, as T3's continuation is. The record goes once it is sent: a
-      // send that fails leaves it, and the banner still offers it.
-      await startTurn(threadId, { text: RESUME_TEXT });
+      // As the user's message, as T3's continuation is. A send that fails (the thread just
+      // took a message, its agent is gone) turns the resume off, so the banner offers it
+      // again instead of saying one is armed.
+      try {
+        await startTurn(threadId, { text: RESUME_TEXT });
+      } catch (error) {
+        // The send's error is the one reported, also when turning the resume off fails too.
+        await updateThread(threadId, (current) =>
+          current.limitRecovery?.turnId === recovery.turnId
+            ? { ...current, limitRecovery: { ...current.limitRecovery, autoResume: false } }
+            : current,
+        ).catch(() => undefined);
+        throw error;
+      }
       await updateThread(threadId, (current) => {
         if (current.limitRecovery?.turnId !== recovery.turnId) return current;
         const { limitRecovery: _done, ...rest } = current;
@@ -3842,7 +3877,13 @@ export default definePlugin({
               { threadId },
             );
           }
-          next = { ...next, snoozedUntil: limited.resetAt, snoozedAt: at };
+          // A snooze of the user's that ends later stays: it is not woken early.
+          const later =
+            thread.snoozedUntil !== undefined && Date.parse(thread.snoozedUntil) > resetMs;
+          if (later) {
+            // The user's own snooze stands: the recovery's snooze is not taken.
+            next = { ...next, limitRecovery: { ...recovery, snooze: false } };
+          } else next = { ...next, snoozedUntil: limited.resetAt, snoozedAt: at };
         } else if (
           !recovery.snooze &&
           previous?.snooze === true &&
@@ -3874,7 +3915,15 @@ export default definePlugin({
     // The continuations armed before the node stopped are armed again.
     void listThreads()
       .then((all) => {
-        for (const thread of all) if (thread.limitRecovery?.autoResume) armRecovery(thread);
+        for (const thread of all) {
+          // Only a recovery still of the thread's latest turn: an old record arms nothing.
+          if (
+            thread.limitRecovery?.autoResume &&
+            limitedTurn(thread)?.turnId === thread.limitRecovery.turnId
+          ) {
+            armRecovery(thread);
+          }
+        }
       })
       .catch((error: unknown) =>
         context.log.warn("could not arm the limited threads' continuations", {

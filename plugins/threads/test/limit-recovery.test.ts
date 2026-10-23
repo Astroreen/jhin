@@ -96,18 +96,17 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("sends nothing to a thread archived before the reset, and arms it again when it comes back", async () => {
+  it("disarms an archived thread, and arms it again when it comes back before the reset", async () => {
     const started = await limited();
     const { client, thread } = started;
-    const stream = watch(client, thread.id);
     await armed(started);
     await client.call("threads.archive", { threadId: thread.id });
-    reset();
-    // The next turn is the user's: the continuation found the thread archived.
+    // Archived, it holds no timer: nothing can be sent to it.
+    expect(vi.getTimerCount()).toBe(0);
+    // Back from the archive before the reset: its continuation waits for it again.
     await client.call("threads.unarchive", { threadId: thread.id });
-    await client.call("threads.send", { threadId: thread.id, text: "hello" });
-    const next = await stream.until("agent.turn.started", 1);
-    expect(next.payload).toMatchObject({ input: { text: "hello" } });
+    expect(vi.getTimerCount()).toBe(1);
+    vi.clearAllTimers();
   });
 
   it("arms the continuation again when the node starts", async () => {
@@ -134,6 +133,33 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     );
   });
 
+  it("turns the resume off when its send fails", async () => {
+    const first = await limited();
+    await first.client.call("threads.limit-recovery.set", {
+      threadId: first.thread.id,
+      turnId: first.turnId,
+      resetAt: first.resetAt,
+      autoResume: true,
+    });
+    await first.stop();
+    // The node starts again without the thread's agent: the continuation cannot be sent.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const second = await node({ storage: first.storage, data: first.data, agent: false });
+    await second.client.call("threads.list", {});
+    expect(vi.getTimerCount()).toBe(1);
+    const index = watch(second.client, "stream:threads");
+    reset();
+    const off = (
+      await index.untilMatch((event) => {
+        const payload = event.payload as unknown as Thread;
+        return payload.id === first.thread.id && payload.limitRecovery?.autoResume === false;
+      })
+    ).payload as unknown as Thread;
+    // The banner offers it again; the turn that hit the limit is still the latest.
+    expect(off.limitRecovery).toMatchObject({ turnId: first.turnId, autoResume: false });
+    expect(off.lastTurn).toMatchObject({ turnId: first.turnId, status: "failed" });
+  });
+
   it("snoozes the thread until the reset, and wakes it when that is undone", async () => {
     const { client, thread, turnId, resetAt } = await limited();
     const snoozed = await client.call<Thread>("threads.limit-recovery.set", {
@@ -151,6 +177,73 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     });
     expect(woken.snoozedUntil).toBeUndefined();
     expect(woken.limitRecovery).toEqual({ turnId, resetAt, autoResume: false, snooze: false });
+  });
+
+  it("arms only a recovery still of its thread's latest turn when the node starts", async () => {
+    const first = await limited();
+    const { client } = first;
+    const arm = (threadId: string, turnId: string, resetAt: string) =>
+      client.call("threads.limit-recovery.set", { threadId, turnId, resetAt, autoResume: true });
+    await arm(first.thread.id, first.turnId, first.resetAt);
+    // The thread went on: its recovery is an old one.
+    await client.call("threads.send", { threadId: first.thread.id, text: "hello" });
+    await first.record(
+      (current) =>
+        current.lastTurn?.turnId !== first.turnId && current.lastTurn?.status === "completed",
+    );
+    // Another thread's recovery is still its latest turn's: the one armed.
+    const other = await client.call<Thread>("threads.create", {});
+    const index = watch(client, "stream:threads");
+    await client.call("threads.send", { threadId: other.id, text: "/limit" });
+    const failed = (
+      await index.untilMatch((event) => {
+        const payload = event.payload as unknown as Thread;
+        return payload.id === other.id && payload.lastTurn?.status === "failed";
+      })
+    ).payload as unknown as Thread;
+    await arm(other.id, failed.lastTurn!.turnId, failed.lastTurn!.failure!.resetAt!);
+    await first.stop();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const second = await node({ storage: first.storage, data: first.data });
+    await second.client.call("threads.list", {});
+    // Exactly one: the arming ran, and left the old one out.
+    expect(vi.getTimerCount()).toBe(1);
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("does not send a continuation whose reset passed while the thread was archived", async () => {
+    const started = await limited();
+    const { client, thread, resetAt } = started;
+    await armed(started);
+    await client.call("threads.archive", { threadId: thread.id });
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+    // Later than the reset: unarchiving arms nothing.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse(resetAt) + 60_000);
+    const back = await client.call<Thread>("threads.unarchive", { threadId: thread.id });
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+    // Nothing was sent.
+    expect(back.lastTurn?.status).toBe("failed");
+    // Its resume is off, so the banner offers it again instead of claiming one is armed.
+    expect(back.limitRecovery).toMatchObject({ autoResume: false });
+  });
+
+  it("keeps a snooze of the user's that ends after the reset", async () => {
+    const { client, thread, turnId, resetAt } = await limited();
+    const later = new Date(Date.parse(resetAt) + 24 * 3_600_000).toISOString();
+    await client.call("threads.snooze", { threadId: thread.id, until: later });
+    const snoozed = await client.call<Thread>("threads.limit-recovery.set", {
+      threadId: thread.id,
+      turnId,
+      resetAt,
+      snooze: true,
+    });
+    expect(snoozed.snoozedUntil).toBe(later);
+    // The recovery's own snooze was not taken: the banner still offers it.
+    expect(snoozed.limitRecovery?.snooze).toBe(false);
   });
 
   it("refuses a turn that is not the latest limited one, or another reset", async () => {
