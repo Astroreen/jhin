@@ -408,3 +408,17 @@ finishes out of the Deferred lists and leaves the rest there.
   import into a profile, the device hub; desktop auto-restart of a crashed
   node with backoff, more release builds, preview and devices inside the
   desktop app.
+  **Done** (D1201–D1210, D1211–D1220 unused): #198 the desktop app restarts
+  a node that exits by itself with T3's backoff (D1201, `desktop.md`); #205
+  the floating mini player (D1202); #209 touch taps and pans, the
+  editable-at-point probe and the page's file picker (D1203); #220 cookie
+  import from the node machine's browsers into a profile (D1204–D1205);
+  #227 T3's device hub for the node's devices, opt-in, with video and input
+  (D1206–D1209); #210 release builds for x64 and arm64 of every system with
+  T3's merged feeds (D1210, `desktop.md`). Left in the Deferred lists of
+  `preview.md` and `desktop.md`: the preview and devices inside the desktop
+  app (T3's Electron webview runtime), the chat canvas beside the mini
+  player and its pop-out window, the hub's setup wizard and consent, SSH
+  device hosts and the tools panel, an integrity pin for the hub's runtime
+  installs, saving downloads to the client, and the signed release path,
+  which waits for the owner's secrets.
