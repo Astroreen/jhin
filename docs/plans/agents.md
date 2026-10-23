@@ -1912,5 +1912,5 @@ Each workstream lists its PRs here as they merge.
   and New generation, Edit and Remove on an agent's page (D1065–D1067).
 - C3 #201: the C3 run, its report and D1107 (honest empty sections in
   Civilization mode), the lore story "own homework".
-- L1 #PR: the answer of an agent's turn to the owner's message is recorded
+- L1 #233: the answer of an agent's turn to the owner's message is recorded
   with it and shows in the owner's conversation and the Lead view (D1221).
