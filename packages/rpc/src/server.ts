@@ -41,7 +41,9 @@ const BACKLOG_PAGE = 500;
 export const MAX_WAITING_CHARACTERS = 16 * 1024 * 1024;
 /**
  * Most one connection keeps waiting over all its windowed subscriptions
- * (security.md D1365): the one that takes it past ends as above.
+ * (security.md D1365): the one that takes it past ends as above. Counted in
+ * characters of JSON (UTF-16 units, as D470's bound), so the memory held is
+ * at most about twice this many bytes.
  */
 export const MAX_CONNECTION_WAITING_CHARACTERS = 32 * 1024 * 1024;
 

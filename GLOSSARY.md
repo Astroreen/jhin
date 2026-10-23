@@ -66,6 +66,9 @@ Words about Jhin:
   grants it was given; issued by pairing or by `auth.tokens.issue`, listed
   as an **authorized client** and revocable. The **owner token** is the
   node's own, holding `*`.
+- **Shell access** — a permission whose holder runs commands on the node's
+  machine as the node's OS user (`terminals.write`); marked `shellAccess`
+  and named as such wherever it is granted (security.md D1364).
 - **Host allowlist** — the names a node answers to for browsers
   (`jhin.http.allowedHosts`, plus its addresses, loopback, the machine's
   and Tailscale's names and the mesh's advertised hosts); a browser's

@@ -294,24 +294,29 @@ describe("a connection's bound on waiting events (security.md D1365)", () => {
     expect(piece.length).toBeLessThan(MAX_WAITING_CHARACTERS);
     expect(ended(messages)).toEqual(["e"]);
 
-    // An ended subscription gives its share back: a new one fits, and the others still flow.
+    // The others still flow: a's piece goes once its first event is acknowledged.
+    const first = events().find((event) => event.stream === "live/a")!;
+    notify(RPC_ACK, { subscription: "a", sequence: first.sequence });
+    await request("rpc.hello", {});
+    expect(events().filter((event) => event.stream === "live/a")).toHaveLength(2);
+    // The ended one gave its share back: another piece fits beside b, c and d
+    // (it would not if e's were still counted).
     await request("rpc.subscribe", {
       subscription: "f",
       stream: "live/f",
       window: { events: 1, bytes: 1024 },
     });
     memory.append("live/f", "app.n", "first");
-    memory.append("live/f", "app.n", "small");
-    const first = events().find((event) => event.stream === "live/a")!;
-    notify(RPC_ACK, { subscription: "a", sequence: first.sequence });
+    memory.append("live/f", "app.n", piece);
     await request("rpc.hello", {});
     expect(ended(messages)).toEqual(["e"]);
-    expect(events().filter((event) => event.stream === "live/a")).toHaveLength(2);
   });
 
   it("frees an unsubscribed subscription's waiting events", async () => {
     const { memory, request, messages } = rawConnection();
-    const piece = "z".repeat(MAX_CONNECTION_WAITING_CHARACTERS / 2 - 1024);
+    // Two of these fit with a third of the bound to spare; four would not.
+    const piece = "z".repeat(Math.floor(MAX_CONNECTION_WAITING_CHARACTERS / 3));
+    expect(piece.length).toBeLessThan(MAX_WAITING_CHARACTERS);
     for (const round of [1, 2, 3]) {
       for (const name of ["a", "b"]) {
         const id = `${name}${round}`;
@@ -321,7 +326,7 @@ describe("a connection's bound on waiting events (security.md D1365)", () => {
           window: { events: 1, bytes: 1024 },
         });
         memory.append(`live/${id}`, "app.n", "first");
-        memory.append(`live/${id}`, "app.n", piece.slice(0, MAX_WAITING_CHARACTERS - 1024));
+        memory.append(`live/${id}`, "app.n", piece);
       }
       await request("rpc.unsubscribe", { subscription: `a${round}` });
       await request("rpc.unsubscribe", { subscription: `b${round}` });

@@ -18,6 +18,7 @@ import {
   parsePairFlags,
   reachableBaseUrl,
   shellAccessNotes,
+  shellAccessUnknown,
 } from "../src/pair.ts";
 import { seedToken } from "./support/token.ts";
 
@@ -292,6 +293,15 @@ describe("the shell access note (security.md D1364)", () => {
       "This link grants shell access (terminals.write): the device can run commands on this machine as the node's user. Narrow it with --permission.",
     ]);
     expect(shellAccessNotes(["*"], entries)[0]).toContain("(terminals.write, runner.exec)");
+  });
+
+  it("says so when it could not check, never staying silent", () => {
+    expect(
+      shellAccessUnknown(Object.assign(new Error("denied"), { code: "PERMISSION_DENIED" })),
+    ).toContain("cannot tell whether the link grants shell access");
+    expect(shellAccessUnknown(new Error("socket closed"))).toBe(
+      "Could not check whether this link grants shell access: socket closed",
+    );
   });
 });
 

@@ -777,8 +777,13 @@ Connect stays out of scope.
   `rpc.subscribe` fails with that code while its backlog is read, and its
   waiting events are freed; the client reads a snapshot again. So one
   connection opening many subscriptions it never acknowledges holds at
-  most 32 MiB instead of 16 MiB each. Subscriptions without a window are
-  unchanged (the socket's own buffer holds them, as before D470).
+  most 32 MiB instead of 16 MiB each (characters of JSON, as D470 counts:
+  up to about twice as many bytes). The subscription that crosses the
+  bound ends, not the one holding the most: a small new one (a terminal)
+  may end while an old one keeps its share, a choice kept for its
+  simplicity (the client reads a snapshot again either way).
+  Subscriptions without a window are unchanged (the socket's own buffer
+  holds them, as before D470).
 
 ## PR plan
 
@@ -957,6 +962,11 @@ A slice a PR, in the order of D1361's risks:
   permission no command needs is not offered (the token plugin cannot
   depend on `rpc.streams`: the transport that provides it depends on
   `auth.verifier`, D1188).
+- Shell access (D1364) marks `terminals.write` only. Other permissions
+  that end in commands run as the node's user are not marked yet:
+  `projects.write` with project scripts needs `terminals.write` already,
+  but `threads.write` (an agent in full access runs commands),
+  `git.write` (hooks) and `editors.open` are not described as such.
 - An unreadable `clients.json` is moved aside to `clients.json.corrupt` and
   no device token works until new ones are issued; nothing repairs it.
 - `lastSeenAt` is kept in memory and written with the next change of

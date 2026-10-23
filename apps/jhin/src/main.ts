@@ -17,6 +17,7 @@ import {
   formatPairOutput,
   pairingNotes,
   shellAccessNotes,
+  shellAccessUnknown,
   parsePairFlags,
   reachableBaseUrl,
   type PairingLink,
@@ -271,8 +272,9 @@ async function pair(
         permissions: PermissionEntry[];
       };
       notes.push(...shellAccessNotes(link.permissions, entries));
-    } catch {
-      // A token without auth.read still pairs, without this note.
+    } catch (error) {
+      // A token without auth.read still pairs; any other failure is said, never hidden.
+      notes.push(shellAccessUnknown(error));
     }
     if (options.get("json") === true) {
       // The notes too: a Tailscale mapping outlives this run and says how to remove it.

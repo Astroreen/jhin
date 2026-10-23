@@ -185,6 +185,14 @@ export function shellAccessNotes(
   ];
 }
 
+/** What `jhin pair` says when it could not tell whether a link grants shell access (D1364). */
+export function shellAccessUnknown(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === "PERMISSION_DENIED"
+    ? "This token cannot read the node's permissions (auth.read), so it cannot tell whether the link grants shell access (terminals.write). Pass --permission to be sure."
+    : `Could not check whether this link grants shell access: ${error instanceof Error ? error.message : String(error)}`;
+}
+
 /** T3's `formatPairOutput`, with Jhin's `Code:` for T3's `Token:`. */
 export function formatPairOutput(input: {
   readonly nodeLabel: string;
