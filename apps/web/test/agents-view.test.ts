@@ -23,6 +23,8 @@ import {
   applyAgentEvent,
   applyThreadEvent,
   createAgentsStore,
+  generationRows,
+  generationsKey,
   statusOf,
   type NodeAgents,
 } from "../src/plugins/agents/store.ts";
@@ -274,5 +276,47 @@ describe("an agent's definition from the client (C1, D1065)", () => {
       panel: "agent-definition",
       section: "builder",
     });
+  });
+});
+
+describe("D1272: a generation's own status in the page's list", () => {
+  const two = agent({
+    generations: [
+      { number: 1, threadId: "t1", startedAt: "2026-10-21T00:00:00.000Z" },
+      { number: 2, threadId: "t2", startedAt: "2026-10-22T00:00:00.000Z" },
+    ],
+  });
+
+  it("lists the newest first with each status and marks the current one", () => {
+    const rows = generationRows(
+      two,
+      new Map<string, AgentStatus>([
+        ["t1", "idle"],
+        ["t2", "working"],
+      ]),
+    );
+    expect(rows.map((row) => [row.generation.number, row.current, row.status])).toEqual([
+      [2, true, "working"],
+      [1, false, "idle"],
+    ]);
+  });
+
+  it("keeps the list without statuses before the answer or when the call failed", () => {
+    for (const statuses of [undefined, new Map<string, AgentStatus>()]) {
+      const rows = generationRows(two, statuses);
+      expect(rows.map((row) => [row.generation.number, row.current])).toEqual([
+        [2, true],
+        [1, false],
+      ]);
+      expect(rows.every((row) => row.status === undefined)).toBe(true);
+    }
+  });
+
+  it("asks again when a turn of one of its generations, or its stop, changes", () => {
+    const key = (state: NodeAgents, record = two) => generationsKey(record, state);
+    const before = key(ready);
+    expect(key({ ...ready, turns: { other: "running" as never } })).toBe(before);
+    expect(key({ ...ready, turns: { t1: "running" as never } })).not.toBe(before);
+    expect(key(ready, { ...two, stoppedAt: "2026-10-23T00:00:00.000Z" })).not.toBe(before);
   });
 });

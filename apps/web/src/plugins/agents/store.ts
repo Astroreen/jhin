@@ -6,6 +6,7 @@ import {
   THREADS_STREAM,
   ThreadEvents,
   agentStatusOf,
+  type AgentGeneration,
   type AgentRecord,
   type AgentStatus,
   type TurnStatus,
@@ -105,6 +106,44 @@ export const STATUS_LABELS: Readonly<Record<AgentStatus, string>> = {
   stopped: "Stopped",
   unavailable: "Unavailable",
 };
+
+/** One generation of the page's list, with its own status once `agents.generations` answered (D1272). */
+export interface GenerationRow {
+  readonly generation: AgentGeneration;
+  readonly current: boolean;
+  readonly status?: AgentStatus;
+}
+
+/**
+ * The page's list of generations, newest first. `statuses` is the answer of
+ * `agents.generations` by thread id; without it (not asked yet, or the call
+ * failed) the rows carry no status, as before.
+ */
+export function generationRows(
+  agent: AgentRecord,
+  statuses: ReadonlyMap<string, AgentStatus> | undefined,
+): GenerationRow[] {
+  const last = agent.generations.at(-1);
+  return agent.generations.toReversed().map((generation) => {
+    const status = statuses?.get(generation.threadId);
+    return {
+      generation,
+      current: generation === last,
+      ...(status === undefined ? {} : { status }),
+    };
+  });
+}
+
+/**
+ * What the list's statuses depend on: the record (its generations, stop) and
+ * the live turns of its generations' threads. A change asks `agents.generations` again.
+ */
+export function generationsKey(agent: AgentRecord, state: NodeAgents): string {
+  return JSON.stringify([
+    agent.stoppedAt ?? null,
+    agent.generations.map((generation) => [generation.threadId, state.turns[generation.threadId]]),
+  ]);
+}
 
 export interface AgentsStore extends Disposable {
   /** Every followed node's agents, by connection id: the same map until one changes. */

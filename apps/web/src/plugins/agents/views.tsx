@@ -40,7 +40,7 @@ import {
   PlusIcon,
   RotateCwIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
@@ -54,6 +54,8 @@ import {
 import {
   STATUS_LABELS,
   createAgentsStore,
+  generationRows,
+  generationsKey,
   statusOf,
   type AgentsStore,
   type NodeAgents,
@@ -270,14 +272,40 @@ function Generations(props: {
   view: AgentsView;
   node: string;
   agent: AgentRecord;
+  state: NodeAgents;
   shown: AgentGeneration;
 }) {
-  const { view, node, agent, shown } = props;
-  const current = agent.generations.at(-1);
+  const { view, node, agent, state, shown } = props;
+  // Each generation's own status (D1272): `agents.generations`, asked again when this agent changes.
+  const [statuses, setStatuses] = useState<
+    { key: string; map: ReadonlyMap<string, AgentStatus> | "failed" } | undefined
+  >();
+  const key = `${node}|${agent.agentId}|${generationsKey(agent, state)}`;
+  useEffect(() => {
+    let live = true;
+    view.threads
+      .call<{ threadId: string; status: AgentStatus }[]>({ node }, "agents.generations", {
+        agentId: agent.agentId,
+      })
+      .then(
+        (rows) =>
+          live && setStatuses({ key, map: new Map(rows.map((row) => [row.threadId, row.status])) }),
+        () => live && setStatuses({ key, map: "failed" }),
+      );
+    return () => {
+      live = false;
+    };
+  }, [view.threads, key]);
+  // The last answer stands while the next one is read.
+  const known = statuses?.map === "failed" ? undefined : statuses?.map;
+  const rows = generationRows(agent, known);
   return (
     <nav aria-label="Generations" className="w-52 shrink-0 overflow-y-auto border-r p-2">
+      {statuses?.map === "failed" ? (
+        <p className="px-2 pb-1 text-xs text-muted-foreground">Statuses are unavailable.</p>
+      ) : null}
       <ul className="flex flex-col gap-0.5">
-        {agent.generations.toReversed().map((generation) => {
+        {rows.map(({ generation, current, status }) => {
           const selected = generation.threadId === shown.threadId;
           return (
             <li key={generation.threadId}>
@@ -289,18 +317,22 @@ function Generations(props: {
                 )}
                 onClick={() =>
                   view.navigation.navigate(
-                    agentRoute(
-                      node,
-                      agent.agentId,
-                      generation === current ? undefined : generation.number,
-                    ),
+                    agentRoute(node, agent.agentId, current ? undefined : generation.number),
                   )
                 }
                 type="button"
               >
-                <span>
-                  Generation {generation.number}
-                  {generation === current ? " · current" : ""}
+                <span className="flex items-center gap-1.5">
+                  {status === undefined ? null : <StatusDot status={status} />}
+                  <span>
+                    Generation {generation.number}
+                    {current ? " · current" : ""}
+                  </span>
+                  {status === undefined ? null : (
+                    <span className="ms-auto text-xs text-muted-foreground">
+                      {STATUS_LABELS[status]}
+                    </span>
+                  )}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
                   {generation.reason ?? new Date(generation.startedAt).toLocaleString()}
@@ -478,7 +510,7 @@ export function AgentPage(props: {
         />
       ) : (
         <div className="flex min-h-0 flex-1">
-          <Generations agent={agent} node={node} shown={shown} view={view} />
+          <Generations agent={agent} node={node} shown={shown} state={state} view={view} />
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto py-4">
             <Slot
               name={THREAD_TRANSCRIPT_SLOT}
