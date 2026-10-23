@@ -235,3 +235,8 @@ export function pullRequestListLines(
     })),
   );
 }
+
+/** A pull request's URL when it is a web page: a forge's answer is no reason to open anything else. */
+export function webPageUrl(url: string): string | undefined {
+  return /^https?:\/\//i.test(url) ? url : undefined;
+}

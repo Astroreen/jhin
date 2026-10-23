@@ -37,6 +37,7 @@ import {
   pullRequestChecksPresentation,
   pullRequestListLines,
   resolvePullRequestState,
+  webPageUrl,
   type PullRequestListLine,
 } from "../../lib/pull-request.ts";
 import { PULL_REQUESTS_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
@@ -60,9 +61,6 @@ function latestSyncedAt(links: readonly ThreadPullRequest[]): string | null {
   }
   return latest;
 }
-
-/** Only a web page is opened: a forge's answer is no reason to run anything else. */
-const webUrl = (url: string) => (/^https?:\/\//i.test(url) ? url : undefined);
 
 function Tip(props: { trigger: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -131,7 +129,7 @@ function LinkRow({
       </span>
       <a
         className="flex min-w-0 flex-1"
-        href={webUrl(link.url)}
+        href={webPageUrl(link.url)}
         rel="noopener noreferrer"
         target="_blank"
       >
@@ -353,7 +351,7 @@ export function createPullRequestsPanel(
     const actions: RowActions = {
       copy: (link) => void copyText(link.url).catch(failed("Could not copy the link")),
       open: (link) => {
-        const url = webUrl(link.url);
+        const url = webPageUrl(link.url);
         if (url !== undefined) window.open(url, "_blank", "noopener,noreferrer");
       },
       setWatching: (link, watching) =>

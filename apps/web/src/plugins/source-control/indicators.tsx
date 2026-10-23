@@ -19,6 +19,7 @@ import {
   pullRequestListLines,
   threadPullRequestBadge,
   threadPullRequestBadgePresentation,
+  webPageUrl,
 } from "../../lib/pull-request.ts";
 import {
   PULL_REQUESTS_PANEL,
@@ -45,7 +46,7 @@ export function PullRequestBadge({
   const status = prStatusIndicator(pr)!;
   const checks = pullRequestChecksPresentation(pr.checks);
   // Only a web page is linked: a forge's answer is no reason to run anything else.
-  const href = /^https?:\/\//i.test(pr.url) ? pr.url : undefined;
+  const href = webPageUrl(pr.url);
   const anchor: ReactElement = <a href={href} rel="noopener noreferrer" target="_blank" />;
   const label = checks === null ? status.tooltip : `${status.tooltip}. ${checks.label}`;
   return (
@@ -151,7 +152,7 @@ function LinkedPullRequestsBadge({
               opensList ? (
                 <button type="button" />
               ) : (
-                <a href={current.url} rel="noopener noreferrer" target="_blank" />
+                <a href={webPageUrl(current.url)} rel="noopener noreferrer" target="_blank" />
               )
             }
           />

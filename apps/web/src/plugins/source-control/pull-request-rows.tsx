@@ -21,6 +21,7 @@ import {
   pullRequestChecksPresentation,
   pullRequestListLines,
   resolvePullRequestState,
+  webPageUrl,
 } from "../../lib/pull-request.ts";
 import {
   ROW,
@@ -32,9 +33,9 @@ import {
 } from "../../lib/thread-details-styles.ts";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 
-/** Only a web page is opened: a forge's answer is no reason to run anything else. */
 const openUrl = (url: string) => {
-  if (/^https?:\/\//i.test(url)) window.open(url, "_blank", "noopener,noreferrer");
+  const page = webPageUrl(url);
+  if (page !== undefined) window.open(page, "_blank", "noopener,noreferrer");
 };
 
 /** T3's row tooltip: the title and number, the state, base ← head, the checks while open. */
