@@ -693,6 +693,43 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   `npm install --package-lock-only --ignore-scripts`, whose output a unit
   test checks against `DEVICE_TOOL_VERSIONS`.
 
+### The device tools (W37)
+
+The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
+(with its tests), `DeviceAction*` and `DeviceDetail` of
+`packages/contracts/src/device.ts`, and in `apps/web/src/components/device`
+`DeviceToolsPanel.tsx`, `useDeviceControls.ts` and the rail's "Device tools".
+
+- **D1332. The node runs T3's device actions itself.** serve-sim's own panel
+  sends shell commands over a socket; as T3 does, the node runs the same
+  commands typed per action instead (`plugins/devices/src/actions.ts`, T3's
+  cases as unit tests): `xcrun simctl ui`, `privacy`, `location`, `openurl`,
+  `launch`, `terminate`, `push` and serve-sim's `serve-sim-ax-settings` and
+  CLI (found in the installed hub, `vendor/serve-sim/dist`) for iOS; `adb
+  shell` settings, `cmd uimode`, `svc`, `pm`, `am`, `monkey` and the
+  emulator's sensor and geo commands for Android. `device.detail` (T3's
+  `DeviceDetail`: settings and foreground app, `devices.read`) reads them
+  back, each value unknown when it cannot be read; `device.action`
+  (`devices.write`) takes T3's actions without their target and answers the
+  settings read after it. An action the platform lacks, or one whose helper
+  is not installed (the hub never ran), fails with the new
+  `DEVICE_ACTION_UNAVAILABLE` (`details.reason`: `unsupported` or
+  `helper_missing`) before anything runs; a command that fails is
+  `DEVICE_OPERATION_FAILED` with its step and exit code, its output only in
+  the details. Both take a thread and a device as the input commands do.
+
+- **D1333. T3's tools panel beside an open device.** The rail gets T3's
+  "Device tools" toggle (lucide `SlidersHorizontal`), which opens "Tools" at
+  the screen's side with T3's sections and copy: App (the foreground app with
+  Terminate and Relaunch, Open a URL, Launch an app), Simulator or Emulator
+  (Appearance, Text size, Liquid Glass and Color filter on iOS, Orientation on
+  Android, and the switches T3 shows per platform), Location (latitude,
+  longitude, T3's presets, Set, Clear on iOS), Permissions (an app id, the
+  permission, Grant, Revoke, Reset on iOS) and Push notification (iOS). It
+  reads the settings when it opens ("Reading device settings…"), runs one
+  action at a time, shows the settings each action answers, and an error at
+  its top. A setting the node could not read cannot be switched.
+
 ### Touch and uploads (W34)
 
 Workstream W34 continues this plan with decisions from D1201–D1220. The
@@ -841,10 +878,9 @@ probe of `ServerBrowser.ts`.
     (`jhin.devices.hub`, off by default).
   - Pinning what the install scripts download (the hub's `node-datachannel`
     native build): `npm ci` pins the npm tree only (D1330).
-  - The device tools panel (appearance, text size, toggles, location,
-    permissions, push, open URL, launch and terminate) and `DeviceActions`
-    with `device.detail`, the Android orientation menu among them; the
-    accessibility frames overlay, the foreground app and the event log.
+  - Of T3's device tools (D1332, D1333): the accessibility frames overlay
+    and the event log (they read the hub's own routes), and the device
+    tools' versions popover.
   - The tool versions view and updating tools from the panel
     (`deviceToolMaintenance`), and `device.open` pointing agents at the
     `agent-device` shim with `--config` and `--session` (T3's

@@ -1,0 +1,248 @@
+// Cases follow T3 Code's apps/server/src/device/DeviceActions.test.ts (MIT, see
+// THIRD_PARTY_NOTICES.md), without Effect. docs/plans/preview.md, D1332.
+import type { DeviceAction, DeviceError } from "@jhin/preview-api";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  readDeviceDetail,
+  runDeviceAction,
+  supportsAction,
+  type ActionHost,
+} from "../src/actions.ts";
+
+type Call = { command: string; args: readonly string[]; stdin?: string };
+
+const makeHost = (
+  respond: (call: Call) => { stdout?: string; stderr?: string; code?: number } = () => ({}),
+  helpers: ActionHost["helpers"] = {
+    serveSimAxSettings: "/hub/simax/serve-sim-ax-settings",
+    serveSimCli: "/hub/serve-sim.js",
+  },
+) => {
+  const calls: Call[] = [];
+  const host: ActionHost = {
+    helpers,
+    run: async (command, args, options) => {
+      const call = { command, args, ...(options?.stdin ? { stdin: options.stdin } : {}) };
+      calls.push(call);
+      const result = respond(call);
+      return { stdout: result.stdout ?? "", stderr: result.stderr ?? "", code: result.code ?? 0 };
+    },
+  };
+  return { host, calls };
+};
+
+const udid = "SIM-1";
+
+const failure = async (work: Promise<unknown>) => {
+  try {
+    await work;
+  } catch (error) {
+    return error as DeviceError;
+  }
+  throw new Error("expected the action to fail");
+};
+
+describe("supportsAction", () => {
+  it("advertises platform-specific toggles", () => {
+    const toggle = (setting: Extract<DeviceAction, { type: "setToggle" }>["setting"]) =>
+      ({ type: "setToggle", setting, value: true }) as const;
+    expect(supportsAction("ios", toggle("voiceOver"))).toBe(true);
+    expect(supportsAction("android", toggle("voiceOver"))).toBe(false);
+    expect(supportsAction("android", toggle("networkEnabled"))).toBe(true);
+    expect(supportsAction("ios", toggle("networkEnabled"))).toBe(false);
+    expect(supportsAction("ios", { type: "setLiquidGlass", value: "clear" })).toBe(true);
+    expect(supportsAction("android", { type: "setLiquidGlass", value: "clear" })).toBe(false);
+    expect(supportsAction("android", { type: "setOrientation", value: "portrait" })).toBe(true);
+    expect(supportsAction("ios", { type: "setOrientation", value: "portrait" })).toBe(false);
+  });
+});
+
+describe("runDeviceAction", () => {
+  it("maps shared text sizes onto simctl content-size categories", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "ios", udid, { type: "setTextSize", value: "extra-large" });
+    expect(calls).toEqual([
+      { command: "xcrun", args: ["simctl", "ui", udid, "content_size", "accessibility-large"] },
+    ]);
+  });
+
+  it("maps shared text sizes onto Android font_scale", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "android", "emulator-5554", {
+      type: "setTextSize",
+      value: "large",
+    });
+    expect(calls[0]?.args).toEqual([
+      "-s",
+      "emulator-5554",
+      "shell",
+      "settings",
+      "put",
+      "system",
+      "font_scale",
+      "1.15",
+    ]);
+  });
+
+  it("rotates emulators through the accelerometer and physical devices through the lock", async () => {
+    const emulator = makeHost();
+    await runDeviceAction(emulator.host, "android", "emulator-5554", {
+      type: "setOrientation",
+      value: "landscape_left",
+    });
+    expect(emulator.calls.at(-1)?.args).toEqual([
+      "-s",
+      "emulator-5554",
+      "emu",
+      "sensor",
+      "set",
+      "acceleration",
+      "9.81:0:0",
+    ]);
+    const phone = makeHost();
+    await runDeviceAction(phone.host, "android", "R5CT1234", {
+      type: "setOrientation",
+      value: "landscape_right",
+    });
+    expect(phone.calls).toEqual([
+      {
+        command: "adb",
+        args: ["-s", "R5CT1234", "shell", "cmd", "window", "user-rotation", "lock", "3"],
+      },
+    ]);
+  });
+
+  it("runs accessibility toggles through the bundled helper via simctl spawn", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "ios", udid, {
+      type: "setToggle",
+      setting: "voiceOver",
+      value: true,
+    });
+    expect(calls).toEqual([
+      {
+        command: "xcrun",
+        args: [
+          "simctl",
+          "spawn",
+          udid,
+          "/hub/simax/serve-sim-ax-settings",
+          "set",
+          "voiceover",
+          "on",
+        ],
+      },
+    ]);
+  });
+
+  it("fails clearly when the helper is missing", async () => {
+    const { host } = makeHost(() => ({}), { serveSimAxSettings: null, serveSimCli: null });
+    const error = await failure(
+      runDeviceAction(host, "ios", udid, { type: "setColorFilter", value: "grayscale" }),
+    );
+    expect(error.code).toBe("DEVICE_ACTION_UNAVAILABLE");
+    expect(error.details).toMatchObject({ reason: "helper_missing" });
+    expect(error.message).toContain("needs the device hub's helpers");
+  });
+
+  it("rejects actions the platform does not support without running anything", async () => {
+    const { host, calls } = makeHost();
+    const error = await failure(
+      runDeviceAction(host, "android", "emulator-5554", {
+        type: "sendPush",
+        appId: "com.example",
+        payload: "hi",
+      }),
+    );
+    expect(error.message).toContain("not available on Android");
+    expect(calls).toEqual([]);
+  });
+
+  it("surfaces non-zero exit codes as operation errors", async () => {
+    const { host } = makeHost(() => ({ code: 1, stderr: "Invalid device: SIM-1" }));
+    const error = await failure(
+      runDeviceAction(host, "ios", udid, { type: "setAppearance", value: "dark" }),
+    );
+    expect(error.code).toBe("DEVICE_OPERATION_FAILED");
+    expect(error.details).toMatchObject({
+      operation: "appearance",
+      stderr: "Invalid device: SIM-1",
+    });
+    expect(error.message).toContain("exit code 1");
+    expect(error.message).not.toContain("Invalid device: SIM-1");
+  });
+
+  it("wraps a bare push string in an APNs alert and feeds it on stdin", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "ios", udid, {
+      type: "sendPush",
+      appId: "com.example.app",
+      payload: "Hello",
+    });
+    expect(calls[0]?.args).toEqual(["simctl", "push", udid, "com.example.app", "-"]);
+    expect(calls[0]?.stdin).toBe('{"aps":{"alert":"Hello"}}');
+  });
+});
+
+describe("readDeviceDetail", () => {
+  it("reads iOS settings from simctl and the accessibility helper", async () => {
+    const { host } = makeHost((call) => {
+      const key = call.args.join(" ");
+      if (key.endsWith("ui SIM-1 appearance")) return { stdout: "dark\n" };
+      if (key.endsWith("ui SIM-1 content_size")) return { stdout: "extra-extra-large\n" };
+      if (key.endsWith("ui SIM-1 increase_contrast")) return { stdout: "enabled\n" };
+      if (key.includes("serve-sim-ax-settings status")) {
+        return {
+          stdout:
+            '{"reduce-motion":"on","reduce-transparency":"off","show-borders":"off","voiceover":"off","liquid-glass":"tinted","color-filter":"grayscale"}',
+        };
+      }
+      return { code: 1 };
+    });
+    const detail = await readDeviceDetail(host, "ios", udid);
+    expect(detail.settings).toEqual({
+      appearance: "dark",
+      textSize: "large",
+      increaseContrast: true,
+      reduceMotion: true,
+      reduceTransparency: false,
+      showBorders: false,
+      voiceOver: false,
+      liquidGlass: "tinted",
+      colorFilter: "grayscale",
+    });
+  });
+
+  it("degrades unreadable values to unknown instead of failing", async () => {
+    const { host } = makeHost(() => ({ code: 1, stderr: "boom" }));
+    const detail = await readDeviceDetail(host, "ios", udid);
+    expect(detail.settings).toEqual({});
+    expect(detail.foregroundApp).toBeNull();
+  });
+
+  it("reads Android settings and the focused package", async () => {
+    const { host } = makeHost((call) => {
+      const key = call.args.join(" ");
+      if (key.endsWith("cmd uimode night")) return { stdout: "Night mode: yes\n" };
+      if (key.endsWith("font_scale")) return { stdout: "0.85\n" };
+      if (key.endsWith("animator_duration_scale")) return { stdout: "0\n" };
+      if (key.endsWith("wifi_on")) return { stdout: "1\n" };
+      if (key.endsWith("dumpsys window")) {
+        return {
+          stdout:
+            "  mFocusedApp=ActivityRecord{155579877 u0 com.example.app/.MainActivity t15}\n  mCurrentFocus=Window{1a2b u0 com.example.app/com.example.app.MainActivity}\n",
+        };
+      }
+      return { code: 1 };
+    });
+    const detail = await readDeviceDetail(host, "android", "emulator-5554");
+    expect(detail.settings).toEqual({
+      appearance: "dark",
+      textSize: "small",
+      reduceMotion: true,
+      networkEnabled: true,
+    });
+    expect(detail.foregroundApp).toEqual({ id: "com.example.app" });
+  });
+});

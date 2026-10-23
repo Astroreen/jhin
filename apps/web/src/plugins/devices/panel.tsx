@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { httpBase } from "../../lib/session.ts";
 import { DeviceStreamView } from "./stream-view.tsx";
+import { DeviceToolsPanel } from "./tools-panel.tsx";
 import type { DeviceHubAccess } from "./stream.ts";
 
 export interface DevicePanelProps {
@@ -85,6 +86,7 @@ function hubAccess(nodeUrl: string, result: DeviceHubAccessResult): DeviceHubAcc
 function OpenDevice(props: {
   client: RpcClient;
   nodeUrl: string;
+  threadId: string;
   device: DeviceSummary;
   hostStatus: DeviceHostStatus | undefined;
   call: (method: string, params: unknown) => Promise<unknown>;
@@ -96,6 +98,8 @@ function OpenDevice(props: {
   const [access, setAccess] = useState<DeviceHubAccess | undefined>(undefined);
   const [reason, setReason] = useState<string | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
+  // T3's tools beside the screen (D1333).
+  const [toolsOpen, setToolsOpen] = useState(false);
   /** Tickets refused since the stream last showed video. */
   const refusals = useRef(0);
   // A hub that comes up after the first request timed out is asked again.
@@ -122,29 +126,41 @@ function OpenDevice(props: {
   if (access !== undefined) {
     return (
       <div className="flex min-h-0 flex-1">
-        <DeviceStreamView
-          access={access}
-          deviceDescription={device.version}
-          deviceId={device.id}
-          deviceName={device.name}
-          onStreaming={() => {
-            refusals.current = 0;
-          }}
-          onUnauthorized={() => {
-            setAccess(undefined);
-            // An expired ticket is renewed; one refused again and again (a client that may
-            // watch but not control) stops, and the screenshots stay.
-            refusals.current += 1;
-            if (refusals.current > 2) {
-              setReason(
-                "The device hub refused this client: watching a device's video needs devices.read and devices.write.",
-              );
-              return;
-            }
-            setAttempt((count) => count + 1);
-          }}
-          platform={device.platform}
-        />
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <DeviceStreamView
+            access={access}
+            deviceDescription={device.version}
+            deviceId={device.id}
+            deviceName={device.name}
+            onStreaming={() => {
+              refusals.current = 0;
+            }}
+            onUnauthorized={() => {
+              setAccess(undefined);
+              // An expired ticket is renewed; one refused again and again (a client that may
+              // watch but not control) stops, and the screenshots stay.
+              refusals.current += 1;
+              if (refusals.current > 2) {
+                setReason(
+                  "The device hub refused this client: watching a device's video needs devices.read and devices.write.",
+                );
+                return;
+              }
+              setAttempt((count) => count + 1);
+            }}
+            platform={device.platform}
+            tools={{ open: toolsOpen, toggle: () => setToolsOpen((open) => !open) }}
+          />
+        </div>
+        {toolsOpen ? (
+          <DeviceToolsPanel
+            call={props.call}
+            className="w-72 shrink-0 border-l"
+            device={device}
+            onClose={() => setToolsOpen(false)}
+            threadId={props.threadId}
+          />
+        ) : null}
       </div>
     );
   }
@@ -261,6 +277,7 @@ export function DevicePanel(props: DevicePanelProps) {
           device={open}
           hostStatus={state?.hostStatuses?.[open.hostId]}
           nodeUrl={props.nodeUrl}
+          threadId={threadId}
         />
       </>
     );

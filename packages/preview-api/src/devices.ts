@@ -96,7 +96,9 @@ export type DeviceErrorCode =
   | "DEVICE_PLATFORM_UNAVAILABLE"
   | "DEVICE_NOT_FOUND"
   | "DEVICE_BOOT_FAILED"
-  | "DEVICE_OPERATION_FAILED";
+  | "DEVICE_OPERATION_FAILED"
+  /** `details.reason`: `unsupported` on the platform, or `helper_missing` (D1332). */
+  | "DEVICE_ACTION_UNAVAILABLE";
 
 export class DeviceError extends Error {
   readonly code: DeviceErrorCode;
@@ -243,3 +245,117 @@ export function pngSize(bytes: Uint8Array): { width: number; height: number } {
     ((bytes[at]! << 24) | (bytes[at + 1]! << 16) | (bytes[at + 2]! << 8) | bytes[at + 3]!) >>> 0;
   return { width: read(16), height: read(20) };
 }
+
+// --- The device tools panel (T3's `DeviceActionInput` and `DeviceDetail`, D1332) ---------
+
+export const DeviceAppearance = z.enum(["light", "dark"]);
+export const DeviceTextSize = z.enum(["small", "default", "large", "extra-large"]);
+export type DeviceTextSize = z.infer<typeof DeviceTextSize>;
+export const DeviceColorFilter = z.enum([
+  "none",
+  "grayscale",
+  "red-green",
+  "green-red",
+  "blue-yellow",
+]);
+export const DeviceOrientation = z.enum([
+  "portrait",
+  "landscape_left",
+  "portrait_upside_down",
+  "landscape_right",
+]);
+export type DeviceOrientation = z.infer<typeof DeviceOrientation>;
+
+export const DeviceSettings = z.object({
+  appearance: DeviceAppearance.optional(),
+  textSize: DeviceTextSize.optional(),
+  reduceMotion: z.boolean().optional(),
+  increaseContrast: z.boolean().optional(),
+  reduceTransparency: z.boolean().optional(),
+  showBorders: z.boolean().optional(),
+  voiceOver: z.boolean().optional(),
+  liquidGlass: z.enum(["clear", "tinted"]).optional(),
+  colorFilter: DeviceColorFilter.optional(),
+  networkEnabled: z.boolean().optional(),
+  location: z.object({ latitude: z.number(), longitude: z.number() }).nullable().optional(),
+});
+export type DeviceSettings = z.infer<typeof DeviceSettings>;
+
+export const DeviceForegroundApp = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  version: z.string().optional(),
+});
+export type DeviceForegroundApp = z.infer<typeof DeviceForegroundApp>;
+
+export const DeviceDetail = z.object({
+  hostId: z.string(),
+  deviceId: z.string(),
+  settings: DeviceSettings,
+  foregroundApp: DeviceForegroundApp.nullable(),
+  readAt: z.string(),
+});
+export type DeviceDetail = z.infer<typeof DeviceDetail>;
+
+export const DevicePermission = z.enum([
+  "camera",
+  "microphone",
+  "photos",
+  "contacts",
+  "calendar",
+  "reminders",
+  "location",
+  "notifications",
+  "motion",
+  "media-library",
+  "faceid",
+]);
+export type DevicePermission = z.infer<typeof DevicePermission>;
+
+const AppId = z.string().trim().min(1).max(256);
+
+/** One of the tools panel's actions (T3's `DeviceActionInput` without its target). */
+export const DeviceAction = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("setAppearance"), value: DeviceAppearance }),
+  z.object({ type: z.literal("setTextSize"), value: DeviceTextSize }),
+  z.object({
+    type: z.literal("setToggle"),
+    setting: z.enum([
+      "reduceMotion",
+      "increaseContrast",
+      "reduceTransparency",
+      "showBorders",
+      "voiceOver",
+      "networkEnabled",
+    ]),
+    value: z.boolean(),
+  }),
+  z.object({ type: z.literal("setLiquidGlass"), value: z.enum(["clear", "tinted"]) }),
+  z.object({ type: z.literal("setColorFilter"), value: DeviceColorFilter }),
+  z.object({ type: z.literal("setOrientation"), value: DeviceOrientation }),
+  z.object({
+    type: z.literal("setLocation"),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  }),
+  z.object({ type: z.literal("clearLocation") }),
+  z.object({
+    type: z.literal("setPermission"),
+    appId: AppId,
+    permission: DevicePermission,
+    decision: z.enum(["grant", "revoke", "reset"]),
+  }),
+  z.object({ type: z.literal("openUrl"), url: z.string().trim().min(1).max(4096) }),
+  z.object({ type: z.literal("launchApp"), appId: AppId }),
+  z.object({ type: z.literal("terminateApp"), appId: AppId }),
+  z.object({ type: z.literal("shake") }),
+  z.object({
+    type: z.literal("sendPush"),
+    appId: AppId,
+    payload: z.union([z.string().max(4096), z.record(z.string(), z.unknown())]),
+  }),
+]);
+export type DeviceAction = z.infer<typeof DeviceAction>;
+
+export const DeviceActionInput = DeviceTargetInput.extend({ action: DeviceAction });
+export type DeviceActionInput = z.infer<typeof DeviceActionInput>;

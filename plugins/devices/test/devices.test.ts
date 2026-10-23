@@ -48,6 +48,9 @@ case "$*" in
   "shell getprop ro.build.version.release") echo 14;;
   "shell getprop sys.boot_completed") echo 1;;
   "exec-out screencap -p") cat "$D/screen.png";;
+  "shell settings put system font_scale "*) echo "$6" > "$D/font_scale";;
+  "shell settings get system font_scale") cat "$D/font_scale" 2>/dev/null || echo 1.0;;
+  "shell cmd uimode night") echo "Night mode: no";;
   "emu kill") grep -v "^$serial " "$D/running" > "$D/running.next"; mv "$D/running.next" "$D/running"; [ -f "$D/pid" ] && kill "$(cat "$D/pid")" 2>/dev/null; echo OK;;
   *) echo "unknown: $*" >&2; exit 1;;
 esac`,
@@ -247,5 +250,33 @@ describe("jhin.devices", () => {
     expect(failed.message).toBe(
       "Device Pixel_7_API_34 failed to boot: The simulator or emulator could not start. Check its configuration on the environment server.",
     );
+  });
+
+  it("reads and changes a running device's settings for the tools panel (D1332)", async () => {
+    const tools = fakeTools();
+    Fs.writeFileSync(Path.join(tools.dir, "running"), "emulator-5554 Pixel_7_API_34\n");
+    Fs.writeFileSync(Path.join(tools.dir, "ios-state"), "Booted");
+    const { client } = await node({ adb: tools.adb, xcrun: tools.xcrun });
+    const before = await client.call<{ settings: Record<string, unknown> }>("device.detail", {
+      threadId: "t1",
+      deviceId: "emulator-5554",
+    });
+    expect(before.settings).toMatchObject({ appearance: "light", textSize: "default" });
+    const after = await client.call<{ settings: Record<string, unknown> }>("device.action", {
+      threadId: "t1",
+      deviceId: "emulator-5554",
+      action: { type: "setTextSize", value: "large" },
+    });
+    expect(after.settings).toMatchObject({ textSize: "large" });
+
+    // iOS accessibility needs the hub's helper, which is not installed here.
+    const missing = await rejection(
+      client.call("device.action", {
+        threadId: "t1",
+        deviceId: "SIM-1",
+        action: { type: "setColorFilter", value: "grayscale" },
+      }),
+    );
+    expect(missing.code).toBe("DEVICE_ACTION_UNAVAILABLE");
   });
 });

@@ -121,7 +121,7 @@ webviews: their CDP relay, guest input, hardening and placement;
 `scripts/desktop-release.ts` and `.github/workflows/release-desktop.yml`: the
 packaging configuration, signing and the release workflow), and the devices
 (`plugins/devices`, `packages/preview-api/src/devices.ts`,
-`apps/web/src/plugins/devices`: the device tools and their errors, the device
+`apps/web/src/plugins/devices`: the device tools and their errors, the device actions and the tools panel, the device
 hub's toolchain, host, proxy and agent-device input, its stream client, flat
 stream view and control rail). The device hub (`expo-device-hub`) and
 `agent-device` themselves are not part of Jhin: the node downloads them from

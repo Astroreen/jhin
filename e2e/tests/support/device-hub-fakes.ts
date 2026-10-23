@@ -19,6 +19,8 @@ export function fakeTools() {
     `#!/bin/sh
 case "$2 $3" in
   "list devices") printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-17-2":[{"udid":"SIM-1","name":"iPhone 15","state":"Booted","isAvailable":true}]}}';;
+  # The tools panel's appearance (D1332): read, or set and remembered.
+  "ui SIM-1") if [ -n "$5" ]; then echo "$5" > "${dir}/appearance"; else cat "${dir}/appearance" 2>/dev/null || echo light; fi;;
   *) echo "unknown: $*" >&2; exit 1;;
 esac
 `,
