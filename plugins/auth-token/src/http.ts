@@ -322,7 +322,8 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
             response,
             401,
             {
-              code: "DPOP_PROOF_INVALID",
+              // Lasting, unlike a refused proof: the client stops trying.
+              code: "TOKEN_TYPE_MISMATCH",
               message: dpop
                 ? "This token is not bound to a key; send it as Bearer."
                 : "This token is bound to a key; send it as DPoP with a proof.",

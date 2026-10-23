@@ -1335,7 +1335,9 @@ describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D13
     expect(issued.tokenType).toBe("Bearer");
     expect(await openWith(node, issued.token)).toBe("open");
     // DPoP names a bound token; this one is not.
-    expect((await ticketFor(node, `DPoP ${issued.token}`, "x.y.z")).status).toBe(401);
+    const mismatch = await ticketFor(node, `DPoP ${issued.token}`, "x.y.z");
+    expect(mismatch.status).toBe(401);
+    expect(await mismatch.json()).toMatchObject({ code: "TOKEN_TYPE_MISMATCH" });
     const minted = await ticketFor(node, `Bearer ${issued.token}`);
     expect(minted.status).toBe(200);
     const { ticket } = (await minted.json()) as { ticket: string };

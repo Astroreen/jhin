@@ -805,12 +805,16 @@ Connect stays out of scope.
   refused before its proof is checked, so no proof is spent on it. A pairing
   proof is not remembered: its code is used once, and a replayed pairing
   proof binds the token to its author's key, worth nothing to whoever
-  replays it; so nobody without a token can fill the guard. `htu` names the node as the device reached it: its host must
+  replays it; so nobody without a token can fill the guard. The binding
+  protects a token from the moment it is issued: whoever intercepts the
+  pairing request itself holds the code and pairs with a key of their own,
+  as with a bearer pairing (the code is used once, D1182). `htu` names the node as the device reached it: its host must
   be the requested host (`requestedHost`) and its path must end with the
   request's path, so a proxy that strips a path prefix keeps working; its
   scheme is not compared (a TLS proxy the node does not trust tells it
-  `http`). Both are deliberate: the proof's signature and its key bind it
-  already, `htu` only keeps a proof for one endpoint from serving another. The device token is then bound: its record keeps the key's RFC
+  `http`). Both are deliberate and weaker than T3's whole-URL check: the
+  proof's signature, its key and `ath` carry the binding, `htu` only keeps
+  a proof for one endpoint from serving another. The device token is then bound: its record keeps the key's RFC
   7638 thumbprint (`jkt`, additive), and the answer says `tokenType:
   "DPoP"` (else `"Bearer"`, additive). A bound token is never accepted on
   its own: not on the WebSocket, not at `/mcp`, not for a page session
@@ -852,7 +856,8 @@ Connect stays out of scope.
   every connect; one that answers otherwise (an older node) keeps the
   token as a bearer token. Only a refused token (`CREDENTIAL_INVALID`)
   stops the client; a refused proof (a clock minutes off, a busy node) is
-  tried again like a network error. Without WebCrypto the page pairs as before.
+  tried again like a network error. A token sent with the wrong scheme
+  (`TOKEN_TYPE_MISMATCH`) stops it too. Without WebCrypto the page pairs as before.
   A node on another origin from before D1366 refuses the `dpop` header in
   its CORS preflight; the page then pairs again without a proof (the code
   was never sent) and keeps a bearer token, but only when the node answers
@@ -1034,6 +1039,9 @@ A slice a PR, in the order of D1361's risks:
   address's attempts (D420), so a thief with a stolen bound token locks
   out only its own address, unless both share a proxy the node does not
   know (`jhin.http.trustProxy`).
+- A bound device holding `auth.write` can still issue bearer tokens
+  (`auth.tokens.issue`) through a ticket's connection: D1361 (5) is closed
+  for the bound token itself, not for what its grants let it make.
 - The web client's DPoP fallbacks for a page without WebCrypto and for
   a same-origin older node's bearer answer have no test of their own
   (`pair-dpop.test.ts` covers an older node's refused preflight;

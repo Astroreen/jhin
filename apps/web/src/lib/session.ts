@@ -138,7 +138,10 @@ export async function webSocketTicket(
   if (response.status === 401) {
     const refused = await failure(response);
     throw Object.assign(new Error(refused.message), {
-      code: refused.code === "CREDENTIAL_INVALID" ? "UNAUTHENTICATED" : "CONNECT_FAILED",
+      code:
+        refused.code === "CREDENTIAL_INVALID" || refused.code === "TOKEN_TYPE_MISMATCH"
+          ? "UNAUTHENTICATED"
+          : "CONNECT_FAILED",
     });
   }
   if (!response.ok) {
