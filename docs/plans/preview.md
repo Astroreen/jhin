@@ -693,6 +693,76 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   `npm install --package-lock-only --ignore-scripts`, whose output a unit
   test checks against `DEVICE_TOOL_VERSIONS`.
 
+### The device tools (W37)
+
+The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
+(with its tests), `DeviceAction*` and `DeviceDetail` of
+`packages/contracts/src/device.ts`, and in `apps/web/src/components/device`
+`DeviceToolsPanel.tsx`, `useDeviceControls.ts` and the rail's "Device tools".
+
+- **D1332. The node runs T3's device actions itself.** serve-sim's own panel
+  sends shell commands over a socket; as T3 does, the node runs the same
+  commands typed per action instead (`plugins/devices/src/actions.ts`, T3's
+  cases as unit tests): `xcrun simctl ui`, `privacy`, `location`, `openurl`,
+  `launch`, `terminate`, `push` and serve-sim's `serve-sim-ax-settings` and
+  CLI (found in the installed hub, `vendor/serve-sim/dist`) for iOS; `adb
+  shell` settings, `cmd uimode`, `svc`, `pm`, `am`, `monkey` and the
+  emulator's sensor and geo commands for Android. `device.detail` (T3's
+  `DeviceDetail`: settings and foreground app, `devices.read`) reads them
+  back, each value unknown when it cannot be read; `device.action`
+  (`devices.write`) takes T3's actions without their target and answers the
+  settings read after it. An action the platform lacks, or one whose helper
+  is not installed (the hub never ran), fails with the new
+  `DEVICE_ACTION_UNAVAILABLE` (`details.reason`: `unsupported` or
+  `helper_missing`) before anything runs; a command that fails is
+  `DEVICE_OPERATION_FAILED` with its step and exit code, its output only in
+  the details. Both take a thread and a device as the input commands do.
+  Unlike T3, whose panel is their only caller, these commands reach agents
+  too: an app id must look like a bundle id or a package name, and a URL or
+  app id goes single-quoted through `adb shell`, which the device's shell
+  parses again. An Android permission holds when one permission of its group
+  took (an app declares the one of its Android version), and Reset, which
+  Android has not, is refused there, as T3's panel offers it on iOS only;
+  so is clearing an emulator's location, which T3 answers with nothing, and
+  setting a phone's, which only an emulator's console places. Wi-Fi and
+  mobile data are two commands, not one: a mobile-data step the device
+  refuses leaves Wi-Fi as set, and Wi-Fi failing after data took leaves
+  data as set; likewise Reduce Motion on Android is three settings, and one
+  failing leaves those before it applied. An action that took but whose
+  settings could not be read back answers `readError` (additive) with empty
+  settings, and the panel keeps what it last read. iOS's `extra-small` text reads back as small (T3 reads it
+  as large). `devices.write` is enough for every action, opening a URL and
+  sending a push included, as it is for a tap: they act on the owner's
+  simulator or emulator through the host's own tools, which the node
+  already runs for the device panel. A
+  URL to open must carry its scheme. Turning the network off on Android
+  takes when Wi-Fi did: mobile data is turned with it where there is one.
+  The node runs one action at a time per device, its read-back included,
+  and a `device.detail` read waits behind it, so an agent's and the
+  panel's steps do not interleave and no read sees one half done; the
+  panel's controls wait for its first read.
+  Android's appearance is read from a definite `Night mode: yes` or `no`
+  (`auto` follows the clock, so it is not shown). A push payload, as text
+  or as JSON, carries at most 4096 characters, as agents send it too. A
+  failed step answers `DEVICE_OPERATION_FAILED` with the tool's own output
+  (up to 2000 characters, host paths included), as D408's device errors do,
+  for a `devices.write` caller of the owner's one trust domain (D22).
+
+- **D1333. T3's tools panel beside an open device.** The rail gets T3's
+  "Device tools" toggle (lucide `SlidersHorizontal`), which opens "Tools" at
+  the screen's side with T3's sections and copy: App (the foreground app with
+  Terminate and Relaunch, Open a URL, Launch an app), Simulator or Emulator
+  (Appearance, Text size, Liquid Glass and Color filter on iOS, Orientation on
+  Android, and the switches T3 shows per platform), Location (latitude,
+  longitude, T3's presets, Set, Clear on iOS), Permissions (an app id, the
+  permission, Grant, Revoke, Reset on iOS) and Push notification (iOS). It
+  reads the settings when it opens ("Reading device settings…"), runs one
+  action at a time, shows the settings each action answers, and an error at
+  its top. A setting the node could not read cannot be switched. On iOS the
+  node reads no foreground app (as T3's), so there the App section shows
+  none and Push notification stays off in the panel; `device.action` sends
+  a push to any app id (Deferred).
+
 ### Touch and uploads (W34)
 
 Workstream W34 continues this plan with decisions from D1201–D1220. The
@@ -841,10 +911,17 @@ probe of `ServerBrowser.ts`.
     (`jhin.devices.hub`, off by default).
   - Pinning what the install scripts download (the hub's `node-datachannel`
     native build): `npm ci` pins the npm tree only (D1330).
-  - The device tools panel (appearance, text size, toggles, location,
-    permissions, push, open URL, launch and terminate) and `DeviceActions`
-    with `device.detail`, the Android orientation menu among them; the
-    accessibility frames overlay, the foreground app and the event log.
+  - Of T3's device tools (D1332, D1333): the accessibility frames overlay
+    and the event log (they read the hub's own routes), and the device
+    tools' versions popover.
+  - Reading an iOS simulator's foreground app (D1332, D1333): T3's
+    `readDeviceDetail` gives none on iOS, so its panel, and this one, offer
+    no Terminate or Relaunch there, no default app for Permissions, and
+    Push notification waits for an app id.
+  - Proving `simctl location set` with a negative latitude on macOS
+    (D1332): the argument is T3's `<lat>,<lon>`, and CI has no simulator to
+    show simctl does not read a leading `-` as an option. Shaking a device,
+    which T3's panel has no tool for, is not offered.
   - The tool versions view and updating tools from the panel
     (`deviceToolMaintenance`), and `device.open` pointing agents at the
     `agent-device` shim with `--config` and `--session` (T3's

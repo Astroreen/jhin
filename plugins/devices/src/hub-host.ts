@@ -62,7 +62,7 @@ export interface HubHostOptions {
 }
 
 /** The Node that runs the hub: T3 runs its own executable when it is Node, else `node` on PATH. */
-function resolveNode(
+export function resolveNode(
   configured: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {

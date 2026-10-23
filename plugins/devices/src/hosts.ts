@@ -288,6 +288,15 @@ export function createLocalHost(paths: () => ToolPaths) {
       };
     },
 
+    /** The programs the tools panel's actions run (D1332): adb and xcrun, where found. */
+    programs: (): { adb?: string; xcrun?: string } => {
+      const found = tools();
+      return {
+        ...(found.adb === undefined ? {} : { adb: found.adb }),
+        ...(found.xcrun === undefined ? {} : { xcrun: found.xcrun }),
+      };
+    },
+
     /** The SDK folder the hub's helpers get on their PATH (T3's `deviceHostEnvironment`). */
     androidSdk: () => androidSdk(paths()),
 

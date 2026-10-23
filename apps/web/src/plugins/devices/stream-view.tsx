@@ -5,7 +5,14 @@
 // deviceFrameLayout.ts at eb7b35ac. Without T3's 3D phone, Duo and fold scenes.
 // docs/plans/preview.md, D1208.
 import { Button, Spinner, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
-import { ChevronLeftIcon, HomeIcon, RotateCcwIcon, SmartphoneIcon, SquareIcon } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  HomeIcon,
+  RotateCcwIcon,
+  SlidersHorizontalIcon,
+  SmartphoneIcon,
+  SquareIcon,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -103,6 +110,7 @@ function DeviceLoadingView(props: {
 function RailButton(props: {
   label: string;
   disabled?: boolean;
+  pressed?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -112,10 +120,11 @@ function RailButton(props: {
         render={
           <Button
             aria-label={props.label}
+            {...(props.pressed === undefined ? {} : { "aria-pressed": props.pressed })}
             disabled={props.disabled}
             onClick={props.onClick}
             size="icon-sm"
-            variant="ghost"
+            variant={props.pressed === true ? "secondary" : "ghost"}
           />
         }
       >
@@ -132,6 +141,8 @@ function DeviceControlsRail(props: {
   inputConnected: boolean;
   pressButton: (button: DeviceHardwareButton) => void;
   rotate: () => void;
+  /** T3's "Device tools" toggle (D1333), when the panel offers the tools. */
+  tools?: { open: boolean; toggle: () => void };
 }) {
   const disabled = !props.inputConnected;
   return (
@@ -161,6 +172,11 @@ function DeviceControlsRail(props: {
             <RotateCcwIcon />
           </RailButton>
         )}
+        {props.tools === undefined ? null : (
+          <RailButton label="Device tools" onClick={props.tools.toggle} pressed={props.tools.open}>
+            <SlidersHorizontalIcon />
+          </RailButton>
+        )}
       </div>
     </aside>
   );
@@ -177,6 +193,8 @@ export function DeviceStreamView(props: {
   readonly onUnauthorized: () => void;
   /** Video is showing. */
   readonly onStreaming?: () => void;
+  /** T3's "Device tools" toggle in the rail (D1333). */
+  readonly tools?: { open: boolean; toggle: () => void };
 }) {
   const { access, platform, deviceId, onUnauthorized } = props;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -292,6 +310,7 @@ export function DeviceStreamView(props: {
         platform={platform}
         pressButton={(button) => clientRef.current?.pressButton(button)}
         rotate={() => clientRef.current?.rotate()}
+        {...(props.tools === undefined ? {} : { tools: props.tools })}
       />
       <div
         aria-label={`${platform === "ios" ? "iOS Simulator" : "Android Emulator"} screen`}

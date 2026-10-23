@@ -70,3 +70,34 @@ test("D1208: an open simulator streams from the device hub and takes touches and
   expect(touch.y).toBeCloseTo(0.5, 1);
   expect(sent[2]!.body).toEqual({ button: "home" });
 });
+
+test("D1333: the device tools beside the screen read and change the simulator's settings", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("device tools please");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText(
+    "Echo: device tools please",
+  );
+  const threadId = decodeURIComponent(/[#&]t=([^&]+)/.exec(page.url())![1]!);
+  await node.client().call("device.open", { threadId, deviceId: "SIM-1" });
+  const panel = page.getByRole("complementary", { name: "Device panel" });
+  await panel.getByRole("button", { name: "Device tools" }).click();
+  const toolsPanel = panel.getByRole("region", { name: "Device tools" });
+  const appearance = toolsPanel.getByRole("group", { name: "Appearance" });
+  await expect(appearance.getByRole("button", { name: "Light" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await appearance.getByRole("button", { name: "Dark" }).click();
+  await expect(appearance.getByRole("button", { name: "Dark" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await shot(page, info, "device-tools");
+  // Unknown settings (no serve-sim helper in the fake hub) cannot be switched.
+  await expect(toolsPanel.getByRole("switch", { name: "Reduce Motion" })).toBeDisabled();
+});

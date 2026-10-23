@@ -14,8 +14,10 @@ import {
   DEVICES_STREAM,
   DEVICE_HOSTS_CAPABILITY,
   DEVICE_STREAM_PREFIX,
+  DeviceActionInput,
   DeviceButtonInput,
   DeviceCloseInput,
+  DeviceDetail,
   DeviceError,
   DeviceEvents,
   DeviceHubAccessInput,
@@ -47,8 +49,15 @@ import {
 import { definePlugin, toDisposable, z, describePermissions } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog, type Json } from "@jhin/storage-api";
 
+import * as Fs from "node:fs";
+import * as NodePath from "node:path";
+
+import { readDeviceDetail, runDeviceAction, type ActionHost } from "./actions.ts";
 import { createLocalHost } from "./hosts.ts";
+import { HUB_SPEC, runProgram, toolEnvironment, toolPaths } from "./toolchain.ts";
 import { createDeviceHub } from "./hub.ts";
+import { resolveNode } from "./hub-host.ts";
+import { createKeyedQueue } from "./keyed-queue.ts";
 
 const CONFIG_SECTION = "jhin.devices";
 /** A watched device's screen is taken again this long after the last one. */
@@ -453,11 +462,63 @@ export default definePlugin({
       },
     });
 
-    /** One input to a thread's device (D1209). */
-    const drive = async (
-      input: { threadId: string; deviceId?: string | undefined },
-      deviceInput: DeviceInput,
-    ) => {
+    // --- T3's device tools panel: its settings and actions (D1332) ----------------
+    /** The device's programs, and serve-sim's helpers from the installed hub (T3's `helperPaths`). */
+    const actionHost = (): ActionHost => {
+      const programs = host.programs();
+      const serveSim =
+        paths === undefined
+          ? undefined
+          : NodePath.join(
+              toolPaths(paths.home, HUB_SPEC).installDir,
+              "node_modules",
+              "expo-device-hub",
+              "vendor",
+              "serve-sim",
+              "dist",
+            );
+      const helper = (...parts: string[]) => {
+        if (serveSim === undefined) return null;
+        const file = NodePath.join(serveSim, ...parts);
+        return Fs.existsSync(file) ? file : null;
+      };
+      return {
+        helpers: {
+          serveSimAxSettings: helper("simax", "serve-sim-ax-settings"),
+          serveSimCli: helper("serve-sim.js"),
+        },
+        async run(command, args, options) {
+          const program =
+            // The node that runs serve-sim's CLI is the hub's: not Electron's own executable.
+            command === "node" ? (resolveNode(config().node) ?? "node") : programs[command];
+          if (program === undefined) {
+            throw new DeviceError(
+              "DEVICE_PLATFORM_UNAVAILABLE",
+              command === "xcrun"
+                ? "Xcode command line tools were not found."
+                : "Android platform tools (adb) were not found in the Android SDK.",
+            );
+          }
+          // A command that does not start is the action's failure too; one that outlives
+          // its 30 s is stopped and answers no exit code, which the action reports.
+          const result = await runProgram(program, args, {
+            // The device tools' own variables (ANDROID_SERIAL, ANDROID_ADB_SERVER_PORT, …) too.
+            env: toolEnvironment(process.env),
+            timeoutMs: 30_000,
+            ...(options?.stdin === undefined ? {} : { stdin: options.stdin }),
+          }).catch((error: unknown) => {
+            throw new DeviceError(
+              "DEVICE_OPERATION_FAILED",
+              `Device ${command} could not be run: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+          return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+        },
+      };
+    };
+    /** One action or settings read at a time per device (D1332). */
+    const actionQueue = createKeyedQueue();
+    const runningDevice = async (input: { threadId: string; deviceId?: string | undefined }) => {
       const device = await target(input);
       if (!device.booted) {
         throw new DeviceError(
@@ -465,6 +526,72 @@ export default definePlugin({
           `Device ${device.id} is not running. Call device_open first.`,
         );
       }
+      return device;
+    };
+    context.commands.register({
+      name: "device.detail",
+      title: "Read a device's settings",
+      description:
+        "A running device's appearance, text size, accessibility and network settings and its foreground app, as the Device panel's tools show them.",
+      input: DeviceTargetInput,
+      output: DeviceDetail,
+      permissions: ["devices.read"],
+      handler: async (input) => {
+        const device = await runningDevice(input);
+        // Behind any action under way on the device, so it never reads one half done.
+        const read = await actionQueue.run(`${device.hostId}\u0000${device.id}`, async () => {
+          // Still running once its turn comes.
+          await runningDevice(input);
+          return readDeviceDetail(actionHost(), device.platform, device.id);
+        });
+        return {
+          hostId: device.hostId,
+          deviceId: device.id,
+          ...read,
+          readAt: now(),
+        };
+      },
+    });
+    context.commands.register({
+      name: "device.action",
+      title: "Change a device's settings or apps",
+      description:
+        "One of the Device panel's tools on a running device: appearance, text size, accessibility toggles, orientation, location, an app's permission, open a URL, launch or terminate an app, or a push notification (iOS).",
+      input: DeviceActionInput,
+      output: DeviceDetail,
+      permissions: ["devices.write"],
+      handler: async (input) => {
+        const device = await runningDevice(input);
+        // One action at a time per device, its read-back included: an agent's and the panel's
+        // steps (three settings, a permission group) do not interleave.
+        return actionQueue.run(`${device.hostId}\u0000${device.id}`, async () => {
+          // Still running once its turn comes: one closed meanwhile says so, not adb's error.
+          await runningDevice(input);
+          const actions = actionHost();
+          await runDeviceAction(actions, device.platform, device.id, input.action);
+          // The settings read back after the change, as T3's panel shows them. The action took
+          // either way: a read-back that fails answers unknown settings, not a failed action
+          // an agent would repeat.
+          const read = await readDeviceDetail(actions, device.platform, device.id).catch(
+            (error: unknown) => {
+              context.log.warn("device settings not read back", {
+                deviceId: device.id,
+                error: String(error),
+              });
+              return { settings: {}, foregroundApp: null, readError: String(error) };
+            },
+          );
+          return { hostId: device.hostId, deviceId: device.id, ...read, readAt: now() };
+        });
+      },
+    });
+
+    /** One input to a thread's device (D1209). */
+    const drive = async (
+      input: { threadId: string; deviceId?: string | undefined },
+      deviceInput: DeviceInput,
+    ) => {
+      const device = await runningDevice(input);
       return { device, via: await hub.input(input.threadId, device, deviceInput) };
     };
     context.commands.register({
