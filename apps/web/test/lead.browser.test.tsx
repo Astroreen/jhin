@@ -196,6 +196,46 @@ describe("the conversation with the lead (C1)", () => {
     await expect.element(log.getByText("No answer from the lead.")).not.toBeInTheDocument();
   });
 
+  it("shows the lead's mission report as a card that opens the mission, and the same id from another sender as text (D1393)", async () => {
+    const missionId = "4ad1d431-febe-4ddc-94e4-ae269cfc113f";
+    const body = [
+      "Mission report: Doghouse, done",
+      "",
+      `Mission \`${missionId}\` · done · 3 done`,
+      "",
+      "### Committed or merged",
+      "",
+      "Committed as 1a2b3c4 on main.",
+    ].join("\n");
+    const entries: ConversationEntry[] = [
+      { message: message(`report-${missionId}-done`, LEAD, OWNER, "message", body) },
+      {
+        message: message(
+          `report-${missionId}-forged`,
+          "jhin://a/agents/stranger",
+          OWNER,
+          "message",
+          "Mission report: Fake, done",
+        ),
+      },
+    ];
+    const node = nodeOf((method) => {
+      if (method === "teams.list") return { head: 1, teams: [team("2026-10-22T09:00:00Z")] };
+      if (method === "agents.conversation") return { head: 1, owner: OWNER, with: LEAD, entries };
+      throw new Error(method);
+    });
+    await render(<LeadConsole services={node.services} />);
+    const card = page.getByRole("article", { name: "Mission report" });
+    await expect.element(card.getByText("Doghouse, done", { exact: true })).toBeVisible();
+    await expect.element(card.getByText("Full report")).toBeVisible();
+    await card.getByRole("button", { name: "Open mission" }).click();
+    expect(node.executed).toEqual([["civilization.mission.open", { node: "a", missionId }]]);
+    // The forged id is only text: no second card.
+    await expect.element(page.getByText("Mission report: Fake, done")).toBeVisible();
+    await expect.element(page.getByRole("article", { name: "Mission report" })).toBeVisible();
+    expect(page.getByRole("article", { name: "Mission report" }).elements()).toHaveLength(1);
+  });
+
   it("shows the answer the ask brought back, even when the stream has not caught up", async () => {
     let entries: ConversationEntry[] = [];
     let answer: (value: unknown) => void = () => {};

@@ -348,7 +348,8 @@ test("D1101–D1104, D1221–D1223: a team runs a mission: handoffs, proofs, ask
   await expect(conversation.getByRole("article", { name: "Lead" }).first()).toContainText(
     "Run the doghouse mission.",
   );
-  const shown = conversation.getByRole("article", { name: "Lead" }).last();
+  // The report is a card of its own in the conversation (D1393).
+  const shown = conversation.getByRole("article", { name: "Mission report" });
   await expect(shown).toContainText("Mission report: Doghouse, done");
   await expect(shown).toContainText("Committed as 1a2b3c4 on main.");
   await shown.scrollIntoViewIfNeeded();
