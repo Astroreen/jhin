@@ -212,3 +212,35 @@ export function threadPullRequestBadgePresentation(
     text: current.number,
   };
 }
+
+/** A row of a list of linked pull requests (T3's PullRequestListLine). */
+export interface PullRequestListLine {
+  readonly link: ThreadPullRequest;
+  /** Its layer in its chain, 0 at the bottom. */
+  readonly depth: number;
+  /** The chain's layer count on its first row, when it chains more than one. */
+  readonly stack: number | null;
+}
+
+/** Linked pull requests by chain, newest chain first, each bottom to top (T3's pullRequestListLines). */
+export function pullRequestListLines(
+  links: readonly ThreadPullRequest[],
+): readonly PullRequestListLine[] {
+  const byKey = new Map(links.map((link) => [link.key, link]));
+  return pullRequestChains(links).flatMap((chain) =>
+    chain.keys.map((key, depth) => ({
+      link: byKey.get(key)!,
+      depth,
+      stack: depth === 0 && chain.keys.length > 1 ? chain.keys.length : null,
+    })),
+  );
+}
+
+/** A pull request's URL when it is a web page: a forge's answer is no reason to open anything else. */
+export function webPageUrl(url: string): string | undefined {
+  return /^https?:\/\//i.test(url) ? url : undefined;
+}
+
+/** T3's words for a watched pull request's eye. */
+export const WATCHING_DESCRIPTION =
+  "Watching: the agent wakes when checks finish, someone comments, or the branch conflicts";

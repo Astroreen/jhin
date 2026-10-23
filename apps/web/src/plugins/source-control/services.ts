@@ -21,6 +21,31 @@ import type { SourceControlStore, SourceControlView } from "./store.ts";
 /** The route's panel name of the diff panel. */
 export const DIFF_PANEL = "diff";
 
+/** The route's panel name of a thread's pull requests (D1281). */
+export const PULL_REQUESTS_PANEL = "pull-requests";
+
+/**
+ * `pull-requests.show` (D1282): opens the panel of the thread on screen; false with no thread
+ * on screen or nothing linked to it.
+ */
+export function showPullRequestsPanel(
+  navigation: Pick<Navigation, "current" | "navigate">,
+  linkCount: (target: NodeTarget, threadId: string) => number,
+): boolean {
+  const route = navigation.current();
+  if (route.node === undefined || route.thread === undefined) return false;
+  const target = {
+    node: route.node,
+    ...(route.remote === undefined ? {} : { remote: route.remote }),
+  };
+  if (linkCount(target, route.thread) === 0) return false;
+  if (route.panel !== PULL_REQUESTS_PANEL) {
+    const { section: _section, ...rest } = route;
+    navigation.navigate({ ...rest, panel: PULL_REQUESTS_PANEL });
+  }
+  return true;
+}
+
 /** What the source control components use, handed over by the plugin. */
 export interface SourceControlServices {
   readonly context: PluginContext;

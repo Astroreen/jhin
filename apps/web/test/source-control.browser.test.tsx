@@ -293,6 +293,61 @@ describe("a thread card's source control indicators", () => {
     card.unmount();
   });
 
+  it("opens the pull requests panel from a stack's badge, and a single link's page (D1282)", () => {
+    const linked = (number: number, head: string, base: string): ThreadPullRequest => ({
+      key: `github.com/acme/app#${number}`,
+      host: "github.com",
+      repository: "acme/app",
+      number,
+      url: `https://github.com/acme/app/pull/${number}`,
+      source: "agent",
+      linkedAt: "2026-10-19T10:00:00.000Z",
+      snapshot: {
+        ...pr,
+        number,
+        url: `https://github.com/acme/app/pull/${number}`,
+        state: "open",
+        headBranch: head,
+        baseBranch: base,
+      },
+    });
+    const stacked = {
+      ...viewWith(status()),
+      links: new Map([["t1", [linked(1, "a", "main"), linked(2, "b", "a")]]]),
+    };
+    const { value } = services(stacked);
+    value.navigation.navigate({ node: target.node, thread: "t2" });
+    const { PullRequestIndicator } = createCardIndicators(value);
+    let clicks = 0;
+    const card = mount(
+      <div onClick={() => clicks++}>
+        <PullRequestIndicator active={false} target={target} thread={thread} />
+      </div>,
+    );
+    const button = card.container.querySelector("button")!;
+    expect(button.getAttribute("aria-label")).toBe("Stack of 2 pull requests, open");
+    expect(card.container.querySelector("a")).toBeNull();
+    act(() => button.click());
+    expect(value.navigation.current()).toEqual({
+      node: target.node,
+      thread: "t1",
+      panel: "pull-requests",
+    });
+    expect(clicks).toBe(0);
+    card.unmount();
+
+    const single = { ...viewWith(status()), links: new Map([["t1", [linked(3, "c", "main")]]]) };
+    const one = createCardIndicators(services(single).value);
+    const alone = mount(
+      <one.PullRequestIndicator active={false} target={target} thread={thread} />,
+    );
+    expect(alone.container.querySelector("button")).toBeNull();
+    expect(alone.container.querySelector("a")!.getAttribute("href")).toBe(
+      "https://github.com/acme/app/pull/3",
+    );
+    alone.unmount();
+  });
+
   it("shows no diff for a thread whose branch is not checked out, and nothing without a branch", () => {
     const elsewhere = createCardIndicators(services(viewWith(status({ branch: "main" }))).value);
     const props = { target, thread, active: false };

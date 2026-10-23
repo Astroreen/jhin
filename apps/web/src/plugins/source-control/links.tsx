@@ -1,7 +1,7 @@
 // Linking follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/pullRequest/
 // LinkPullRequestDialog.tsx (its title, field, validation and failure) and the row menu of
 // ThreadPullRequestsPanel.tsx ("Unlink from thread").
-import type { ThreadActionProps } from "@jhin/client-api";
+import type { NodeTarget, ThreadActionProps } from "@jhin/client-api";
 import {
   parsePullRequestUrl,
   repositoryOfRemote,
@@ -30,39 +30,49 @@ export function readPullRequestInput(
     : { url: text };
 }
 
+/**
+ * T3's "Link pull request" dialog for a thread, linking what it is given as
+ * `manual`; a failure is a toast. Resolves once the dialog closed and the link
+ * was made or refused.
+ */
+export function createLinkPrompt(services: SourceControlServices, dialogs: Dialogs) {
+  const { threads, toasts } = services;
+  return async (target: NodeTarget, threadId: string, remoteUrl: string | null) => {
+    const value = await dialogs.prompt({
+      title: "Link pull request",
+      label: "Pull request",
+      placeholder: "Pull request URL or #42",
+      confirmLabel: "Link",
+      validate: (text) => {
+        const read = readPullRequestInput(text, remoteUrl);
+        return typeof read === "string" ? read : undefined;
+      },
+    });
+    if (value === undefined) return;
+    const read = readPullRequestInput(value, remoteUrl);
+    if (typeof read === "string") return;
+    await threads
+      .call(target, "git.pr.link", { threadId, source: "manual", ...read })
+      .catch((error: unknown) =>
+        toasts?.show({
+          type: "error",
+          title: "Could not link the pull request.",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+  };
+}
+
 export function createLinkActions(services: SourceControlServices, dialogs: Dialogs | undefined) {
   const { store, threads, toasts } = services;
+  const prompt = dialogs === undefined ? undefined : createLinkPrompt(services, dialogs);
 
   function LinkPullRequest({ target, thread }: ThreadActionProps) {
     const view = useSourceControl(store, target);
     const status = view.projects.get(thread.projectId);
-    if (dialogs === undefined || status === undefined || !status.isRepo) return null;
-    const link = async () => {
-      const value = await dialogs.prompt({
-        title: "Link pull request",
-        label: "Pull request",
-        placeholder: "Pull request URL or #42",
-        confirmLabel: "Link",
-        validate: (text) => {
-          const read = readPullRequestInput(text, status.remoteUrl);
-          return typeof read === "string" ? read : undefined;
-        },
-      });
-      if (value === undefined) return;
-      const read = readPullRequestInput(value, status.remoteUrl);
-      if (typeof read === "string") return;
-      await threads
-        .call(target, "git.pr.link", { threadId: thread.id, source: "manual", ...read })
-        .catch((error: unknown) =>
-          toasts?.show({
-            type: "error",
-            title: "Could not link the pull request.",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-    };
+    if (prompt === undefined || status === undefined || !status.isRepo) return null;
     return (
-      <MenuItem onClick={() => void link()}>
+      <MenuItem onClick={() => void prompt(target, thread.id, status.remoteUrl)}>
         <GitPullRequestArrowIcon />
         Link pull request…
       </MenuItem>

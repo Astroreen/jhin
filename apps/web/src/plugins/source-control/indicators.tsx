@@ -4,11 +4,7 @@
 // (ThreadPullRequestBadgeControl, PullRequestBadge and the mini list item its tooltip shows),
 // with ThreadPullRequestsMiniList for several linked ones.
 import type { ThreadIndicatorProps } from "@jhin/client-api";
-import {
-  pullRequestChains,
-  type PullRequest,
-  type ThreadPullRequest,
-} from "@jhin/source-control-api";
+import type { PullRequest, ThreadPullRequest } from "@jhin/source-control-api";
 import { InlineButton, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import { CircleAlertIcon, EyeIcon, GitBranchIcon } from "lucide-react";
 import type { MouseEvent, ReactElement } from "react";
@@ -20,10 +16,18 @@ import {
   formatDiffCount,
   prStatusIndicator,
   pullRequestChecksPresentation,
+  pullRequestListLines,
   threadPullRequestBadge,
   threadPullRequestBadgePresentation,
+  webPageUrl,
+  WATCHING_DESCRIPTION,
 } from "../../lib/pull-request.ts";
-import { statusOfThread, useSourceControl, type SourceControlServices } from "./services.ts";
+import {
+  PULL_REQUESTS_PANEL,
+  statusOfThread,
+  useSourceControl,
+  type SourceControlServices,
+} from "./services.ts";
 
 /** Opens a pull request in a new tab without the click reaching the row around it. */
 const openPullRequest = (event: MouseEvent<HTMLElement>) => event.stopPropagation();
@@ -43,7 +47,7 @@ export function PullRequestBadge({
   const status = prStatusIndicator(pr)!;
   const checks = pullRequestChecksPresentation(pr.checks);
   // Only a web page is linked: a forge's answer is no reason to run anything else.
-  const href = /^https?:\/\//i.test(pr.url) ? pr.url : undefined;
+  const href = webPageUrl(pr.url);
   const anchor: ReactElement = <a href={href} rel="noopener noreferrer" target="_blank" />;
   const label = checks === null ? status.tooltip : `${status.tooltip}. ${checks.label}`;
   return (
@@ -107,7 +111,14 @@ export function PullRequestBadge({
  * current one's number with how many more are linked; it links to the current
  * one, and its tooltip lists them all by chain.
  */
-function LinkedPullRequestsBadge({ links }: { links: readonly ThreadPullRequest[] }) {
+function LinkedPullRequestsBadge({
+  links,
+  onOpenList,
+}: {
+  links: readonly ThreadPullRequest[];
+  /** Opens the thread's pull requests panel (D1282). */
+  onOpenList: () => void;
+}) {
   const badge = threadPullRequestBadge(links);
   const current = currentPullRequest(links);
   if (badge === null || current === undefined) return null;
@@ -117,10 +128,9 @@ function LinkedPullRequestsBadge({ links }: { links: readonly ThreadPullRequest[
   }
   const presentation = threadPullRequestBadgePresentation(badge, current);
   if (presentation === null) return null;
-  const byKey = new Map(links.map((link) => [link.key, link]));
-  const lines = pullRequestChains(links).flatMap((chain) =>
-    chain.keys.map((key, depth) => ({ link: byKey.get(key)!, depth, size: chain.keys.length })),
-  );
+  // A stack or several links open the list, one opens its page (T3's `opensList`).
+  const opensList = badge.kind === "stack" || badge.others > 0;
+  const lines = pullRequestListLines(links);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -128,10 +138,24 @@ function LinkedPullRequestsBadge({ links }: { links: readonly ThreadPullRequest[
           <InlineButton
             aria-label={presentation.label}
             data-pull-request={badge.state}
-            onClick={openPullRequest}
+            onClick={
+              opensList
+                ? (event: MouseEvent<HTMLElement>) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onOpenList();
+                  }
+                : openPullRequest
+            }
             onKeyDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
-            render={<a href={current.url} rel="noopener noreferrer" target="_blank" />}
+            render={
+              opensList ? (
+                <button type="button" />
+              ) : (
+                <a href={webPageUrl(current.url)} rel="noopener noreferrer" target="_blank" />
+              )
+            }
           />
         }
       >
@@ -149,7 +173,7 @@ function LinkedPullRequestsBadge({ links }: { links: readonly ThreadPullRequest[
         variant="glass"
       >
         <div className="-mx-1 flex flex-col gap-0.5">
-          {lines.map(({ link, depth, size }) => {
+          {lines.map(({ link, depth, stack }) => {
             const status = prStatusIndicator(link.snapshot);
             return (
               <div
@@ -166,13 +190,13 @@ function LinkedPullRequestsBadge({ links }: { links: readonly ThreadPullRequest[
                 </span>
                 {link.watch === undefined ? null : (
                   <EyeIcon
-                    aria-label="Watching: the agent wakes when checks finish, someone comments, or the branch conflicts"
+                    aria-label={WATCHING_DESCRIPTION}
                     className="size-3 shrink-0 text-muted-foreground"
                   />
                 )}
-                {depth === 0 && size > 1 ? (
-                  <span className="ml-auto shrink-0 text-muted-foreground">stack · {size}</span>
-                ) : null}
+                {stack === null ? null : (
+                  <span className="ml-auto shrink-0 text-muted-foreground">stack · {stack}</span>
+                )}
               </div>
             );
           })}
@@ -184,7 +208,7 @@ function LinkedPullRequestsBadge({ links }: { links: readonly ThreadPullRequest[
 
 /** The card's indicators: the thread's branch, its pull request and its latest turn's diff. */
 export function createCardIndicators(services: SourceControlServices) {
-  const { store } = services;
+  const { store, navigation } = services;
 
   function Branch({ target, thread }: ThreadIndicatorProps) {
     const view = useSourceControl(store, target);
@@ -206,7 +230,16 @@ export function createCardIndicators(services: SourceControlServices) {
     const view = useSourceControl(store, target);
     // Linked pull requests come first; else the pull request of the thread's branch.
     const links = view.links.get(thread.id);
-    if (links !== undefined && links.length > 0) return <LinkedPullRequestsBadge links={links} />;
+    if (links !== undefined && links.length > 0) {
+      const openList = () =>
+        navigation.navigate({
+          node: target.node,
+          ...(target.remote === undefined ? {} : { remote: target.remote }),
+          thread: thread.id,
+          panel: PULL_REQUESTS_PANEL,
+        });
+      return <LinkedPullRequestsBadge links={links} onOpenList={openList} />;
+    }
     const recorded = view.threads.get(thread.id);
     if (recorded?.branch === undefined || recorded.branch === null) return null;
     const pr = view.projects.get(recorded.projectId)?.pullRequests[recorded.branch];

@@ -109,7 +109,7 @@ async function shot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: "image/png" });
 }
 
-test("D260–D274: the chat header's git actions commit, push and open a pull request; linking another makes a stack, watched from the menu", async ({
+test("D260–D274, D1281–D1283: the chat header's git actions commit, push and open a pull request; linking another makes a stack, watched from the menu and listed in the pull requests panel", async ({
   page,
 }, info) => {
   const node = await startNode({
@@ -174,7 +174,7 @@ test("D260–D274: the chat header's git actions commit, push and open a pull re
   const prompt = page.getByRole("dialog", { name: "Link pull request" });
   await prompt.getByRole("textbox", { name: "Pull request" }).fill("#43");
   await prompt.getByRole("button", { name: "Link" }).click();
-  const stack = card.getByRole("link", { name: "Stack of 2 pull requests, open" });
+  const stack = card.getByRole("button", { name: "Stack of 2 pull requests, open" });
   await expect(stack).toHaveText("2");
   await stack.hover();
   await expect(page.getByText("stack · 2")).toBeVisible();
@@ -197,7 +197,32 @@ test("D260–D274: the chat header's git actions commit, push and open a pull re
   await page.mouse.move(700, 400);
   await expect(stack).toBeVisible();
   await shot(page, info, "watched-thread-waiting");
-  await page.getByRole("heading", { name: "New thread" }).getByRole("button").click();
-  await page.getByRole("menuitem", { name: "Stop watching #42" }).click();
+
+  // The stack's badge opens the thread's pull requests panel (D1281, D1282).
+  await stack.click();
+  const panel = page.getByRole("complementary", { name: "Pull requests" });
+  const rows = panel.getByRole("list", { name: "Linked pull requests" }).getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Greet by name");
+  await expect(rows.nth(0).getByRole("img", { name: "Watching" })).toBeVisible();
+  await expect(panel.getByText(/2 open · 2 linked · synced/)).toBeVisible();
+  await rows.nth(1).hover();
+  await panel.getByRole("button", { name: "Actions for #43" }).click();
+  await expect(page.getByRole("menuitem", { name: "Unlink from thread" })).toBeVisible();
+  await shot(page, info, "pull-requests-panel");
+  await page.keyboard.press("Escape");
+
+  // The thread details panel shows the current one, the other behind "Show 1 more" (D1283),
+  // and stops the watch.
+  await page.getByRole("button", { name: "Toggle thread details panel" }).click();
+  const details = page.getByRole("region", { name: "Thread details" });
+  await expect(details.getByRole("button", { name: "Show 1 more" })).toBeVisible();
+  await details.getByRole("button", { name: "Show 1 more" }).click();
+  await expect(details.getByRole("button", { name: "Stop watching #42" })).toBeVisible();
+  await shot(page, info, "thread-details-pull-requests");
+  await details.getByRole("button", { name: "Stop watching #42" }).click();
   await expect(card).not.toContainText("Waiting");
+  await page.keyboard.press("Escape");
+  await panel.getByRole("button", { name: "Close pull requests panel" }).click();
+  await expect(panel).toBeHidden();
 });
