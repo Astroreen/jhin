@@ -577,6 +577,108 @@ describe("jhin.scheduler: a task created from an agent's thread (D1177, D1178)",
   });
 });
 
+describe("jhin.scheduler: the calling thread's ceiling on a task's modes (D1352)", () => {
+  const asThread = (kernel: Node["kernel"], threadId: string) => (name: string, input: unknown) =>
+    kernel.commands.execute(name, input, { threadId }) as Promise<ScheduledTask>;
+  const schedule = { type: "interval", everyMs: 60 * MINUTE };
+
+  it("refuses modes broader than the thread's, and tasks that run broader, as T3's limits", async () => {
+    const { kernel, client } = await node();
+    const caller = await client.call<{ id: string }>("threads.create", {
+      runtimeMode: "approval-required",
+      interactionMode: "plan",
+    });
+    const call = asThread(kernel, caller.id);
+    // What it leaves out comes from the thread, so it fits.
+    const own = await call("scheduler.tasks.create", { prompt: "x", schedule });
+    expect(own).toMatchObject({ runtimeMode: "approval-required", interactionMode: "plan" });
+    await expect(
+      call("scheduler.tasks.create", { prompt: "x", schedule, runtimeMode: "full-access" }),
+    ).rejects.toMatchObject({
+      code: "RUNTIME_MODE_ESCALATION_DENIED",
+      message:
+        "Scheduled task runtime mode full-access is broader than this thread's mode approval-required.",
+    });
+    await expect(
+      call("scheduler.tasks.create", { prompt: "x", schedule, interactionMode: "default" }),
+    ).rejects.toMatchObject({ code: "INTERACTION_MODE_ESCALATION_DENIED" });
+    // Nor may an update widen its own task.
+    await expect(
+      call("scheduler.tasks.update", { id: own.id, runtimeMode: "auto-accept-edits" }),
+    ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+
+    // A task the user made broader (the settings page has no calling thread) is out of its reach.
+    const broad = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "deploy",
+      schedule: { type: "webhook" },
+      runtimeMode: "full-access",
+    });
+    expect(broad.webhook?.path).toEqual(expect.any(String));
+    for (const [name, input] of [
+      ["scheduler.tasks.update", { id: broad.id, prompt: "rm -rf" }],
+      ["scheduler.tasks.run", { id: broad.id }],
+      ["scheduler.tasks.delete", { id: broad.id }],
+      ["scheduler.webhooks.rotate", { id: broad.id }],
+    ] as const) {
+      await expect(call(name, input)).rejects.toMatchObject({
+        code: "RUNTIME_MODE_ESCALATION_DENIED",
+      });
+    }
+    // Its URL starts runs: the thread does not see it, the user still does.
+    const seen = (await call("scheduler.tasks.get", { id: broad.id })) as ScheduledTask;
+    expect(seen.webhook?.path).toBeNull();
+    const listed = (await call("scheduler.tasks.list", {})) as unknown as {
+      tasks: ScheduledTask[];
+    };
+    expect(listed.tasks.find((task) => task.id === broad.id)?.webhook?.path).toBeNull();
+    expect(
+      (await client.call<ScheduledTask>("scheduler.tasks.get", { id: broad.id })).webhook?.path,
+    ).toEqual(broad.webhook?.path);
+    // Its own task it may still change and delete.
+    expect(await call("scheduler.tasks.update", { id: own.id, prompt: "y" })).toMatchObject({
+      prompt: "y",
+    });
+    expect(await call("scheduler.tasks.delete", { id: own.id })).toMatchObject({ deleted: true });
+  });
+
+  it("counts the modes of the thread a task posts into", async () => {
+    const { kernel, client } = await node();
+    const narrow = await client.call<{ id: string }>("threads.create", {
+      runtimeMode: "approval-required",
+    });
+    const wide = await client.call<{ id: string }>("threads.create", {
+      runtimeMode: "full-access",
+    });
+    const task = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "x",
+      schedule,
+      threadId: wide.id,
+      runtimeMode: "approval-required",
+    });
+    await expect(
+      asThread(kernel, narrow.id)("scheduler.tasks.run", { id: task.id }),
+    ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+
+    // Its own task may not be moved into a broader thread either.
+    const call = asThread(kernel, narrow.id);
+    const own = await call("scheduler.tasks.create", { prompt: "y", schedule });
+    await expect(
+      call("scheduler.tasks.update", { id: own.id, threadId: wide.id }),
+    ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+    // Named, a thread of its own to post into still takes the caller's modes it leaves out.
+    const named = await call("scheduler.tasks.create", {
+      prompt: "z",
+      schedule,
+      threadId: narrow.id,
+    });
+    expect(named).toMatchObject({ threadId: narrow.id, runtimeMode: "approval-required" });
+    // Without a calling thread nothing is checked: the user may move it anywhere.
+    expect(
+      await client.call<ScheduledTask>("scheduler.tasks.update", { id: own.id, threadId: wide.id }),
+    ).toMatchObject({ threadId: wide.id });
+  });
+});
+
 describe("jhin.scheduler: moving a task between threads (D1177, D1178)", () => {
   const asThread = (kernel: Node["kernel"], threadId: string) => (name: string, input: unknown) =>
     kernel.commands.execute(name, input, { threadId }) as Promise<ScheduledTask>;
