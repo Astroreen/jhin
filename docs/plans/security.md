@@ -976,7 +976,9 @@ Connect stays out of scope.
   already hid them. An older node reading such a store gets the tagged
   text, which its schema refuses: a store is the node's own (D1021), so
   this happens only when a node is downgraded, and saving the field again
-  repairs it.
+  repairs it. A string secret stored before D1373 that itself began with
+  the tag and a JSON scalar would now read back as that scalar; no
+  config value starts with U+0000 in practice.
 
 ## PR plan
 

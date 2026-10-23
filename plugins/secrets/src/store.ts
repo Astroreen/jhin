@@ -180,7 +180,11 @@ export async function openStore(options: {
     ) {
       where = "keychain";
     } else {
-      if (options.keychain !== undefined) options.onKeychainRefused?.(options.keychain.kind);
+      if (options.keychain !== undefined) {
+        // Nothing of a key the keychain did not keep stays beside the key file.
+        options.keychain.forget?.();
+        options.onKeychainRefused?.(options.keychain.kind);
+      }
       writeAtomically(keyFile, `${encoded}\n`);
     }
     writeAtomically(file, `${JSON.stringify(seal(entries, key, where))}\n`);

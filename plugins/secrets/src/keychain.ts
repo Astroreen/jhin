@@ -47,6 +47,8 @@ export interface Keychain {
   get(): Promise<string | undefined>;
   /** Stores the key; `false` when the keychain refused it. */
   set(key: string): Promise<boolean>;
+  /** Drops what a refused `set` may have left behind (the DPAPI blob file). */
+  forget?(): void;
 }
 
 const SERVICE = "Jhin";
@@ -116,6 +118,9 @@ export function windowsKeychain(file: string, run: Runner): Keychain {
   const utf8 = (text: string) => Buffer.from(text, "utf8").toString("base64");
   return {
     kind: "windows",
+    forget() {
+      Fs.rmSync(file, { force: true });
+    },
     async get() {
       let blob: string;
       try {

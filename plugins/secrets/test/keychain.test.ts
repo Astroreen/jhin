@@ -128,6 +128,10 @@ describe("the Windows keychain (security.md D1372)", () => {
       expect(call.args.slice(0, 3)).toEqual(["-NoProfile", "-NonInteractive", "-Command"]);
       expect(call.args.join(" ")).not.toContain(KEY);
       expect(call.args.join(" ")).toContain("DataProtectionScope]::CurrentUser");
+      // The script T3 runs to unwrap Chromium's keys, with Protect for wrapping.
+      expect(call.args.at(-1)).toMatch(
+        /^Add-Type -AssemblyName System\.Security;\$in=\[Convert\]::FromBase64String\(\[Console\]::In\.ReadToEnd\(\)\.Trim\(\)\);\$out=\[Security\.Cryptography\.ProtectedData\]::(Protect|Unprotect)\(\$in,\$null,\[Security\.Cryptography\.DataProtectionScope\]::CurrentUser\);\[Console\]::Out\.Write\(\[Convert\]::ToBase64String\(\$out\)\)$/,
+      );
     }
     // The key went in as base64 of its text, on standard input.
     expect(calls[0]?.input).toBe(Buffer.from(KEY).toString("base64"));
@@ -164,5 +168,17 @@ describe("the Windows keychain (security.md D1372)", () => {
     });
     expect(refused).toEqual(["windows"]);
     expect(Fs.existsSync(Path.join(fresh, "store.key"))).toBe(true);
+    // A blob written by a set whose key did not read back is gone.
+    const half = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-dpapi-"));
+    const writesOnly = windowsKeychain(
+      Path.join(half, "store.key.dpapi"),
+      async (_c, args, input) =>
+        (args.at(-1) ?? "").includes("::Protect(")
+          ? { code: 0, stdout: `dpapi:${input}` }
+          : { code: 1, stdout: "" },
+    );
+    await openStore({ dir: half, keychain: writesOnly });
+    expect(Fs.existsSync(Path.join(half, "store.key.dpapi"))).toBe(false);
+    expect(Fs.existsSync(Path.join(half, "store.key"))).toBe(true);
   });
 });
