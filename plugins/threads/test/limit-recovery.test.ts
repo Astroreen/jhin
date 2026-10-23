@@ -158,6 +158,43 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     expect(woken.limitRecovery).toEqual({ turnId, resetAt, autoResume: false, snooze: false });
   });
 
+  it("arms nothing for an old recovery when the node starts, nor on unarchiving past the reset", async () => {
+    const first = await limited();
+    await first.client.call("threads.limit-recovery.set", {
+      threadId: first.thread.id,
+      turnId: first.turnId,
+      resetAt: first.resetAt,
+      autoResume: true,
+    });
+    // The thread went on: its recovery is an old one.
+    await first.client.call("threads.send", { threadId: first.thread.id, text: "hello" });
+    await first.record(
+      (current) =>
+        current.lastTurn?.turnId !== first.turnId && current.lastTurn?.status === "completed",
+    );
+    await first.stop();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const second = await node({ storage: first.storage, data: first.data });
+    await second.client.call("threads.list", {});
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it("does not send a continuation whose reset passed while the thread was archived", async () => {
+    const started = await limited();
+    const { client, thread, resetAt } = started;
+    await armed(started);
+    await client.call("threads.archive", { threadId: thread.id });
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    // Later than the reset: unarchiving arms nothing.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse(resetAt) + 60_000);
+    await client.call("threads.unarchive", { threadId: thread.id });
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
   it("keeps a snooze of the user's that ends after the reset", async () => {
     const { client, thread, turnId, resetAt } = await limited();
     const later = new Date(Date.parse(resetAt) + 24 * 3_600_000).toISOString();

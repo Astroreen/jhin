@@ -3802,11 +3802,12 @@ export default definePlugin({
       try {
         await startTurn(threadId, { text: RESUME_TEXT });
       } catch (error) {
+        // The send's error is the one reported, also when turning the resume off fails too.
         await updateThread(threadId, (current) =>
           current.limitRecovery?.turnId === recovery.turnId
             ? { ...current, limitRecovery: { ...current.limitRecovery, autoResume: false } }
             : current,
-        );
+        ).catch(() => undefined);
         throw error;
       }
       await updateThread(threadId, (current) => {
