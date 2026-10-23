@@ -55,6 +55,7 @@ import {
   formatWorkingTimer,
   type TimestampFormat,
 } from "../../lib/format.ts";
+import { describeOrigin } from "../../lib/message-origin.ts";
 import { revealAssistantCitation } from "../../lib/assistant-text-selection.ts";
 import { citationSource, knownRecordsById, threadLinks } from "../../lib/composer-context.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
@@ -255,18 +256,27 @@ function MessageAttachments({ attachments }: { attachments: readonly TurnAttachm
 const isLong = (text: string) => text.length > 600 || text.split("\n").length > 8;
 
 /** A message of the user: the one a turn answers, or one steered into it (D205). */
-function UserMessage({
+export function UserMessage({
   turn,
   format,
   latest = false,
+  titleOf,
+  onOpenSender,
 }: {
   /** With its `turnId` when it is the message a turn answers: only that one is edited from here. */
-  turn: Pick<TimelineTurn, "text" | "attachments" | "startedAt" | "context"> & {
+  turn: Pick<TimelineTurn, "text" | "attachments" | "startedAt" | "context" | "origin"> & {
     turnId?: string;
   };
   format: TimestampFormat;
   latest?: boolean;
+  titleOf?: ((threadId: string) => string | undefined) | undefined;
+  /** The action that opens the sender, when this client can reach it (D1381). */
+  onOpenSender?:
+    | ((origin: NonNullable<TimelineTurn["origin"]>) => (() => void) | undefined)
+    | undefined;
 }) {
+  const sender = turn.origin === undefined ? undefined : describeOrigin(turn.origin, titleOf);
+  const open = turn.origin === undefined ? undefined : onOpenSender?.(turn.origin);
   const [expanded, setExpanded] = useState(false);
   const long = isLong(turn.text);
   const chips = useMessageContextChips(turn.context, turn.text);
@@ -275,9 +285,24 @@ function UserMessage({
   return (
     <div className="group flex flex-col items-end gap-1 pb-4">
       <article
-        aria-label="You"
+        aria-label={sender?.label ?? "You"}
         className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground"
       >
+        {sender === undefined ? null : (
+          <p className="mb-1 text-xs text-muted-foreground" data-message-sender={sender.name}>
+            {open === undefined ? (
+              sender.caption
+            ) : (
+              <button
+                className="cursor-pointer hover:text-foreground hover:underline"
+                onClick={open}
+                type="button"
+              >
+                {sender.caption}
+              </button>
+            )}
+          </p>
+        )}
         <MessageAttachments attachments={turn.attachments} />
         {turn.text === "" ? null : (
           <div
@@ -694,6 +719,10 @@ function TurnView(props: {
   turn: TimelineTurn;
   latest: boolean;
   format: TimestampFormat;
+  titleOf?: ((threadId: string) => string | undefined) | undefined;
+  onOpenSender?:
+    | ((origin: NonNullable<TimelineTurn["origin"]>) => (() => void) | undefined)
+    | undefined;
   onRetry?(): Promise<unknown>;
   projectPath?: string;
   onSavePlan?: SavePlan;
@@ -838,7 +867,13 @@ function TurnView(props: {
   };
   return (
     <div className="flex flex-col" data-turn={turn.turnId} ref={root}>
-      <UserMessage format={format} latest={props.latest} turn={turn} />
+      <UserMessage
+        format={format}
+        latest={props.latest}
+        onOpenSender={props.onOpenSender}
+        titleOf={props.titleOf}
+        turn={turn}
+      />
       {props.header}
       {running ? (
         <div className="pb-1.5">
@@ -966,6 +1001,11 @@ export function TimelineView(props: {
   onOpenThread?(threadId: string): void;
   /** A thread's title, where the node's catalog knows it. */
   titleOf?(threadId: string): string | undefined;
+  /**
+   * The action that opens the sender of a message between agents, or none
+   * when this client cannot reach it (D1381): an agent's page, a thread.
+   */
+  onOpenSender?(origin: NonNullable<TimelineTurn["origin"]>): (() => void) | undefined;
   /** What goes under a turn's message (the `chat.turn.header` slot). */
   header?: ((turn: TimelineTurn, first: boolean) => ReactNode) | undefined;
   /** What goes under a turn's answer (the `chat.turn.footer` slot). */
@@ -1018,6 +1058,8 @@ export function TimelineView(props: {
                 <TurnView
                   format={props.format}
                   latest={index === turns.length - 1}
+                  onOpenSender={props.onOpenSender}
+                  titleOf={props.titleOf}
                   turn={turn}
                   {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
                   {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}

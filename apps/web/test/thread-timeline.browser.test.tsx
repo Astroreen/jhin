@@ -5,6 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vite-plus/test";
 
+import { UserMessage } from "../src/plugins/chat/timeline.tsx";
 import {
   useThreadTimeline,
   type ThreadTimelineState,
@@ -145,5 +146,66 @@ describe("a thread's timeline errors", () => {
     await act(async () => root.render(<View />));
     expect(seen.state?.error).toBe("Not connected to this thread's node");
     act(() => root.unmount());
+  });
+});
+
+describe("a message between agents in the transcript (D1381)", () => {
+  const base = {
+    text: "Please review the slice",
+    attachments: [],
+    startedAt: "2026-10-19T00:00:00.000Z",
+  };
+  const render = async (node: React.ReactElement) => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(node));
+    return { host, unmount: () => act(() => root.unmount()) };
+  };
+
+  it("is labelled with its sender, not You, and links back to an agent", async () => {
+    const opened: string[] = [];
+    const { host, unmount } = await render(
+      <UserMessage
+        format="locale"
+        onOpenSender={(origin) => () => opened.push(origin.from)}
+        turn={{
+          ...base,
+          origin: {
+            messageId: "m1",
+            kind: "ask",
+            from: "jhin://n1/agents/builder",
+            traceId: "tr1",
+          },
+        }}
+      />,
+    );
+    expect(host.querySelector("article")?.getAttribute("aria-label")).toBe("builder, question");
+    const link = host.querySelector<HTMLButtonElement>("[data-message-sender] button");
+    expect(link?.textContent).toBe("builder · question");
+    act(() => link?.click());
+    expect(opened).toEqual(["jhin://n1/agents/builder"]);
+    unmount();
+  });
+
+  it("shows the sender without a link when it cannot be reached, and a user's message as You", async () => {
+    const from = await render(
+      <UserMessage
+        format="locale"
+        onOpenSender={() => undefined}
+        turn={{
+          ...base,
+          origin: { messageId: "m2", kind: "message", from: "jhin://n1/owner", traceId: "tr2" },
+        }}
+      />,
+    );
+    expect(from.host.querySelector("article")?.getAttribute("aria-label")).toBe("Owner, message");
+    expect(from.host.querySelector("[data-message-sender] button")).toBeNull();
+    expect(from.host.querySelector("[data-message-sender]")?.textContent).toBe("Owner · message");
+    from.unmount();
+    const own = await render(<UserMessage format="locale" turn={base} />);
+    expect(own.host.querySelector("article")?.getAttribute("aria-label")).toBe("You");
+    expect(own.host.querySelector("[data-message-sender]")).toBeNull();
+    own.unmount();
   });
 });
