@@ -1,5 +1,6 @@
 import {
   targetKey,
+  type ChatDrafts,
   type Connections,
   type DeviceSettings,
   type Navigation,
@@ -61,6 +62,8 @@ export interface SourceControlServices {
   readonly selections: DiffSelections;
   /** The editors of each node, to open a diff's file in (D286). */
   readonly editors: Editors;
+  /** The chat's unsent messages, whose review comments the diff shows (D1285). */
+  readonly drafts: ChatDrafts | undefined;
   /** This device's settings, where the panel's layout toggle writes. */
   readonly settings: DeviceSettings | undefined;
   /** How the chat shows times (its `timestampFormat` setting). */

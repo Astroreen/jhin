@@ -1337,6 +1337,40 @@ commands, the details rows and "Show N more"); Playwright
 `e2e/tests/git-actions.spec.ts` (the stack's badge opens the panel, the
 details panel lists the links, with screenshots).
 
+### Review comments as chips (W35, D1284–D1286)
+
+- **D1284. A comment on lines is T3's review comment record and chip**
+  (T3 Code's `reviewCommentContextRecord` and `reviewCommentContextLabel` in
+  `apps/web/src/lib/composerContextRecords.ts` at D53), where D285 put
+  `<review_comment>` text: "Comment" puts a `review-comment` record (D1006;
+  its section, file, rows, range label, text and patch, the text cut at
+  16 000 characters and the patch at 32 000 as T3 cuts them; its id the
+  comment's own) into the open composer through `chat.composer.insert-context`,
+  and its chip reads T3's label (`greet.ts L2`, `L3 to L5`, `(before)` for
+  removed lines). The agent reads it through D1006's projection; a sent
+  message shows the chip (D1007), T3's card of a sent comment. A chat
+  without `chat.composer.insert-context` still gets D285's text. A message
+  that holds T3's 200 records says so.
+- **D1285. The diff shows the comments already in the message**, as T3's
+  `AnnotatableCodeView` shows a draft's review comments: under their lines
+  (T3's `restoreDiffReviewCommentRange`, by the rows they name), in the
+  scope and file they were written on, as T3's comment annotation (its
+  speech bubble and text). It reads them from `chat.drafts` 1.1's new
+  `contexts(target, threadId)`: the records the thread's unsent message
+  still names, the same array until the draft changes. A comment the user
+  removes from the message leaves the diff with it.
+- **D1286. "Delete comment"** (T3's `removeReviewComment`) takes the
+  comment's chips and record out of the message through the chat's new
+  client command `chat.composer.remove-context` (`{ contextId }` →
+  `{ removed }`, false when the open message names no such record), which
+  any record's chip can use.
+
+The proof: `apps/web/test/source-control.browser.test.tsx` (a comment goes
+in as its record with T3's label and fields, shows on its line, and "Delete
+comment" removes it); Playwright `e2e/tests/source-control.spec.ts` (the
+chip in the message, the comment on its line, deleting it takes the chip
+out, with a screenshot).
+
 ## Deferred
 
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
@@ -1421,11 +1455,11 @@ details panel lists the links, with screenshots).
   writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
   minutes), with no way to stop it from the client. T3 has none either (at
   D53 and at `v0.1.2-nightly.20261021.3457`), so W21 leaves it until T3 does.
-- What D285 leaves of T3's review comments: a comment is text in the
-  composer, not T3's context chip (W6's rich composer, #81, brings chips),
-  so the diff does not show the comments already added, with their "Delete
-  comment", and the timeline shows a sent `<review_comment>` block as text,
-  not as T3's review comment card.
+- What D1284–D1286 leave of T3's review comments: a comment's chip opens
+  no popover with its lines and text (T3's `ReviewCommentChip` details),
+  several comments on one line show apart rather than as T3's grouped
+  annotation, and comments on a file's own contents (T3's file panel,
+  `buildFileReviewComment`) wait for that panel.
 - What W5 leaves of T3's diff panel: its in-app file preview (at D53 a click
   on a file's name opens T3's file panel; Jhin has none, so it opens the
   editor, D286), loading the patches of a truncated diff file by file

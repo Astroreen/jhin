@@ -129,6 +129,7 @@ const PromptEditor = lazy(() =>
 import { useComposerMenu } from "./use-composer-menu.ts";
 import { type PutAside, usePutAside } from "./put-aside.ts";
 import {
+  contextRemovalRanges,
   knownRecordsById,
   planContextInsertion,
   withContexts,
@@ -235,6 +236,11 @@ export interface ComposerHandleApi {
    * addTerminalContext, D1009), or why it cannot.
    */
   insertContext(record: MessageContextRecord): ContextInsertion;
+  /**
+   * Takes a record's chips out of the prompt, and the record with them (T3's
+   * removeReviewComment, D1286); false when the prompt names no such record.
+   */
+  removeContext(contextId: string): boolean;
   /** Puts a quote of an agent's message at the cursor as its chip (T3's onCite, D1012). */
   insertCitation(citation: AssistantCitation): ContextInsertion;
   toggleModelPicker(): void;
@@ -991,6 +997,19 @@ export function Composer(props: ComposerProps) {
     editor.current?.focus();
     return "inserted";
   };
+  const removeContext = (contextId: string): boolean => {
+    // Without the editor the chips cannot go, so neither does the record.
+    const prompted = editor.current;
+    if (prompted === undefined || prompted === null) return false;
+    const ranges = contextRemovalRanges(prompted.value(), contextId);
+    if (ranges.length === 0) return false;
+    for (const { start, end } of ranges) prompted.replaceRange(start, end, "");
+    // An editor not ready yet edits nothing: the record stays with its chips.
+    if (contextRemovalRanges(prompted.value(), contextId).length > 0) return false;
+    contextsNow.current = contextsNow.current.filter((record) => record.contextId !== contextId);
+    setContexts(contextsNow.current);
+    return true;
+  };
   const insertCitation = (citation: AssistantCitation): ContextInsertion => {
     if (literalAnswer || approval !== undefined) return "not-now";
     const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
@@ -1091,6 +1110,7 @@ export function Composer(props: ComposerProps) {
     focus,
     insert,
     insertContext,
+    removeContext,
     insertCitation,
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,

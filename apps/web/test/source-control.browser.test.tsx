@@ -1,4 +1,6 @@
+import type { MessageContextRecord, ReviewCommentContextRecord } from "@jhin/agent-api";
 import type {
+  ChatDrafts,
   Connections,
   Navigation,
   NodeCatalog,
@@ -137,6 +139,7 @@ function services(
   answers: Record<string, unknown> = {},
   config = deviceConfig(),
   projectPath = "/src/app",
+  drafts?: ChatDrafts,
 ) {
   const calls: { method: string; params: unknown }[] = [];
   const shown: { type?: string; title: unknown; description?: unknown; action?: string }[] = [];
@@ -206,6 +209,7 @@ function services(
       setItem: (key: string, item: string) => storage.set(key, item),
     } as unknown as Storage),
     settings: config.settings,
+    drafts,
     timestampFormat: () => "24-hour",
     shortcut: () => undefined,
   };
@@ -973,6 +977,80 @@ describe("the diff panel", () => {
         "</review_comment>",
       ].join("\n"),
     ]);
+  });
+
+  it("adds a comment as its record and chip, shows it on its lines and deletes it (D1284–D1286)", async () => {
+    let records: MessageContextRecord[] = [];
+    const listeners = new Set<() => void>();
+    const changed = () => act(() => listeners.forEach((listener) => listener()));
+    const drafts: ChatDrafts = {
+      hasThreadDraft: () => records.length > 0,
+      contexts: (_target, threadId) => (threadId === "t1" ? records : []),
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return toDisposable(() => listeners.delete(listener));
+      },
+    };
+    const removed: string[] = [];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": () => {
+          throw new Error("A chat that takes records gets no text");
+        },
+        "chat.composer.insert-context": (input) => {
+          records = [...records, (input as { record: MessageContextRecord }).record];
+          changed();
+          return { inserted: true };
+        },
+        "chat.composer.remove-context": (input) => {
+          const { contextId } = input as { contextId: string };
+          removed.push(contextId);
+          records = records.filter((record) => record.contextId !== contextId);
+          changed();
+          return { removed: true };
+        },
+      },
+    );
+    const { value } = services(
+      viewWith(status()),
+      { "git.diff": diff },
+      config,
+      "/src/app",
+      drafts,
+    );
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await userEvent.fill(box, "Why three?");
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await expect.element(box).not.toBeInTheDocument();
+    expect(records).toHaveLength(1);
+    const record = records[0] as ReviewCommentContextRecord;
+    expect(record).toMatchObject({
+      version: 1,
+      kind: "review-comment",
+      label: "app.ts L2",
+      sectionId: "jhin.source-control.git:branch",
+      sectionTitle: "Changes",
+      filePath: "src/app.ts",
+      rangeLabel: "+2",
+      startIndex: 2,
+      endIndex: 2,
+      text: "Why three?",
+      diff: "@@ -0,0 +2,1 @@\n+const two = 3;",
+    });
+    expect(record.contextId).toMatch(/^review-comment_/);
+    // The comment in the message shows under its lines, as T3's annotation.
+    await expect.element(page.getByText("Why three?")).toBeVisible();
+    await userEvent.hover(page.getByText("Why three?"));
+    await userEvent.click(page.getByRole("button", { name: "Delete comment" }));
+    expect(removed).toEqual([record.contextId]);
+    await expect.element(page.getByText("Why three?")).not.toBeInTheDocument();
   });
 
   it("closes a draft when the scope changes, and offers comments once a chat plugin comes", async () => {

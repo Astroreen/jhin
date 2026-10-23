@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { planContextInsertion, terminalContextRecord } from "../src/lib/composer-context.ts";
+import {
+  contextRemovalRanges,
+  draftContextsReader,
+  planContextInsertion,
+  terminalContextRecord,
+} from "../src/lib/composer-context.ts";
 
 const excerpt = (id: string) =>
   terminalContextRecord({
@@ -47,5 +52,32 @@ describe("putting a record into the prompt (D1009)", () => {
       planContextInsertion({ prompt: "", caret: undefined, records: named, record: excerpt("new") })
         .kind,
     ).toBe("insert");
+  });
+});
+
+describe("taking a record's chips out of the prompt (D1286)", () => {
+  it("finds each chip of the record, with the space after it, last first", () => {
+    const prompt = `see ${reference("a")} and ${reference("b")} again ${reference("a")}`;
+    const ranges = contextRemovalRanges(prompt, "terminal_a");
+    expect(ranges).toHaveLength(2);
+    let left = prompt;
+    for (const { start, end } of ranges) left = left.slice(0, start) + left.slice(end);
+    expect(left).toBe(`see and ${reference("b")} again `);
+  });
+
+  it("finds nothing for a record the prompt does not name", () => {
+    expect(contextRemovalRanges(`see ${reference("a")}`, "terminal_z")).toEqual([]);
+  });
+});
+
+describe("the records a draft names (chat.drafts 1.1, D1285)", () => {
+  it("answers the same array for the same draft, only the records its prompt names", () => {
+    const read = draftContextsReader();
+    const draft = { prompt: `see ${reference("a")}`, contexts: [excerpt("a"), excerpt("b")] };
+    const first = read(draft);
+    expect(first.map((record) => record.contextId)).toEqual(["terminal_a"]);
+    expect(read(draft)).toBe(first);
+    expect(read({ ...draft })).not.toBe(first);
+    expect(read(undefined)).toBe(read({ prompt: "nothing" }));
   });
 });

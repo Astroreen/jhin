@@ -224,7 +224,7 @@ test("D280–D285: the diff panel renders with @pierre/diffs, splits, lists file
   await page.getByRole("option", { name: "Automatic" }).click();
   await expect(panel.getByLabel("Comparing feature/toolbar against main")).toBeVisible();
 
-  // A comment on a line goes into the composer as T3 sends a review comment (D285).
+  // A comment on a line goes into the composer as T3's review comment (D285, D1284–D1286).
   await panel.getByRole("button", { name: "Stacked diff view" }).click();
   await panel.getByRole("button", { name: "Hide file tree" }).click();
   await panel.getByRole("button", { name: "Expand src/greet.ts" }).click();
@@ -239,9 +239,17 @@ test("D280–D285: the diff panel renders with @pierre/diffs, splits, lists file
   await shot(page, info, "source-control-diff-comment");
   await panel.getByRole("button", { name: "Comment", exact: true }).click();
   await expect(box).toBeHidden();
+  // It is T3's review comment chip in the message (D1284), and shows on its line (D1285).
   const message = page.getByRole("textbox", { name: "Message" });
-  await expect(message).toContainText("<review_comment");
-  await expect(message).toContainText('filePath="src/greet.ts"');
-  await expect(message).toContainText("Say goodbye politely");
+  const chip = message.getByLabel(/^Review comment, greet\.ts L\d+$/);
+  await expect(chip).toBeVisible();
+  await expect(message).not.toContainText("<review_comment");
+  const comment = panel.getByText("Say goodbye politely");
+  await expect(comment).toBeVisible();
   await shot(page, info, "source-control-diff-comment-sent");
+  // "Delete comment" takes it out of the message too (D1286).
+  await comment.hover();
+  await panel.getByRole("button", { name: "Delete comment" }).click();
+  await expect(chip).toHaveCount(0);
+  await expect(comment).toBeHidden();
 });
