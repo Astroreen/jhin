@@ -548,7 +548,10 @@ export default definePlugin({
       permissions: ["devices.read"],
       handler: async (input) => {
         const device = await runningDevice(input);
-        const read = await readDeviceDetail(actionHost(), device.platform, device.id);
+        // Behind any action under way on the device, so it never reads one half done.
+        const read = await actionQueue.run(device.id, () =>
+          readDeviceDetail(actionHost(), device.platform, device.id),
+        );
         return {
           hostId: device.hostId,
           deviceId: device.id,

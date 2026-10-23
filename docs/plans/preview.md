@@ -727,8 +727,9 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   URL to open must carry its scheme. Turning the network off on Android
   takes when Wi-Fi did: mobile data is turned with it where there is one.
   The node runs one action at a time per device, its read-back included,
-  so an agent's and the panel's steps do not interleave; the panel's
-  controls wait for its first read.
+  and a `device.detail` read waits behind it, so an agent's and the
+  panel's steps do not interleave and no read sees one half done; the
+  panel's controls wait for its first read.
   Android's appearance is read from a definite `Night mode: yes` or `no`
   (`auto` follows the clock, so it is not shown). A push payload, as text
   or as JSON, carries at most 4096 characters, as agents send it too.
@@ -896,6 +897,10 @@ probe of `ServerBrowser.ts`.
   - Of T3's device tools (D1332, D1333): the accessibility frames overlay
     and the event log (they read the hub's own routes), and the device
     tools' versions popover.
+  - Reading an iOS simulator's foreground app (D1332, D1333): T3's
+    `readDeviceDetail` gives none on iOS, so its panel, and this one, offer
+    no Terminate or Relaunch there, no default app for Permissions, and
+    Push notification waits for an app id.
   - Proving `simctl location set` with a negative latitude on macOS
     (D1332): the argument is T3's `<lat>,<lon>`, and CI has no simulator to
     show simctl does not read a leading `-` as an option. Shaking a device,

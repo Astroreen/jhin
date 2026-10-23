@@ -99,6 +99,7 @@ function useDeviceControls(props: {
     let current = true;
     setDetail(null);
     setError(null);
+    setPending(false);
     setReading(true);
     void call
       .current("device.detail", { threadId: props.threadId, deviceId: props.device.id })
@@ -128,7 +129,8 @@ function useDeviceControls(props: {
       if (shown.current === asked) setError(errorMessage(failure));
       return false;
     } finally {
-      setPending(false);
+      // Another device by now: its own actions keep their own pending state.
+      if (shown.current === asked) setPending(false);
     }
   };
   return {
