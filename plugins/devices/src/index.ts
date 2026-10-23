@@ -442,10 +442,8 @@ export default definePlugin({
       output: DeviceHubAccessResult,
       permissions: ["devices.read"],
       handler: (_input, invocation) =>
-        // An in-process caller is trusted: its ticket may watch and drive devices.
-        hub.access(
-          invocation.caller ?? { id: "node", permissions: ["devices.read", "devices.write"] },
-        ),
+        // A caller without a principal (in-process code) gets what the command declares: watching.
+        hub.access(invocation.caller ?? { id: "node", permissions: ["devices.read"] }),
     });
 
     /** One input to a thread's device (D1209). */

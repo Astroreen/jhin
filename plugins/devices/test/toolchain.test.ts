@@ -104,6 +104,8 @@ describe("the device toolchain", () => {
         HOME: "/home/me",
         HTTPS_PROXY: "http://proxy",
         npm_config_registry: "https://registry.example",
+        npm_config__authToken: "npm-secret",
+        "npm_config_//registry.example/:_authToken": "npm-secret",
         ANTHROPIC_API_KEY: "sk-secret",
         SOME_TOKEN: "secret",
       }),

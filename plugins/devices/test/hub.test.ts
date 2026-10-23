@@ -499,6 +499,26 @@ describe("the device hub", () => {
         })
       ).status,
     ).toBe(503);
+
+    // Off and on again at once: the next request starts the hub after the stop.
+    const layer = (hub: boolean) =>
+      node.kernel.config.setLayer("node", {
+        "jhin.http": { port: 0 },
+        "jhin.devices": {
+          adb: tools.adb,
+          xcrun: Path.join(tools.dir, "no-xcrun"),
+          npm: tools.npm,
+          hub,
+        },
+      });
+    layer(true);
+    const again = await node.call<Access>("device.hub.access", {});
+    layer(false);
+    layer(true);
+    const back = await node.call<Access>("device.hub.access", {});
+    expect(back.path).toBe(again.path);
+    const newPort = tools.hubArgs()!.args[tools.hubArgs()!.args.indexOf("--port") + 1];
+    expect((await fetch(`http://127.0.0.1:${newPort}/readyz`)).status).toBe(200);
   });
 
   it("falls back to adb when the hub is off, and says why it gives no video", async () => {

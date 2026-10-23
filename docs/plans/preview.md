@@ -578,7 +578,7 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   name the npm and the Node.js to use. npm runs the packages' install
   scripts (the hub's `node-datachannel` fetches its native build there), so
   npm gets a reduced environment: PATH, home and temp folders, proxies,
-  certificates and npm's own settings, never the node's other variables
+  certificates and npm's settings other than its credentials, never the node's other variables
   (keys and tokens); the setting's description says the scripts run. The
   hub, the agent-device daemon and its CLI run with the same environment
   plus the Android SDK's and Xcode's variables, the display and the user.

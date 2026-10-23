@@ -162,8 +162,14 @@ export function runProgram(
  */
 export function installEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const kept =
-    /^(PATH|Path|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|TMPDIR|TMP|TEMP|SystemRoot|ComSpec|PATHEXT|LANG|LC_ALL|SHELL|HTTPS?_PROXY|NO_PROXY|https?_proxy|no_proxy|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|SSL_CERT_DIR|npm_config_\w+|NPM_CONFIG_\w+|XDG_\w+)$/;
-  return Object.fromEntries(Object.entries(env).filter(([name]) => kept.test(name)));
+    /^(PATH|Path|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|TMPDIR|TMP|TEMP|SystemRoot|ComSpec|PATHEXT|LANG|LC_ALL|SHELL|HTTPS?_PROXY|NO_PROXY|https?_proxy|no_proxy|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|SSL_CERT_DIR|XDG_\w+)$/;
+  // npm's settings without its credentials (`_auth`, `_authToken`, `//host/:_authToken`, …):
+  // where the registry, cache, proxy and certificates are.
+  const npm =
+    /^npm_config_(registry|cache|proxy|https_proxy|noproxy|no_proxy|cafile|ca|strict_ssl|userconfig|globalconfig|prefix|loglevel|fetch_retries|fetch_retry_\w+|fetch_timeout)$/i;
+  return Object.fromEntries(
+    Object.entries(env).filter(([name]) => kept.test(name) || npm.test(name)),
+  );
 }
 
 /**

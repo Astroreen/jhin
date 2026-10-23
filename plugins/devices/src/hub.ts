@@ -219,7 +219,8 @@ export function createDeviceHub(options: DeviceHubOptions) {
       tickets.revoke();
       proxy?.drop();
       await host?.stop(true);
-      setStatus({ status: "idle", detail: unavailable() ?? "" });
+      // Turned on again meanwhile: the next request starts it, and its status says so.
+      if (!options.enabled()) setStatus({ status: "idle", detail: unavailable() ?? "" });
     },
 
     /** A token that went takes its tickets and proxied sockets with it (security.md D414). */
