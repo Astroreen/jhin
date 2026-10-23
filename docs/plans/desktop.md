@@ -559,6 +559,10 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   T3 does).
 - Telling the app's page from other subscribers of `preview-desktop`
   (D1321): any subscriber holds new tabs for the 10 s wait.
+- T3's download toast for a tab the app hosts (D1324, `preview.md` D1331):
+  the file lands in the node's folder as for any tab, but the webview's
+  surface does not show the offer the frames stream carries, so it is saved
+  through the agent or the headless panel only.
 - A reload of the window whose new page subscribes to `preview-desktop`
   before the old one leaves (D1321): the stream keeps the old page's tabs
   as attached, the new page does not host them, and each ends on the node

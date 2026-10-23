@@ -1180,8 +1180,15 @@ const desktopTabs = (events: StoredEvent[]) =>
   )?.tabs ?? [];
 
 describe("jhin.preview in the desktop app (D1321)", () => {
+  // A node of its own per test: the shared one is near its 32 tabs by now.
+  const ownNode = async () => {
+    const started = await startNode();
+    stops.push(started.stop);
+    return started;
+  };
+
   it("drives a tab in the app's webview once the app attaches it", async () => {
-    const { client } = await node();
+    const { client } = await ownNode();
     const app = await standInApp();
     stops.push(app.stop);
     const host = watch(client, PREVIEW_DESKTOP_STREAM);
@@ -1227,7 +1234,7 @@ describe("jhin.preview in the desktop app (D1321)", () => {
   });
 
   it("ends the tab when the app's relay drops mid-session, and tells the app (D1322)", async () => {
-    const { client } = await node();
+    const { client } = await ownNode();
     const app = await standInApp();
     stops.push(app.stop);
     const host = watch(client, PREVIEW_DESKTOP_STREAM);
@@ -1257,7 +1264,7 @@ describe("jhin.preview in the desktop app (D1321)", () => {
   });
 
   it("opens the tab headless when the app's page stops hosting before it attaches", async () => {
-    const { client } = await node();
+    const { client } = await ownNode();
     const host = watch(client, PREVIEW_DESKTOP_STREAM);
     const opening = client.call<PreviewStatus>("preview.open", {
       threadId: thread,
@@ -1274,7 +1281,7 @@ describe("jhin.preview in the desktop app (D1321)", () => {
   });
 
   it("refuses an attach nobody waits for, and an endpoint off this machine", async () => {
-    const { client } = await node();
+    const { client } = await ownNode();
     const secret = "a".repeat(32);
     const unknown = await rejection(
       client.call("preview.desktop.attach", {
