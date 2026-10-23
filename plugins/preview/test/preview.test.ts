@@ -1118,7 +1118,8 @@ async function standInApp() {
       ...(process.env["CI"] === undefined ? [] : ["--no-sandbox"]),
       "about:blank",
     ],
-    { stdio: ["ignore", "ignore", "pipe"] },
+    // A group of its own, so stopping it stops its helper processes too.
+    { stdio: ["ignore", "ignore", "pipe"], detached: true },
   );
   const devtools = await new Promise<string>((resolve, reject) => {
     let output = "";
@@ -1132,7 +1133,9 @@ async function standInApp() {
   const secret = Crypto.randomBytes(24).toString("base64url");
   const relay = new WebSocketServer({ host: "127.0.0.1", port: 0, path: `/${secret}` });
   await new Promise<void>((resolve) => relay.once("listening", resolve));
+  const sockets = new Set<WebSocket>();
   relay.on("connection", (socket) => {
+    sockets.add(socket);
     const upstream = new WebSocket(devtools);
     const pending: string[] = [];
     upstream.on("open", () => {
@@ -1149,6 +1152,10 @@ async function standInApp() {
   const port = (relay.address() as AddressInfo).port;
   return {
     endpoint: `ws://127.0.0.1:${port}/${secret}`,
+    /** The app lets go of the node's connections, as its relay does when the guest goes. */
+    drop() {
+      for (const socket of sockets) socket.terminate();
+    },
     /** The URLs of the browser's pages, from its own DevTools list. */
     async pages(): Promise<string[]> {
       const http = devtools.replace(/^ws:/, "http:").replace(/\/devtools\/.*$/, "/json/list");
@@ -1158,7 +1165,7 @@ async function standInApp() {
     async stop() {
       await new Promise((resolve) => relay.close(resolve));
       const exited = new Promise((resolve) => browser.once("exit", resolve));
-      browser.kill();
+      process.kill(-browser.pid!, "SIGKILL");
       await exited;
       Fs.rmSync(profile, { recursive: true, force: true });
     },
@@ -1217,6 +1224,36 @@ describe("jhin.preview in the desktop app (D1321)", () => {
     await host.until(() => desktopTabs(host.events).length === 0);
     expect(await app.pages()).toContain(`${origin}/`);
     host.subscription.dispose();
+  });
+
+  it("ends the tab when the app's relay drops mid-session, and tells the app (D1322)", async () => {
+    const { client } = await node();
+    const app = await standInApp();
+    stops.push(app.stop);
+    const host = watch(client, PREVIEW_DESKTOP_STREAM);
+    const tabsStream = watch(client, previewTabsStream(thread));
+    const opening = client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/`,
+    });
+    await host.until(() => desktopTabs(host.events).length === 1);
+    const [announced] = desktopTabs(host.events);
+    await client.call("preview.desktop.attach", {
+      threadId: thread,
+      tabId: announced!.tabId,
+      endpoint: app.endpoint,
+    });
+    await opening;
+    await host.until(() => desktopTabs(host.events)[0]?.attached === true);
+    await tabsStream.until(() => lastTabs(tabsStream.events).length === 1);
+
+    // The connection drops (DevTools took the guest, the guest went): the tab ends on the node,
+    // and the app is told to drop it, so nothing waits on a relay that is gone.
+    app.drop();
+    await tabsStream.until(() => lastTabs(tabsStream.events).length === 0);
+    await host.until(() => desktopTabs(host.events).length === 0);
+    host.subscription.dispose();
+    tabsStream.subscription.dispose();
   });
 
   it("opens the tab headless when the app's page stops hosting before it attaches", async () => {
