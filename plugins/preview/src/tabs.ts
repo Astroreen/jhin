@@ -10,6 +10,7 @@ import * as Path from "node:path";
 import {
   DEFAULT_PREVIEW_VIEWPORT,
   PREVIEW_CONTROL_MESSAGES,
+  PREVIEW_DOWNLOAD_MAX_BYTES,
   PREVIEW_RECORDING_MAX_BYTES,
   PreviewError,
   PreviewEvents,
@@ -47,6 +48,7 @@ import {
   type PreviewViewportSetting,
   type PreviewWaitForInput,
   DEFAULT_BROWSER_PROFILE_ID,
+  type PreviewDownloadOffer,
 } from "@jhin/preview-api";
 import type { MemoryStreams } from "@jhin/rpc";
 import type { Json } from "@jhin/storage-api";
@@ -63,6 +65,7 @@ import type {
 import { Chromium, RENDER_SCALE, presentAsChrome } from "./chromium.ts";
 import { ControlInterrupted, TabControl } from "./control.ts";
 import * as Ops from "./page.ts";
+import { readBounded } from "./read-bounded.ts";
 import { RECORDING_ENCODER_SCRIPT, RECORDING_SCREENCAST, type EncoderWindow } from "./recording.ts";
 
 const AGENT_TAB_LIMIT = 8;
@@ -79,6 +82,22 @@ const READ_OPERATIONS = new Set(["status", "snapshot", "waitFor"]);
 const VIEWER_NAVIGATION = { waitUntil: "commit", timeout: Ops.DEFAULT_TIMEOUT_MS } as const;
 /** How long a probe waits for the page before it answers "not text" (D1203). */
 const PROBE_TIMEOUT_MS = 2_000;
+
+/**
+ * A navigation that became a download: Playwright rejects `goto` with this, and the file
+ * arrives as a download event (D1331). Its wording is the one signal Playwright gives.
+ */
+const isDownloadStarting = (error: unknown): boolean =>
+  /Download is starting/i.test(error instanceof Error ? error.message : String(error));
+
+/**
+ * A human's navigation that became a download is no failure: the page stays, and the file is
+ * offered (D1331). Anything else is rethrown.
+ */
+const unlessDownload = (error: unknown): null => {
+  if (isDownloadStarting(error)) return null;
+  throw error;
+};
 
 /** The few DOM shapes `editableAtPoint` reads; the plugin has no DOM types. */
 interface PageElement {
@@ -171,6 +190,7 @@ interface Tab {
   /** The open chooser's `accept` attribute. */
   fileChooserAccept: string;
   readonly downloads: {
+    id: string;
     fileName: string;
     path: string;
     sizeBytes: number;
@@ -202,6 +222,8 @@ export interface TabsOptions {
   readonly log: Logger;
   /** The clock tabs are stamped and swept by. */
   readonly now?: () => Date;
+  /** The largest download `preview.tab.download` sends (D1331); tests give a smaller one. */
+  readonly downloadMaxBytes?: number;
 }
 
 const tabKey = (threadId: string, tabId: string) => `${threadId}\u0000${tabId}`;
@@ -592,15 +614,32 @@ export function createTabs(options: TabsOptions) {
       );
       await Fs.mkdir(folder, { recursive: true });
       const fileName = Path.basename(download.suggestedFilename()) || "download";
-      const path = Path.join(folder, `${Crypto.randomUUID()}-${fileName}`);
+      const id = Crypto.randomUUID();
+      const path = Path.join(folder, `${id}-${fileName}`);
       await download.saveAs(path);
       const { size } = await Fs.stat(path);
+      const dropped = tab.downloads.length >= DOWNLOADS_KEPT ? tab.downloads[0] : undefined;
       pushBounded(
         tab.downloads,
-        { fileName, path, sizeBytes: size, url: download.url(), completedAt: now() },
+        { id, fileName, path, sizeBytes: size, url: download.url(), completedAt: now() },
         DOWNLOADS_KEPT,
       );
+      // Beyond the kept ones, a file goes with its entry.
+      // A file still open elsewhere (a Save on Windows) may not go: said, not dropped silently.
+      if (dropped !== undefined) {
+        await Fs.rm(dropped.path, { force: true }).catch((error: unknown) =>
+          log.warn("dropped download not removed", { path: dropped.path, error: String(error) }),
+        );
+      }
       changed(tab);
+      // The viewer holding control is offered the file (T3's download toast, D1331): told
+      // once to whoever watches now, never replayed to a later subscriber.
+      const frames = previewFramesStream(tab.threadId, tab.tabId);
+      const offer: PreviewDownloadOffer = { id, fileName, sizeBytes: size };
+      // `append` hands the event to every subscriber before it returns, an RPC client's
+      // forwarder included, so removing it at once loses no viewer watching now.
+      const offered = streams.append(frames, PreviewEvents.download, offer);
+      streams.remove(frames, offered.sequence);
     } catch (error) {
       log.warn("download not saved", { tabId: tab.tabId, error: String(error) });
     }
@@ -968,7 +1007,7 @@ export function createTabs(options: TabsOptions) {
       await navigation;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/Download is starting/i.test(message)) {
+      if (isDownloadStarting(error)) {
         throw new PreviewError(
           "PREVIEW_EXECUTION",
           "URL is a file this browser cannot show, so it was downloaded instead. preview_status lists it under downloads.",
@@ -1465,6 +1504,41 @@ export function createTabs(options: TabsOptions) {
       });
     },
 
+    /** A saved download's file, for the client to save (D1331). */
+    async download(input: {
+      threadId: string;
+      tabId: string;
+      id: string;
+    }): Promise<{ fileName: string; data: string }> {
+      return withErrors(async () => {
+        const tab = humanTab(input.threadId, input.tabId);
+        const gone = () =>
+          new PreviewError(
+            "PREVIEW_TAB_NOT_FOUND",
+            `Download ${input.id} is no longer kept for this tab.`,
+          );
+        const saved = tab.downloads.find((download) => download.id === input.id);
+        if (saved === undefined) throw gone();
+        // The file as it is now: removed from the node, or changed since it was saved.
+        const file = await Fs.open(saved.path, "r").catch(() => {
+          throw gone();
+        });
+        try {
+          const max = options.downloadMaxBytes ?? PREVIEW_DOWNLOAD_MAX_BYTES;
+          const tooLarge = () =>
+            new PreviewError(
+              "PREVIEW_RESULT_TOO_LARGE",
+              `${saved.fileName} is too large to send to this client (at most ${Math.floor(max / 1024 / 1024)} MiB); it stays on the node at ${saved.path}.`,
+            );
+          const data = await readBounded(file, max);
+          if (data === undefined) throw tooLarge();
+          return { fileName: saved.fileName, data: data.toString("base64") };
+        } finally {
+          await file.close();
+        }
+      });
+    },
+
     async control(input: { threadId: string; tabId: string; viewer: string; take: boolean }) {
       return withErrors(async () => {
         const tab = humanTab(input.threadId, input.tabId);
@@ -1486,15 +1560,19 @@ export function createTabs(options: TabsOptions) {
         const tab = humanTab(input.threadId, input.tabId);
         await tab.control.human(input.viewer, async () => {
           if (input.url !== undefined) {
-            await tab.page.goto(targetUrl({ url: input.url }), VIEWER_NAVIGATION);
+            await tab.page
+              .goto(targetUrl({ url: input.url }), VIEWER_NAVIGATION)
+              .catch(unlessDownload);
           } else if (input.delta !== undefined) {
-            await (input.delta < 0
-              ? tab.page.goBack(VIEWER_NAVIGATION)
-              : tab.page.goForward(VIEWER_NAVIGATION));
+            await (
+              input.delta < 0
+                ? tab.page.goBack(VIEWER_NAVIGATION)
+                : tab.page.goForward(VIEWER_NAVIGATION)
+            ).catch(unlessDownload);
           } else if (input.reload?.ignoreCache === true) {
             await tab.cdp.send("Page.reload", { ignoreCache: true });
           } else {
-            await tab.page.reload(VIEWER_NAVIGATION);
+            await tab.page.reload(VIEWER_NAVIGATION).catch(unlessDownload);
           }
         });
         return summary(tab);

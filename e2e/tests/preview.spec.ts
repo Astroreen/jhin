@@ -25,12 +25,30 @@ const PAGES: Record<string, string> = {
     <button style="width:100%;height:100vh" onclick="document.title = confirm('Leave this page?') ? 'Confirmed' : 'Kept'">Ask</button>`,
 };
 
+const LARGE = Buffer.from(Array.from({ length: 6 * 1024 * 1024 }, (_, index) => index % 251));
 let node: RunningNode;
 let server: Http.Server;
 let origin = "";
 test.beforeAll(async () => {
   node = await startNode();
   server = Http.createServer((request, response) => {
+    // Six MiB, every byte its index modulo 251: a file Save carries through base64 whole.
+    if (request.url === "/large.bin") {
+      response.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-disposition": 'attachment; filename="large.bin"',
+      });
+      response.end(LARGE);
+      return;
+    }
+    if (request.url === "/report.txt") {
+      response.writeHead(200, {
+        "content-type": "text/plain",
+        "content-disposition": 'attachment; filename="report.txt"',
+      });
+      response.end("the report");
+      return;
+    }
     // The cookies the browser sent, as the page's title.
     if (request.url === "/cookie") {
       response.writeHead(200, { "content-type": "text/html" });
@@ -430,6 +448,46 @@ test("D1202: a tab floats over the chat, moves, and goes back to the right panel
     .call<{ tabs: { tabId: string }[] }>("preview.list", { threadId });
   await node.client().call("preview.tab.close", { threadId, tabId: tabs[0]!.tabId });
   await expect(player).toBeHidden();
+});
+
+test("D1331: a page's download is offered to the user, who saves it to this device", async ({
+  page,
+}, info) => {
+  await startThread(page, "download please");
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  const panel = page.getByRole("complementary", { name: "Right panel" });
+  const address = panel.getByRole("textbox", { name: "Address" });
+  await address.fill(`${origin}/second`);
+  await address.press("Enter");
+  await expect(panel.getByRole("tab", { name: "Second page" })).toBeVisible();
+  await expect(panel.getByRole("status")).toHaveText("You have control");
+
+  // The page's file downloads on the node; T3's toast offers it here.
+  await address.fill(`${origin}/report.txt`);
+  await address.press("Enter");
+  const toast = page.getByText("Downloaded report.txt");
+  await expect(toast).toBeVisible();
+  // A navigation that became a download is no failure.
+  await expect(page.getByText("Download is starting")).toHaveCount(0);
+  await shot(page, info, "download-toast");
+  const saved = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save" }).click();
+  const download = await saved;
+  expect(download.suggestedFilename()).toBe("report.txt");
+  expect(Fs.readFileSync(await download.path(), "utf8")).toBe("the report");
+  // Saved: the offer is done.
+  await expect(toast).toHaveCount(0);
+
+  // A file of several MiB comes through base64 and the page's decoding whole.
+  await address.fill(`${origin}/large.bin`);
+  await address.press("Enter");
+  const large = page.getByText("Downloaded large.bin");
+  await expect(large).toBeVisible();
+  const savedLarge = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save" }).click();
+  const largeDownload = await savedLarge;
+  expect(Fs.readFileSync(await largeDownload.path()).equals(LARGE)).toBe(true);
+  await expect(large).toHaveCount(0);
 });
 
 test.describe("on a touch screen", () => {

@@ -50,6 +50,7 @@ const PAGES: Record<string, string> = {
     <a href="/second">Second page</a>
     <script>setTimeout(() => console.log("page ready"), 0)</script>`,
   "/second": `<!doctype html><title>Second</title><p>Second page text</p>`,
+  "/download": `<!doctype html><title>Download</title><a href="/report.txt" download>Get report</a>`,
   "/popup": `<!doctype html><title>Opener</title><a href="/second" target="_blank">Open popup</a>`,
   "/upload": `<!doctype html><title>Upload</title><input type="file" aria-label="File" id="file">`,
   "/pick": `<!doctype html><title>Pick</title>
@@ -79,6 +80,15 @@ let server: Http.Server;
 let origin = "";
 beforeAll(async () => {
   server = Http.createServer((request, response) => {
+    if (request.url === "/report.txt") {
+      response
+        .writeHead(200, {
+          "content-type": "text/plain",
+          "content-disposition": 'attachment; filename="report.txt"',
+        })
+        .end("the report");
+      return;
+    }
     if (request.url === "/hold") {
       holding.push(() => response.writeHead(200).end("released"));
       held();
@@ -953,5 +963,128 @@ describe("jhin.preview", () => {
       return status?.state === "success" && status.title === "Clicked";
     });
     tabsStream.subscription.dispose();
+  });
+
+  it("offers a page's download to its watchers and gives the file to the client (D1331)", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/download`,
+    });
+    await client.call("preview.wait.for", { threadId: thread, text: "Get report" });
+    const tabId = opened.tabId!;
+    const frames = watch(client, previewFramesStream(thread, tabId));
+    await client.call("preview.click", {
+      threadId: thread,
+      locator: "role=link[name='Get report']",
+    });
+    await frames.until(() => frames.events.some((event) => event.type === PreviewEvents.download));
+    const offered = frames.events.find((event) => event.type === PreviewEvents.download)!
+      .payload as { id: string; fileName: string; sizeBytes: number };
+    expect(offered).toMatchObject({ fileName: "report.txt", sizeBytes: 10 });
+    frames.subscription.dispose();
+    // Told once: what a later subscriber reads from the start holds no offer.
+    const { live } = await node();
+    const kept = await live
+      .sourceOf(previewFramesStream(thread, tabId))!
+      .source.read(previewFramesStream(thread, tabId), { after: 0 });
+    expect(kept.filter((event) => event.type === PreviewEvents.download)).toEqual([]);
+
+    const saved = await client.call<{ fileName: string; data: string }>("preview.tab.download", {
+      threadId: thread,
+      tabId,
+      id: offered.id,
+    });
+    expect(saved.fileName).toBe("report.txt");
+    expect(Buffer.from(saved.data, "base64").toString()).toBe("the report");
+    const missing = await rejection(
+      client.call("preview.tab.download", { threadId: thread, tabId, id: "nope" }),
+    );
+    expect(missing.code).toBe("PREVIEW_TAB_NOT_FOUND");
+  });
+
+  it("keeps 20 downloads, offers a user's navigation to a file, and answers a file gone from the node (D1331)", async () => {
+    // A node of its own: the shared one is near its 32 tabs by now.
+    const started = await startNode();
+    stops.push(started.stop);
+    const { client } = started;
+    const opened = await client.call<PreviewTab>("preview.tab.open", {
+      threadId: thread,
+      url: `${origin}/download`,
+    });
+    const tabId = opened.tabId;
+    await client.call("preview.tab.control", { threadId: thread, tabId, viewer: "v1", take: true });
+    const frames = watch(client, previewFramesStream(thread, tabId));
+    const offers = () =>
+      frames.events
+        .filter((event) => event.type === PreviewEvents.download)
+        .map((event) => event.payload as { id: string });
+    // The user's own navigation to a file is no failure: the page stays, the file is offered.
+    await client.call("preview.tab.navigate", {
+      threadId: thread,
+      tabId,
+      viewer: "v1",
+      url: `${origin}/report.txt`,
+    });
+    await frames.until(() => offers().length === 1);
+    const status = await client.call<PreviewStatus>("preview.status", { threadId: thread, tabId });
+    const firstPath = (status.downloads as { path: string }[])[0]!.path;
+    // Twenty more: the first file goes with its entry.
+    for (let count = 2; count <= 21; count += 1) {
+      await client.call("preview.tab.navigate", {
+        threadId: thread,
+        tabId,
+        viewer: "v1",
+        url: `${origin}/report.txt`,
+      });
+      await frames.until(() => offers().length === count);
+    }
+    frames.subscription.dispose();
+    expect(Fs.existsSync(firstPath)).toBe(false);
+    const dropped = await rejection(
+      client.call("preview.tab.download", { threadId: thread, tabId, id: offers()[0]!.id }),
+    );
+    expect(dropped.code).toBe("PREVIEW_TAB_NOT_FOUND");
+    // A kept entry whose file was removed from the node answers the same.
+    const kept = await client.call<PreviewStatus>("preview.status", { threadId: thread, tabId });
+    Fs.rmSync((kept.downloads as { path: string }[]).at(-1)!.path);
+    const removed = await rejection(
+      client.call("preview.tab.download", { threadId: thread, tabId, id: offers().at(-1)!.id }),
+    );
+    expect(removed.code).toBe("PREVIEW_TAB_NOT_FOUND");
+  });
+
+  it("refuses to send a download over the limit, and keeps it on the node (D1331)", async () => {
+    const streams = createMemoryStreams({});
+    const tabs = createTabs({
+      chromium: new Chromium(),
+      streams,
+      dataDir: Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-preview-")),
+      log: { info() {}, warn() {}, error() {}, debug() {} } as unknown as Logger,
+      downloadMaxBytes: 5,
+    });
+    try {
+      const tab = await tabs.openForHuman({ threadId: "t", url: `${origin}/download` });
+      await tabs.control({ threadId: "t", tabId: tab.tabId, viewer: "v1", take: true });
+      const offered = new Promise<{ id: string }>((resolve) => {
+        const subscription = streams.subscribe(previewFramesStream("t", tab.tabId), (event) => {
+          if (event.type !== PreviewEvents.download) return;
+          subscription.dispose();
+          resolve(event.payload as { id: string });
+        });
+      });
+      await tabs.navigateAsHuman({
+        threadId: "t",
+        tabId: tab.tabId,
+        viewer: "v1",
+        url: `${origin}/report.txt`,
+      });
+      const { id } = await offered;
+      const error = await rejection(tabs.download({ threadId: "t", tabId: tab.tabId, id }));
+      expect(error.code).toBe("PREVIEW_RESULT_TOO_LARGE");
+      expect(error.message).toContain("stays on the node");
+    } finally {
+      await tabs.dispose();
+    }
   });
 });

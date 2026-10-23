@@ -197,6 +197,12 @@ function IconButton(props: {
 
 export interface PanelServices {
   readonly viewer: string;
+  /** T3's "Downloaded <file>" toast with Save, for the viewer holding control (D1331). */
+  offerDownload(
+    client: RpcClient,
+    tab: { threadId: string; tabId: string },
+    download: { id: string; fileName: string },
+  ): void;
   /** The tab shown for a thread, chosen on this device. */
   activeTab(key: string): string | undefined;
   setActiveTab(key: string, tabId: string | undefined): void;
@@ -1276,6 +1282,11 @@ function TabView(props: {
             client={props.client}
             humanControls={tab.controller !== null}
             onError={fail("Unable to change the browser tab")}
+            onDownload={(download) => {
+              if (tab.controller === viewer) {
+                services.offerDownload(props.client, ids, download);
+              }
+            }}
             onFirstFrame={() => setPainted(true)}
             tabId={tab.tabId}
             threadId={threadId}

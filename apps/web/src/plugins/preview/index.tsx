@@ -19,6 +19,7 @@ import {
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import type { PreviewTab } from "@jhin/preview-api";
+import type { RpcClient } from "@jhin/rpc";
 import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import {
   Toggle,
@@ -52,6 +53,26 @@ import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import type { BrowserPanelProps, PanelServices } from "./panel.tsx";
 import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
+
+/**
+ * Base64 decoded a megabyte at a time (D1331): no `data:` URL for the page's CSP to refuse, and
+ * no second copy of the whole file as a binary string.
+ */
+function decodeBase64(data: string): Uint8Array<ArrayBuffer>[] {
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  // A multiple of 4 characters decodes on its own.
+  const step = 4 * 256 * 1024;
+  for (let start = 0; start < data.length; start += step) {
+    const binary = atob(data.slice(start, start + step));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    chunks.push(bytes);
+  }
+  return chunks;
+}
+
+/** Saved files whose object URLs are kept for the browser to read (D1331). */
+const SAVED_URLS_KEPT = 4;
 
 /** A placeholder of the panel's size while its chunk loads or the node connects. */
 function PanelPlaceholder(props: { children?: ReactNode }) {
@@ -278,6 +299,61 @@ export const previewPanelPlugin = builtin(
           title,
           description: error instanceof Error ? error.message : String(error),
         });
+
+      // The saved files' URLs, newest last. The browser reads one whenever it starts the
+      // download, so a URL lives until a few later saves (or the plugin goes), not one.
+      const savedUrls: string[] = [];
+      context.subscriptions.add({
+        dispose: () => {
+          for (const url of savedUrls.splice(0)) URL.revokeObjectURL(url);
+        },
+      });
+      /** T3's download toast: "Downloaded <file>", and Save fetches it from the node (D1331). */
+      const offerDownload = (
+        client: RpcClient,
+        tab: { threadId: string; tabId: string },
+        download: { id: string; fileName: string },
+      ) => {
+        // One Save at a time: a second click while the file comes adds no second download.
+        let saving = false;
+        const id = toasts?.show({
+          type: "info",
+          title: `Downloaded ${download.fileName}`,
+          action: {
+            label: "Save",
+            onClick: () => {
+              if (saving) return;
+              saving = true;
+              void client
+                .call<{ fileName: string; data: string }>("preview.tab.download", {
+                  ...tab,
+                  id: download.id,
+                })
+                .then(async ({ fileName, data }) => {
+                  const blob = new Blob(decodeBase64(data), {
+                    type: "application/octet-stream",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  savedUrls.push(url);
+                  if (savedUrls.length > SAVED_URLS_KEPT) URL.revokeObjectURL(savedUrls.shift()!);
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = fileName;
+                  anchor.hidden = true;
+                  document.body.append(anchor);
+                  anchor.click();
+                  anchor.remove();
+                  // Saved: the offer is done. A failed Save keeps it, so Save can be tried again.
+                  if (id !== undefined) toasts?.close(id);
+                })
+                .catch((error: unknown) => onError("Couldn't save the download", error))
+                .finally(() => {
+                  saving = false;
+                });
+            },
+          },
+        });
+      };
 
       /** Opens or closes the right panel of the thread on screen. */
       /** Opens or closes the right panel; closing it floats the tab it showed (its id). */
@@ -548,6 +624,7 @@ export const previewPanelPlugin = builtin(
             else float(panelKey, tabId);
           },
           useProfiles: () => resolveBrowserProfiles(profiles.use()),
+          offerDownload,
         };
         return (
           <BrowserPanel
@@ -598,6 +675,9 @@ export const previewPanelPlugin = builtin(
             client={connection.client}
             composerHeight={composerHeight}
             key={tab.tabId}
+            onDownload={(download) =>
+              offerDownload(connection.client, { threadId: thread.id, tabId: tab.tabId }, download)
+            }
             onError={(error) => onError("Unable to change the browser tab", error)}
             onOpenInPanel={() => {
               players.close(key);

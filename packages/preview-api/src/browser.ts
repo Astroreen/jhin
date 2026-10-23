@@ -31,6 +31,8 @@ export const PreviewEvents = {
   frame: "preview.frame",
   /** `{ phase, x, y }`: where the agent points before it acts, in CSS pixels. */
   pointer: "preview.pointer",
+  /** `{ id, fileName, sizeBytes }`: the page downloaded a file the user may save (D1331). */
+  download: "preview.download",
 } as const;
 
 /** Error codes of the browser commands, one per error tag of T3's. */
@@ -137,12 +139,22 @@ export type PreviewDialog = z.infer<typeof PreviewDialog>;
 export const PreviewFileChooser = z.object({ multiple: z.boolean(), accept: z.string() });
 
 export const PreviewDownload = z.object({
+  /** Names the file for `preview.tab.download` (D1331). */
+  id: z.string().optional(),
   fileName: z.string(),
   path: z.string(),
   sizeBytes: z.number(),
   url: z.string(),
   completedAt: z.string(),
 });
+
+/** The payload of `preview.download` on a tab's frames stream (D1331). */
+export const PreviewDownloadOffer = z.object({
+  id: z.string(),
+  fileName: z.string(),
+  sizeBytes: z.number(),
+});
+export type PreviewDownloadOffer = z.infer<typeof PreviewDownloadOffer>;
 
 export const PreviewStatusTab = z.object({
   tabId: PreviewTabId,
@@ -805,6 +817,20 @@ export const PreviewTabDialogInput = z.object({
   viewer: PreviewViewerId,
   accept: z.boolean(),
   promptText: z.string().max(10_000).optional(),
+});
+
+/** What one `preview.tab.download` answer carries at most (D1331), as an upload. */
+export const PREVIEW_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
+
+export const PreviewTabDownloadInput = z.object({
+  threadId: PreviewThreadId,
+  tabId: PreviewTabId,
+  id: z.string().min(1).max(64),
+});
+export const PreviewTabDownloadResult = z.object({
+  fileName: z.string(),
+  /** The file, base64. */
+  data: z.string(),
 });
 
 /** T3's most files a page's file picker takes in one upload (D1203). */

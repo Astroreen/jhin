@@ -2,7 +2,12 @@
 // (frames on a canvas, letterboxed pointer mapping, mouse, wheel and key input through a hidden
 // textarea, the resize the panel asks for, touch taps and pans with the editable-at-point probe that
 // raises a soft keyboard) and components/preview/AgentBrowserCursor.tsx.
-import { PreviewEvents, previewFramesStream, type PreviewInputEvent } from "@jhin/preview-api";
+import {
+  PreviewDownloadOffer,
+  PreviewEvents,
+  previewFramesStream,
+  type PreviewInputEvent,
+} from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { MousePointer2Icon } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
@@ -59,6 +64,8 @@ export interface SurfaceProps {
    * floating mini player shows the page at the size it has instead (T3's `followSize`, D1202).
    */
   readonly followSize?: boolean;
+  /** The page downloaded a file (D1331). */
+  readonly onDownload?: (download: { id: string; fileName: string; sizeBytes: number }) => void;
   /** The page's size in CSS pixels, when a frame brings a new one. */
   readonly onViewport?: (size: { width: number; height: number }) => void;
 }
@@ -90,6 +97,8 @@ export function BrowserSurface(props: SurfaceProps) {
   firstFrame.current = props.onFirstFrame;
   const onError = useRef(props.onError);
   onError.current = props.onError;
+  const onDownload = useRef(props.onDownload);
+  onDownload.current = props.onDownload;
   const onViewport = useRef(props.onViewport);
   onViewport.current = props.onViewport;
   const followSize = props.followSize ?? true;
@@ -167,7 +176,10 @@ export function BrowserSurface(props: SurfaceProps) {
       { after: 0 },
       (event) => {
         if (event.type === PreviewEvents.frame) void paint(event.payload as unknown as Frame);
-        else if (event.type === PreviewEvents.pointer) {
+        else if (event.type === PreviewEvents.download) {
+          const offer = PreviewDownloadOffer.safeParse(event.payload);
+          if (offer.success) onDownload.current?.(offer.data);
+        } else if (event.type === PreviewEvents.pointer) {
           const pointer = event.payload as { x: number; y: number; phase: string };
           setAgentPointer({
             x: pointer.x,
