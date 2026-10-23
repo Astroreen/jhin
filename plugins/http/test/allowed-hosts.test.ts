@@ -168,6 +168,12 @@ describe("the names a node answers to (security.md D1362)", () => {
     expect(() => server.allowHost!("*")).toThrow("allowHost takes a name, not *");
   });
 
+  it("refuses an entry it could never match, instead of ignoring it", async () => {
+    for (const entry of ["*.example.com", "https://nas.lan", "nas lan"]) {
+      await expect(start({ allowedHosts: [entry] }), entry).rejects.toThrow();
+    }
+  });
+
   it("turns the check off with *", async () => {
     const off = await start({ allowedHosts: ["*"] });
     expect((await get(off.port, { host: "anything.example", origin: "http://x" })).status).toBe(

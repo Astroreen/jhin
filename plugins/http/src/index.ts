@@ -36,12 +36,23 @@ const Config = z
         "Reverse proxies (addresses or CIDR ranges, e.g. 127.0.0.1, 10.0.0.0/8) whose forwarded header names the real client. Empty: the header is ignored and the socket's peer is the client.",
       advanced: true,
     }),
-    allowedHosts: z.array(z.string().trim().min(1)).default([]).meta({
-      title: "Allowed host names",
-      description:
-        "Names browsers may reach this node by, besides its addresses, localhost, the machine's name, Tailscale names and the mesh's advertised addresses. .example.com allows every name under it; * turns the check off.",
-      advanced: true,
-    }),
+    allowedHosts: z
+      .array(
+        z
+          .string()
+          .trim()
+          .regex(
+            /^(\*|\.?[a-z0-9-]+(\.[a-z0-9-]+)*\.?(:\d+)?|\[[0-9a-f:.]+\](:\d+)?)$/i,
+            "must be a host name (nas.lan), .example.com for every name under it, or *",
+          ),
+      )
+      .default([])
+      .meta({
+        title: "Allowed host names",
+        description:
+          "Names browsers may reach this node by, besides its addresses, localhost, the machine's name, Tailscale names and the mesh's advertised addresses. .example.com allows every name under it; * turns the check off.",
+        advanced: true,
+      }),
     forwardedHeader: z.enum(["x-forwarded-for", "forwarded"]).default("x-forwarded-for").meta({
       title: "Forwarded header",
       description: "The header the trusted proxies set; the other one is never read.",
