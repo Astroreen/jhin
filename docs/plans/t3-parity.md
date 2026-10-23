@@ -2177,11 +2177,14 @@ Code at `eb7b35ac` (D53).
   the reset (`snoozedUntil`, as `threads.snooze`; "The reset time has
   passed. Retry the thread manually." once it has); undoing it wakes the
   thread when it still sleeps until that reset. An armed resume waits for
-  the reset (or a snooze that outlasts it) on a timer of the node, armed
-  again when the node starts; then, if the thread's latest turn is still
-  that one and the thread is neither archived nor settled by hand, it drops
-  `limitRecovery` and sends "Continue where you left off." as the user's
-  message. A change that fails is said under the timeline, T3's toast titles
+  the reset (or a snooze that outlasts it, also one set after it was
+  armed) on a timer of the node, armed again when the node starts and when
+  the thread is unarchived; then, if the thread's latest turn is still that
+  one and the thread is neither archived nor settled by hand (a thread the
+  node settled by itself is still resumed, as T3 checks only the hand), it
+  sends "Continue where you left off." as the user's message and drops
+  `limitRecovery` once it is sent (a send that fails leaves it, and the
+  banner still offers it). A change that fails is said under the timeline, T3's toast titles
   ("Could not change auto-resume: …", "Could not snooze thread: …").
 - **D1313. T3's settings "Auto-resume limited threads" and "Snooze limited
   threads"**: `autoResumeLimitedThreads` and `snoozeLimitedThreads` of the

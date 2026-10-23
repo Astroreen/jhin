@@ -3312,6 +3312,10 @@ export default definePlugin({
           if (thread.archivedAt === undefined) return thread;
           const { archivedAt: _archivedAt, ...rest } = thread;
           return { ...rest, updatedAt: now() };
+        }).then((thread) => {
+          // A continuation armed before it was archived waits for its reset again (D1312).
+          armRecovery(thread);
+          return thread;
         }),
     });
 
@@ -3588,12 +3592,19 @@ export default definePlugin({
       ) {
         return;
       }
+      // Snoozed since past the reset: the continuation waits for the thread to wake.
+      if (thread.snoozedUntil !== undefined && Date.parse(thread.snoozedUntil) > Date.now()) {
+        armRecovery(thread);
+        return;
+      }
+      // As the user's message, as T3's continuation is. The record goes once it is sent: a
+      // send that fails leaves it, and the banner still offers it.
+      await startTurn(threadId, { text: RESUME_TEXT });
       await updateThread(threadId, (current) => {
+        if (current.limitRecovery?.turnId !== recovery.turnId) return current;
         const { limitRecovery: _done, ...rest } = current;
         return rest;
       });
-      // As the user's message, as T3's continuation is.
-      await startTurn(threadId, { text: RESUME_TEXT });
     };
     /** Sets what the reset brings (D1312): checked against the thread's latest turn. */
     const setRecovery = (

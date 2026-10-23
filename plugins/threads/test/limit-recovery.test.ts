@@ -38,26 +38,41 @@ async function limited(config?: Record<string, unknown>) {
 }
 
 describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)", () => {
-  it("sends T3's continuation at the reset once asked to", async () => {
-    const { client, thread, record, turnId, resetAt } = await limited();
-    const stream = watch(client, thread.id);
-    // Nothing is armed without the node's settings.
-    expect(
-      (await client.call<{ thread: Thread }>("threads.get", { threadId: thread.id })).thread,
-    ).not.toHaveProperty("limitRecovery");
-
+  /** Arms the continuation under fake timers: it is the only timer the node holds then. */
+  async function armed(started: Awaited<ReturnType<typeof limited>>) {
+    const { client, thread, turnId, resetAt } = started;
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const armed = await client.call<Thread>("threads.limit-recovery.set", {
+    expect(vi.getTimerCount()).toBe(0);
+    const record = await client.call<Thread>("threads.limit-recovery.set", {
       threadId: thread.id,
       turnId,
       resetAt,
       autoResume: true,
     });
-    expect(armed.limitRecovery).toEqual({ turnId, resetAt, autoResume: true, snooze: false });
-    // The reset comes: the continuation is the only timer armed meanwhile.
+    expect(vi.getTimerCount()).toBe(1);
+    return record;
+  }
+  /** The reset comes, then the node runs on real timers again. */
+  const reset = () => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+  };
 
+  it("sends T3's continuation at the reset once asked to", async () => {
+    const started = await limited();
+    const { client, thread, record, turnId, resetAt } = started;
+    const stream = watch(client, thread.id);
+    // Nothing is armed without the node's settings.
+    expect(
+      (await client.call<{ thread: Thread }>("threads.get", { threadId: thread.id })).thread,
+    ).not.toHaveProperty("limitRecovery");
+    expect((await armed(started)).limitRecovery).toEqual({
+      turnId,
+      resetAt,
+      autoResume: true,
+      snooze: false,
+    });
+    reset();
     const second = await stream.until("agent.turn.started", 1);
     expect(second.payload).toMatchObject({ input: { text: "Continue where you left off." } });
     const resumed = await record(
@@ -66,16 +81,10 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     expect(resumed.limitRecovery).toBeUndefined();
   });
 
-  it("does not send it once the user cancelled it", async () => {
-    const { client, thread, turnId, resetAt } = await limited();
-    const stream = watch(client, thread.id);
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    await client.call("threads.limit-recovery.set", {
-      threadId: thread.id,
-      turnId,
-      resetAt,
-      autoResume: true,
-    });
+  it("disarms a cancelled continuation", async () => {
+    const started = await limited();
+    const { client, thread, turnId, resetAt } = started;
+    await armed(started);
     const cancelled = await client.call<Thread>("threads.limit-recovery.set", {
       threadId: thread.id,
       turnId,
@@ -83,12 +92,46 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
       autoResume: false,
     });
     expect(cancelled.limitRecovery?.autoResume).toBe(false);
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
-    // A message of the user's is the next turn: the cancelled continuation never came first.
+    // No timer is left to fire.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("sends nothing to a thread archived before the reset, and arms it again when it comes back", async () => {
+    const started = await limited();
+    const { client, thread } = started;
+    const stream = watch(client, thread.id);
+    await armed(started);
+    await client.call("threads.archive", { threadId: thread.id });
+    reset();
+    // The next turn is the user's: the continuation found the thread archived.
+    await client.call("threads.unarchive", { threadId: thread.id });
     await client.call("threads.send", { threadId: thread.id, text: "hello" });
     const next = await stream.until("agent.turn.started", 1);
     expect(next.payload).toMatchObject({ input: { text: "hello" } });
+  });
+
+  it("arms the continuation again when the node starts", async () => {
+    const first = await limited();
+    await first.client.call("threads.limit-recovery.set", {
+      threadId: first.thread.id,
+      turnId: first.turnId,
+      resetAt: first.resetAt,
+      autoResume: true,
+    });
+    await first.stop();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const second = await node({ storage: first.storage, data: first.data });
+    // Armed from the stored record once the node listed its threads.
+    await second.client.call("threads.list", {});
+    expect(vi.getTimerCount()).toBe(1);
+    const stream = watch(second.client, first.thread.id);
+    reset();
+    await stream.untilMatch(
+      (event) =>
+        event.type === "agent.turn.started" &&
+        (event.payload as { input?: { text?: string } }).input?.text ===
+          "Continue where you left off.",
+    );
   });
 
   it("snoozes the thread until the reset, and wakes it when that is undone", async () => {
@@ -110,13 +153,21 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
     expect(woken.limitRecovery).toEqual({ turnId, resetAt, autoResume: false, snooze: false });
   });
 
-  it("refuses a turn that is not the latest limited one", async () => {
-    const { client, thread, resetAt } = await limited();
+  it("refuses a turn that is not the latest limited one, or another reset", async () => {
+    const { client, thread, turnId, resetAt } = await limited();
     await expect(
       client.call("threads.limit-recovery.set", {
         threadId: thread.id,
         turnId: "another",
         resetAt,
+        autoResume: true,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_LIMITED" });
+    await expect(
+      client.call("threads.limit-recovery.set", {
+        threadId: thread.id,
+        turnId,
+        resetAt: new Date(Date.parse(resetAt) + 60_000).toISOString(),
         autoResume: true,
       }),
     ).rejects.toMatchObject({ code: "NOT_LIMITED" });
@@ -127,8 +178,8 @@ describe("jhin.threads: resuming a thread a usage limit stopped (D1312, D1313)",
       autoResumeLimitedThreads: true,
       snoozeLimitedThreads: true,
     });
-    const armed = await record((current) => current.limitRecovery !== undefined);
-    expect(armed.limitRecovery).toEqual({ turnId, resetAt, autoResume: true, snooze: true });
-    expect(armed.snoozedUntil).toBe(resetAt);
+    const armedRecord = await record((current) => current.limitRecovery !== undefined);
+    expect(armedRecord.limitRecovery).toEqual({ turnId, resetAt, autoResume: true, snooze: true });
+    expect(armedRecord.snoozedUntil).toBe(resetAt);
   });
 });
