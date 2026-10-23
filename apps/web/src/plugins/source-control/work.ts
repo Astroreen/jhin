@@ -12,13 +12,17 @@ import type { SourceControlStore } from "./store.ts";
  * The background work source control reports (D1131): a watched pull request
  * keeps its thread waiting between turns, as T3's pending background work.
  * Every connected node is followed while it is connected, outside any render:
- * a node's view is empty until something follows it.
+ * a node's view is empty until something follows it. A mesh member's threads
+ * (D1289) are followed through their connection from just after the first
+ * time one is asked about, until that connection goes.
  */
 export function createWatchedWork(
   store: Pick<SourceControlStore, "view" | "subscribe">,
   connections: Pick<Connections, "list" | "subscribe">,
 ): ThreadWorkSource & Disposable {
   const followed = new Map<string, Disposable>();
+  /** Mesh members followed through a connection, by their target's key. */
+  const members = new Map<string, { readonly node: string; readonly subscription: Disposable }>();
   const listeners = new Set<() => void>();
   /** Each node's watched links as last told, so only a change of them is told. */
   const watchedOf = new Map<string, string>();
@@ -70,15 +74,42 @@ export function createWatchedWork(
       watchedOf.delete(targetKey({ node: id }));
       dropped = true;
     }
+    // A mesh member is reached through its connection: it goes with it.
+    for (const [key, member] of members) {
+      if (ids.has(member.node)) continue;
+      member.subscription.dispose();
+      members.delete(key);
+      watchedOf.delete(key);
+      dropped = true;
+    }
     // A node that went away waits on nothing any more: its threads are told so.
     if (dropped) tell();
   };
+  /**
+   * Follows a mesh member asked about (D1289), after the render that asked: its view as it is
+   * then is what its threads were told, so a later change of it is news.
+   */
+  const followMember = (node: string, remote: string) => {
+    const member: NodeTarget = { node, remote };
+    const key = targetKey(member);
+    if (members.has(key) || pending.has(key)) return;
+    pending.add(key);
+    queueMicrotask(() => {
+      pending.delete(key);
+      if (disposed || members.has(key) || !followed.has(node)) return;
+      members.set(key, { node, subscription: store.subscribe(member, () => notify(member)) });
+      watchedOf.set(key, watchedNow(member));
+    });
+  };
+  const pending = new Set<string>();
+  let disposed = false;
   follow();
   const following = connections.subscribe(follow);
   return {
     tasks: (target, threadId) => {
       // Only a node followed now: a disconnected one's last view is not news.
-      if (target.remote !== undefined || !followed.has(target.node)) return [];
+      if (!followed.has(target.node)) return [];
+      if (target.remote !== undefined) followMember(target.node, target.remote);
       return (store.view(target).links.get(threadId) ?? []).flatMap((link) =>
         link.watch === undefined
           ? []
@@ -96,9 +127,12 @@ export function createWatchedWork(
       return { dispose: () => listeners.delete(listener) };
     },
     dispose() {
+      disposed = true;
       following.dispose();
       for (const subscription of followed.values()) subscription.dispose();
       followed.clear();
+      for (const member of members.values()) member.subscription.dispose();
+      members.clear();
       listeners.clear();
     },
   };

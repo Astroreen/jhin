@@ -443,6 +443,19 @@ finishes out of the Deferred lists and leaves the rest there.
   diff panel's file preview and pop-out mode, "Waiting" for a mesh member's
   thread, T3's per-project settings and `t3.json`, the submodule items of
   D1134.
+  **Done** (D1281–D1289, D1290–D1300 unused, `source-control.md`): #240 the
+  right panel of a thread's pull requests, `pull-requests.show`, the card's
+  stack badge opening it and the thread details panel's pull request rows
+  (D1281–D1283); #249 review comments as context chips, shown on their
+  lines with "Delete comment" (`chat.drafts` 1.1, `chat.composer.remove-context`,
+  D1284–D1286); #252 listing and watching on GitLab and Azure DevOps,
+  proven with fake `glab` and `az` (D1287–D1288); #260 "Waiting" for a mesh
+  member's watched thread (D1289). Left in the Deferred lists of
+  `source-control.md` and `t3-parity.md`: Bitbucket and Forgejo listing and
+  watching, "Roll back" from an item inspector (Jhin has none yet), the diff
+  panel's file preview and pop-out mode, T3's per-project settings and
+  `t3.json`, the submodule items of D1134, and the panel's author, diff stat,
+  review decision and row actions.
 - **W36:** Claude's and OpenCode's usage limits, reset credits and the Usage
   page; the sidebar's "Goal" and "limited" states and "Resume thread" for a
   turn that failed on a usage limit; Codex subagents that outlive their

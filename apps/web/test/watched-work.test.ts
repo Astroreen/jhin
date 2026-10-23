@@ -1,4 +1,9 @@
-import type { Connections, NodeConnection, NodeTarget } from "@jhin/client-api";
+import {
+  targetKey,
+  type Connections,
+  type NodeConnection,
+  type NodeTarget,
+} from "@jhin/client-api";
 import type { ThreadPullRequest } from "@jhin/source-control-api";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -11,22 +16,24 @@ function fakeStore() {
   const followers = new Map<string, Set<() => void>>();
   const store: Pick<SourceControlStore, "view" | "subscribe"> = {
     view: (target) =>
-      ({ links: links.get(target.node) ?? new Map() }) as unknown as SourceControlView,
+      ({ links: links.get(targetKey(target)) ?? new Map() }) as unknown as SourceControlView,
     subscribe(target, listener) {
-      const set = followers.get(target.node) ?? new Set();
-      followers.set(target.node, set);
+      const set = followers.get(targetKey(target)) ?? new Set();
+      followers.set(targetKey(target), set);
       set.add(listener);
       return { dispose: () => set.delete(listener) };
     },
   };
   return {
     store,
-    followers: (node: string) => followers.get(node)?.size ?? 0,
-    set(node: string, threadId: string, list: ThreadPullRequest[]) {
-      const byThread = links.get(node) ?? new Map();
-      links.set(node, byThread);
+    followers: (node: string, remote?: string) =>
+      followers.get(targetKey({ node, ...(remote === undefined ? {} : { remote }) }))?.size ?? 0,
+    set(node: string, threadId: string, list: ThreadPullRequest[], remote?: string) {
+      const key = targetKey({ node, ...(remote === undefined ? {} : { remote }) });
+      const byThread = links.get(key) ?? new Map();
+      links.set(key, byThread);
       byThread.set(threadId, list);
-      for (const listener of Array.from(followers.get(node) ?? [])) listener();
+      for (const listener of Array.from(followers.get(key) ?? [])) listener();
     },
   };
 }
@@ -90,8 +97,7 @@ describe("source control's thread work (D1131)", () => {
     // Another change of the view that leaves the watched links as they were is not told.
     set("a", "t", [link(1, true), link(2, false), link(3, false)]);
     expect(told).toBe(1);
-    // A remote target, or a thread without links, waits on nothing here.
-    expect(work.tasks({ node: "a", remote: "r" }, "t")).toEqual([]);
+    // A thread without links waits on nothing.
     expect(work.tasks(a, "other")).toEqual([]);
 
     // A node that goes away is unfollowed, its threads told, its last view not news.
@@ -121,5 +127,72 @@ describe("source control's thread work (D1131)", () => {
     nodes.set(["a", "b", "c"]);
     expect(followers("b")).toBe(0);
     expect(followers("c")).toBe(0);
+  });
+
+  it("follows a mesh member's threads through their connection once asked (D1289)", async () => {
+    const { store, set, followers } = fakeStore();
+    const nodes = fakeConnections(["a"]);
+    const work = createWatchedWork(store, nodes.connections);
+    let told = 0;
+    work.subscribe(() => told++);
+    const member: NodeTarget = { node: "a", remote: "m" };
+    /** Following starts after the render that asked. */
+    const settled = () => Promise.resolve();
+    // Not followed before something asks; asked, its empty view tells nothing.
+    expect(work.tasks(member, "t")).toEqual([]);
+    expect(followers("a", "m")).toBe(0);
+    await settled();
+    expect(followers("a", "m")).toBe(1);
+    expect(told).toBe(0);
+    // Asked again: still one follower.
+    work.tasks(member, "t");
+    work.tasks(member, "t");
+    await settled();
+    expect(followers("a", "m")).toBe(1);
+
+    set("a", "t", [link(4, true)], "m");
+    expect(told).toBe(1);
+    expect(work.tasks(member, "t")).toEqual([
+      {
+        taskId: "pull-request-watch:github.com/o/r#4",
+        description: "Watching pull request #4",
+        kind: "monitor",
+      },
+    ]);
+    // The connection's own threads are another view.
+    expect(work.tasks({ node: "a" }, "t")).toEqual([]);
+    // The watch ending is told too.
+    set("a", "t", [link(4, false)], "m");
+    expect(told).toBe(2);
+    expect(work.tasks(member, "t")).toEqual([]);
+
+    // The member goes with its connection: unfollowed, its threads told.
+    set("a", "t", [link(4, true)], "m");
+    expect(told).toBe(3);
+    nodes.set([]);
+    expect(followers("a", "m")).toBe(0);
+    expect(told).toBe(4);
+    // A member of a node not connected is not followed.
+    expect(work.tasks(member, "t")).toEqual([]);
+    await settled();
+    expect(followers("a", "m")).toBe(0);
+    work.dispose();
+  });
+
+  it("takes a member's view as it is when first followed, so its watch ending is told", async () => {
+    const { store, set } = fakeStore();
+    // Another part followed the member before: its view already holds a watched link.
+    set("a", "t", [link(5, true)], "m");
+    const nodes = fakeConnections(["a"]);
+    const work = createWatchedWork(store, nodes.connections);
+    let told = 0;
+    work.subscribe(() => told++);
+    const member: NodeTarget = { node: "a", remote: "m" };
+    expect(work.tasks(member, "t")).toHaveLength(1);
+    await Promise.resolve();
+    expect(told).toBe(0);
+    set("a", "t", [link(5, false)], "m");
+    expect(told).toBe(1);
+    work.dispose();
   });
 });
