@@ -462,6 +462,22 @@ finishes out of the Deferred lists and leaves the rest there.
   turn; MCP apps and "Always allow"; T3's own OpenAI sign-in and several
   accounts; `/feedback`; Claude Code's native rewind and fork; Fast Mode and
   Ultracode on a live Claude Code session.
+  **Done** (D1301–D1319, D1320 unused; D1401–D1403, D1404–D1420 unused;
+  `providers.md`, `t3-parity.md`): #241 Claude's and OpenCode Go's usage
+  limits (D1301–D1305); #245 the sidebar's "Limited" and "Goal"
+  (D1306–D1307); #248 T3's Usage page, its limits pooled per agent
+  (D1308–D1310); #253, #283 "Resume thread" and the recovery at a limit's
+  reset, T3's auto-resume and snooze settings (D1311–D1313); #258 Claude
+  Code's native rewind and fork (D1314–D1315); #263 "Always allow" and an
+  app's own labels (D1316); #268, #284 `/feedback` (D1317); #273 Codex
+  subagents past their turn (D1318); #276 more Codex accounts over shadow
+  homes (D1319); #280, #282 MCP apps, kept, served and shown in a sandboxed
+  frame (D1401–D1403). Fast Mode and Ultracode on a live Claude Code session
+  were already applied (D298). Left in the Deferred lists of `providers.md`
+  and `t3-parity.md`: T3's own ChatGPT sign-in (it needs an OAuth client the
+  owner registers), reset credits and the Usage page's token views, an MCP
+  app's model context, downloads and full screen, and manual checks against
+  a signed-in Claude Code and Codex.
 - **W37:** the preview and devices inside the desktop app (T3's Electron
   webview runtime), the chat canvas beside the mini player and its pop-out
   window, the device hub's setup wizard and consent, SSH device hosts and

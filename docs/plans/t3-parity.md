@@ -2307,6 +2307,8 @@ says. The other W38 decisions land in their own pull requests.
 
 ## Deferred
 
+- T3's Usage page beyond its "Limits" view (D1308): the token and cost
+  views and an account's reset credits, which no Jhin runtime reads yet.
 - The watcher test of `packages/node-host/test/host.test.ts` said to have
   failed once on #180: #180's failed CI attempt failed on the build-mode
   flake instead (D1042), and no failure of `host.test.ts` is in the logs of

@@ -681,8 +681,7 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - From T3's MCP apps (D1401–D1403): an app's model context
   (`ui/update-model-context`), its downloads (`ui/download-file`), its
   full-screen and picture-in-picture modes, asking only before a tool that
-  writes (T3 reads the tool's annotations), an app of a thread's other
-  Codex accounts (D1319) and of Claude Code. An MCP elicitation that needs a form filled in or a URL
+  writes (T3 reads the tool's annotations), an app of Claude Code. An MCP elicitation that needs a form filled in or a URL
   opened (declined, as T3 does). "Always allow" is D1316.
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
@@ -1487,6 +1486,12 @@ history. The reference is T3 Code `eb7b35ac` (D53).
 - MCP apps (D1401): a thread's documents are kept until the thread is
   deleted, one per distinct document of each server and tool, with no cap
   per thread.
+- MCP apps (D1403): an app can open several approvals at once (up to its 16
+  requests in flight) and an approval shows a call's arguments whole; one
+  open approval per app and a shortened description would bound both. The
+  frame's own rules (messages from its window only, links from a click, a
+  declined call or message, the stop after navigating away) have no browser
+  test: the host bridge's tests and the end-to-end Allow path cover the rest.
 - MCP apps (D1401): the 20 s limit of an app's read has no test of its own
   (it would need a timeout to wait for; the abandoned read of an interrupted
   turn is tested), and a read given up is not cancelled in Codex
