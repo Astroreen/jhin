@@ -58,7 +58,8 @@ test("D614: the roster and an agent's page, read only, with stop and resume", as
   await expect(page).toHaveURL(/[#&]p=agent(&|$)/);
   const agentPage = page.locator("[data-agent-page=builder]");
   await expect(agentPage.getByRole("heading", { name: "Builder" })).toBeVisible();
-  await expect(agentPage.getByText("Idle", { exact: true })).toBeVisible();
+  // The agent's status is in the page's header; each generation shows its own (D1272).
+  await expect(agentPage.locator("header").getByText("Idle", { exact: true })).toBeVisible();
   const generations = agentPage.getByRole("navigation", { name: "Generations" });
   await expect(generations.getByRole("button", { name: /Generation 1 · current/ })).toBeVisible();
   // The generation's conversation, readable, and nothing to type into (D741).
@@ -69,7 +70,7 @@ test("D614: the roster and an agent's page, read only, with stop and resume", as
   await page.screenshot({ path: info.outputPath("agent-page.png") });
 
   await agentPage.getByRole("button", { name: "Stop" }).click();
-  await expect(agentPage.getByText("Stopped", { exact: true })).toBeVisible();
+  await expect(agentPage.locator("header").getByText("Stopped", { exact: true })).toBeVisible();
   await expect(roster.getByRole("button", { name: /^Builder, Stopped/ })).toBeVisible();
   await page.screenshot({ path: info.outputPath("agent-stopped.png") });
   // A stopped agent takes no new generation (D612).
@@ -78,7 +79,7 @@ test("D614: the roster and an agent's page, read only, with stop and resume", as
   });
 
   await agentPage.getByRole("button", { name: "Resume" }).click();
-  await expect(agentPage.getByText("Idle", { exact: true })).toBeVisible();
+  await expect(agentPage.locator("header").getByText("Idle", { exact: true })).toBeVisible();
   // A generation started elsewhere shows up live, and the earlier one stays readable.
   await client.call("agents.rotate", { agentId: "builder", reason: "context spent" });
   await expect(generations.getByRole("button", { name: /Generation 2 · current/ })).toBeVisible();
