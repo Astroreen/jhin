@@ -25,10 +25,10 @@ for (;;) {
   if (next.mission.status === "done" || next.mission.status === "dropped") {
     return end("closed", { status: next.mission.status });
   }
-  if (next.escalations.length > 0) {
+  if (next.held) {
     return end("waiting", {
       escalations: next.escalations,
-      note: "You asked the owner and the answer has not come: the team waits for it. It comes to you as a message; run the orchestrator again then.",
+      note: "You asked the owner and the answer has not come: the team waits for it. It comes to you as a message; run the orchestrator again then. If the ask is about some slices only, set them blocked (slices_update) and run the orchestrator again: the rest goes on.",
     });
   }
   if (next.total === 0) {

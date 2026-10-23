@@ -1610,7 +1610,7 @@ Decisions (L1):
   alone. Slices already handed go on. The answer comes to the lead as a
   message (D626), which wakes it to orchestrate again. Every open ask of the
   lead holds its mission, about the mission or not: the lead decides what it
-  asks.
+  asks. A lead that blocked the slices it asks about holds only them (D1263).
 
 ### L2. Guards in the process (D1241–D1260)
 
@@ -1745,6 +1745,19 @@ Decisions (L3):
   learnt to write knowledge only after a commit, which D605 asks them to
   keep current while they work. Reviews recorded before this change saw the
   folder, so a checkout with notes in it asks for one more review.
+- **D1263. An escalation about some slices holds only them.** While the
+  lead has an open ask to the owner, D1223 holds the whole mission unless a
+  slice of it is blocked: then the asks are taken to be about the blocked
+  slices, which wait for a decision anyway, and the rest goes on.
+  `missions.next` says which with `held` (additive), `slices.handoff`
+  refuses with `ESCALATION_OPEN` and the orchestrator ends `waiting` only
+  when `held`, and its `waiting` note tells the lead to block the slices an
+  ask is about. To hold everything, the lead asks without blocking a slice.
+  Before, an ask held everything: in the L3 run the lead had one item of
+  eight that was the owner's to decide, so it sent the question as a plain
+  message ("an open ask of mine would hold the whole mission, including the
+  seven items that don't need you") and set the item blocked itself. The
+  guard made the honest escalation the costly one, so it was routed around.
 
 ## Deferred
 
@@ -1981,6 +1994,9 @@ Decisions (L3):
 - L2: public ids the source does not spell out (template literals such as
   `sidebar.thread.jump.${jump}`, D1247), and hook names and permission names,
   which rule 8 does not list yet.
+- L3: an ask naming the slices it is about. D1263 takes every blocked slice
+  to be what the lead's open asks are about, so while a slice is blocked for
+  another reason (a builder stuck) an ask cannot hold the whole mission.
 
 ## Landing
 

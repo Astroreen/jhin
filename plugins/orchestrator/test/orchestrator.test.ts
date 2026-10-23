@@ -844,6 +844,45 @@ describe("the lead reports to the owner (L1: D1222, D1223)", () => {
     const missionsFeed = watch(client, MISSIONS_STREAM);
     await sliceBecomes(missionsFeed, door.id, "active");
   });
+
+  it("holds only the blocked slices when the lead blocked what it asked about (D1263)", async () => {
+    const { client, kernel, mission, lead, slices, workflows, orchestrate } = await led([
+      { title: "Door" },
+      { title: "Roof" },
+    ]);
+    const [door, roof] = [slices[0]!, slices[1]!];
+    // The first run finds both unassigned: the thread it ran from is the lead.
+    const first = await orchestrate();
+    expect(await workflowEnds(workflows, first.workflowId)).toMatchObject({
+      result: { outcome: "decide" },
+    });
+    for (const slice of [door, roof]) {
+      await client.call("slices.update", { sliceId: slice.id, assignee: BUILDER });
+    }
+    const asked = (await kernel.commands.execute(
+      "agents.ask",
+      { to: OWNER, question: "May the roof be red?" },
+      { caller: AGENT, threadId: lead.id },
+    )) as { message: { messageId: string } };
+    // An ask with nothing blocked holds the mission, as before (D1223).
+    expect(await client.call("missions.next", { missionId: mission.id })).toMatchObject({
+      escalations: [asked.message.messageId],
+      held: true,
+    });
+    // The lead blocks the slice it asked about: the rest goes on.
+    await client.call("slices.update", { sliceId: roof.id, status: "blocked" });
+    expect(await client.call("missions.next", { missionId: mission.id })).toMatchObject({
+      escalations: [asked.message.messageId],
+      held: false,
+      ready: [door.id],
+      decisions: [{ sliceId: roof.id, reason: "blocked" }],
+    });
+    const missionsFeed = watch(client, MISSIONS_STREAM);
+    const run = await orchestrate();
+    await sliceBecomes(missionsFeed, door.id, "active");
+    await client.call("workflows.stop", { workflowId: run.workflowId, parentThreadId: lead.id });
+    await workflowEnds(workflows, run.workflowId);
+  });
 });
 
 describe("missions.orchestration (D1086)", () => {

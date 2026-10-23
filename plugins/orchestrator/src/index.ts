@@ -142,6 +142,12 @@ const Next = MissionProgress.extend({
    * team waits for their answer, and no slice is handed meanwhile (D1223).
    */
   escalations: z.array(z.string()),
+  /**
+   * Whether those asks hold the whole mission. They do unless a slice of it
+   * is blocked: then they are taken to be about the blocked slices, which
+   * wait anyway, and the rest goes on (D1263).
+   */
+  held: z.boolean(),
 });
 
 const ThreadView = z
@@ -280,6 +286,12 @@ export default definePlugin({
         )
         .map((item) => item.message.messageId);
     };
+    /** The lead's open asks, and whether they hold the whole mission (D1223, D1263). */
+    const holdOf = async (mission: Mission) => {
+      const escalations = await escalationsOf(mission.id);
+      const blocked = slicesOf(state, mission.id).some((slice) => slice.status === "blocked");
+      return { escalations, held: escalations.length > 0 && !blocked };
+    };
     /** Sends the lead's report to the owner, once per id (D1222). */
     async function report(missionId: string, end: ReportEnd, id: string, error?: string) {
       const closed = end === "done" || end === "dropped";
@@ -377,7 +389,7 @@ export default definePlugin({
           head,
           steps: mission.process.mission,
           projectSteps: state.intents[mission.projectId]?.process ?? [],
-          escalations: await escalationsOf(missionId),
+          ...(await holdOf(mission)),
           ...progressOf(mission),
         };
       },
@@ -589,11 +601,11 @@ export default definePlugin({
             },
           );
         }
-        const escalations = await escalationsOf(mission.id);
-        if (escalations.length > 0) {
+        const { escalations, held } = await holdOf(mission);
+        if (held) {
           throw new OrchestratorError(
             "ESCALATION_OPEN",
-            `The lead asked the owner and waits for the answer: no slice is handed meanwhile`,
+            `The lead asked the owner and waits for the answer: no slice is handed meanwhile (block the slices the ask is about to let the rest go on)`,
             { missionId: mission.id, escalations },
           );
         }
