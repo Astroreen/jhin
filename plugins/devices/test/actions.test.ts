@@ -233,16 +233,34 @@ describe("the tools' other actions", () => {
     ]);
   });
 
-  it("fixes an emulator's location and leaves clearing it a no-op", async () => {
+  it("fixes an emulator's location and refuses to clear it, which the emulator cannot", async () => {
     const { host, calls } = makeHost();
     await runDeviceAction(host, "android", "emulator-5554", {
       type: "setLocation",
       latitude: 59.3,
       longitude: 18.1,
     });
-    await runDeviceAction(host, "android", "emulator-5554", { type: "clearLocation" });
+    const refused = await failure(
+      runDeviceAction(host, "android", "emulator-5554", { type: "clearLocation" }),
+    );
+    expect(refused.code).toBe("DEVICE_ACTION_UNAVAILABLE");
     expect(calls.map((call) => call.args)).toEqual([
       ["-s", "emulator-5554", "emu", "geo", "fix", "18.1", "59.3"],
+    ]);
+  });
+
+  it("turns Wi-Fi off on a device without mobile data", async () => {
+    const { host, calls } = makeHost((call) =>
+      call.args.includes("data") ? { code: 1, stderr: "no telephony" } : {},
+    );
+    await runDeviceAction(host, "android", "emulator-5554", {
+      type: "setToggle",
+      setting: "networkEnabled",
+      value: false,
+    });
+    expect(calls.map((call) => call.args.slice(3))).toEqual([
+      ["svc", "wifi", "disable"],
+      ["svc", "data", "disable"],
     ]);
   });
 

@@ -59,7 +59,6 @@ const ANDROID_ACTIONS: ReadonlySet<ActionType> = new Set([
   "setToggle",
   "setOrientation",
   "setLocation",
-  "clearLocation",
   "setPermission",
   "openUrl",
   "launchApp",
@@ -323,7 +322,8 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
       if (input.setting === "networkEnabled") {
         const state = input.value ? "enable" : "disable";
         await shell(["svc", "wifi", state], "network");
-        await shell(["svc", "data", state], "network");
+        // Mobile data only where there is telephony (most emulators have none): Wi-Fi took.
+        await shell(["svc", "data", state], "network").catch(() => undefined);
         return;
       }
       if (input.setting === "reduceMotion") {
@@ -360,9 +360,9 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
       await adb(["emu", "geo", "fix", String(input.longitude), String(input.latitude)], "location");
       return;
     case "clearLocation":
-      // The emulator has no "clear"; leaving the fix in place is the closest
-      // behavior, so this is a no-op that still refreshes the reading.
-      return;
+      // The emulator has no "clear", so it is refused rather than reported done (T3 answers
+      // it with nothing; its panel offers Clear on iOS only).
+      throw unavailable(input.type, "android", "unsupported");
     case "setPermission": {
       const permissions = ANDROID_PERMISSIONS[input.permission];
       // Android has no reset of one permission; T3's panel offers Reset on iOS only.

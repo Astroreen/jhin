@@ -351,7 +351,16 @@ export const DeviceAction = z.discriminatedUnion("type", [
     permission: DevicePermission,
     decision: z.enum(["grant", "revoke", "reset"]),
   }),
-  z.object({ type: z.literal("openUrl"), url: z.string().trim().min(1).max(4096) }),
+  z.object({
+    type: z.literal("openUrl"),
+    // A URL with its scheme (`https:`, `myapp:`), so nothing reads it as an option.
+    url: z
+      .string()
+      .trim()
+      .min(1)
+      .max(4096)
+      .regex(/^[A-Za-z][A-Za-z0-9+.-]*:\S*$/, "a URL with its scheme"),
+  }),
   z.object({ type: z.literal("launchApp"), appId: AppId }),
   z.object({ type: z.literal("terminateApp"), appId: AppId }),
   z.object({ type: z.literal("shake") }),

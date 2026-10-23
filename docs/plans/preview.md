@@ -722,7 +722,10 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   app id goes single-quoted through `adb shell`, which the device's shell
   parses again. An Android permission holds when one permission of its group
   took (an app declares the one of its Android version), and Reset, which
-  Android has not, is refused there, as T3's panel offers it on iOS only.
+  Android has not, is refused there, as T3's panel offers it on iOS only;
+  so is clearing an emulator's location, which T3 answers with nothing. A
+  URL to open must carry its scheme. Turning the network off on Android
+  takes when Wi-Fi did: mobile data is turned with it where there is one.
 
 - **D1333. T3's tools panel beside an open device.** The rail gets T3's
   "Device tools" toggle (lucide `SlidersHorizontal`), which opens "Tools" at
