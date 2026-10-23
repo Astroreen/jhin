@@ -702,6 +702,8 @@ function TurnView(props: {
     index < finalIndex &&
     block.kind !== "proposed-plan" &&
     block.kind !== "steer" &&
+    // A compaction is a turn's quiet landmark, never folded away (D1271).
+    block.kind !== "compaction" &&
     // What a plugin put into the turn (a rendered page) is part of the answer.
     block.kind !== "extension";
   const shownFolded = (block: (typeof blocks)[number], index: number) =>
@@ -746,6 +748,29 @@ function TurnView(props: {
             adjacent.get(block.item.event.sequence) ?? [block.item.event],
           )}
         </Fragment>
+      );
+    }
+    if (block.kind === "compaction") {
+      return (
+        <div
+          className="flex items-center gap-3 px-1 pb-4 text-xs text-muted-foreground"
+          key={`compaction-${block.item.sequence}`}
+          role="separator"
+          aria-label={
+            block.item.trigger === undefined
+              ? "Context compacted"
+              : `Context compacted (${block.item.trigger === "auto" ? "automatic" : "manual"})`
+          }
+        >
+          <span aria-hidden className="h-px flex-1 bg-border" />
+          <span>
+            Context compacted
+            {block.item.trigger === undefined
+              ? ""
+              : ` · ${block.item.trigger === "auto" ? "automatic" : "manual"}`}
+          </span>
+          <span aria-hidden className="h-px flex-1 bg-border" />
+        </div>
       );
     }
     if (block.kind === "steer") {

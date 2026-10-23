@@ -38,6 +38,25 @@ const command = (detail: string): ToolCall => ({
 });
 
 describe("reduceTimeline", () => {
+  it("makes a compaction a row of its turn, in order (D1271)", () => {
+    const timeline = reduceTimeline(
+      stream(
+        started(),
+        [ThreadEvents.contextCompacted, { turnId: "u1", trigger: "auto" }],
+        [ThreadEvents.contextCompacted, { turnId: "u1" }],
+        started("u2"),
+        [ThreadEvents.contextCompacted, { turnId: "u2", trigger: "manual" }],
+      ),
+    );
+    expect(timeline.turns[0]!.items).toMatchObject([
+      { kind: "compaction", sequence: 2, trigger: "auto" },
+      { kind: "compaction", sequence: 3 },
+    ]);
+    expect(timeline.turns[0]!.items[1]).not.toHaveProperty("trigger");
+    expect(timeline.turns[1]!.items).toMatchObject([{ kind: "compaction", trigger: "manual" }]);
+    expect(turnBlocks(timeline.turns[1]!).map((block) => block.kind)).toEqual(["compaction"]);
+  });
+
   it("joins message deltas and keeps the completed text", () => {
     const timeline = reduceTimeline(
       stream(
