@@ -22,6 +22,7 @@ import {
   pullRequestListLines,
   resolvePullRequestState,
   webPageUrl,
+  WATCHING_DESCRIPTION,
 } from "../../lib/pull-request.ts";
 import {
   ROW,
@@ -143,10 +144,7 @@ function PullRequestRow({
           <EyeIcon aria-hidden className="size-4 group-hover/watch:hidden" />
           <EyeOffIcon aria-hidden className="hidden size-4 group-hover/watch:block" />
         </TooltipTrigger>
-        <TooltipPopup side="top">
-          Watching: the agent wakes when checks finish, someone comments, or the branch conflicts.
-          Click to stop.
-        </TooltipPopup>
+        <TooltipPopup side="top">{`${WATCHING_DESCRIPTION}. Click to stop.`}</TooltipPopup>
       </Tooltip>
     </div>
   );

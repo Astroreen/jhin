@@ -20,6 +20,7 @@ import {
   threadPullRequestBadge,
   threadPullRequestBadgePresentation,
   webPageUrl,
+  WATCHING_DESCRIPTION,
 } from "../../lib/pull-request.ts";
 import {
   PULL_REQUESTS_PANEL,
@@ -189,7 +190,7 @@ function LinkedPullRequestsBadge({
                 </span>
                 {link.watch === undefined ? null : (
                   <EyeIcon
-                    aria-label="Watching: the agent wakes when checks finish, someone comments, or the branch conflicts"
+                    aria-label={WATCHING_DESCRIPTION}
                     className="size-3 shrink-0 text-muted-foreground"
                   />
                 )}

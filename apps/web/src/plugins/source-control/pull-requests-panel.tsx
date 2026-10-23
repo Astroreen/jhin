@@ -38,6 +38,7 @@ import {
   pullRequestListLines,
   resolvePullRequestState,
   webPageUrl,
+  WATCHING_DESCRIPTION,
   type PullRequestListLine,
 } from "../../lib/pull-request.ts";
 import { PULL_REQUESTS_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
@@ -143,8 +144,7 @@ function LinkRow({
               <span className="flex shrink-0 items-center gap-1 text-2xs">
                 {watching ? (
                   <Tip trigger={<EyeIcon aria-label="Watching" className="size-3.5" role="img" />}>
-                    Watching: the agent wakes when checks finish, someone comments, or the branch
-                    conflicts
+                    {WATCHING_DESCRIPTION}
                   </Tip>
                 ) : null}
                 {checks === null ? null : (

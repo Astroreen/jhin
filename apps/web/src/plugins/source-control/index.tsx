@@ -488,7 +488,13 @@ export const sourceControlPlugin = builtin(
               import("./pull-request-rows.tsx").then((module) =>
                 module.createPullRequestRows(services),
               ),
-            { loading: () => null, failed: () => null },
+            {
+              loading: () => null,
+              // Rows that failed to load say so, rather than reading as nothing linked.
+              failed: (_props, retry) => (
+                <ChunkFailed retry={retry}>Couldn't load the pull requests.</ChunkFailed>
+              ),
+            },
           ),
         }),
       );

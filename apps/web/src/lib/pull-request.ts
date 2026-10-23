@@ -240,3 +240,7 @@ export function pullRequestListLines(
 export function webPageUrl(url: string): string | undefined {
   return /^https?:\/\//i.test(url) ? url : undefined;
 }
+
+/** T3's words for a watched pull request's eye. */
+export const WATCHING_DESCRIPTION =
+  "Watching: the agent wakes when checks finish, someone comments, or the branch conflicts";
