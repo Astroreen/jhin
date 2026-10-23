@@ -25,6 +25,9 @@ export function useAgentSkills(
   const known = skills?.key === key;
   /** The ask on its way, by key: a new message naming a skill meanwhile waits for it. */
   const asked = useRef<string | undefined>(undefined);
+  /** The key shown now: a late answer for another thread or agent is dropped. */
+  const shownKey = useRef(key);
+  shownKey.current = key;
   useEffect(() => {
     if (asking === undefined || projectId === undefined || known || asked.current === key) return;
     asked.current = key;
@@ -34,13 +37,14 @@ export function useAgentSkills(
         ...(agentId === undefined ? {} : { agentId }),
       })
       .then(
-        (offered) => setSkills({ key, skills: offered.skills }),
+        (offered) => {
+          if (shownKey.current === key) setSkills({ key, skills: offered.skills });
+        },
         () => undefined,
       )
       .finally(() => {
         if (asked.current === key) asked.current = undefined;
       });
   }, [asking, key, known]);
-  // An answer for another thread or agent is kept by key and never shown here.
   return known ? skills.skills : NO_SKILLS;
 }

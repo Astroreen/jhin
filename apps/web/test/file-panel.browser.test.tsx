@@ -32,6 +32,11 @@ function fakeNode() {
     async answer(value: unknown) {
       await act(async () => pending.shift()!.resolve(value));
     },
+    /** Settles the waiting call at `index` (0 the oldest), out of order. */
+    async answerAt(index: number, value: unknown) {
+      const [call] = pending.splice(index, 1);
+      await act(async () => call!.resolve(value));
+    },
     async fail(error: unknown) {
       await act(async () => pending.shift()!.reject(error));
     },
@@ -225,6 +230,36 @@ describe("a sent message's skills (D1341)", () => {
     await node.answer({ commands: [], skills: [{ name: "deploy", path: "/s/SKILL.md" }] });
     await expect.element(page.getByText("skills: deploy")).toBeVisible();
     await render("turn-1 turn-2 turn-3");
+    expect(node.calls).toHaveLength(2);
+  });
+
+  it("drops a late answer for another thread's agent", async () => {
+    const node = fakeNode();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    cleanup = () => {
+      act(() => root.unmount());
+      container.remove();
+    };
+    function Agent(props: { agentId: string }) {
+      const skills = useAgentSkills(
+        { call: node.call as ChatServices["threads"]["call"] },
+        target,
+        "p1",
+        props.agentId,
+        "turn",
+      );
+      return <p>skills: {skills.map((skill) => skill.name).join(",")}</p>;
+    }
+    await act(async () => root.render(<Agent agentId="a" />));
+    await act(async () => root.render(<Agent agentId="b" />));
+    expect(node.calls.map((call) => call.params["agentId"])).toEqual(["a", "b"]);
+    // b answers first; a's late answer, for a view that moved on, is dropped.
+    await node.answerAt(1, { commands: [], skills: [{ name: "from-b", path: "/b" }] });
+    await expect.element(page.getByText("skills: from-b")).toBeVisible();
+    await node.answerAt(0, { commands: [], skills: [{ name: "from-a", path: "/a" }] });
+    await expect.element(page.getByText("skills: from-b")).toBeVisible();
     expect(node.calls).toHaveLength(2);
   });
 });
