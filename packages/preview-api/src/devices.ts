@@ -20,6 +20,12 @@ export const DeviceEvents = {
   screen: "device.screen",
 } as const;
 
+/**
+ * Where the node's HTTP server proxies T3's device hub for authenticated clients (D1208):
+ * `<node>/device-hub/vendor/serve-sim/…` and `<node>/device-hub/vendor/serve-emu/…`.
+ */
+export const DEVICE_HUB_PATH = "/device-hub";
+
 /** The node itself; device hosts over SSH are deferred. */
 export const LOCAL_DEVICE_HOST_ID = "local";
 
@@ -63,6 +69,14 @@ export const DeviceSession = z.object({
 });
 export type DeviceSession = z.infer<typeof DeviceSession>;
 
+/** Where a host's device hub is (D1207): T3's host statuses. */
+export const DeviceHostStatus = z.object({
+  status: z.enum(["idle", "installing", "starting", "ready", "failed"]),
+  /** "Installing device hub 0.15.3…", or why it failed. */
+  detail: z.string().optional(),
+});
+export type DeviceHostStatus = z.infer<typeof DeviceHostStatus>;
+
 /** What the `devices` stream and `device.state` give. */
 export const DeviceState = z.object({
   hosts: z.array(DeviceHostSummary),
@@ -72,6 +86,8 @@ export const DeviceState = z.object({
   booting: z.array(z.object({ hostId: z.string(), deviceId: z.string(), threadId: z.string() })),
   /** Why the last listing failed, when it did. */
   detail: z.string().optional(),
+  /** Each host's device hub by host id, once one was asked for (D1207). */
+  hostStatuses: z.record(z.string(), DeviceHostStatus).optional(),
 });
 export type DeviceState = z.infer<typeof DeviceState>;
 
@@ -163,6 +179,62 @@ export const DeviceCloseInput = z.object({
     .describe("Also power the simulator or emulator off. Defaults to false."),
 });
 export type DeviceCloseInput = z.infer<typeof DeviceCloseInput>;
+
+export const DeviceHubAccessInput = z.object({
+  hostId: DeviceHostId.optional().describe("Device host from device_list. Defaults to local."),
+});
+
+/** How a client reaches the hub through the node: its path and a ticket for its query (D1208). */
+export const DeviceHubAccessResult = z.object({
+  path: z.string().describe("The hub's path on the node's HTTP server."),
+  query: z
+    .record(z.string(), z.string())
+    .describe(
+      "Query parameters the hub's HTTP URLs carry: a short-lived ticket that only watches.",
+    ),
+  socketQuery: z
+    .record(z.string(), z.string())
+    .describe("Query parameters the hub's WebSocket URLs carry: a ticket for the caller's grants."),
+  expiresAt: z.number().int().describe("When the ticket stops working (ms since the epoch)."),
+});
+export type DeviceHubAccessResult = z.infer<typeof DeviceHubAccessResult>;
+
+const Coordinate = z.number().min(0).max(100_000);
+const Point = z.object({ x: Coordinate, y: Coordinate });
+const Button = z.enum(["home", "back", "appSwitcher"]);
+
+/** An input to a device (D1209), as agent-device takes it: coordinates are the device's own. */
+export const DeviceInput = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("tap"), x: Coordinate, y: Coordinate }),
+  z.object({ type: z.literal("swipe"), from: Point, to: Point }),
+  z.object({ type: z.literal("text"), text: z.string().min(1).max(10_000) }),
+  z.object({ type: z.literal("button"), button: Button }),
+]);
+export type DeviceInput = z.infer<typeof DeviceInput>;
+
+export const DeviceTapInput = DeviceTargetInput.extend({
+  x: Coordinate.describe("Horizontal position in the device's screen coordinates."),
+  y: Coordinate.describe("Vertical position in the device's screen coordinates."),
+});
+export const DeviceSwipeInput = DeviceTargetInput.extend({
+  from: Point.describe("Where the swipe starts, in the device's screen coordinates."),
+  to: Point.describe("Where the swipe ends."),
+});
+export const DeviceTypeInput = DeviceTargetInput.extend({
+  text: z.string().min(1).max(10_000).describe("Text to type into the focused field."),
+});
+export const DeviceButtonInput = DeviceTargetInput.extend({
+  button: Button.describe(
+    "The hardware button: home, back (Android) or appSwitcher (the recent apps).",
+  ),
+});
+
+export const DeviceInputResult = z.object({
+  device: DeviceSummary,
+  via: z
+    .enum(["agent-device", "adb"])
+    .describe("agent-device, or adb when agent tools could not start (D408's path)."),
+});
 
 /** Width and height of a PNG, from its header. */
 export function pngSize(bytes: Uint8Array): { width: number; height: number } {

@@ -1,7 +1,8 @@
 // Finding the Android SDK and reading devices follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/device/LocalDeviceHost.ts (where the SDK is looked for, the platform checks and
 // their messages) and DeviceService.ts (AVDs listed besides running emulators, boot failures).
-// T3 drives simulators through its device hub; here the node runs adb, emulator and simctl itself.
+// T3 drives simulators through its device hub; this is the node's own path beside it (D408), and
+// the fallback when the hub cannot run (D1207).
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
 import * as Os from "node:os";
@@ -11,6 +12,7 @@ import {
   DeviceError,
   LOCAL_DEVICE_HOST_ID,
   type DeviceHostSummary,
+  type DeviceInput,
   type DevicePlatform,
   type DeviceSummary,
 } from "@jhin/preview-api";
@@ -237,6 +239,28 @@ async function iosDevices(tools: Tools): Promise<DeviceSummary[]> {
   );
 }
 
+// --- Text through `adb shell input` ------------------------------------------------------
+
+/**
+ * `input text` reads `%s` as a space and types no newline: text goes in pieces, a literal
+ * `%s` as `%` then `s`, and a newline as the Enter key.
+ */
+function inputTextPieces(typed: string): string[] {
+  const pieces: string[] = [];
+  for (const [index, line] of typed.split("\n").entries()) {
+    if (index > 0) pieces.push("\n");
+    for (const [at, part] of line.split("%s").entries()) {
+      if (at > 0) pieces.push("%", "s");
+      if (part !== "") pieces.push(part);
+    }
+  }
+  return pieces;
+}
+
+/** adb hands the line to the device's shell: quoted whole, spaces as input's `%s`. */
+const quoteForInput = (piece: string) =>
+  `'${piece.replaceAll(" ", "%s").replaceAll("'", "'\\''")}'`;
+
 // --- The host -----------------------------------------------------------------------------
 
 /** The node's own simulators and emulators. */
@@ -262,6 +286,54 @@ export function createLocalHost(paths: () => ToolPaths) {
         devices: lists.flat(),
         ...(errors.length === 0 ? {} : { detail: errors.join(" ") }),
       };
+    },
+
+    /** The SDK folder the hub's helpers get on their PATH (T3's `deviceHostEnvironment`). */
+    androidSdk: () => androidSdk(paths()),
+
+    /**
+     * An input through adb, when agent tools could not start (D1209): `input tap`, `swipe`,
+     * `text` and `keyevent`. simctl has no input, so an iOS device refuses.
+     */
+    async input(device: DeviceSummary, input: DeviceInput): Promise<void> {
+      if (device.platform === "ios") {
+        throw new DeviceError(
+          "DEVICE_UNAVAILABLE",
+          "iOS input needs the agent tools, which could not start on this node. simctl cannot tap or type.",
+        );
+      }
+      const adb = tools().adb;
+      if (adb === undefined) {
+        throw new DeviceError(
+          "DEVICE_PLATFORM_UNAVAILABLE",
+          `android devices are unavailable on host local: ${tools().androidReason ?? "adb was not found."}`,
+        );
+      }
+      const shell = (args: string[]) => run(adb, ["-s", device.id, "shell", "input", ...args]);
+      switch (input.type) {
+        case "tap":
+          await shell(["tap", String(Math.round(input.x)), String(Math.round(input.y))]);
+          return;
+        case "swipe":
+          await shell([
+            "swipe",
+            ...[input.from.x, input.from.y, input.to.x, input.to.y].map((value) =>
+              String(Math.round(value)),
+            ),
+          ]);
+          return;
+        case "text":
+          for (const piece of inputTextPieces(input.text)) {
+            await shell(piece === "\n" ? ["keyevent", "66"] : ["text", quoteForInput(piece)]);
+          }
+          return;
+        case "button":
+          await shell([
+            "keyevent",
+            input.button === "home" ? "3" : input.button === "back" ? "4" : "187",
+          ]);
+          return;
+      }
     },
 
     /** Boots a device; an AVD becomes a serial once it runs. Resolves with the running device. */

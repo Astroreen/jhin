@@ -33,26 +33,34 @@
   },
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
+    "@jhin/auth-api": "workspace:*",
+    "@jhin/host-api": "workspace:*",
+    "@jhin/http-api": "workspace:*",
     "@jhin/preview-api": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
-    "@jhin/storage-api": "workspace:*"
+    "@jhin/storage-api": "workspace:*",
+    "ws": "catalog:"
   },
   "devDependencies": {
     "@jhin/testing": "workspace:*",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "@types/ws": "catalog:"
   },
   "jhin": {
     "id": "jhin.devices",
     "version": "0.1.0",
     "apiVersion": 1,
     "name": "Devices",
-    "description": "iOS Simulators and Android Emulators of the node: device.list, device.open, device.screenshot, device.close (T3 Code's device tools)",
+    "description": "iOS Simulators and Android Emulators of the node: device.list, device.open, device.screenshot, device.close (T3 Code's device tools), T3's device hub for video and input at /device-hub",
     "side": "server",
     "provides": {
       "device.hosts": "1.0.0"
     },
     "optional": {
+      "auth.verifier": "^1",
+      "host.paths": "^1",
+      "http.server": "^1",
       "rpc.streams": "^1",
       "storage.eventlog": "^1"
     },

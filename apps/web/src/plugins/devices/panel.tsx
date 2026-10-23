@@ -4,16 +4,24 @@
 import {
   DeviceEvents,
   deviceStream,
+  type DeviceHostStatus,
+  type DeviceHubAccessResult,
   type DeviceState,
   type DeviceSummary,
 } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { Button, Spinner, cn } from "@jhin/ui";
 import { PowerIcon, RefreshCwIcon, SmartphoneIcon, XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { httpBase } from "../../lib/session.ts";
+import { DeviceStreamView } from "./stream-view.tsx";
+import type { DeviceHubAccess } from "./stream.ts";
 
 export interface DevicePanelProps {
   readonly client: RpcClient;
+  /** The node's RPC URL: its device hub is under the same host (D1208). */
+  readonly nodeUrl: string;
   readonly threadId: string;
   readonly state: DeviceState | undefined;
   readonly call: (method: string, params: unknown) => Promise<unknown>;
@@ -55,6 +63,103 @@ function DeviceScreen(props: { client: RpcClient; device: DeviceSummary }) {
         src={screen}
       />
     </div>
+  );
+}
+
+/** Where the hub is on the node behind `nodeUrl`, with the ticket every URL carries. */
+function hubAccess(nodeUrl: string, result: DeviceHubAccessResult): DeviceHubAccess {
+  const http = `${httpBase(nodeUrl)}${result.path}`;
+  return {
+    httpBase: http,
+    wsBase: http.replace(/^http/, "ws"),
+    query: result.query,
+    socketQuery: result.socketQuery,
+    credentials: false,
+  };
+}
+
+/**
+ * An open device: the hub's live video and input (D1208), else D408's screenshots while the
+ * hub installs or when it cannot run on the node.
+ */
+function OpenDevice(props: {
+  client: RpcClient;
+  nodeUrl: string;
+  device: DeviceSummary;
+  hostStatus: DeviceHostStatus | undefined;
+  call: (method: string, params: unknown) => Promise<unknown>;
+}) {
+  const { device, nodeUrl } = props;
+  // The panel's `call` is a new function each render; the request must not follow it.
+  const call = useRef(props.call);
+  call.current = props.call;
+  const [access, setAccess] = useState<DeviceHubAccess | undefined>(undefined);
+  const [reason, setReason] = useState<string | undefined>(undefined);
+  const [attempt, setAttempt] = useState(0);
+  /** Tickets refused since the stream last showed video. */
+  const refusals = useRef(0);
+  // A hub that comes up after the first request timed out is asked again.
+  const ready = props.hostStatus?.status === "ready";
+  useEffect(() => {
+    let current = true;
+    void call.current("device.hub.access", { hostId: device.hostId }).then(
+      (result) => {
+        if (!current) return;
+        setAccess(hubAccess(nodeUrl, result as DeviceHubAccessResult));
+        setReason(undefined);
+      },
+      (error: unknown) => {
+        if (!current) return;
+        setAccess(undefined);
+        setReason(error instanceof Error ? error.message : String(error));
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [nodeUrl, device.hostId, device.id, attempt, ready]);
+
+  if (access !== undefined) {
+    return (
+      <div className="flex min-h-0 flex-1">
+        <DeviceStreamView
+          access={access}
+          deviceDescription={device.version}
+          deviceId={device.id}
+          deviceName={device.name}
+          onStreaming={() => {
+            refusals.current = 0;
+          }}
+          onUnauthorized={() => {
+            setAccess(undefined);
+            // An expired ticket is renewed; one refused again and again (a client that may
+            // watch but not control) stops, and the screenshots stay.
+            refusals.current += 1;
+            if (refusals.current > 2) {
+              setReason(
+                "The device hub refused this client: watching a device's video needs devices.read and devices.write.",
+              );
+              return;
+            }
+            setAttempt((count) => count + 1);
+          }}
+          platform={device.platform}
+        />
+      </div>
+    );
+  }
+  const installing =
+    props.hostStatus?.status === "installing" || props.hostStatus?.status === "starting";
+  const note = installing ? props.hostStatus?.detail : reason;
+  return (
+    <>
+      <DeviceScreen client={props.client} device={device} />
+      {note === undefined ? null : (
+        <p className="shrink-0 px-3 pb-3 text-center text-xs text-muted-foreground" role="note">
+          {note}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -150,7 +255,13 @@ export function DevicePanel(props: DevicePanelProps) {
     return (
       <>
         {header}
-        <DeviceScreen client={props.client} device={open} />
+        <OpenDevice
+          call={props.call}
+          client={props.client}
+          device={open}
+          hostStatus={state?.hostStatuses?.[open.hostId]}
+          nodeUrl={props.nodeUrl}
+        />
       </>
     );
   }

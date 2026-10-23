@@ -95,7 +95,10 @@ let tools: ReturnType<typeof fakeTools>;
 test.beforeAll(async () => {
   tools = fakeTools();
   node = await startNode({
-    config: { "jhin.devices": { adb: tools.adb, emulator: tools.emulator, xcrun: tools.xcrun } },
+    // D408's path: the device hub is off by default (D1206).
+    config: {
+      "jhin.devices": { adb: tools.adb, emulator: tools.emulator, xcrun: tools.xcrun },
+    },
   });
 });
 test.afterAll(async () => {
@@ -138,6 +141,10 @@ test("D408: the Device panel lists the node's devices and shows the one an agent
   await expect(panel).toBeHidden();
   await node.client().call("device.open", { threadId, deviceId: "Pixel_7_API_34" });
   await expect(panel.getByRole("img", { name: "Pixel_7_API_34 screen" })).toBeVisible();
+  // The hub is opt-in (D1206): the panel says how to get video and input.
+  await expect(panel.getByRole("note")).toHaveText(
+    "Video and input need the device hub. Turn it on with Devices → Device hub (jhin.devices.hub).",
+  );
   await shot(page, info, "devices-open");
 
   await panel.getByRole("button", { name: "Power off device" }).click();
