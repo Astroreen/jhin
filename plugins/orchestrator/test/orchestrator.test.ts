@@ -617,6 +617,13 @@ describe("missions.orchestrate (D706, D707)", () => {
     expect(
       await client.call("missions.orchestrate", { missionId: mission.id, parentThreadId: lead.id }),
     ).toMatchObject({ workflowId: first.workflowId, existing: true });
+    // A mission being orchestrated is not deleted, nor its slices (D1395).
+    await expect(client.call("missions.delete", { missionId: mission.id })).rejects.toMatchObject({
+      code: "RUN_ACTIVE",
+    });
+    await expect(client.call("slices.delete", { sliceId: paint.id })).rejects.toMatchObject({
+      code: "RUN_ACTIVE",
+    });
     // Wave 2 waits for wave 1.
     expect(
       missionsFeed.events.some(
@@ -657,6 +664,11 @@ describe("missions.orchestrate (D706, D707)", () => {
     expect(await client.call("missions.get", { missionId: mission.id })).toMatchObject({
       mission: { status: "planned" },
     });
+    // Its run over, the mission can be deleted; the stopped run's record stays behind (D1395).
+    await client.call("missions.delete", { missionId: mission.id });
+    await expect(
+      client.call("missions.orchestration", { missionId: mission.id }),
+    ).rejects.toMatchObject({ code: "MISSION_NOT_FOUND" });
   });
 
   it("lets the lead's agent start it, acting with its own grants, and returns decisions", async () => {

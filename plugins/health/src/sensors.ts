@@ -188,6 +188,11 @@ export class Sensors {
    * follows new ones.
    */
   ingestMission(event: StoredEvent): boolean {
+    // A deletion is no work of the slice (D1395): the record leaves the fold, nothing counts.
+    if (event.type === MissionEvents.missionDeleted || event.type === MissionEvents.sliceDeleted) {
+      this.missions = applyMissionEvent(this.missions, event);
+      return false;
+    }
     const slice = (event.payload as { slice?: Slice } | null)?.slice;
     const before = slice === undefined ? undefined : this.missions.slices[slice.id];
     this.missions = applyMissionEvent(this.missions, event);
