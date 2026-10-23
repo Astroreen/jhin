@@ -998,9 +998,14 @@ export function Composer(props: ComposerProps) {
     return "inserted";
   };
   const removeContext = (contextId: string): boolean => {
-    const ranges = contextRemovalRanges(editor.current?.value() ?? prompt, contextId);
+    // Without the editor the chips cannot go, so neither does the record.
+    const prompted = editor.current;
+    if (prompted === undefined || prompted === null) return false;
+    const ranges = contextRemovalRanges(prompted.value(), contextId);
     if (ranges.length === 0) return false;
-    for (const { start, end } of ranges) editor.current?.replaceRange(start, end, "");
+    for (const { start, end } of ranges) prompted.replaceRange(start, end, "");
+    // An editor not ready yet edits nothing: the record stays with its chips.
+    if (contextRemovalRanges(prompted.value(), contextId).length > 0) return false;
     contextsNow.current = contextsNow.current.filter((record) => record.contextId !== contextId);
     setContexts(contextsNow.current);
     return true;
