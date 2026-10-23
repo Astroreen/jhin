@@ -764,6 +764,18 @@ Decisions:
   plugin keeps the `projectId → root` pairs it last read from `projects.list`.
   The node's own directory (`host.paths` `cwd`) and a root another project
   still uses stay cached.
+- **D1386. Reference-style and HTML links are routes too.** A Markdown link
+  now also means `[x][ref]`, `[x][]` and `[x]` whose label has a definition
+  `[ref]: target` on the page (labels compared case-insensitively, runs of
+  whitespace as one; a definition outside a code fence, before or after its
+  use; the first of a label wins), and `<a href="...">` on one line. They are
+  read under D664's rules: a code block or code span is no route, an
+  external target (a scheme) is filtered, and the route's kind stays `link`.
+  A shortcut `[x]` or a reference without a definition is plain text, never a
+  broken route. A reference link's label, like an inline link's, is not a
+  second route as a mention. The lore index (`lore.list`) reads its own
+  `[name](story.md)` rows for names and lessons, not routes, so it keeps its
+  parser.
 
 D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
 
@@ -2020,8 +2032,9 @@ Decisions (L3):
   library synchronously, which is quick for a docs tree of this size.
 - A4: a bound on how long a generation's first turn waits for its lore
   brief (D671); `lore.brief` reads local files, so it ends.
-- A4: reference-style links (`[x][ref]`) and HTML links as routes; events
-  when pages change (pages are re-read when their mtime changes).
+- ~~A4: reference-style links (`[x][ref]`) and HTML links as routes;~~ A4,
+  D1386.
+- A4: events when pages change (pages are re-read when their mtime changes).
 - A5: fencing escalation: refusing a member's ask to the owner, so only
   the lead reaches the inbox. D688 tells members, it does not enforce it.
 - A5: removing a team's agents. `teams.down` stops them (D689); removing
