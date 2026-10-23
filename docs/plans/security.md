@@ -874,6 +874,10 @@ A slice a PR, in the order of D1361's risks:
 - A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
   target against that node's own stored value; a target with none refuses
   the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.
+- The `Host` allowlist (D1362) allows every `*.ts.net` name: on a tailnet
+  shared with members the owner does not trust, one of them could give a
+  page a name that resolves to the node. No setting narrows it to the
+  owner's tailnet yet.
 - T3 Connect: pairing and remote access through a T3 account, the hosted
   relay and the hosted-app pairing link (out of scope, `t3-roadmap.md`).
 - Tailscale Serve (D1189) is `jhin pair --tailscale` only: T3's

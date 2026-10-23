@@ -42,7 +42,9 @@ const Config = z
           .string()
           .trim()
           .regex(
-            /^(\*|\.?[a-z0-9-]+(\.[a-z0-9-]+)*\.?(:\d+)?|\[[0-9a-f:.]+\](:\d+)?)$/i,
+            // `*`; `.example.com` (no port, no trailing dot: the request's are stripped);
+            // a name or a bracketed address, perhaps with a port.
+            /^(\*|\.[a-z0-9-]+(\.[a-z0-9-]+)*|[a-z0-9-]+(\.[a-z0-9-]+)*\.?(:\d+)?|\[[0-9a-f:.]+\](:\d+)?)$/i,
             "must be a host name (nas.lan), .example.com for every name under it, or *",
           ),
       )

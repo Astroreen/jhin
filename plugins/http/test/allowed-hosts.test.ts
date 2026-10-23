@@ -169,7 +169,13 @@ describe("the names a node answers to (security.md D1362)", () => {
   });
 
   it("refuses an entry it could never match, instead of ignoring it", async () => {
-    for (const entry of ["*.example.com", "https://nas.lan", "nas lan"]) {
+    for (const entry of [
+      "*.example.com",
+      "https://nas.lan",
+      "nas lan",
+      ".example.com.",
+      ".example.com:8080",
+    ]) {
       await expect(start({ allowedHosts: [entry] }), entry).rejects.toThrow();
     }
   });
