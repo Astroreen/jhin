@@ -209,6 +209,77 @@ describe("config secrets in the secret store (security.md D1025–D1027)", () =>
     ).toBe(true);
   });
 
+  it("seals numbers and booleans too, and gives them back with their types (D1373)", async () => {
+    const home = tempDir("home");
+    writePlugin(
+      Path.join(home, "plugins", "typed"),
+      { id: "acme.typed" },
+      {
+        "index.ts": `
+import { definePlugin, z } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    context.config.define(
+      "acme.typed",
+      z.object({
+        pin: z.number().optional().meta({ writeOnly: true }),
+        debug: z.boolean().optional().meta({ writeOnly: true }),
+        note: z.string().optional().meta({ writeOnly: true }),
+      }),
+    );
+    context.commands.register({
+      name: "acme.typed.read",
+      description: "The effective section, as plugins read it",
+      input: z.object({}),
+      output: z.unknown(),
+      handler: () => context.config.get("acme.typed"),
+    });
+  },
+});
+`,
+      },
+    );
+    const config = Path.join(home, "config.jsonc");
+    // A number written before the store, in clear: the migration moves it.
+    Fs.writeFileSync(
+      config,
+      `{ "jhin.secrets": { "keychain": "off" }, "acme.typed": { "pin": 731942 } }\n`,
+    );
+    const cwd = tempDir("cwd");
+    host = new HostProcess({ home, cwd, distribution: [SECRETS] });
+    await host.ready();
+    expect((await host.execute("host.config.secrets.migrate", { layer: "node" })).value).toEqual({
+      moved: [{ layer: "node", section: "acme.typed", path: ["pin"] }],
+    });
+    // A string that looks like the store's tag is kept as itself.
+    const tagged = "\u0000json:42";
+    const saved = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "acme.typed",
+      values: { pin: "••••••", debug: true, note: tagged },
+    });
+    expect(saved.value).toMatchObject({ applied: true });
+    const file = JSON.parse(Fs.readFileSync(config, "utf8")) as {
+      "acme.typed": Record<string, unknown>;
+    };
+    expect(file["acme.typed"]).toEqual({
+      pin: expect.stringMatching(/^\$secret:[0-9a-f]{32}$/),
+      debug: expect.stringMatching(/^\$secret:[0-9a-f]{32}$/),
+      note: expect.stringMatching(/^\$secret:[0-9a-f]{32}$/),
+    });
+    const read = async () => (await host!.execute("acme.typed.read")).value;
+    expect(await read()).toEqual({ pin: 731942, debug: true, note: tagged });
+    // Redacted on the way out, as every secret (D417).
+    expect(
+      JSON.stringify((await host.execute("host.config.get", { section: "acme.typed" })).value),
+    ).not.toContain("731942");
+
+    await host.stop();
+    host = new HostProcess({ home, cwd, distribution: [SECRETS] });
+    await host.ready();
+    expect(await read()).toEqual({ pin: 731942, debug: true, note: tagged });
+  });
+
   it("keeps nothing in the store when the file cannot be written", async () => {
     const home = tempDir("home");
     writeVault(home);

@@ -141,6 +141,8 @@ export async function openStore(options: {
   readonly dir: string;
   readonly keychain: Keychain | undefined;
   readonly now?: () => number;
+  /** A new store's keychain did not keep its key: the key file is used instead. */
+  readonly onKeychainRefused?: (kind: Keychain["kind"]) => void;
 }): Promise<OpenedStore> {
   const now = options.now ?? Date.now;
   Fs.mkdirSync(options.dir, { recursive: true, mode: 0o700 });
@@ -178,6 +180,11 @@ export async function openStore(options: {
     ) {
       where = "keychain";
     } else {
+      if (options.keychain !== undefined) {
+        // Nothing of a key the keychain did not keep stays beside the key file.
+        options.keychain.forget?.();
+        options.onKeychainRefused?.(options.keychain.kind);
+      }
       writeAtomically(keyFile, `${encoded}\n`);
     }
     writeAtomically(file, `${JSON.stringify(seal(entries, key, where))}\n`);

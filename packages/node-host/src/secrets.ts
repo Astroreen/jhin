@@ -384,6 +384,56 @@ export function scrub(text: string, secrets: readonly string[]): string {
 /** A place inside a section: keys, and list positions as numbers (D1025). */
 type Place = readonly (string | number)[];
 
+/**
+ * How the store keeps a number or a boolean (security.md D1373): its JSON
+ * text behind this tag. A string that starts with the tag is kept the same
+ * way, so it reads back as itself.
+ */
+const TYPED_TAG = "\u0000json:";
+
+/** The text the store keeps for a secret `value`, or undefined for a value that is no scalar. */
+export function storedText(value: unknown): string | undefined {
+  // NaN and Infinity have no JSON text: no config file holds them, nothing to seal.
+  if (typeof value === "number" && !Number.isFinite(value)) return undefined;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return `${TYPED_TAG}${JSON.stringify(value)}`;
+  }
+  if (typeof value !== "string") return undefined;
+  return value.startsWith(TYPED_TAG) ? `${TYPED_TAG}${JSON.stringify(value)}` : value;
+}
+
+/** A value the store kept, as the config reads it: tagged text back to its type. */
+function fromStoredText(text: string): unknown {
+  if (!text.startsWith(TYPED_TAG)) return text;
+  try {
+    const parsed: unknown = JSON.parse(text.slice(TYPED_TAG.length));
+    return typeof parsed === "number" || typeof parsed === "boolean" || typeof parsed === "string"
+      ? parsed
+      : text;
+  } catch {
+    return text;
+  }
+}
+
+/** Every scalar inside `value` (strings, numbers, booleans), with its place. */
+function mapScalars(
+  value: unknown,
+  place: Place,
+  change: (scalar: string | number | boolean, place: Place) => unknown,
+): unknown {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return change(value, place);
+  }
+  if (Array.isArray(value))
+    return value.map((item, index) => mapScalars(item, [...place, index], change));
+  if (isObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, mapScalars(item, [...place, key], change)]),
+    );
+  }
+  return value;
+}
+
 /** Every string inside `value` (itself, or in its lists and objects), with its place. */
 function mapStrings(
   value: unknown,
@@ -418,11 +468,12 @@ function placeOf(root: unknown, path: readonly string[]): Place {
 }
 
 /**
- * `values` (top-level keys of a section) with every string a schema marks
- * `writeOnly` handed to `seal`, which keeps it and gives the reference the
- * file holds instead (security.md D1026). References and markers stay as they
- * are; what no schema describes is not touched, nor is a section no plugin
- * defines.
+ * `values` (top-level keys of a section) with every scalar a schema marks
+ * `writeOnly` handed to `seal` as the text the store keeps (`storedText`:
+ * numbers and booleans tagged, D1373), which keeps it and gives the
+ * reference the file holds instead (security.md D1026). References and
+ * markers stay as they are; what no schema describes is not touched, nor is
+ * a section no plugin defines.
  */
 export function sealSecrets(
   schema: unknown,
@@ -436,11 +487,18 @@ export function sealSecrets(
     rootOf(schema),
     [],
     (secret, path) =>
-      mapStrings(secret, placeOf(values, path), (text, place) =>
-        text === "" || isConfigSecretReference(text) || isRedactedSecret(text)
-          ? text
-          : seal(text, place),
-      ),
+      mapScalars(secret, placeOf(values, path), (scalar, place) => {
+        if (
+          scalar === "" ||
+          (typeof scalar === "string" &&
+            (isConfigSecretReference(scalar) || isRedactedSecret(scalar)))
+        ) {
+          return scalar;
+        }
+        // Always text for a scalar; narrowed rather than asserted.
+        const text = storedText(scalar);
+        return text === undefined ? scalar : seal(text, place);
+      }),
     false,
     true,
   ) as Record<string, unknown>;
@@ -487,7 +545,8 @@ export function resolveSecretReferences(
     if (!isConfigSecretReference(text)) return text;
     found = true;
     const value = resolve?.(text, place);
-    if (value !== undefined) return value;
+    // A number or boolean comes back as one (D1373).
+    if (value !== undefined) return fromStoredText(value);
     missing(place);
     return UNRESOLVED;
   });

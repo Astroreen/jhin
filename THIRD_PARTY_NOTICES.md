@@ -123,7 +123,8 @@ stream view and control rail). The device hub (`expo-device-hub`) and
 npm on first use (`docs/plans/preview.md` D1206), under their own MIT licenses.
 `packages/qr-code/src/qr-code.ts` is Project Nayuki's QR Code generator (MIT,
 copyright Project Nayuki) as T3 Code vendors it; its notice is kept in the
-file. Files derived from T3 Code say so in a header comment.
+file. Files derived from T3 Code say so in a header comment. The secret store wraps its key with DPAPI through PowerShell as T3 Code's
+`apps/desktop/src/preview/BrowserImport/ChromiumKeys.ts` unwraps Chromium's.
 
 ```
 MIT License

@@ -300,7 +300,7 @@ more numbers takes the next free block of 20 after D1380 and writes it here.
   `desktop.md` and `preview.md`.
 - **W26:** `jhin pair` with a terminal QR code, pairing links for a
   `jhin client` page, device metadata and live updates in the authorized
-  clients list, an OS keychain store (done, W28; Windows deferred), Tailscale Serve, MCP OAuth, permission
+  clients list, an OS keychain store (done, W28; Windows with DPAPI, W39), Tailscale Serve, MCP OAuth, permission
   titles (done, `security.md` D961); "Keep threads with a PR", per-project
   settle overrides, "Regenerate titles (N)", the "Custom…" snooze (done,
   `t3-parity.md` D962), dragging a selection into the chat, undo of a drag
@@ -489,3 +489,11 @@ finishes out of the Deferred lists and leaves the rest there.
   streams, `terminals.write` as shell access and the terminal's
   per-connection bounds (D470). Write the threat model into decisions
   before code.
+  **Done** (D1361–D1373, D1374–D1380 unused,
+  `security.md#hardening-w39`): #243 the threat model, the `Host`
+  allowlist and `Secure` from `requestOrigin`; #247 shell access named
+  where it is granted and 32 MiB per connection; #251 DPoP-bound device
+  tokens and WebSocket tickets; #254 MCP OAuth's access levels and a
+  runtime mode ceiling; #257 streams in `auth.permissions.list`; #262
+  Windows DPAPI and typed config secrets. What is left is in
+  `security.md#deferred` and `terminal.md#deferred`.

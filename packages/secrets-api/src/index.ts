@@ -123,8 +123,8 @@ export const SecretsStatus = z.object({
   state: z.enum(["ready", "unreadable"]),
   /** Where the key is: the OS keychain or the key file beside the store. */
   key: z.enum(["keychain", "file"]),
-  /** Which keychain, when the key is in one. */
-  keychain: z.enum(["macos", "libsecret"]).nullable(),
+  /** Which keychain, when the key is in one; `windows` (DPAPI) since security.md D1372. */
+  keychain: z.enum(["macos", "libsecret", "windows"]).nullable(),
   configSecrets: z.number().int().nonnegative(),
   openRefs: z.number().int().nonnegative(),
 });

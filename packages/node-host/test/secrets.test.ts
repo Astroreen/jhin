@@ -3,7 +3,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { SECRET_REDACTED } from "@jhin/host-api";
 
-import { redactSecrets, restoreSecrets, scrub, secretTexts } from "../src/secrets.ts";
+import {
+  redactSecrets,
+  resolveSecretReferences,
+  restoreSecrets,
+  scrub,
+  secretTexts,
+  storedText,
+} from "../src/secrets.ts";
 
 const schemaOf = (type: z.ZodType) => z.toJSONSchema(type, { io: "input", unrepresentable: "any" });
 
@@ -301,5 +308,37 @@ describe("config secrets (security.md D417)", () => {
       $ref: "#/$defs/node",
     };
     expect(redactSecrets(schema, { key: "k" })).toEqual({ key: SECRET_REDACTED });
+  });
+});
+
+describe("typed config secrets (security.md D1373)", () => {
+  const REF = "$secret:0123456789abcdef0123456789abcdef";
+  const resolve = (stored: string) =>
+    resolveSecretReferences(
+      { s: { v: REF } },
+      () => stored,
+      () => undefined,
+    ).s as { v: unknown };
+
+  it("gives numbers, booleans and tag-looking strings back as they were", () => {
+    for (const value of [42, 0.5, true, false, "plain", "\u0000json:42"]) {
+      expect(resolve(storedText(value)!).v).toEqual(value);
+    }
+  });
+
+  it("seals no number without JSON text", () => {
+    expect(storedText(Number.NaN)).toBeUndefined();
+    expect(storedText(Number.POSITIVE_INFINITY)).toBeUndefined();
+  });
+
+  it("keeps a tagged text that is no scalar as the text it is", () => {
+    for (const stored of [
+      "\u0000json:{oops",
+      "\u0000json:{}",
+      "\u0000json:null",
+      "\u0000json:[1]",
+    ]) {
+      expect(resolve(stored).v).toBe(stored);
+    }
   });
 });
