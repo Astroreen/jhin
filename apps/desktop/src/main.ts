@@ -311,9 +311,13 @@ async function main(): Promise<void> {
     openLink: (link) => sendToPage(DESKTOP_CHANNELS.previewOpenLink, link),
     log,
   });
-  handle(DESKTOP_CHANNELS.previewAttach, z.number().int().positive(), (webContentsId) =>
-    webviews.attach(mainWindow!.webContents, webContentsId),
-  );
+  handle(DESKTOP_CHANNELS.previewAttach, z.number().int().positive(), (webContentsId) => {
+    // `handle` answers the main window only; a window closed meanwhile has no webviews.
+    if (mainWindow === undefined || mainWindow.isDestroyed()) {
+      throw new Error("The app's window is closed.");
+    }
+    return webviews.attach(mainWindow.webContents, webContentsId);
+  });
   handle(DESKTOP_CHANNELS.previewClearPartition, z.string().max(400), (partition) =>
     webviews.clearPartition(partition),
   );

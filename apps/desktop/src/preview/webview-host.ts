@@ -17,6 +17,9 @@ import {
 } from "./webview-policy.ts";
 import { sendPageCommand } from "./guest-input.ts";
 
+/** How long a relay waits for the node: past the node's 10 s wait and its 15 s connect. */
+const UNCLAIMED_RELAY_MS = 30_000;
+
 interface Attached {
   readonly guest: WebContents;
   readonly endpoint: string;
@@ -129,6 +132,7 @@ export function createWebviewHost(options: WebviewHostOptions) {
     const close = () => {
       if (closed) return;
       closed = true;
+      clearTimeout(unclaimed);
       if (attached.get(webContentsId) === tab) attached.delete(webContentsId);
       relay = null;
       connection?.terminate();
@@ -147,6 +151,11 @@ export function createWebviewHost(options: WebviewHostOptions) {
       close,
     };
     attached.set(webContentsId, tab);
+    // A node that never connects (it opened the tab headless meanwhile) does not keep the
+    // guest's debugger and the relay: they go once the node's own wait is long over.
+    const unclaimed = setTimeout(() => {
+      if (connection === null) close();
+    }, UNCLAIMED_RELAY_MS);
     guest.debugger.on("message", onMessage);
     // DevTools took the debugger, or the guest went: the node's tab ends.
     guest.debugger.on("detach", close);
@@ -158,6 +167,7 @@ export function createWebviewHost(options: WebviewHostOptions) {
         return;
       }
       connection = socket;
+      clearTimeout(unclaimed);
       relay = createCdpRelayConnection(
         {
           send: (method, params, sessionId) =>
