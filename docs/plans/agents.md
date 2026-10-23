@@ -1332,6 +1332,17 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   the predicate of D745. The input is additive and the output unchanged. The
   web client's thread search (Threads mode) keeps the default; nothing else
   calls the command.
+- **D1289. Mode places survive a reload of the page.** The places of D744
+  are also kept in the browser's `localStorage`, under `jhin.modes.places`:
+  one set per browser profile, shared by its windows, the last write wins.
+  They are read when `jhin.modes` activates and written on every change.
+  What is stored is validated before use: a value that is not JSON, or an
+  entry that is not a route of known string fields, is dropped, never
+  thrown; so is an entry on an app page (D748), which is never stored. With
+  no storage, or one that throws, the places are the page's alone, as
+  before (kernel-scoped state still serves a reload of the plugin within the
+  page, and is the newer of the two). A place on a node that is gone falls
+  back as it did. A mode per window or per node stays deferred.
 
 ## Phase 2: a Civilization the owner can run
 
@@ -2064,8 +2075,9 @@ Decisions (L2):
   meanwhile (D731).
 - A7: commits made outside a turn (by hand, by a workflow) and pull requests
   merged without a link to a thread (D722, D723).
-- A8: mode places that survive a page reload (D744 keeps them for the page's
-  life); a mode per window or per node.
+- ~~A8: mode places that survive a page reload (D744 keeps them for the page's
+  life).~~ A8, D1289.
+- A8: a mode per window or per node.
 - A8: offering Civilization mode for a mesh member reached through another node
   (D747 asks only the client's open connections), and as soon as the first
   agent is defined (D747 asks again only when the connection reopens).
