@@ -1638,6 +1638,11 @@ Decisions (L1):
   message (D626), which wakes it to orchestrate again. Every open ask of the
   lead holds its mission, about the mission or not: the lead decides what it
   asks. A lead that blocked the slices it asks about holds only them (D1263).
+- **D1275. The inbox is listed by sender.** `agents.inbox.list` takes an
+  optional `from`, a sender's full address as the item stores it, beside
+  `status` (additive). The orchestrator's escalations (D1223) ask for
+  `{status: "open", from: <lead>}` and keep the asks, so `missions.next` and
+  `slices.handoff` no longer read every open item of the inbox.
 
 ### L2. Guards in the process (D1241–D1260)
 
@@ -2040,9 +2045,9 @@ Decisions (L3):
 - L1: a member's escalation that the lead passes up holds the mission only
   as the lead's own ask (D1223); members asking the owner directly hold
   nothing (fencing them is A5's Deferred item).
-- L1: `missions.next` and `slices.handoff` read the open inbox to find the
+- ~~L1: `missions.next` and `slices.handoff` read the open inbox to find the
   lead's escalations (D1223); a filter by sender on `agents.inbox.list`
-  once inboxes grow.
+  once inboxes grow.~~ L1, D1275.
 - L1: the report as a card of its own in the Lead view (today the lead's
   Markdown text). ~~A way to clear a report from the inbox without an
   answer~~ A2, D1274.

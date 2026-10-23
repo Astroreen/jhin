@@ -250,6 +250,43 @@ describe("messages between agents (A2)", () => {
     ).rejects.toMatchObject({ code: "ASK_NOT_FOUND" });
   });
 
+  it("lists the inbox by sender (D1275)", async () => {
+    const { client, kernel } = await node({ agents: { builder, lead } });
+    const asks = async (agentId: string, question: string) => {
+      const { generation } = await client.call<{ generation: { threadId: string } }>(
+        "agents.rotate",
+        { agentId },
+      );
+      return (await kernel.commands.execute(
+        "agents.ask",
+        { to: owner, question },
+        {
+          caller: { id: "jhin.agent-claude:x", permissions: ["agents.message", "agents.read"] },
+          threadId: generation.threadId,
+        },
+      )) as Asked;
+    };
+    const fromBuilder = await asks("builder", "Builder asks");
+    const fromLead = await asks("lead", "Lead asks");
+    const ids = async (input: Record<string, unknown>) =>
+      (await client.call<{ items: InboxItem[] }>("agents.inbox.list", input)).items.map(
+        (item) => item.message.messageId,
+      );
+    expect(await ids({ from: address("lead") })).toEqual([fromLead.message.messageId]);
+    expect(await ids({})).toHaveLength(2);
+    await client.call("agents.inbox.answer", {
+      messageId: fromLead.message.messageId,
+      answer: "Yes.",
+    });
+    expect(await ids({ from: address("lead") })).toEqual([]);
+    expect(await ids({ from: address("lead"), status: "answered" })).toEqual([
+      fromLead.message.messageId,
+    ]);
+    expect(await ids({ from: address("builder"), status: "all" })).toEqual([
+      fromBuilder.message.messageId,
+    ]);
+  });
+
   it("dismisses an inbox item: an ask's sender is told, a message's is not (D1274)", async () => {
     const { client, kernel, requests } = await node({ agents: { builder } });
     const { generation } = await client.call<{ generation: { threadId: string } }>(

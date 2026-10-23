@@ -526,12 +526,16 @@ export function registerMessaging(
       "What agents sent and asked this node's owner, oldest first (open ones by default), and the head of the agents/inbox stream they reflect",
     ...MessageCommands["agents.inbox.list"],
     permissions: [INBOX_PERMISSION],
-    handler: async ({ status }) => {
+    handler: async ({ status, from }) => {
       const { head, items } = await inbox();
       const wanted = status ?? "open";
       return {
         head,
-        items: [...items.values()].filter((item) => wanted === "all" || item.status === wanted),
+        items: [...items.values()].filter(
+          (item) =>
+            (wanted === "all" || item.status === wanted) &&
+            (from === undefined || item.message.from === from),
+        ),
       };
     },
   });
