@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { directoryNotices, problemOf } from "../src/plugins/missions/directory.ts";
 import {
   assigneeLabel,
+  DELETED_PROJECT_GROUP,
   formatSteps,
   parseSteps,
   placeOf,
@@ -23,6 +24,7 @@ import {
   runLabel,
   sameSteps,
   threadTarget,
+  withDeletedProjects,
   waitsFor,
   type OrchestratorRun,
   type MissionPlace,
@@ -545,5 +547,33 @@ describe("D1277: the view says why titles fall back to ids", () => {
     );
     expect(problemOf(new Error("boom"))).toBe("boom");
     expect(problemOf("plain")).toBe("plain");
+  });
+});
+
+describe("missions of a deleted project (D1399)", () => {
+  const inProject = (id: string, projectId: string) => ({ id, projectId }) as Mission;
+  const groups = [
+    { projectId: "p1", missions: [inProject("m1", "p1")] },
+    { projectId: "gone1", missions: [inProject("m2", "gone1")] },
+    { projectId: "gone2", missions: [inProject("m3", "gone2")] },
+  ];
+
+  it("groups them last, as one, once the node's projects are known", () => {
+    const known = new Map([["p1", "Doghouse"]]);
+    expect(
+      withDeletedProjects(groups, known).map((group) => [
+        group.projectId,
+        group.missions.map((item) => item.id),
+      ]),
+    ).toEqual([
+      ["p1", ["m1"]],
+      [DELETED_PROJECT_GROUP, ["m2", "m3"]],
+    ]);
+    // No deleted project: the groups are as they were.
+    expect(withDeletedProjects(groups.slice(0, 1), known)).toEqual(groups.slice(0, 1));
+  });
+
+  it("moves nothing while the node's projects are not known yet", () => {
+    expect(withDeletedProjects(groups, new Map())).toEqual(groups);
   });
 });

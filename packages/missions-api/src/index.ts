@@ -158,6 +158,11 @@ export const Mission = z.object({
   process: MissionProcess,
   /** The step of its own process the mission took last (D1241). */
   step: z.string().optional(),
+  /**
+   * Set by the reading commands, never stored: the mission's project is gone
+   * from the node (D1399). Absent where the node cannot tell.
+   */
+  projectDeleted: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

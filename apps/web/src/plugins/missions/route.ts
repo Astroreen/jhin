@@ -336,3 +336,28 @@ export const VERDICT_LABELS = {
   approved: "Approved",
   "changes-requested": "Changes requested",
 } as const;
+
+/** The sidebar group of missions whose project is gone from the node (D1399). */
+export const DELETED_PROJECT_GROUP = "";
+
+/**
+ * Missions of projects the node no longer has go into one group, last, so the
+ * owner can still open and delete them (D1399). While the node's projects are
+ * unknown (an empty list: not read yet) nothing is moved.
+ */
+export function withDeletedProjects<T extends { projectId: string; missions: readonly Mission[] }>(
+  groups: readonly T[],
+  known: ReadonlyMap<string, string>,
+): { projectId: string; missions: readonly Mission[] }[] {
+  if (known.size === 0) return [...groups];
+  const kept = groups.filter((group) => known.has(group.projectId));
+  const gone = groups.filter((group) => !known.has(group.projectId));
+  if (gone.length === 0) return kept;
+  return [
+    ...kept,
+    {
+      projectId: DELETED_PROJECT_GROUP,
+      missions: gone.flatMap((group) => group.missions),
+    },
+  ];
+}

@@ -694,6 +694,39 @@ describe("jhin.missions", () => {
     expect(markdown.match(/^#{1,4} /gm)).toEqual(["# ", "## ", "### ", "#### ", "### ", "#### "]);
   });
 
+  it("keeps the missions of a deleted project, marked, readable and deletable (D1399)", async () => {
+    const { client, project } = await node();
+    const mission = await client.call<Mission>("missions.create", {
+      projectId: project.id,
+      title: "Doghouse",
+      outcome: "The dog sleeps dry.",
+    });
+    await client.call<Slice>("slices.create", { missionId: mission.id, title: "Floor", spec: "" });
+    expect((await client.call<Mission[]>("missions.list", {}))[0]!.projectDeleted).toBeUndefined();
+    await client.call("projects.delete", { projectId: project.id });
+
+    // Nothing of it is deleted with the project; it is told apart, not stored.
+    expect(await client.call<Mission[]>("missions.list", {})).toMatchObject([
+      { id: mission.id, projectDeleted: true },
+    ]);
+    expect(await client.call("missions.get", { missionId: mission.id })).toMatchObject({
+      mission: { id: mission.id, projectDeleted: true },
+      slices: [{ title: "Floor" }],
+    });
+    const catalog = await client.call<{ missions: Mission[] }>("missions.catalog", {});
+    expect(catalog.missions).toMatchObject([{ id: mission.id, projectDeleted: true }]);
+    // Asking by the gone project, or planning in it, stays refused.
+    await expect(client.call("missions.list", { projectId: project.id })).rejects.toMatchObject({
+      code: "PROJECT_NOT_FOUND",
+    });
+    await expect(
+      client.call("missions.create", { projectId: project.id, title: "N", outcome: "O" }),
+    ).rejects.toMatchObject({ code: "PROJECT_NOT_FOUND" });
+    // The owner deletes it with the command that deletes any mission.
+    await client.call("missions.delete", { missionId: mission.id });
+    expect(await client.call<Mission[]>("missions.list", {})).toEqual([]);
+  });
+
   it("takes any project id on a node without projects.list (D643)", async () => {
     const storage = memoryStoragePlugin();
     const kernel = await createTestKernel({
