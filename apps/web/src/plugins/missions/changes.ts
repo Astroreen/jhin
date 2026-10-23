@@ -14,9 +14,13 @@ import { parseSteps, sameSteps } from "./route.ts";
 /** `missions.intent.set`'s fields that changed; with no record yet, both. */
 export function intentChanges(
   previous: ProjectIntent | undefined,
-  form: { readonly intent: string; readonly process: string },
+  form: {
+    readonly intent: string;
+    readonly process: string;
+    readonly descriptions?: Readonly<Record<string, string>>;
+  },
 ): { intent?: string; process?: ProjectIntent["process"] } {
-  const process = parseSteps(form.process, previous?.process);
+  const process = parseSteps(form.process, previous?.process, form.descriptions);
   return {
     ...(previous !== undefined && form.intent === previous.intent ? {} : { intent: form.intent }),
     ...(previous !== undefined && sameSteps(process, previous.process) ? {} : { process }),
@@ -32,11 +36,14 @@ export function missionChanges(
     readonly status: MissionStatus;
     readonly sliceProcess: string;
     readonly missionProcess: string;
+    /** Step descriptions the owner typed, by step id (D1288). */
+    readonly sliceDescriptions?: Readonly<Record<string, string>>;
+    readonly missionDescriptions?: Readonly<Record<string, string>>;
   },
 ) {
   const process = {
-    slice: parseSteps(form.sliceProcess, mission.process.slice),
-    mission: parseSteps(form.missionProcess, mission.process.mission),
+    slice: parseSteps(form.sliceProcess, mission.process.slice, form.sliceDescriptions),
+    mission: parseSteps(form.missionProcess, mission.process.mission, form.missionDescriptions),
   };
   const sameProcess =
     sameSteps(process.slice, mission.process.slice) &&

@@ -1545,6 +1545,15 @@ Decisions (C2):
   failed: …". A node that has no such command (no agents plugin) says
   nothing, as before: that is not a failure. A source is read once per view,
   with no retry.
+- **D1288. A step's description is edited beside the line of ids.** The
+  process editors (intent, slice and mission) keep D1084's one line of ids
+  and add one field per step under it, "Description of `<id>`", holding the
+  step's description. A step keeps its description and `review` while its id
+  stays; renaming an id drops the old description with it, as D1084 says.
+  An empty field clears it. `sameSteps` compares descriptions as well as
+  ids and `review`, so a description-only edit is sent; the client still
+  checks nothing the command checks (D1083). The view's step badges carry
+  the description as their title and accessible name.
 
 ### C3. Dogfood: a civilization end to end (D1101–D1120)
 
@@ -1969,8 +1978,8 @@ Decisions (L2):
   the missions of a deleted project (they stay in the stream, unseen).
 - ~~A3: editing intent, missions and slices from the client; the view reads
   (D656), the commands edit.~~ C2, D1081–D1085.
-- C2: editing a step's description (D1084 keeps it by id), and proving a
-  slice from the client (`slices.prove` stays the agent's).
+- ~~C2: editing a step's description (D1084 keeps it by id).~~ C2, D1288.
+- C2: proving a slice from the client (`slices.prove` stays the agent's).
 - C2: titles and the assignee picker for agents of other nodes of the mesh;
   the view lists its own node's agents, read once per view (D1082).
 - ~~C2: saying why titles fall back to ids: a failing `host.identity` or
