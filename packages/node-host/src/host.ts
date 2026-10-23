@@ -63,6 +63,7 @@ import {
   secretPaths,
   secretReferences,
   secretTexts,
+  storedText,
 } from "./secrets.ts";
 import { buildOutputFilter, watch, type WatchTarget } from "./watcher.ts";
 
@@ -977,8 +978,10 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           for (const place of places) {
             let leaf: unknown = current;
             for (const key of place.path) leaf = (leaf as Record<string | number, unknown>)?.[key];
-            if (typeof leaf !== "string") continue;
-            place.reference = store.putConfig(leaf, { section, path: place.path });
+            // Strings, numbers and booleans, as the store keeps them (D1373).
+            const kept = storedText(leaf);
+            if (kept === undefined) continue;
+            place.reference = store.putConfig(kept, { section, path: place.path });
             sealedNow.push(place.reference);
             // A leaf edit: every comment of the file stays.
             text = applyEdits(

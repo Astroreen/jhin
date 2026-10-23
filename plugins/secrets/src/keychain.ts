@@ -1,7 +1,8 @@
 /**
  * The OS keychain that holds the store's key (docs/plans/security.md, D1024):
- * macOS `security`, Linux `secret-tool`. The key goes through standard input
- * and output only, never a command line another process could read.
+ * macOS `security`, Linux `secret-tool`, Windows DPAPI (D1372). The key goes
+ * through standard input and output only, never a command line another
+ * process could read.
  */
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
@@ -41,7 +42,7 @@ const runProcess: Runner = (command, args, input) =>
   });
 
 export interface Keychain {
-  readonly kind: "macos" | "libsecret";
+  readonly kind: "macos" | "libsecret" | "windows";
   /** The stored key, or `undefined` when there is none. */
   get(): Promise<string | undefined>;
   /** Stores the key; `false` when the keychain refused it. */
@@ -94,6 +95,64 @@ export function libsecretKeychain(account: string, run: Runner): Keychain {
   };
 }
 
+// DPAPI through PowerShell, as T3 Code unwraps Chromium's keys (MIT, see
+// THIRD_PARTY_NOTICES.md): apps/desktop/src/preview/BrowserImport/ChromiumKeys.ts.
+// The scripts hold no secret: the key and the blob are standard input and output.
+const DPAPI =
+  "Add-Type -AssemblyName System.Security;" +
+  "$in=[Convert]::FromBase64String([Console]::In.ReadToEnd().Trim());" +
+  "$out=[Security.Cryptography.ProtectedData]::%s($in,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);" +
+  "[Console]::Out.Write([Convert]::ToBase64String($out))";
+/** Where the DPAPI-wrapped key is kept, beside the store (D1372). */
+export const DPAPI_KEY_FILE = "store.key.dpapi";
+const POWERSHELL_ARGS = ["-NoProfile", "-NonInteractive", "-Command"] as const;
+
+/**
+ * The key wrapped with DPAPI for the current Windows user, the blob kept in
+ * `file` (0600) beside the store (D1372): only that user on that machine
+ * unwraps it.
+ */
+export function windowsKeychain(file: string, run: Runner): Keychain {
+  const utf8 = (text: string) => Buffer.from(text, "utf8").toString("base64");
+  return {
+    kind: "windows",
+    async get() {
+      let blob: string;
+      try {
+        blob = Fs.readFileSync(file, "utf8").trim();
+      } catch {
+        return undefined;
+      }
+      const result = await run(
+        "powershell.exe",
+        [...POWERSHELL_ARGS, DPAPI.replace("%s", "Unprotect")],
+        blob,
+      );
+      if (result.code !== 0 || result.stdout.trim() === "") return undefined;
+      const key = Buffer.from(result.stdout.trim(), "base64").toString("utf8").trim();
+      return key.length > 0 ? key : undefined;
+    },
+    async set(key) {
+      const result = await run(
+        "powershell.exe",
+        [...POWERSHELL_ARGS, DPAPI.replace("%s", "Protect")],
+        utf8(key),
+      );
+      const blob = result.stdout.trim();
+      if (result.code !== 0 || blob === "") return false;
+      const temporary = `${file}.${process.pid}.tmp`;
+      try {
+        Fs.writeFileSync(temporary, `${blob}\n`, { mode: 0o600 });
+        Fs.renameSync(temporary, file);
+        return true;
+      } catch {
+        Fs.rmSync(temporary, { force: true });
+        return false;
+      }
+    },
+  };
+}
+
 /** Whether `name` is an executable file in one of `PATH`'s directories. */
 function onPath(name: string, env: NodeJS.ProcessEnv): boolean {
   return (env["PATH"] ?? "")
@@ -111,9 +170,9 @@ function onPath(name: string, env: NodeJS.ProcessEnv): boolean {
 
 /**
  * The keychain this machine may have, or `undefined`: macOS always has one;
- * Linux when `secret-tool` is installed and a D-Bus session bus is set.
- * Windows uses the key file (docs/plans/security.md, Deferred). Whether it
- * works shows when the store's key is first put into it.
+ * Linux when `secret-tool` is installed and a D-Bus session bus is set;
+ * Windows DPAPI with its blob in `dpapiFile` (D1372), when one is given.
+ * Whether it works shows when the store's key is first put into it.
  */
 export function findKeychain(
   account: string,
@@ -121,12 +180,16 @@ export function findKeychain(
     readonly platform?: NodeJS.Platform;
     readonly env?: NodeJS.ProcessEnv;
     readonly run?: Runner;
+    readonly dpapiFile?: string;
   } = {},
 ): Keychain | undefined {
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;
   const run = options.run ?? runProcess;
   if (platform === "darwin") return macosKeychain(account, run);
+  if (platform === "win32" && options.dpapiFile !== undefined) {
+    return windowsKeychain(options.dpapiFile, run);
+  }
   if (
     platform === "linux" &&
     (env["DBUS_SESSION_BUS_ADDRESS"] ?? "") !== "" &&

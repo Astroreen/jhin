@@ -946,6 +946,36 @@ Connect stays out of scope.
   cannot offer more than names; a hook that throws costs the streams with
   the titles (D961).
 
+- **D1372. Windows keeps the store's key with DPAPI.** D1361 (7): on
+  Windows the key sat in `store.key`, readable by anything that copies the
+  data directory (a backup, a synced folder, another account with access
+  to the disk). Windows has no `security` or `secret-tool`; T3 unwraps
+  Chromium's keys with DPAPI through PowerShell
+  (`apps/desktop/src/preview/BrowserImport/ChromiumKeys.ts`), and Jhin's
+  store does the same to wrap its own: the keychain `windows` protects the
+  key with `ProtectedData.Protect` (scope `CurrentUser`) in
+  `powershell.exe -NoProfile -NonInteractive`, the key and the blob going
+  through standard input and output only (the script on the command line
+  holds no secret), and keeps the blob in `store.key.dpapi` (0600) beside
+  the store. Only the same Windows user on the same machine unwraps it. The
+  store records `key: "keychain"` as for the other keychains, so a store
+  made before keeps its key file (D1023), and `secrets.status` names the
+  keychain `windows` (an added value). `jhin.secrets.keychain: "off"` keeps
+  the key file. Tested with a fake PowerShell; no Windows machine runs it
+  in CI.
+- **D1373. Numbers and booleans can be config secrets too.** D1025 kept a
+  `writeOnly` number or boolean in clear. Saving now seals every scalar at
+  a secret place: a string as before, a number or boolean as its JSON text
+  behind the tag `U+0000json:` in the store (a string that itself starts
+  with the tag is sealed the same way, so it reads back as the string).
+  The file holds the same `$secret:<32 hex>` reference, so the format of
+  config files does not change; resolving gives back the number or the
+  boolean, and the section's schema checks it as before. Redaction (D417)
+  already hid them. An older node reading such a store gets the tagged
+  text, which its schema refuses: a store is the node's own (D1021), so
+  this happens only when a node is downgraded, and saving the field again
+  repairs it.
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -1071,6 +1101,12 @@ A slice a PR, in the order of D1361's risks:
   `auth.permissions.list` with its stream, a command's permission lists
   the streams it guards too, and a hook cannot add a pattern.
 
+- **PR 6f — secrets at rest** (D1372, D1373). **Done when:** a fake
+  PowerShell wraps and unwraps the key through standard input only, a store
+  made on `win32` keeps its key in `store.key.dpapi` and opens again, and a
+  saved number and boolean secret leave the file as references and read
+  back with their types.
+
 ## Deferred
 
 - A secret whose real value starts with the marker and `#`
@@ -1080,16 +1116,16 @@ A slice a PR, in the order of D1361's risks:
   (`config.jsonSchema()`) to pick one; a kernel call for one section's
   schema, or a cache cleared on `kernel.config.changed`, would avoid it.
 
-- The secret store (W28): Windows keeps the store's key in the key file
-  (no Credential Manager yet, D1024); an existing store cannot move its key
+- The secret store (W28): Windows keeps the store's key with DPAPI since
+  W39 (D1372), not in Credential Manager; an existing store cannot move its key
   between the keychain and the file, and an unreadable one has no reset
   command: it has to be moved aside by hand (D1023).
 - A list item whose reference does not resolve is left out of the applied
   list, so the items after it move up one place in the effective value (the
   files and their addressed markers keep their places, D417).
-- Config secrets that are numbers or booleans stay in clear (D1025); a
-  reference removed from a file by hand stays in the store (only changes
-  through the host delete them, D1026).
+- A config secret reference removed from a file by hand stays in the
+  store (only changes through the host delete them, D1026). Numbers and
+  booleans are sealed since D1373.
 - A plugin that reads a config secret only while it activates, before
   `jhin.secrets` is active, sees it absent until `config.onChange` (D1025).
 - Secret requests (W28): T3's "Waiting for an answer in the original

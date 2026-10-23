@@ -3,6 +3,8 @@
  * (docs/plans/security.md, D1021–D1033). The store's shape follows T3 Code's
  * ServerSecretStore and SecretRequests (MIT, see THIRD_PARTY_NOTICES.md).
  */
+import * as Path from "node:path";
+
 import {
   HOST_IDENTITY_CAPABILITY,
   HOST_PATHS_CAPABILITY,
@@ -25,7 +27,7 @@ import {
   type KeyValueStore,
 } from "@jhin/storage-api";
 
-import { findKeychain } from "./keychain.ts";
+import { DPAPI_KEY_FILE, findKeychain } from "./keychain.ts";
 import { registerSecretRequests } from "./requests.ts";
 import { openStore } from "./store.ts";
 
@@ -52,9 +54,15 @@ export default definePlugin({
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
     const { nodeId } = context.services.get<HostIdentity>(HOST_IDENTITY_CAPABILITY);
     const config = context.config.get<Config>(SECRETS_CONFIG_SECTION);
+    const dir = paths.dataDir(context.plugin.id);
     const store = await openStore({
-      dir: paths.dataDir(context.plugin.id),
-      keychain: config.keychain === "off" ? undefined : findKeychain(`jhin.secrets:${nodeId}`),
+      dir,
+      keychain:
+        config.keychain === "off"
+          ? undefined
+          : findKeychain(`jhin.secrets:${nodeId}`, {
+              dpapiFile: Path.join(dir, DPAPI_KEY_FILE),
+            }),
     });
     if (!store.readable) {
       context.log.error(

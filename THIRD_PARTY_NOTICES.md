@@ -109,7 +109,7 @@ component; `packages/qr-code`: the terminal rendering of a QR code;
 `apps/jhin`: `jhin pair`, its output, notes and Tailscale Serve flow;
 `plugins/mcp-oauth`: MCP client sign-in with OAuth, its rules, pages and wording), secrets (`packages/secrets-api`, `plugins/secrets`: the secret
 store's shape, secret requests and their card, one-use secretRefs, their
-statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/desktop`,
+statuses, lifetime and messages; the store key wrapped with DPAPI through PowerShell) and the desktop app (`apps/desktop`, `plugins/desktop`,
 `packages/desktop-api`: the window and its chrome, the application and context
 menus, the notification badge, the update flow, its state machine and its
 controls, the nightly release notes, the quit hold and its hint;
