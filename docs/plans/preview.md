@@ -717,6 +717,12 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   `helper_missing`) before anything runs; a command that fails is
   `DEVICE_OPERATION_FAILED` with its step and exit code, its output only in
   the details. Both take a thread and a device as the input commands do.
+  Unlike T3, whose panel is their only caller, these commands reach agents
+  too: an app id must look like a bundle id or a package name, and a URL or
+  app id goes single-quoted through `adb shell`, which the device's shell
+  parses again. An Android permission holds when one permission of its group
+  took (an app declares the one of its Android version), and Reset, which
+  Android has not, is refused there, as T3's panel offers it on iOS only.
 
 - **D1333. T3's tools panel beside an open device.** The rail gets T3's
   "Device tools" toggle (lucide `SlidersHorizontal`), which opens "Tools" at

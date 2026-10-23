@@ -298,6 +298,13 @@ async function runIos(host: ActionHost, udid: string, input: DeviceAction): Prom
   }
 }
 
+/**
+ * `adb shell` joins its arguments and the device's shell parses them again, so a value the
+ * caller chose (a URL, an app id) goes single-quoted: `&`, `;` or `$(…)` in it stay text.
+ * T3 passes them bare; its UI is the only caller there, Jhin's commands reach agents too.
+ */
+const shellQuote = (value: string): string => `'${value.replaceAll("'", () => "'\\''")}'`;
+
 async function runAndroid(host: ActionHost, serial: string, input: DeviceAction): Promise<void> {
   const adb = async (args: readonly string[], operation: string) =>
     ok(operation)(await host.run("adb", ["-s", serial, ...args]));
@@ -358,24 +365,39 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
       return;
     case "setPermission": {
       const permissions = ANDROID_PERMISSIONS[input.permission];
-      if (!permissions) throw unavailable("permission", "android", "unsupported");
-      const verb = input.decision === "grant" ? "grant" : "revoke";
-      for (const permission of permissions) {
-        await shell(["pm", verb, input.appId, permission], "permission").catch(() => undefined);
+      // Android has no reset of one permission; T3's panel offers Reset on iOS only.
+      if (!permissions || input.decision === "reset") {
+        throw unavailable("permission", "android", "unsupported");
       }
+      // An app declares some of a group's permissions only (photos: one per Android
+      // version): the action holds when at least one of them took.
+      let failure: unknown;
+      let changed = false;
+      for (const permission of permissions) {
+        try {
+          await shell(["pm", input.decision, shellQuote(input.appId), permission], "permission");
+          changed = true;
+        } catch (error) {
+          failure ??= error;
+        }
+      }
+      if (!changed) throw failure;
       return;
     }
     case "openUrl":
-      await shell(["am", "start", "-a", "android.intent.action.VIEW", "-d", input.url], "open url");
+      await shell(
+        ["am", "start", "-a", "android.intent.action.VIEW", "-d", shellQuote(input.url)],
+        "open url",
+      );
       return;
     case "launchApp":
       await shell(
-        ["monkey", "-p", input.appId, "-c", "android.intent.category.LAUNCHER", "1"],
+        ["monkey", "-p", shellQuote(input.appId), "-c", "android.intent.category.LAUNCHER", "1"],
         "launch",
       );
       return;
     case "terminateApp":
-      await shell(["am", "force-stop", input.appId], "terminate");
+      await shell(["am", "force-stop", shellQuote(input.appId)], "terminate");
       return;
     case "setLiquidGlass":
     case "setColorFilter":

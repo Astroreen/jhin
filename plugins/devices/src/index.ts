@@ -496,10 +496,17 @@ export default definePlugin({
                 : "Android platform tools (adb) were not found in the Android SDK.",
             );
           }
+          // A command that does not start is the action's failure too; one that outlives
+          // its 30 s is stopped and answers no exit code, which the action reports.
           const result = await runProgram(program, args, {
             env: installEnvironment(process.env),
             timeoutMs: 30_000,
             ...(options?.stdin === undefined ? {} : { stdin: options.stdin }),
+          }).catch((error: unknown) => {
+            throw new DeviceError(
+              "DEVICE_OPERATION_FAILED",
+              `Device ${command} could not be run: ${error instanceof Error ? error.message : String(error)}`,
+            );
           });
           return { code: result.code, stdout: result.stdout, stderr: result.stderr };
         },
@@ -557,13 +564,7 @@ export default definePlugin({
       input: { threadId: string; deviceId?: string | undefined },
       deviceInput: DeviceInput,
     ) => {
-      const device = await target(input);
-      if (!device.booted) {
-        throw new DeviceError(
-          "DEVICE_UNAVAILABLE",
-          `Device ${device.id} is not running. Call device_open first.`,
-        );
-      }
+      const device = await runningDevice(input);
       return { device, via: await hub.input(input.threadId, device, deviceInput) };
     };
     context.commands.register({

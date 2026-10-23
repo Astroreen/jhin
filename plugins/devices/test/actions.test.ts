@@ -185,6 +185,135 @@ describe("runDeviceAction", () => {
   });
 });
 
+describe("the tools' other actions", () => {
+  it("quotes what the caller chose before the device's shell reads it", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "android", "emulator-5554", {
+      type: "openUrl",
+      url: "https://x.test/?a=1&b=2;reboot $(id)'q",
+    });
+    expect(calls[0]?.args).toEqual([
+      "-s",
+      "emulator-5554",
+      "shell",
+      "am",
+      "start",
+      "-a",
+      "android.intent.action.VIEW",
+      "-d",
+      `'https://x.test/?a=1&b=2;reboot $(id)'\\''q'`,
+    ]);
+    await runDeviceAction(host, "android", "emulator-5554", {
+      type: "launchApp",
+      appId: "com.example",
+    });
+    await runDeviceAction(host, "android", "emulator-5554", {
+      type: "terminateApp",
+      appId: "com.example",
+    });
+    expect(calls.slice(1).map((call) => call.args.slice(3))).toEqual([
+      ["monkey", "-p", "'com.example'", "-c", "android.intent.category.LAUNCHER", "1"],
+      ["am", "force-stop", "'com.example'"],
+    ]);
+  });
+
+  it("opens, launches, terminates and places on iOS through simctl", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "ios", udid, { type: "openUrl", url: "myapp://x?a=1&b=2" });
+    await runDeviceAction(host, "ios", udid, { type: "launchApp", appId: "com.example" });
+    await runDeviceAction(host, "ios", udid, { type: "terminateApp", appId: "com.example" });
+    await runDeviceAction(host, "ios", udid, { type: "setLocation", latitude: 1.5, longitude: -2 });
+    await runDeviceAction(host, "ios", udid, { type: "clearLocation" });
+    expect(calls.map((call) => call.args)).toEqual([
+      ["simctl", "openurl", udid, "myapp://x?a=1&b=2"],
+      ["simctl", "launch", udid, "com.example"],
+      ["simctl", "terminate", udid, "com.example"],
+      ["simctl", "location", udid, "set", "1.5,-2"],
+      ["simctl", "location", udid, "clear"],
+    ]);
+  });
+
+  it("fixes an emulator's location and leaves clearing it a no-op", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "android", "emulator-5554", {
+      type: "setLocation",
+      latitude: 59.3,
+      longitude: 18.1,
+    });
+    await runDeviceAction(host, "android", "emulator-5554", { type: "clearLocation" });
+    expect(calls.map((call) => call.args)).toEqual([
+      ["-s", "emulator-5554", "emu", "geo", "fix", "18.1", "59.3"],
+    ]);
+  });
+
+  it("decides iOS permissions through TCC, and notifications through serve-sim's CLI", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "ios", udid, {
+      type: "setPermission",
+      appId: "com.example",
+      permission: "camera",
+      decision: "reset",
+    });
+    await runDeviceAction(host, "ios", udid, {
+      type: "setPermission",
+      appId: "com.example",
+      permission: "notifications",
+      decision: "grant",
+    });
+    expect(calls).toEqual([
+      { command: "xcrun", args: ["simctl", "privacy", udid, "reset", "camera", "com.example"] },
+      {
+        command: "node",
+        args: [
+          "/hub/serve-sim.js",
+          "permissions",
+          "grant",
+          "notifications",
+          "com.example",
+          "-d",
+          udid,
+        ],
+      },
+    ]);
+  });
+
+  it("holds an Android permission when one of its group took, and fails when none did", async () => {
+    const photos = makeHost((call) =>
+      call.args.includes("android.permission.READ_MEDIA_IMAGES") ? { code: 255 } : {},
+    );
+    await runDeviceAction(photos.host, "android", "emulator-5554", {
+      type: "setPermission",
+      appId: "com.example",
+      permission: "photos",
+      decision: "grant",
+    });
+    expect(photos.calls.map((call) => call.args.slice(3))).toEqual([
+      ["pm", "grant", "'com.example'", "android.permission.READ_MEDIA_IMAGES"],
+      ["pm", "grant", "'com.example'", "android.permission.READ_EXTERNAL_STORAGE"],
+    ]);
+    const none = makeHost(() => ({ code: 255, stderr: "Unknown package" }));
+    const error = await failure(
+      runDeviceAction(none.host, "android", "emulator-5554", {
+        type: "setPermission",
+        appId: "com.example",
+        permission: "camera",
+        decision: "revoke",
+      }),
+    );
+    expect(error.code).toBe("DEVICE_OPERATION_FAILED");
+    // Android has no reset of one permission.
+    const reset = await failure(
+      runDeviceAction(none.host, "android", "emulator-5554", {
+        type: "setPermission",
+        appId: "com.example",
+        permission: "camera",
+        decision: "reset",
+      }),
+    );
+    expect(reset.code).toBe("DEVICE_ACTION_UNAVAILABLE");
+  });
+});
+
 describe("readDeviceDetail", () => {
   it("reads iOS settings from simctl and the accessibility helper", async () => {
     const { host } = makeHost((call) => {

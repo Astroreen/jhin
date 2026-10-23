@@ -312,7 +312,13 @@ export const DevicePermission = z.enum([
 ]);
 export type DevicePermission = z.infer<typeof DevicePermission>;
 
-const AppId = z.string().trim().min(1).max(256);
+/** A bundle id (iOS) or package name (Android): letters, digits, `.`, `_` and `-`. */
+const AppId = z
+  .string()
+  .trim()
+  .min(1)
+  .max(256)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, "a bundle id or package name");
 
 /** One of the tools panel's actions (T3's `DeviceActionInput` without its target). */
 export const DeviceAction = z.discriminatedUnion("type", [
