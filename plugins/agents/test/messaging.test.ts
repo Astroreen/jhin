@@ -382,21 +382,27 @@ describe("messages between agents (A2)", () => {
   });
 
   it("records no turn answer when the agent answered the owner's message itself (D1262)", async () => {
-    // The lead answers "Reply." itself, with agents.send, before its turn ends.
-    let answerItself: ((threadId: string) => Promise<unknown>) | undefined;
+    // The lead answers "Reply." itself, with agents.send, before its turn ends;
+    // "Other." it answers by replying to another message, which is no answer to it.
+    let answerItself: ((threadId: string, inReplyTo: string) => Promise<unknown>) | undefined;
     const { client, kernel } = await node({
       agents: { lead },
       capture: {
         answer: (request) => `answer to: ${request.input.text.split("\n\n")[1] ?? ""}`,
         gate: async (request) => {
-          if (request.input.text.includes("Reply.")) await answerItself?.(request.threadId);
+          if (request.input.text.includes("Reply.")) {
+            await answerItself?.(request.threadId, "owner-reply");
+          }
+          if (request.input.text.includes("Other.")) {
+            await answerItself?.(request.threadId, "an-earlier-message");
+          }
         },
       },
     });
-    answerItself = (threadId) =>
+    answerItself = (threadId, inReplyTo) =>
       kernel.commands.execute(
         "agents.send",
-        { to: owner, body: "My own answer", inReplyTo: "owner-reply" },
+        { to: owner, body: "My own answer", inReplyTo },
         { caller: { id: "jhin.agent-claude:x", permissions: ["agents.message"] }, threadId },
       );
     const messages = watch(client, MESSAGES_STREAM);
@@ -405,6 +411,7 @@ describe("messages between agents (A2)", () => {
       body: "Reply.",
       messageId: "owner-reply",
     });
+    const other = await client.call<Sent>("agents.send", { to: address("lead"), body: "Other." });
     const last = await client.call<Sent>("agents.send", { to: address("lead"), body: "Last." });
     await messages.untilMatch(
       (event) =>
@@ -414,7 +421,7 @@ describe("messages between agents (A2)", () => {
     const answered = messages.events
       .filter((event) => event.type === MessageEvents.answered)
       .map((event) => (event.payload as { messageId: string }).messageId);
-    expect(answered).toEqual([last.message.messageId]);
+    expect(answered).toEqual([other.message.messageId, last.message.messageId]);
     const reply = messages.events.find(
       (event) =>
         event.type === MessageEvents.delivered &&
