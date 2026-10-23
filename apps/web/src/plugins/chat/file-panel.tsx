@@ -6,6 +6,7 @@
 // A mentioned file's preview right of the thread (t3-parity.md D1342): a chunk of its own (D440),
 // loaded when the panel first opens. The file is read through `projects.read-file`.
 import type { NodeTarget } from "@jhin/client-api";
+import { targetKey } from "@jhin/client-api";
 import { Button, Tooltip, TooltipPopup, TooltipTrigger } from "@jhin/ui";
 import { XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -49,7 +50,8 @@ export function FilePanel(props: FilePanelProps) {
   const [read, setRead] = useState<
     { key: string; file: PreviewFile } | { key: string; error: string } | undefined
   >();
-  const key = `${projectId ?? ""}|${props.threadId ?? ""}|${props.path}|${revision}`;
+  // Everything the read depends on: another node, thread, project, file or retry reads again.
+  const key = `${targetKey(props.target)}|${projectId ?? ""}|${props.threadId ?? ""}|${props.path}|${revision}`;
 
   useEffect(() => {
     if (projectId === undefined) return;
