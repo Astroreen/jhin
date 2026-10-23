@@ -352,7 +352,11 @@ export function registerMessaging(
     (await log.read(MESSAGES_STREAM)).some((event) => {
       if (event.type !== MessageEvents.delivered) return false;
       const reply = (event.payload as unknown as Delivered).message;
-      return reply.inReplyTo === message.messageId && reply.from === message.to;
+      return (
+        reply.inReplyTo === message.messageId &&
+        reply.from === message.to &&
+        reply.to === message.from
+      );
     });
 
   const answered = (message: AgentMessage, answeredBy: string, answer: string) =>

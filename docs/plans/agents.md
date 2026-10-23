@@ -1576,7 +1576,8 @@ Decisions (L1):
   `agents.message.answered`, as an ask's answer is, and
   `agents.conversation` (D1061) shows it under the owner's message, so the
   Lead view does too. Nobody waits for it: `agents.send` returns at once, and
-  a failed, interrupted or silent turn records nothing. It takes the C3
+  a failed, interrupted or silent turn records nothing, and neither does a
+  turn in which the agent answered the message itself (D1262). It takes the C3
   Deferred item: the turn records it, instead of the lead's instructions
   asking it to report.
 - **D1222. The orchestrator sends the lead's mission report.** The thread a
