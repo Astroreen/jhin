@@ -177,7 +177,12 @@ describe("the device hub", () => {
 
     // The owner's token reaches the hub; credentials stay at the node.
     const byToken = await fetch(`${api}?device=emulator-5554`, {
-      headers: { authorization: `Bearer ${node.token}`, cookie: "jhin_session=secret" },
+      headers: {
+        authorization: `Bearer ${node.token}`,
+        cookie: "jhin_session=secret",
+        referer: `${node.url}/?wsTicket=secret`,
+        "x-forwarded-for": "10.0.0.1",
+      },
     });
     expect(byToken.status).toBe(200);
     expect(byToken.headers.get("cache-control")).toBe("no-store, no-transform");
@@ -191,6 +196,8 @@ describe("the device hub", () => {
     expect(echoed.search).toBe("?device=emulator-5554");
     expect(echoed.headers).not.toHaveProperty("authorization");
     expect(echoed.headers).not.toHaveProperty("cookie");
+    expect(echoed.headers).not.toHaveProperty("referer");
+    expect(echoed.headers).not.toHaveProperty("x-forwarded-for");
 
     // A ticket works in the query and never travels on.
     const byTicket = await fetch(`${api}?device=emulator-5554&wsTicket=${ticket}`);
@@ -389,6 +396,16 @@ describe("the device hub", () => {
       "No element at that point.",
     );
     expect(tools.adbInputs()).toEqual(["shell input tap 2 2"]);
+
+    // A daemon that dies after carrying an input out: the input is not repeated through adb,
+    // and the next one, finding no daemon, goes through adb.
+    await expect(node.call("device.type", { threadId: "t1", text: "DIE" })).rejects.toThrow(
+      "Device agent-device type failed",
+    );
+    expect(tools.adbInputs()).toEqual(["shell input tap 2 2"]);
+    const after = await node.call<{ via: string }>("device.tap", { threadId: "t1", x: 4, y: 4 });
+    expect(after.via).toBe("adb");
+    expect(tools.adbInputs()).toEqual(["shell input tap 2 2", "shell input tap 4 4"]);
   });
 
   it("stops the hub and the agent-device daemon when the plugin goes", async () => {

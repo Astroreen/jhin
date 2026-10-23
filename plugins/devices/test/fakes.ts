@@ -121,6 +121,11 @@ if (args[0] !== "devices" && args[0] !== "daemon" && Fs.existsSync(${JSON.string
   console.log(JSON.stringify({ success: false, error: { message: "The daemon did not answer." } }));
   process.exit(1);
 }
+if (args.includes("DIE")) {
+  // The daemon carries the input out, then dies before it answers.
+  Fs.writeFileSync(${JSON.stringify(at("daemon-dead"))}, "");
+  process.exit(1);
+}
 if (args.includes("REFUSE")) {
   console.log(JSON.stringify({ success: false, error: { message: "No element at that point." } }));
   process.exit(1);

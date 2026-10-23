@@ -591,8 +591,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   entry path both checked). `agent-device` gets its own state folder in the
   plugin's data, started by its first command (`devices --json`, the daemon
   in HTTP mode, never idling out) and read from its `daemon.json`, with
-  T3's startup errors. A hub that exits starts again with the next request
-  that needs it. Deactivating the plugin stops the hub and runs `daemon
+  T3's startup errors. As in T3, the daemon starts after the hub: a hub that
+  cannot install or start leaves input to adb. A hub that exits starts again
+  with the next request that needs it. Deactivating the plugin stops the hub and runs `daemon
   stop` (devices keep running; the user owns those); a stop cuts short an
   install or start in progress instead of waiting for it. D408's tools stay
   beside it and take over whenever the hub cannot run: the setting is off
@@ -615,9 +616,11 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   `devices.write` for stream tuning, the fold and every WebSocket but the
   device list's (`/api/devices/ws`). `serve-emu`'s socket carries an Android
   Emulator's video and input together, so watching one needs
-  `devices.write`, as T3 needs its operate scope; cookies and `Authorization` never travel
-  on, an `Origin` is rewritten to the hub's, responses are `no-store,
-  no-transform`, WebSockets are relayed frame for frame (text and binary)
+  `devices.write`, as T3 needs its operate scope; only the request headers the hub needs travel
+  on (an allow-list: never cookies, `Authorization`, the referer that carries
+  a ticket, or forwarding headers), an `Origin` is rewritten to the hub's, responses are `no-store,
+  no-transform`, WebSockets are relayed frame for frame (text and binary;
+  a client 16 MiB behind is closed to reconnect)
   and 503 "Device hub is not running" answers while none runs. A caller
   authenticates with a bearer token (`auth.verifier@1`) or, where a browser
   cannot send one (`<img>`, `WebSocket`), T3's `wsTicket`: `device.hub.access`
@@ -650,8 +653,10 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   session per thread and device (`jhin-<hash>`) as `--session`.
   Coordinates are the device's own, as agent-device's snapshots give them.
   An answer says whether `agent-device` or `adb` (D1207's fallback) did
-  it; agent-device's own refusal is the command's error, not a reason to
-  fall back. The panel's touches and rail buttons go over the hub's socket
+  it. adb takes an input only when agent-device never got it (agent tools
+  that cannot start, or a daemon that does not answer before the command);
+  once the command ran, its failure is the command's error, a refusal or a
+  daemon that died, so an input is never carried out twice. The panel's touches and rail buttons go over the hub's socket
   as in T3, since a command per pointer move would lag; they are the same
   inputs these commands give.
 

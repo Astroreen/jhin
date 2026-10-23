@@ -459,7 +459,12 @@ export function createHubHost(options: HubHostOptions) {
           });
           agentTool = { entryPath: tool.entryPath, nodePath: node };
           status("starting");
-          agent = await startAgentDaemon(tool.entryPath, node);
+          const started = await startAgentDaemon(tool.entryPath, node);
+          // Nothing is sent to a daemon that does not answer: the input goes to adb instead.
+          if (!(await answers(`${started.baseUrl}/health`, 2_000))) {
+            throw new Error("Agent tools did not answer after starting.");
+          }
+          agent = started;
           status("ready");
           return agent;
         } catch (error) {
@@ -467,6 +472,11 @@ export function createHubHost(options: HubHostOptions) {
           throw error;
         }
       }),
+
+    /** Drops the daemon's endpoint; the next input starts it again. */
+    forgetAgent: (): void => {
+      agent = undefined;
+    },
 
     /** Whether the daemon behind `endpoint` answers its health check. */
     agentAlive: (endpoint: AgentDeviceEndpoint): Promise<boolean> =>

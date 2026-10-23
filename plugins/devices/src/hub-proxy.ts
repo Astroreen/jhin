@@ -43,19 +43,25 @@ const HUB_WS_PATHS = [
   "/vendor/serve-emu/ws",
 ] as const;
 
-const DROPPED_REQUEST_HEADERS = new Set([
-  "host",
-  "connection",
-  "upgrade",
-  "sec-websocket-key",
-  "sec-websocket-version",
-  "sec-websocket-extensions",
-  "sec-websocket-protocol",
-  "cookie",
-  "authorization",
-  "content-length",
-  "accept-encoding",
+/**
+ * The client's request headers the hub gets: what it needs to answer. Credentials, cookies,
+ * the referer (which carries the ticket of an `<img>` URL), forwarding and hop-by-hop headers
+ * stay at the node; `Origin` is rewritten to the hub's.
+ */
+const KEPT_REQUEST_HEADERS = new Set([
+  "accept",
+  "accept-language",
+  "cache-control",
+  "content-type",
+  "if-modified-since",
+  "if-none-match",
+  "pragma",
+  "range",
+  "user-agent",
 ]);
+
+/** Past this much unsent data a relayed socket's client is too slow: it is closed to reconnect. */
+const MAX_BUFFERED = 16 * 1024 * 1024;
 
 /**
  * Whether a hub path is on the allow-list as written and once decoded: the hub decodes
@@ -208,7 +214,7 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
   const forwardHeaders = (request: Http.IncomingMessage, origin: string) => {
     const headers: Record<string, string> = {};
     for (const [name, value] of Object.entries(request.headers)) {
-      if (DROPPED_REQUEST_HEADERS.has(name) || value === undefined) continue;
+      if (!KEPT_REQUEST_HEADERS.has(name) || value === undefined) continue;
       headers[name] = Array.isArray(value) ? value.join(", ") : value;
     }
     // serve-emu refuses mutations whose Origin differs from the request origin.
@@ -310,7 +316,13 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
   /** Frames go both ways as they are; whichever side closes first closes the other. */
   const pump = (client: WebSocket, hub: WebSocket) => {
     const forward = (to: WebSocket) => (data: RawData, isBinary: boolean) => {
-      if (to.readyState === WebSocket.OPEN) to.send(data, { binary: isBinary });
+      if (to.readyState !== WebSocket.OPEN) return;
+      // Dropping video frames would corrupt H.264; a client that cannot keep up reconnects.
+      if (to.bufferedAmount > MAX_BUFFERED) {
+        close(to, 1013, Buffer.from("too slow"));
+        return;
+      }
+      to.send(data, { binary: isBinary });
     };
     client.on("message", forward(hub));
     hub.on("message", forward(client));

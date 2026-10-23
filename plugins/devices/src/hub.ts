@@ -156,9 +156,9 @@ export function createDeviceHub(options: DeviceHubOptions) {
 
     /**
      * An input through agent-device, else through adb (D408's path) when agent tools cannot
-     * run, are still installing, or their daemon was down. adb never repeats an input that
-     * agent-device may have carried out: a failure with the daemon alive (a refusal, a
-     * timeout) is the command's answer.
+     * run, are still installing, or their daemon does not answer before the command. adb
+     * never repeats an input agent-device may have carried out: once the command ran, its
+     * failure (a refusal, a timeout, the daemon dying) is the answer.
      */
     async input(
       threadId: string,
@@ -179,19 +179,11 @@ export function createDeviceHub(options: DeviceHubOptions) {
               ...(options.env === undefined ? {} : { env: options.env }),
             });
           } catch (error) {
-            // With the daemon down the input never reached a device: adb may carry it, and
-            // the next input starts the daemon again.
-            if (
-              error instanceof DeviceError &&
-              error.code === "DEVICE_OPERATION_FAILED" &&
-              (await host.agentAlive(endpoint))
-            ) {
-              throw error;
+            // A daemon that died is started again by the next input; this one may have run.
+            if (error instanceof DeviceError && error.code === "DEVICE_OPERATION_FAILED") {
+              if (!(await host.agentAlive(endpoint))) host.forgetAgent();
             }
-            throw new DeviceError(
-              "DEVICE_UNAVAILABLE",
-              `The agent tools' daemon is not answering: ${error instanceof Error ? error.message : String(error)}`,
-            );
+            throw error;
           }
           return "agent-device";
         } catch (error) {
