@@ -167,7 +167,10 @@ export class Sensors {
     const before = slice === undefined ? undefined : this.missions.slices[slice.id];
     this.missions = applyMissionEvent(this.missions, event);
     if (slice === undefined) return false;
-    if (event.type === MissionEvents.sliceProved && before?.status === "done") {
+    if (event.type === MissionEvents.sliceReviewed) {
+      // A review recorded (L2, D1242): a check on the work, so ceremony (L3, D1265).
+      this.count("review", event, [slice]);
+    } else if (event.type === MissionEvents.sliceProved && before?.status === "done") {
       // A proof recorded again on a done slice: ceremony, and the loop's evidence.
       this.count("proof-edit", event, [slice]);
       const edits = this.proofEdits.get(slice.id) ?? [];

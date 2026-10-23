@@ -48,6 +48,33 @@ describe("health's sensors (D722)", () => {
     expect(sensors.evaluate(config, EMPTY_HEALTH, NOW)).toEqual([]);
   });
 
+  it("counts each review recorded on a slice as ceremony, never as progress (L3, D1265)", () => {
+    const sensors = new Sensors();
+    const slice = {
+      id: "s1",
+      missionId: "m1",
+      projectId: "p1",
+      title: "Floor",
+      spec: "",
+      wave: 1,
+      dependsOn: [],
+      status: "active",
+      threads: [],
+      createdAt: hoursAgo(2),
+      updatedAt: hoursAgo(2),
+    } satisfies Slice;
+    sensors.ingestMission(event("missions", 1, MissionEvents.sliceCreated, hoursAgo(2), { slice }));
+    // The same work reviewed three times: the first one and two re-recordings.
+    for (const sequence of [2, 3, 4]) {
+      sensors.ingestMission(
+        event("missions", sequence, MissionEvents.sliceReviewed, hoursAgo(1), { slice }),
+      );
+    }
+    const config = HealthConfig.parse({ windowHours: 24 });
+    const mission = sensors.status(config, NOW).find((entry) => entry.group.kind === "mission");
+    expect(mission).toMatchObject({ ceremony: 3, progress: 0, byKind: { review: 3 } });
+  });
+
   it("counts a thread followed after a dismissal from the dismissal's time, not from its start", () => {
     const sensors = new Sensors();
     const slice = {
