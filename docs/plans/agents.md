@@ -2086,3 +2086,7 @@ Each workstream lists its PRs here as they merge.
   `missions.review.check`, `slices.review` with the files' tree from
   `git.tree` (`jhin.source-control`), review slices (`reviews`)
   (D1241–D1243).
+- L2 #237: the reviewer's brief from the project: `review.brief`
+  (trailhead, owning plans through the map, lore, the reviewed work and its
+  diff, then the lead's notes), sent by a review slice's handoff
+  (D1244–D1246).
