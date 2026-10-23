@@ -201,7 +201,8 @@ export function createWebviewHost(options: WebviewHostOptions) {
     attach,
     clearPartition,
     dispose() {
-      for (const tab of [...attached.values()]) tab.close();
+      // A Map may lose entries while it is iterated.
+      for (const tab of attached.values()) tab.close();
     },
   };
 }
