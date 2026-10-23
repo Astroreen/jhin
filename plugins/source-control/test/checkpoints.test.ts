@@ -147,7 +147,7 @@ describe("jhin.source-control: checkpoints", () => {
     write(dir, "work.txt", "changed\n");
     expect(await tree([".jhin/agents"])).not.toBe(before);
     // A folder is a relative path, never a glob or a way out.
-    for (const folder of ["**", "../x", "/abs", "a/"]) {
+    for (const folder of ["**", "../x", "/abs", "a/", ".", "a/./b"]) {
       await expect(tree([folder])).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
     }
   });

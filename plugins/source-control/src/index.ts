@@ -2851,7 +2851,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           z
             .string()
             .regex(/^[\w.-]+(\/[\w.-]+)*$/, "A relative folder path, without globs")
-            .refine((folder) => !folder.split("/").includes(".."), "No `..` in a folder path"),
+            .refine(
+              (folder) => folder.split("/").every((part) => part !== "." && part !== ".."),
+              "No `.` or `..` in a folder path",
+            ),
         )
         .optional()
         .meta({ description: "Folders left out of the tree at any depth (D1261)" }),
