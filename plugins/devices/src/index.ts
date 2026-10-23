@@ -54,7 +54,7 @@ import * as NodePath from "node:path";
 
 import { readDeviceDetail, runDeviceAction, type ActionHost } from "./actions.ts";
 import { createLocalHost } from "./hosts.ts";
-import { HUB_SPEC, installEnvironment, runProgram, toolPaths } from "./toolchain.ts";
+import { HUB_SPEC, runProgram, toolEnvironment, toolPaths } from "./toolchain.ts";
 import { createDeviceHub } from "./hub.ts";
 
 const CONFIG_SECTION = "jhin.devices";
@@ -499,7 +499,8 @@ export default definePlugin({
           // A command that does not start is the action's failure too; one that outlives
           // its 30 s is stopped and answers no exit code, which the action reports.
           const result = await runProgram(program, args, {
-            env: installEnvironment(process.env),
+            // The device tools' own variables (ANDROID_SERIAL, ANDROID_ADB_SERVER_PORT, …) too.
+            env: toolEnvironment(process.env),
             timeoutMs: 30_000,
             ...(options?.stdin === undefined ? {} : { stdin: options.stdin }),
           }).catch((error: unknown) => {
@@ -516,13 +517,14 @@ export default definePlugin({
     const actionQueue = (() => {
       const tails = new Map<string, Promise<unknown>>();
       return {
-        run<T>(deviceId: string, work: () => Promise<T>): Promise<T> {
-          const previous = tails.get(deviceId) ?? Promise.resolve();
+        /** `key` names the device on its host: two hosts may report the same id. */
+        run<T>(key: string, work: () => Promise<T>): Promise<T> {
+          const previous = tails.get(key) ?? Promise.resolve();
           const next = previous.then(work, work);
           const tail = next.catch(() => undefined);
-          tails.set(deviceId, tail);
+          tails.set(key, tail);
           void tail.then(() => {
-            if (tails.get(deviceId) === tail) tails.delete(deviceId);
+            if (tails.get(key) === tail) tails.delete(key);
           });
           return next;
         },
@@ -549,7 +551,7 @@ export default definePlugin({
       handler: async (input) => {
         const device = await runningDevice(input);
         // Behind any action under way on the device, so it never reads one half done.
-        const read = await actionQueue.run(device.id, () =>
+        const read = await actionQueue.run(`${device.hostId}\u0000${device.id}`, () =>
           readDeviceDetail(actionHost(), device.platform, device.id),
         );
         return {
@@ -572,7 +574,7 @@ export default definePlugin({
         const device = await runningDevice(input);
         // One action at a time per device, its read-back included: an agent's and the panel's
         // steps (three settings, a permission group) do not interleave.
-        return actionQueue.run(device.id, async () => {
+        return actionQueue.run(`${device.hostId}\u0000${device.id}`, async () => {
           const actions = actionHost();
           await runDeviceAction(actions, device.platform, device.id, input.action);
           // The settings read back after the change, as T3's panel shows them.

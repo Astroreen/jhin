@@ -375,7 +375,7 @@ describe("readDeviceDetail", () => {
       if (key.endsWith("font_scale")) return { stdout: "0.85\n" };
       if (key.endsWith("animator_duration_scale")) return { stdout: "0\n" };
       if (key.endsWith("wifi_on")) return { stdout: "1\n" };
-      if (key.endsWith("dumpsys window")) {
+      if (key.endsWith("dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'")) {
         return {
           stdout:
             "  mFocusedApp=ActivityRecord{155579877 u0 com.example.app/.MainActivity t15}\n  mCurrentFocus=Window{1a2b u0 com.example.app/com.example.app.MainActivity}\n",

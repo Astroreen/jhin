@@ -481,8 +481,9 @@ async function readAndroid(host: ActionHost, serial: string) {
     shell(["settings", "get", "global", "animator_duration_scale"]),
     shell(["settings", "get", "global", "wifi_on"]),
     // `dumpsys window windows` stopped printing the focus on API 36; the
-    // unfiltered dump still does.
-    shell(["dumpsys", "window"]),
+    // unfiltered dump still does. It can be megabytes on a busy device, so the
+    // device's own shell keeps only the focus lines (`adb shell` runs it in sh).
+    shell(["dumpsys", "window", "|", "grep", "-E", "'mCurrentFocus|mFocusedApp'"]),
   ]);
   const scale = fontScale && fontScale !== "null" ? Number(fontScale) : Number.NaN;
   const focused = focus?.match(/m(?:CurrentFocus|FocusedApp)=\w+\{[^ ]+ u\d+ ([^/ ]+)\//);
