@@ -328,6 +328,12 @@ Words about Jhin:
   (**unclaimed**). T3 Code's collaborative browser tab.
 - **Viewer** — a client panel watching a preview tab, named by an id the
   client picks; the one **holding control** sends the page its input.
+- **Device hub** — T3 Code's `expo-device-hub`, which the node installs on
+  first use and runs on loopback to stream a simulator's or emulator's screen
+  and take its input; clients reach it only through the node's
+  `/device-hub` proxy with a **hub ticket** (`device.hub.access`).
+  `agent-device` beside it carries agents' taps and text (`docs/plans/preview.md`
+  D1206–D1209).
 - **Intent** — one paragraph on what a project is for. The **intent chain**
   of a slice is its spec → its mission's outcome → its project's intent
   (`missions.chain`), what an agent walks back up to ("moonbase").

@@ -106,7 +106,13 @@ statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/d
 menus, the notification badge, the update flow, its state machine and its
 controls, the nightly release notes, the quit hold and its hint;
 `scripts/desktop-release.ts` and `.github/workflows/release-desktop.yml`: the
-packaging configuration, signing and the release workflow).
+packaging configuration, signing and the release workflow), and the devices
+(`plugins/devices`, `packages/preview-api/src/devices.ts`,
+`apps/web/src/plugins/devices`: the device tools and their errors, the device
+hub's toolchain, host, proxy and agent-device input, its stream client, flat
+stream view and control rail). The device hub (`expo-device-hub`) and
+`agent-device` themselves are not part of Jhin: the node downloads them from
+npm on first use (`docs/plans/preview.md` D1206), under their own MIT licenses.
 `packages/qr-code/src/qr-code.ts` is Project Nayuki's QR Code generator (MIT,
 copyright Project Nayuki) as T3 Code vendors it; its notice is kept in the
 file. Files derived from T3 Code say so in a header comment.

@@ -981,6 +981,15 @@ importers:
       '@jhin/agent-api':
         specifier: workspace:*
         version: link:../../packages/agent-api
+      '@jhin/auth-api':
+        specifier: workspace:*
+        version: link:../../packages/auth-api
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
+      '@jhin/http-api':
+        specifier: workspace:*
+        version: link:../../packages/http-api
       '@jhin/preview-api':
         specifier: workspace:*
         version: link:../../packages/preview-api
@@ -993,6 +1002,9 @@ importers:
       '@jhin/storage-api':
         specifier: workspace:*
         version: link:../../packages/storage-api
+      ws:
+        specifier: 'catalog:'
+        version: 8.22.0
     devDependencies:
       '@jhin/testing':
         specifier: workspace:*
@@ -1000,6 +1012,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+      '@types/ws':
+        specifier: 'catalog:'
+        version: 8.18.2
 
   plugins/editors:
     dependencies:

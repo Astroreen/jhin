@@ -223,6 +223,7 @@ export const devicePanelPlugin = builtin(
             <DevicePanel
               call={(method, params) => threads.call({ node }, method, params)}
               client={connection.client}
+              nodeUrl={connection.url}
               onClose={toggle}
               onError={onError}
               state={state}

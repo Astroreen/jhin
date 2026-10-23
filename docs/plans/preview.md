@@ -318,7 +318,9 @@ CLI, and the web client through RPC.
   panel; here the Device panel is its own `app.panel` (`jhin.device.panel`,
   route `panel: devices`) with a chat header toggle ("Toggle device panel"),
   because Jhin's right panel holds browser tabs only; a device an agent opens
-  for the thread brings the panel up (`jhin.device.reveal`).
+  for the thread brings the panel up (`jhin.device.reveal`). Since W34 T3's
+  device hub gives live video and input (D1206–D1209); everything here stays
+  as its fallback (D1207).
 
 ### Local servers (W25)
 
@@ -540,6 +542,115 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   (`profileLimitReached`). The Full Disk Access step cannot open the
   node's System Settings, so "Continue" checks the node again.
 
+### The device hub (W34)
+
+- **D1206. T3's device tools on first use, pinned.** The node installs T3's
+  pins (`deviceToolVersions.json` at `eb7b35ac`): `expo-device-hub` 0.15.3
+  (Expo's device hub, which bundles `serve-sim` for iOS Simulators and
+  `serve-emu` for Android Emulators) and `agent-device` 0.21.25 (Callstack's
+  device automation CLI), both MIT, from the npm registry, into
+  `<home>/tools/<package>/<version>` (`plugins/devices/src/toolchain.ts`, from
+  T3's `DeviceToolchain.ts`). Nothing is downloaded until a device opens on a
+  node that has a simulator platform (a booted or bootable simulator or
+  emulator, T3's `readinessIfSupported`): `device.open` and
+  `device.hub.access` install the hub, the first input command installs
+  `agent-device`. As in T3, `npm install --prefix <staging> --no-fund
+  --no-audit <package>@<version>` runs into a `.staging-*` folder beside the
+  version (pnpm's `dlx npm` when there is no npm), the entry point is
+  checked, a `.install-complete` sentinel with the version is written, and
+  the folder is renamed into place; an entry without its sentinel or with
+  another version installs again, installs run one at a time, a failed one
+  leaves nothing behind and says only its step ("Installing expo-device-hub
+  failed while running npm install (exit code 1)."), and, as D951 cleans up,
+  older versions and stagings untouched for an hour go. The `devices` stream
+  carries T3's host status (`hostStatuses.local`: `installing` with "Installing
+  device hub 0.15.3…" or "Updating … from … to …", `starting`, `ready`,
+  `failed` with "Device support failed during {step}."), and a request waits
+  for it up to D951's 45 s, then gets that status with "Try again in a
+  minute." while the install goes on. All of it is opt-in until the setup
+  wizard lands: T3 downloads its tools only after the user agrees in that
+  wizard, Jhin has none yet (Deferred), so `jhin.devices.hub` is off by
+  default and turning it on is the consent. Turning it off takes effect at
+  once: tickets and proxied sockets go, the proxy answers 503, and the hub
+  and its daemon stop, an install in progress too. `jhin.devices.npm` and `.node`
+  name the npm and the Node.js to use. npm runs the packages' install
+  scripts (the hub's `node-datachannel` fetches its native build there), so
+  npm gets a reduced environment: PATH, home and temp folders, proxies,
+  certificates and npm's own settings, never the node's other variables
+  (keys and tokens); the setting's description says the scripts run.
+
+- **D1207. The hub and its daemon run for the node, D408 is the fallback.**
+  As T3's `LocalDeviceHost.ts` does, the node starts the hub with its own
+  Node.js (or `node` on PATH, T3's "Local device support requires Node.js…"
+  otherwise) on a free loopback port, `--host 127.0.0.1 --hide-sidebar
+  --hide-boot-device` (and `--platform android` off macOS), with the SDK's
+  tools first on PATH and T3's environment, waits for `/readyz`, and records
+  its pid so a hub left by a node that died is stopped next time (pid and
+  entry path both checked). `agent-device` gets its own state folder in the
+  plugin's data, started by its first command (`devices --json`, the daemon
+  in HTTP mode, never idling out) and read from its `daemon.json`, with
+  T3's startup errors. A hub that exits starts again with the next request
+  that needs it. Deactivating the plugin stops the hub and runs `daemon
+  stop` (devices keep running; the user owns those); a stop cuts short an
+  install or start in progress instead of waiting for it. D408's tools stay
+  beside it and take over whenever the hub cannot run: the setting is off
+  (the default; the panel then says "Video and input need the device hub.
+  Turn it on with Devices → Device hub (jhin.devices.hub)."), no home (tests), no simulator platform, no Node.js or npm, an offline node
+  whose install fails, or a hub that does not answer. Then the panel shows
+  D408's screenshots about twice a second with the reason under them, and
+  the input commands go through `adb shell input` (Android); iOS input then
+  says it needs the agent tools, as simctl cannot tap.
+
+- **D1208. The hub only behind the node's authenticated proxy.** The hub
+  binds loopback and is never reached directly: `serve-sim` has a
+  shell-exec route and `serve-emu`'s action routes are unauthenticated. The
+  node's HTTP server proxies `/device-hub/*` (`DEVICE_HUB_PATH`) with T3's
+  `DeviceHubProxy.ts` rules: only T3's allowed paths (404 otherwise), checked
+  as written and once decoded, since the hub decodes before it routes (an
+  encoded `/` or `..` never reaches another route), only its mutable ones
+  take a body (405), `devices.read` to watch iOS (its video is HTTP) and to
+  take a screenshot (T3's screenshot POSTs read the screen),
+  `devices.write` for stream tuning, the fold and every WebSocket but the
+  device list's (`/api/devices/ws`). `serve-emu`'s socket carries an Android
+  Emulator's video and input together, so watching one needs
+  `devices.write`, as T3 needs its operate scope; cookies and `Authorization` never travel
+  on, an `Origin` is rewritten to the hub's, responses are `no-store,
+  no-transform`, WebSockets are relayed frame for frame (text and binary)
+  and 503 "Device hub is not running" answers while none runs. A caller
+  authenticates with a bearer token (`auth.verifier@1`) or, where a browser
+  cannot send one (`<img>`, `WebSocket`), T3's `wsTicket`: `device.hub.access`
+  gives the path and a ticket for the caller's grants, valid five minutes
+  and reusable within them as T3's, kept only as a SHA-256 hash and
+  stripped before the hub. A ticket keeps the grants it was issued with:
+  grants narrowed in place reach it only when it expires; a
+  rotated or revoked token drops its tickets and ends its proxied sockets and video feeds
+  (security.md D414). In `jhin.device-panel` an open device asks for access
+  and shows T3's flat view (`stream.ts`, `DeviceStreamView.tsx`): H.264
+  through WebCodecs (iOS from the AVCC feed, Android from `serve-emu`'s
+  socket), iOS falling back to MJPEG where WebCodecs or the profile is
+  missing, pointer touches and swipes (normalized, as T3 sends them), keys,
+  and T3's rail ("Home", "Back" and "Recents" on Android, "Rotate device" on
+  iOS) over the hub's input socket; a refused ticket asks for a fresh one,
+  and a hub that comes up later is asked again when its status turns
+  `ready`.
+
+- **D1209. Input as node commands, through agent-device.** `device.tap`
+  (`x`, `y`), `device.swipe` (`from`, `to`), `device.type` (`text`) and
+  `device.button` (`home`, `back`, `appSwitcher`) take a thread and a device
+  as `device.screenshot` does (`devices.write`), so agents reach them over
+  RPC, CLI and MCP. Each runs agent-device's own command (`press x y`,
+  `swipe x1 y1 x2 y2`, `type`, `home`, `back`, `app-switcher`), pinned as
+  T3 pins it (`--platform ios --udid` / `--platform android --serial`)
+  before a `--`, so typed text that starts with `-` stays text,
+  with T3's per-host endpoint file (written `0600`) as `--config` and a
+  session per thread and device (`jhin-<hash>`) as `--session`.
+  Coordinates are the device's own, as agent-device's snapshots give them.
+  An answer says whether `agent-device` or `adb` (D1207's fallback) did
+  it; agent-device's own refusal is the command's error, not a reason to
+  fall back. The panel's touches and rail buttons go over the hub's socket
+  as in T3, since a command per pointer move would lag; they are the same
+  inputs these commands give.
+
 ### Touch and uploads (W34)
 
 Workstream W34 continues this plan with decisions from D1201–D1220. The
@@ -582,7 +693,12 @@ probe of `ServerBrowser.ts`.
   Vitest browser mode): the browser plugin's tests serve pages from a local
   HTTP server and wait for page events, the stream's frames or command
   results, never for time. The device plugin's tests run against fake `adb`,
-  `emulator` and `xcrun` scripts. The panel and the timeline frame are proven
+  `emulator` and `xcrun` scripts, and the device hub's (D1206–D1209) against
+  a fake npm that installs a fake hub (HTTP and WebSocket echo) and a fake
+  `agent-device` that logs its arguments: CI has no simulators or emulators,
+  so the hub's path is proven end to end against the fakes, the stream
+  client by T3's `stream.test.ts` cases, and the panel by an e2e whose fake
+  hub serves serve-sim's MJPEG feed and input socket. The panel and the timeline frame are proven
   with Playwright e2e against `jhin serve --ui`, with role locators and
   screenshots in the pull requests.
 
@@ -639,12 +755,48 @@ probe of `ServerBrowser.ts`.
 - In a rendered page: T3's image viewer for a clicked image and passing the
   app's shortcuts through a focused frame.
 - Viewer ids bound to their caller or their frame subscription (D397).
-- Devices: T3's device hub and `agent-device` (taps and text through a
-  driver; `device.open` points at `adb` and `simctl` instead), video streams
-  and input to a device from the panel, device hosts over SSH, the setup
-  wizard, the device tools panel (appearance, text size, location,
-  permissions, push) and DeviceActions, physical iOS devices, and showing a
-  device as a surface of the right panel beside browser tabs.
+- Devices, beside the hub (D1206–D1209):
+  - Device hosts over SSH (T3's `SshDeviceHost`, `sshDeviceScript`): a host
+    model of its own, with the hub and its tickets on another machine.
+  - T3's setup wizard (enable device support, agent access, onboarding) and
+    its consent before the first download; until then the hub is opt-in
+    (`jhin.devices.hub`, off by default).
+  - An integrity pin for the hub's runtime installs: npm resolves the pinned
+    versions' dependencies from the registry at install time, with no
+    lockfile or hashes of T3's, so what is downloaded is only as trustworthy
+    as the registry then, and npm runs their lifecycle scripts as the node's
+    user. T3 installs the same way; `--ignore-scripts` is not an option, as
+    the hub's `node-datachannel` fetches its native build in its install
+    script. A shipped lockfile or shrinkwrap installed with `npm ci` would
+    pin it.
+  - The device tools panel (appearance, text size, toggles, location,
+    permissions, push, open URL, launch and terminate) and `DeviceActions`
+    with `device.detail`, the Android orientation menu among them; the
+    accessibility frames overlay, the foreground app and the event log.
+  - The tool versions view and updating tools from the panel
+    (`deviceToolMaintenance`), and `device.open` pointing agents at the
+    `agent-device` shim with `--config` and `--session` (T3's
+    `AgentDeviceShim`): it still gives D408's `adb`/`simctl` invocation, and
+    the input commands carry agent-device's taps and text.
+  - T3's 3D phone models, the iPhone Duo's panels and hinge, Android fold
+    controls and the keyboard accessory: only the flat view is ported.
+  - Physical iOS devices (agent-device's XCTest runner on a device).
+  - Showing a device as a surface of the right panel beside browser tabs.
+  - Hub tickets that follow a caller's grants as they change, or are single
+    use: the node keeps no token to verify again, so a ticket keeps its
+    grants for its five minutes, as T3's does.
+  - Proving that the process answering on the hub's port is the hub the node
+    started: the port is reserved and freed before the hub binds it, as T3
+    does, so a local process that takes it first would get the proxied
+    traffic. Reaping a hub orphaned on Windows, where there is no `ps` to
+    tell it from a recycled pid.
+  - A supervisor that restarts an exited hub with T3's backoff; here the next
+    request starts it.
+  - Taps and swipes on D408's screenshots when the hub cannot run; the
+    commands still work then.
+  - A test of the panel decoding real H.264 through WebCodecs: the fake hub
+    cannot encode video, so the e2e takes the MJPEG feed (no WebCodecs) and
+    the H.264 parsing is proven by T3's stream unit cases.
 
 ## PR plan
 
@@ -715,3 +867,21 @@ Implements D408.
   simulator and give a platform's reason when its tools are missing;
   Playwright sees the panel's list, the screen of a device an agent opened
   and powers it off.
+
+### PR 5 — The device hub (W34)
+
+Implements D1206–D1209.
+
+- `jhin.devices` installs and runs T3's pinned `expo-device-hub` and
+  `agent-device`, proxies the hub at `/device-hub` (`device.hub.access`
+  for the path and a ticket) and takes input (`device.tap`, `device.swipe`,
+  `device.type`, `device.button`); `jhin.device-panel` streams an open device
+  with T3's flat view and rail, D408's screenshots as the fallback.
+- **Done when:** a fake npm installs the hub once (staging, sentinel,
+  version, a failed install leaving nothing), the hub starts on loopback and
+  stops with the plugin, the proxy refuses a missing or wrong credential and
+  forwards requests and a WebSocket to the fake hub without the node's
+  credentials, the input commands reach a fake agent-device pinned to the
+  device and fall back to adb; T3's stream unit cases pass; Playwright sees
+  an open simulator stream from the fake hub and its touches and Home reach
+  it.
