@@ -398,7 +398,12 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   time (no app, a page that does not host, an attach that fails) the tab
   opens in the headless Chromium (D394), as T3 falls back. A popup of a
   headless tab stays headless. The endpoint must be a loopback `ws://` URL;
-  it is the app's, so a client of another machine cannot attach.
+  it is the app's, so a client of another machine cannot attach. The attach
+  is not bound to the page that subscribed: any caller with
+  `preview.control` (the owner's own clients, D393) may answer a waiting
+  tab, and what it can point the node at is a loopback relay with a random
+  path, which only a process of the node's machine can serve. That is
+  accepted, as the same caller may already drive every tab.
   `PreviewTab` gets `desktop: true` for such a tab (additive). The node does
   not size, zoom or screencast a desktop page: the webview's size is the
   page's viewport, so `fill` follows the panel by itself, and a preset or a

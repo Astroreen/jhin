@@ -346,6 +346,12 @@ Words about Jhin:
   where the user watches it. Its **owner** is the agent session that opened
   it, a **viewer** (a panel watching it) that took control, or nobody
   (**unclaimed**). T3 Code's collaborative browser tab.
+- **Desktop host** — the desktop app's page while it hosts its own node's
+  preview tabs in **webviews** (Electron's `<webview>` guests); the node
+  announces the tabs on the `preview-desktop` live stream and drives each
+  one through the app's **relay**, a loopback WebSocket that serves the
+  guest's debugger as a browser of one page (`docs/plans/desktop.md`
+  D1321–D1324).
 - **Viewer** — a client panel watching a preview tab, named by an id the
   client picks; the one **holding control** sends the page its input.
 - **Device hub** — T3 Code's `expo-device-hub`, which the node installs on
