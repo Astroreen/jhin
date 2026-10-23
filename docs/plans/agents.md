@@ -1934,6 +1934,17 @@ Decisions (L2):
   its slices changes on the `missions` stream, and a node without the
   orchestrator (or a refusal) says "not known", a failed call says why.
   Editing `reviews` stays out of C2's dialogs.
+- **D1294. A public id written as a template literal is read as a pattern.**
+  In the places an id is declared (D1247), a backtick literal with `${…}`
+  is an id whose every `${…}` reads as `*`: `sidebar.thread.jump.${jump}` is
+  the command `sidebar.thread.jump.*`, and `jhin.sidebar.selection.${id}`
+  the contribution `jhin.sidebar.selection.*`. A pattern is kept and
+  compared like an id: one gone from the merge base fails unless main
+  deprecated it, and `deprecations.json` names a pattern as the entry's `id`,
+  with `*` as written. A backtick literal without `${…}` is a plain id. The
+  source's ids stay as they are; the report line counts patterns apart
+  (`contribution 70 + 5 patterns`). An id built any other way at run time
+  stays unseen.
 
 ### L3. A long run (D1261–D1280)
 
@@ -2193,9 +2204,9 @@ Decisions (L2):
 - L2: the mission view asks `missions.review.check` again on the `missions`
   stream only (D1278), so files changed after a review show as
   `changed-after-review` on the next mission event or reload.
-- L2: public ids the source does not spell out (template literals such as
-  `sidebar.thread.jump.${jump}`, D1247), and hook names and permission names,
-  which rule 8 does not list yet.
+- ~~L2: public ids the source does not spell out (template literals such as
+  `sidebar.thread.jump.${jump}`, D1247).~~ L2, D1294.
+- L2: hook names and permission names, which rule 8 does not list yet.
 
 ## Landing
 
