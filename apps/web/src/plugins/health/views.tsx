@@ -453,7 +453,9 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
             <dd>
               {warning.clearedReason === "under-threshold" || warning.clearedReason === undefined
                 ? "back under the threshold"
-                : warning.clearedReason}
+                : warning.clearedReason === "narrower"
+                  ? "a narrower group warns for the same cause"
+                  : warning.clearedReason}
               {warning.clearedAt === undefined
                 ? null
                 : `, ${new Date(warning.clearedAt).toLocaleString()}`}
