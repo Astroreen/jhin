@@ -330,6 +330,8 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       // as every request makes one.
       const minted = holder.issue();
       if (minted === undefined) {
+        // A device at its cap is no guesser: the attempt is given back.
+        succeeded(counted);
         send(
           response,
           429,

@@ -75,14 +75,24 @@ export async function pairWithCode(
   key?: DeviceKey,
 ): Promise<{ token: string; tokenType?: "DPoP" | "Bearer" }> {
   const endpoint = `${httpBase(webSocketUrl)}/auth/pair`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(key === undefined ? {} : { dpop: await dpopProof(key, "POST", endpoint) }),
-    },
-    body: JSON.stringify({ code, label }),
-  });
+  const send = async (bound: DeviceKey | undefined) =>
+    fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(bound === undefined ? {} : { dpop: await dpopProof(bound, "POST", endpoint) }),
+      },
+      body: JSON.stringify({ code, label }),
+    });
+  let response: Response;
+  try {
+    response = await send(key);
+  } catch (error) {
+    // A node on another origin from before D1366 refuses the `dpop` header in
+    // its preflight: the request never left, so its code is unspent. Pair as before.
+    if (key === undefined) throw error;
+    response = await send(undefined);
+  }
   if (!response.ok) throw await failure(response);
   return (await response.json()) as { token: string; tokenType?: "DPoP" | "Bearer" };
 }

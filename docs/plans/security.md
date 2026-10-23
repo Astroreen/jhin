@@ -847,7 +847,10 @@ Connect stays out of scope.
   token as a bearer token. Only a refused token (`CREDENTIAL_INVALID`)
   stops the client; a refused proof (a clock minutes off, a busy node) is
   tried again like a network error. Without WebCrypto the page pairs as before.
-  Nodes saved before keep their bearer tokens; pairing again binds. A
+  A node on another origin from before D1366 refuses the `dpop` header in
+  its CORS preflight; the page then pairs again without a proof (the code
+  was never sent) and keeps a bearer token. Nodes saved before keep their
+  bearer tokens; pairing again binds. A
   saved key that no longer reads as a `CryptoKey` keeps its node in the
   list: its bound token is refused, and the node is paired again.
   `auth.clients.list` says `bound: true` for a bound token (additive).
