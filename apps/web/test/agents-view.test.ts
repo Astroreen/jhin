@@ -320,3 +320,165 @@ describe("D1272: a generation's own status in the page's list", () => {
     expect(key(ready, { ...two, stoppedAt: "2026-10-23T00:00:00.000Z" })).not.toBe(before);
   });
 });
+
+describe("the agents store starts a broken feed over (D1387)", () => {
+  /** A node whose `agents.catalog` fails with `codes` in turn, then answers. */
+  function flaky(codes: (string | undefined)[]) {
+    const streams = new Map<string, { onError?: (error: Error) => void; onEvent: unknown }>();
+    let asked = 0;
+    /** Resolves once both streams are followed, again after each start over. */
+    let followed = new Promise<void>(() => undefined);
+    let notify: () => void = () => undefined;
+    const rearm = () => (followed = new Promise<void>((resolve) => (notify = resolve)));
+    rearm();
+    const client = {
+      call: async (method: string) => {
+        if (method === "threads.catalog") return { head: 1, projects: [], threads: [] };
+        if (method === "agents.get") return { ...agent(), status: "idle" };
+        if (method !== "agents.catalog") throw new Error(`unexpected ${method}`);
+        asked += 1;
+        if (codes.length > 0) {
+          const code = codes.shift();
+          throw Object.assign(new Error("catalog is down"), code === undefined ? {} : { code });
+        }
+        return { head: 4, agents: [agent()] };
+      },
+      subscribe(stream: string, options: { onError?: (error: Error) => void }, onEvent: unknown) {
+        streams.set(stream, { ...options, onEvent });
+        if (streams.size === 2) notify();
+        return { lastSequence: 0, dispose: () => streams.delete(stream) };
+      },
+    } as unknown as RpcClient;
+    const connection: NodeConnection = {
+      id: "ws://a/rpc",
+      url: "ws://a/rpc",
+      label: "a",
+      client,
+      state: "open",
+    };
+    const connections: Connections = {
+      list: () => [connection],
+      get: (id) => (id === connection.id ? connection : undefined),
+      add: () => {
+        throw new Error("not used");
+      },
+      remove: () => undefined,
+      subscribe: () => toDisposable(() => undefined),
+    };
+    return { connections, streams, asked: () => asked, followed: () => followed };
+  }
+
+  /** The store's timers, run by the test: `pending` holds what waits, with its pause. */
+  function timers() {
+    const pending: { run: () => void; ms: number; cancelled: boolean }[] = [];
+    return {
+      pending,
+      delay: (run: () => void, ms: number) => {
+        const timer = { run, ms, cancelled: false };
+        pending.push(timer);
+        return () => {
+          timer.cancelled = true;
+        };
+      },
+      /** Runs the oldest timer still waiting. */
+      fire() {
+        const timer = pending.find((item) => !item.cancelled);
+        if (timer === undefined) throw new Error("nothing waits");
+        timer.cancelled = true;
+        timer.run();
+      },
+      waiting: () => pending.filter((item) => !item.cancelled).map((item) => item.ms),
+    };
+  }
+
+  const open = (node: ReturnType<typeof flaky>, clock: ReturnType<typeof timers>) => {
+    const store = createAgentsStore(node.connections, { warn: () => undefined }, clock.delay);
+    const keep = store.subscribe(() => undefined);
+    return { store, keep };
+  };
+  const state = (store: ReturnType<typeof createAgentsStore>) => store.snapshot().get("ws://a/rpc");
+
+  it("retries after growing pauses, keeps the agents shown, and resets once the feed delivers", async () => {
+    const node = flaky([undefined, undefined, undefined]);
+    const clock = timers();
+    const { store, keep } = open(node, clock);
+    await until(store, (known) => known?.status === "error");
+    expect(clock.waiting()).toEqual([1000]);
+
+    clock.fire();
+    await until(store, (known) => known?.status === "error" && node.asked() === 2);
+    expect(clock.waiting()).toEqual([2000]);
+    clock.fire();
+    await until(store, (known) => known?.status === "error" && node.asked() === 3);
+    expect(clock.waiting()).toEqual([4000]);
+    clock.fire();
+    // The fourth attempt reads: ready, and no retry waits.
+    const loaded = await until(store, (known) => known?.status === "ready");
+    expect(loaded.agents.map((item) => item.agentId)).toEqual(["builder"]);
+    expect(clock.waiting()).toEqual([]);
+
+    // A stream that breaks before delivering anything keeps growing the pause; the agents stay shown.
+    await node.followed();
+    node.streams.get(AGENTS_STREAM)?.onError?.(new Error("closed"));
+    expect(state(store)?.status).toBe("error");
+    expect(state(store)?.agents).toHaveLength(1);
+    expect(clock.waiting()).toEqual([8000]);
+    keep.dispose();
+    store.dispose();
+  });
+
+  it("starts the pause over when the feed delivered an event", async () => {
+    const node = flaky([undefined]);
+    const clock = timers();
+    const { store, keep } = open(node, clock);
+    await until(store, (known) => known?.status === "error");
+    clock.fire();
+    await until(store, (known) => known?.status === "ready");
+    await node.followed();
+    const deliver = node.streams.get(AGENTS_STREAM)?.onEvent as (event: StoredEvent) => void;
+    deliver({ type: AgentEvents.stopped, payload: {} } as unknown as StoredEvent);
+    node.streams.get(AGENTS_STREAM)?.onError?.(new Error("closed"));
+    expect(clock.waiting()).toEqual([1000]);
+    keep.dispose();
+    store.dispose();
+  });
+
+  it("does not retry a node without the command or the permission, and stops on dispose", async () => {
+    const missing = flaky(["COMMAND_NOT_FOUND"]);
+    const clock = timers();
+    const first = open(missing, clock);
+    await until(first.store, (known) => known?.status === "unsupported");
+    expect(clock.waiting()).toEqual([]);
+    first.keep.dispose();
+    first.store.dispose();
+
+    const down = flaky([undefined, undefined]);
+    const later = timers();
+    const second = open(down, later);
+    await until(second.store, (known) => known?.status === "error");
+    expect(later.waiting()).toEqual([1000]);
+    second.store.dispose();
+    expect(later.waiting()).toEqual([]);
+    expect(down.asked()).toBe(1);
+  });
+
+  it("caps the pause, and Retry means now with the pause reset", async () => {
+    const node = flaky(Array.from({ length: 9 }, () => undefined));
+    const clock = timers();
+    const { store, keep } = open(node, clock);
+    await until(store, (known) => known?.status === "error");
+    for (let attempt = 2; attempt <= 8; attempt += 1) {
+      clock.fire();
+      await until(store, (known) => known?.status === "error" && node.asked() === attempt);
+    }
+    // 1, 2, 4, 8, 16, 32 seconds, then the cap.
+    expect(clock.waiting()).toEqual([60_000]);
+
+    store.refresh("ws://a/rpc");
+    expect(clock.waiting()).toEqual([]);
+    await until(store, (known) => known?.status === "error" && node.asked() === 9);
+    expect(clock.waiting()).toEqual([1000]);
+    keep.dispose();
+    store.dispose();
+  });
+});
