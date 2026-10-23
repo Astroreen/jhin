@@ -3,7 +3,6 @@
 // ContextWindowMeter.tsx and runtimeModeConfig.ts. The prompt is T3's tiptap editor (prompt-editor.tsx).
 import {
   applicableModelOptions,
-  collectContextReferences,
   referencedContext,
   serializeAssistantCitation,
 } from "@jhin/agent-api";
@@ -130,6 +129,7 @@ const PromptEditor = lazy(() =>
 import { useComposerMenu } from "./use-composer-menu.ts";
 import { type PutAside, usePutAside } from "./put-aside.ts";
 import {
+  contextRemovalRanges,
   knownRecordsById,
   planContextInsertion,
   withContexts,
@@ -998,16 +998,9 @@ export function Composer(props: ComposerProps) {
     return "inserted";
   };
   const removeContext = (contextId: string): boolean => {
-    const text = editor.current?.value() ?? prompt;
-    const found = collectContextReferences(text).filter(
-      (occurrence) => occurrence.contextId === contextId,
-    );
-    if (found.length === 0) return false;
-    // From the last, so the earlier ones keep their places; the space inserted after a chip goes too.
-    for (const occurrence of found.toReversed()) {
-      const end = text[occurrence.end] === " " ? occurrence.end + 1 : occurrence.end;
-      editor.current?.replaceRange(occurrence.start, end, "");
-    }
+    const ranges = contextRemovalRanges(editor.current?.value() ?? prompt, contextId);
+    if (ranges.length === 0) return false;
+    for (const { start, end } of ranges) editor.current?.replaceRange(start, end, "");
     contextsNow.current = contextsNow.current.filter((record) => record.contextId !== contextId);
     setContexts(contextsNow.current);
     return true;

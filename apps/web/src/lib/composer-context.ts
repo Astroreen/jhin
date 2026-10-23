@@ -13,6 +13,7 @@ import {
   MESSAGE_CONTEXT_TERMINAL_TEXT_MAX_CHARS,
   type MessageContextRecord,
   type PullRequestContextMetadata,
+  collectContextReferences,
   referencedContext,
   type ReviewCommentContextRecord,
   sanitizeContextLabel,
@@ -280,3 +281,42 @@ export function planContextInsertion(input: {
     text: `${gap}${formatContextReference(input.record)} `,
   };
 }
+
+/**
+ * Where a record's chips are in the prompt (T3's removeReviewComment, D1286): each reference
+ * to it with the space inserted after it, last first so the earlier ones keep their places.
+ */
+export function contextRemovalRanges(
+  prompt: string,
+  contextId: string,
+): readonly { readonly start: number; readonly end: number }[] {
+  return collectContextReferences(prompt)
+    .filter((occurrence) => occurrence.contextId === contextId)
+    .map((occurrence) => ({
+      start: occurrence.start,
+      end: prompt[occurrence.end] === " " ? occurrence.end + 1 : occurrence.end,
+    }))
+    .toReversed();
+}
+
+/**
+ * The records a draft's prompt still names (`chat.drafts` 1.1, D1285): the same array for the
+ * same draft, so a store's snapshot of it stays put until the draft changes.
+ */
+export function draftContextsReader() {
+  const known = new WeakMap<object, readonly MessageContextRecord[]>();
+  return (
+    draft:
+      | { readonly prompt: string; readonly contexts?: readonly MessageContextRecord[] }
+      | undefined,
+  ): readonly MessageContextRecord[] => {
+    if (draft === undefined) return NO_CONTEXTS;
+    let records = known.get(draft);
+    if (records === undefined) {
+      records = referencedContext(draft.prompt, draft.contexts ?? [])?.records ?? NO_CONTEXTS;
+      known.set(draft, records);
+    }
+    return records;
+  };
+}
+const NO_CONTEXTS: readonly MessageContextRecord[] = [];

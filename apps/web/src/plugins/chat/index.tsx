@@ -1,11 +1,6 @@
 // Empty states follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/NoActiveThreadState.tsx
 // and NoProjectsHero.tsx.
-import {
-  AssistantCitationSchema,
-  MessageContextRecordSchema,
-  referencedContext,
-  type MessageContextRecord,
-} from "@jhin/agent-api";
+import { AssistantCitationSchema, MessageContextRecordSchema } from "@jhin/agent-api";
 import {
   CHAT_DRAFTS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
@@ -57,6 +52,7 @@ import {
   threadDraftKey,
   type ComposerDraft,
 } from "../../lib/composer.ts";
+import { draftContextsReader } from "../../lib/composer-context.ts";
 import { createModelOptionsMemory } from "../../lib/model-options.ts";
 import { createAttachmentUrls } from "../../lib/uploads.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
@@ -277,9 +273,6 @@ const Transcript = lazyChunk(
     ),
   },
 );
-
-/** A thread's draft without context records (`chat.drafts`' `contexts`). */
-const NO_CONTEXTS: readonly MessageContextRecord[] = [];
 export const chatPlugin = builtin(
   "jhin.chat",
   {
@@ -462,7 +455,7 @@ export const chatPlugin = builtin(
         );
       }
 
-      const draftContexts = new WeakMap<object, readonly MessageContextRecord[]>();
+      const draftContexts = draftContextsReader();
       // Which threads keep an unsent draft, for their cards (t3-parity.md D963).
       context.services.provide<ChatDrafts>(CHAT_DRAFTS_CAPABILITY, {
         hasThreadDraft: (target, threadId) => {
@@ -472,17 +465,8 @@ export const chatPlugin = builtin(
             draft !== undefined && (draft.prompt.trim() !== "" || draft.attachments.length > 0)
           );
         },
-        contexts: (target, threadId) => {
-          const draft = services.drafts.get(threadDraftKey(target, threadId));
-          if (draft === undefined) return NO_CONTEXTS;
-          // The same answer for the same draft, so a store's snapshot of it stays put.
-          let records = draftContexts.get(draft);
-          if (records === undefined) {
-            records = referencedContext(draft.prompt, draft.contexts ?? [])?.records ?? NO_CONTEXTS;
-            draftContexts.set(draft, records);
-          }
-          return records;
-        },
+        contexts: (target, threadId) =>
+          draftContexts(services.drafts.get(threadDraftKey(target, threadId))),
         subscribe: (listener) => services.drafts.subscribe(listener),
       });
 

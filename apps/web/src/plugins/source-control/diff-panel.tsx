@@ -393,28 +393,41 @@ const InsertAnswer = z.object({
   reason: z.enum(["no-composer", "not-now", "full"]).optional(),
 });
 
+/** A diff comment's record in a message: not a `#` pull request, nor a file's own lines. */
+function isDiffComment(record: MessageContextRecord): record is ReviewCommentContextRecord {
+  if (record.kind !== "review-comment" || !("sectionId" in record)) return false;
+  const comment = record as ReviewCommentContextRecord;
+  return comment.pullRequest === undefined && (comment.fenceLanguage ?? "diff") === "diff";
+}
+
+/** One subscription function per drafts service, so a render does not subscribe again. */
+const draftSubscriptions = new WeakMap<ChatDrafts, (listener: () => void) => () => void>();
+const subscribeTo = (drafts: ChatDrafts | undefined) => {
+  if (drafts === undefined) return noSubscription;
+  let subscribe = draftSubscriptions.get(drafts);
+  if (subscribe === undefined) {
+    subscribe = (listener) => {
+      const subscription = drafts.subscribe(listener);
+      return () => subscription.dispose();
+    };
+    draftSubscriptions.set(drafts, subscribe);
+  }
+  return subscribe;
+};
+const noSubscription = () => () => undefined;
+
 /** The review comments the thread's unsent message names, kept current (D1285). */
 function useDraftComments(
   drafts: ChatDrafts | undefined,
   target: NodeTarget,
   threadId: string | undefined,
 ): readonly ReviewCommentContextRecord[] {
-  const subscribe = (listener: () => void) => {
-    const subscription = drafts?.subscribe(listener);
-    return () => subscription?.dispose();
-  };
-  const read = () =>
+  const records = useSyncExternalStore(subscribeTo(drafts), () =>
     drafts === undefined || threadId === undefined
       ? EMPTY_RECORDS
-      : drafts.contexts(target, threadId);
-  const records = useSyncExternalStore(subscribe, read);
-  return records.filter(
-    (record): record is ReviewCommentContextRecord =>
-      record.kind === "review-comment" &&
-      "sectionId" in record &&
-      (record as ReviewCommentContextRecord).pullRequest === undefined &&
-      ((record as ReviewCommentContextRecord).fenceLanguage ?? "diff") === "diff",
+      : drafts.contexts(target, threadId),
   );
+  return records.filter(isDiffComment);
 }
 const EMPTY_RECORDS: readonly MessageContextRecord[] = [];
 
@@ -722,7 +735,6 @@ export function createDiffPanel(services: SourceControlServices) {
         rangeLabel: comment.rangeLabel,
       });
     };
-    /** Puts the comment into the composer as T3 sends a review comment to a provider. */
     /** T3's "Delete comment": its chip and record leave the message (D1286). */
     const deleteComment = (metadata: CommentDraft) => {
       if (metadata.kind !== "comment") return;
@@ -737,6 +749,7 @@ export function createDiffPanel(services: SourceControlServices) {
           }),
         );
     };
+    /** Puts the comment into the composer as T3's review comment (D1284), or its text (D285). */
     const sendComment = (text: string) => {
       if (draft === null) return;
       if (draftStale) {
