@@ -54,11 +54,24 @@ interface Session {
   mcpServers?: Readonly<Record<string, unknown>>;
 }
 
+/** Reads what an app-server sends past a turn: its subagents in the background (D1318). */
+export interface Follower {
+  notification(method: string, params: unknown): void;
+  /** The app-server ended: nothing more comes. */
+  end(): void;
+}
+
 export interface Lease {
   readonly session: Session;
   /** Whether the app-server was started for this lease. */
   readonly started: boolean;
   hold(holder: Holder): void;
+  /**
+   * Follows every notification of the app-server, also once the lease is released, until
+   * the returned function is called or the app-server ends; while followed, an idle one is
+   * kept up (D1318).
+   */
+  follow(follower: Follower): () => void;
   /** Lets go of the app-server: kept for the thread's next turn, or ended. */
   release(keep: boolean): void;
 }
@@ -105,6 +118,8 @@ interface Live extends Session {
   takenOver: boolean;
   /** Revokes the app-server's MCP credential; does nothing the second time. */
   revoke: () => void;
+  /** What follows it past its turns (D1318). */
+  readonly followers: Set<Follower>;
 }
 
 export function createSessions(options: {
@@ -127,6 +142,8 @@ export function createSessions(options: {
     const holder = live.holder;
     live.holder = undefined;
     live.connection.close();
+    for (const follower of [...live.followers]) follower.end();
+    live.followers.clear();
     holder?.end(reason ?? new CodexEnded("Codex was ended while the turn was running."));
   };
 
@@ -134,7 +151,8 @@ export function createSessions(options: {
     clearTimeout(live.timer);
     live.timer = undefined;
     const idleMs = options.idleMs();
-    if (idleMs <= 0 || live.idleSince === undefined) return;
+    // Its subagents still work in the background: it is not idle (D1318).
+    if (idleMs <= 0 || live.idleSince === undefined || live.followers.size > 0) return;
     const deadline = live.idleSince.getTime() + idleMs;
     // A wait longer than one timer goes in steps up to its deadline.
     const wait = () => {
@@ -188,11 +206,13 @@ export function createSessions(options: {
       closed: false,
       takenOver: false,
       revoke,
+      followers: new Set(),
       ...(attachment === undefined ? {} : { mcpServers: attachment.servers }),
     };
     connection.onNotification((method, params) => {
       options.notified?.(method, params);
       live.holder?.notification(method, params);
+      for (const follower of [...live.followers]) follower.notification(method, params);
     });
     connection.onRequest((method, params) =>
       live.holder === undefined
@@ -260,6 +280,18 @@ export function createSessions(options: {
         started,
         hold(holder) {
           held.holder = holder;
+        },
+        follow(follower) {
+          if (held.closed) {
+            follower.end();
+            return () => {};
+          }
+          held.followers.add(follower);
+          return () => {
+            if (!held.followers.delete(follower)) return;
+            // The last one gone: an idle app-server's time runs again.
+            if (!held.busy && held.followers.size === 0) arm(held);
+          };
         },
         release(keep) {
           if (released) return;

@@ -699,8 +699,8 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   allowance, ported as is (D314), accepts every later command (or file
   change) on the thread's app-server in that mode, not only the approved one;
   the approval's wording does not say so yet.
-- A cap on running app-servers, and keeping one alive while it still has
-  background work.
+- A cap on running app-servers (one with subagents in the background is kept
+  up, D1318).
 - A time limit on `thread/start`, `thread/resume` and `turn/start`: a Codex
   that stays up but never answers them holds the turn until it is stopped
   (the stop then frees it, D320). They may legitimately wait on Codex's MCP
@@ -913,10 +913,9 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
 - T3's goal checks count (the sidebar's "Goal" is `t3-parity.md` D1307),
   and a goal turn Codex starts after the run settled (T3 stops it and
   pauses the goal; Jhin drops its frames).
-- Codex subagents that outlive their turn (T3 follows a child's lifecycle
-  after the parent's turn ended): Jhin ends them with the turn (D1145), and
-  their later frames are dropped. A subagent's own user messages and its
-  token usage are not shown.
+- A Codex subagent's own user messages and its token usage are not shown,
+  and one that asks for an approval or an answer after its parent's turn
+  ended is refused (D1318; T3 asks it in the thread).
 
 ## OpenCode (W8)
 
@@ -1306,6 +1305,20 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   refuses, starts a new session with the whole transcript, as before. The
   plugin passes the SDK's `forkSession`; `claudePlugin(query, forkSession?)`
   takes it as a second argument.
+- **D1318. Codex's subagents outlive their turn**, as T3 follows a child
+  thread past its parent's turn (D1164's `subagent.backgrounded` and
+  `afterwards`): when Codex ends a turn (`turn/completed`) with subagents of
+  it still open, each is backgrounded and the turn follows the thread's
+  app-server past its end (`Lease.follow`), reading its subagents' frames
+  (messages, reasoning, tools, its `turn/completed`) into `afterwards` until
+  each has ended, also while a later turn of the thread holds the
+  app-server; a subagent's `subAgentActivity` or `agentsStates` that came
+  through a later turn of the parent are that turn's. While followed, an
+  idle app-server is kept up; when it ends, `afterwards` ends and the
+  subagents still open end `interrupted` (D1164). A turn that was stopped
+  or broke off still ends its subagents with it, as before (D1145). A
+  subagent's approval or question after its parent's turn ended is refused
+  as before: no turn is there to ask it.
 
 ### Deferred
 
