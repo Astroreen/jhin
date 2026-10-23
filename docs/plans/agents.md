@@ -2094,6 +2094,13 @@ Decisions (L3):
 - L2: which files a slice owns. A review covers the whole place a slice
   lives in (D1242), so in a shared checkout a change by one slice asks for
   another review of every slice there.
+- L2: slices already committed still count in `missions.review.check`
+  (D1241): a mission that commits wave by wave in one checkout has every
+  earlier slice reviewed again on the current files before each `commit`
+  step, though their work is in history unchanged. Seen in the L3 run.
+- L2: the mission view asks `missions.review.check` again on the `missions`
+  stream only (D1278), so files changed after a review show as
+  `changed-after-review` on the next mission event or reload.
 - L2: public ids the source does not spell out (template literals such as
   `sidebar.thread.jump.${jump}`, D1247), and hook names and permission names,
   which rule 8 does not list yet.
