@@ -51,7 +51,6 @@ import {
   launchAppServer,
   type AppServerConnection,
 } from "./rpc.ts";
-import { GOAL_COMMAND } from "./goal.ts";
 import { materializeShadowHome } from "./accounts.ts";
 import { FEEDBACK_COMMAND, GOAL_COMMAND } from "./goal.ts";
 import { createSessions, type Launcher, type Sessions } from "./session.ts";
@@ -797,14 +796,16 @@ export function createCodexRuntime(options: {
       });
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await initialize(connection, VERSION);
+        // The limit covers the handshake too: a Codex that never answers fails the upload.
         const response = (await Promise.race([
-          connection.request("feedback/upload", {
-            classification: "bug",
-            includeLogs: true,
-            ...(reason === undefined ? {} : { reason }),
-            threadId: codexThreadId,
-          }),
+          initialize(connection, VERSION).then(() =>
+            connection.request("feedback/upload", {
+              classification: "bug",
+              includeLogs: true,
+              ...(reason === undefined ? {} : { reason }),
+              threadId: codexThreadId,
+            }),
+          ),
           new Promise<never>((_, reject) => {
             timer = setTimeout(
               () => reject(new Error("Codex did not answer the feedback upload.")),

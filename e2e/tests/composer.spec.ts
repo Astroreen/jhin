@@ -695,7 +695,7 @@ test("sends /feedback to the agent's maker and shows T3's banner", async ({ page
   // The composer knows the thread's agent (its model's name comes from it): it takes feedback.
   await expect(
     page.getByRole("form", { name: "Composer" }).getByRole("button", { name: "Model" }),
-  ).toHaveText("Echo", { timeout: 30_000 });
+  ).toHaveText("Echo");
   await message.fill("/feedback the diff was wrong");
   await message.press("Enter");
   // Answered by the maker, not the agent (providers.md D1317).

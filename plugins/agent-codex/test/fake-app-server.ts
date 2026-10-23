@@ -233,7 +233,10 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
       return;
     case "feedback/upload":
       // Codex answers the thread it sent (T3's feedbackId).
-      send({ id, result: { threadId: (params as { threadId?: string } | null)?.threadId } });
+      send({
+        id,
+        result: { threadId: `feedback-${(params as { threadId?: string } | null)?.threadId}` },
+      });
       return;
     case "model/list": {
       const pages = scenario.models ?? [[]];

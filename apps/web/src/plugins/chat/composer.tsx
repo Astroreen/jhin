@@ -947,7 +947,11 @@ export function Composer(props: ComposerProps) {
     setUsagePanel({ key, agentName: offered.name, limits: usageLimits, now: Date.now() });
     return true;
   };
-  // `/feedback` (D1317): the submission of the thread it was sent on, T3's banner.
+  // `/feedback` (D1317): the submission of the thread it was sent on, T3's banner. It goes to
+  // the agent that ran the thread's latest turn, as the node sends it.
+  const feedbackAgent =
+    agents?.find((candidate) => candidate.agentId === props.context?.thread?.lastTurn?.agentId) ??
+    agent;
   const [feedback, setFeedback] = useState<{ key: string; submission: FeedbackSubmission }>();
   const feedbackKey = props.context?.thread?.id ?? "";
   if (feedback !== undefined && feedback.key !== feedbackKey) setFeedback(undefined);
@@ -962,7 +966,7 @@ export function Composer(props: ComposerProps) {
       });
       return false;
     }
-    const id = `${Date.now()}`;
+    const id = crypto.randomUUID();
     const update = (submission: FeedbackSubmission) =>
       setFeedback((current) =>
         current === undefined || current.submission.id === id || submission.status === "uploading"
@@ -1297,7 +1301,7 @@ export function Composer(props: ComposerProps) {
     if (!hasTyped) return false;
     // `/feedback` sent alone goes to the agent's maker, not to the agent (T3, D1317).
     const feedbackCommand =
-      attachments.length === 0 && agent?.feedback === true && contexts.length === 0
+      attachments.length === 0 && feedbackAgent?.feedback === true && contexts.length === 0
         ? parseFeedbackCommand(typed)
         : null;
     if (feedbackCommand !== null) {

@@ -25,14 +25,15 @@ describe("jhin.agent-codex: /feedback (D1317)", () => {
       reason: "  The diff was wrong  ",
     });
     const [upload] = fake.received("feedback/upload");
+    // Codex's own thread goes, the one thread/start answered; the id is Codex's answer.
+    const started = "codex-thread-1";
     expect(upload!.params).toEqual({
       classification: "bug",
       includeLogs: true,
       reason: "The diff was wrong",
-      threadId: feedbackId,
+      threadId: started,
     });
-    // The id is Codex's own thread.
-    expect(feedbackId).toEqual(expect.any(String));
+    expect(feedbackId).toBe(`feedback-${started}`);
     // T3 lists it among Codex's commands, and agents.list says Codex takes feedback.
     const agents = await client.call<{ agentId: string; feedback?: boolean }[]>("agents.list");
     expect(agents.find((agent) => agent.agentId === CODEX_AGENT_ID)?.feedback).toBe(true);

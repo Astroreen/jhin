@@ -75,9 +75,7 @@ usage mapping, the status probe and its messages, the model names and
 preferred defaults, usage limits and their windows in
 `plugins/agent-codex/src/usage-limits.ts`, MCP elicitations in
 `plugins/agent-codex/src/elicitation.ts`, shadow homes of more accounts in
-`plugins/agent-codex/src/accounts.ts`, thread goals and `/goal` in
-`plugins/agent-codex/src/goal.ts`), the goal banner
-`plugins/agent-codex/src/elicitation.ts`, thread goals, `/goal` and `/feedback` in
+`plugins/agent-codex/src/accounts.ts`, thread goals, `/goal` and `/feedback` in
 `plugins/agent-codex/src/goal.ts`), `/feedback` in the composer
 (`apps/web/src/lib/feedback.ts`), the goal banner
 (`apps/web/src/lib/goal.ts`), an agent's usage limits and the composer's
