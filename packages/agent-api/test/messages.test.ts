@@ -4,6 +4,7 @@ import {
   AgentMessage,
   MAX_MESSAGE_LENGTH,
   MessageCommands,
+  messageBody,
   messageText,
   ownerAddress,
   parseMessageAddress,
@@ -73,5 +74,25 @@ describe("messaging contract", () => {
     expect(messageText({ ...message, kind: "answer", inReplyTo: "q1" })).toContain(
       "your message q1",
     );
+  });
+
+  it("takes a message's body back out of its text, and leaves other texts alone (D1296)", () => {
+    for (const variant of [
+      message,
+      { ...message, kind: "ask" as const, generation: 2 },
+      { ...message, kind: "answer" as const, inReplyTo: "q1" },
+      { ...message, body: "line one\n\nline two [with brackets]" },
+    ]) {
+      expect(messageBody(messageText(variant))).toBe(variant.body);
+    }
+    expect(messageBody(messageText(message, "mcp__jhin__agents_send"))).toBe(message.body);
+    expect(messageBody("Just a prompt")).toBe("Just a prompt");
+    // A trailer-like text on a message that is no ask is part of its body.
+    const echo = messageText({ ...message, body: "see the trailer" }).replace(
+      "see the trailer",
+      "x\n\n[Your last message in this turn is the answer: answer it directly, and say so when you cannot judge it.]",
+    );
+    expect(messageBody(echo)).toContain("[Your last message");
+    expect(messageBody("[Message from x]\nno blank line")).toBe("[Message from x]\nno blank line");
   });
 });

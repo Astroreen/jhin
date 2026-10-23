@@ -5,6 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vite-plus/test";
 
+import { messageText } from "@jhin/agent-api";
 import { UserMessage } from "../src/plugins/chat/timeline.tsx";
 import {
   useThreadTimeline,
@@ -186,6 +187,39 @@ describe("a message between agents in the transcript (D1281)", () => {
     act(() => link?.click());
     expect(opened).toEqual(["jhin://n1/agents/builder"]);
     unmount();
+  });
+
+  it("shows a delivered message without its header line and trailer (D1296)", async () => {
+    const message = {
+      messageId: "m1",
+      kind: "ask" as const,
+      from: "jhin://n1/agents/builder",
+      to: "jhin://n1/agents/lead",
+      body: "Is slice 3 done?",
+      traceId: "tr1",
+      sentAt: "2026-10-19T00:00:00.000Z",
+    };
+    const { host, unmount } = await render(
+      <UserMessage
+        format="locale"
+        turn={{
+          ...base,
+          text: messageText(message),
+          origin: { messageId: "m1", kind: "ask", from: message.from, traceId: "tr1" },
+        }}
+      />,
+    );
+    const article = host.querySelector("article")!;
+    expect(article.textContent).toContain("Is slice 3 done?");
+    expect(article.textContent).not.toContain("Question from");
+    expect(article.textContent).not.toContain("Your last message in this turn");
+    unmount();
+    // A user's own prompt that merely looks like a header is shown whole.
+    const own = await render(
+      <UserMessage format="locale" turn={{ ...base, text: messageText(message) }} />,
+    );
+    expect(own.host.querySelector("article")?.textContent).toContain("Question from");
+    own.unmount();
   });
 
   it("shows the sender without a link when it cannot be reached, and a user's message as You", async () => {

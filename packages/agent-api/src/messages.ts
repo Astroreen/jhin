@@ -289,6 +289,10 @@ export const MessageCommands = {
   },
 } as const;
 
+/** What an ask's text ends with: routing for the runtime, no part of the question (D1296). */
+const ASK_TRAILER =
+  "[Your last message in this turn is the answer: answer it directly, and say so when you cannot judge it.]";
+
 /**
  * The text a recipient's turn gets for a message (D623): a header naming the
  * sender, the trace and how to reply, then the body. The structured message
@@ -300,10 +304,29 @@ export function messageText(message: AgentMessage, replyTool = "agents_send"): s
   const meta = `id ${message.messageId}, trace ${message.traceId}`;
   switch (message.kind) {
     case "ask":
-      return `[Question from ${message.from}${generation}; ${meta}]\n\n${message.body}\n\n[Your last message in this turn is the answer: answer it directly, and say so when you cannot judge it.]`;
+      return `[Question from ${message.from}${generation}; ${meta}]\n\n${message.body}\n\n${ASK_TRAILER}`;
     case "answer":
       return `[Answer from ${message.from} to your message ${message.inReplyTo ?? "?"}; ${meta}]\n\n${message.body}`;
     default:
       return `[Message from ${message.from}; ${meta}. Reply with ${replyTool} to ${message.from}, inReplyTo ${message.messageId}.]\n\n${message.body}`;
   }
+}
+
+const HEADER = /^\[(?:Message|Question|Answer) from [^\]\n]*\]\n\n/;
+
+/**
+ * The body of a text `messageText` made (D1296): without its header line and,
+ * for an ask, the trailer that tells the runtime how to answer. A text of any
+ * other shape comes back unchanged, so a client can show the body of a
+ * message turn without touching what it does not know. The stored text, the
+ * runtime and search keep the whole of it.
+ */
+export function messageBody(text: string): string {
+  const header = HEADER.exec(text);
+  if (header === null) return text;
+  const body = text.slice(header[0].length);
+  const trailer = `\n\n${ASK_TRAILER}`;
+  return header[0].startsWith("[Question") && body.endsWith(trailer)
+    ? body.slice(0, -trailer.length)
+    : body;
 }

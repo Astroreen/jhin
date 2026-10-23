@@ -4,6 +4,7 @@
 import {
   type AssistantCitation,
   contextReferencesAsLabels,
+  messageBody,
   type MessageContext,
   type TurnAttachment,
 } from "@jhin/agent-api";
@@ -252,10 +253,13 @@ export function UserMessage({
   const sender = turn.origin === undefined ? undefined : describeOrigin(turn.origin, titleOf);
   const open = turn.origin === undefined ? undefined : onOpenSender?.(turn.origin);
   const [expanded, setExpanded] = useState(false);
-  const long = isLong(turn.text);
-  const chips = useMessageContextChips(turn.context, turn.text);
+  // A delivered message shows without the header line and trailer the runtime
+  // reads: the caption above names the sender (D1296).
+  const text = turn.origin === undefined ? turn.text : messageBody(turn.text);
+  const long = isLong(text);
+  const chips = useMessageContextChips(turn.context, text);
   // A copy reads the references by their labels, as the message shows them.
-  const copied = contextReferencesAsLabels(turn.text);
+  const copied = contextReferencesAsLabels(text);
   return (
     <div className="group flex flex-col items-end gap-1 pb-4">
       <article
@@ -278,7 +282,7 @@ export function UserMessage({
           </p>
         )}
         <MessageAttachments attachments={turn.attachments} />
-        {turn.text === "" ? null : (
+        {text === "" ? null : (
           <div
             className={cn(long && !expanded && "relative max-h-44 overflow-hidden")}
             style={
@@ -291,7 +295,7 @@ export function UserMessage({
             }
           >
             <MessageContextChipsContext value={chips}>
-              <MessageText className="text-foreground" lineBreaks text={turn.text} />
+              <MessageText className="text-foreground" lineBreaks text={text} />
             </MessageContextChipsContext>
           </div>
         )}
@@ -313,7 +317,7 @@ export function UserMessage({
           <Timestamp at={turn.startedAt} format={format} />
           <div className="flex items-center gap-0.5">
             {turn.turnId === undefined ? (
-              turn.text === "" ? null : (
+              text === "" ? null : (
                 <MessageCopyButton text={copied} />
               )
             ) : (
