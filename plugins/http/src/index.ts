@@ -2,6 +2,7 @@ import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as Http from "node:http";
 import type { AddressInfo } from "node:net";
+import * as Os from "node:os";
 import * as Path from "node:path";
 
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
@@ -14,6 +15,7 @@ import {
 } from "@jhin/http-api";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
 
+import { fromBrowser, hostName, hostPolicy } from "./allowed-hosts.ts";
 import { clientAddress, trustList, trusted } from "./client-address.ts";
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
@@ -34,6 +36,25 @@ const Config = z
         "Reverse proxies (addresses or CIDR ranges, e.g. 127.0.0.1, 10.0.0.0/8) whose forwarded header names the real client. Empty: the header is ignored and the socket's peer is the client.",
       advanced: true,
     }),
+    allowedHosts: z
+      .array(
+        z
+          .string()
+          .trim()
+          .regex(
+            // `*`; `.example.com` (no port, no trailing dot: the request's are stripped);
+            // a name or a bracketed address, perhaps with a port.
+            /^(\*|\.[a-z0-9-]+(\.[a-z0-9-]+)*|[a-z0-9-]+(\.[a-z0-9-]+)*\.?(:\d+)?|\[[0-9a-f:.]+\](:\d+)?)$/i,
+            "must be a host name (nas.lan), .example.com for every name under it, or *",
+          ),
+      )
+      .default([])
+      .meta({
+        title: "Allowed host names",
+        description:
+          "Names browsers may reach this node by, besides its addresses, localhost, the machine's name, Tailscale names and the mesh's advertised addresses. .example.com allows every name under it; * turns the check off.",
+        advanced: true,
+      }),
     forwardedHeader: z.enum(["x-forwarded-for", "forwarded"]).default("x-forwarded-for").meta({
       title: "Forwarded header",
       description: "The header the trusted proxies set; the other one is never read.",
@@ -94,8 +115,43 @@ export default definePlugin({
     const trust = trustList(config.trustProxy);
     const routes = new Set<Route>();
     const upgrades = new Map<string, UpgradeHandler>();
+    const hosts = hostPolicy({ configured: config.allowedHosts, machineName: Os.hostname() });
+    /** Hosts already warned about; bounded, since the header is the client's. */
+    const warned = new Set<string>();
+    /**
+     * The host a browser's request names, when this node does not answer to
+     * it (a DNS rebinding page, security.md D1362); undefined to go on.
+     */
+    const blockedHost = (request: Http.IncomingMessage): string | undefined => {
+      if (!fromBrowser(request.headers)) return undefined;
+      // Every name the request gives: `Host`, and behind a trusted proxy the
+      // forwarded host too. A rebinding page reaches the node over loopback,
+      // which may be trusted, and may set X-Forwarded-Host on its own fetch.
+      const named = [request.headers.host?.toLowerCase(), api.requestedHost(request)];
+      const host = named.find((name) => name !== undefined && !hosts.allows(name));
+      if (host === undefined) return undefined;
+      const name = hostName(host) ?? host;
+      if (!warned.has(name) && warned.size < 64) {
+        warned.add(name);
+        context.log.warn("refused a browser request for a host this node does not answer to", {
+          // The header is the client's: logged short, never whole.
+          host: name.slice(0, 200),
+          setting: "jhin.http.allowedHosts",
+        });
+      }
+      return host;
+    };
+    const blockedMessage = (host: string) =>
+      `Blocked request: this node does not answer to the host ${host}. Add it to jhin.http.allowedHosts.`;
 
     const server = Http.createServer((request, response) => {
+      const blocked = blockedHost(request);
+      if (blocked !== undefined) {
+        response
+          .writeHead(403, { "content-type": "text/plain", "cache-control": "no-store" })
+          .end(blockedMessage(blocked));
+        return;
+      }
       const path = pathOf(request);
       const method = request.method ?? "GET";
       const route = [...routes]
@@ -116,6 +172,14 @@ export default definePlugin({
       });
     });
     server.on("upgrade", (request, socket, head) => {
+      const blocked = blockedHost(request);
+      if (blocked !== undefined) {
+        const body = blockedMessage(blocked);
+        socket.end(
+          `HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`,
+        );
+        return;
+      }
       const handler = upgrades.get(pathOf(request));
       if (handler === undefined) {
         socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
@@ -195,6 +259,11 @@ export default definePlugin({
         return toDisposable(() => {
           if (upgrades.get(path) === handler) upgrades.delete(path);
         });
+      },
+      allowHost(name) {
+        // Turning the check off is the owner's choice (jhin.http.allowedHosts), never a plugin's.
+        if (name.trim() === "*") throw new Error("allowHost takes a name, not *");
+        return toDisposable(hosts.add(name));
       },
       requestedHost(request) {
         const forwarded = request.headers["x-forwarded-host"];

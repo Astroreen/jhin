@@ -662,6 +662,93 @@ The threat model comes first; the decisions after it implement it.
   `auth.clients.list` / `auth.clients.revoke`; the HTTP endpoints are the
   protocol MCP clients speak, as `/auth/pair` is for devices.
 
+### Hardening (W39)
+
+The threat model comes first; the decisions after it implement it. T3
+Connect stays out of scope.
+
+- **D1361. What W39 hardens, against whom.** D1181's list stands; W39
+  closes the gaps it left, ordered by what an attacker gains:
+  (1) _DNS rebinding_ (D1181's attacker 3): a page the owner visits
+  re-points its own name at the node's address. Its requests then carry
+  the attacker's name as `Host` and `Origin`, so D418 counts it as the
+  node's own page. It gets no session cookie (the browser keeps that for
+  the node's host) and holds no token, so today it reaches only what needs
+  none: the web client's files, `/auth/pair` (rate limited), the OAuth
+  metadata and `/.well-known/jhin`. A `Host` allowlist (D1362) refuses it
+  before any route, so a later route that trusts the same-origin check
+  cannot be reached from such a page. (2) _A forged `X-Forwarded-Proto`_:
+  the session cookie's `Secure` flag (D421) followed the header from any
+  client; a client could only change its own cookie, so the gain is
+  nothing, but the node's idea of "this request came over HTTPS" must come
+  from one place (D1363). (3) _Shell access_: `terminals.write` runs input
+  in a shell as the node's OS user, so whoever holds it holds the machine
+  as that user: a device token, a pairing code's grants, an MCP client
+  (D1364). (4) _One connection holding the node's memory_: windowed
+  subscriptions each hold 16 MiB of waiting events, with no bound per
+  connection (D470, D1365). (5) _A stolen bearer token_: a device token
+  read from a device's storage, a proxy log or a screen works from
+  anywhere until it expires or is revoked (DPoP and WebSocket tickets).
+  (6) _An MCP client granted too much_, and permissions guarded only on
+  streams that a client cannot offer. (7) _Secrets at rest_: Windows keeps
+  the store's key in a file, and number or boolean config secrets stay in
+  clear. Not defended, as in D1181: whoever controls the node's machine or
+  the owner's account on it.
+
+- **D1362. The node answers only to its own names: a `Host` allowlist for
+  browsers.** `jhin.http` refuses, before any route or upgrade handler,
+  a request that carries a browser's marks (an `Origin`, a
+  `Sec-Fetch-Site` header, or a `User-Agent` starting with `Mozilla/`, as
+  every browser's does; not `Sec-Fetch-Mode`, which Node's `fetch` sends
+  too) when the host it asked for
+  (`requestedHost`, D418) is a name the node does not answer to: `403`
+  with "Blocked request: this node does not answer to the host <host>. Add
+  it to jhin.http.allowedHosts." (the upgrade gets the same status before
+  the WebSocket opens), and one warning per host in the log. A node
+  answers to: every IP address (IPv4 or bracketed IPv6; a rebinding page
+  always uses a name), `localhost` and every name under `.localhost`, the
+  machine's host name (`os.hostname()`, its first label and both with
+  `.local`), Tailscale's MagicDNS names (under `.ts.net`, which Tailscale
+  answers, never a page's author: Tailscale Serve keeps them as `Host`,
+  D1189), the hosts of `jhin.mesh.advertise` (the mesh plugin adds them
+  through `http.server` 1.4 `allowHost(host)`, which returns a
+  disposable and refuses `*`), and `jhin.http.allowedHosts`: exact names, or `.example.com`
+  for that name and every name under it, or `*` to turn the check off.
+  Names are compared without their port and case.
+  Every name a request gives is checked, never skipped: its `Host`, and
+  behind a peer of `jhin.http.trustProxy` its `X-Forwarded-Host` too. A
+  rebinding page in the owner's browser reaches the node over loopback,
+  and loopback is the usual trusted proxy (Tailscale Serve, a local
+  proxy); it may set `X-Forwarded-Host` to an allowed name on its own
+  same-origin `fetch`, but its `Host` still names the rebound name. A
+  proxy that passes its public name as `Host` needs it listed too, once.
+  The mesh's advertised hosts are read when the mesh plugin activates
+  (a config change reactivates it). Requests without a browser's marks (the CLI, nodes,
+  MCP clients, `curl`) are not checked: they choose their `Host` freely
+  anyway, so a check would only break a node reached by a name nobody
+  listed (a program that calls itself `Mozilla/` is checked, and its name
+  has to be listed). Browsers send `Sec-Fetch-Site` only to trustworthy
+  origins (HTTPS, loopback) and `Origin` on every `POST` and WebSocket
+  upgrade, but a page on plain `http:` makes same-origin `GET`s with
+  neither; its `User-Agent` marks it. Tailscale names are allowed for any
+  tailnet, not only the owner's: a page needs a tailnet name that
+  resolves to the node, which only the tailnet's own members can give it. This is a change in
+  behaviour: a browser that opens the node by a name outside the list (a
+  LAN name such as `nas.lan`, or a reverse proxy's public name passed on
+  as `Host` or `X-Forwarded-Host`) is refused until the owner lists it;
+  the 403 names the setting, and the log warns once per host (at most 64
+  hosts, since the header is the client's).
+
+  Later slices of PR 6 define D1364–D1368: shell access and connection
+  bounds (6b), DPoP and WebSocket tickets (6c).
+
+- **D1363. Whether a request came over HTTPS has one answer.** The session
+  cookie (D421) is `Secure` when `http.server`'s `requestOrigin` (1.3,
+  D1191) says `https`: a TLS socket, or `X-Forwarded-Proto: https` from a
+  peer of `jhin.http.trustProxy` or loopback (Tailscale Serve and a local
+  proxy). A header from any other peer no longer counts. Without 1.3 only
+  a TLS socket does.
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -743,18 +830,22 @@ A stack, one slice a PR:
   client listed and revoked, and never lets a session approve more than it
   holds.
 
+### PR 6 — Hardening (W39)
+
+A slice a PR, in the order of D1361's risks:
+
+- **PR 6a — names and HTTPS** (D1361–D1363): the threat model, the `Host`
+  allowlist, `http.server` 1.4 `allowHost`, the mesh's advertised names and
+  the cookie's `Secure` from `requestOrigin`. **Done when:** tests over real
+  HTTP refuse a browser's request and upgrade for a rebound name with 403
+  before any route, answer non-browsers, addresses, loopback, the machine's
+  and Tailscale's names, listed and advertised ones, check a trusted
+  proxy's forwarded host, and set `Secure` only for HTTPS as `http.server`
+  tells it (a TLS socket, a forwarded `https` from a trusted or loopback
+  peer, never from another one, and only TLS without `requestOrigin`).
+
 ## Deferred
 
-- DNS rebinding (D418): a page on a name re-pointed at the node's address
-  sends `Origin` and `Host` with that name, so it counts as the node's own
-  page. It gets no session cookie (the browser keeps the node's cookie for
-  the node's own host) and has no token, so it can call nothing; a `Host`
-  allowlist (`jhin.http.allowedHosts`: loopback names, the bound and
-  advertised addresses) would refuse it outright.
-- The session cookie's `Secure` flag (D421) follows `x-forwarded-proto`
-  from any client; a client can only change its own cookie this way. Read
-  only from a trusted proxy once `http.server` tells the protocol it trusts,
-  next to the `Host` allowlist.
 - A secret whose real value starts with the marker and `#`
   (`••••••#note`) reads as an addressed marker and is refused on save
   (D417); such a value has to be changed to be saved.
@@ -783,6 +874,10 @@ A stack, one slice a PR:
 - A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
   target against that node's own stored value; a target with none refuses
   the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.
+- The `Host` allowlist (D1362) allows every `*.ts.net` name: on a tailnet
+  shared with members the owner does not trust, one of them could give a
+  page a name that resolves to the node. No setting narrows it to the
+  owner's tailnet yet.
 - T3 Connect: pairing and remote access through a T3 account, the hosted
   relay and the hosted-app pairing link (out of scope, `t3-roadmap.md`).
 - Tailscale Serve (D1189) is `jhin pair --tailscale` only: T3's

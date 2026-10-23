@@ -11,7 +11,7 @@ export type HttpHandler = (
 ) => void | Promise<void>;
 export type UpgradeHandler = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
-/** `http.server@1` (1.1): the node's single HTTP listener, shared by every plugin. */
+/** `http.server@1` (1.4): the node's single HTTP listener, shared by every plugin. */
 export interface HttpServer {
   /** Base URL, e.g. `http://127.0.0.1:7777`. */
   readonly url: string;
@@ -45,4 +45,11 @@ export interface HttpServer {
    * loopback (Tailscale Serve, a local proxy).
    */
   requestOrigin?(request: IncomingMessage): string;
+  /**
+   * Since 1.4 (security.md D1362): browsers may reach the node by `host`
+   * (a name, or `.example.com` for every name under it) until the
+   * disposable is disposed. `*` is refused: only the owner turns the check off. A browser's request for a name the node does
+   * not answer to is refused with 403 before any route: a DNS rebinding page.
+   */
+  allowHost?(host: string): Disposable;
 }

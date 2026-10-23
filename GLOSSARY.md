@@ -66,6 +66,11 @@ Words about Jhin:
   grants it was given; issued by pairing or by `auth.tokens.issue`, listed
   as an **authorized client** and revocable. The **owner token** is the
   node's own, holding `*`.
+- **Host allowlist** — the names a node answers to for browsers
+  (`jhin.http.allowedHosts`, plus its addresses, loopback, the machine's
+  and Tailscale's names and the mesh's advertised hosts); a browser's
+  request for any other name is a DNS rebinding page and gets 403
+  (security.md D1362).
 - **Disposable** — the handle every registration returns; disposing a plugin
   disposes everything it registered.
 - **Config layer** — one level of JSONC config: distribution → node →
