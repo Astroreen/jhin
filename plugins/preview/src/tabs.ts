@@ -625,7 +625,12 @@ export function createTabs(options: TabsOptions) {
         DOWNLOADS_KEPT,
       );
       // Beyond the kept ones, a file goes with its entry.
-      if (dropped !== undefined) await Fs.rm(dropped.path, { force: true }).catch(() => undefined);
+      // A file still open elsewhere (a Save on Windows) may not go: said, not dropped silently.
+      if (dropped !== undefined) {
+        await Fs.rm(dropped.path, { force: true }).catch((error: unknown) =>
+          log.warn("dropped download not removed", { path: dropped.path, error: String(error) }),
+        );
+      }
       changed(tab);
       // The viewer holding control is offered the file (T3's download toast, D1331): told
       // once to whoever watches now, never replayed to a later subscriber.

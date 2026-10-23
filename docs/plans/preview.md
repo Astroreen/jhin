@@ -735,36 +735,30 @@ probe of `ServerBrowser.ts`.
   pushes a saved download to the viewer holding control and shows a toast,
   "Downloaded <file>" with "Save", which fetches it from the node. Here each
   saved download gets an id (`PreviewDownload.id`, additive), and the tab's
-  frames stream carries `preview.download` (`{ id, fileName, sizeBytes }`);
-  the panel or mini player of the viewer holding control shows T3's toast.
-  "Save" calls `preview.tab.download { threadId, tabId, id }`
-  (`preview.control`) → `{ fileName, data }` (base64) and hands the file to
-  the browser's download. A download travels in one RPC message, as an
-  upload does (D1203), so it carries at most 64 MiB; a larger one stays on
-  the node for the agent, and Save says it is too large for this client. A
-  download whose file the node dropped (beyond the 20 it keeps) answers
-  `PREVIEW_TAB_NOT_FOUND`. The user's own navigation to such a file (the
-  address bar) is no failure: the page stays, and the file is offered. The
-  offer goes to whoever watches the tab right then and is not replayed, as
-  T3 pushes it to the connected viewer only: a viewer that attaches later is
-  not offered it, while the file still counts among the 20 kept. Save reads
-  the file as it is on the node at that moment: one removed meanwhile
-  answers `PREVIEW_TAB_NOT_FOUND`, one grown past 64 MiB is too large.
-  Encoded, 64 MiB is about 85.4 MiB, under the 100 MiB a message may carry
-  on the node's and the mesh's WebSockets (`ws`'s `maxPayload`); a Save
-  holds the file and its base64 in the node's memory, and the base64, the
-  decoded file and its blob in the page's, once per Save, as an upload
-  does. The offer (`PreviewDownloadOffer`, exported) is appended and removed
-  at once: `append` hands an event to every subscriber before it returns,
-  an RPC subscription's forwarder included, so each viewer watching then
-  gets it. Going back, forward or reloading onto a file is no failure
-  either. A download Playwright reports but cannot save is logged on the
-  node and not offered. A failed Save leaves the toast up, so Save can be
-  tried again; a second click while one Save runs adds nothing. Save reads
-  the file with the bound itself, so one still growing past it is too
-  large. Every viewer watching then gets the offer, and each page shows it
-  only if it holds control by its own view of the tab: when control
-  changes hands as the file arrives, the offer may show on neither page.
+  frames stream carries `preview.download` (`PreviewDownloadOffer`: `{ id,
+  fileName, sizeBytes }`, exported). The node appends the offer and removes
+  it at once, so every viewer watching then gets it (`append` hands an event
+  to every subscriber before it returns, an RPC subscription's forwarder
+  included) and none that attaches later; each page shows T3's toast only if
+  it holds control by its own view of the tab, so when control changes
+  hands as the file arrives, the offer may show on neither page. "Save"
+  calls `preview.tab.download { threadId, tabId, id }` (`preview.control`)
+  → `{ fileName, data }` (base64), and the page decodes it in chunks and
+  hands the file to the browser's download; a second click while one Save
+  runs adds nothing, and a failed Save leaves the toast up to try again. A
+  download travels in one RPC message, as an upload does (D1203), so it
+  carries at most 64 MiB: encoded, about 85.4 MiB, under the 100 MiB a
+  message may carry on the node's and the mesh's WebSockets (`ws`'s
+  `maxPayload`). Save reads the file as it is then, with that bound in the
+  read itself: one larger, or still growing past it, stays on the node for
+  the agent and Save says it is too large for this client; one removed
+  answers `PREVIEW_TAB_NOT_FOUND`, as does one the node dropped beyond the
+  20 it keeps (a file it cannot remove is logged). A Save holds the file
+  and its base64 in the node's memory and the base64 and the decoded bytes
+  in the page's, once per Save. The user's own navigation to such a file
+  (the address bar, back, forward, reload) is no failure: the page stays,
+  and the file is offered. A download Playwright reports but cannot save is
+  logged on the node and not offered.
 
 ### Proof
 

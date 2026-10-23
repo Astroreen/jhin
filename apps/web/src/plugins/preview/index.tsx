@@ -54,6 +54,23 @@ import type { BrowserPanelProps, PanelServices } from "./panel.tsx";
 import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
 
+/**
+ * Base64 decoded a megabyte at a time (D1331): no `data:` URL for the page's CSP to refuse, and
+ * no second copy of the whole file as a binary string.
+ */
+function decodeBase64(data: string): Uint8Array<ArrayBuffer>[] {
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  // A multiple of 4 characters decodes on its own.
+  const step = 4 * 256 * 1024;
+  for (let start = 0; start < data.length; start += step) {
+    const binary = atob(data.slice(start, start + step));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    chunks.push(bytes);
+  }
+  return chunks;
+}
+
 /** Saved files whose object URLs are kept for the browser to read (D1331). */
 const SAVED_URLS_KEPT = 4;
 
@@ -313,10 +330,9 @@ export const previewPanelPlugin = builtin(
                   id: download.id,
                 })
                 .then(async ({ fileName, data }) => {
-                  // The browser decodes it, off this loop's per-byte work.
-                  const blob = await (
-                    await fetch(`data:application/octet-stream;base64,${data}`)
-                  ).blob();
+                  const blob = new Blob(decodeBase64(data), {
+                    type: "application/octet-stream",
+                  });
                   const url = URL.createObjectURL(blob);
                   savedUrls.push(url);
                   if (savedUrls.length > SAVED_URLS_KEPT) URL.revokeObjectURL(savedUrls.shift()!);
