@@ -26,7 +26,7 @@ type DpopFailure =
   | "busy";
 
 export type DpopResult =
-  | { readonly ok: true; readonly thumbprint: string }
+  | { readonly ok: true; readonly thumbprint: string; readonly jti: string; readonly iat: number }
   | { readonly ok: false; readonly failure: DpopFailure };
 
 interface PublicJwk {
@@ -95,8 +95,20 @@ export class ReplayGuard {
     this.since = nowSeconds;
   }
 
-  /** Whether key `thumbprint` used `jti` within its window, or holds too many. */
-  admit(thumbprint: string, jti: string, nowSeconds: number): "ok" | "replay" | "busy" {
+  /**
+   * Whether key `thumbprint` used `jti` within its window, or holds too many.
+   * A proof is remembered until it could no longer be fresh: `iat` plus the
+   * window and the skew.
+   */
+  admit(
+    thumbprint: string,
+    jti: string,
+    iat: number,
+    nowSeconds: number,
+  ): "ok" | "replay" | "busy" | "time_window" {
+    // Older than the guard's memory (less the skew allowed ahead): it may have
+    // been used before a restart.
+    if (iat < this.since - MAX_SKEW_SECONDS) return "time_window";
     // Now and then every key is swept, so a revoked device's proofs do not stay.
     if (++this.#calls % 1_000 === 0) {
       for (const [key, seen] of this.#seen) {
@@ -108,7 +120,7 @@ export class ReplayGuard {
     for (const [id, until] of seen) if (until < nowSeconds) seen.delete(id);
     if (seen.has(jti)) return "replay";
     if (seen.size >= MAX_REMEMBERED_PER_KEY) return "busy";
-    seen.set(jti, nowSeconds + MAX_AGE_SECONDS + MAX_SKEW_SECONDS);
+    seen.set(jti, iat + MAX_AGE_SECONDS + MAX_SKEW_SECONDS);
     this.#seen.set(thumbprint, seen);
     return "ok";
   }
@@ -178,11 +190,8 @@ export function verifyDpopProof(input: {
     return fail("time_window");
   }
   if (input.replay !== undefined) {
-    // Older than the guard's memory (less the skew allowed ahead): it may have
-    // been used before a restart.
-    if (iat < input.replay.since - MAX_SKEW_SECONDS) return fail("time_window");
-    const admitted = input.replay.admit(thumbprint, jti, input.nowSeconds);
+    const admitted = input.replay.admit(thumbprint, jti, iat, input.nowSeconds);
     if (admitted !== "ok") return fail(admitted);
   }
-  return { ok: true, thumbprint };
+  return { ok: true, thumbprint, jti, iat };
 }

@@ -214,17 +214,19 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
   const checkProof = (
     request: IncomingMessage,
     proof: string | undefined,
-    expected: { expectedThumbprint?: string; accessToken?: string } = {},
-  ) =>
-    verifyDpopProof({
+    expected: { expectedThumbprint?: string; accessToken?: string; spend?: boolean } = {},
+  ) => {
+    const { spend = true, ...bound } = expected;
+    return verifyDpopProof({
       proof,
       method: request.method ?? "POST",
       host: http.requestedHost(request),
       path: new URL(request.url ?? "/", "http://node").pathname,
       nowSeconds: Math.floor(Date.now() / 1000),
-      ...(expected.expectedThumbprint === undefined ? {} : { replay: options.replay }),
-      ...expected,
+      ...(bound.expectedThumbprint === undefined || !spend ? {} : { replay: options.replay }),
+      ...bound,
     });
+  };
   /** Refuses a proof, saying why in RFC 9449's words (`invalid_dpop_proof`). */
   const refuseProof = (
     response: ServerResponse,
@@ -304,8 +306,9 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         return;
       }
       const dpop = scheme[1]!.toLowerCase() === "dpop";
-      // At its cap, refused before the proof is checked, so no proof is spent on it.
-      if (holder.full()) {
+      /** At its cap: refused, the attempt given back (only its holder gets here). */
+      const atCap = () => {
+        if (!holder.full()) return false;
         succeeded(counted);
         send(
           response,
@@ -313,8 +316,8 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
           { code: "TOO_MANY_TICKETS", message: "Too many open tickets; try again in a minute" },
           { ...CORS, "retry-after": "60" },
         );
-        return;
-      }
+        return true;
+      };
       if (holder.jkt !== undefined || dpop) {
         // A bound token needs its key's proof; DPoP names a bound token (RFC 9449 §7.1).
         if (!dpop || holder.jkt === undefined) {
@@ -332,15 +335,29 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
           );
           return;
         }
+        // The proof first (without spending it), so only the key's holder learns
+        // about the cap; then the cap, so a refused mint spends no proof; then the spend.
         const checked = checkProof(request, headerOf(request, "dpop"), {
-          expectedThumbprint: holder.jkt,
           accessToken: given,
+          expectedThumbprint: holder.jkt,
+          spend: false,
         });
         if (!checked.ok) {
           refuseProof(response, checked.failure, CORS, 401);
           return;
         }
-      }
+        if (atCap()) return;
+        const admitted = options.replay.admit(
+          checked.thumbprint,
+          checked.jti,
+          checked.iat,
+          Math.floor(Date.now() / 1000),
+        );
+        if (admitted !== "ok") {
+          refuseProof(response, admitted, CORS, 401);
+          return;
+        }
+      } else if (atCap()) return;
       // The proof is spent already: a refused mint is retried with a new proof,
       // as every request makes one.
       const minted = holder.issue();

@@ -34,13 +34,21 @@ describe("WebSocket tickets (security.md D1367)", () => {
 describe("the replay guard (security.md D1366)", () => {
   it("refuses a jti seen within its window, per key, and fills per key only", () => {
     const guard = new ReplayGuard(0);
-    expect(guard.admit("key-a", "1", 100)).toBe("ok");
-    expect(guard.admit("key-a", "1", 200)).toBe("replay");
-    expect(guard.admit("key-b", "1", 200)).toBe("ok");
-    // Past its window (300 s and 5 s of skew) a jti is forgotten.
-    expect(guard.admit("key-a", "1", 406)).toBe("ok");
-    for (let n = 0; n < 999; n += 1) guard.admit("key-a", `n${n}`, 500);
-    expect(guard.admit("key-a", "full", 500)).toBe("busy");
-    expect(guard.admit("key-b", "2", 500)).toBe("ok");
+    expect(guard.admit("key-a", "1", 100, 100)).toBe("ok");
+    expect(guard.admit("key-a", "1", 100, 200)).toBe("replay");
+    expect(guard.admit("key-b", "1", 200, 200)).toBe("ok");
+    // Past its window (iat + 300 s + 5 s of skew) a jti is forgotten.
+    expect(guard.admit("key-a", "1", 100, 406)).toBe("ok");
+    for (let n = 0; n < 1_000; n += 1) guard.admit("key-a", `n${n}`, 500, 500);
+    expect(guard.admit("key-a", "full", 500, 500)).toBe("busy");
+    expect(guard.admit("key-b", "2", 500, 500)).toBe("ok");
+    // Once the full key's proofs could no longer be fresh, it takes proofs again.
+    expect(guard.admit("key-a", "later", 806, 806)).toBe("ok");
+  });
+
+  it("refuses a proof made before the guard began, less the skew", () => {
+    const guard = new ReplayGuard(1_000);
+    expect(guard.admit("key", "a", 994, 1_000)).toBe("time_window");
+    expect(guard.admit("key", "b", 995, 1_000)).toBe("ok");
   });
 });

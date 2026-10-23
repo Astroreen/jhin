@@ -796,7 +796,11 @@ Connect stays out of scope.
   300 seconds behind, and, for a ticket (D1367), a `jti` never seen before
   from that key in that window (kept per key in the plugin's
   kernel-scoped state, at most 1 000 per key: past that the key's proofs
-  are refused, `DPOP_BUSY`, rather than an old one forgotten). The guard
+  are refused, `DPOP_BUSY`, rather than an old one forgotten; a proof is
+  remembered until its `iat` plus the window and the skew). A ticket
+  request's proof is checked first without being spent, then the device's
+  cap of open tickets (D1367), then the proof is spent: only the key's
+  holder learns about the cap, and a refused mint spends no proof. The guard
   lives in memory, so a proof made before it began (before the node last
   started, less the 5 seconds of skew allowed) is refused too: a proof
   captured with its token cannot be replayed after a restart. A device
