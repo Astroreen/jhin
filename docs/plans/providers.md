@@ -899,8 +899,6 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
 
 ### Deferred
 
-- Claude Code's usage limits (T3's `claudeUsageLimits.ts`: its OAuth usage
-  read and `rate_limit_event`) and OpenCode Go's: only Codex reports them.
 - Reset credits: carried in `AgentUsageLimits`, neither shown nor redeemable
   (T3's `ResetCredits` and `consumeResetCredit`).
 - T3's Usage page (every account's limits, pooled accounts, usage-limit
@@ -1166,7 +1164,7 @@ OpenCode 2 behaviour.
 - OpenCode 1.x (T3's `adapter.ts` over `@opencode-ai/sdk`): a CLI older than
   2.0 is reported as unsupported.
 - T3's per-thread MCP server inside OpenCode, subagent
-  child sessions and background wakes, OpenCode Go usage limits, text
+  child sessions and background wakes, text
   generation, skills and `$skill` mentions, the version advisory and
   self-update.
 
@@ -1216,3 +1214,76 @@ the plugin; it needs no npm dependency.
   with the plugin.
 - Against the real OpenCode 2 by hand: a supervised turn asks before a
   command, runs it once approved and answers.
+
+## Usage, accounts and the providers' rest (W36)
+
+Round 4 of `docs/plans/t3-roadmap.md`: what the providers' Deferred lists
+kept of T3's usage limits, accounts, MCP apps and Claude Code's native
+history. The reference is T3 Code `eb7b35ac` (D53).
+
+### Decisions
+
+- **D1301. Claude Code reads its usage limits as T3 does**
+  (`claudeUsageLimits.ts`, ported as `plugins/agent-claude/src/usage-limits.ts`):
+  the status probe of a signed-in Claude Code also asks the SDK's usage
+  request (`usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` with
+  `skipBehaviors`, so Claude Code does not scan its transcripts; 4 s, T3's
+  `DEFAULT_TIMEOUT_MS`) before the probe closes its query. `five_hour` is
+  Session and `seven_day` Weekly; each `model_scoped` entry is "Weekly ·
+  {model}" (id `seven_day_<model>`), and the first one's name is kept for the
+  events of D1302. `rate_limits_available: false` (an API key, Bedrock,
+  Vertex) has none (`unsupported`); a Claude Code without the request, one
+  that fails it or does not answer in time is `probeFailed` with the reason.
+  The kept probe (D344) keeps no limits: a restarted node reads them again
+  on the first look.
+- **D1302. A turn's `rate_limit_event`s update them**, T3's
+  `claudeRateLimitEventToUpdate` and `applyUsageLimitsUpdate`: the event's
+  0–1 utilization lands on the row of its window id, keeping the row's reset
+  time and duration when the event names none; `seven_day_overage_included`
+  lands on the model-scoped row the last read named, and is dropped before
+  any read named one. An account without limits stays without, and a read
+  that failed stays failed (one window is not the account's limits) until
+  the next read. A new probe
+  forgets the events older than its read; the events are forgotten once the
+  config names another Claude Code (binary or environment).
+- **D1303. A turn a usage limit stopped fails as one**
+  (`UsageLimitError`, D1143), T3's rule: a 429 result; or, after a
+  `rate_limit_event` that rejected a window without overage to pay for it
+  (or a last top-level answer whose `error` is `rate_limit`), a failed result
+  with no other API status and no stop reason but `api_error` or
+  `blocking_limit`. Such a failure says T3's "Claude usage limit reached.
+  Send the message again once the limit resets." when Claude Code listed no
+  error of its own; its `resetAt` is the latest reset of the rejected
+  windows when every one named its reset. A gateway's 503 that wraps
+  Claude's 429 with "(reset after 1h 30m)" is one too, with that reset. A
+  later `allowed` event of the window lifts its rejection, so a full context
+  window (`blocking_limit` too) stays "Claude stopped: the prompt exceeds the
+  model's context window.".
+- **D1304. `agents.usage-limits` reads Claude's again** when what it knows
+  (the read or an event, the newer) is older than a minute, the read failed
+  or was never made, or a window it shows has reset since, as Codex's
+  (D1142); signed out it cannot tell (`undefined`). `agents.list` and
+  `agents.commands` offer T3's `/usage-limits` for Claude Code now (D1141).
+- **D1305. OpenCode Go's usage limits**, T3's
+  `provider-opencode/usageLimits.ts`: the runtime reads the account's Go
+  allowance from `https://opencode.ai/zen/go/v1/usage` with the Go key
+  OpenCode signs in with (its auth file's `opencode-go` API key under
+  `$XDG_DATA_HOME/opencode/auth.json`, `OPENCODE_AUTH_CONTENT`, else
+  `OPENCODE_API_KEY`; Jhin reads and keeps no copy of it): "Go · Session" (5
+  hours), "Go · Weekly" and "Go · Monthly". There are none when OpenCode is
+  disabled, for a server the config names (it owns its credentials), without
+  a key or for a key without a Go subscription (403); any other failure, or a
+  read past 5 s, is `probeFailed` ("OpenCode Go could not read usage."). It
+  is read again as D1304 says; looks while a read runs share it.
+
+### Deferred
+
+- T3's mid-turn notice of a Claude usage limit ("Claude usage limit reached.
+  This turn is paused until the Session limit resets in 2h.") while Claude
+  Code waits on it: the turn shows nothing until it fails.
+- T3's `api_retry` frames as usage limits: Jhin does not read Claude Code's
+  retries.
+- A `rate_limit_event` outside a turn (a background task's): only a turn's
+  frames are read.
+- T3's account fingerprint for OpenCode Go (`credentialFingerprint`, which
+  pools one account seen from several environments on the Usage page).
