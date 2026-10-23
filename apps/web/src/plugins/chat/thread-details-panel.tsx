@@ -247,12 +247,17 @@ export function ThreadDetailsInline(
     const element = card.current;
     // Without room it is the popover anyway: what the card held stays known across a resize.
     if (!room || element === null) return;
-    // A section shows something to read; one that renders an empty element shows nothing.
-    const report = () =>
+    // A section shows text, or an image or a control; one that renders only empty elements
+    // shows nothing.
+    const report = () => {
+      const content = element.querySelector("[data-thread-details-content]");
       visibility.setFilled(
         key,
-        (element.querySelector("[data-thread-details-content]")?.textContent ?? "").trim() !== "",
+        content !== null &&
+          ((content.textContent ?? "").trim() !== "" ||
+            content.querySelector("img, svg, button, input, select, progress, [role]") !== null),
       );
+    };
     report();
     const observer = new MutationObserver(report);
     observer.observe(element, { childList: true, subtree: true, characterData: true });
