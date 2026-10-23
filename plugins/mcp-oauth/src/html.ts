@@ -22,6 +22,10 @@ const STYLES = `
   li { padding: 8px 12px; border-top: 1px solid #d9dce3; font-size: 13px; }
   li:first-child { border-top: 0; }
   li span { display: block; color: #4b5060; font-size: 12px; }
+  fieldset { border: 0; margin: 0 0 8px; padding: 0; }
+  legend { font-size: 13px; font-weight: 600; margin: 0 0 6px; padding: 0; }
+  .level { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; font-weight: 400; }
+  .level span span { display: block; color: #4b5060; font-size: 12px; }
   li .shell { display: block; color: #b42318; font-size: 12px; font-weight: 600; }
   code { font-size: 11px; color: #4b5060; }
   label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
@@ -34,6 +38,7 @@ const STYLES = `
     body { background: #0f1115; color: #e6e8ee; }
     p, li span, code { color: #a0a6b4; }
     li .shell { color: #ff8787; }
+    .level span span { color: #a0a6b4; }
     ul, li { border-color: #2a2e38; }
     input[type=text] { background: #171a21; border-color: #2a2e38; color: inherit; }
   }
@@ -96,12 +101,45 @@ export interface ApprovalPage {
    * cannot tell which of them run commands, rather than showing none.
    */
   readonly permissionsUnknown?: boolean;
+  /**
+   * The request asks for nothing "Read only" could grant (D1369): that level
+   * is offered disabled and "Supervised" is chosen first.
+   */
+  readonly nothingReadable?: boolean;
   /** Set when the page's session may approve: its anti-forgery value. */
   readonly csrf?: string;
   /** Why the session cannot approve, when it has one. */
   readonly sessionProblem?: string;
   readonly nonce: string;
 }
+
+/**
+ * T3's access levels (ConnectAgentSurface.tsx, runtimeModeConfig.ts) for the
+ * runtime modes Jhin has (security.md D1369).
+ */
+export const ACCESS_LEVELS = [
+  {
+    access: "read-only",
+    label: "Read only",
+    description: "Read projects and threads. Cannot start, message or change anything.",
+  },
+  {
+    access: "approval-required",
+    label: "Supervised",
+    description: "Ask before commands and file changes.",
+  },
+  {
+    access: "auto-accept-edits",
+    label: "Auto-accept edits",
+    description: "Auto-approve edits, ask before other actions.",
+  },
+  {
+    access: "full-access",
+    label: "Full access",
+    description: "Allow commands and edits without prompts.",
+  },
+] as const;
+export type AccessLevel = (typeof ACCESS_LEVELS)[number]["access"];
 
 export function renderApprovalPage(page: ApprovalPage): string {
   const hidden = Object.entries(page.params)
@@ -142,6 +180,16 @@ export function renderApprovalPage(page: ApprovalPage): string {
     </form>`
       : `<form method="post" action="/oauth/mcp/authorize">${hidden}
       <input type="hidden" name="csrf" value="${escapeHtml(page.csrf)}" />
+      <fieldset role="radiogroup" aria-labelledby="access-label">
+        <legend id="access-label">What it may do</legend>
+        ${ACCESS_LEVELS.map(({ access, label, description }, index) => {
+          const chosen = index === (page.nothingReadable === true ? 1 : 0);
+          const disabled = page.nothingReadable === true && access === "read-only";
+          return `<label class="level"><input type="radio" name="access" value="${access}"${chosen ? " checked" : ""}${disabled ? " disabled" : ""} /><span><strong>${label}</strong><span>${description}</span></span></label>`;
+        }).join("\n        ")}
+        <p class="note">Beyond read only, it can start, message and stop threads, and none of them can run with more than the mode you pick.</p>
+        <p class="note">Read only grants only the permissions above that read.</p>
+      </fieldset>
       <div class="actions">
         <button class="primary" type="submit" name="decision" value="approve">Approve</button>
         <button type="submit" name="decision" value="deny">Deny</button>

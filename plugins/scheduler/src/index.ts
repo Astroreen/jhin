@@ -7,7 +7,7 @@
 import * as Crypto from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
+import { THREADS_STREAM, ThreadEvents, ceilingOf } from "@jhin/agent-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import {
@@ -753,9 +753,23 @@ function activateScheduler(context: PluginContext): void {
   const interactionRank = (mode: InteractionModeName | undefined) =>
     mode === undefined ? INTERACTION_RANK.default : INTERACTION_RANK[mode];
 
-  /** The modes of the thread an agent calls from: no task of its may run broader. */
-  const callerLimits = async (callerThreadId: string | undefined): Promise<Modes | undefined> =>
-    callerThreadId === undefined ? undefined : await callingThread(callerThreadId);
+  /**
+   * The modes of the thread an agent calls from, and the runtime mode ceiling
+   * its grants name (security.md D1370): no task of its may run broader.
+   */
+  const callerLimits = async (
+    callerThreadId: string | undefined,
+    grants?: readonly string[],
+  ): Promise<Modes | undefined> => {
+    const thread = callerThreadId === undefined ? undefined : await callingThread(callerThreadId);
+    const ceiling = ceilingOf(grants);
+    if (ceiling === undefined) return thread;
+    const runtimeMode =
+      thread === undefined || runtimeRank(thread.runtimeMode) > RUNTIME_RANK[ceiling]
+        ? ceiling
+        : thread.runtimeMode;
+    return { ...thread, runtimeMode };
+  };
 
   /** What a task's runs execute at: its own modes, and its bound thread's (T3's run modes). */
   const runModes = async (task: Modes & { readonly threadId: string | null }) => {
@@ -836,8 +850,11 @@ function activateScheduler(context: PluginContext): void {
    * The calling thread's guard: a task it may change, run or delete runs no broader than it.
    * Undefined without a calling thread.
    */
-  const guardFor = async (callerThreadId: string | undefined): Promise<Guard | undefined> => {
-    const limits = await callerLimits(callerThreadId);
+  const guardFor = async (
+    callerThreadId: string | undefined,
+    grants?: readonly string[],
+  ): Promise<Guard | undefined> => {
+    const limits = await callerLimits(callerThreadId, grants);
     return limits === undefined
       ? undefined
       : async (task) => assertWithin(limits, await runModes(task));
@@ -871,11 +888,12 @@ function activateScheduler(context: PluginContext): void {
     raw: z.input<typeof CreateTaskInput>,
     callerId = "",
     callerThreadId?: string,
+    grants?: readonly string[],
   ): Promise<ScheduledTask> => {
     const bound = await bindToCaller(CreateTaskInput.parse(raw), raw, callerThreadId);
     const input = { ...bound, threadId: bound.threadId ?? null };
-    // From a thread, no wider than that thread runs (D1352).
-    assertWithin(await callerLimits(callerThreadId), await runModes(input));
+    // From a thread, no wider than that thread runs (D1352), nor than the caller's ceiling (D1370).
+    assertWithin(await callerLimits(callerThreadId, grants), await runModes(input));
     // A retried create names the task it made: its id comes from the caller
     // and the request's id, so another caller's id never finds it.
     const id =
@@ -947,11 +965,12 @@ function activateScheduler(context: PluginContext): void {
   const update = async (
     raw: z.input<typeof UpdateTaskInput>,
     callerThreadId?: string,
+    grants?: readonly string[],
   ): Promise<ScheduledTask> => {
     let parsed = UpdateTaskInput.parse(raw);
     // From a thread: only a task no broader than it, into modes and a thread no broader (D1352),
     // checked on the task as it is under its lock.
-    const limits = await callerLimits(callerThreadId);
+    const limits = await callerLimits(callerThreadId, grants);
     // Moved into the calling thread, or out of any, with T3's workspace (D1177).
     if (parsed.bindToCurrentThread !== undefined) {
       if (parsed.threadId !== undefined) {
@@ -1506,7 +1525,7 @@ function activateScheduler(context: PluginContext): void {
       const head = await log.head(SCHEDULER_STREAM);
       const withToken = mayWrite(invocation);
       // Its URL starts runs: a thread sees it only for tasks no broader than it (D1352).
-      const limits = await callerLimits(invocation.threadId);
+      const limits = await callerLimits(invocation.threadId, invocation.caller?.permissions);
       const tasks: ScheduledTask[] = [];
       for (const task of await list(projectId)) {
         const shown = withToken && (task.webhook === undefined || (await urlShown(limits, task)));
@@ -1528,7 +1547,7 @@ function activateScheduler(context: PluginContext): void {
     permissions: read,
     handler: async ({ id }, invocation) => {
       const task = await getTask(id);
-      const limits = await callerLimits(invocation.threadId);
+      const limits = await callerLimits(invocation.threadId, invocation.caller?.permissions);
       return toPublic(task, mayWrite(invocation) && (await urlShown(limits, task)));
     },
   });
@@ -1541,7 +1560,8 @@ function activateScheduler(context: PluginContext): void {
     input: CreateTaskInput,
     output: ScheduledTask,
     permissions: write,
-    handler: (input, invocation) => create(input, invocation.caller?.id, invocation.threadId),
+    handler: (input, invocation) =>
+      create(input, invocation.caller?.id, invocation.threadId, invocation.caller?.permissions),
   });
 
   context.commands.register({
@@ -1552,7 +1572,8 @@ function activateScheduler(context: PluginContext): void {
     input: UpdateTaskInput,
     output: ScheduledTask,
     permissions: write,
-    handler: (input, invocation) => update(input, invocation.threadId),
+    handler: (input, invocation) =>
+      update(input, invocation.threadId, invocation.caller?.permissions),
   });
 
   context.commands.register({
@@ -1565,7 +1586,10 @@ function activateScheduler(context: PluginContext): void {
     permissions: ["scheduler.write"],
     handler: async ({ id }, invocation) => ({
       id,
-      deleted: await removeTask(id, await guardFor(invocation.threadId)),
+      deleted: await removeTask(
+        id,
+        await guardFor(invocation.threadId, invocation.caller?.permissions),
+      ),
     }),
   });
 
@@ -1577,7 +1601,8 @@ function activateScheduler(context: PluginContext): void {
     input: withId,
     output: z.object({ task: ScheduledTask, threadId: z.string().nullable() }),
     permissions: write,
-    handler: async ({ id }, invocation) => runNow(id, await guardFor(invocation.threadId)),
+    handler: async ({ id }, invocation) =>
+      runNow(id, await guardFor(invocation.threadId, invocation.caller?.permissions)),
   });
 
   context.commands.register({
@@ -1588,7 +1613,7 @@ function activateScheduler(context: PluginContext): void {
     output: ScheduledTask,
     permissions: write,
     handler: async ({ id }, invocation) =>
-      rotateWebhookToken(id, await guardFor(invocation.threadId)),
+      rotateWebhookToken(id, await guardFor(invocation.threadId, invocation.caller?.permissions)),
   });
 
   context.commands.register({

@@ -170,6 +170,30 @@ describe("delegated tasks", () => {
     await feed.task(woken.taskId, (record) => record.delivery === "delivered");
   });
 
+  it("gives a held caller's child no more than its ceiling (security.md D1370)", async () => {
+    const { client, kernel } = await node({ config: FAKE });
+    const parent = await parentThread(client, {
+      agentId: "jhin.agent-fake",
+      runtimeMode: "full-access",
+    });
+    const held = {
+      caller: { id: "client:agent", permissions: ["*", "threads.mode.approval-required"] },
+    };
+    const child = (await kernel.commands.execute(
+      "tasks.delegate",
+      { task: "held", mode: "wait", parentThreadId: parent.id },
+      held,
+    )) as TaskView;
+    expect(child.runtimeMode).toBe("approval-required");
+    await expect(
+      kernel.commands.execute(
+        "tasks.delegate",
+        { task: "x", runtimeMode: "full-access", parentThreadId: parent.id },
+        held,
+      ),
+    ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+  });
+
   it("inherits the parent's agent, model and modes, and refuses broader modes", async () => {
     const { client } = await node({
       config: FAKE,

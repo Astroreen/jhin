@@ -506,6 +506,89 @@ describe("jhin.threads: agents", () => {
     ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
   });
 
+  it("holds a caller to the runtime mode its grants name (security.md D1370)", async () => {
+    seen.length = 0;
+    const { client, kernel } = await node({ plugins: [registering(claude)] });
+    const held = {
+      caller: {
+        id: "client:agent",
+        permissions: ["threads.read", "threads.write", "threads.mode.approval-required"],
+      },
+    };
+    const owner = { caller: { id: "owner", permissions: ["*"] } };
+    // A mode it is given is lowered where a thread is made or changed.
+    const thread = (await kernel.commands.execute(
+      "threads.create",
+      { agentId: "acme.claude", runtimeMode: "full-access" },
+      held,
+    )) as Thread;
+    expect(thread.runtimeMode).toBe("approval-required");
+    // Named or not, a held caller's thread starts at its ceiling.
+    const unnamed = (await kernel.commands.execute("threads.create", {}, held)) as Thread;
+    expect(unnamed.runtimeMode).toBe("approval-required");
+    const raised = (await kernel.commands.execute(
+      "threads.update",
+      { threadId: thread.id, runtimeMode: "full-access" },
+      owner,
+    )) as Thread;
+    expect(raised.runtimeMode).toBe("full-access");
+    expect(
+      (
+        (await kernel.commands.execute(
+          "threads.update",
+          { threadId: thread.id, runtimeMode: "auto-accept-edits" },
+          held,
+        )) as Thread
+      ).runtimeMode,
+    ).toBe("approval-required");
+    await kernel.commands.execute(
+      "threads.update",
+      { threadId: thread.id, runtimeMode: "full-access" },
+      owner,
+    );
+
+    const { until } = watch(client, thread.id);
+    // A message names no mode: the thread's full access is lowered for it,
+    await kernel.commands.execute("threads.send", { threadId: thread.id, text: "a" }, held);
+    await until("agent.turn.completed");
+    // and one that asks for more gets no more,
+    await kernel.commands.execute(
+      "threads.queue.add",
+      { threadId: thread.id, text: "b", runtimeMode: "full-access" },
+      held,
+    );
+    await until("agent.turn.completed", 1);
+    await kernel.commands.execute("threads.steer", { threadId: thread.id, text: "c" }, held);
+    await until("agent.turn.completed", 2);
+    await kernel.commands.execute("threads.regenerate", { threadId: thread.id }, held);
+    await until("agent.turn.completed", 3);
+    // The thread keeps the mode its last turn ran with, as after any send;
+    await kernel.commands.execute("threads.send", { threadId: thread.id, text: "d" }, owner);
+    await until("agent.turn.completed", 4);
+    // a caller whose grants name no mode is not held.
+    await kernel.commands.execute(
+      "threads.send",
+      { threadId: thread.id, text: "e", runtimeMode: "full-access" },
+      { caller: { id: "client:phone", permissions: ["threads.read", "threads.write"] } },
+    );
+    await until("agent.turn.completed", 5);
+    expect(seen.map((request) => request.runtimeMode)).toEqual([
+      "approval-required",
+      "approval-required",
+      "approval-required",
+      "approval-required",
+      "approval-required",
+      "full-access",
+    ]);
+    // The thread runs in full access again; a held caller's fork of it does not.
+    const forked = (await kernel.commands.execute(
+      "threads.fork",
+      { threadId: thread.id },
+      held,
+    )) as Thread;
+    expect(forked.runtimeMode).toBe("approval-required");
+  });
+
   it("runs a turn with the model's options, keeps them for the thread and drops what the model does not declare", async () => {
     seen.length = 0;
     const optioned: AgentRuntime = {

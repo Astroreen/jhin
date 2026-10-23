@@ -17,7 +17,13 @@ import { AGENT_PERMISSIONS } from "@jhin/mcp-api";
 import { definePlugin, holdsPermission } from "@jhin/sdk";
 import { SECRETS_STORE_CAPABILITY, type SecretStore } from "@jhin/secrets-api";
 
-import { pageHeaders, renderApprovalPage, renderErrorPage } from "./html.ts";
+import {
+  ACCESS_LEVELS,
+  pageHeaders,
+  renderApprovalPage,
+  renderErrorPage,
+  type AccessLevel,
+} from "./html.ts";
 import {
   authorizationServerMetadata,
   createOAuth,
@@ -31,6 +37,18 @@ const SIGNING_KEY = "jhin.mcp-oauth/signing-key";
 /** An OAuth client's token lives as long as a paired device's (security.md D1195). */
 const TOKEN_TTL_DAYS = 30;
 const MAX_BODY = 16 * 1024;
+/**
+ * What an access level grants of what was asked (security.md D1369): read
+ * only, the asked `*.read` permissions; any other level, all of it and the
+ * level's runtime mode ceiling (`threads.mode.<mode>`, D1370).
+ */
+export function grantsFor(level: AccessLevel, asked: readonly string[]): string[] {
+  if (level === "read-only") return asked.filter((scope) => scope.endsWith(".read"));
+  // The ceiling is the approver's choice, never the client's: a mode it asked for goes.
+  const chosen = asked.filter((scope) => !scope.startsWith("threads.mode."));
+  return [...new Set([...chosen, `threads.mode.${level}`])];
+}
+
 /** Approving issues tokens: the approver needs `auth.write` (D1193). */
 const APPROVE_PERMISSION = "auth.write";
 
@@ -304,6 +322,9 @@ export default definePlugin({
           nodeHost: new URL(urls.issuer).host,
           params: kept,
           ...(described === undefined ? { permissionsUnknown: true } : {}),
+          ...(grantsFor("read-only", authorization.scopes).length === 0
+            ? { nothingReadable: true }
+            : {}),
           permissions: authorization.scopes.map((scope) => {
             const entry = known.get(scope) ?? { permission: scope };
             // A pattern (`terminals.*`) grants shell access when it covers a permission
@@ -373,7 +394,8 @@ export default definePlugin({
           .end(renderErrorPage("The page sent no decision. Open the sign-in link again."));
         return;
       }
-      const approver = await approverOf(request, authorization);
+      // The session and its anti-forgery value first, so nothing else is told to another page.
+      const approver = await approverOf(request, { ...authorization, scopes: [] });
       if (
         approver.kind !== "ok" ||
         !oauth.csrfMatches(params["csrf"] ?? "", approver.session, authorization)
@@ -387,12 +409,49 @@ export default definePlugin({
           );
         return;
       }
+      // T3's access level (security.md D1369): what the approver picked on the page.
+      const level = ACCESS_LEVELS.find((entry) => entry.access === params["access"])?.access;
+      if (level === undefined) {
+        response
+          .writeHead(400, pageHeaders())
+          .end(renderErrorPage("The page sent no access level. Open the sign-in link again."));
+        return;
+      }
+      const granted = grantsFor(level, authorization.scopes);
+      if (granted.length === 0) {
+        response
+          .writeHead(400, pageHeaders())
+          .end(
+            renderErrorPage(
+              "This agent asked for nothing it could read. Choose another access level.",
+            ),
+          );
+        return;
+      }
+      // The approver gives only what it holds (D413), the level's ceiling included.
+      const missing = granted.filter(
+        (permission) => !holdsPermission(approver.principal.permissions, permission),
+      );
+      if (missing.length > 0) {
+        response
+          .writeHead(403, pageHeaders())
+          .end(
+            renderErrorPage(
+              `This session cannot grant ${missing.join(", ")}. Choose another access level, or approve with a session that holds it.`,
+            ),
+          );
+        return;
+      }
       context.log.warn("an MCP client sign-in was approved", {
         client: authorization.client.name,
         approver: approver.principal.id,
-        scopes: authorization.scopes,
+        access: level,
+        scopes: granted,
       });
-      redirect(response, oauth.approve(authorization, { id: approver.principal.id }));
+      redirect(
+        response,
+        oauth.approve({ ...authorization, scopes: granted }, { id: approver.principal.id }),
+      );
     });
 
     add("POST", "/oauth/mcp/token", async (request, response) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { renderApprovalPage } from "../src/html.ts";
+import { grantsFor } from "../src/index.ts";
 
 describe("the approval page (security.md D1193)", () => {
   it("says which asked-for permissions have shell access (D1364)", () => {
@@ -40,5 +41,64 @@ describe("permissions the node could not describe (security.md D1364)", () => {
       "cannot tell which of them run commands on this machine. Approve only what you would give shell access.",
     );
     expect(render(false)).not.toContain("cannot tell which of them");
+  });
+});
+
+describe("T3's access levels (security.md D1369)", () => {
+  it("offers read only first, then the runtime modes, with T3's note", () => {
+    const page = renderApprovalPage({
+      clientName: "Agent",
+      redirectHost: "127.0.0.1:9999",
+      nodeHost: "127.0.0.1:7777",
+      params: {},
+      permissions: [],
+      csrf: "c",
+      nonce: "n",
+    });
+    const levels = [...page.matchAll(/name="access" value="([^"]+)"( checked)?/g)].map((match) => [
+      match[1],
+      match[2] !== undefined,
+    ]);
+    expect(levels).toEqual([
+      ["read-only", true],
+      ["approval-required", false],
+      ["auto-accept-edits", false],
+      ["full-access", false],
+    ]);
+    expect(page).toContain("<strong>Supervised</strong>");
+    // Nothing readable asked for: "Read only" is offered disabled, "Supervised" chosen.
+    const unreadable = renderApprovalPage({
+      clientName: "Agent",
+      redirectHost: "127.0.0.1:9999",
+      nodeHost: "127.0.0.1:7777",
+      params: {},
+      permissions: [],
+      csrf: "c",
+      nonce: "n",
+      nothingReadable: true,
+    });
+    expect(unreadable).toContain('value="read-only" disabled');
+    expect(unreadable).toContain('value="approval-required" checked');
+    expect(page).toContain(
+      "Beyond read only, it can start, message and stop threads, and none of them can run with more than the mode you pick.",
+    );
+  });
+
+  it("grants read only the asked reads, and any other level what was asked and its ceiling", () => {
+    const asked = ["threads.read", "threads.write", "projects.read"];
+    expect(grantsFor("read-only", asked)).toEqual(["threads.read", "projects.read"]);
+    expect(grantsFor("approval-required", asked)).toEqual([
+      ...asked,
+      "threads.mode.approval-required",
+    ]);
+    expect(grantsFor("full-access", asked)).toEqual([...asked, "threads.mode.full-access"]);
+    // A mode the client asked for is dropped: the approver picks the ceiling.
+    expect(
+      grantsFor("approval-required", [
+        "threads.write",
+        "threads.mode.full-access",
+        "threads.mode.*",
+      ]),
+    ).toEqual(["threads.write", "threads.mode.approval-required"]);
   });
 });

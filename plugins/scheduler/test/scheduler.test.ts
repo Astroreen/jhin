@@ -582,6 +582,33 @@ describe("jhin.scheduler: the calling thread's ceiling on a task's modes (D1352)
     kernel.commands.execute(name, input, { threadId }) as Promise<ScheduledTask>;
   const schedule = { type: "interval", everyMs: 60 * MINUTE };
 
+  it("holds a caller to the runtime mode ceiling its grants name (security.md D1370)", async () => {
+    const { kernel } = await node();
+    const held = {
+      caller: {
+        id: "client:agent",
+        permissions: ["*", "threads.mode.approval-required"],
+      },
+    };
+    await expect(
+      kernel.commands.execute(
+        "scheduler.tasks.create",
+        { prompt: "x", schedule, runtimeMode: "full-access" },
+        held,
+      ),
+    ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+    // Leaving the mode out runs at the broadest: refused as well.
+    await expect(
+      kernel.commands.execute("scheduler.tasks.create", { prompt: "x", schedule }, held),
+    ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+    const within = (await kernel.commands.execute(
+      "scheduler.tasks.create",
+      { prompt: "x", schedule, runtimeMode: "approval-required" },
+      held,
+    )) as ScheduledTask;
+    expect(within.runtimeMode).toBe("approval-required");
+  });
+
   it("refuses modes broader than the thread's, and tasks that run broader, as T3's limits", async () => {
     const { kernel, client } = await node();
     const caller = await client.call<{ id: string }>("threads.create", {

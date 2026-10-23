@@ -13,6 +13,8 @@ import * as Path from "node:path";
 import {
   AGENT_REGISTRY_CAPABILITY,
   DEFAULT_RUNTIME_MODE,
+  capRuntimeMode,
+  ceilingOf,
   INTERACTION_MODES,
   ORCHESTRATION_STREAM,
   OrchestrationEvents,
@@ -1044,7 +1046,11 @@ export default definePlugin({
       const runtimeMode = resolveMode<RuntimeMode>({
         kind: "runtime",
         requested: request.runtimeMode,
-        parent: parent.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+        // No broader than the caller's ceiling either (security.md D1370).
+        parent: capRuntimeMode(
+          parent.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+          ceilingOf(invocation?.caller?.permissions),
+        ),
         offered: agent.runtimeModes,
         rank: RUNTIME_RANK,
         agentName: agent.agentId,
