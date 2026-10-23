@@ -190,6 +190,7 @@ import {
   sidebarThreadStatus,
   sidebarThreads,
   sidebarTopStatus,
+  isUsageLimited,
   threadActivityAt,
   threadKey,
   wokeAt,
@@ -406,6 +407,7 @@ const TOP_STATUS: Record<
   { label: string; className: string; icon: ComponentType<{ className?: string }> }
 > = {
   working: { label: "Working", className: "text-info", icon: CircleDashedIcon },
+  goal: { label: "Goal", className: "text-info", icon: CircleDashedIcon },
   waiting: { label: "Waiting", className: "text-muted-foreground", icon: CircleDotDashedIcon },
   approval: { label: "Approval", className: "text-warning-foreground", icon: ShieldQuestionIcon },
   input: {
@@ -413,6 +415,7 @@ const TOP_STATUS: Record<
     className: "text-indigo-600 dark:text-indigo-300",
     icon: MessageCircleQuestionIcon,
   },
+  limited: { label: "Limited", className: "text-warning", icon: CircleAlertIcon },
   failed: { label: "Failed", className: "text-error", icon: CircleAlertIcon },
   woke: { label: "Woke", className: "text-warning", icon: AlarmClockIcon },
   done: { label: "Done", className: "text-success", icon: CircleCheckIcon },
@@ -1175,9 +1178,16 @@ export const sidebarPlugin = builtin(
                 </div>
               )}
               {thread.lastTurn?.status === "failed" ? (
-                <div className="flex min-w-0 items-center gap-2 text-error">
+                <div
+                  className={cn(
+                    "flex min-w-0 items-center gap-2",
+                    isUsageLimited(thread) ? "text-warning" : "text-error",
+                  )}
+                >
                   <CircleAlertIcon className="size-3 shrink-0 stroke-current" />
-                  <div className="min-w-0 truncate">Error occurred</div>
+                  <div className="min-w-0 truncate">
+                    {isUsageLimited(thread) ? "Usage limit reached" : "Error occurred"}
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -1408,7 +1418,7 @@ export const sidebarPlugin = builtin(
         const lastVisit = lastVisitOf(thread, seen[visitKey(target, thread.id)]);
         const unread = isUnread(thread, lastVisit);
         const woke = isWoke(thread, lastVisit, now);
-        const top = sidebarTopStatus(status, unread, woke);
+        const top = sidebarTopStatus(status, unread, woke, thread.goalStatus === "active");
         const isSelected = useExternal(selection, () => selection.get().keys.includes(entry.key));
         const swept = useExternal(sweep, () => {
           const current = sweep.get();
@@ -1508,7 +1518,7 @@ export const sidebarPlugin = builtin(
                         ? "text-secondary-label"
                         : unread || woke || status === "input"
                           ? "text-foreground"
-                          : status === "failed"
+                          : status === "failed" || status === "limited"
                             ? "text-foreground/95"
                             : "text-foreground/90",
                     )
@@ -2096,7 +2106,7 @@ export const sidebarPlugin = builtin(
             <Icon className="size-4 shrink-0" />
             {/* The label alone is the live region, not the ticking duration. */}
             <span role="status">{label}</span>
-            {kind === "working" && startedAt !== undefined ? (
+            {(kind === "working" || kind === "goal") && startedAt !== undefined ? (
               <span aria-hidden>
                 <WorkingDuration startedAt={startedAt} />
               </span>

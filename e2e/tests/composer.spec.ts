@@ -517,6 +517,10 @@ test("shows the agent's usage limits on /usage-limits, and a usage-limit failure
   // T3's warning row, with the time to retry after instead of the agent's message.
   await expect(page.getByText(/^Usage limit reached\. Retry after .+\.$/)).toBeVisible();
   await expect(page.getByText("Turn failed")).toHaveCount(0);
+  // The sidebar says "Limited", not "Failed" (t3-parity.md D1307).
+  const sidebar = page.getByRole("navigation", { name: "Sidebar" });
+  await expect(sidebar.getByRole("button", { name: /, Limited(, |$)/ })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: /, Failed(, |$)/ })).toHaveCount(0);
   const failed = info.outputPath("usage-limit-failure.png");
   await page.screenshot({ path: failed });
   await info.attach("usage limit failure", { path: failed, contentType: "image/png" });

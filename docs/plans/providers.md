@@ -902,8 +902,7 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
 - Reset credits: carried in `AgentUsageLimits`, neither shown nor redeemable
   (T3's `ResetCredits` and `consumeResetCredit`).
 - T3's Usage page (every account's limits, pooled accounts, usage-limit
-  sources such as CLIProxy) and the sidebar's "limited" state of a thread
-  whose turn hit a limit (it shows "Failed").
+  sources such as CLIProxy). The sidebar's "Limited" is `t3-parity.md` D1307.
 - A reset time Codex sends after the turn already failed (T3 updates the
   failure item); Codex sends its rate-limit update before the error in
   practice.
@@ -913,8 +912,8 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
   starts over with the transcript (D1147).
 - A sign-out does not end the app-servers already running with the old
   sign-in (T3 stops the threads sharing it); they use it until they end.
-- T3's sidebar label "Goal" for a thread pursuing one, its goal checks
-  count, and a goal turn Codex starts after the run settled (T3 stops it and
+- T3's goal checks count (the sidebar's "Goal" is `t3-parity.md` D1307),
+  and a goal turn Codex starts after the run settled (T3 stops it and
   pauses the goal; Jhin drops its frames).
 - Codex subagents that outlive their turn (T3 follows a child's lifecycle
   after the parent's turn ended): Jhin ends them with the turn (D1145), and
