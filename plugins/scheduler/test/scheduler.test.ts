@@ -641,6 +641,50 @@ describe("jhin.scheduler: the calling thread's ceiling on a task's modes (D1352)
     expect(await call("scheduler.tasks.delete", { id: own.id })).toMatchObject({ deleted: true });
   });
 
+  it("hides one task's URL when its bound thread cannot be read, not the list", async () => {
+    const { kernel, client, storage } = await node();
+    const caller = await client.call<{ id: string }>("threads.create", {
+      runtimeMode: "full-access",
+      interactionMode: "default",
+    });
+    const bound = await client.call<{ id: string }>("threads.create", {});
+    const hook = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "w",
+      schedule: { type: "webhook" },
+      threadId: bound.id,
+      runtimeMode: "approval-required",
+    });
+    const plain = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "v",
+      schedule: { type: "webhook" },
+      runtimeMode: "approval-required",
+    });
+    // The bound thread's record fails to read (not "not found").
+    const get = storage.kv.get.bind(storage.kv);
+    storage.kv.get = async (namespace, key) => {
+      if (key === `thread/${bound.id}`) throw new Error("disk read failed");
+      return get(namespace, key);
+    };
+    onTestFinished(() => {
+      storage.kv.get = get;
+    });
+    const call = asThread(kernel, caller.id);
+    const listed = (await call("scheduler.tasks.list", {})) as unknown as {
+      tasks: ScheduledTask[];
+    };
+    expect(listed.tasks.find((task) => task.id === hook.id)?.webhook?.path).toBeNull();
+    expect(listed.tasks.find((task) => task.id === plain.id)?.webhook?.path).toEqual(
+      plain.webhook?.path,
+    );
+    expect(
+      ((await call("scheduler.tasks.get", { id: hook.id })) as ScheduledTask).webhook?.path,
+    ).toBeNull();
+    // What changes or runs it still refuses on the failed read.
+    await expect(call("scheduler.tasks.update", { id: hook.id, prompt: "x" })).rejects.toThrow(
+      "disk read failed",
+    );
+  });
+
   it("counts the modes of the thread a task posts into", async () => {
     const { kernel, client } = await node();
     const narrow = await client.call<{ id: string }>("threads.create", {
@@ -658,6 +702,27 @@ describe("jhin.scheduler: the calling thread's ceiling on a task's modes (D1352)
     await expect(
       asThread(kernel, narrow.id)("scheduler.tasks.run", { id: task.id }),
     ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+
+    // The interaction mode is a ceiling for the same commands.
+    const planner = await client.call<{ id: string }>("threads.create", {
+      runtimeMode: "full-access",
+      interactionMode: "plan",
+    });
+    const asPlanner = asThread(kernel, planner.id);
+    const defaultTask = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "d",
+      schedule,
+      interactionMode: "default",
+    });
+    for (const [name, input] of [
+      ["scheduler.tasks.update", { id: defaultTask.id, prompt: "e" }],
+      ["scheduler.tasks.run", { id: defaultTask.id }],
+      ["scheduler.tasks.delete", { id: defaultTask.id }],
+    ] as const) {
+      await expect(asPlanner(name, input)).rejects.toMatchObject({
+        code: "INTERACTION_MODE_ESCALATION_DENIED",
+      });
+    }
 
     // Its own task may not be moved into a broader thread either.
     const call = asThread(kernel, narrow.id);
