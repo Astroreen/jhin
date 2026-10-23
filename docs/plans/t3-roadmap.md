@@ -484,6 +484,21 @@ finishes out of the Deferred lists and leaves the rest there.
   the tools panel, an integrity pin for the hub's runtime installs, saving
   downloads to the client. The signed release path still waits for the
   owner's secrets.
+  **Done** (D1321–D1333, D1334–D1340 unused): #266 the app shows its own
+  node's browser tabs in webviews the node drives over T3's CDP relay
+  (`desktop.md`, D1321–D1325); #271 T3's chat canvas beside the mini player
+  and its picture-in-picture pop-out (D1326–D1327; the owner accepted
+  `preview.pop-out` needing a user's gesture as a departure from rule 6);
+  #275 the device hub's "Set up devices" wizard and agent access as consent
+  (D1328–D1329; the owner confirmed unset agent access following the hub);
+  #277 the hub's tools installed from shipped lockfiles (D1330); #279 a
+  page's downloads saved to the client (D1331); #281 T3's device tools
+  panel and the actions the node runs for it (D1332–D1333). Left in the
+  Deferred lists: device hosts over SSH (`preview.md`: T3's remote script,
+  tunnels and a multi-host proxy), a desktop tab that outlives its webview
+  and the rest around the app's webviews (`desktop.md`), and the open
+  points of each slice (`preview.md#deferred`). Signing still waits for the
+  owner's secrets.
 - **W38:** the editor parts of D303 (language-picker icons, leaving a code
   block from the keyboard, heading spacing, the chips of a sent message,
   `aria-activedescendant`), a mentioned file's preview beside the thread
