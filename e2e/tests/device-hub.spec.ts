@@ -12,7 +12,9 @@ let tools: ReturnType<typeof fakeTools>;
 test.beforeAll(async () => {
   tools = fakeTools();
   node = await startNode({
-    config: { "jhin.devices": { xcrun: tools.xcrun, npm: tools.npm, hub: true } },
+    config: {
+      "jhin.devices": { xcrun: tools.xcrun, npm: tools.npm, hub: true, onboardingCompleted: true },
+    },
   });
 });
 test.afterAll(async () => {
@@ -100,4 +102,62 @@ test("D1333: the device tools beside the screen read and change the simulator's 
   await shot(page, info, "device-tools");
   // Unknown settings (no serve-sim helper in the fake hub) cannot be switched.
   await expect(toolsPanel.getByRole("switch", { name: "Reduce Motion" })).toBeDisabled();
+});
+
+test("D1328: T3's Set up devices wizard turns the hub on, checks the simulators and finishes", async ({
+  page,
+}, info) => {
+  const setupTools = fakeTools();
+  const fresh = await startNode({
+    config: { "jhin.devices": { xcrun: setupTools.xcrun, npm: setupTools.npm } },
+  });
+  try {
+    await page.setViewportSize({ width: 360, height: 720 });
+    await page.setContent(`<body style="margin:0;background:#2d6a4f"></body>`);
+    Fs.writeFileSync(setupTools.jpeg, await page.screenshot({ type: "jpeg" }));
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.addInitScript(() => {
+      delete (globalThis as { VideoDecoder?: unknown }).VideoDecoder;
+    });
+    await page.goto(`${fresh.ui}#token=${fresh.token}`);
+    await page.getByRole("button", { name: "Start a thread" }).click();
+    const message = page.getByRole("textbox", { name: "Message" });
+    await message.fill("set up devices");
+    await message.press("Enter");
+    await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: set up devices");
+    const threadId = decodeURIComponent(/[#&]t=([^&]+)/.exec(page.url())![1]!);
+
+    // Nothing is set up yet: the Device panel opens on T3's wizard, the hub off.
+    await fresh.client().call("device.open", { threadId, deviceId: "SIM-1" });
+    const wizard = page.getByRole("dialog", { name: "Set up devices" });
+    await expect(wizard).toBeVisible();
+    const hub = wizard.getByRole("switch", { name: "Enable device hub" });
+    await expect(hub).not.toBeChecked();
+    await expect(wizard.getByRole("button", { name: "Continue" })).toBeDisabled();
+    await shot(page, info, "device-setup-hub");
+
+    // The switch is the consent: the hub installs, starts, and the wizard says so.
+    await hub.click();
+    await expect(hub).toBeChecked();
+    await expect(wizard.getByText("Device hub is ready.")).toBeVisible();
+    await wizard.getByRole("button", { name: "Continue" }).click();
+    await expect(wizard.getByText("Xcode and iOS Simulator are available.")).toBeVisible();
+    await wizard.getByRole("button", { name: "Continue" }).click();
+    await expect(
+      wizard.getByRole("switch", { name: "Allow agents to control devices" }),
+    ).not.toBeChecked();
+    await shot(page, info, "device-setup-agents");
+    await wizard.getByRole("button", { name: "Done" }).click();
+    await expect(wizard).toBeHidden();
+
+    // Set up: the panel streams the simulator, and the node keeps the settings.
+    const panel = page.getByRole("complementary", { name: "Device panel" });
+    await expect(panel.getByRole("application", { name: "iOS Simulator screen" })).toBeVisible();
+    const { value } = await fresh
+      .client()
+      .call<{ value: Record<string, unknown> }>("host.config.get", { section: "jhin.devices" });
+    expect(value).toMatchObject({ hub: true, agentAccess: false, onboardingCompleted: true });
+  } finally {
+    await fresh.stop();
+  }
 });

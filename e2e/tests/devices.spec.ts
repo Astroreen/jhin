@@ -97,7 +97,12 @@ test.beforeAll(async () => {
   node = await startNode({
     // D408's path: the device hub is off by default (D1206).
     config: {
-      "jhin.devices": { adb: tools.adb, emulator: tools.emulator, xcrun: tools.xcrun },
+      "jhin.devices": {
+        adb: tools.adb,
+        emulator: tools.emulator,
+        xcrun: tools.xcrun,
+        onboardingCompleted: true,
+      },
     },
   });
 });

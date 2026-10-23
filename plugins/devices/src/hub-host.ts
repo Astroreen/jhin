@@ -451,9 +451,17 @@ export function createHubHost(options: HubHostOptions) {
     /** The hub, installed and started first when needed. */
     ensureHub: (): Promise<string> => serialized(async () => (await ensureHubLocked()).origin),
 
-    /** The agent-device daemon beside the hub, installed and started first when needed. */
-    ensureAgent: (): Promise<AgentDeviceEndpoint> =>
+    /**
+     * The agent-device daemon beside the hub, installed and started first when needed;
+     * `allowed` is asked again on its turn, so a stop queued before it is not undone.
+     */
+    ensureAgent: (allowed: () => boolean = () => true): Promise<AgentDeviceEndpoint> =>
       serialized(async () => {
+        if (!allowed()) {
+          throw new Error(
+            "Agents may not use the device tools on this node (jhin.devices.agentAccess).",
+          );
+        }
         await ensureHubLocked();
         // A daemon that died while the hub ran is started again.
         if (agent !== undefined && (await answers(`${agent.baseUrl}/health`, 2_000))) return agent;
@@ -481,6 +489,16 @@ export function createHubHost(options: HubHostOptions) {
           if (!stopping) status("failed", failureDetail(error));
           throw error;
         }
+      }),
+
+    /** Whether the agent tools run now. */
+    agentReady: (): boolean => agent !== undefined,
+
+    /** Stops the agent tools' daemon and leaves the hub running (agent access turned off). */
+    stopAgent: (): Promise<void> =>
+      serialized(async () => {
+        agent = undefined;
+        await stopAgentDaemon();
       }),
 
     /** Drops the daemon's endpoint; the next input starts it again. */

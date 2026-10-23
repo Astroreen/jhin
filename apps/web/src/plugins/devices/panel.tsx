@@ -15,6 +15,7 @@ import { PowerIcon, RefreshCwIcon, SmartphoneIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { httpBase } from "../../lib/session.ts";
+import { DeviceSetupDialog } from "./setup.tsx";
 import { DeviceStreamView } from "./stream-view.tsx";
 import { DeviceToolsPanel } from "./tools-panel.tsx";
 import type { DeviceHubAccess } from "./stream.ts";
@@ -206,6 +207,67 @@ export function DevicePanel(props: DevicePanelProps) {
   const { state, threadId } = props;
   const [refreshing, setRefreshing] = useState(false);
   const [opening, setOpening] = useState<string | undefined>(undefined);
+  // T3's setup wizard until the node's devices are set up; Cancel leaves the panel (D1328).
+  // Cancel is kept on this device per node, so someone who wants only screenshots is not asked
+  // on every visit; the notice's "Set up devices" asks again.
+  const dismissedKey = `jhin:device-setup-dismissed:${props.nodeUrl}`;
+  const readDismissed = () => {
+    try {
+      return localStorage.getItem(dismissedKey) !== null;
+    } catch {
+      return false;
+    }
+  };
+  const [setupDismissed, setSetupDismissed] = useState(readDismissed);
+  const [setupRequested, setSetupRequested] = useState(false);
+  // Another node in the same panel: its own dismissal, read again while rendering.
+  const [dismissalOf, setDismissalOf] = useState(dismissedKey);
+  if (dismissalOf !== dismissedKey) {
+    setDismissalOf(dismissedKey);
+    setSetupDismissed(readDismissed());
+    setSetupRequested(false);
+  }
+  const setup = state?.setup;
+  const showSetup =
+    setup !== undefined && (setupRequested || (!setup.onboardingCompleted && !setupDismissed));
+  const setupDialog =
+    showSetup && state !== undefined ? (
+      <DeviceSetupDialog
+        call={props.call}
+        onClose={(reason) => {
+          setSetupDismissed(true);
+          setSetupRequested(false);
+          // Only Cancel is kept: Escape or a stray click outside (an install in progress
+          // included) closes it for this visit, and the next one asks again.
+          if (reason !== "cancel") return;
+          try {
+            localStorage.setItem(dismissedKey, "1");
+          } catch {
+            // Blocked storage: dismissed for this panel only.
+          }
+        }}
+        onError={props.onError}
+        state={state}
+      />
+    ) : null;
+  // The way back to the wizard: the hub off, or the setup not finished (Cancel kept).
+  const setupNote =
+    setup === undefined
+      ? undefined
+      : !setup.hubEnabled
+        ? "Video and input need the device hub."
+        : !setup.onboardingCompleted
+          ? "The device setup is not finished."
+          : undefined;
+  const setupNotice =
+    setupNote !== undefined ? (
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1">{setupNote}</span>
+        <Button onClick={() => setSetupRequested(true)} size="xs" variant="outline">
+          Set up devices
+        </Button>
+      </div>
+    ) : null;
   const session = state?.sessions.findLast((each) => each.threadId === threadId);
   const open =
     session === undefined ? undefined : state?.devices.find((each) => each.id === session.deviceId);
@@ -271,6 +333,8 @@ export function DevicePanel(props: DevicePanelProps) {
     return (
       <>
         {header}
+        {setupNotice}
+        {setupDialog}
         <OpenDevice
           call={props.call}
           client={props.client}
@@ -291,6 +355,8 @@ export function DevicePanel(props: DevicePanelProps) {
   return (
     <>
       {header}
+      {setupNotice}
+      {setupDialog}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {booting.length > 0 ? (
           <p className="mb-3 flex items-center gap-2 text-xs text-muted-foreground" role="status">

@@ -308,7 +308,7 @@ export function createLocalHost(paths: () => ToolPaths) {
       if (device.platform === "ios") {
         throw new DeviceError(
           "DEVICE_UNAVAILABLE",
-          "iOS input needs the agent tools, which could not start on this node. simctl cannot tap or type.",
+          "iOS input needs the agent tools, which could not start on this node or are not allowed (Set up devices → Agent access, jhin.devices.agentAccess). simctl cannot tap or type.",
         );
       }
       const adb = tools().adb;

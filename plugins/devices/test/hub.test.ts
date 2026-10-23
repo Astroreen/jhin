@@ -67,6 +67,8 @@ async function startNode(tools: FakeTools, settings: Record<string, unknown> = {
           xcrun: Path.join(tools.dir, "no-xcrun"),
           npm: tools.npm,
           hub: true,
+          // The agents' tools are allowed unless a test says otherwise (D1329).
+          agentAccess: true,
           ...settings,
         },
       },
@@ -452,6 +454,10 @@ describe("the device hub", () => {
       "Device agent-device type failed",
     );
     expect(tools.adbInputs()).toEqual(["shell input tap 2 2"]);
+    // The setup says so at once: the tools are no longer ready.
+    expect(
+      (await node.until((state) => state.setup?.agentToolsReady === false)).setup,
+    ).toMatchObject({ agentAccessEnabled: true });
     const after = await node.call<{ via: string }>("device.tap", { threadId: "t1", x: 4, y: 4 });
     expect(after.via).toBe("adb");
     expect(tools.adbInputs()).toEqual(["shell input tap 2 2", "shell input tap 4 4"]);
@@ -573,5 +579,146 @@ describe("the device hub", () => {
     const tapped = await node.call<{ via: string }>("device.tap", { threadId: "t1", x: 1, y: 2 });
     expect(tapped.via).toBe("adb");
     expect(tools.adbInputs()).toEqual(["shell input tap 1 2"]);
+  });
+
+  it("keeps agents to adb until agent access is allowed, then starts their tools (D1328, D1329)", async () => {
+    const tools = fakeTools();
+    const node = await startNode(tools, { agentAccess: false });
+    await node.call("device.open", { threadId: "t1", deviceId: "emulator-5554" });
+    const first = await node.call<{ via: string }>("device.tap", { threadId: "t1", x: 1, y: 2 });
+    expect(first.via).toBe("adb");
+    expect(tools.agentCalls()).toEqual([]);
+    const before = await node.until((state) => state.setup !== undefined);
+    expect(before.setup).toEqual({
+      hubEnabled: true,
+      agentAccessEnabled: false,
+      onboardingCompleted: false,
+      agentToolsReady: false,
+    });
+
+    // Allowed: the agent tools install and start at once, and the setup says they are ready.
+    const ready = node.until((state) => state.setup?.agentToolsReady === true);
+    const layer = (agentAccess: boolean) =>
+      node.kernel.config.setLayer("node", {
+        "jhin.http": { port: 0 },
+        "jhin.devices": {
+          adb: tools.adb,
+          xcrun: Path.join(tools.dir, "no-xcrun"),
+          npm: tools.npm,
+          hub: true,
+          agentAccess,
+          onboardingCompleted: true,
+        },
+      });
+    layer(true);
+    expect((await ready).setup).toMatchObject({
+      agentAccessEnabled: true,
+      onboardingCompleted: true,
+    });
+    // Ready means started: the daemon was started before any agent asked.
+    expect(tools.agentCalls()).toEqual([["devices", "--json"]]);
+    const second = await node.call<{ via: string }>("device.tap", { threadId: "t1", x: 1, y: 2 });
+    expect(second.via).toBe("agent-device");
+
+    // Taken back: their daemon stops, and agents are back on adb.
+    const stopped = node.until(
+      (state) => state.setup?.agentAccessEnabled === false && !state.setup.agentToolsReady,
+    );
+    layer(false);
+    // The state says so at once, before the daemon's stop is done.
+    expect((await stopped).setup?.hubEnabled).toBe(true);
+    await node.until(() =>
+      tools.agentCalls().some((args) => args[0] === "daemon" && args[1] === "stop"),
+    );
+    const third = await node.call<{ via: string }>("device.tap", { threadId: "t1", x: 1, y: 2 });
+    expect(third.via).toBe("adb");
+  });
+
+  it("starts the agent tools when the hub comes back on with agents allowed, and says when they fail (D1329)", async () => {
+    const tools = fakeTools();
+    const node = await startNode(tools, { agentAccess: false });
+    await node.call("device.open", { threadId: "t1", deviceId: "emulator-5554" });
+    await node.until((state) => state.hostStatuses?.local?.status === "ready");
+    const layer = (hub: boolean, agentAccess: boolean) =>
+      node.kernel.config.setLayer("node", {
+        "jhin.http": { port: 0 },
+        "jhin.devices": {
+          adb: tools.adb,
+          xcrun: Path.join(tools.dir, "no-xcrun"),
+          npm: tools.npm,
+          hub,
+          agentAccess,
+        },
+      });
+
+    // Allowed, and the install of the agent tools fails: the setup shows the failure.
+    tools.failNpm();
+    const failed = node.until((state) => state.hostStatuses?.local?.status === "failed");
+    layer(true, true);
+    expect((await failed).hostStatuses?.local?.detail).toBe(
+      "Device support failed during installing agent tools.",
+    );
+    // The hub off and on again with agents still allowed: the tools start at once.
+    const off = node.until((state) => state.setup?.hubEnabled === false);
+    layer(false, true);
+    await off;
+    const ready = node.until((state) => state.setup?.agentToolsReady === true);
+    layer(true, true);
+    expect((await ready).setup).toMatchObject({ hubEnabled: true, agentAccessEnabled: true });
+  });
+
+  it("starts the agent tools when access is allowed before any device was opened (D1329)", async () => {
+    const tools = fakeTools();
+    const node = await startNode(tools, { hub: false, agentAccess: false });
+    // Both turned on in one change, with no device opened yet: the tools start at once.
+    const ready = node.until((state) => state.setup?.agentToolsReady === true);
+    node.kernel.config.setLayer("node", {
+      "jhin.http": { port: 0 },
+      "jhin.devices": {
+        adb: tools.adb,
+        xcrun: Path.join(tools.dir, "no-xcrun"),
+        npm: tools.npm,
+        hub: true,
+        agentAccess: true,
+      },
+    });
+    expect((await ready).setup).toMatchObject({ hubEnabled: true, agentAccessEnabled: true });
+    expect(tools.agentCalls()).toEqual([["devices", "--json"]]);
+  });
+
+  it("does not start the agent tools when access is taken back before their turn (D1329)", async () => {
+    const tools = fakeTools();
+    const node = await startNode(tools, { agentAccess: false });
+    await node.call("device.open", { threadId: "t1", deviceId: "emulator-5554" });
+    await node.until((state) => state.hostStatuses?.local?.status === "ready");
+    const layer = (agentAccess: boolean) =>
+      node.kernel.config.setLayer("node", {
+        "jhin.http": { port: 0 },
+        "jhin.devices": {
+          adb: tools.adb,
+          xcrun: Path.join(tools.dir, "no-xcrun"),
+          npm: tools.npm,
+          hub: true,
+          agentAccess,
+        },
+      });
+    // On, then off before the start's turn: the start asks again and does not run.
+    layer(true);
+    layer(false);
+    // The hub's own queue: once this answers, the start and the stop have had their turns.
+    await node.call("device.hub.access", {});
+    expect(tools.agentCalls().filter((args) => args[0] === "devices")).toEqual([]);
+    const state = await node.until((each) => each.setup?.agentAccessEnabled === false);
+    expect(state.setup?.agentToolsReady).toBe(false);
+  });
+
+  it("lets agents use agent-device on a node that turned the hub on before agent access existed (D1329)", async () => {
+    const tools = fakeTools();
+    const node = await startNode(tools, { agentAccess: undefined });
+    await node.call("device.open", { threadId: "t1", deviceId: "emulator-5554" });
+    const tapped = await node.call<{ via: string }>("device.tap", { threadId: "t1", x: 1, y: 2 });
+    expect(tapped.via).toBe("agent-device");
+    const state = await node.until((each) => each.setup !== undefined);
+    expect(state.setup?.agentAccessEnabled).toBe(true);
   });
 });

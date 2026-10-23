@@ -686,7 +686,10 @@ test("the Device panel streams a simulator from the device hub in the app, with 
   const info = test.info();
   const tools = fakeTools();
   const launchedApp = await launch({}, (home) =>
-    writeConfig(home, { "jhin.devices": { xcrun: tools.xcrun, npm: tools.npm, hub: true } }),
+    // Set up already (D1328): the panel shows the device, not the setup wizard.
+    writeConfig(home, {
+      "jhin.devices": { xcrun: tools.xcrun, npm: tools.npm, hub: true, onboardingCompleted: true },
+    }),
   );
   const { window } = launchedApp;
   // The simulator's screen: any JPEG does, the app's own window here.

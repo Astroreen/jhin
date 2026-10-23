@@ -81,6 +81,16 @@ const Config = z
       description:
         "Off until you turn it on: live video and input through T3's device hub. When on, expo-device-hub and agent-device are installed from npm into Jhin's home the first time a device opens, and npm runs their install scripts as this node's user. Off: a screenshot about twice a second, and input through adb only.",
     }),
+    agentAccess: z.boolean().optional().meta({
+      title: "Agent access",
+      description:
+        "Off until you allow it: agents tap, swipe and type on devices through agent-device, installed from npm into Jhin's home when you turn this on. Off: their input goes through adb (Android only). Unset, it follows the device hub, which before this setting installed agent-device too.",
+    }),
+    onboardingCompleted: z.boolean().default(false).meta({
+      title: "Device setup done",
+      description: "The Device panel's setup was finished; it shows again while this is off.",
+      advanced: true,
+    }),
     node: Path.meta({
       title: "Node.js",
       description:
@@ -128,6 +138,14 @@ export default definePlugin({
     const lifetime = { disposed: false };
 
     let hubStatus: DeviceHostStatus | undefined;
+    const config = () => context.config.get<Config>(CONFIG_SECTION);
+    /**
+     * Agents may use agent-device (D1329). Unset, the setting follows the hub: a node that
+     * turned the hub on before this setting existed had agreed to agent-device with it (D1206).
+     */
+    const agentAccess = () => config().agentAccess ?? config().hub;
+    /** Whether agent-device runs; the hub below answers once it exists. */
+    let agentToolsReady = () => false;
 
     const state = (): DeviceState => ({
       hosts: [host.summary()],
@@ -136,6 +154,13 @@ export default definePlugin({
       booting,
       ...(detail === undefined ? {} : { detail }),
       ...(hubStatus === undefined ? {} : { hostStatuses: { [LOCAL_DEVICE_HOST_ID]: hubStatus } }),
+      setup: {
+        hubEnabled: config().hub,
+        agentAccessEnabled: agentAccess(),
+        onboardingCompleted: config().onboardingCompleted,
+        // Allowed now, not only still running: a stop under way already reads as not ready.
+        agentToolsReady: config().hub && agentAccess() && agentToolsReady(),
+      },
     });
     const publish = () => {
       streams.clear(DEVICES_STREAM);
@@ -152,11 +177,11 @@ export default definePlugin({
 
     // T3's device hub for live video and input (D1206–D1209); D408's tools stay the fallback.
     const paths = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY);
-    const config = () => context.config.get<Config>(CONFIG_SECTION);
     const hub = createDeviceHub({
       home: paths?.home,
       stateDir: paths?.dataDir(context.plugin.id),
       enabled: () => config().hub,
+      agentAccess: () => agentAccess(),
       node: () => config().node,
       npm: () => config().npm,
       androidSdk: () => host.androidSdk(),
@@ -168,10 +193,16 @@ export default definePlugin({
         hubStatus = next;
         publish();
       },
+      // A daemon that died: the setup no longer says its tools are ready.
+      onAgentGone: () => publish(),
       log: (message, fields) => context.log.debug(message, fields),
     });
+    agentToolsReady = () => hub.agentReady();
     context.onDeactivate(() => hub.stop());
     // The setting is the consent (D1206): turned off, the hub goes at once.
+    // Agent tools run while the hub is on and agents are allowed (D1329): either turning on
+    // starts them at once, either turning off stops them.
+    let agentsAllowed = config().hub && agentAccess();
     context.subscriptions.add(
       context.config.onDidChange(CONFIG_SECTION, () => {
         if (!config().hub) {
@@ -181,6 +212,19 @@ export default definePlugin({
               context.log.warn("device hub not stopped", { error: String(error) }),
             );
         }
+        const allowed = config().hub && agentAccess();
+        if (allowed !== agentsAllowed) {
+          agentsAllowed = allowed;
+          if (allowed) hub.warmAgent();
+          else
+            void hub
+              .stopAgent()
+              .then(publish)
+              .catch((error: unknown) =>
+                context.log.warn("agent tools not stopped", { error: String(error) }),
+              );
+        }
+        publish();
       }),
     );
     context.subscriptions.add(
