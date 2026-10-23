@@ -227,6 +227,11 @@ export type AgentItem =
    * (orchestration.md D1164).
    */
   | { readonly kind: "subagent.backgrounded"; readonly subagentId: string }
+  /**
+   * Since 1.12: a line on what a running subagent is doing now (Claude Code's
+   * `task_progress`, orchestration.md D1343).
+   */
+  | { readonly kind: "subagent.progress"; readonly subagentId: string; readonly progress: string }
   /** Since 1.4: a subagent ended. */
   | {
       readonly kind: "subagent.ended";
@@ -296,13 +301,13 @@ export interface AgentTurn {
   steer?(input: TurnRequest["input"]): void;
   /**
    * Since 1.7: the later work of the turn's backgrounded subagents
-   * (`subagent.backgrounded`), read once `items` ended: their `subagent.item`
-   * and `subagent.ended` items only. Ends once each has ended, or when the
-   * runtime can no longer follow them; one still open then ended
-   * `interrupted` (D1164).
+   * (`subagent.backgrounded`), read once `items` ended: their `subagent.item`,
+   * `subagent.progress` (since 1.12) and `subagent.ended` items only. Ends
+   * once each has ended, or when the runtime can no longer follow them; one
+   * still open then ended `interrupted` (D1164).
    */
   readonly afterwards?: AsyncIterable<
-    Extract<AgentItem, { readonly kind: "subagent.item" | "subagent.ended" }>
+    Extract<AgentItem, { readonly kind: "subagent.item" | "subagent.progress" | "subagent.ended" }>
   >;
 }
 
@@ -453,7 +458,7 @@ export interface AgentAuth {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */

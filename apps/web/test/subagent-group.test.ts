@@ -8,6 +8,7 @@ import { adjacentExtensions, type TurnBlock } from "../src/lib/timeline.ts";
 import { runningSubagents } from "../src/plugins/chat/lineage.tsx";
 import {
   subagentGroupTiming,
+  subagentDetail,
   subagentPreview,
   summarizeSubagentStatuses,
 } from "../src/plugins/orchestration/rows.tsx";
@@ -154,6 +155,15 @@ describe("a subagent's hover card (D1162)", () => {
     expect(long).toBe(`${"x".repeat(280)}…`);
   });
 
+  it("shows T3's detail line: progress first while running, the result first once ended (D1344)", () => {
+    const run = { summary: "Found it", progress: "Reading the map" };
+    expect(subagentDetail(true, run)).toBe("Reading the map");
+    expect(subagentDetail(false, run)).toBe("Found it");
+    expect(subagentDetail(false, { progress: "Reading the map" })).toBe("Reading the map");
+    expect(subagentDetail(true, { summary: "Found it" })).toBe("Found it");
+    expect(subagentDetail(true, undefined)).toBeNull();
+  });
+
   it("reads a task's row from its record, and a runtime's subagent from its thread", () => {
     const view: DelegationView = {
       status: "ready",
@@ -189,6 +199,7 @@ describe("a subagent's hover card (D1162)", () => {
             status: "running",
             at: "2026-10-22T10:00:01.000Z",
             agentId: "jhin.agent-claude",
+            progress: "Reading the map",
           },
         }),
       ],
@@ -206,7 +217,8 @@ describe("a subagent's hover card (D1162)", () => {
     expect(sub).toMatchObject({
       title: "survey",
       status: "running",
-      run: { startedAt: "2026-10-22T10:00:00.000Z" },
+      // Its runtime's progress line (D1344).
+      run: { startedAt: "2026-10-22T10:00:00.000Z", progress: "Reading the map" },
       details: { agentId: "jhin.agent-claude" },
     });
     sub.onOpen?.();

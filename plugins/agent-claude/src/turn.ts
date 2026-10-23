@@ -319,7 +319,10 @@ function channel<T>(stopped: () => boolean) {
 }
 
 /** What a turn hands over of its subagents in the background once it ended (D1164). */
-type AfterwardsItem = Extract<AgentItem, { readonly kind: "subagent.item" | "subagent.ended" }>;
+type AfterwardsItem = Extract<
+  AgentItem,
+  { readonly kind: "subagent.item" | "subagent.progress" | "subagent.ended" }
+>;
 
 /** A frame about a subagent's work: its own messages, or Claude Code's task frames. */
 const subagentFrame = (message: SDKMessage) =>
@@ -327,6 +330,7 @@ const subagentFrame = (message: SDKMessage) =>
   (message.type === "system" &&
     (message.subtype === "task_started" ||
       message.subtype === "task_updated" ||
+      message.subtype === "task_progress" ||
       message.subtype === "task_notification"));
 
 /** Items `afterwards` holds unread before it gives up on its reader (D1165). */
@@ -511,6 +515,13 @@ export function claudeTurn(
     } else if (message.subtype === "task_updated") {
       const tool = taskTools.get(message.task_id);
       if (tool !== undefined && message.patch.is_backgrounded === true) background(tool, push);
+    } else if (message.subtype === "task_progress") {
+      // T3's progress line of a running subagent (D1343): its frame's description.
+      const tool = message.tool_use_id ?? taskTools.get(message.task_id);
+      // An older or newer CLI may leave the description out: nothing to say then.
+      const progress = typeof message.description === "string" ? message.description.trim() : "";
+      if (tool === undefined || !subagentIds.has(tool) || progress === "") return;
+      push({ kind: "subagent.progress", subagentId: tool, progress });
     } else if (message.subtype === "task_notification") {
       const tool = message.tool_use_id ?? taskTools.get(message.task_id);
       if (tool === undefined || !backgrounded.has(tool)) return;
@@ -1221,7 +1232,11 @@ export function claudeTurn(
     afterwards: (async function* () {
       try {
         for await (const item of later.read()) {
-          if (item.kind === "subagent.item" || item.kind === "subagent.ended") {
+          if (
+            item.kind === "subagent.item" ||
+            item.kind === "subagent.progress" ||
+            item.kind === "subagent.ended"
+          ) {
             yield item satisfies AfterwardsItem;
           }
         }

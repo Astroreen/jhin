@@ -712,11 +712,23 @@ describe("jhin.agent-claude: a turn", () => {
         // A foreground one Claude Code moved to the background (D805).
         yield toolUse("m2", "agent-fg", "Agent", { description: "Look", prompt: "look" });
         yield system("task_started", { task_id: "task-2", tool_use_id: "agent-fg" });
+        // Its progress, found by its task (D1343); an empty one or another task's says nothing.
+        yield system("task_progress", { task_id: "task-2", description: " Looking around " });
+        yield system("task_progress", { task_id: "task-2", description: "  " });
+        yield system("task_progress", { task_id: "task-9", description: "Elsewhere" });
+        // A task that is no subagent call of this turn (a background shell) says nothing either.
+        yield system("task_started", { task_id: "task-3", tool_use_id: "bash-1" });
+        yield system("task_progress", { task_id: "task-3", description: "Compiling" });
         yield system("task_updated", { task_id: "task-2", patch: { is_backgrounded: true } });
         yield toolResult("agent-fg", "Running in the background");
         yield result();
-        // After the turn: their own work and their ends.
+        // After the turn: their own work, their progress and their ends.
         yield toolUse("sub", "inner", "Read", { file_path: "/x" }, "agent-bg");
+        yield system("task_progress", {
+          task_id: "task-1",
+          tool_use_id: "agent-bg",
+          description: "Digging",
+        });
         yield system("task_notification", {
           task_id: "task-1",
           tool_use_id: "agent-bg",
@@ -738,6 +750,7 @@ describe("jhin.agent-claude: a turn", () => {
       { kind: "subagent.started", subagentId: "agent-bg", title: "Dig", prompt: "dig" },
       { kind: "subagent.backgrounded", subagentId: "agent-bg" },
       { kind: "subagent.started", subagentId: "agent-fg", title: "Look", prompt: "look" },
+      { kind: "subagent.progress", subagentId: "agent-fg", progress: "Looking around" },
       { kind: "subagent.backgrounded", subagentId: "agent-fg" },
     ]);
     // Their calls' quick results end the calls, not the subagents.
@@ -750,6 +763,7 @@ describe("jhin.agent-claude: a turn", () => {
         subagentId: "agent-bg",
         item: expect.objectContaining({ kind: "tool.started", itemId: "inner" }),
       },
+      { kind: "subagent.progress", subagentId: "agent-bg", progress: "Digging" },
       { kind: "subagent.ended", subagentId: "agent-bg", status: "completed" },
       { kind: "subagent.ended", subagentId: "agent-fg", status: "failed", error: "broke" },
     ]);

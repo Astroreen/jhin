@@ -96,6 +96,8 @@ export interface RowRun {
   readonly startedAt?: string;
   readonly endedAt?: string;
   readonly summary?: string;
+  /** What it is doing now (D1344): a runtime's subagent reports it while it runs. */
+  readonly progress?: string;
 }
 
 /** A delegated task's run, as its row shows it. */
@@ -123,6 +125,16 @@ export function subagentPreview(result: string | undefined): string | null {
   return compact.length > 280 ? `${compact.slice(0, 280).trimEnd()}…` : compact || null;
 }
 
+/**
+ * T3's detail line of the hover card (D1344): a running subagent's progress, else its result;
+ * an ended one its result, else its last progress.
+ */
+export function subagentDetail(working: boolean, run: RowRun | undefined): string | null {
+  const result = run?.summary?.trim() || undefined;
+  const progress = run?.progress?.trim() || undefined;
+  return subagentPreview(working ? (progress ?? result) : (result ?? progress));
+}
+
 /** T3's SubagentTooltipContent in its ThreadHoverCard. */
 function SubagentCard(props: {
   readonly title: string;
@@ -140,7 +152,7 @@ function SubagentCard(props: {
       : status === "completed"
         ? CheckIcon
         : CircleDashedIcon;
-  const preview = subagentPreview(props.run?.summary);
+  const preview = subagentDetail(working, props.run);
   return (
     <div
       aria-label="Subagent details"
