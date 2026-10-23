@@ -91,14 +91,27 @@ export function newestToTell<T>(
 /** The least time between two retries of one feed. */
 const RETRY_GAP_MS = 60_000;
 
-/**
- * Failures in a row, with no read between them, after which a feed is given
- * up until its connection is replaced: an error that will not pass (a read
- * whose answer fails its schema) does not load the node forever (D731).
- */
-export const MAX_FAILURES_IN_A_ROW = 10;
+/** The most a feed that keeps failing waits between two retries (D1390). */
+const MAX_RETRY_GAP_MS = 15 * 60_000;
 
+/**
+ * The pause before the retry of a feed that failed `failures` times in a row
+ * with no read between: a minute, then 2, 4, 8 … up to 15 (D1390). The first
+ * failure of a feed not retried lately is retried at once (`failed`).
+ */
+export function retryGap(failures: number): number {
+  return Math.min(MAX_RETRY_GAP_MS, RETRY_GAP_MS * 2 ** Math.max(0, failures - 2));
+}
+
+/** A node that has no such feed, or may not read it: not asked again until it is. */
 const NOT_THERE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_DENIED"]);
+
+/**
+ * Errors that will not pass by asking again: the feed is given up until its
+ * connection is replaced (D1390). Everything else, `DISCONNECTED`,
+ * `UNAVAILABLE`, timeouts and codes not known, is a passing error.
+ */
+const LASTING = new Set([...NOT_THERE, "COMMAND_INPUT_INVALID", "COMMAND_OUTPUT_INVALID"]);
 
 /** Follows `source` on every open connection for as long as it is not disposed. */
 export function createNodeFeeds<S>(
@@ -198,15 +211,15 @@ export function createNodeFeeds<S>(
       // A stream that dropped is read and followed again, so a hiccup does not
       // silence what is told; the feed stays as it is meanwhile, not flashing
       // "not live". The first failure is retried at once (a dropped socket, a
-      // node busy for a moment); from then on at most once a minute, so a
+      // node busy for a moment); from then on at most once a minute, then less often, so a
       // flapping stream does not loop on the node: a drop (or a failed read)
       // within that minute marks the feed not live and reads it again once
       // the minute is over. A permission taken back, or a node that no longer
       // has the feed (restarted on a build without it), is not retried, nor
-      // is a feed that failed `MAX_FAILURES_IN_A_ROW` times with no read between.
+      // is a request or answer the node finds invalid (`LASTING`). Any other
+      // error keeps retrying, with a pause that grows to 15 minutes (D1390).
       failuresInARow += 1;
-      const lasting = failuresInARow >= MAX_FAILURES_IN_A_ROW;
-      const retrying = !lasting && (code === undefined || !NOT_THERE.has(code));
+      const retrying = code === undefined || !LASTING.has(code);
       if (!retrying) {
         // The feed is given up: a retry already waiting for the minute is
         // called off, and what its subscription still delivers is not heard.
@@ -215,7 +228,7 @@ export function createNodeFeeds<S>(
         generation += 1;
         for (const subscription of subscriptions.splice(0)) subscription.dispose();
       }
-      const wait = lastRetry + RETRY_GAP_MS - clock();
+      const wait = lastRetry + retryGap(failuresInARow) - clock();
       if (retrying && wait <= 0) {
         retry();
         return;
@@ -245,7 +258,7 @@ export function createNodeFeeds<S>(
                     ? message
                     : code !== undefined && NOT_THERE.has(code)
                       ? `this node no longer has it (${message})`
-                      : `given up after ${failuresInARow} failures in a row (${message})`,
+                      : `given up, the node finds it invalid (${message})`,
             },
       );
     };

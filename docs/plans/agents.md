@@ -1236,6 +1236,21 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   before the write, so it is recorded once and never overwrites an
   `answered` analysis; the analyst is not asked again. The warning's page
   says the answer came late.
+- **D1390. A feed that keeps failing waits longer and longer; a lasting error
+  is told by its code.** This changes D731's once-a-minute retry and its
+  ten-failures give-up, in `lib/node-feeds.ts` (its users keep their API). The
+  first failure of a feed is retried at once, as before; the pause before the
+  next retry grows with the failures in a row, with no read between: 1 minute,
+  1, 2, 4, 8, then 15 minutes at most (`retryGap`), and a good read starts it
+  over. The give-up after ten failures goes. What stops the retries is the
+  code: `COMMAND_NOT_FOUND`, `METHOD_NOT_FOUND`, `PERMISSION_DENIED` (as
+  before) and now `COMMAND_INPUT_INVALID` and `COMMAND_OUTPUT_INVALID`, an
+  error that asking again will not change; the feed shows it, not live, until
+  its connection is replaced. Every other error, `DISCONNECTED`,
+  `UNAVAILABLE`, timeouts and codes not known, is passing and retried with the
+  growing pause. The client does not validate a read's answer itself, so a
+  failure there carries no code and counts as passing. The agents store keeps
+  its own backoff (D1387).
 
 ### A8. Modes and the Civilization shell (D742–D760)
 
@@ -2217,10 +2232,10 @@ three agents, and otherwise read the streams.
 - A7: a feed whose read permission was taken back, or whose node lost the
   feed, recovering by itself when it is granted (or installed) again; today it stays not live until the connection is
   replaced (D731).
-- A7: a growing pause between retries of a feed whose node keeps failing,
+- ~~A7: a growing pause between retries of a feed whose node keeps failing,
   and telling a lasting error from a passing one by its code: today any
   error but a missing command or a permission is read again once a minute,
-  up to ten failures in a row (D731).
+  up to ten failures in a row (D731).~~ A7, D1390.
 - A7: reading a turn's commits through `source-control.git@1` once it offers
   a read of `HEAD` and a count of commits; health runs `git` itself until
   then (D723).
