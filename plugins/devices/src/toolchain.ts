@@ -6,6 +6,11 @@ import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
+import agentDeviceLock from "./locks/agent-device/package-lock.json" with { type: "json" };
+import agentDeviceManifest from "./locks/agent-device/package.json" with { type: "json" };
+import hubLock from "./locks/expo-device-hub/package-lock.json" with { type: "json" };
+import hubManifest from "./locks/expo-device-hub/package.json" with { type: "json" };
+
 /** T3's pins (`deviceToolVersions.json` at eb7b35ac). Bump both with T3. */
 export const DEVICE_TOOL_VERSIONS = {
   "agent-device": "0.21.25",
@@ -39,6 +44,40 @@ export const AGENT_DEVICE_SPEC: ToolSpec = {
   version: DEVICE_TOOL_VERSIONS["agent-device"],
   entry: ["bin", "agent-device.mjs"],
 };
+
+/** A tool's `package.json` and npm's `package-lock.json` for it, as the plugin ships them. */
+export interface ToolLock {
+  readonly manifest: { readonly dependencies: Readonly<Record<string, string>> };
+  /** npm's lockfile as JSON; read by `lockedVersion`. */
+  readonly lock: object;
+}
+
+interface LockPackages {
+  readonly packages?: Readonly<
+    Record<string, { version?: string; integrity?: string; link?: boolean }>
+  >;
+}
+
+/**
+ * The lockfiles the plugin ships (D1330): a `package.json` that depends on the pinned
+ * version and the `package-lock.json` npm resolved for it, with an integrity hash for every
+ * package. `npm ci` installs exactly that tree or fails.
+ */
+export const TOOL_LOCKS: Readonly<Record<ToolSpec["name"], ToolLock>> = {
+  "expo-device-hub": { manifest: hubManifest, lock: hubLock },
+  "agent-device": { manifest: agentDeviceManifest, lock: agentDeviceLock },
+};
+
+/** The pinned tool's version in its lockfile; throws when the lockfile does not pin it. */
+export function lockedVersion(spec: Pick<ToolSpec, "name">, locked: ToolLock): string {
+  const lock = locked.lock as LockPackages;
+  const packages = Object.entries(lock.packages ?? {}).filter(([path]) => path !== "");
+  const unpinned = packages.filter(([, entry]) => entry.link !== true && !entry.integrity);
+  if (unpinned.length > 0) throw new Error(`${unpinned[0]![0]} has no integrity hash`);
+  const version = lock.packages?.[`node_modules/${spec.name}`]?.version;
+  if (version === undefined) throw new Error(`the lockfile does not install ${spec.name}`);
+  return version;
+}
 
 export interface ToolPaths {
   readonly installDir: string;
@@ -199,6 +238,8 @@ export interface ToolchainOptions {
   /** The npm to run, read for each install; `npm` on PATH by default, then pnpm's `dlx npm`. */
   readonly npm?: () => string | undefined;
   readonly env?: NodeJS.ProcessEnv;
+  /** A tool's lockfile; the plugin's own by default (tests give theirs). */
+  readonly locks?: (spec: ToolSpec) => ToolLock;
 }
 
 /** T3's `deviceToolInstallMessage`: what the panel says while a tool installs. */
@@ -240,14 +281,8 @@ export function createToolchain(options: ToolchainOptions) {
   };
 
   const npmInstall = async (spec: ToolSpec, staging: string) => {
-    const args = [
-      "install",
-      "--prefix",
-      staging,
-      "--no-fund",
-      "--no-audit",
-      `${spec.name}@${spec.version}`,
-    ];
+    // The shipped lockfile, so npm installs the tree it pins and checks every hash (D1330).
+    const args = ["ci", "--prefix", staging, "--no-fund", "--no-audit"];
     const run = (command: string, list: readonly string[]) =>
       runProgram(command, list, {
         timeoutMs: INSTALL_TIMEOUT_MS,
@@ -303,6 +338,20 @@ export function createToolchain(options: ToolchainOptions) {
       .mkdtemp(Path.join(parent, ".staging-"))
       .catch(step("preparing the install directory"));
     try {
+      const locked = options.locks?.(spec) ?? TOOL_LOCKS[spec.name];
+      try {
+        if (lockedVersion(spec, locked) !== spec.version) throw new Error("another version");
+        await Fs.promises.writeFile(
+          Path.join(staging, "package.json"),
+          `${JSON.stringify(locked.manifest, null, 2)}\n`,
+        );
+        await Fs.promises.writeFile(
+          Path.join(staging, "package-lock.json"),
+          `${JSON.stringify(locked.lock, null, 2)}\n`,
+        );
+      } catch (cause) {
+        step("checking its lockfile")(cause);
+      }
       const result = await npmInstall(spec, staging);
       if (result.code !== 0) {
         throw new ToolInstallError(spec.name, "running npm install", result.code ?? undefined, {

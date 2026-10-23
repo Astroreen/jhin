@@ -76,7 +76,8 @@ const Fs = require("node:fs");
 const Path = require("node:path");
 const args = process.argv.slice(2);
 const prefix = args[args.indexOf("--prefix") + 1];
-const name = args.at(-1).split(/@(?=[^@]*$)/)[0];
+// \`npm ci\` of the plugin's lockfile (D1330): the tool is the manifest's one dependency.
+const name = Object.keys(JSON.parse(Fs.readFileSync(Path.join(prefix, "package.json"), "utf8")).dependencies)[0];
 if (name !== "expo-device-hub") process.exit(1);
 const target = Path.join(prefix, "node_modules", name, "dist", "server", "cli.mjs");
 Fs.mkdirSync(Path.dirname(target), { recursive: true });

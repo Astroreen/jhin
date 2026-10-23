@@ -6,8 +6,11 @@ import * as Path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  AGENT_DEVICE_SPEC,
   DEVICE_TOOL_VERSIONS,
   HUB_SPEC,
+  TOOL_LOCKS,
+  lockedVersion,
   createToolchain,
   installEnvironment,
   toolEnvironment,
@@ -115,5 +118,54 @@ describe("the device toolchain", () => {
       HTTPS_PROXY: "http://proxy",
       npm_config_registry: "https://registry.example",
     });
+  });
+
+  it("ships a lockfile that pins each tool and every package it installs by hash (D1330)", () => {
+    for (const spec of [HUB_SPEC, AGENT_DEVICE_SPEC]) {
+      const locked = TOOL_LOCKS[spec.name];
+      expect(lockedVersion(spec, locked)).toBe(DEVICE_TOOL_VERSIONS[spec.name]);
+      expect(locked.manifest.dependencies).toEqual({ [spec.name]: spec.version });
+      const { packages } = locked.lock as { packages: Record<string, { integrity?: string }> };
+      for (const [path, entry] of Object.entries(packages)) {
+        if (path !== "") expect(entry.integrity).toMatch(/^sha512-/);
+      }
+    }
+  });
+
+  it("installs nothing from a lockfile that does not pin the version or a hash (D1330)", async () => {
+    const tools = fakeTools();
+    let locked = TOOL_LOCKS["expo-device-hub"];
+    const lock = (version: string, integrity?: string) => {
+      locked = {
+        manifest: TOOL_LOCKS["expo-device-hub"].manifest,
+        lock: {
+          packages: {
+            "": {},
+            "node_modules/expo-device-hub": {
+              version,
+              ...(integrity === undefined ? {} : { integrity }),
+            },
+          },
+        },
+      };
+    };
+    const toolchain = createToolchain({
+      home: tools.home,
+      npm: () => tools.npm,
+      locks: () => locked,
+    });
+    for (const [version, integrity] of [
+      ["0.1.0", "sha512-x"],
+      [HUB_SPEC.version, undefined],
+    ] as const) {
+      lock(version, integrity);
+      await expect(toolchain.ensure(HUB_SPEC)).rejects.toThrow(
+        "Installing expo-device-hub failed while checking its lockfile.",
+      );
+    }
+    expect(tools.npmCalls()).toEqual([]);
+    lock(HUB_SPEC.version, "sha512-x");
+    await toolchain.ensure(HUB_SPEC);
+    expect(tools.npmCalls()).toHaveLength(1);
   });
 });

@@ -1,0 +1,7 @@
+{
+  "name": "jhin-device-tool-agent-device",
+  "private": true,
+  "dependencies": {
+    "agent-device": "0.21.25"
+  }
+}
