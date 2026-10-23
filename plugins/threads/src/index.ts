@@ -2873,16 +2873,13 @@ export default definePlugin({
         { projectId, title, threadId, worktreePath, workspace, ...given },
         invocation,
       ) => {
+        // A held caller's thread starts at no more than its ceiling (security.md D1370).
+        const ceiling = ceilingOf(invocation.caller?.permissions);
         const rest = {
           ...given,
-          ...(given.runtimeMode === undefined
+          ...(ceiling === undefined
             ? {}
-            : {
-                runtimeMode: capRuntimeMode(
-                  given.runtimeMode,
-                  ceilingOf(invocation.caller?.permissions),
-                ),
-              }),
+            : { runtimeMode: capRuntimeMode(given.runtimeMode ?? DEFAULT_RUNTIME_MODE, ceiling) }),
         };
         if (worktreePath !== undefined && workspace !== undefined && workspace.type !== "root") {
           throw new ThreadsError(

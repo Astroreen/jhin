@@ -899,7 +899,8 @@ Connect stays out of scope.
   issued before keeps working as it did (`ceilingOf` in
   `@jhin/agent-api`). It applies wherever a caller sets the mode of a
   turn, of a thread or of later turns: `threads.create` and
-  `threads.update` lower a mode they are given; `threads.send`,
+  `threads.update` lower a mode they are given (and `threads.create` gives
+  a held caller's thread its ceiling when it names none); `threads.send`,
   `threads.queue.add`, `threads.steer` and `threads.regenerate` give the
   message the thread's mode (or the default) lowered to the ceiling, so
   a queued message keeps it after its caller is gone; `tasks.delegate`

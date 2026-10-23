@@ -523,6 +523,9 @@ describe("jhin.threads: agents", () => {
       held,
     )) as Thread;
     expect(thread.runtimeMode).toBe("approval-required");
+    // Named or not, a held caller's thread starts at its ceiling.
+    const unnamed = (await kernel.commands.execute("threads.create", {}, held)) as Thread;
+    expect(unnamed.runtimeMode).toBe("approval-required");
     const raised = (await kernel.commands.execute(
       "threads.update",
       { threadId: thread.id, runtimeMode: "full-access" },
