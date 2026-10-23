@@ -23,6 +23,12 @@ for (;;) {
   if (next.mission.status === "done" || next.mission.status === "dropped") {
     return end("closed", { status: next.mission.status });
   }
+  if (next.escalations.length > 0) {
+    return end("waiting", {
+      escalations: next.escalations,
+      note: "You asked the owner and the answer has not come: the team waits for it. It comes to you as a message; run the orchestrator again then.",
+    });
+  }
   if (next.total === 0) {
     return end("decide", { decisions: [], note: "The mission has no slices yet: plan them with slices.create." });
   }
@@ -30,7 +36,7 @@ for (;;) {
     return end("slices-done", {
       steps: next.steps,
       projectSteps: next.projectSteps,
-      note: "Every slice is done or dropped. Run the mission's steps, then set the mission done with missions.update once its outcome holds.",
+      note: "Every slice is done or dropped. Run the mission's steps, then close it with missions.close once its outcome holds, saying what was committed or merged and where: the owner gets your report.",
     });
   }
   if (watched !== null && next.wave !== watched && next.steps.length > 0) {

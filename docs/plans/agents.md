@@ -1579,6 +1579,38 @@ Decisions (L1):
   a failed, interrupted or silent turn records nothing. It takes the C3
   Deferred item: the turn records it, instead of the lead's instructions
   asking it to report.
+- **D1222. The orchestrator sends the lead's mission report.** The thread a
+  mission's last `missions.orchestrate` ran from is its **lead** (kept with
+  the run). When the mission becomes done or dropped, or that run fails or
+  is stopped while the mission is open, `jhin.orchestrator` sends the owner
+  the report with `agents.send` as the lead's thread (D622), so it lands in
+  the inbox (D626) and in the Lead view's conversation (D1061): the
+  mission, its outcome, its slices wave by wave with status, assignee and
+  proof (commands cut to their first lines), what was committed or merged,
+  and for a run that ended the error and that the mission is still open.
+  Its first line, `Mission report: <title>, <end>`, is what the inbox lists.
+  It is built from the records, not from the lead's memory. The lead adds
+  its word with **`missions.close {missionId, status: done | dropped,
+  summary?}`**: `missions.update` with what was committed or merged and
+  where; the orchestrator's `slices-done` outcome names it. A plain
+  `missions.update` is reported too, saying the lead said nothing about
+  it. The message id is the mission and how it ended (`report-<mission>-…`),
+  so it is delivered once. Only the mission's current run is reported when
+  it ends; an older one ending late is not. A mission no lead's thread ran
+  is not reported,
+  and only what happens after the node caught up with the `missions` stream
+  is.
+- **D1223. An escalation holds the lead's mission.** The lead escalates as
+  D688 tells it, with `agents_ask` to the owner, and the escalation shows
+  as before (the inbox, D630; a card in the Lead view, D1063). While an ask
+  from a mission's lead to the owner is open in the inbox,
+  `missions.next` lists it in `escalations` (additive), `slices.handoff`
+  refuses with `ESCALATION_OPEN`, and the orchestrator ends with the outcome
+  **`waiting`**: the team waits for the owner instead of the lead deciding
+  alone. Slices already handed go on. The answer comes to the lead as a
+  message (D626), which wakes it to orchestrate again. Every open ask of the
+  lead holds its mission, about the mission or not: the lead decides what it
+  asks.
 
 ### L2. Guards in the process (D1241–D1260)
 
@@ -1812,6 +1844,18 @@ Decisions (L1):
   this node's owner is answered: a message the owner of another node sends
   here stays unanswered in its conversation, which misses it anyway (C1's
   item on agents on another node).
+- L1: a mission closed, or a run that ended, while the node was catching up
+  (or down) is not reported (D1222); a mission no lead ran from a thread
+  (handed out by hand, never orchestrated) has no lead to report from.
+- L1: a member's escalation that the lead passes up holds the mission only
+  as the lead's own ask (D1223); members asking the owner directly hold
+  nothing (fencing them is A5's Deferred item).
+- L1: `missions.next` and `slices.handoff` read the open inbox to find the
+  lead's escalations (D1223); a filter by sender on `agents.inbox.list`
+  once inboxes grow.
+- L1: the report as a card of its own in the Lead view (today the lead's
+  Markdown text), and a way to clear a report from the inbox without an
+  answer (A2, D626).
 
 ## Landing
 
@@ -1917,3 +1961,8 @@ Each workstream lists its PRs here as they merge.
   Civilization mode), the lore story "own homework".
 - L1 #233: the answer of an agent's turn to the owner's message is recorded
   with it and shows in the owner's conversation and the Lead view (D1221).
+- L1 #235: the lead's mission report from `jhin.orchestrator` (done,
+  dropped, a run failed or stopped) to the inbox and the Lead view,
+  `missions.close`, and the mission held while the lead's escalation is
+  open (`escalations`, `ESCALATION_OPEN`, outcome `waiting`); the
+  civilization scenario asserts both (D1222, D1223).

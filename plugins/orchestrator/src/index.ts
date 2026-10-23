@@ -3,9 +3,14 @@ import * as Crypto from "node:crypto";
 import {
   MESSAGE_PERMISSION,
   ORCHESTRATION_STREAM,
+  OrchestrationEvents,
   ThreadEvents,
+  agentAddress,
+  ownerAddress,
   parseAgentAddress,
+  threadAddress,
   threadStream,
+  type InboxItem,
 } from "@jhin/agent-api";
 import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
 import {
@@ -13,6 +18,7 @@ import {
   IntentChain,
   MISSIONS_STREAM,
   Mission,
+  MissionEvents,
   MissionProgress,
   Slice,
   Step,
@@ -32,6 +38,7 @@ import {
 } from "@jhin/storage-api";
 
 import { handoffText, refocusText, type RefocusReason } from "./brief.ts";
+import { reportText, type ReportEnd } from "./report.ts";
 import { ORCHESTRATOR_WORKFLOW } from "./workflow.ts";
 
 export { ORCHESTRATOR_WORKFLOW };
@@ -78,7 +85,9 @@ export type OrchestratorErrorCode =
   /** The assignee is an agent or owner of another node: A2's `agents.send` reaches it. */
   | "AGENT_ELSEWHERE"
   /** No thread to run the workflow from, or to refocus. */
-  | "THREAD_REQUIRED";
+  | "THREAD_REQUIRED"
+  /** The mission's lead asked the owner, and the team waits for the answer (D1223). */
+  | "ESCALATION_OPEN";
 
 class OrchestratorError extends Error {
   readonly code: OrchestratorErrorCode;
@@ -101,6 +110,11 @@ const Next = MissionProgress.extend({
   steps: z.array(Step),
   /** The project's steps between missions. */
   projectSteps: z.array(Step),
+  /**
+   * The ids of the lead's asks to the owner still open in the inbox: the
+   * team waits for their answer, and no slice is handed meanwhile (D1223).
+   */
+  escalations: z.array(z.string()),
 });
 
 const ThreadView = z
@@ -152,12 +166,26 @@ export default definePlugin({
     let state: MissionsState = EMPTY_MISSIONS;
     let head = 0;
     const changed = new Set<(event: StoredEvent) => void>();
+    /** Set once the stream is caught up: what closed before is no news to report. */
+    let caughtUp = false;
     const apply = (events: readonly StoredEvent[]) => {
       for (const event of events) {
         if (event.sequence <= head) continue;
+        const missionId =
+          event.type === MissionEvents.missionUpdated
+            ? (event.payload as { mission?: { id?: string } } | null)?.mission?.id
+            : undefined;
+        const before = missionId === undefined ? undefined : state.missions[missionId]?.status;
         state = applyMissionEvent(state, event);
         head = event.sequence;
         for (const listener of changed) listener(event);
+        const after = missionId === undefined ? undefined : state.missions[missionId];
+        // A mission the lead closed: its report goes to the owner (D1222).
+        if (caughtUp && after !== undefined && before !== undefined && !isClosed(before)) {
+          if (after.status === "done" || after.status === "dropped") {
+            reportLater(after.id, after.status, `${after.status}-${after.updatedAt}`);
+          }
+        }
       }
       watchThreads();
     };
@@ -178,6 +206,126 @@ export default definePlugin({
       return slice;
     };
     const isOpen = (slice: Slice) => slice.status !== "done" && slice.status !== "dropped";
+    const isClosed = (status: Mission["status"]) => status === "done" || status === "dropped";
+    const hasCommand = (name: string) =>
+      context.commands.list().some((command) => command.name === name);
+
+    const getThread = async (threadId: string) => {
+      const { thread, running } = await run<{ thread: unknown; running?: string }>("threads.get", {
+        threadId,
+      });
+      return { thread: ThreadView.parse(thread), running };
+    };
+
+    // --- The lead and the owner (L1: D1222, D1223) ------------------------------
+    /** The mission's lead: the thread its last orchestrator run started from, and its address. */
+    const leadOf = async (missionId: string) => {
+      const last = (await kv.get(NAMESPACE, `run/${missionId}`)) as
+        | { parentThreadId?: string }
+        | undefined;
+      const threadId = last?.parentThreadId;
+      if (threadId === undefined) return undefined;
+      const thread = await getThread(threadId).then(
+        (found) => found.thread,
+        () => undefined,
+      );
+      // A lead's thread that is gone has nobody to report or wait for.
+      if (thread === undefined) return undefined;
+      // A thread sends as its agent when it is one of its generations (D622).
+      const address =
+        thread.generationOf === undefined
+          ? threadAddress(nodeId, threadId)
+          : agentAddress(nodeId, thread.generationOf);
+      return { threadId, address };
+    };
+    /** The lead's asks to the owner still open in the inbox (D1223). */
+    const escalationsOf = async (missionId: string): Promise<string[]> => {
+      if (!hasCommand("agents.inbox.list")) return [];
+      const lead = await leadOf(missionId);
+      if (lead === undefined) return [];
+      const { items } = await run<{ items: InboxItem[] }>("agents.inbox.list", {});
+      return items
+        .filter(
+          (item) =>
+            item.status === "open" &&
+            item.message.kind === "ask" &&
+            item.message.from === lead.address,
+        )
+        .map((item) => item.message.messageId);
+    };
+    /** Sends the lead's report to the owner, once per id (D1222). */
+    async function report(missionId: string, end: ReportEnd, id: string, error?: string) {
+      const closed = end === "done" || end === "dropped";
+      // The lead's word belongs to this close only: taken now, whatever happens next.
+      const summaryKey = `summary/${missionId}`;
+      const summary = closed
+        ? ((await kv.get(NAMESPACE, summaryKey)) as string | undefined)
+        : undefined;
+      if (summary !== undefined) await kv.delete(NAMESPACE, summaryKey);
+      if (!hasCommand("agents.send")) return;
+      const lead = await leadOf(missionId);
+      if (lead === undefined) {
+        context.log.info("no report: the mission never ran from a lead's thread", { missionId });
+        return;
+      }
+      await sync();
+      const mission = getMission(missionId);
+      await run(
+        "agents.send",
+        {
+          to: ownerAddress(nodeId),
+          messageId: `report-${missionId}-${id}`,
+          body: reportText({ mission, slices: slicesOf(state, missionId), end, summary, error }),
+        },
+        // As the lead's thread, so the owner hears it from the lead (D622).
+        { threadId: lead.threadId },
+      );
+    }
+    let reporting: Promise<unknown> = Promise.resolve();
+    function reportLater(missionId: string, end: ReportEnd, id: string, error?: string) {
+      reporting = reporting
+        .then(() => report(missionId, end, id, error))
+        .catch((failure: unknown) => {
+          if (!disposed) {
+            context.log.warn("the mission's report did not reach the owner", {
+              missionId,
+              error: String(failure),
+            });
+          }
+        });
+    }
+    // A run that failed or was stopped while its mission is open is reported too:
+    // the lead's thread may never wake to tell (D1222).
+    context.subscriptions.add(
+      log.subscribe(ORCHESTRATION_STREAM, (event) => {
+        if (disposed || event.type !== OrchestrationEvents.workflowUpdated) return;
+        const record = event.payload as {
+          workflowId?: string;
+          status?: string;
+          error?: string;
+        } | null;
+        if (record?.workflowId === undefined) return;
+        if (record.status !== "failed" && record.status !== "stopped") return;
+        const { workflowId, status, error } = record;
+        reporting = reporting
+          .then(async () => {
+            const owned = (await kv.get(NAMESPACE, `workflow/${workflowId}`)) as
+              | { missionId?: string }
+              | undefined;
+            if (owned?.missionId === undefined) return;
+            // Only the mission's current run speaks for it: an older one ending late is no news.
+            const current = (await kv.get(NAMESPACE, `run/${owned.missionId}`)) as
+              | { workflowId?: string }
+              | undefined;
+            if (current?.workflowId !== workflowId) return;
+            await sync();
+            const mission = state.missions[owned.missionId];
+            if (mission === undefined || isClosed(mission.status)) return;
+            reportLater(owned.missionId, status, workflowId, error);
+          })
+          .catch(() => undefined);
+      }),
+    );
     const progressOf = (mission: Mission) =>
       missionProgress(slicesOf(state, mission.id), { nodeId });
 
@@ -202,6 +350,7 @@ export default definePlugin({
           head,
           steps: mission.process.mission,
           projectSteps: state.intents[mission.projectId]?.process ?? [],
+          escalations: await escalationsOf(missionId),
           ...progressOf(mission),
         };
       },
@@ -314,6 +463,14 @@ export default definePlugin({
               current: progress.wave,
               ...(decision === undefined ? {} : { reason: decision.reason }),
             },
+          );
+        }
+        const escalations = await escalationsOf(mission.id);
+        if (escalations.length > 0) {
+          throw new OrchestratorError(
+            "ESCALATION_OPEN",
+            `The lead asked the owner and waits for the answer: no slice is handed meanwhile`,
+            { missionId: mission.id, escalations },
           );
         }
         const step = slice.step ?? mission.process.slice[0]?.id;
@@ -442,8 +599,51 @@ export default definePlugin({
               : { caller: { id: caller.id, permissions: [...caller.permissions, WORKFLOWS_RUN] } }),
           },
         );
-        await kv.set(NAMESPACE, key, { workflowId: started.workflowId });
+        // The thread it runs from is the mission's lead (D1222), and the run's end is the mission's.
+        await kv.set(NAMESPACE, key, { workflowId: started.workflowId, parentThreadId });
+        await kv.set(NAMESPACE, `workflow/${started.workflowId}`, { missionId });
         return { ...started, existing: false };
+      },
+    });
+
+    // --- Closing a mission with the lead's word for the owner (D1222) -------------
+    context.commands.register({
+      name: "missions.close",
+      description:
+        "Closes a mission as done or dropped, with what the lead says was committed or merged and where: the owner gets the lead's report with the mission, its slices and their proof",
+      input: z.object({
+        missionId: z.string(),
+        status: z.enum(["done", "dropped"]),
+        summary: z
+          .string()
+          .max(8000)
+          .optional()
+          .meta({ description: "What was committed or merged, and where; what is left" }),
+      }),
+      output: Mission,
+      permissions: ["missions.write"],
+      handler: async ({ missionId, status, summary }, invocation) => {
+        await sync();
+        const mission = getMission(missionId);
+        if (isClosed(mission.status)) {
+          throw new OrchestratorError(
+            "MISSION_CLOSED",
+            `Mission ${missionId} is ${mission.status}`,
+            {
+              missionId,
+            },
+          );
+        }
+        if (summary !== undefined && summary.trim() !== "") {
+          // Before the update: its event reports at once and reads it (D1222).
+          await kv.set(NAMESPACE, `summary/${missionId}`, summary);
+        }
+        try {
+          return await run<Mission>("missions.update", { missionId, status }, invocation);
+        } catch (error) {
+          await kv.delete(NAMESPACE, `summary/${missionId}`);
+          throw error;
+        }
       },
     });
 
@@ -476,12 +676,6 @@ export default definePlugin({
     });
 
     // --- Refocus (D708–D711) -----------------------------------------------------
-    const getThread = async (threadId: string) => {
-      const { thread, running } = await run<{ thread: unknown; running?: string }>("threads.get", {
-        threadId,
-      });
-      return { thread: ThreadView.parse(thread), running };
-    };
     /** The open slice a thread of this node works on, changed last (as `missions.chain` picks it). */
     const sliceOfThread = (threadId: string, threadNode?: string) =>
       Object.values(state.slices)
@@ -661,5 +855,6 @@ export default definePlugin({
     });
 
     await sync();
+    caughtUp = true;
   },
 });

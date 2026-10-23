@@ -1,6 +1,7 @@
 // A civilization end to end on the fake runtime (docs/plans/agents.md#c3, D1101–D1104):
 // a team from a spec, the intent and a mission with slices, the orchestrator
-// handing them out, proofs, an ask to the owner and a health warning. Driven
+// handing them out, proofs, asks to the owner, a health warning and the lead's
+// report to the owner (L1, D1221–D1223). Driven
 // through commands; it asserts on the records and events the node persists.
 import * as Fs from "node:fs";
 import * as Path from "node:path";
@@ -52,7 +53,7 @@ interface Slice {
   proof?: unknown[];
 }
 
-test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owner and a health warning", async ({
+test("D1101–D1104, D1221–D1223: a team runs a mission: handoffs, proofs, asks to the owner, a health warning and the lead's report", async ({
   page,
 }, info) => {
   const client = node.client();
@@ -181,7 +182,26 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
     result: { outcome: "wave-done", wave: 1, handed: [walls.id, review.id] },
   });
 
-  // The lead ran the wave's steps and goes on: wave 2.
+  // The lead asks the owner before wave 2: the team waits for the answer (D1223).
+  const escalation = await client.call<{ status: string; message: { messageId: string } }>(
+    "agents.ask",
+    { to: owner, from: address.lead, question: "May the roof be red?" },
+  );
+  expect(escalation.status).toBe("pending");
+  const held = await client.call<{ workflowId: string }>("missions.orchestrate", {
+    missionId: mission.id,
+    parentThreadId: leadThread,
+  });
+  expect(await workflowEnds(held.workflowId)).toMatchObject({
+    status: "completed",
+    result: { outcome: "waiting", escalations: [escalation.message.messageId], handed: [] },
+  });
+  await client.call("agents.inbox.answer", {
+    messageId: escalation.message.messageId,
+    answer: "Red is fine.",
+  });
+
+  // The lead ran the wave's steps, has its answer and goes on: wave 2.
   const second = await client.call<{ workflowId: string }>("missions.orchestrate", {
     missionId: mission.id,
     parentThreadId: leadThread,
@@ -247,13 +267,28 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
   );
   expect(analysed.analysis.answer).toMatch(/^Echo: /);
 
-  // 7. Wave 2 is proven; the lead closes the mission.
+  // 7. Wave 2 is proven; the lead closes the mission, and the owner gets its report (D1222).
   await prove(roof.id, "the roof keeps the rain out");
   expect(await workflowEnds(second.workflowId)).toMatchObject({
     status: "completed",
     result: { outcome: "slices-done", handed: [roof.id] },
   });
-  await client.call("missions.update", { missionId: mission.id, status: "done" });
+  await client.call("missions.close", {
+    missionId: mission.id,
+    status: "done",
+    summary: "Committed as 1a2b3c4 on main.",
+  });
+  const report = payloadOf(
+    await inbox.until(
+      (event) =>
+        event.type === "agents.inbox.received" &&
+        String(payloadOf(event).message?.messageId).startsWith(`report-${mission.id}-done`),
+    ),
+  ).message as { from: string; body: string };
+  expect(report.from).toBe(address.lead);
+  expect(report.body).toContain("Mission report: Doghouse, done");
+  expect(report.body).toContain("Committed as 1a2b3c4 on main.");
+  expect(report.body).toContain("$ look at it\nthe roof keeps the rain out");
   const done = await client.call<{ mission: { status: string }; slices: Slice[] }>("missions.get", {
     missionId: mission.id,
   });
@@ -280,4 +315,31 @@ test("D1101–D1104: a team runs a mission: handoffs, proofs, an ask to the owne
   const shot = info.outputPath("civilization.png");
   await page.screenshot({ path: shot });
   await info.attach("civilization", { path: shot, contentType: "image/png" });
+
+  // The report waits in the inbox and shows in the Lead view, after the lead's
+  // answer to the owner's first message (D1221).
+  await expect(
+    page.getByRole("region", { name: "Inbox" }).getByRole("button", { name: /Mission report/ }),
+  ).toBeVisible();
+  await page
+    .getByRole("region", { name: "Teams" })
+    .getByRole("button", { name: /Workshop/ })
+    .click();
+  await page
+    .getByRole("region", { name: "Team Workshop" })
+    .getByRole("button", { name: "Talk to the lead" })
+    .click();
+  const conversation = page
+    .getByRole("region", { name: "Lead view" })
+    .getByRole("log", { name: "Conversation with the lead" });
+  await expect(conversation.getByRole("article", { name: "Lead" }).first()).toContainText(
+    "Run the doghouse mission.",
+  );
+  const shown = conversation.getByRole("article", { name: "Lead" }).last();
+  await expect(shown).toContainText("Mission report: Doghouse, done");
+  await expect(shown).toContainText("Committed as 1a2b3c4 on main.");
+  await shown.scrollIntoViewIfNeeded();
+  const reportShot = info.outputPath("lead-report.png");
+  await page.screenshot({ path: reportShot });
+  await info.attach("lead-report", { path: reportShot, contentType: "image/png" });
 });
