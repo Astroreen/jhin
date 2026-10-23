@@ -16,6 +16,8 @@ import {
   formatSteps,
   parseSteps,
   placeOf,
+  reviewCheckFailed,
+  reviewCheckLines,
   routeOf,
   runLabel,
   sameSteps,
@@ -392,5 +394,45 @@ describe("the missions store (D641)", () => {
     expect(again.status).toBe("ready");
     expect(node.subscriptions.map((s) => s.after)).toEqual([1, 2]);
     store.dispose();
+  });
+});
+
+describe("D1278: the mission view shows reviews and the review check", () => {
+  const titleOf = (id: string) => ({ s1: "The view" })[id] ?? id;
+
+  it("words the check's three answers and its waiting states", () => {
+    expect(reviewCheckLines({ status: "ready", clear: true, unreviewed: [] }, titleOf)).toEqual({
+      headline: "Clear: every done slice was reviewed after its last change.",
+      unreviewed: [],
+    });
+    const waiting = reviewCheckLines(
+      {
+        status: "ready",
+        clear: false,
+        unreviewed: [
+          { sliceId: "s1", reason: "changed-after-review" },
+          { sliceId: "s2", reason: "unreviewed" },
+        ],
+      },
+      titleOf,
+    );
+    expect(waiting.unreviewed).toEqual([
+      "The view: changed after its last review",
+      "s2: never reviewed",
+    ]);
+    expect(reviewCheckLines({ status: "unavailable" }, titleOf).headline).toMatch(/^Not known:/);
+    expect(reviewCheckLines({ status: "error", error: "boom" }, titleOf).headline).toBe(
+      "Couldn't check reviews: boom",
+    );
+  });
+
+  it("takes a missing command or a refusal as unavailable, any other failure as an error", () => {
+    expect(reviewCheckFailed(Object.assign(new Error("x"), { code: "COMMAND_NOT_FOUND" }))).toEqual(
+      { status: "unavailable" },
+    );
+    expect(reviewCheckFailed(Object.assign(new Error("x"), { code: "PERMISSION_DENIED" }))).toEqual(
+      { status: "unavailable" },
+    );
+    expect(reviewCheckFailed(new Error("boom"))).toEqual({ status: "error", error: "boom" });
   });
 });
