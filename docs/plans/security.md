@@ -857,7 +857,8 @@ Connect stays out of scope.
   a request that needs no preflight: a network error stays an error. Nodes saved before keep their
   bearer tokens; pairing again binds. A
   saved key that no longer reads as a `CryptoKey` keeps its node in the
-  list: its bound token is refused, and the node is paired again.
+  list, refused at once without sending the token (the client stops
+  retrying), and the node is paired again.
   `auth.clients.list` says `bound: true` for a bound token (additive).
 
 ## PR plan
@@ -1020,6 +1021,10 @@ A slice a PR, in the order of D1361's risks:
   mapping another home made is refused, not repaired. When `jhin pair
   --tailscale` fails after `auth.pairing.create` succeeded (printing, an
   unreachable node mid-run), the mapping's notes are not repeated.
+- A pairing proof (D1366) is neither remembered against replay nor bound
+  to its code (RFC 9449 has no such claim): a replayed one binds a token
+  to its author's key. A device whose clock lags the node's is refused
+  tickets for that long after each start of the node.
 - The web client's DPoP fallbacks for a page without WebCrypto and for
   a same-origin older node's bearer answer have no test of their own
   (`pair-dpop.test.ts` covers an older node's refused preflight;

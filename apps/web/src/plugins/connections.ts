@@ -144,15 +144,26 @@ export const connectionsPlugin = builtin(
         // A session node sends no token: the browser adds its cookie to the upgrade.
         const token = "token" in saved ? saved.token : undefined;
         const key = "key" in saved && isDeviceKey(saved.key) ? saved.key : undefined;
+        // Saved bound, but its key no longer reads: the token alone opens nothing (D1368).
+        const keyLost = "key" in saved && saved.key !== undefined && key === undefined;
         const client = createRpcClient({
           // A bound token never goes on the socket: a fresh ticket does (D1367).
-          connect: async () =>
-            connectWebSocket(
+          connect: async () => {
+            if (keyLost) {
+              throw Object.assign(
+                new Error("This browser lost the key this node was paired with"),
+                {
+                  code: "UNAUTHENTICATED",
+                },
+              );
+            }
+            return connectWebSocket(
               saved.url,
               token !== undefined && key !== undefined
                 ? await webSocketTicket(saved.url, token, key)
                 : token,
-            ),
+            );
+          },
         });
         client.onState(changed);
         nodes.set(saved.url, { saved, client });
