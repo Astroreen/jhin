@@ -393,6 +393,8 @@ const TYPED_TAG = "\u0000json:";
 
 /** The text the store keeps for a secret `value`, or undefined for a value that is no scalar. */
 export function storedText(value: unknown): string | undefined {
+  // NaN and Infinity have no JSON text: no config file holds them, nothing to seal.
+  if (typeof value === "number" && !Number.isFinite(value)) return undefined;
   if (typeof value === "number" || typeof value === "boolean") {
     return `${TYPED_TAG}${JSON.stringify(value)}`;
   }

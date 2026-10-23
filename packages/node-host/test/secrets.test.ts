@@ -326,6 +326,11 @@ describe("typed config secrets (security.md D1373)", () => {
     }
   });
 
+  it("seals no number without JSON text", () => {
+    expect(storedText(Number.NaN)).toBeUndefined();
+    expect(storedText(Number.POSITIVE_INFINITY)).toBeUndefined();
+  });
+
   it("keeps a tagged text that is no scalar as the text it is", () => {
     for (const stored of [
       "\u0000json:{oops",

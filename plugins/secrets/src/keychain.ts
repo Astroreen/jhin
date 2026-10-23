@@ -26,6 +26,8 @@ const runProcess: Runner = (command, args, input) =>
       child = ChildProcess.spawn(command, args, {
         stdio: ["pipe", "pipe", "ignore"],
         timeout: KEYCHAIN_TIMEOUT_MS,
+        // No console window flashes up for PowerShell when a GUI started the node.
+        windowsHide: true,
       });
     } catch {
       resolve({ code: -1, stdout: "" });

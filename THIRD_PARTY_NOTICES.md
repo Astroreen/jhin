@@ -109,7 +109,7 @@ component; `packages/qr-code`: the terminal rendering of a QR code;
 `apps/jhin`: `jhin pair`, its output, notes and Tailscale Serve flow;
 `plugins/mcp-oauth`: MCP client sign-in with OAuth, its rules, pages and wording), secrets (`packages/secrets-api`, `plugins/secrets`: the secret
 store's shape, secret requests and their card, one-use secretRefs, their
-statuses, lifetime and messages; the store key wrapped with DPAPI through PowerShell) and the desktop app (`apps/desktop`, `plugins/desktop`,
+statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/desktop`,
 `packages/desktop-api`: the window and its chrome, the application and context
 menus, the notification badge, the update flow, its state machine and its
 controls, the nightly release notes, the quit hold and its hint;
@@ -123,7 +123,8 @@ stream view and control rail). The device hub (`expo-device-hub`) and
 npm on first use (`docs/plans/preview.md` D1206), under their own MIT licenses.
 `packages/qr-code/src/qr-code.ts` is Project Nayuki's QR Code generator (MIT,
 copyright Project Nayuki) as T3 Code vendors it; its notice is kept in the
-file. Files derived from T3 Code say so in a header comment.
+file. Files derived from T3 Code say so in a header comment. The secret store wraps its key with DPAPI through PowerShell as T3 Code's
+`apps/desktop/src/preview/BrowserImport/ChromiumKeys.ts` unwraps Chromium's.
 
 ```
 MIT License

@@ -1121,7 +1121,9 @@ A slice a PR, in the order of D1361's risks:
   schema, or a cache cleared on `kernel.config.changed`, would avoid it.
 
 - The secret store (W28): Windows keeps the store's key with DPAPI since
-  W39 (D1372), not in Credential Manager; an existing store cannot move its key
+  W39 (D1372), not in Credential Manager; the DPAPI script has run only
+  against a fake PowerShell, never on a Windows machine (a failure falls
+  back to the key file with a warning); an existing store cannot move its key
   between the keychain and the file, and an unreadable one has no reset
   command: it has to be moved aside by hand (D1023).
 - A list item whose reference does not resolve is left out of the applied
