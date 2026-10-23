@@ -115,3 +115,67 @@ describe("parsePage", () => {
     ]);
   });
 });
+
+describe("reference-style and HTML links as routes (D1286)", () => {
+  const links = (text: string) =>
+    parsePage(text)
+      .routes.filter((route) => route.kind === "link")
+      .map((route) => [route.target, route.fragment, route.line]);
+
+  it("resolves full, collapsed and shortcut references, labels case-insensitively", () => {
+    expect(
+      links(
+        [
+          "See [the map][Map], [plans][] and [lore].",
+          "",
+          "[map]: docs/map.md#shape",
+          "[PLANS]:  <docs/my plans.md>  'Plans'",
+          "[Lore]: lore/README.md",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      ["docs/map.md", "shape", 1],
+      ["docs/my plans.md", undefined, 1],
+      ["lore/README.md", undefined, 1],
+    ]);
+  });
+
+  it("reads a definition that comes before its use, and an HTML link with either quote", () => {
+    expect(
+      links(
+        [
+          "[a]: one.md",
+          'Text <a href="two.md#x">two</a> and <a class="c" href=\'three.md\'>three</a> [a]',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      ["two.md", "x", 2],
+      ["three.md", undefined, 2],
+      ["one.md", undefined, 2],
+    ]);
+  });
+
+  it("ignores code, an undefined shortcut, an undefined reference and external targets", () => {
+    expect(
+      links(
+        [
+          "[ref]: real.md",
+          "```",
+          "[inside]: fenced.md",
+          '[x][inside] <a href="fenced.md">',
+          "```",
+          "A `[code][ref]` span, [nothing] defined, [x][missing], [web][site] and [x][inside].",
+          '<a href="https://example.com/a.md">outside</a>',
+          "[site]: https://example.com/a.md",
+        ].join("\n"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not take a reference link's label for a path mention", () => {
+    const page = parsePage("[`docs/a.md`][a]\n\n[a]: docs/a.md");
+    expect(page.routes).toEqual([
+      { kind: "link", target: "docs/a.md", fragment: undefined, line: 1 },
+    ]);
+  });
+});

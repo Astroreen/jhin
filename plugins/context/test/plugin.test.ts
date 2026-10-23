@@ -408,6 +408,24 @@ describe("context.map", () => {
     ]);
   });
 
+  it("reaches a page only through a reference link or an HTML link (D1286)", async () => {
+    const kernel = await start(
+      project({
+        "AGENTS.md":
+          '# Trailhead\n\nRead the [map][m] and <a href="docs/html.md">html</a>.\n\n[m]: docs/ref.md\n',
+        "docs/ref.md": "# Reached by reference\n",
+        "docs/html.md": "# Reached by HTML\n",
+        "docs/lonely.md": "# Linked by nobody\n",
+      }),
+    );
+    const report = (await kernel.commands.execute("context.map", {})) as {
+      unreachable: string[];
+      broken: unknown[];
+    };
+    expect(report.unreachable).toEqual(["docs/lonely.md"]);
+    expect(report.broken).toEqual([]);
+  });
+
   it("keeps Jhin's own library whole and its router skill current", async () => {
     const root = Path.resolve(import.meta.dirname, "../../..");
     // The repository's own project layer, as `jhin` reads it.

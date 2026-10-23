@@ -55,10 +55,39 @@ const HEADING = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const DECISION = /^\s*(?:[-*]\s+|\d+\.\s+)?\*\*(D\d+)\./;
 /** `[x](target "title")`, or `[x](<target with spaces>)` as CommonMark allows. */
 const LINK = /!?\[(?:[^\]\\]|\\.)*\]\(\s*(?:<([^>\n]*)>|([^)\s]*))(?:\s+"[^"]*")?\s*\)/g;
+/** `[ref]: target "title"`, a reference definition (D1286); the target may be `<...>`. */
+const DEFINITION =
+  /^ {0,3}\[((?:[^\]\\]|\\.)+)\]:\s*(?:<([^>\n]*)>|(\S+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*$/;
+/** `[x][ref]`, `[x][]` and `[x]`; a shortcut is a route only when its label is defined. */
+const REFERENCE = /!?\[((?:[^[\]\\]|\\.)*)\](?:\[((?:[^[\]\\]|\\.)*)\])?/g;
+/** An HTML link on one line: `<a href="target">`, with either quote or none. */
+const HTML_LINK = /<a\s[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
 const CODE_SPAN = /`([^`\n]+)`/g;
 /** A backtick span that names a Markdown file or directory: `docs/map.md#shape`, `docs/lore/`. */
 const PATH_MENTION = /^(?:\.{0,2}\/)?(?:[\w@.-]+\/)*(?:[\w@.-]+\.md|[\w@.-]+\/)(?:#[\w-]+)?$/;
 const EXTERNAL = /^[a-z][a-z0-9+.-]*:/i;
+
+/** How CommonMark matches labels: case-folded, runs of whitespace as one. */
+const labelKey = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
+
+/** The reference definitions outside code fences, by label (the first of a label wins). */
+function definitionsOf(lines: readonly string[]): Map<string, string> {
+  const found = new Map<string, string>();
+  let fence: string | undefined;
+  for (const line of lines) {
+    const next = fenceAfter(line, fence);
+    if (next.isFence) {
+      fence = next.fence;
+      continue;
+    }
+    if (fence !== undefined) continue;
+    const definition = DEFINITION.exec(line);
+    if (definition === null) continue;
+    const key = labelKey(definition[1]!);
+    if (!found.has(key)) found.set(key, definition[2] ?? definition[3] ?? "");
+  }
+  return found;
+}
 
 /** `%20` → space; a malformed escape (`100%.md`) stays as written, to be reported as a broken route. */
 function decode(target: string): string {
@@ -121,6 +150,7 @@ export function parsePage(text: string): Page {
   const decisions: string[] = [];
   const decisionLines = new Map<string, number>();
   const routes: Route[] = [];
+  const definitions = definitionsOf(lines);
   let fence: string | undefined;
 
   for (const [index, line] of lines.entries()) {
@@ -151,11 +181,8 @@ export function parsePage(text: string): Page {
     }
 
     const fileLine = index + offset + 1;
-    // Links inside code spans are code, not routes.
-    const prose = line.replace(CODE_SPAN, (span) => " ".repeat(span.length));
-    for (const link of prose.matchAll(LINK)) {
-      const raw = link[1] ?? link[2] ?? "";
-      if (raw === "" || EXTERNAL.test(raw)) continue;
+    const route = (raw: string) => {
+      if (raw === "" || EXTERNAL.test(raw)) return;
       const hash = raw.indexOf("#");
       routes.push({
         kind: "link",
@@ -163,9 +190,34 @@ export function parsePage(text: string): Page {
         fragment: hash < 0 ? undefined : raw.slice(hash + 1),
         line: fileLine,
       });
+    };
+    // Links inside code spans are code, not routes.
+    const prose = line.replace(CODE_SPAN, (span) => " ".repeat(span.length));
+    for (const link of prose.matchAll(LINK)) route(link[1] ?? link[2] ?? "");
+    for (const link of prose.matchAll(HTML_LINK)) route(link[1] ?? link[2] ?? link[3] ?? "");
+    // Reference links (D1286): those with a definition; a definition line is not a link itself.
+    const resolved: { index: number; length: number }[] = [];
+    if (DEFINITION.test(line)) resolved.push({ index: 0, length: line.length });
+    else {
+      for (const ref of prose
+        .replace(LINK, (link) => " ".repeat(link.length))
+        .matchAll(REFERENCE)) {
+        const label = ref[2] === undefined || ref[2] === "" ? ref[1]! : ref[2];
+        const target = definitions.get(labelKey(label));
+        if (target === undefined) continue;
+        route(target);
+        resolved.push({ index: ref.index, length: ref[0].length });
+      }
     }
     // A path in a link's text is the link's label, not a second route.
-    for (const span of line.replace(LINK, (link) => " ".repeat(link.length)).matchAll(CODE_SPAN)) {
+    let linkless = line.replace(LINK, (link) => " ".repeat(link.length));
+    for (const hit of resolved) {
+      linkless =
+        linkless.slice(0, hit.index) +
+        " ".repeat(hit.length) +
+        linkless.slice(hit.index + hit.length);
+    }
+    for (const span of linkless.matchAll(CODE_SPAN)) {
       const raw = span[1]!.trim();
       if (!PATH_MENTION.test(raw)) continue;
       const hash = raw.indexOf("#");
