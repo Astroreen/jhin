@@ -230,7 +230,7 @@ D740–D759, inside `agents.md`'s D600–D760; they take D921–D940, D941–D96
 and D961–D980. W20 took the
 next block, D981–D1000. `agents.md`'s phase 2 takes D1061–D1120 (C1–C3).
 `agents.md`'s phase 3 takes D1221–D1280 (L1–L3). A workstream that needs
-more numbers takes the next free block of 20 after D1280 and writes it here.
+more numbers takes the next free block of 20 after D1380 and writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
@@ -422,3 +422,51 @@ finishes out of the Deferred lists and leaves the rest there.
   device hosts and the tools panel, an integrity pin for the hub's runtime
   installs, saving downloads to the client, and the signed release path,
   which waits for the owner's secrets.
+
+## Round 4
+
+Round 3 left its remainder in the plans' Deferred lists. Round 4 takes what
+a T3 Code user still notices, in the same way: each workstream moves what it
+finishes out of the Deferred lists and leaves the rest there.
+
+| Id  | Workstream                                | Plans                                             | Decisions   |
+| --- | ----------------------------------------- | ------------------------------------------------- | ----------- |
+| W35 | The pull request panel and other forges   | `source-control.md`, `t3-parity.md`               | D1281–D1300 |
+| W36 | Usage, accounts and the providers' rest   | `providers.md`, `t3-parity.md`                    | D1301–D1320 |
+| W37 | Preview and devices in the desktop app    | `preview.md`, `desktop.md`                        | D1321–D1340 |
+| W38 | The composer, thread panels and subagents | `t3-parity.md`, `orchestration.md`, `terminal.md` | D1341–D1360 |
+| W39 | Security hardening                        | `security.md`, `terminal.md`                      | D1361–D1380 |
+
+- **W35:** the right panel of a thread's pull requests and the chat header
+  rows, review comments as chips, watching and listing pull requests on
+  forges other than GitHub (D849), "Roll back" from an item inspector, the
+  diff panel's file preview and pop-out mode, "Waiting" for a mesh member's
+  thread, T3's per-project settings and `t3.json`, the submodule items of
+  D1134.
+- **W36:** Claude's and OpenCode's usage limits, reset credits and the Usage
+  page; the sidebar's "Goal" and "limited" states and "Resume thread" for a
+  turn that failed on a usage limit; Codex subagents that outlive their
+  turn; MCP apps and "Always allow"; T3's own OpenAI sign-in and several
+  accounts; `/feedback`; Claude Code's native rewind and fork; Fast Mode and
+  Ultracode on a live Claude Code session.
+- **W37:** the preview and devices inside the desktop app (T3's Electron
+  webview runtime), the chat canvas beside the mini player and its pop-out
+  window, the device hub's setup wizard and consent, SSH device hosts and
+  the tools panel, an integrity pin for the hub's runtime installs, saving
+  downloads to the client. The signed release path still waits for the
+  owner's secrets.
+- **W38:** the editor parts of D303 (language-picker icons, leaving a code
+  block from the keyboard, heading spacing, the chips of a sent message,
+  `aria-activedescendant`), a mentioned file's preview beside the thread
+  (D1003), the thread details panel inline, find inside a finished turn's
+  folded work, T3's scope picker for a project's settle settings; the
+  subagent hover card's progress line, a background subagent's streamed
+  text and progress, the mode ceiling of a task created from a thread;
+  right-panel terminals as surfaces of their own.
+- **W39:** DNS rebinding (D418), the session cookie's `Secure` flag behind a
+  proxy (D421), DPoP-bound device tokens and T3's WebSocket tickets, MCP
+  OAuth's access levels, the Windows keychain for the secret store, config
+  secrets that are numbers or booleans, `auth.permissions.list` for
+  streams, `terminals.write` as shell access and the terminal's
+  per-connection bounds (D470). Write the threat model into decisions
+  before code.
