@@ -1284,7 +1284,8 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   session's last turn resumes the same session with `resumeSessionAt` the
   last entry of the latest turn it still shows, so Claude Code forgets the
   dropped turns and gets no transcript; the kept process of the thread
-  closes first. A rollback that keeps none of Claude's turns, one where a
+  closes and has exited first, so it writes nothing into the resumed
+  session. A rollback that keeps none of Claude's turns, one where a
   Claude turn the thread still shows has no entry (stopped or failed before
   Claude Code wrote one: resuming earlier would drop it), or a record from
   before this (no entries), starts a new session with the transcript as
@@ -1301,7 +1302,9 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   session up to the last entry of the last Claude turn the fork inherited
   (`dir` the turn's folder) into a new session, which the turn resumes; the
   fork's record starts with the inherited turns, so a rollback in the fork
-  rewinds into them (D1314). Only what came after Claude's last inherited
+  rewinds into them (D1314); the record is written as soon as the copy is
+  made, so a turn stopped before it starts leaves the fork's session, not a
+  stray one. Only what came after Claude's last inherited
   turn goes as a transcript. A parent without entries, or a fork Claude Code
   refuses, starts a new session with the whole transcript, as before. The
   plugin passes the SDK's `forkSession`; `claudePlugin(query, forkSession?)`

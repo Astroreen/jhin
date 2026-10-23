@@ -931,6 +931,61 @@ describe("jhin.agent-claude: Claude Code's native rewind and fork (D1314, D1315)
     });
   });
 
+  it("starts over with the transcript when Claude Code no longer has the rewound session", async () => {
+    const { turn, calls, sessions } = node([
+      async function* () {
+        throw new Error("No conversation found with session ID: x");
+      },
+      answeringAt(["fresh", "h9"]),
+    ]);
+    await sessions.set(THREAD, {
+      sessionId: THREAD,
+      turnId: "t2",
+      turns: [
+        { turnId: "t1", head: "h1" },
+        { turnId: "t2", head: "h2" },
+      ],
+      cwd: "/work",
+    });
+    await turn({ turnId: "t3", input: { text: "instead" }, history: turnOf("t1", "first", "one") });
+    expect(calls[0]!.options).toMatchObject({ resume: THREAD, resumeSessionAt: "h1" });
+    // The retry is a new session with the whole transcript, and no rewind.
+    expect(calls[1]!.options.resume).toBeUndefined();
+    expect(calls[1]!.options.resumeSessionAt).toBeUndefined();
+    expect(prompts(calls[1]!)[0]).toContain("User: first\nAssistant: one");
+    expect(sessions.records.get(THREAD)?.turns).toEqual([{ turnId: "t3", head: "h9" }]);
+  });
+
+  it("rewinds past another agent's turn and hands it over as the transcript", async () => {
+    const { turn, calls, sessions } = node([answeringAt(["back", "h5"])]);
+    await sessions.set(THREAD, {
+      sessionId: THREAD,
+      turnId: "t3",
+      turns: [
+        { turnId: "t1", head: "h1" },
+        { turnId: "t3", head: "h3" },
+      ],
+      cwd: "/work",
+    });
+    const other: StoredEvent[] = turnOf("t2", "elsewhere", "codex said").map((event) =>
+      event.type === "agent.turn.started"
+        ? {
+            ...event,
+            payload: { ...(event.payload as object), agentId: "jhin.agent-codex" },
+          }
+        : event,
+    );
+    await turn({
+      turnId: "t4",
+      input: { text: "go on" },
+      history: [...turnOf("t1", "first", "one"), ...other],
+    });
+    expect(calls[0]!.options).toMatchObject({ resume: THREAD, resumeSessionAt: "h1" });
+    // What the other agent did comes as the transcript since Claude's last kept turn.
+    expect(prompts(calls[0]!)[0]).toContain("codex said");
+    expect(prompts(calls[0]!)[0]).not.toContain("User: first");
+  });
+
   it("starts a new session when the rollback keeps none of Claude's turns", async () => {
     const { turn, calls, sessions } = node([
       answeringAt(["one", "h1"]),

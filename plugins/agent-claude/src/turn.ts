@@ -1067,12 +1067,20 @@ export function claudeTurn(
         upToMessageId: last.head,
         dir: request.cwd,
       });
-      return {
+      const record = {
         sessionId: forked.sessionId,
         turnId: last.turnId,
         turns: inherited,
         cwd: request.cwd,
       };
+      // Kept at once: a turn stopped before it starts leaves the fork, not a stray copy.
+      await deps.sessions.set(request.threadId, record).catch((error: unknown) =>
+        deps.log?.("could not record the forked claude session", {
+          threadId: request.threadId,
+          error: String(error),
+        }),
+      );
+      return record;
     } catch (error) {
       deps.log?.("claude could not fork the session, starting one", {
         threadId: request.threadId,
@@ -1124,6 +1132,10 @@ export function claudeTurn(
       deps.log?.("claude session holds dropped turns, resuming before them", {
         threadId: request.threadId,
       });
+      // The same session resumes: the process that ran it has exited first, so its last
+      // writes to the session file are not interleaved with the resumed one's.
+      await deps.live?.ended(request.threadId);
+      if (interrupted) return;
       sessionId = kept!.sessionId;
       resumeAt = keptTurns.at(-1)!.head;
       earlierTurns = keptTurns;
