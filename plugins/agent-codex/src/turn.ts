@@ -717,7 +717,10 @@ export function codexTurn(
   const allowance = (kind: string) => `${runtimeMode}:${kind}`;
   const allowed = (kind: string) => lease?.session.allowed.has(allowance(kind)) === true;
   const allow = (kind: string, decision: ApprovalDecision) => {
-    if (decision === "accept-for-session") lease?.session.allowed.add(allowance(kind));
+    // "Always allow" is the session's allowance where Codex keeps no lasting one (D1316).
+    if (decision === "accept-for-session" || decision === "accept-always") {
+      lease?.session.allowed.add(allowance(kind));
+    }
   };
   const decide = (itemId: string, decision: ApprovalDecision) => {
     if (decision === "decline" || decision === "cancel") declined.add(itemId);
@@ -791,10 +794,11 @@ export function codexTurn(
           ...(reason === undefined ? {} : { reason }),
         });
         decide(itemId, decision);
-        if (decision !== "accept" && decision !== "accept-for-session") {
+        const forSession = decision === "accept-for-session" || decision === "accept-always";
+        if (decision !== "accept" && !forSession) {
           return { permissions: {}, scope: "turn" };
         }
-        return { permissions, scope: decision === "accept-for-session" ? "session" : "turn" };
+        return { permissions, scope: forSession ? "session" : "turn" };
       }
       case "execCommandApproval": {
         if (allowed("command")) return { decision: "approved_for_session" };
