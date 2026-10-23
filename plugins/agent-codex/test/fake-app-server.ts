@@ -34,6 +34,8 @@ export interface Scenario {
   readonly login?: { readonly success: boolean; readonly error?: string };
   /** `account/rateLimits/read`'s answer; the method is unknown when absent. */
   readonly rateLimits?: unknown;
+  /** `mcpServer/resource/read`'s contents, by URI (D1401). */
+  readonly resources?: Readonly<Record<string, readonly unknown[]>>;
   /** `skills/list`'s entries, one per folder. */
   readonly skills?: readonly unknown[];
   /** Pages of `model/list`. */
@@ -230,6 +232,18 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
       return;
     case "skills/list":
       send({ id, result: { data: scenario.skills ?? [] } });
+      return;
+    case "mcpServer/resource/read": {
+      const uri = (params as { uri?: string }).uri ?? "";
+      send({ id, result: { contents: scenario.resources?.[uri] ?? [] } });
+      return;
+    }
+    case "mcpServer/tool/call":
+      // Answers with what it was asked, for the app's call (D1402).
+      send({
+        id,
+        result: { content: [{ type: "text", text: "called" }], structuredContent: params },
+      });
       return;
     case "feedback/upload":
       // Codex answers the thread it sent (T3's feedbackId).

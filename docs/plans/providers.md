@@ -678,8 +678,10 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Background terminals Codex keeps after a turn.
-- MCP apps (T3's `McpAppFrame` and `apps/server/src/mcpApps`: an app's UI
-  in the timeline); an MCP elicitation that needs a form filled in or a URL
+- An MCP app shown in the timeline (T3's `McpAppFrame` and its host
+  bridge): D1401–D1402 keep and serve it, the web client does not show it
+  yet; T3's model context of an app (`ui/update-model-context`), an app of a
+  thread's other accounts (D1319) and of Claude Code. An MCP elicitation that needs a form filled in or a URL
   opened (declined, as T3 does). "Always allow" is D1316.
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
@@ -1390,6 +1392,38 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   the reason, and can be dismissed once done. Without a turn yet T3's toast
   says "Start a Codex thread first". The fake agent takes feedback (a
   reason "fail" fails), for the end-to-end test.
+
+- **D1401. MCP apps a Codex tool call returns are kept**, T3's
+  `McpAppSnapshot.ts` and `packages/shared/src/mcpApp.ts` (ported as
+  `plugins/agent-codex/src/mcp-apps.ts`; `agent.runtime@1.15`, additive: a
+  `tool.completed` item's `app`, `AgentMcpApp`). An `mcpToolCall` that
+  completes naming a `ui://` resource (`mcpAppUi.resourceUri`,
+  `mcpAppResourceUri` or `appContext.resourceUri`) has the turn read it from
+  its server (`mcpServer/resource/read`, within 20 s, T3's limit) before the
+  call completes; the first content of the MCP app MIME type
+  (`text/html;profile=mcp-app`, text or base64, at most 5 MiB) is the app's
+  document. Its server's `_meta.ui` declares what it may reach: origins
+  (`connectDomains`, `resourceDomains`, `frameDomains`, `baseUriDomains`,
+  only scheme-qualified ones, at most 32 each), browser features (camera,
+  microphone, geolocation, clipboard write) and a border. The document is
+  kept with T3's Content-Security-Policy as its first element (nothing from
+  the host's own origin, undeclared origins blocked), in the Codex plugin's
+  storage under the thread (`documentId`), and removed with the thread. The
+  call's item carries `app` (`{ server, tool, resourceUri, documentId,
+  csp?, permissions?, prefersBorder? }`), recorded with its completion
+  (`agent.item.completed`). A read that fails or a document past the limit
+  completes the call without one; a subagent's calls keep none.
+- **D1402. An app's document and its calls**: the node commands
+  `agents.mcp-app.document` (`{ threadId, documentId }` → `{ html }`,
+  `threads.read`; `MCP_APP_NOT_FOUND` for an unknown id),
+  `agents.mcp-app.call-tool` (`{ threadId, server, tool, arguments }`,
+  `threads.write`) and `agents.mcp-app.read-resource` (`{ threadId, server,
+  uri }`, `threads.read`) go to the agent that ran the thread's latest turn
+  (`AgentRuntime.mcpApps`, `MCP_APPS_UNSUPPORTED` without). Codex sends
+  `mcpServer/tool/call` and `mcpServer/resource/read` on the thread's running
+  app-server, as T3 asks its provider session, and answers T3's result
+  shape (`content`, `structuredContent`, `isError`, `_meta`); without one
+  running it says "The thread's Codex is not running. Send a message first.".
 
 ### Deferred
 

@@ -429,13 +429,13 @@ Round 3 left its remainder in the plans' Deferred lists. Round 4 takes what
 a T3 Code user still notices, in the same way: each workstream moves what it
 finishes out of the Deferred lists and leaves the rest there.
 
-| Id  | Workstream                                | Plans                                             | Decisions   |
-| --- | ----------------------------------------- | ------------------------------------------------- | ----------- |
-| W35 | The pull request panel and other forges   | `source-control.md`, `t3-parity.md`               | D1281–D1300 |
-| W36 | Usage, accounts and the providers' rest   | `providers.md`, `t3-parity.md`                    | D1301–D1320 |
-| W37 | Preview and devices in the desktop app    | `preview.md`, `desktop.md`                        | D1321–D1340 |
-| W38 | The composer, thread panels and subagents | `t3-parity.md`, `orchestration.md`, `terminal.md` | D1341–D1360 |
-| W39 | Security hardening                        | `security.md`, `terminal.md`                      | D1361–D1380 |
+| Id  | Workstream                                | Plans                                             | Decisions                |
+| --- | ----------------------------------------- | ------------------------------------------------- | ------------------------ |
+| W35 | The pull request panel and other forges   | `source-control.md`, `t3-parity.md`               | D1281–D1300              |
+| W36 | Usage, accounts and the providers' rest   | `providers.md`, `t3-parity.md`                    | D1301–D1320, D1401–D1420 |
+| W37 | Preview and devices in the desktop app    | `preview.md`, `desktop.md`                        | D1321–D1340              |
+| W38 | The composer, thread panels and subagents | `t3-parity.md`, `orchestration.md`, `terminal.md` | D1341–D1360              |
+| W39 | Security hardening                        | `security.md`, `terminal.md`                      | D1361–D1380              |
 
 - **W35:** the right panel of a thread's pull requests and the chat header
   rows, review comments as chips, watching and listing pull requests on

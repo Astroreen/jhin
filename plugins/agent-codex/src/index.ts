@@ -2,6 +2,7 @@
 // (https://github.com/pingdotgg/t3code), apps/server/src/provider/CodexProvider.ts at
 // eb7b35ac (probeCodexAppServerProvider, checkCodexProviderStatus): the account, the model
 // catalog and T3's messages for a Codex that does not start, is signed out or hangs.
+import * as Crypto from "node:crypto";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
@@ -462,6 +463,36 @@ export async function probeSkills(
   }
 }
 
+/** The documents of MCP apps, kept per thread (D1401). */
+export interface AppDocuments {
+  keep(threadId: string, html: string): Promise<string>;
+  get(threadId: string, documentId: string): Promise<string | undefined>;
+  forget(threadId: string): Promise<void>;
+}
+
+/** MCP apps' documents in `storage.kv`, under `mcp-app/<thread>/<id>`. */
+export function appDocuments(kv: KeyValueStore): AppDocuments {
+  const prefix = (threadId: string) => `mcp-app/${threadId}/`;
+  return {
+    async keep(threadId, html) {
+      const documentId = Crypto.randomUUID();
+      await kv.set(NAMESPACE, `${prefix(threadId)}${documentId}`, html);
+      return documentId;
+    },
+    async get(threadId, documentId) {
+      // An id names a document of this thread only.
+      if (!/^[0-9a-f-]{36}$/.test(documentId)) return undefined;
+      const value = await kv.get(NAMESPACE, `${prefix(threadId)}${documentId}`);
+      return typeof value === "string" ? value : undefined;
+    },
+    async forget(threadId) {
+      for (const entry of await kv.list(NAMESPACE, { prefix: prefix(threadId) })) {
+        await kv.delete(NAMESPACE, entry.key);
+      }
+    },
+  };
+}
+
 /** The Codex runtime; `launch` starts the real `codex app-server` unless a test replaces it. */
 export function createCodexRuntime(options: {
   readonly threads: ThreadStore;
@@ -469,6 +500,8 @@ export function createCodexRuntime(options: {
   /** Another account's runtime (D1319): its own id and name; Codex's when absent. */
   readonly agentId?: string;
   readonly name?: string;
+  /** Where the documents of MCP apps its tool calls return are kept (D1401). */
+  readonly appDocuments?: AppDocuments;
   readonly launch?: Launcher;
   /** The node's MCP server, given to each app-server unless the config's `mcp` is off (D889). */
   readonly mcp?: McpServer;
@@ -687,6 +720,15 @@ export function createCodexRuntime(options: {
     },
   };
 
+  /** The thread's running Codex, which an app's calls go to (T3 asks its provider session). */
+  const runningCodex = (threadId: string) => {
+    const running = sessions.running(threadId);
+    if (running?.codexThreadId === undefined) {
+      throw new Error("The thread's Codex is not running. Send a message first.");
+    }
+    return { connection: running.connection, codexThreadId: running.codexThreadId };
+  };
+
   /** The latest snapshot: the updates since the last probe, else the probe's. */
   const rateLimits = () => live()?.snapshot ?? current()?.rateLimits;
   /** The usage limits as Codex last reported them (D1142): the probe's, then its updates. */
@@ -778,6 +820,41 @@ export function createCodexRuntime(options: {
     status,
     usageLimits,
     auth,
+    // MCP apps (D1401–D1403): their documents, and their calls on the thread's running Codex.
+    ...(options.appDocuments === undefined
+      ? {}
+      : {
+          mcpApps: {
+            document: ({ threadId, documentId }) => options.appDocuments!.get(threadId, documentId),
+            callTool: async ({ threadId, server, tool, arguments: args }) => {
+              const { connection, codexThreadId } = runningCodex(threadId);
+              const response = (await connection.request("mcpServer/tool/call", {
+                threadId: codexThreadId,
+                server,
+                tool,
+                arguments: args,
+              })) as Record<string, unknown> | null;
+              // T3's shape of the result: what the app reads.
+              return {
+                content: response?.["content"] ?? [],
+                ...(response?.["structuredContent"] === undefined
+                  ? {}
+                  : { structuredContent: response["structuredContent"] }),
+                ...(response?.["isError"] === true ? { isError: true } : {}),
+                ...(response?.["_meta"] === undefined ? {} : { _meta: response["_meta"] }),
+              };
+            },
+            readResource: async ({ threadId, server, uri }) => {
+              const { connection, codexThreadId } = runningCodex(threadId);
+              const response = (await connection.request("mcpServer/resource/read", {
+                threadId: codexThreadId,
+                server,
+                uri,
+              })) as { contents?: unknown } | null;
+              return { contents: response?.contents ?? [] };
+            },
+          },
+        }),
     // T3's uploadFeedback (D1317): Codex reads the thread's rollout and its logs from its home,
     // so an app-server of its own sends them, as the status probe asks on one.
     async uploadFeedback({ threadId, reason }) {
@@ -832,6 +909,12 @@ export function createCodexRuntime(options: {
       const turn = codexTurn(request, {
         ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
         sessions,
+        ...(options.appDocuments === undefined
+          ? {}
+          : {
+              keepMcpApp: (threadId: string, html: string) =>
+                options.appDocuments!.keep(threadId, html),
+            }),
         threads: options.threads,
         settings: config,
         // A turn that names no model before Codex was asked for its own waits for that
@@ -961,9 +1044,11 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
       const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
       const registry = context.services.get<AgentRegistry>(AGENT_REGISTRY_CAPABILITY);
       const threads = threadRecords(kv);
+      const documents = appDocuments(kv);
       const mcp = context.services.tryGet<McpServer>(MCP_SERVER_CAPABILITY);
       const runtime = createCodexRuntime({
         threads,
+        appDocuments: documents,
         launch,
         ...(mcp === undefined ? {} : { mcp }),
         config: () => context.config.get<Config>(CONFIG_SECTION),
@@ -992,6 +1077,7 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
           const shadowHome = expandHome(account.homePath)!;
           const accountRuntime = createCodexRuntime({
             threads,
+            appDocuments: documents,
             agentId: `${CODEX_AGENT_ID}:${account.id}`,
             name: `Codex · ${account.name}`,
             // Its home is linked over the main one before each Codex of it starts.
@@ -1044,6 +1130,13 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
           if (typeof payload?.id !== "string") return;
           if (event.type === ThreadEvents.threadDeleted) {
             for (const each of allRuntimes()) each.sessions.close(payload.id, true);
+            // Its apps' documents go with it (D1401).
+            void documents.forget(payload.id).catch((error: unknown) =>
+              context.log.warn("could not forget the thread's MCP apps", {
+                threadId: payload.id,
+                error: String(error),
+              }),
+            );
             // Every account's turns of the thread end first: none writes the record back.
             const threadId = payload.id;
             const settled = Promise.all(allRuntimes().map((each) => each.settled(threadId)));
