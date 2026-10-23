@@ -125,7 +125,6 @@ export function createThreadDetailsToggle(deps: {
         pressed={open}
         size="sm"
         variant="ghost"
-        {...(inline ? { onPressedChange: () => visibility.toggle(key) } : {})}
       />
     );
     const tooltip = (trigger: ReactElement) => (
@@ -138,10 +137,16 @@ export function createThreadDetailsToggle(deps: {
         </TooltipPopup>
       </Tooltip>
     );
-    // Beside a wide chat the card is the view's own (D1350): the button only shows or hides it.
-    if (inline) return tooltip(button);
+    // One tree whichever surface shows, so the button keeps its focus when the room changes.
+    // Beside a wide chat the card is the view's own (D1350): the trigger only shows or hides it,
+    // and the popover stays shut.
     return (
-      <Popover onOpenChange={(next) => visibility.set(key, "popover", next)} open={open}>
+      <Popover
+        onOpenChange={(next) =>
+          inline ? visibility.toggle(key) : visibility.set(key, "popover", next)
+        }
+        open={!inline && open}
+      >
         {tooltip(<PopoverTrigger render={button} />)}
         <PopoverPopup align="end" padding="none" side="bottom" variant="panel">
           <DetailsCard
