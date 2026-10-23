@@ -530,8 +530,9 @@ describe("code blocks in the prompt (D841–D843)", () => {
 
   it("leaves a code block by ArrowDown at its end, as T3's tiptap does (D1349)", async () => {
     const editor = mount("```ts\nconst a = 1;\n```");
-    // A restored draft goes on where it ends: in the block, after its last character.
     editor.handle.focus();
+    // The caret to the document's end, the block's last character, whatever focus did.
+    await userEvent.keyboard("{Control>}{End}{/Control}");
     await userEvent.keyboard("{ArrowDown}");
     await userEvent.keyboard("after");
     await editor.reported("```ts\nconst a = 1;\n```\nafter");
