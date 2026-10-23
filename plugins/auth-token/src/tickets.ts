@@ -41,7 +41,7 @@ export class TicketStore {
     return { ticket: `${TICKET_PREFIX}${id}.${secret}`, expiresAt };
   }
 
-  /** The device token a ticket stands for; the ticket is spent whether it is valid or not. */
+  /** The device token a ticket stands for; a valid ticket is spent, used or expired. */
   redeem(ticket: string, now: number): string | undefined {
     if (!ticket.startsWith(TICKET_PREFIX)) return undefined;
     const rest = ticket.slice(TICKET_PREFIX.length);
@@ -50,12 +50,13 @@ export class TicketStore {
     const id = rest.slice(0, dot);
     const open = this.#open.get(id);
     if (open === undefined) return undefined;
-    this.#open.delete(id);
     const given = Buffer.from(hash(rest.slice(dot + 1)));
     const expected = Buffer.from(open.secretHash);
+    // A wrong secret spends nothing: whoever knows only the id cannot burn the ticket.
     if (given.length !== expected.length || !Crypto.timingSafeEqual(given, expected)) {
       return undefined;
     }
+    this.#open.delete(id);
     return open.expiresAt > now ? open.clientId : undefined;
   }
 }

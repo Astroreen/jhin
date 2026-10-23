@@ -4,7 +4,7 @@ import { ReplayGuard } from "../src/dpop.ts";
 import { TicketStore } from "../src/tickets.ts";
 
 describe("WebSocket tickets (security.md D1367)", () => {
-  it("are used once, expire after 60 seconds, and spend a ticket with a wrong secret", () => {
+  it("are used once, expire after 60 seconds, and are not spent by a wrong secret", () => {
     const tickets = new TicketStore();
     const first = tickets.issue("device", 1_000)!;
     expect(first.expiresAt).toBe(61_000);
@@ -17,7 +17,8 @@ describe("WebSocket tickets (security.md D1367)", () => {
     const guessed = tickets.issue("device", 1_000)!;
     const [prefix, id] = guessed.ticket.split(".");
     expect(tickets.redeem(`${prefix}.${id}.wrong`, 2_000)).toBeUndefined();
-    expect(tickets.redeem(guessed.ticket, 2_000)).toBeUndefined();
+    // A wrong secret spends nothing.
+    expect(tickets.redeem(guessed.ticket, 2_000)).toBe("device");
   });
 
   it("holds at most 16 open per device, so one cannot starve the others", () => {
