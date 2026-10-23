@@ -466,6 +466,17 @@ the message, the inbox, events and the schemas of `agents.send`,
   not open is refused with `ITEM_CLOSED` (answering a dismissed item too).
   The inbox page has a Dismiss button beside Send answer; the Lead view
   shows the item as "Dismissed". The input is `messageId`, like answer's.
+- **D1273. The open items are counted on the mode's button.** `client.modes`
+  grows to **1.1** (additive): `badge(modeId)` returns a `ModeBadge`
+  (`set(count)`, disposable) and `badges()` the counts above 0, by mode id;
+  badges of one mode add up, and the mode need not be registered yet. The
+  mode switcher shows the count beside the mode's title, in the button's
+  accessible name ("Civilization, 2 waiting"), except on the mode being
+  shown. `jhin.inbox` feeds the badge of `civilization` with the open items
+  of every node (optional `client.modes@^1.1`), so it follows items as they
+  arrive, are answered or dismissed (D1274). The switcher knows no plugin.
+  The page title stays with `notifications.tsx`: this adds no second writer
+  of `document.title`.
 
 ### A3. Missions and slices (D641–D660)
 
@@ -1875,8 +1886,9 @@ Decisions (L3):
 - A2: the transcript showing a message as from its sender, with a link back.
   The turn carries `origin` (D623); until a view renders it, the header line
   of the message names the sender and the trace.
-- A2: a count of open inbox items on the mode switcher or the page title
-  (D630 notifies once per item).
+- ~~A2: a count of open inbox items on the mode switcher or the page title
+  (D630 notifies once per item).~~ A2, D1273 (the mode switcher; the title
+  stays with `notifications.tsx`).
 - C1: `agents.conversation` folds the node's whole `agents/messages` stream
   on each call (D1061); an index of messages by party once it grows.
 - C1: telling the lead something without waiting for an answer

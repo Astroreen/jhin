@@ -8,9 +8,14 @@ import {
   type ReactNode,
 } from "react";
 
-const noModes: { list: readonly Mode[]; current: Mode | undefined } = {
+const noModes: {
+  list: readonly Mode[];
+  current: Mode | undefined;
+  badges: ReadonlyMap<string, number>;
+} = {
   list: [],
   current: undefined,
+  badges: new Map(),
 };
 
 /** The modes and the active one, as one subscription; none without `client.modes@1`. */
@@ -26,9 +31,14 @@ export function useModes(modes: Modes | undefined) {
   return useSyncExternalStore(subscribe, () => {
     const list = modes?.list() ?? noModes.list;
     const current = modes?.current();
+    const badges = modes?.badges() ?? noModes.badges;
     // The same object while nothing changed, or React would render forever.
-    if (snapshot.current.list !== list || snapshot.current.current !== current) {
-      snapshot.current = { list, current };
+    if (
+      snapshot.current.list !== list ||
+      snapshot.current.current !== current ||
+      snapshot.current.badges !== badges
+    ) {
+      snapshot.current = { list, current, badges };
     }
     return snapshot.current;
   });

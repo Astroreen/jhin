@@ -34,6 +34,22 @@ export function createModes(navigation: Navigation, places: ModePlaces): Modes &
   const resolve = (route: Route): Mode | undefined =>
     modes.find((mode) => mode.id === route.mode) ?? modes[0];
 
+  const sources = new Map<string, Set<{ count: number }>>();
+  let badges: ReadonlyMap<string, number> = new Map();
+  const totalBadges = () => {
+    const next = new Map<string, number>();
+    for (const [id, set] of sources) {
+      let total = 0;
+      for (const source of set) total += source.count;
+      if (total > 0) next.set(id, total);
+    }
+    const same =
+      next.size === badges.size && [...next].every(([id, count]) => badges.get(id) === count);
+    if (same) return;
+    badges = next;
+    notify();
+  };
+
   let active = resolve(navigation.current());
   /** Takes the route's mode as the active one, telling subscribers once if it changed. */
   const follow = () => {
@@ -98,6 +114,23 @@ export function createModes(navigation: Navigation, places: ModePlaces): Modes &
         if (active === before && !follow()) notify();
       });
     },
+    badge(modeId) {
+      const source = { count: 0 };
+      const set = sources.get(modeId) ?? new Set();
+      sources.set(modeId, set);
+      set.add(source);
+      return {
+        set(count) {
+          source.count = Math.max(0, Math.floor(count));
+          totalBadges();
+        },
+        dispose() {
+          set.delete(source);
+          totalBadges();
+        },
+      };
+    },
+    badges: () => badges,
     list: () => modes,
     current: () => active,
     open(id) {
