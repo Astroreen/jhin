@@ -72,6 +72,7 @@ async function startNode(
     tokenFile?: string;
     allowedOrigins?: string[];
     trustProxy?: string[];
+    allowedHosts?: string[];
     plugins?: { manifest: unknown; definition: PluginDefinition }[];
   } = {},
 ): Promise<Node> {
@@ -106,6 +107,7 @@ async function startNode(
         "jhin.http": {
           port: 0,
           ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
+          ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
         },
         ...(options.allowedOrigins === undefined
           ? {}
@@ -492,6 +494,8 @@ describe("Origin allowlist (security.md D418)", () => {
     const node = await startNode({
       allowedOrigins: ["https://client.example"],
       trustProxy: ["127.0.0.0/8", "::1"],
+      // The proxy's public name (security.md D1362).
+      allowedHosts: ["jhin.example"],
     });
     const behindProxy = (origin: string, forwardedHost = "jhin.example") =>
       openFrom(node, origin, { "x-forwarded-host": forwardedHost });

@@ -14,6 +14,8 @@ export interface HostPolicy {
 /** The name without its port, its brackets and its case; undefined for nothing sensible. */
 export function hostName(host: string): string | undefined {
   const text = host.trim().toLowerCase();
+  // A bare IPv6 address has no port to strip.
+  if (Net.isIP(text) === 6) return text;
   const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(text);
   if (bracketed !== null) return bracketed[1];
   const name = text.replace(/:\d+$/, "").replace(/\.$/, "");

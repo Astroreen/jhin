@@ -156,26 +156,31 @@ describe("the names a node answers to (security.md D1362)", () => {
     expect(await status("mesh.example.org")).toBe(403);
   });
 
-  it("turns the check off with *, and leaves a trusted proxy's requests to the proxy", async () => {
+  it("turns the check off with *", async () => {
     const off = await start({ allowedHosts: ["*"] });
     expect((await get(off.port, { host: "anything.example", origin: "http://x" })).status).toBe(
       200,
     );
-    const proxied = await start({ trustProxy: ["127.0.0.0/8", "::1"] });
-    expect(
-      (
-        await get(proxied.port, {
-          host: "internal",
-          "x-forwarded-host": "jhin.example.org",
-          origin: "https://jhin.example.org",
-        })
-      ).status,
-    ).toBe(200);
+  });
+
+  it("checks a trusted proxy's forwarded host, and a browser reaching a trusted loopback directly", async () => {
+    const proxied = await start({
+      trustProxy: ["127.0.0.0/8", "::1"],
+      allowedHosts: ["jhin.example.org"],
+    });
+    const status = async (headers: Record<string, string>) =>
+      (await get(proxied.port, { "sec-fetch-site": "same-origin", ...headers })).status;
+    expect(await status({ host: "internal", "x-forwarded-host": "jhin.example.org" })).toBe(200);
+    expect(await status({ host: "internal", "x-forwarded-host": "other.example.org" })).toBe(403);
+    // A rebinding page in the owner's browser comes from loopback too, with no forwarded host.
+    expect(await status({ host: `evil.example:${proxied.port}` })).toBe(403);
   });
 
   it("compares names without port, brackets, case or a trailing dot", () => {
     expect(hostName("Example.COM.:8080")).toBe("example.com");
     expect(hostName("[::1]:7777")).toBe("::1");
+    expect(hostName("::1")).toBe("::1");
+    expect(hostName("2001:db8::1")).toBe("2001:db8::1");
     expect(hostName(" ")).toBeUndefined();
     const policy = hostPolicy({ configured: [], machineName: "Studio.home" });
     expect(policy.allows("studio")).toBe(true);

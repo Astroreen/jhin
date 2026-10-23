@@ -714,17 +714,25 @@ Connect stays out of scope.
   disposable), and `jhin.http.allowedHosts`: exact names, or `.example.com`
   for that name and every name under it, or `*` to turn the check off.
   Names are compared without their port and case.
-  A request from a peer of `jhin.http.trustProxy` is not checked: a
-  reverse proxy chooses which names reach the node (its virtual hosts), as
-  it terminates TLS. Requests without a browser's marks (the CLI, nodes,
+  Behind a peer of `jhin.http.trustProxy` the forwarded host
+  (`X-Forwarded-Host`) is the one checked, never skipped: a rebinding page
+  in the owner's browser reaches the node over loopback, and loopback is
+  the usual trusted proxy (Tailscale Serve, a local proxy). A page may set
+  `X-Forwarded-Host` on its own same-origin `fetch`, so from a trusted
+  loopback it can name an allowed host; the request then still carries
+  the page's `Origin`, which D418's checks compare with that host and
+  refuse, and no cookie (D1361). Requests without a browser's marks (the CLI, nodes,
   MCP clients, `curl`) are not checked: they choose their `Host` freely
   anyway, so a check would only break a node reached by a name nobody
   listed. Every browser in use sends `Sec-Fetch-Site` on every request
   (Chromium 76, Firefox 90, Safari 16.4) and `Origin` on every `POST` and
   WebSocket upgrade; an older browser's same-origin `GET` without either
   reaches only what is public anyway (D1361). This is a change in
-  behaviour: a browser that opens the node by a name outside the list
-  (a LAN name such as `nas.lan`) is refused until the owner lists it.
+  behaviour: a browser that opens the node by a name outside the list (a
+  LAN name such as `nas.lan`, or a reverse proxy's public name passed on
+  as `Host` or `X-Forwarded-Host`) is refused until the owner lists it;
+  the 403 names the setting, and the log warns once per host (at most 64
+  hosts, since the header is the client's).
 - **D1363. Whether a request came over HTTPS has one answer.** The session
   cookie (D421) is `Secure` when `http.server`'s `requestOrigin` (1.3,
   D1191) says `https`: a TLS socket, or `X-Forwarded-Proto: https` from a
@@ -822,9 +830,10 @@ A slice a PR, in the order of D1361's risks:
   the cookie's `Secure` from `requestOrigin`. **Done when:** tests over real
   HTTP refuse a browser's request and upgrade for a rebound name with 403
   before any route, answer non-browsers, addresses, loopback, the machine's
-  and Tailscale's names, listed and advertised ones, leave a trusted
-  proxy's requests alone, and set `Secure` only for HTTPS as `http.server`
-  tells it.
+  and Tailscale's names, listed and advertised ones, check a trusted
+  proxy's forwarded host, and set `Secure` only for HTTPS as `http.server`
+  tells it (a TLS socket, a forwarded `https` from a trusted or loopback
+  peer, never from another one, and only TLS without `requestOrigin`).
 
 ## Deferred
 

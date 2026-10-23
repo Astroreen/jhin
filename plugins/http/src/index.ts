@@ -103,6 +103,7 @@ export default definePlugin({
     const routes = new Set<Route>();
     const upgrades = new Map<string, UpgradeHandler>();
     const hosts = hostPolicy({ configured: config.allowedHosts, machineName: Os.hostname() });
+    /** Hosts already warned about; bounded, since the header is the client's. */
     const warned = new Set<string>();
     /**
      * The host a browser's request names, when this node does not answer to
@@ -110,11 +111,11 @@ export default definePlugin({
      */
     const blockedHost = (request: Http.IncomingMessage): string | undefined => {
       if (!fromBrowser(request.headers)) return undefined;
-      const peer = request.socket.remoteAddress;
-      if (peer !== undefined && trusted(trust, peer)) return undefined;
+      // Behind a trusted proxy this is the forwarded host, checked as well: a
+      // rebinding page reaches the node over loopback, which may be trusted.
       const host = api.requestedHost(request);
       if (host === undefined || hosts.allows(host)) return undefined;
-      if (!warned.has(host)) {
+      if (!warned.has(host) && warned.size < 64) {
         warned.add(host);
         context.log.warn("refused a browser request for a host this node does not answer to", {
           host,
