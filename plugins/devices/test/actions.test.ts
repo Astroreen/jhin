@@ -476,4 +476,21 @@ describe("readDeviceDetail", () => {
     expect(failed.code).toBe("DEVICE_OPERATION_FAILED");
     expect(failed.message).toContain("com.example.missing");
   });
+
+  it("gives tiny coordinates as plain decimals, not in exponent form", async () => {
+    const { host, calls } = makeHost();
+    await runDeviceAction(host, "android", "emulator-5554", {
+      type: "setLocation",
+      latitude: 59.3,
+      longitude: 1e-7,
+    });
+    await runDeviceAction(host, "ios", "SIM-1", {
+      type: "setLocation",
+      latitude: 0.0000012,
+      longitude: 18.1,
+    });
+    // `String(1e-7)` is "1e-7", which neither tool reads as a number.
+    expect(calls[0]!.args.slice(-2)).toEqual(["0", "59.3"]);
+    expect(calls[1]!.args.at(-1)).toBe("0.000001,18.1");
+  });
 });

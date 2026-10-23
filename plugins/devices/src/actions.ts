@@ -106,6 +106,9 @@ const ok = (operation: string) => (result: ActionRunResult) => {
   );
 };
 
+/** A coordinate in plain decimals (no `1e-7`), to about ten centimetres. */
+const coordinate = (value: number): string => String(Number(value.toFixed(6)));
+
 const IOS_TEXT_SIZES: Record<DeviceTextSize, string> = {
   small: "small",
   default: "large",
@@ -240,7 +243,7 @@ async function runIos(host: ActionHost, udid: string, input: DeviceAction): Prom
       await simctl(
         host,
         udid,
-        ["location", "set", `${input.latitude},${input.longitude}`],
+        ["location", "set", `${coordinate(input.latitude)},${coordinate(input.longitude)}`],
         "location",
       );
       return;
@@ -367,7 +370,10 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
     case "setLocation":
       // The emulator console places it; a phone has no console to ask.
       if (!serial.startsWith("emulator-")) throw unavailable(input.type, "android", "unsupported");
-      await adb(["emu", "geo", "fix", String(input.longitude), String(input.latitude)], "location");
+      await adb(
+        ["emu", "geo", "fix", coordinate(input.longitude), coordinate(input.latitude)],
+        "location",
+      );
       return;
     case "clearLocation":
       // The emulator has no "clear", so it is refused rather than reported done (T3 answers
