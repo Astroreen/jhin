@@ -12,7 +12,9 @@ import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import { UI_SLOTS_CAPABILITY, type SlotRegistry } from "@jhin/ui";
 import { LandmarkIcon } from "lucide-react";
 
-import { hasAgents } from "../lib/agents-presence.ts";
+import { AGENTS_STREAM } from "@jhin/agent-api";
+
+import { askAgents } from "../lib/agents-presence.ts";
 import { builtin } from "../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../lib/lazy-chunk.tsx";
 import { CIVILIZATION_MODE } from "../lib/modes.ts";
@@ -84,6 +86,19 @@ export const civilizationPlugin = builtin(
       /** Unknown answers per connection in this opening; after three it is taken as none. */
       const failures = new Map<string, number>();
       const MAX_FAILURES = 3;
+      /**
+       * Connections whose agents are asked for again when one arrives (D1298): the
+       * `agents` stream of every open node that does not have agents yet. Dropped
+       * once it does, when its connection closes and with the plugin.
+       */
+      const following = new Map<string, Disposable>();
+      /** Asks in flight, and those an `agents` event came for meanwhile: asked once more. */
+      const inFlight = new Set<string>();
+      const stale = new Set<string>();
+      const unfollow = (id: string) => {
+        following.get(id)?.dispose();
+        following.delete(id);
+      };
       let registration: Disposable | undefined;
       // An answer that arrives after deactivation registers nothing.
       let disposed = false;
@@ -100,31 +115,63 @@ export const civilizationPlugin = builtin(
           ...openings.keys(),
         ])) {
           if (!open.some((connection) => connection.id === id)) {
+            unfollow(id);
+            inFlight.delete(id);
+            stale.delete(id);
             asked.delete(id);
             withAgents.delete(id);
             failures.delete(id);
             openings.delete(id);
           }
         }
+        if (enabled !== "auto") for (const id of following.keys()) unfollow(id);
         if (enabled === "auto") {
           for (const connection of open) {
             if (asked.has(connection.id)) continue;
             asked.add(connection.id);
             if (!openings.has(connection.id)) openings.set(connection.id, ++opening);
             const asking = openings.get(connection.id);
-            void hasAgents(connection.client)
-              .then((answer) => {
+            const id = connection.id;
+            inFlight.add(id);
+            void askAgents(connection.client)
+              .then(({ answer, head }) => {
                 // Closed (and maybe opened again) meanwhile: the answer is another opening's.
-                if (disposed || openings.get(connection.id) !== asking) return;
-                // Not known yet: asked again on the next change of the connections,
-                // not at once, and at most three times per opening.
-                if (answer === undefined) {
-                  const count = (failures.get(connection.id) ?? 0) + 1;
-                  failures.set(connection.id, count);
-                  if (count < MAX_FAILURES) asked.delete(connection.id);
+                if (disposed || openings.get(id) !== asking) return;
+                inFlight.delete(id);
+                // An agents event came while this was asked: the answer may be older.
+                const newer = stale.delete(id);
+                // Final for the opening: agents, or a token that may not read them (D747).
+                if (answer === "some" || answer === "denied") unfollow(id);
+                else if (!following.has(id)) {
+                  // Followed from the catalog's head, so nothing between it and the
+                  // subscription is missed and the backlog is not replayed; with no
+                  // catalog (no agents plugin yet) from the start. What arrives is
+                  // asked for at once (D1298).
+                  following.set(
+                    id,
+                    connection.client.subscribe(AGENTS_STREAM, { after: head ?? 0 }, () => {
+                      if (disposed || openings.get(id) !== asking) return;
+                      if (inFlight.has(id)) {
+                        stale.add(id);
+                        return;
+                      }
+                      asked.delete(id);
+                      failures.delete(id);
+                      update();
+                    }),
+                  );
+                }
+                if (answer === "unknown") {
+                  // Not known yet: asked again on the next change of the connections,
+                  // at most three times per opening, or at once when an event came.
+                  const count = (failures.get(id) ?? 0) + 1;
+                  failures.set(id, count);
+                  if (count < MAX_FAILURES || newer) asked.delete(id);
+                  if (newer) update();
                   return;
                 }
-                withAgents.set(connection.id, answer);
+                withAgents.set(id, answer === "some");
+                if (newer && (answer === "none" || answer === "missing")) asked.delete(id);
                 update();
               })
               .catch((error: unknown) =>
@@ -162,6 +209,7 @@ export const civilizationPlugin = builtin(
       context.subscriptions.add({
         dispose: () => {
           disposed = true;
+          for (const id of following.keys()) unfollow(id);
           registration?.dispose();
         },
       });
