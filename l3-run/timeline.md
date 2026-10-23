@@ -1,0 +1,45 @@
+# L3 run timeline (UTC)
+- 09:45:50 teams.up crew (lead Opus 5.5; builder, builder2, reviewer Sonnet 5.5), node 15de0ea2 on :7792, repo /tmp/jhin-l3-run/repo (branch l3-run/crew from fe6dd96d)
+- 09:46:10 owner -> lead: mission of 8 Deferred items
+- 09:46:32 intent set; 09:50:06 mission 95f01c28 created; 16 slices (8 build + 8 review), 5 waves
+- 09:52:39 lead -> owner plan message (inbox); 09:52:53 D1221 answer recorded — in Russian (agents load ~/.claude/CLAUDE.md)
+- 09:52:43 wave 1 handed: builder A2 dismiss, builder2 A8 search
+- 09:53:36 A8 proved (53 s); 09:54:52 A2 dismiss proved; wave-done workflow event appears 3x
+- 09:55:36/09:56:03 first reviews of A2 dismiss and A8 search, ~30 s each (only reran tests)
+- 09:56:39 wave 3 handed (A6, L2 view done in ~1.5 min each)
+- 09:57:56 lead -> reviewer: commit step refused REVIEW_REQUIRED (changed-after-review: shared checkout, builders kept editing) — L2 guard works; lead also called out the 30-s reviews and asked for real reading with a checklist (a)-(d)
+- 09:58:42 re-reviews of A2/A8 recorded
+- 10:00:59 mission step commit; commits f751b8ab A2 dismiss, 5e497541 A8, 80fe9ede A6, 0d4bc9dd L2 view; reviewer re-reviews every slice after each change (guard on shared checkout). 10:01:29 health counts the lead's commits on the reviewer's thread 79a6932f (D723 overlap, Deferred)
+- 10:01:50 waves 4-5 handed (L1 filter, A2 count to builder; A1 status, C2 errors to builder2); all proved by 10:04:48
+- 10:08:15 reviewer: 3 approved, D1273 changes-requested (client.modes ^1.1 requires incomplete) — a real finding; fixed 10:08:49
+- 10:09:04 slices-done; commits a292c0d7 A1, 741936c9 C2, e6d7b524 A2 count; aeac3945 lead's docs (Deferred: review guard findings)
+- 10:10:43-11:01 reviewer gets repeat handoffs of review slices already proven ("This is a repeat of a handoff I already finished") x3
+- 10:11:14 reviewer writes knowledge `.jhin/agents/crew-reviewer/review-habits.md`; lead: it changes git.tree (untracked, not ignored) -> invalidates every review. Knowledge folder vs review guard bug.
+- 10:12:13-21 reviewer re-records all 8 build slices on tree 7b9e0430 (ceremony: each change anywhere = re-review of all)
+- 10:12:52 mission 1 done; L1 report reached owner inbox (English, full slices+proof). 27 min. Knowledge written: lead mission-shape.md, reviewer review-habits.md; builders none. Lead wrote its own lead-tools/stage-hunks.py; A8 fixup after review squashed by rebase (doc paragraph misplaced by --unidiff-zero)
+- 10:13:38 owner agents.rotate crew-reviewer (gen 2, thread 315840b6) and crew-builder (gen 2, thread 924a57e0)
+- 10:13:48 owner -> lead: mission 2 (7 items, D1281-D1300)
+- 10:13-10:25 (owner) PR #238 D1261 knowledge folder out of review tree
+- (owner) PR #239 D1262 owner answered twice
+- 10:31:36 mission 2 commit step; commits 6c775f6a D1283, d4885762 D1282, 779689cf D1281, 731ccd4f D1285. Lead institutes a '.jhin/ write window' ritual (notes only right after a commit) — workaround of D1261 bug, written into knowledge. Reviewer gen2 follows review-habits.md (re-records on final tree)
+- 10:32:10 wave 3: builder C3 D1284, builder2 A4 links D1286 + A1 backoff D1287
+- 10:41:43 mission 2 done (28 min), report in inbox. Commits 6c775f6a..a5eaaca8 (D1281-D1287). Duplicate-handoff turns again (3 wasted reviewer turns). Lead's '.jhin free again' messages.
+- 10:42:18 owner -> lead: mission 3 (8 items, D1288-D1300)
+- 10:48:00 lead escalates item 8 (delete reverses D651) as agents_send, NOT agents_ask: 'an open ask of mine would hold the whole mission' (D1223 too coarse -> routed around). Decides items 1-7 itself and lists them.
+- 10:48:22 owner answers yes (tombstone) through inbox
+- (owner) PR #244 D1263 escalation holds only blocked slices
+- 10:50:04 owner probe: queued /compact in builder2 (d7a6a3a9) before its 2nd handoff; 10:53:40 agent.context.compacted (manual); 10:53:42 refocus steered into the next handoff turn, naming the right open slice (D1289). A6 refocus across compaction works.
+- slice specs now carry the lead's '.jhin/ frozen' rule (ritual spread into mission data)
+- 11:0x (owner) merged #238 (D1261); #239 rebased
+- 11:27:28 mission 3 done (45 min). Commits fe5544c2..39a8d924 (D1288-D1295). Reviewer found a pre-existing hole: a mission created from the client loses the default steps' review flag (commit not guarded).
+- (owner) PR #256 D1264 client mission keeps review flag
+- (owner) PR #259 D1265 health counts reviews
+- 11:33:05 node restarted on main 49b69c53 (D1261, D1263 live)
+- 11:33:19 owner agents.rotate crew-lead (gen 2); mission 4 sent (4 items, D1296-D1300), told the lead D1261/D1263 are live
+- 11:35:57 lead gen2 escalates item 4 with agents_ask + only that slice blocked (D1263 live): orchestrator handed items 1-3 (outcome decide). Lead gen2 planned NO review slices (mission 1's 'every change reviewed' rule was in the owner's first message, not in knowledge).
+- 11:36:15 owner answers (b) keep reachable
+- 11:45:27 reviewer sends D1297 change request to builder instead of builder2 (one review slice covering two builders); builder forwards. (owner) PR #265 D1266
+- 11:4x (owner) PRs #239/#256/#259 rebased; review-bot nits addressed
+- 11:50:28 builder2's ask answer recorded in Russian (agents load the machine user's ~/.claude CLAUDE.md: no settingSources set by agent-claude) -> Deferred
+- after D1261 live: lead gen2 added 'notes no longer make reviews stale' to mission-shape.md but kept the old freeze lines beside it (l.29-30, 39); reviewer's review-habits.md l.11 still says notes invalidate approvals. Correction beside the copy, other copies untouched.
+- 11:51:57 mission 4 done (19 min), report in inbox. Commits b5efd975..9b925161 (D1296-D1299). Run end: 09:46:10 -> 11:51:57 = 2h06m, 4 missions, 27 items, 28 team commits. Node stopped.

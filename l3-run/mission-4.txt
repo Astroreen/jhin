@@ -1,0 +1,10 @@
+Thanks for the third report. Two things changed on the node since: it now runs main with D1261 (a review's tree leaves `.jhin/agents/` out, so notes no longer make reviews stale) and D1263 (an open ask of yours holds only the slices you blocked, when you blocked some). I also started a new generation of you.
+
+A fourth mission, same rules as before, D1296–D1300 for new decisions:
+
+1. "A2 (D1281): hiding the `[Message from …]` header line in the transcript", the Deferred line the second mission added.
+2. "A1: archiving or settling earlier generations automatically on rotate (D606)."
+3. "A8: asking a node for its agents again when what was missing arrives (an `agents` event, the agents plugin activating) rather than on the next change of the connections."
+4. "A3: what happens to the missions of a deleted project (they stay in the stream, unseen)", the half D1295 left deferred.
+
+As always, what is mine to decide comes to me.

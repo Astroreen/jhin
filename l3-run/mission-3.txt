@@ -1,0 +1,14 @@
+Thanks, the second report is clear. A third mission, same rules. Use D1288–D1300 for new decisions.
+
+Goal: close the loose ends a long run leaves behind for the owner and the reviewer. These Deferred items of docs/plans/agents.md:
+
+1. "C2: editing a step's description (D1084 keeps it by id)" (only the step's description; proving from the client stays the agent's).
+2. "A8: mode places that survive a page reload (D744 keeps them for the page's life)" (not per window or per node).
+3. "A7: a growing pause between retries of a feed whose node keeps failing, and telling a lasting error from a passing one by its code."
+4. "A7: linking a late answer back to its warning."
+5. "A4: a bound on how long a generation's first turn waits for its lore brief (D671)."
+6. "L1: the report as a card of its own in the Lead view (today the lead's Markdown text)."
+7. "L2: public ids the source does not spell out (template literals such as `sidebar.thread.jump.${jump}`, D1247)" (the template literals; hook and permission names stay out).
+8. "A3: deleting missions and slices (D651 drops them)".
+
+As before: ask me what is mine to decide, and tell me what you cut and why.

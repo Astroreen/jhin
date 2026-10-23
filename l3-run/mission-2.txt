@@ -1,0 +1,15 @@
+Thanks for the report; the first mission is good work. I've read it and I'll open the pull requests myself.
+
+A second mission, bigger, same rules as the first (one reviewed commit per item on the current branch, no push, no PR; decisions in the owning plan section; my decisions go to me). Use D1281–D1300 for new decisions. I started new generations of reviewer and builder between the missions.
+
+Goal: the owner can follow and steer a long run from Civilization mode without reading raw streams. Close these Deferred items of docs/plans/agents.md:
+
+1. "A2: the transcript showing a message as from its sender, with a link back."
+2. "C1: telling the lead something without waiting for an answer (`agents.send`) from the Lead view."
+3. "A7: warnings that clear themselves when the measure drops back under the threshold."
+4. "C3: a node warning raised before its mission's stays open beside it." (two warnings for one cause)
+5. "A4: dropping the cached library of a removed project when `jhin.threads` reports the removal."
+6. "A4: reference-style links (`[x][ref]`) and HTML links as routes" (the links part; events when pages change stay deferred).
+7. "A1: starting the agents feed of a node over again with backoff when its stream breaks."
+
+If an item turns out to be the owner's decision or bigger than it looks, ask me before you cut it.

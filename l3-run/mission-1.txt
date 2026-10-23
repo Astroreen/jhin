@@ -1,0 +1,21 @@
+Hi, I'm the owner. This is a long mission for the crew; take the hours it needs.
+
+Goal: close eight small items from the Deferred list of docs/plans/agents.md, so that what the owner sees of a running civilization is more honest and less noisy. The items, by their Deferred text:
+
+1. "A6: a row in the chat for `agent.context.compacted` (D709)."
+2. "A1: a generation's own status in the page's list of generations (`agents.generations` has it); the list marks the current one only."
+3. "A2: a count of open inbox items on the mode switcher or the page title (D630 notifies once per item)."
+4. "A2: dismissing an inbox item without answering it (D626)", which also covers L1's "a way to clear a report from the inbox without an answer".
+5. "L1: ... a filter by sender on `agents.inbox.list` once inboxes grow" (and its use by `missions.next` / `slices.handoff`).
+6. "A8: leaving generations out of `threads.search` as well."
+7. "C2: saying why titles fall back to ids: a failing `host.identity` or `agents.catalog` leaves the picker without Owner or agents, silently (D1082)."
+8. "L2: the mission view shows a mission's `step`, its slices' reviews and `missions.review.check`."
+
+How I want it:
+- Set the project intent first: "Jhin is a self-hosted AI harness the owner runs and extends without forking; T3 Code is the reference."
+- Plan it as one mission and run it with the orchestrator. Parallel waves are welcome: the crew has two builders. Every change is reviewed before it is committed.
+- Each item lands as its own commit (Conventional Commits) on the current branch of the repository, so I can open one pull request per item. Do not push and do not open pull requests.
+- Follow AGENTS.md: decisions go into the plan section that owns the item; use D1271–D1280 for new decisions (D1261–D1270 are mine). A finished Deferred item is struck through with its decision, as the plan already does. New ids get their line in docs/map.md.
+- Renaming or removing a public id, or dropping an item from the scope, is my decision: ask me.
+- Keep proof small (the affected tests, `vp check` of the touched files, the package typecheck). Heavy commands run through `~/.t3/jhin-heavy`, as ~/.t3/jhin-resources.md says.
+- When you are done, close the mission with what was committed.
