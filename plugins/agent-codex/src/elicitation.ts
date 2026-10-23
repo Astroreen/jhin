@@ -3,8 +3,7 @@
 // (describeMcpElicitation, toMcpElicitationResponse), its schemas read field by field here.
 import type { ApprovalDecision } from "@jhin/agent-api";
 
-/** T3's decisions; `accept-always` is T3's "Always allow", which Jhin does not offer yet. */
-type ElicitationDecision = ApprovalDecision | "accept-always";
+type ElicitationDecision = ApprovalDecision;
 type PersistenceDecision = "accept-for-session" | "accept-always";
 
 interface FormField {
@@ -117,8 +116,8 @@ function isPersistenceField(key: string, field: FormField): boolean {
 export function describeElicitation(payload: ElicitationRequest): {
   readonly appName: string;
   readonly decisions: readonly ApprovalDecision[];
-  /** T3's label of the session allowance, when the form names one. */
-  readonly sessionLabel?: string;
+  /** T3's labels of the allowances, when the form names them (D1316). */
+  readonly labels?: Partial<Record<PersistenceDecision, string>>;
 } {
   const meta = isRecord(payload._meta) ? payload._meta : {};
   const target = isRecord(meta["target"]) ? meta["target"] : {};
@@ -155,20 +154,27 @@ export function describeElicitation(payload: ElicitationRequest): {
       persistence.set("accept-always", text(field.title) ?? "");
     }
   }
-  const session =
-    persistence.has("accept-for-session") &&
-    toElicitationResponse(payload, "accept-for-session").action === "accept";
+  const offered = (decision: PersistenceDecision) =>
+    persistence.has(decision) && toElicitationResponse(payload, decision).action === "accept";
+  const session = offered("accept-for-session");
+  const always = offered("accept-always");
+  // T3's labels: the form's own, else its defaults (the client's "Always allow this
+  // session", "Always allow").
+  const labels: Partial<Record<PersistenceDecision, string>> = {};
+  for (const decision of ["accept-for-session", "accept-always"] as const) {
+    const label = persistence.get(decision);
+    if (offered(decision) && label) labels[decision] = label;
+  }
   return {
     appName,
     decisions: [
       "cancel",
       "decline",
       ...(session ? (["accept-for-session"] as const) : []),
+      ...(always ? (["accept-always"] as const) : []),
       "accept",
     ],
-    ...(session && persistence.get("accept-for-session")
-      ? { sessionLabel: persistence.get("accept-for-session")! }
-      : {}),
+    ...(Object.keys(labels).length === 0 ? {} : { labels }),
   };
 }
 

@@ -14,6 +14,8 @@ import {
   askAgent,
   parseJsonObject,
   APPROVAL_DECISIONS,
+  approvalDecisions,
+  type ApprovalDecision,
   GenerationOf,
   INTERACTION_MODES,
   RUNTIME_MODES,
@@ -843,6 +845,8 @@ interface Running {
   interrupted: boolean;
   /** Requests the agent opened that nobody answered yet, with the kind of answer each takes. */
   readonly openRequests: Map<string, AgentRequest["kind"]>;
+  /** The decisions each open approval offers (D1316): no other answer reaches the agent. */
+  readonly offered: Map<string, readonly ApprovalDecision[]>;
   /** Answers being recorded; the turn's end waits for them. */
   readonly answering: Map<string, Promise<unknown>>;
   /** The agent's item being recorded; the turn's end waits for it too. */
@@ -1382,6 +1386,7 @@ export default definePlugin({
         steering: new Set(),
         interrupted: false,
         openRequests: new Map(),
+        offered: new Map(),
         answering: new Map(),
         recording: undefined,
         ending: false,
@@ -1662,6 +1667,7 @@ export default definePlugin({
         await Promise.allSettled([entry.recording, ...entry.answering.values(), ...entry.steering]);
         const open = [...entry.openRequests.keys()];
         entry.openRequests.clear();
+        entry.offered.clear();
         for (const requestId of open) {
           await recordEnd(ThreadEvents.requestResolved, { turnId, requestId });
         }
@@ -1975,6 +1981,9 @@ export default definePlugin({
             answered = item.kind === "message.completed";
             if (item.kind === "request.opened") {
               entry.openRequests.set(item.requestId, item.request.kind);
+              if (item.request.kind === "approval") {
+                entry.offered.set(item.requestId, approvalDecisions(item.request));
+              }
             }
             const recording = log.append(stream, [eventOf(turnId, item)]);
             entry.recording = recording;
@@ -5693,6 +5702,18 @@ export default definePlugin({
             { threadId, requestId, expected: kind, received: response.kind },
           );
         }
+        const offered = current.offered.get(requestId);
+        if (
+          response.kind === "approval" &&
+          offered !== undefined &&
+          !offered.includes(response.decision)
+        ) {
+          throw new ThreadsError(
+            "RESPONSE_MISMATCH",
+            `Request ${requestId} does not take ${response.decision}`,
+            { threadId, requestId, offered: [...offered], received: response.decision },
+          );
+        }
         const turn = current.turn;
         if (turn?.respond === undefined) {
           throw new ThreadsError("REQUEST_UNSUPPORTED", "The agent takes no answers", {
@@ -5729,6 +5750,7 @@ export default definePlugin({
         // Recorded: the request is answered, whatever the agent makes of it, so
         // it takes no second answer.
         current.openRequests.delete(requestId);
+        current.offered.delete(requestId);
         let refused: unknown;
         try {
           turn.respond(requestId, response);

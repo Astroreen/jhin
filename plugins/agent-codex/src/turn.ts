@@ -865,6 +865,7 @@ export function codexTurn(
           },
           access: { app: described.appName },
           decisions: described.decisions,
+          ...(described.labels === undefined ? {} : { labels: described.labels }),
         });
         return toElicitationResponse(
           payload,

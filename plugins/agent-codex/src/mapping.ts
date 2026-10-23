@@ -656,7 +656,10 @@ export function fileChangePrompt(input: {
 export function approvalDecision(
   decision: ApprovalDecision,
 ): "accept" | "acceptForSession" | "decline" | "cancel" {
-  return decision === "accept-for-session" ? "acceptForSession" : decision;
+  // T3 takes "Always allow" for the session where Codex has no lasting allowance (D1316).
+  return decision === "accept-for-session" || decision === "accept-always"
+    ? "acceptForSession"
+    : decision;
 }
 
 /** The legacy review decision (`execCommandApproval`, `applyPatchApproval`), as T3 maps it. */
@@ -665,6 +668,7 @@ export function reviewDecision(decision: ApprovalDecision): unknown {
     case "accept":
       return "approved";
     case "accept-for-session":
+    case "accept-always":
       return "approved_for_session";
     case "decline":
       return { denied: { rejection: "User declined the request." } };

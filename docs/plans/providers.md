@@ -676,9 +676,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Background terminals Codex keeps after a turn.
-- MCP apps; an MCP elicitation that needs a form filled in or a URL opened
-  (declined, as T3 does), and T3's "Always allow" (`acceptAlways`) and an
-  elicitation's own label for its session allowance (D1146).
+- MCP apps (T3's `McpAppFrame` and `apps/server/src/mcpApps`: an app's UI
+  in the timeline); an MCP elicitation that needs a form filled in or a URL
+  opened (declined, as T3 does). "Always allow" is D1316.
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
   through them too: today only full access gets the writing permissions.
@@ -1322,6 +1322,23 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   as before: no turn is there to ask it. As Claude's (D1165), `afterwards`
   holds at most 10 000 unread items: a reader that never reads lets go of
   the app-server. A subagent a followed one starts is not shown.
+- **D1316. T3's "Always allow" and an app's own labels**
+  (`CodexMcpElicitation.ts`'s `acceptAlways`, `agent.runtime@1.13`,
+  additive): `accept-always` joins the approval decisions and an approval
+  may carry `labels`, the agent's words for a decision. An agent offers
+  "Always allow" only by naming it in `decisions`: an approval without
+  `decisions` offers every decision but it (`approvalDecisions` of
+  `@jhin/agent-api`), and `threads.respond` refuses a decision the open
+  approval does not offer (`RESPONSE_MISMATCH`), so it never reaches an
+  agent that cannot take it. A Codex elicitation offers it as T3 does (a
+  persisting option, `persist: always`, `allowPersistentApproval`, or a
+  boolean field that persists; answered with `_meta.persist: "always"`, the
+  option or `true`), with the form's labels for both allowances (D1146's
+  session label). The banner's menu says the label, else T3's "Always allow
+  this session" and "Always allow"; the timeline counts it as approved.
+  Codex's own command and file approvals take it as their session allowance,
+  as T3 maps `acceptAlways`. The fake agent's `/access-always <app>` offers
+  both, for the end-to-end test.
 
 ### Deferred
 

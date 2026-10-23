@@ -12,6 +12,7 @@ import type {
   AgentUsageWindow,
   UserQuestion,
 } from "@jhin/agent-api";
+import { approvalDecisions } from "@jhin/agent-api";
 import {
   Button,
   Menu,
@@ -75,16 +76,16 @@ export function ApprovalBanner(props: {
   busy: boolean;
 }) {
   if (props.request.request.kind !== "approval") return null;
-  const { tool, reason, access, decisions } = props.request.request;
+  const { tool, reason, access, labels } = props.request.request;
   // An app asking for access is T3's MCP elicitation (providers.md D1146).
   const label =
     access !== undefined
       ? "App access approval"
       : (APPROVAL_LABELS[tool.kind] ?? "Permission approval");
-  const offers = (decision: ApprovalDecision) =>
-    decisions === undefined || decisions.includes(decision);
-  const decide = (decision: "accept" | "accept-for-session" | "decline" | "cancel") =>
-    props.onRespond({ kind: "approval", decision });
+  // An agent offers "Always allow" only by naming it (D1316).
+  const offered = approvalDecisions(props.request.request);
+  const offers = (decision: ApprovalDecision) => offered.includes(decision);
+  const decide = (decision: ApprovalDecision) => props.onRespond({ kind: "approval", decision });
   return (
     <ComposerBanner.Attachment>
       <ComposerBanner.Root density="spacious" variant="warning">
@@ -159,7 +160,12 @@ export function ApprovalBanner(props: {
               <MenuPopup align="end" side="top">
                 {offers("accept-for-session") ? (
                   <MenuItem className="mb-1 last:mb-0" onClick={() => decide("accept-for-session")}>
-                    Always allow this session
+                    {labels?.["accept-for-session"] ?? "Always allow this session"}
+                  </MenuItem>
+                ) : null}
+                {offers("accept-always") ? (
+                  <MenuItem className="mb-1 last:mb-0" onClick={() => decide("accept-always")}>
+                    {labels?.["accept-always"] ?? "Always allow"}
                   </MenuItem>
                 ) : null}
                 <MenuItem className="mb-1 last:mb-0" onClick={() => decide("cancel")}>

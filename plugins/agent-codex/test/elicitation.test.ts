@@ -56,7 +56,17 @@ describe("jhin.agent-codex: MCP elicitations (D1146)", () => {
       },
       access: { app: "GitHub" },
       decisions: ["cancel", "decline", "accept-for-session", "accept"],
+      // The form's own label of the session allowance (D1316).
+      labels: { "accept-for-session": "Allow for this chat" },
     });
+    // A decision the request does not offer never reaches Codex (D1316).
+    await expect(
+      client.call("threads.respond", {
+        threadId: thread.id,
+        requestId: request!["requestId"],
+        response: { kind: "approval", decision: "accept-always" },
+      }),
+    ).rejects.toMatchObject({ code: "RESPONSE_MISMATCH" });
     await client.call("threads.respond", {
       threadId: thread.id,
       requestId: request!["requestId"],
@@ -89,7 +99,50 @@ describe("jhin.agent-codex: MCP elicitations (D1146)", () => {
     ).toEqual({
       appName: "Google Drive",
       decisions: ["cancel", "decline", "accept-for-session", "accept"],
-      sessionLabel: "Allow for this chat",
+      labels: { "accept-for-session": "Allow for this chat" },
+    });
+    // T3's "Always allow" (D1316): an option that persists, or a boolean field that does.
+    const always = {
+      serverName: "codex_apps",
+      message: "Use Drive?",
+      requestedSchema: {
+        properties: {
+          approve: {
+            type: "string",
+            enum: ["allow_once", "allow_session", "allow_always"],
+            enumNames: ["Allow once", "Allow for this chat", "Always allow Drive"],
+          },
+        },
+        required: ["approve"],
+      },
+    };
+    expect(describeElicitation(always)).toEqual({
+      appName: "codex_apps",
+      decisions: ["cancel", "decline", "accept-for-session", "accept-always", "accept"],
+      labels: {
+        "accept-for-session": "Allow for this chat",
+        "accept-always": "Always allow Drive",
+      },
+    });
+    expect(toElicitationResponse(always, "accept-always")).toEqual({
+      action: "accept",
+      _meta: { persist: "always" },
+      content: { approve: "allow_always" },
+    });
+    const remember = {
+      serverName: "files",
+      message: "Read ~/notes?",
+      requestedSchema: { properties: { remember: { type: "boolean", title: "Always allow" } } },
+      _meta: { allowPersistentApproval: true },
+    };
+    expect(describeElicitation(remember).decisions).toContain("accept-always");
+    expect(toElicitationResponse(remember, "accept-always")).toEqual({
+      action: "accept",
+      _meta: { persist: "always" },
+      content: { remember: true },
+    });
+    expect(toElicitationResponse(remember, "accept")).toMatchObject({
+      content: { remember: false },
     });
     // A required field Jhin cannot fill declines.
     expect(

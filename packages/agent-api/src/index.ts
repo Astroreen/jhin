@@ -166,13 +166,38 @@ export type AgentRequest =
        * names it, the tool's `detail` is what it asks.
        */
       readonly access?: { readonly app: string };
-      /** Since 1.9: the decisions the agent takes; all of them when absent. */
+      /**
+       * Since 1.9: the decisions the agent takes; when absent, all of them but
+       * `accept-always` (since 1.13), which an agent offers only by naming it.
+       */
       readonly decisions?: readonly ApprovalDecision[];
+      /**
+       * Since 1.13: the agent's own words for a decision, e.g. an elicitation's label for
+       * its session allowance (providers.md D1316).
+       */
+      readonly labels?: Readonly<Partial<Record<ApprovalDecision, string>>>;
     }
   | { readonly kind: "user-input"; readonly questions: readonly UserQuestion[] };
 
-export const APPROVAL_DECISIONS = ["accept", "accept-for-session", "decline", "cancel"] as const;
+/**
+ * The answers to an approval. `accept-always` (since 1.13, T3's "Always allow") approves
+ * for good, as far as the agent keeps it (providers.md D1316).
+ */
+export const APPROVAL_DECISIONS = [
+  "accept",
+  "accept-for-session",
+  "accept-always",
+  "decline",
+  "cancel",
+] as const;
 export type ApprovalDecision = (typeof APPROVAL_DECISIONS)[number];
+
+/** The decisions an approval offers: its own, else all of them but `accept-always`. */
+export function approvalDecisions(
+  request: Extract<AgentRequest, { kind: "approval" }>,
+): readonly ApprovalDecision[] {
+  return request.decisions ?? APPROVAL_DECISIONS.filter((decision) => decision !== "accept-always");
+}
 
 export type AgentResponse =
   | { readonly kind: "approval"; readonly decision: ApprovalDecision }
@@ -458,7 +483,7 @@ export interface AgentAuth {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
