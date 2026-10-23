@@ -1284,15 +1284,20 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   session's last turn resumes the same session with `resumeSessionAt` the
   last entry of the latest turn it still shows, so Claude Code forgets the
   dropped turns and gets no transcript; the kept process of the thread
-  closes first. A rollback that keeps none of Claude's turns, or a record
-  from before this (no entries), starts a new session with the transcript
-  as D222 does; so does a session Claude Code no longer has (D91's retry).
+  closes first. A rollback that keeps none of Claude's turns, one where a
+  Claude turn the thread still shows has no entry (stopped or failed before
+  Claude Code wrote one: resuming earlier would drop it), or a record from
+  before this (no entries), starts a new session with the transcript as
+  D222 does; so does a session Claude Code no longer has (D91's retry).
   `resumeDropsTurn` is not passed: Jhin does not know the dropped turn's
   prompt uuid, so the truncation is T3's unvalidated one.
 - **D1315. A fork forks Claude Code's session**, T3's `forkThread`
   (`forkSession` with `upToMessageId`): a fork's first Claude turn, on a
   thread with no session record, finds the fork's marker
-  (`threads.thread.forked`) and the parent's record, and copies the parent's
+  (`threads.thread.forked`) and the parent's record (which now keeps the
+  folder Claude Code ran in: a parent's session in another folder, such as
+  another worktree, is not forked, since the fork could not find it), and
+  copies the parent's
   session up to the last entry of the last Claude turn the fork inherited
   (`dir` the turn's folder) into a new session, which the turn resumes; the
   fork's record starts with the inherited turns, so a rollback in the fork

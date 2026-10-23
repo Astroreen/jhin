@@ -686,6 +686,9 @@ export function sessionRecords(kv: KeyValueStore): SessionStore & {
         ...(turns === undefined
           ? {}
           : { turns: turns.map(({ turnId, head }) => ({ turnId, head })) }),
+        ...(typeof (value as { cwd?: unknown } | null)?.cwd === "string"
+          ? { cwd: (value as { cwd: string }).cwd }
+          : {}),
       };
     },
     set: (threadId, record) =>

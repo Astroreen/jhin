@@ -785,7 +785,7 @@ describe("jhin.agent-claude: sessions after a rollback (D222)", () => {
       input: { text: "second" },
       history: turnOf("t1", "jhin.agent-claude", "first", "one"),
     });
-    expect(sessions.records.get(THREAD)).toEqual({ sessionId: THREAD, turnId: "t2" });
+    expect(sessions.records.get(THREAD)).toEqual({ sessionId: THREAD, turnId: "t2", cwd: "/work" });
 
     // Rolled back to t1: the session holds t2, which the thread no longer shows.
     expect(
@@ -805,7 +805,7 @@ describe("jhin.agent-claude: sessions after a rollback (D222)", () => {
     expect(calls[1]!.options.resume).toBeUndefined();
     expect(prompts(calls[1]!)[0]).toContain("User: first\nAssistant: one");
     expect(prompts(calls[1]!)[0]).toContain("instead");
-    expect(sessions.records.get(THREAD)).toEqual({ sessionId: fresh, turnId: "t3" });
+    expect(sessions.records.get(THREAD)).toEqual({ sessionId: fresh, turnId: "t3", cwd: "/work" });
 
     // The next turn stays on the new session.
     expect(
@@ -839,7 +839,7 @@ describe("jhin.agent-claude: sessions after a rollback (D222)", () => {
     stopped.interrupt();
     expect(await drain(stopped)).toEqual([]);
     expect(calls[0]!.closed).toBe(false);
-    expect(sessions.records.get(THREAD)).toEqual({ sessionId: THREAD, turnId: "t1" });
+    expect(sessions.records.get(THREAD)).toEqual({ sessionId: THREAD, turnId: "t1", cwd: "/work" });
   });
 
   it("resumes a session recorded before rollbacks, named after the thread", async () => {
@@ -903,6 +903,7 @@ describe("jhin.agent-claude: Claude Code's native rewind and fork (D1314, D1315)
         { turnId: "t1", head: "h1" },
         { turnId: "t2", head: "h2" },
       ],
+      cwd: "/work",
     });
 
     // Rolled back to t1: Claude Code resumes its own session at t1's last entry.
@@ -926,6 +927,7 @@ describe("jhin.agent-claude: Claude Code's native rewind and fork (D1314, D1315)
         { turnId: "t1", head: "h1" },
         { turnId: "t3", head: "h3" },
       ],
+      cwd: "/work",
     });
   });
 
@@ -958,6 +960,7 @@ describe("jhin.agent-claude: Claude Code's native rewind and fork (D1314, D1315)
         { turnId: "p1", head: "ph1" },
         { turnId: "p2", head: "ph2" },
       ],
+      cwd: "/work",
     });
     await turn({
       turnId: "f1",
@@ -975,7 +978,83 @@ describe("jhin.agent-claude: Claude Code's native rewind and fork (D1314, D1315)
         { turnId: "p1", head: "ph1" },
         { turnId: "f1", head: "f1" },
       ],
+      cwd: "/work",
     });
+  });
+
+  it("sends the transcript instead when a Claude turn it would keep has no entry", async () => {
+    // t2 was stopped before Claude Code wrote anything: the record names t1 and t3 only.
+    const { turn, calls, sessions } = node([answeringAt(["instead", "h4"])]);
+    await sessions.set(THREAD, {
+      sessionId: THREAD,
+      turnId: "t3",
+      turns: [
+        { turnId: "t1", head: "h1" },
+        { turnId: "t3", head: "h3" },
+      ],
+      cwd: "/work",
+    });
+    await turn({
+      turnId: "t4",
+      input: { text: "from t2" },
+      history: [...turnOf("t1", "first", "one"), ...turnOf("t2", "second", "two")],
+    });
+    // Resuming at h1 would drop t2: a new session with the whole transcript.
+    expect(calls[0]!.options.resume).toBeUndefined();
+    expect(calls[0]!.options.resumeSessionAt).toBeUndefined();
+    expect(prompts(calls[0]!)[0]).toContain("User: second\nAssistant: two");
+  });
+
+  it("does not fork a session kept in another folder", async () => {
+    let tried = 0;
+    const { turn, calls, sessions } = node([answeringAt(["anyway", "x1"])], {}, async () => {
+      tried++;
+      return { sessionId: "never" };
+    });
+    await sessions.set(PARENT, {
+      sessionId: "parent-session",
+      turnId: "p1",
+      turns: [{ turnId: "p1", head: "ph1" }],
+      cwd: "/elsewhere",
+    });
+    await turn({
+      turnId: "f1",
+      input: { text: "in the fork" },
+      history: [...turnOf("p1", "first", "one"), forked("p1")],
+    });
+    expect(tried).toBe(0);
+    expect(calls[0]!.options.resume).toBeUndefined();
+  });
+
+  it("keeps the record's turns through storage, at most 500 of them", async () => {
+    const records = sessionRecords(createMemoryStorage().kv);
+    const turns = Array.from({ length: 3 }, (_, index) => ({
+      turnId: `t${index}`,
+      head: `h${index}`,
+    }));
+    await records.set(THREAD, { sessionId: "s", turnId: "t2", turns, cwd: "/work" });
+    expect(await records.get(THREAD)).toEqual({
+      sessionId: "s",
+      turnId: "t2",
+      turns,
+      cwd: "/work",
+    });
+    // The 501st turn drops the oldest.
+    const { turn, sessions } = node([answeringAt(["one", "h-new"])]);
+    const many = Array.from({ length: 500 }, (_, index) => ({
+      turnId: `old${index}`,
+      head: `oh${index}`,
+    }));
+    await sessions.set(THREAD, { sessionId: THREAD, turnId: "old499", turns: many, cwd: "/work" });
+    await turn({
+      turnId: "new",
+      input: { text: "next" },
+      history: many.map((entry) => turnOf(entry.turnId, "x", "y")[0]!),
+    });
+    const kept = sessions.records.get(THREAD)!.turns!;
+    expect(kept).toHaveLength(500);
+    expect(kept[0]!.turnId).toBe("old1");
+    expect(kept.at(-1)).toEqual({ turnId: "new", head: "h-new" });
   });
 
   it("starts the fork a session of its own with the transcript when forking fails", async () => {
@@ -988,6 +1067,7 @@ describe("jhin.agent-claude: Claude Code's native rewind and fork (D1314, D1315)
       sessionId: "parent-session",
       turnId: "p1",
       turns: [{ turnId: "p1", head: "ph1" }],
+      cwd: "/work",
     });
     await turn({
       turnId: "f1",
