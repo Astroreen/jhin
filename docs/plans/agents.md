@@ -446,6 +446,19 @@ the message, the inbox, events and the schemas of `agents.send`,
     and the item stays in the sidebar either way. The toast may be stale
     when the owner returns (the item answered meanwhile); that is accepted.
 
+- **D1274. The owner dismisses an inbox item without answering it.**
+  `agents.inbox.dismiss {messageId}` (permission `agents.inbox`, serialized
+  with `agents.inbox.answer`) closes an open item: the `agents/inbox` stream
+  gets `agents.inbox.dismissed`, and `InboxItem.status` and the
+  conversation's `inbox` gain `dismissed` (additive; `agents.inbox.list`
+  takes `status: "dismissed"`). Dismissing an ask sends its asker an
+  `answer` message from the owner, inReplyTo the ask, saying it was
+  dismissed, so a waiting agent wakes (a lead's escalation stops holding its
+  mission, D1223); dismissing a plain message tells nobody. An item that is
+  not open is refused with `ITEM_CLOSED` (answering a dismissed item too).
+  The inbox page has a Dismiss button beside Send answer; the Lead view
+  shows the item as "Dismissed". The input is `messageId`, like answer's.
+
 ### A3. Missions and slices (D641–D660)
 
 - A project gets an **intent**: one paragraph on what it is for.
@@ -1754,7 +1767,7 @@ Decisions (L2):
 - A2: a side turn that forks the runtime's own session (Claude Code's
   `forkSession`) instead of handing the fork its parent's turns as history
   (D625).
-- A2: dismissing an inbox item without answering it (D626).
+- ~~A2: dismissing an inbox item without answering it (D626).~~ A2, D1274.
 - A2: the transcript showing a message as from its sender, with a link back.
   The turn carries `origin` (D623); until a view renders it, the header line
   of the message names the sender and the trace.
@@ -1767,7 +1780,7 @@ Decisions (L2):
   comes back too (D1221), but the composer has no way to send one.
 - C1: a lead's message (not an ask) to the owner stays an open inbox item
   until it is answered there; the Lead view shows it without closing it
-  (dismissing an item is A2's, D626).
+  (dismissing an item is A2's, done: D1274).
 - C1: an agent's runtime and interaction modes in D1065's form; Settings
   edits them (D604).
 - C1: writing a team spec from the client (a `teams.define` writing the
@@ -1948,8 +1961,8 @@ Decisions (L2):
   lead's escalations (D1223); a filter by sender on `agents.inbox.list`
   once inboxes grow.
 - L1: the report as a card of its own in the Lead view (today the lead's
-  Markdown text), and a way to clear a report from the inbox without an
-  answer (A2, D626).
+  Markdown text). ~~A way to clear a report from the inbox without an
+  answer~~ A2, D1274.
 - L2: a commit made in a shell is not refused: the guard holds the mission's
   step (D1241), not git itself. A `pre-commit` hook in the node's managed
   worktrees asking `missions.review.check`, or refusing `git.action.run`'s

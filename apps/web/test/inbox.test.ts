@@ -155,6 +155,16 @@ describe("the owner's inbox (D630)", () => {
     store.dispose();
   });
 
+  it("drops an item the owner dismissed (D1274)", () => {
+    const state = [item("a", "2026-10-23T10:00:00Z"), item("b", "2026-10-23T10:01:00Z")];
+    expect(
+      applyInboxEvent(state, { type: MessageEvents.inboxDismissed, payload: { messageId: "a" } }),
+    ).toEqual([state[1]]);
+    expect(
+      applyInboxEvent(state, { type: MessageEvents.inboxDismissed, payload: { messageId: "x" } }),
+    ).toBe(state);
+  });
+
   it("ignores events that are not an open item's", () => {
     const state: readonly InboxItem[] = [];
     expect(applyInboxEvent(state, { type: MessageEvents.received, payload: null })).toBe(state);

@@ -250,6 +250,65 @@ describe("messages between agents (A2)", () => {
     ).rejects.toMatchObject({ code: "ASK_NOT_FOUND" });
   });
 
+  it("dismisses an inbox item: an ask's sender is told, a message's is not (D1274)", async () => {
+    const { client, kernel, requests } = await node({ agents: { builder } });
+    const { generation } = await client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      { agentId: "builder" },
+    );
+    const caller = { id: "jhin.agent-claude:x", permissions: ["agents.message", "agents.read"] };
+    const asked = (await kernel.commands.execute(
+      "agents.ask",
+      { to: owner, question: "May I delete the old API?" },
+      { traceId: "trace-1", caller, threadId: generation.threadId },
+    )) as Asked;
+    const told = (await kernel.commands.execute(
+      "agents.send",
+      { to: owner, body: "Mission report." },
+      { traceId: "trace-2", caller, threadId: generation.threadId },
+    )) as Sent;
+
+    const thread = watch(client, threadStream(generation.threadId));
+    const dismissed = await client.call<{ item: InboxItem; message?: AgentMessage }>(
+      "agents.inbox.dismiss",
+      { messageId: asked.message.messageId },
+    );
+    expect(dismissed.item).toMatchObject({ status: "dismissed" });
+    expect(dismissed.message).toMatchObject({
+      kind: "answer",
+      from: owner,
+      to: address("builder"),
+      inReplyTo: asked.message.messageId,
+    });
+    await thread.untilMatch(
+      (event) =>
+        event.type === ThreadEvents.turnStarted &&
+        (event.payload as { messageId?: string }).messageId === dismissed.message!.messageId,
+    );
+    expect(requestOf(requests, dismissed.message!.messageId)?.input.text).toContain("dismissed");
+
+    const plain = await client.call<{ item: InboxItem; message?: AgentMessage }>(
+      "agents.inbox.dismiss",
+      { messageId: told.message.messageId },
+    );
+    expect(plain.item.status).toBe("dismissed");
+    expect(plain.message).toBeUndefined();
+
+    expect((await client.call<{ items: InboxItem[] }>("agents.inbox.list", {})).items).toHaveLength(
+      0,
+    );
+    const all = await client.call<{ items: InboxItem[] }>("agents.inbox.list", {
+      status: "dismissed",
+    });
+    expect(all.items).toHaveLength(2);
+    await expect(
+      client.call("agents.inbox.dismiss", { messageId: asked.message.messageId }),
+    ).rejects.toMatchObject({ code: "ITEM_CLOSED" });
+    await expect(
+      client.call("agents.inbox.answer", { messageId: asked.message.messageId, answer: "x" }),
+    ).rejects.toMatchObject({ code: "ITEM_CLOSED" });
+  });
+
   it("keeps the owner's conversation with an agent, answers included (C1, D1061, D1221)", async () => {
     const { client, kernel } = await node({
       agents: { builder, lead },

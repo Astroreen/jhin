@@ -116,6 +116,8 @@ export const MessageEvents = {
   received: "agents.inbox.received",
   /** `agents/inbox`: `{ messageId, answer, answeredAt, delivery? }`. */
   inboxAnswered: "agents.inbox.answered",
+  /** `agents/inbox`: `{ messageId, dismissedAt, delivery? }`, an item closed without an answer (D1274). */
+  inboxDismissed: "agents.inbox.dismissed",
 } as const;
 
 /**
@@ -124,9 +126,11 @@ export const MessageEvents = {
  */
 export const InboxItem = z.object({
   message: AgentMessage,
-  status: z.enum(["open", "answered"]),
+  status: z.enum(["open", "answered", "dismissed"]),
   answer: z.string().optional(),
   answeredAt: z.string().optional(),
+  /** When the owner closed it without an answer (D1274). */
+  dismissedAt: z.string().optional(),
 });
 export type InboxItem = z.output<typeof InboxItem>;
 
@@ -142,7 +146,7 @@ export const ConversationEntry = z.object({
   answeredBy: z.string().optional(),
   answeredAt: z.string().optional(),
   /** For a message to the owner: whether its inbox item is still open (D626). */
-  inbox: z.enum(["open", "answered"]).optional(),
+  inbox: z.enum(["open", "answered", "dismissed"]).optional(),
 });
 export type ConversationEntry = z.output<typeof ConversationEntry>;
 
@@ -161,7 +165,9 @@ export type MessageErrorCode =
   /** `agents.inbox.answer` of an ask the inbox does not have. */
   | "ASK_NOT_FOUND"
   /** `agents.inbox.answer` of an ask already answered. */
-  | "ASK_ANSWERED";
+  | "ASK_ANSWERED"
+  /** `agents.inbox.dismiss` of an item that is not open, or `agents.inbox.answer` of a dismissed one (D1274). */
+  | "ITEM_CLOSED";
 
 /** Permission to send and ask (D628); agents hold it through their node's MCP server. */
 export const MESSAGE_PERMISSION = "agents.message";
@@ -225,7 +231,7 @@ export const MessageCommands = {
   "agents.inbox.list": {
     input: z.object({
       status: z
-        .enum(["open", "answered", "all"])
+        .enum(["open", "answered", "dismissed", "all"])
         .optional()
         .meta({ description: "`open` by default" }),
     }),
@@ -264,6 +270,17 @@ export const MessageCommands = {
       item: InboxItem,
       /** The `answer` message sent back to the asker. */
       message: AgentMessage,
+      delivery: MessageDelivery.optional(),
+    }),
+  },
+  "agents.inbox.dismiss": {
+    input: z.object({
+      messageId: z.string().min(1).meta({ description: "The inbox item's message id" }),
+    }),
+    output: z.object({
+      item: InboxItem,
+      /** For an ask, the notice sent to the asker; none for a message. */
+      message: AgentMessage.optional(),
       delivery: MessageDelivery.optional(),
     }),
   },
