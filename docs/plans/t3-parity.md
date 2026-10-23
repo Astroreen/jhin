@@ -2170,8 +2170,9 @@ says. The other W38 decisions land in their own pull requests.
   `lib/pierre-icons.ts`: `typescript` is `file.ts`, `dockerfile`
   `Dockerfile`, plain text `file.txt`).
 - **D1347. A heading in the prompt has T3's spacing:** 1.25rem above and
-  0.5rem below (T3's `.composer-tiptap` headings); the composer's other
-  blocks keep none, as in T3.
+  0.5rem below (T3's `.composer-tiptap` headings), a first one too: T3 zeroes
+  the first child's margin in a message (`.chat-markdown > :first-child`),
+  not in the composer. The composer's other blocks keep none, as in T3.
 - **D1348. The editor names the menu's highlighted option,** as T3's
   `ComposerPromptEditorTiptap`: while the `/`, `@`, `$` or `#` menu shows,
   the editor has `aria-autocomplete="list"` and `aria-haspopup="listbox"`,
@@ -2180,7 +2181,8 @@ says. The other W38 decisions land in their own pull requests.
   so a screen reader follows the highlight while focus stays in the text.
 - **D1349. No other keyboard way out of a code block,** as in T3: the caret
   leaves a block by moving below it (ArrowDown at its end, tiptap's
-  `exitOnArrowDown`, which T3 keeps). D843's Deferred
+  `exitOnArrowDown`, which T3 keeps; `prompt-editor.browser.test.tsx` proves
+  it). D843's Deferred
   item asked for one T3 does not have; it is closed by porting T3's
   behaviour as it is.
 - **D1351. Find opens a finished turn's folded work,** as T3's find opens

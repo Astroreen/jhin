@@ -8,6 +8,7 @@ import {
   type ComposerChipActions,
   ComposerChipsContext,
 } from "../src/plugins/chat/composer-chips.tsx";
+import { resolvePierreIconForEntry } from "../src/lib/pierre-icons.ts";
 import { PromptEditor, type PromptEditorHandle } from "../src/plugins/chat/prompt-editor.tsx";
 
 interface Mounted {
@@ -527,6 +528,15 @@ describe("code blocks in the prompt (D841–D843)", () => {
     expect(editor.value()).toBe("```\n\n  x\n```");
   });
 
+  it("leaves a code block by ArrowDown at its end, as T3's tiptap does (D1349)", async () => {
+    const editor = mount("```ts\nconst a = 1;\n```");
+    // A restored draft goes on where it ends: in the block, after its last character.
+    editor.handle.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.keyboard("after");
+    await editor.reported("```ts\nconst a = 1;\n```\nafter");
+  });
+
   it("leaves Tab alone outside a code block", async () => {
     const editor = mount("text");
     editor.handle.focus();
@@ -540,11 +550,15 @@ describe("code blocks in the prompt (D841–D843)", () => {
     // T3's language icons: the header and each option show their language's file icon (D1346).
     const trigger = page.getByRole("combobox", { name: "Code language: TypeScript" });
     await expect.element(trigger).toBeVisible();
-    expect(trigger.element().querySelector("svg[data-pierre-icon]")).not.toBeNull();
+    expect(
+      trigger.element().querySelector("svg[data-pierre-icon]")?.getAttribute("data-pierre-icon"),
+    ).toBe(resolvePierreIconForEntry("file.ts", "file")?.name);
     await userEvent.click(trigger);
     await userEvent.fill(page.getByRole("combobox", { name: "Search languages" }), "pyth");
     const python = page.getByRole("option", { name: "Python" });
-    expect(python.element().querySelector("svg[data-pierre-icon]")).not.toBeNull();
+    expect(
+      python.element().querySelector("svg[data-pierre-icon]")?.getAttribute("data-pierre-icon"),
+    ).toBe(resolvePierreIconForEntry("file.py", "file")?.name);
     await userEvent.click(python);
     await editor.reported("```python title=x\nconst a = 1;\n```");
     // The caret is back at the block's end.
@@ -802,5 +816,48 @@ describe("plain and literal text (T3's Rich text composer setting and literal an
     paste(editor, " [c.ts](src/c.ts)");
     await editor.reported(`${prompt} [c.ts](src/c.ts)`);
     expect(root.querySelector("[data-mention]")).toBeNull();
+  });
+});
+
+describe("the editor and the composer's menu (D1348)", () => {
+  it("names the menu as its list and the highlighted option as the active one", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    unmount = () => {
+      act(() => root.unmount());
+      container.remove();
+    };
+    const render = (menu: { list?: string; active?: string }) =>
+      act(() =>
+        root.render(
+          <PromptEditor
+            activeSuggestionId={menu.active}
+            onChange={() => undefined}
+            onSubmit={() => undefined}
+            placeholder="Ask anything"
+            sendShortcut="enter"
+            suggestionListId={menu.list}
+            value="/re"
+          />,
+        ),
+      );
+    render({});
+    const textbox = page.getByRole("textbox", { name: "Message" }).element();
+    expect(textbox.hasAttribute("aria-autocomplete")).toBe(false);
+    expect(textbox.hasAttribute("aria-activedescendant")).toBe(false);
+
+    render({ list: "menu" });
+    expect(textbox.getAttribute("aria-autocomplete")).toBe("list");
+    expect(textbox.getAttribute("aria-haspopup")).toBe("listbox");
+    expect(textbox.hasAttribute("aria-activedescendant")).toBe(false);
+
+    render({ list: "menu", active: "menu-%22review%22" });
+    expect(textbox.getAttribute("aria-controls")).toBe("menu");
+    expect(textbox.getAttribute("aria-activedescendant")).toBe("menu-%22review%22");
+
+    render({});
+    expect(textbox.hasAttribute("aria-controls")).toBe(false);
+    expect(textbox.hasAttribute("aria-activedescendant")).toBe(false);
   });
 });
