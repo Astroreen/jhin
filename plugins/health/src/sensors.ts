@@ -64,6 +64,31 @@ const refOf = (event: StoredEvent, kind?: SignalKind): EventRef => ({
 
 const OPEN: ReadonlySet<Slice["status"]> = new Set(["planned", "active", "blocked"]);
 
+/**
+ * Open ceremony warnings a narrower group's open warning already speaks for
+ * (D1284): a mission's closes its project's and the node's, a project's the
+ * node's. One cause, one warning (D724).
+ */
+export function broaderThanNarrower(
+  health: HealthState,
+): { warning: Warning; narrower: Warning }[] {
+  const open = Object.values(health.warnings).filter(
+    (warning) => warning.status === "open" && warning.detector === "ceremony",
+  );
+  const covers = (broad: HealthGroup, narrow: HealthGroup) =>
+    broad.kind === "node"
+      ? narrow.kind === "project" || narrow.kind === "mission"
+      : broad.kind === "project" &&
+        narrow.kind === "mission" &&
+        broad.projectId === narrow.projectId;
+  const found: { warning: Warning; narrower: Warning }[] = [];
+  for (const warning of open) {
+    const narrower = open.find((other) => covers(warning.group, other.group));
+    if (narrower !== undefined) found.push({ warning, narrower });
+  }
+  return found;
+}
+
 export class Sensors {
   missions: MissionsState = EMPTY_MISSIONS;
   private signals: Signal[] = [];

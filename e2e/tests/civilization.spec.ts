@@ -266,6 +266,19 @@ test("D1101–D1104, D1221–D1223: a team runs a mission: handoffs, proofs, ask
     ),
   );
   expect(analysed.analysis.answer).toMatch(/^Echo: /);
+  // The lead's messages crossed the node first; once the mission warns, the node's
+  // warning is closed by it: one warning for one cause (D1284).
+  const closed = payloadOf(
+    await health.until(
+      (event) => event.type === "health.warning.cleared" && payloadOf(event).reason === "narrower",
+    ),
+  );
+  expect(closed.narrowerWarningId).toBe(raised.warningId);
+  expect(
+    (await client.call<{ warningId: string }[]>("health.warnings.list", { status: "open" })).map(
+      (warning) => warning.warningId,
+    ),
+  ).toEqual([raised.warningId]);
 
   // 7. Wave 2 is proven; the lead closes the mission, and the owner gets its report (D1222).
   await prove(roof.id, "the roof keeps the rain out");

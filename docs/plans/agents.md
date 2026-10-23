@@ -1583,6 +1583,19 @@ C3 decisions:
   `civilization.sidebar.projects` stays: a slot id is public API (AGENTS.md
   rule 8), and no plugin fills it yet (A3's Deferred, "the Projects
   section").
+- **D1284. A broader warning closes when a narrower group warns for the same
+  cause.** D724 keeps a project and the node quiet while a mission crosses;
+  that silenced new raises only, so a node warning raised first stayed open
+  beside the mission's (seen in D1101's scenario). After each run's raises,
+  an open ceremony warning of a group that contains another open ceremony
+  warning's group (the node over a project or mission, a project over its
+  mission) is cleared with `health.warning.cleared` (D1283), reason
+  `narrower` and `narrowerWarningId` (kept on the warning). It is decided on
+  the fold right before the write, so a narrower warning dismissed meanwhile
+  closes nothing. Warnings are not re-scoped. If the narrower warning goes
+  and the broader group still crosses, it raises anew, counting from the
+  clear (D1283). The warning's page says "a narrower group warns for the
+  same cause".
 
 Where C3 stands: the scenario (its first bullet) runs on commands, with every
 part the bullet names; the real run (the second bullet) is done, see "C3
@@ -2044,12 +2057,12 @@ Decisions (L2):
 - C3: a fake runtime that calls the agent's own tools (`slices_prove`,
   `agents_ask`, `agents_send`) on a slash command, so the scenario runs the
   agents' path through MCP instead of commands sent for them (D1102).
-- C3: a node warning raised before its mission's stays open beside it. The
+- ~~C3: a node warning raised before its mission's stays open beside it. The
   owner's messages to the lead count only for the node (the lead holds no
   slice), so the node crosses first, and when the mission crosses later the
   node is quiet but its open warning stays: two warnings for one cause, which
   D724 means to avoid. Seen running the scenario (D1101): its Health
-  section lists both; the test asserts only the mission's.
+  section lists both; the test asserts only the mission's.~~ C3, D1284.
 - L1: the answer to the owner's message (D1221) is followed while the node
   runs; a node that stops before the turn ends records none for it. Only
   this node's owner is answered: a message the owner of another node sends

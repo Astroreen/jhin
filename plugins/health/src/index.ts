@@ -47,7 +47,7 @@ import {
 import { EVENTLOG_CAPABILITY, type EventLog, type Json, type StoredEvent } from "@jhin/storage-api";
 
 import { mergeByTime } from "./merge.ts";
-import { Sensors, type Finding } from "./sensors.ts";
+import { Sensors, broaderThanNarrower, type Finding } from "./sensors.ts";
 
 export { HEALTH_STREAM };
 
@@ -324,13 +324,19 @@ export default definePlugin({
      * on the fold right before the write: two runs, or a dismissal meanwhile,
      * make one exit (D1283). The analysis stays; the analyst is not asked again.
      */
-    const clear = (warningId: string) =>
+    const clear = (
+      warningId: string,
+      why: { reason: string; narrowerWarningId?: string } = { reason: "under-threshold" },
+    ) =>
       appendIf(() =>
-        health.warnings[warningId]?.status !== "open"
+        health.warnings[warningId]?.status !== "open" ||
+        // A narrower warning that was dismissed or cleared meanwhile speaks for nothing.
+        (why.narrowerWarningId !== undefined &&
+          health.warnings[why.narrowerWarningId]?.status !== "open")
           ? undefined
           : {
               type: HealthEvents.warningCleared,
-              payload: { warningId, clearedAt: now(), reason: "under-threshold" },
+              payload: { warningId, clearedAt: now(), ...why },
             },
       ).catch((error: unknown) =>
         context.log.warn("a warning could not be cleared", { warningId, error: String(error) }),
@@ -535,6 +541,15 @@ export default definePlugin({
       const evaluatedAt = healthHead;
       for (const finding of sensors.evaluate(current, health, Date.now())) {
         await raise(finding, evaluatedAt);
+      }
+      // One cause, one warning: a broader group's open warning closes once a
+      // narrower group's speaks for it (D1284). If the broader group still
+      // crosses after the narrower one is gone, it raises anew.
+      for (const { warning, narrower } of broaderThanNarrower(health)) {
+        await clear(warning.warningId, {
+          reason: "narrower",
+          narrowerWarningId: narrower.warningId,
+        });
       }
     };
     function evaluateSoon() {

@@ -529,6 +529,35 @@ describe("jhin.health", () => {
     expect(open.map((item) => item.group.kind)).toEqual(["mission", "mission"]);
   });
 
+  it("closes a node warning when the mission it contains warns for the same cause (D1284)", async () => {
+    const { client, kernel, log, deliver } = await node({ ceremony: { ratio: 1, minCeremony: 2 } });
+    // Messages to an agent no slice names count for the node alone: it warns first.
+    const first = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(OWNER, "jhin://node-a/agents/stranger", "one");
+    await deliver(OWNER, "jhin://node-a/agents/stranger", "two");
+    const { warning: wide } = (await first) as { warning: Warning };
+    expect(wide.group.kind).toBe("node");
+
+    // The mission crosses later: it warns, and the node's warning is closed by it.
+    const second = nextEvent(kernel, HealthEvents.warningRaised);
+    await deliver(OWNER, BUILDER, "three", "t1");
+    await deliver(OWNER, BUILDER, "four", "t1");
+    const { warning: narrow } = (await second) as { warning: Warning };
+    expect(narrow.group.kind).toBe("mission");
+    const open = await client.call<Warning[]>("health.warnings.list", { status: "open" });
+    expect(open.map((item) => item.warningId)).toEqual([narrow.warningId]);
+    const cleared = await client.call<Warning[]>("health.warnings.list", { status: "cleared" });
+    expect(cleared).toMatchObject([
+      { warningId: wide.warningId, clearedReason: "narrower", narrowerWarningId: narrow.warningId },
+    ]);
+    // Once, however many runs follow.
+    await deliver(OWNER, BUILDER, "five", "t1");
+    await client.call("health.status", {});
+    expect(
+      (await log.read(HEALTH_STREAM)).filter((event) => event.type === HealthEvents.warningCleared),
+    ).toHaveLength(1);
+  });
+
   it("keeps the last good thresholds while a config layer is invalid", async () => {
     const { client, kernel } = await node({ windowHours: 12 });
     kernel.config.setLayer("project", { "jhin.health": { windowHours: -1 } });

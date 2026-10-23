@@ -1,10 +1,17 @@
 import { ThreadEvents } from "@jhin/agent-api";
-import { EMPTY_HEALTH, HealthConfig, carriesIdea, normalizeIdea } from "@jhin/health-api";
+import {
+  EMPTY_HEALTH,
+  HealthConfig,
+  groupKey,
+  type Warning,
+  carriesIdea,
+  normalizeIdea,
+} from "@jhin/health-api";
 import { MissionEvents, type Slice } from "@jhin/missions-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { Sensors } from "../src/sensors.ts";
+import { Sensors, broaderThanNarrower } from "../src/sensors.ts";
 
 const NOW = Date.parse("2026-10-22T12:00:00Z");
 const hoursAgo = (hours: number) => new Date(NOW - hours * 3_600_000).toISOString();
@@ -156,6 +163,42 @@ describe("health's sensors (D722)", () => {
     expect(
       sensors.evaluate(config, cleared, NOW).find((f) => f.subject === "mission:m1")?.measures,
     ).toMatchObject({ ceremony: 3 });
+  });
+
+  it("names the open ceremony warnings a narrower group's warning speaks for (D1284)", () => {
+    const make = (warningId: string, group: Warning["group"], status: Warning["status"] = "open") =>
+      ({
+        warningId,
+        detector: "ceremony" as const,
+        subject: groupKey(group),
+        group,
+        summary: "",
+        measures: {},
+        evidence: [],
+        raisedAt: hoursAgo(1),
+        status,
+      }) satisfies Warning;
+    const warnings = [
+      make("node", { kind: "node" }),
+      make("p1", { kind: "project", projectId: "p1" }),
+      make("p2", { kind: "project", projectId: "p2" }),
+      make("m1", { kind: "mission", projectId: "p1", missionId: "m1" }),
+      make("m3", { kind: "mission", projectId: "p3", missionId: "m3" }, "dismissed"),
+    ];
+    const health = {
+      ...EMPTY_HEALTH,
+      warnings: Object.fromEntries(warnings.map((warning) => [warning.warningId, warning])),
+    };
+    // m1 speaks for p1 and the node; p2 is covered by no mission, a dismissed one covers nothing.
+    expect(
+      broaderThanNarrower(health).map(({ warning, narrower }) => [
+        warning.warningId,
+        narrower.warningId,
+      ]),
+    ).toEqual([
+      ["node", "p1"],
+      ["p1", "m1"],
+    ]);
   });
 
   it("finds an idea as whole words only", () => {

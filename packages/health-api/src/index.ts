@@ -17,7 +17,7 @@ export const HealthEvents = {
   warningAnalysed: "health.warning.analysed",
   /** `{ warningId, dismissedAt, dismissedAfter?, by? }`: the owner has seen it (D724). */
   warningDismissed: "health.warning.dismissed",
-  /** `{ warningId, clearedAt, reason }`: the measure is back under its threshold, the sensors closed it (D1283). */
+  /** `{ warningId, clearedAt, reason, narrowerWarningId? }`: the sensors closed it, its measure back under the threshold or a narrower group warning for the same cause (D1283, D1284). */
   warningCleared: "health.warning.cleared",
   /** `{ idea: Idea }`: a wrong idea, named when it was corrected (D727). */
   ideaCorrected: "health.idea.corrected",
@@ -136,6 +136,8 @@ export const Warning = z.object({
   /** When the sensors cleared it, and why: a short machine-readable reason, `under-threshold` (D1283). */
   clearedAt: z.string().optional(),
   clearedReason: z.string().optional(),
+  /** The narrower group's warning that closed this one, when the reason is `narrower` (D1284). */
+  narrowerWarningId: z.string().optional(),
   /**
    * The last event of each followed stream when it was dismissed, by stream:
    * the subject counts again only from the events after them (D724).
@@ -265,6 +267,7 @@ export function applyHealthEvent(
     dismissedAfter?: Record<string, number>;
     clearedAt?: string;
     reason?: string;
+    narrowerWarningId?: string;
     idea?: Idea;
   };
   switch (event.type) {
@@ -287,6 +290,9 @@ export function applyHealthEvent(
             status: "cleared",
             ...(payload.clearedAt === undefined ? {} : { clearedAt: payload.clearedAt }),
             ...(payload.reason === undefined ? {} : { clearedReason: payload.reason }),
+            ...(payload.narrowerWarningId === undefined
+              ? {}
+              : { narrowerWarningId: payload.narrowerWarningId }),
           },
         },
       };
