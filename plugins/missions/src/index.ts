@@ -171,6 +171,19 @@ export default definePlugin({
         throw error;
       }
     };
+    /**
+     * The missions with `projectDeleted` where their project is gone (D1399): a
+     * deleted project's missions stay, readable and deletable, marked from
+     * the known projects at read time. Without `projects.list` nothing is marked.
+     */
+    const marked = async (missions: readonly Mission[]): Promise<Mission[]> => {
+      const known = await projects();
+      if (known === undefined) return [...missions];
+      const ids = new Set(known.map((project) => project.id));
+      return missions.map((mission) =>
+        ids.has(mission.projectId) ? mission : { ...mission, projectDeleted: true },
+      );
+    };
     const assertProject = async (projectId: string) => {
       const known = await projects();
       if (known !== undefined && !known.some((project) => project.id === projectId))
@@ -333,9 +346,13 @@ export default definePlugin({
       handler: async ({ projectId }) => {
         if (projectId !== undefined) await assertProject(projectId);
         await sync();
-        return projectId === undefined
-          ? Object.values(state.missions).toSorted((a, b) => a.createdAt.localeCompare(b.createdAt))
-          : missionsOf(state, projectId);
+        return marked(
+          projectId === undefined
+            ? Object.values(state.missions).toSorted((a, b) =>
+                a.createdAt.localeCompare(b.createdAt),
+              )
+            : missionsOf(state, projectId),
+        );
       },
     });
     context.commands.register({
@@ -346,7 +363,8 @@ export default definePlugin({
       ...read,
       handler: async ({ missionId }) => {
         await sync();
-        return { mission: getMission(state, missionId), slices: slicesOf(state, missionId) };
+        const [mission] = await marked([getMission(state, missionId)]);
+        return { mission: mission!, slices: slicesOf(state, missionId) };
       },
     });
     context.commands.register({
@@ -366,7 +384,7 @@ export default definePlugin({
         return {
           head,
           intents: Object.values(state.intents),
-          missions: Object.values(state.missions),
+          missions: await marked(Object.values(state.missions)),
           slices: Object.values(state.slices),
         };
       },

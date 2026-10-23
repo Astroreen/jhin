@@ -67,6 +67,7 @@ import {
   assigneeLabel,
   MISSION_ASIDE_SLOT,
   missionRank,
+  DELETED_PROJECT_GROUP,
   placeOf,
   reviewCheckFailed,
   reviewCheckLines,
@@ -76,6 +77,7 @@ import {
   statusVariant,
   threadTarget,
   VERDICT_LABELS,
+  withDeletedProjects,
   type ReviewCheckView,
   type MissionAsideProps,
   type MissionPlace,
@@ -187,7 +189,7 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
 
   if (view.status === "unavailable") return <SidebarNote>This node has no missions.</SidebarNote>;
   if (view.status === "loading") return <SidebarNote>Loading missions…</SidebarNote>;
-  const projects = projectsWithMissions(view.state);
+  const projects = withDeletedProjects(projectsWithMissions(view.state), names);
   // Planning a mission from the client (D1081): any project of the node's catalog.
   const create =
     connection === undefined ? null : (
@@ -234,9 +236,11 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
     <nav aria-label="Missions list">
       {projects.map(({ projectId, missions }) => (
         <div key={projectId} data-mission-project={projectId}>
-          {projects.length > 1 || names.has(projectId) ? (
+          {projects.length > 1 || names.has(projectId) || projectId === DELETED_PROJECT_GROUP ? (
             <div className="truncate px-2 pt-1 text-2xs font-medium uppercase tracking-wide text-sidebar-muted-foreground/70">
-              {names.get(projectId) ?? projectId}
+              {projectId === DELETED_PROJECT_GROUP
+                ? "Of a deleted project"
+                : (names.get(projectId) ?? projectId)}
             </div>
           ) : null}
           <SidebarMenu>
