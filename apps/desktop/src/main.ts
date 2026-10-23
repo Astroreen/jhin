@@ -36,6 +36,7 @@ import { createElectronUpdater, hasPackagedFeed } from "./updates/electron-updat
 import { NodeRestarter } from "./node-restart.ts";
 import { makeQuitShortcutHandler } from "./quit-hold.ts";
 import { createMainWindow, loadNode, syncWindowAppearance, zoomMainWindow } from "./window.ts";
+import { createWebviewHost } from "./preview/webview-host.ts";
 
 const APP_NAME = "Jhin";
 const require = Module.createRequire(import.meta.url);
@@ -305,6 +306,22 @@ async function main(): Promise<void> {
     }
   });
   on(DESKTOP_CHANNELS.setNotificationBadge, DesktopNotificationBadge, applyBadge);
+  // The preview's webviews, driven by the node (D1322).
+  const webviews = createWebviewHost({
+    openLink: (link) => sendToPage(DESKTOP_CHANNELS.previewOpenLink, link),
+    log,
+  });
+  handle(DESKTOP_CHANNELS.previewAttach, z.number().int().positive(), (webContentsId) => {
+    // `handle` answers the main window only; a window closed meanwhile has no webviews.
+    if (mainWindow === undefined || mainWindow.isDestroyed()) {
+      throw new Error("The app's window is closed.");
+    }
+    return webviews.attach(mainWindow.webContents, webContentsId);
+  });
+  handle(DESKTOP_CHANNELS.previewClearPartition, z.string().max(400), (partition) =>
+    webviews.clearPartition(partition),
+  );
+  app.on("will-quit", () => webviews.dispose());
   const clearBadge = () => applyBadge({ count: 0, image: null });
   app.on("browser-window-focus", clearBadge);
 
@@ -407,6 +424,7 @@ async function main(): Promise<void> {
       node: () => shownNode!,
       settings,
       log,
+      webviews,
     });
     mainWindow.on("closed", () => {
       mainWindow = undefined;

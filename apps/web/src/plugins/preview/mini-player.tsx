@@ -11,6 +11,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
@@ -27,6 +28,8 @@ import {
 } from "./mini-player-layout.ts";
 import type { MiniPlayerState, MiniPlayers } from "./mini-player-store.ts";
 import { BrowserSurface } from "./surface.tsx";
+import { NativeSurface } from "./native-surface.tsx";
+import type { NativeSurfaces } from "./native-surfaces.ts";
 
 interface PointerGesture {
   readonly pointerId: number;
@@ -70,6 +73,8 @@ export interface MiniPlayerProps {
   readonly onError: (error: unknown) => void;
   /** The page downloaded a file, while this viewer holds control (D1331). */
   readonly onDownload?: (download: { id: string; fileName: string }) => void;
+  /** The desktop app's webviews of its own node's tabs (D1324). */
+  readonly surfaces: NativeSurfaces;
 }
 
 /** The size of the layer the player floats in, kept while it resizes. */
@@ -101,9 +106,14 @@ function useContainerSize(): [
 export function MiniPlayer(props: MiniPlayerProps) {
   const { tab, state, players, threadKey } = props;
   const [containerRef, container] = useContainerSize();
-  const [source, setSource] = useState<PreviewMiniPlayerSize>(
+  const [measured, setSource] = useState<PreviewMiniPlayerSize>(
     tab.size.width > 0 && tab.size.height > 0 ? tab.size : DEFAULT_SOURCE,
   );
+  // A desktop tab's page is the app's webview at the tab's size (D1324).
+  const native =
+    useSyncExternalStore(props.surfaces.subscribe, () => props.surfaces.hosts(props.client)) &&
+    tab.desktop === true;
+  const source = native && tab.size.width > 0 && tab.size.height > 0 ? tab.size : measured;
   const gestureRef = useRef<PointerGesture | null>(null);
   // Touch has no hover, so tapping the handle toggles the pill instead. The
   // toggle waits for the tap's click, which would otherwise land on the pill.
@@ -304,28 +314,53 @@ export function MiniPlayer(props: MiniPlayerProps) {
             </div>
           </div>
 
-          <div className="absolute inset-0 z-[47] rounded-[inherit] bg-muted shadow-2xl/35" />
-          <div className="pointer-events-auto absolute inset-0 z-[48] overflow-hidden rounded-[inherit]">
-            <BrowserSurface
-              canOperate={tab.controller === props.viewer}
-              client={props.client}
-              followSize={false}
-              onDownload={(download) => {
-                if (tab.controller === props.viewer) props.onDownload?.(download);
-              }}
-              humanControls={tab.controller !== null}
-              onError={props.onError}
-              onViewport={(size) =>
-                setSource((current) =>
-                  current.width === size.width && current.height === size.height
-                    ? current
-                    : { width: size.width, height: size.height },
-                )
-              }
-              tabId={tab.tabId}
-              threadId={props.threadId}
-              viewer={props.viewer}
-            />
+          <div
+            className={cn(
+              "absolute inset-0 z-[47] rounded-[inherit] shadow-2xl/35",
+              !native && "bg-muted",
+            )}
+          />
+          <div
+            className={cn(
+              "absolute inset-0 z-[48] overflow-hidden rounded-[inherit]",
+              !native && "pointer-events-auto",
+            )}
+          >
+            {native ? (
+              <NativeSurface
+                canOperate={tab.controller === props.viewer}
+                client={props.client}
+                followSize={false}
+                hidden={tab.dialog !== null}
+                onError={props.onError}
+                surfaces={props.surfaces}
+                tab={tab}
+                underlay
+                viewer={props.viewer}
+                zIndex={39}
+              />
+            ) : (
+              <BrowserSurface
+                canOperate={tab.controller === props.viewer}
+                client={props.client}
+                followSize={false}
+                onDownload={(download) => {
+                  if (tab.controller === props.viewer) props.onDownload?.(download);
+                }}
+                humanControls={tab.controller !== null}
+                onError={props.onError}
+                onViewport={(size) =>
+                  setSource((current) =>
+                    current.width === size.width && current.height === size.height
+                      ? current
+                      : { width: size.width, height: size.height },
+                  )
+                }
+                tabId={tab.tabId}
+                threadId={props.threadId}
+                viewer={props.viewer}
+              />
+            )}
           </div>
           <div className="pointer-events-none absolute inset-0 z-[49] rounded-[inherit] ring-1 ring-inset ring-border/80" />
           {RESIZE_HANDLES.map(({ direction, className }) => (

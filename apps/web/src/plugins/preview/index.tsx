@@ -18,7 +18,8 @@ import {
   type NodeTarget,
   type ThreadsCatalog,
 } from "@jhin/client-api";
-import type { PreviewTab } from "@jhin/preview-api";
+import { DESKTOP_SHELL_CAPABILITY, type DesktopShell } from "@jhin/desktop-api";
+import { previewProfilePartition, type PreviewTab } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import {
@@ -53,6 +54,8 @@ import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import type { BrowserPanelProps, PanelServices } from "./panel.tsx";
 import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
+import { DesktopWebviews } from "./desktop-webviews.tsx";
+import { createNativeSurfaces } from "./native-surfaces.ts";
 
 /**
  * Base64 decoded a megabyte at a time (D1331): no `data:` URL for the page's CSP to refuse, and
@@ -134,6 +137,8 @@ export const previewPanelPlugin = builtin(
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
       [UI_SETTINGS_CAPABILITY]: "^1",
+      // The desktop app's webviews (D1324).
+      [DESKTOP_SHELL_CAPABILITY]: "^1.1",
     },
   },
   definePlugin({
@@ -145,6 +150,9 @@ export const previewPanelPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const feeds = context.subscriptions.add(createTabFeeds(connections));
+      const desktopShell = () => context.services.tryGet<DesktopShell>(DESKTOP_SHELL_CAPABILITY);
+      // Where the panel and the mini player show the desktop app's webviews (D1324).
+      const surfaces = createNativeSurfaces();
       // T3's browser profiles, kept on this device (D953).
       context.config.define(PREVIEW_BROWSER_SECTION, PreviewBrowserSettings);
       const deviceSettings = context.services.tryGet<DeviceSettings>(SETTINGS_CAPABILITY);
@@ -154,6 +162,9 @@ export const previewPanelPlugin = builtin(
         dialogs: context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY),
         toasts: context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY),
         read: () => readSection(context, PREVIEW_BROWSER_SECTION, PreviewBrowserSettings),
+        // A profile removed also leaves the app's partition (D1323).
+        clearInApp: async (profileId) =>
+          desktopShell()?.preview?.clearPartition(previewProfilePartition(profileId)),
         use: () => useSection(context, PREVIEW_BROWSER_SECTION, PreviewBrowserSettings),
       };
       const pages = context.services.tryGet<SettingsPages>(UI_SETTINGS_CAPABILITY);
@@ -625,6 +636,7 @@ export const previewPanelPlugin = builtin(
           },
           useProfiles: () => resolveBrowserProfiles(profiles.use()),
           offerDownload,
+          surfaces,
         };
         return (
           <BrowserPanel
@@ -690,6 +702,7 @@ export const previewPanelPlugin = builtin(
             }}
             players={players}
             state={state}
+            surfaces={surfaces}
             tab={tab}
             threadId={thread.id}
             threadKey={key}
@@ -700,6 +713,20 @@ export const previewPanelPlugin = builtin(
 
       context.subscriptions.add(
         slots.contribute("app.panel", { id: "jhin.preview.panel", component: Panel }),
+      );
+      // In the desktop app: its own node's tabs in webviews (D1321, D1324).
+      context.subscriptions.add(
+        slots.contribute("app.global", {
+          id: "jhin.preview.desktop-host",
+          component: () => (
+            <DesktopWebviews
+              connections={connections}
+              onError={onError}
+              shell={desktopShell}
+              surfaces={surfaces}
+            />
+          ),
+        }),
       );
       context.subscriptions.add(
         slots.contribute<ChatThreadOverlayProps>("chat.thread.overlay", {

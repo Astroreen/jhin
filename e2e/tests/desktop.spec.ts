@@ -16,6 +16,7 @@ import {
 } from "@playwright/test";
 import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
 
+import { fakeTools } from "./support/device-hub-fakes.ts";
 import { writeConfig } from "./support/node.ts";
 
 // The desktop app (docs/plans/desktop.md, D523), built by `pnpm e2e`. On Linux,
@@ -545,4 +546,177 @@ test("a crashed page and a stopped node come back with the node's token", async 
   expect(stderr.lastIndexOf("local node running")).toBeGreaterThan(
     stderr.indexOf("restart scheduled"),
   );
+});
+
+test("the app shows its node's browser tabs in a webview the agent and the user drive (D1321–D1324)", async () => {
+  const info = test.info();
+  const page = Http.createServer((request, response) => {
+    const pages: Record<string, string> = {
+      "/": `<!doctype html><title>Desktop page</title>
+        <style>body{margin:0;font:16px sans-serif} input{display:block;box-sizing:border-box;width:100%;height:120px;font-size:32px}</style>
+        <input aria-label="Field" id="field" oninput="document.title = 'typed ' + this.value">
+        <button onclick="document.title='Agent clicked'">Agent button</button>
+        <a href="/second" target="_blank">Open second</a>`,
+      "/second": `<!doctype html><title>Second page</title><h1>Second</h1>`,
+    };
+    const body = pages[request.url ?? "/"];
+    response.writeHead(body === undefined ? 404 : 200, { "content-type": "text/html" });
+    response.end(body ?? "missing");
+  });
+  await new Promise<void>((resolve) => page.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${(page.address() as AddressInfo).port}`;
+  try {
+    const launchedApp = await launch();
+    const { app, window } = launchedApp;
+    const client = nodeClient(launchedApp);
+    const thread = await client.call<{ id: string; title: string }>("threads.create", {});
+    await window.locator(`[data-thread-item$="|${thread.id}"]`).click();
+
+    // The agent opens a page: the app hosts it in a webview the node drives over CDP.
+    const opened = await client.call<{ tabId: string }>("preview.open", {
+      threadId: thread.id,
+      url: `${origin}/`,
+    });
+    const panel = window.getByRole("complementary", { name: "Right panel" });
+    await expect(panel.getByRole("tab", { name: "Desktop page" })).toBeVisible();
+    const webview = window.locator(`webview[data-preview-desktop-tab="${opened.tabId}"]`);
+    await expect(webview).toBeVisible();
+    const { tabs } = await client.call<{ tabs: { desktop?: boolean }[] }>("preview.list", {
+      threadId: thread.id,
+    });
+    expect(tabs[0]?.desktop).toBe(true);
+    // The webview lies over the panel's page area.
+    const area = await panel.getByRole("region", { name: /^Browser page/ }).boundingBox();
+    const shown = await webview.boundingBox();
+    expect(shown).toEqual(area);
+
+    // The agent's click lands in the webview's page.
+    await client.call("preview.click", {
+      threadId: thread.id,
+      locator: "role=button[name='Agent button']",
+    });
+    await expect(panel.getByRole("tab", { name: "Agent clicked" })).toBeVisible();
+    // The guest's own page says so too.
+    const guestTitle = () =>
+      app.evaluate(({ webContents }) =>
+        webContents
+          .getAllWebContents()
+          .find((contents) => contents.getType() === "webview")
+          ?.getTitle(),
+      );
+    expect(await guestTitle()).toBe("Agent clicked");
+    const shot = info.outputPath("desktop-preview-agent.png");
+    await window.screenshot({ path: shot });
+    await info.attach("desktop-preview-agent", { path: shot, contentType: "image/png" });
+
+    // The user takes control and types into the page natively.
+    await panel.getByRole("button", { name: "Take control" }).click();
+    await expect(panel.getByRole("status")).toHaveText("You have control");
+    // The user's own input reaches the page in the webview, not through the node.
+    await app.evaluate(
+      async ({ webContents }, point) => {
+        const guest = webContents.getAllWebContents().find((c) => c.getType() === "webview")!;
+        for (const type of ["mouseDown", "mouseUp"] as const) {
+          guest.sendInputEvent({ type, x: point.x, y: point.y, button: "left", clickCount: 1 });
+        }
+        for (const keyCode of "hello") guest.sendInputEvent({ type: "char", keyCode });
+      },
+      { x: Math.round(shown!.width / 2), y: 60 },
+    );
+    await expect(panel.getByRole("tab", { name: "typed hello" })).toBeVisible();
+    const typed = info.outputPath("desktop-preview-typed.png");
+    await window.screenshot({ path: typed });
+    await info.attach("desktop-preview-typed", { path: typed, contentType: "image/png" });
+
+    // The tab floats over the chat: the webview follows it into the mini player (D1324).
+    await panel.getByRole("button", { name: "Float preview over chat" }).click();
+    const player = window.getByRole("region", { name: "Floating browser preview" });
+    await expect(player).toBeVisible();
+    await expect(panel).toHaveCount(0);
+    await expect(webview).toBeInViewport();
+    const playerBox = (await player.boundingBox())!;
+    const inPlayer = (await webview.boundingBox())!;
+    expect(inPlayer.x).toBeGreaterThanOrEqual(playerBox.x - 1);
+    expect(inPlayer.y).toBeGreaterThanOrEqual(playerBox.y - 1);
+    expect(inPlayer.x + inPlayer.width).toBeLessThanOrEqual(playerBox.x + playerBox.width + 1);
+    const floated = info.outputPath("desktop-preview-floating.png");
+    await window.screenshot({ path: floated });
+    await info.attach("desktop-preview-floating", { path: floated, contentType: "image/png" });
+    // The pill over the webview still answers: its handle's hover shows it.
+    await player.locator("[data-preview-mini-player-handle]").hover();
+    await player.getByRole("button", { name: "Open preview in right panel" }).click();
+    await expect(panel.getByRole("tab", { name: "typed hello" })).toBeVisible();
+
+    // The panel's view of the tab closed meanwhile, and with it the user's control (D397).
+    await expect(panel.getByRole("status")).toHaveText("Agent has control");
+
+    // A link to a new window opens as a new tab of the thread (D1323).
+    await client.call("preview.click", {
+      threadId: thread.id,
+      tabId: opened.tabId,
+      locator: "role=link[name='Open second']",
+    });
+    await expect(panel.getByRole("tab", { name: "Second page" })).toBeVisible();
+
+    // Closing the tab removes its webview.
+    await client.call("preview.tab.close", { threadId: thread.id, tabId: opened.tabId });
+    await expect(webview).toHaveCount(0);
+
+    // DevTools taking a webview's debugger ends its relay: the node drops that tab (D1322).
+    const second = panel.getByRole("tab", { name: "Second page" });
+    await expect(second).toBeVisible();
+    const relays = () =>
+      app.evaluate(({ webContents }) =>
+        webContents
+          .getAllWebContents()
+          .filter((contents) => contents.getType() === "webview" && contents.debugger.isAttached())
+          .map((contents) => contents.id),
+      );
+    const [guest] = await relays();
+    expect(guest).toBeDefined();
+    await app.evaluate(({ webContents }, id) => webContents.fromId(id)!.debugger.detach(), guest!);
+    await expect(second).toHaveCount(0);
+    expect(await relays()).toEqual([]);
+  } finally {
+    await new Promise((resolve) => page.close(resolve));
+  }
+});
+
+test("the Device panel streams a simulator from the device hub in the app, with touches (D1206–D1208)", async () => {
+  const info = test.info();
+  const tools = fakeTools();
+  const launchedApp = await launch({}, (home) =>
+    writeConfig(home, { "jhin.devices": { xcrun: tools.xcrun, npm: tools.npm, hub: true } }),
+  );
+  const { window } = launchedApp;
+  // The simulator's screen: any JPEG does, the app's own window here.
+  Fs.writeFileSync(tools.jpeg, await window.screenshot({ type: "jpeg" }));
+  // The fake hub cannot encode video: without WebCodecs the panel takes serve-sim's MJPEG feed.
+  await window.addInitScript(() => {
+    delete (globalThis as { VideoDecoder?: unknown }).VideoDecoder;
+  });
+  await window.reload();
+  await expect(window.locator("html.electron")).toHaveCount(1);
+  const client = nodeClient(launchedApp);
+  const thread = await client.call<{ id: string }>("threads.create", {});
+  await window.locator(`[data-thread-item$="|${thread.id}"]`).click();
+
+  // An agent opens the simulator: the app's node installs and starts the hub, the panel streams it.
+  await client.call("device.open", { threadId: thread.id, deviceId: "SIM-1" });
+  const panel = window.getByRole("complementary", { name: "Device panel" });
+  const screen = panel.getByRole("application", { name: "iOS Simulator screen" });
+  await expect(screen).toBeVisible();
+  await expect(panel.getByText("Connecting video…")).toBeHidden();
+  const home = panel.getByRole("button", { name: "Home" });
+  await expect(home).toBeEnabled();
+  const shot = info.outputPath("desktop-device-hub.png");
+  await window.screenshot({ path: shot });
+  await info.attach("desktop-device-hub", { path: shot, contentType: "image/png" });
+
+  // A touch and the rail's Home reach the hub through the node's proxy.
+  await screen.locator(":scope > div").first().click();
+  await home.click();
+  const sent = await tools.inputs(3);
+  expect(sent.map((each) => each.tag)).toEqual([0x03, 0x03, 0x04]);
+  expect(sent[2]!.body).toEqual({ button: "home" });
 });

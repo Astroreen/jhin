@@ -12,6 +12,8 @@ import {
 } from "@jhin/preview-api";
 import type { Browser, BrowserContext, CDPSession, LaunchOptions, Page } from "playwright-core";
 
+import type { DesktopPage } from "./desktop-host.ts";
+
 /** Device pixels per CSS pixel every tab renders at. */
 export const RENDER_SCALE = 2;
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
@@ -296,6 +298,21 @@ export class Chromium {
     } finally {
       if (this.#clearing.get(profileId) === clearing) this.#clearing.delete(profileId);
     }
+  }
+
+  /**
+   * The page of a desktop app's webview, over its relay (T3's
+   * `connectDesktopPage`, D1321). Closing it only disconnects.
+   */
+  async connectDesktop(endpoint: string): Promise<DesktopPage> {
+    const { chromium } = await import("playwright-core");
+    const browser = await chromium.connectOverCDP(endpoint, { timeout: 15_000 });
+    const page = browser.contexts().flatMap((context) => context.pages())[0];
+    if (page === undefined) {
+      await browser.close().catch(() => undefined);
+      throw new Error("The desktop tab has no page.");
+    }
+    return { page, context: page.context(), close: () => browser.close() };
   }
 
   /** A page for the recording encoder, alone in its own context. */

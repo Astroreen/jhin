@@ -126,15 +126,19 @@ export interface ProfilesServices {
   readonly toasts: Toasts | undefined;
   /** This device's profile settings, as they are now. */
   read(): PreviewBrowserSettings;
+  /** Clears the profile's partition of the desktop app, when the page runs in one (D1323). */
+  clearInApp?(profileId: string): Promise<void>;
   use(): PreviewBrowserSettings;
 }
 
 /** Forgets a profile on every node this client is connected to (T3 clears every environment). */
 async function clearOnNodes(services: ProfilesServices, profileId: string): Promise<void> {
   const open = services.connections.list().filter((node) => node.state === "open");
-  const results = await Promise.allSettled(
-    open.map((node) => node.client.call("preview.profile.clear", { profileId })),
-  );
+  const [inApp, ...results] = await Promise.allSettled([
+    services.clearInApp?.(profileId),
+    ...open.map((node) => node.client.call("preview.profile.clear", { profileId })),
+  ]);
+  if (inApp?.status === "rejected") throw new Error("Not cleared in the app.");
   // Every node is tried; the error names the ones that did not clear.
   const failed = open.filter((_node, index) => results[index]?.status === "rejected");
   if (failed.length > 0) {

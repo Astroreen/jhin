@@ -40,6 +40,13 @@ const bridge: DesktopBridge = {
   setQuitShortcut: (mode) => ipcRenderer.invoke(DESKTOP_CHANNELS.quitShortcutSet, mode),
   onQuitShortcut: (listener) => listen(DESKTOP_CHANNELS.quitShortcut, listener),
   onWindowFullscreen: (listener) => listen(DESKTOP_CHANNELS.windowFullscreen, listener),
+  preview: {
+    attachWebview: (webContentsId) =>
+      ipcRenderer.invoke(DESKTOP_CHANNELS.previewAttach, webContentsId),
+    onOpenLink: (listener) => listen(DESKTOP_CHANNELS.previewOpenLink, listener),
+    clearPartition: (partition) =>
+      ipcRenderer.invoke(DESKTOP_CHANNELS.previewClearPartition, partition),
+  },
 };
 
 contextBridge.exposeInMainWorld("jhinDesktop", bridge);

@@ -52,6 +52,8 @@ import {
   PreviewImportSourcesResult,
   INCOGNITO_BROWSER_PROFILE_ID,
   PreviewTabOpenInput,
+  PreviewDesktopAttachInput,
+  PREVIEW_DESKTOP_STREAM,
   PreviewTarget,
   PreviewTypeInput,
   PreviewUploadInput,
@@ -73,6 +75,7 @@ import {
   writeCookies,
 } from "./browser-import/browser-import.ts";
 import { Chromium } from "./chromium.ts";
+import { createDesktopHost } from "./desktop-host.ts";
 import { createTabs, sessionKey } from "./tabs.ts";
 import { createLocalServerScanner, DiscoveredLocalServer, nodeScanHost } from "./local-servers.ts";
 import { createHeadlessShell, headlessShellRelease } from "./headless-shell.ts";
@@ -131,11 +134,15 @@ export default definePlugin({
         "profiles",
       ),
     });
+    // The desktop app that hosts this node's tabs in webviews (D1321).
+    const desktop = createDesktopHost(streams);
     const tabs = createTabs({
       chromium,
       streams,
       dataDir: paths?.dataDir(context.plugin.id) ?? Path.join(Os.tmpdir(), "jhin-preview"),
       log: context.log,
+      desktop,
+      connectDesktop: (endpoint) => chromium.connectDesktop(endpoint),
     });
     const browser: PreviewBrowser = {
       instance: tabs.instance,
@@ -144,7 +151,10 @@ export default definePlugin({
     };
     context.services.provide(PREVIEW_BROWSER_CAPABILITY, browser);
     // Tabs end with the plugin, and the browser with them.
-    context.onDeactivate(() => tabs.dispose());
+    context.onDeactivate(async () => {
+      await tabs.dispose();
+      desktop.dispose();
+    });
 
     if (live === undefined) {
       context.log.warn("no rpc.streams@1: clients see no tabs or frames, only preview.list");
@@ -170,6 +180,10 @@ export default definePlugin({
       };
       context.subscriptions.add(
         live.serve(PREVIEW_STREAM_PREFIX, watched, { permissions: ["preview.read"] }),
+      );
+      // Only the desktop app's page subscribes: it hosts the tabs as a human viewer would.
+      context.subscriptions.add(
+        live.serve(PREVIEW_DESKTOP_STREAM, desktop.source, { permissions: ["preview.control"] }),
       );
     }
 
@@ -571,6 +585,19 @@ export default definePlugin({
       output: PreviewTab,
       permissions: control,
       handler: (input) => tabs.openForHuman(input),
+    });
+    context.commands.register({
+      name: "preview.desktop.attach",
+      title: "Attach a desktop webview to a browser tab",
+      description:
+        "The desktop app's webview of a tab the node announced on preview-desktop is ready at a loopback CDP endpoint; the node drives the tab there.",
+      input: PreviewDesktopAttachInput,
+      output: Done,
+      permissions: control,
+      handler: (input) => {
+        desktop.attach(input);
+        return {};
+      },
     });
     context.commands.register({
       name: "preview.tab.close",

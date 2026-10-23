@@ -23,4 +23,9 @@ export const DESKTOP_CHANNELS = {
   quitShortcutSet: "jhin-desktop:quit-shortcut-set",
   /** Main to page: the quit shortcut is pressed or released (T3's QuitHold hint). */
   quitShortcut: "jhin-desktop:quit-shortcut",
+  /** Attaches the node to a webview of the page (D1322). */
+  previewAttach: "jhin-desktop:preview-attach",
+  /** Main to page: a webview's page opened a window (D1323). */
+  previewOpenLink: "jhin-desktop:preview-open-link",
+  previewClearPartition: "jhin-desktop:preview-clear-partition",
 } as const;

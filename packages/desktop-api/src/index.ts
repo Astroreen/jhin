@@ -114,6 +114,25 @@ export type QuitShortcutHintEvent = z.output<typeof QuitShortcutHintEvent>;
 
 type Unsubscribe = () => void;
 
+/** A webview's page opened a window at an http(s) URL (D1323). */
+export const DesktopPreviewOpenLink = z.object({
+  webContentsId: z.number().int().positive(),
+  url: z.string().max(2048),
+});
+export type DesktopPreviewOpenLink = z.output<typeof DesktopPreviewOpenLink>;
+
+/** The preview's webviews in the app (docs/plans/desktop.md, D1322). */
+export interface DesktopPreviewBridge {
+  /**
+   * Attaches the webview (its `getWebContentsId()`) and returns the loopback
+   * CDP endpoint the node connects to.
+   */
+  attachWebview(webContentsId: number): Promise<{ endpoint: string }>;
+  onOpenLink(listener: (link: DesktopPreviewOpenLink) => void): Unsubscribe;
+  /** Forgets the cookies and storage of a preview partition. */
+  clearPartition(partition: string): Promise<void>;
+}
+
 /** `window.jhinDesktop`, put there by the app's preload (D521). */
 export interface DesktopBridge {
   readonly version: number;
@@ -143,6 +162,8 @@ export interface DesktopBridge {
   setQuitShortcut?(mode: QuitConfirmationMode): Promise<QuitConfirmationMode>;
   /** The quit shortcut is pressed or released, for T3's hint. */
   onQuitShortcut?(listener: (hint: QuitShortcutHintEvent) => void): Unsubscribe;
+  /** The preview's webviews (D1322). Optional: an older app's bridge lacks it. */
+  readonly preview?: DesktopPreviewBridge;
 }
 
 /** `desktop.shell@1`: the app, for client plugins. */
@@ -157,5 +178,14 @@ export interface DesktopShell {
   readonly menu: {
     /** Adds an item to the application menu until disposed. */
     contribute(item: DesktopMenuContribution): Disposable;
+  };
+  /**
+   * Since 1.1: the preview's webviews, when the app has them (D1322). The
+   * `<webview>` tag works in the app's page only.
+   */
+  readonly preview?: {
+    attachWebview(webContentsId: number): Promise<{ endpoint: string }>;
+    onOpenLink(listener: (link: DesktopPreviewOpenLink) => void): Disposable;
+    clearPartition(partition: string): Promise<void>;
   };
 }

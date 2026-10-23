@@ -277,6 +277,8 @@ export interface SnapshotInput {
   readonly cdp: CDPSession;
   /** Device pixels per CSS pixel the browser renders at. */
   readonly renderScale: number;
+  /** The page's size in CSS pixels, when Playwright does not set it (a desktop webview's). */
+  readonly viewport?: { readonly width: number; readonly height: number };
   readonly consoleEntries: readonly PreviewConsoleEntry[];
   readonly networkEntries: readonly PreviewNetworkEntry[];
   readonly actionTimeline: readonly PreviewActionEvent[];
@@ -301,7 +303,7 @@ export interface CapturedSnapshot {
 }
 
 async function capture(input: SnapshotInput, deadline: number): Promise<CapturedSnapshot> {
-  const viewport = input.page.viewportSize() ?? { width: 1280, height: 800 };
+  const viewport = input.page.viewportSize() ?? input.viewport ?? { width: 1280, height: 800 };
   const scale = Math.min(1, MAX_SCREENSHOT_WIDTH / (viewport.width * input.renderScale));
   const state = refsFor(input.page);
   invalidateRefs(input.page);

@@ -49,6 +49,8 @@ import {
   type PreviewWaitForInput,
   DEFAULT_BROWSER_PROFILE_ID,
   type PreviewDownloadOffer,
+  INCOGNITO_BROWSER_PROFILE_ID,
+  previewProfilePartition,
 } from "@jhin/preview-api";
 import type { MemoryStreams } from "@jhin/rpc";
 import type { Json } from "@jhin/storage-api";
@@ -64,6 +66,7 @@ import type {
 
 import { Chromium, RENDER_SCALE, presentAsChrome } from "./chromium.ts";
 import { ControlInterrupted, TabControl } from "./control.ts";
+import type { DesktopHost, DesktopPage } from "./desktop-host.ts";
 import * as Ops from "./page.ts";
 import { readBounded } from "./read-bounded.ts";
 import { RECORDING_ENCODER_SCRIPT, RECORDING_SCREENCAST, type EncoderWindow } from "./recording.ts";
@@ -98,6 +101,20 @@ const unlessDownload = (error: unknown): null => {
   if (isDownloadStarting(error)) return null;
   throw error;
 };
+/** Called by a desktop page whose title changed (D1321). */
+const TITLE_BINDING = "__jhinTitleChanged";
+/**
+ * The user types into a desktop page directly, not through the node, so the
+ * page reports its new titles itself.
+ */
+const TITLE_WATCH_SCRIPT = `(() => {
+  let last = document.title;
+  new MutationObserver(() => {
+    if (document.title === last) return;
+    last = document.title;
+    globalThis.${TITLE_BINDING}?.("");
+  }).observe(document, { subtree: true, childList: true, characterData: true });
+})()`;
 
 /** The few DOM shapes `editableAtPoint` reads; the plugin has no DOM types. */
 interface PageElement {
@@ -164,6 +181,10 @@ interface Tab {
   readonly threadId: string;
   readonly tabId: string;
   readonly page: Page;
+  /** The page runs in the desktop app's webview (D1321). */
+  readonly desktop: DesktopPage | null;
+  /** Device pixels per CSS pixel of the page's screenshots. */
+  readonly renderScale: number;
   readonly cdp: CDPSession;
   readonly context: BrowserContext;
   readonly isolated: boolean;
@@ -224,6 +245,10 @@ export interface TabsOptions {
   readonly now?: () => Date;
   /** The largest download `preview.tab.download` sends (D1331); tests give a smaller one. */
   readonly downloadMaxBytes?: number;
+  /** The desktop app that hosts tabs in webviews (D1321). */
+  readonly desktop?: DesktopHost;
+  /** Connects Playwright to a webview's endpoint; tests give their own. */
+  readonly connectDesktop?: (endpoint: string) => Promise<DesktopPage>;
 }
 
 const tabKey = (threadId: string, tabId: string) => `${threadId}\u0000${tabId}`;
@@ -284,6 +309,12 @@ export function createTabs(options: TabsOptions) {
   const threadTabs = (threadId: string) =>
     [...tabs.values()].filter((tab) => tab.threadId === threadId);
 
+  /** The page's size in CSS pixels: a desktop page's is its webview's (D1324). */
+  const pageSize = (tab: Tab) =>
+    tab.desktop !== null
+      ? (fixedSize(tab.setting) ?? tab.fillSize)
+      : (tab.page.viewportSize() ?? DEFAULT_PREVIEW_VIEWPORT);
+
   // --- Publishing ------------------------------------------------------------
 
   const dirtyThreads = new Set<string>();
@@ -294,7 +325,7 @@ export function createTabs(options: TabsOptions) {
     canGoBack: tab.canGoBack,
     canGoForward: tab.canGoForward,
     viewport: tab.setting,
-    size: tab.page.viewportSize() ?? DEFAULT_PREVIEW_VIEWPORT,
+    size: pageSize(tab),
     colorScheme: tab.colorScheme,
     zoomFactor: tab.zoomFactor,
     owner: ownerOf(tab),
@@ -322,6 +353,7 @@ export function createTabs(options: TabsOptions) {
     ...(tab.profileId === undefined ? {} : { profileId: tab.profileId }),
     openedAt: tab.openedAt,
     updatedAt: tab.updatedAt,
+    ...(tab.desktop === null ? {} : { desktop: true as const }),
   });
   /** The thread's `preview.tabs` event, once per tick however many changes came. */
   const publish = (threadId: string) => {
@@ -401,19 +433,41 @@ export function createTabs(options: TabsOptions) {
         : isolated
           ? undefined
           : (input.profileId ?? DEFAULT_BROWSER_PROFILE_ID);
+    sequence += 1;
+    const tabId = `tab_${sequence.toString(36)}_${instance}`;
+    const desktop =
+      input.adopted === undefined ? await openInDesktop(input.threadId, tabId, profileId) : null;
     const opened = input.adopted
       ? { page: input.adopted.page, context: input.adopted.page.context() }
-      : await chromium.newPage(isolated, profileId);
+      : (desktop ?? (await chromium.newPage(isolated, profileId)));
     const { page, context } = opened;
-    const cdp = await context.newCDPSession(page);
-    await presentAsChrome(cdp).catch(() => undefined);
+    // Until the tab is registered (below, with no other await that can fail), a desktop page
+    // that cannot be set up is let go here: the app removes its webview and relay.
+    const cdp = await context.newCDPSession(page).catch(async (error: unknown) => {
+      if (desktop !== null) {
+        await desktop.close().catch(() => undefined);
+        options.desktop?.forget(input.threadId, tabId);
+      }
+      throw error;
+    });
+    // The app's webview is already a normal browser.
+    if (desktop === null) await presentAsChrome(cdp).catch(() => undefined);
     page.setDefaultTimeout(Ops.DEFAULT_TIMEOUT_MS);
     page.setDefaultNavigationTimeout(Ops.DEFAULT_TIMEOUT_MS);
-    sequence += 1;
+    const renderScale =
+      desktop === null
+        ? RENDER_SCALE
+        : await page
+            .evaluate(
+              () => (globalThis as unknown as { devicePixelRatio: number }).devicePixelRatio,
+            )
+            .catch(() => 1);
     const tab: Tab = {
       threadId: input.threadId,
-      tabId: `tab_${sequence.toString(36)}_${instance}`,
+      tabId,
       page,
+      desktop,
+      renderScale,
       cdp,
       context,
       isolated,
@@ -458,7 +512,7 @@ export function createTabs(options: TabsOptions) {
       lastPointer: undefined,
       closing: false,
     };
-    if (input.adopted === undefined) {
+    if (input.adopted === undefined && desktop === null) {
       await page.setViewportSize(fixedSize(tab.setting) ?? tab.fillSize);
     }
     const isMainNavigation = (request: { isNavigationRequest(): boolean; frame(): unknown }) =>
@@ -558,7 +612,15 @@ export function createTabs(options: TabsOptions) {
     // Playwright cannot reload a crashed page, so it leaves the tab list.
     page.on("close", () => void dropTab(tab, "page closed"));
     page.on("crash", () => void dropTab(tab, "page crashed"));
+    if (desktop !== null) {
+      // Through Playwright's own session: the app's relay has one real session for the page.
+      await page
+        .exposeBinding(TITLE_BINDING, () => void refreshTitle(tab).catch(() => undefined))
+        .catch(() => undefined);
+      await page.addInitScript(TITLE_WATCH_SCRIPT).catch(() => undefined);
+    }
     tabs.set(tabKey(tab.threadId, tab.tabId), tab);
+    if (desktop !== null) options.desktop?.confirm(tab.threadId, tab.tabId);
     tab.viewers = viewerCounts.get(tabKey(tab.threadId, tab.tabId)) ?? 0;
     changed(tab);
     if (tab.viewers > 0) void syncScreencast(tab);
@@ -571,6 +633,43 @@ export function createTabs(options: TabsOptions) {
       void navigation.catch(() => undefined);
     }
     return tab;
+  }
+
+  /**
+   * The tab's page in the desktop app's webview, when an app hosts tabs and
+   * attaches one in time; else null, and the tab opens headless (D1321).
+   */
+  async function openInDesktop(
+    threadId: string,
+    tabId: string,
+    profileId: string | undefined,
+  ): Promise<DesktopPage | null> {
+    const host = options.desktop;
+    if (host === undefined || options.connectDesktop === undefined || !host.active()) return null;
+    const partition =
+      profileId === undefined
+        ? `jhin-preview-agent-${tabId}`
+        : profileId === INCOGNITO_BROWSER_PROFILE_ID
+          ? `jhin-preview-incognito-${tabId}`
+          : previewProfilePartition(profileId);
+    const endpoint = await host.request({
+      threadId,
+      tabId,
+      partition,
+      ...(profileId === undefined ? {} : { profileId }),
+    });
+    if (endpoint !== null && !disposed) {
+      try {
+        return await options.connectDesktop(endpoint);
+      } catch (error) {
+        log.warn("desktop webview not connected; the tab opens headless", {
+          tabId,
+          error: String(error),
+        });
+      }
+    }
+    host.forget(threadId, tabId);
+    return null;
   }
 
   async function adoptPopup(opener: Tab, popup: Page) {
@@ -659,8 +758,13 @@ export function createTabs(options: TabsOptions) {
       .context()
       .close()
       .catch(() => undefined);
-    await tab.page.close().catch(() => undefined);
-    if (tab.isolated) await tab.context.close().catch(() => undefined);
+    if (tab.desktop !== null) {
+      await tab.desktop.close().catch(() => undefined);
+      options.desktop?.forget(tab.threadId, tab.tabId);
+    } else {
+      await tab.page.close().catch(() => undefined);
+      if (tab.isolated) await tab.context.close().catch(() => undefined);
+    }
     streams.delete(previewFramesStream(tab.threadId, tab.tabId));
     publish(tab.threadId);
     // The browser goes with its last tab (D394).
@@ -737,7 +841,8 @@ export function createTabs(options: TabsOptions) {
   }
 
   async function syncScreencastNow(tab: Tab) {
-    if (tab.viewers === 0 || tab.closing || tab.capturing > 0) {
+    // The app paints a desktop page itself: its viewers get only the agent's pointer.
+    if (tab.viewers === 0 || tab.closing || tab.capturing > 0 || tab.desktop !== null) {
       await stopScreencast(tab);
       return;
     }
@@ -960,7 +1065,7 @@ export function createTabs(options: TabsOptions) {
       },
       dialog: summary(tab).dialog,
       viewportSetting: tab.setting,
-      viewport: tab.page.viewportSize() ?? DEFAULT_PREVIEW_VIEWPORT,
+      viewport: pageSize(tab),
       fileChooser: summary(tab).fileChooser,
       downloads: [...tab.downloads],
       tabs: list,
@@ -1025,7 +1130,8 @@ export function createTabs(options: TabsOptions) {
 
   async function applySetting(tab: Tab, setting: PreviewViewportSetting) {
     tab.setting = setting;
-    await tab.page.setViewportSize(fixedSize(setting) ?? tab.fillSize);
+    // The app sizes a desktop page's webview from the setting (D1324).
+    if (tab.desktop === null) await tab.page.setViewportSize(fixedSize(setting) ?? tab.fillSize);
     changed(tab);
     void syncScreencast(tab);
   }
@@ -1052,7 +1158,7 @@ export function createTabs(options: TabsOptions) {
           quality: RECORDING_SCREENCAST.quality,
           scale: 1,
         });
-        const cssWidth = () => tab.page.viewportSize()?.width ?? DEFAULT_PREVIEW_VIEWPORT.width;
+        const cssWidth = () => pageSize(tab).width;
         await encoder.evaluate(
           ([data, width]) =>
             (globalThis as unknown as EncoderWindow).jhinRecorder.frame(data, width),
@@ -1286,7 +1392,7 @@ export function createTabs(options: TabsOptions) {
         return {
           tabId: tab.tabId,
           setting: tab.setting,
-          viewport: tab.page.viewportSize() ?? DEFAULT_PREVIEW_VIEWPORT,
+          viewport: pageSize(tab),
         };
       }),
 
@@ -1306,7 +1412,8 @@ export function createTabs(options: TabsOptions) {
             Ops.snapshot({
               page: tab.page,
               cdp: tab.cdp,
-              renderScale: RENDER_SCALE,
+              renderScale: tab.renderScale,
+              viewport: pageSize(tab),
               consoleEntries: tab.consoleEntries,
               networkEntries: tab.networkEntries,
               actionTimeline: tab.actionTimeline,
@@ -1487,16 +1594,22 @@ export function createTabs(options: TabsOptions) {
           if (input.colorScheme !== undefined) await applyAppearance(tab, input.colorScheme);
           if (input.zoomFactor !== undefined) {
             tab.zoomFactor = input.zoomFactor;
-            const size = tab.page.viewportSize() ?? DEFAULT_PREVIEW_VIEWPORT;
-            await tab.cdp.send("Emulation.setDeviceMetricsOverride", {
-              width: size.width,
-              height: size.height,
-              deviceScaleFactor: RENDER_SCALE * input.zoomFactor,
-              mobile: false,
-            });
+            // The app zooms a desktop page's webview (D1324).
+            if (tab.desktop === null) {
+              const size = tab.page.viewportSize() ?? DEFAULT_PREVIEW_VIEWPORT;
+              await tab.cdp.send("Emulation.setDeviceMetricsOverride", {
+                width: size.width,
+                height: size.height,
+                deviceScaleFactor: RENDER_SCALE * input.zoomFactor,
+                mobile: false,
+              });
+            }
             changed(tab);
           }
-          if (input.clear === "cookies") await tab.context.clearCookies();
+          // A desktop page's cookies are its partition's, reached through the page (D1321).
+          if (input.clear === "cookies" && tab.desktop !== null) {
+            await tab.cdp.send("Network.clearBrowserCookies");
+          } else if (input.clear === "cookies") await tab.context.clearCookies();
           if (input.clear === "cache") await tab.cdp.send("Network.clearBrowserCache");
           if (input.hardReload === true) await tab.cdp.send("Page.reload", { ignoreCache: true });
         });
@@ -1698,12 +1811,15 @@ export function createTabs(options: TabsOptions) {
             tab.fillSize = { width: event.width, height: event.height };
             tab.frameScale = event.scale ?? tab.frameScale;
             if (tab.setting.mode === "fill") {
-              await tab.control.system(async () => {
-                const size = tab.page.viewportSize();
-                if (size?.width !== event.width || size.height !== event.height) {
-                  await tab.page.setViewportSize(tab.fillSize);
-                }
-              });
+              // A desktop page takes its webview's size by itself (D1324).
+              if (tab.desktop === null) {
+                await tab.control.system(async () => {
+                  const size = tab.page.viewportSize();
+                  if (size?.width !== event.width || size.height !== event.height) {
+                    await tab.page.setViewportSize(tab.fillSize);
+                  }
+                });
+              }
               changed(tab);
             }
             void syncScreencast(tab);

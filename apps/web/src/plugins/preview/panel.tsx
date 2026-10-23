@@ -69,10 +69,19 @@ import {
   SmartphoneIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { profileName, type BrowserProfile } from "./profiles.tsx";
 import { BrowserSurface } from "./surface.tsx";
+import { NativeSurface } from "./native-surface.tsx";
+import type { NativeSurfaces } from "./native-surfaces.ts";
 
 // --- Recently used pages (T3's browser history) ----------------------------------
 
@@ -221,6 +230,8 @@ export interface PanelServices {
     readonly profiles: readonly BrowserProfile[];
     readonly defaultProfileId: string;
   };
+  /** The desktop app's webviews of its own node's tabs (D1324). */
+  readonly surfaces: NativeSurfaces;
 }
 
 const WIDTH_KEY = "jhin:preview-panel-width";
@@ -1217,7 +1228,12 @@ function TabView(props: {
     await services.call("preview.tab.upload", { ...ids, viewer, files: encoded });
   };
 
-  const loading = status.state === "loading" || (status.state !== "idle" && !painted);
+  // A desktop tab's page is the app's webview: no frame to wait for (D1324).
+  const native =
+    useSyncExternalStore(services.surfaces.subscribe, () =>
+      services.surfaces.hosts(props.client),
+    ) && tab.desktop === true;
+  const loading = status.state === "loading" || (status.state !== "idle" && !painted && !native);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background" data-preview-tab={tab.tabId}>
       <ChromeRow
@@ -1277,21 +1293,38 @@ function TabView(props: {
         data-loading={loading ? "true" : "false"}
       >
         <div className={cn("size-full", status.state === "idle" && "invisible")}>
-          <BrowserSurface
-            canOperate={youControl}
-            client={props.client}
-            humanControls={tab.controller !== null}
-            onError={fail("Unable to change the browser tab")}
-            onDownload={(download) => {
-              if (tab.controller === viewer) {
-                services.offerDownload(props.client, ids, download);
+          {native ? (
+            <NativeSurface
+              canOperate={youControl}
+              client={props.client}
+              hidden={
+                status.state !== "success" && status.state !== "loading"
+                  ? true
+                  : tab.dialog !== null || (tab.fileChooser !== null && youControl)
               }
-            }}
-            onFirstFrame={() => setPainted(true)}
-            tabId={tab.tabId}
-            threadId={threadId}
-            viewer={viewer}
-          />
+              onError={fail("Unable to change the browser tab")}
+              surfaces={services.surfaces}
+              tab={tab}
+              viewer={viewer}
+              zIndex={30}
+            />
+          ) : (
+            <BrowserSurface
+              canOperate={youControl}
+              client={props.client}
+              humanControls={tab.controller !== null}
+              onError={fail("Unable to change the browser tab")}
+              onDownload={(download) => {
+                if (tab.controller === viewer) {
+                  services.offerDownload(props.client, ids, download);
+                }
+              }}
+              onFirstFrame={() => setPainted(true)}
+              tabId={tab.tabId}
+              threadId={threadId}
+              viewer={viewer}
+            />
+          )}
         </div>
         {status.state === "idle" ? (
           <div className="absolute inset-0">

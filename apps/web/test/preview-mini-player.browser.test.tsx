@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { MiniPlayer } from "../src/plugins/preview/mini-player.tsx";
+import { createNativeSurfaces } from "../src/plugins/preview/native-surfaces.ts";
 import { createMiniPlayers, type MiniPlayers } from "../src/plugins/preview/mini-player-store.ts";
 
 const THREAD = "node-1|thread-1";
@@ -50,6 +51,7 @@ async function mount(players: MiniPlayers, tabId = "tab-a") {
           onOpenInPanel={() => undefined}
           players={players}
           state={players.get(THREAD)!}
+          surfaces={createNativeSurfaces()}
           tab={tab(tabId)}
           threadId="thread-1"
           threadKey={THREAD}
