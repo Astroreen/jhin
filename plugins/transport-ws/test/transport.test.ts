@@ -394,6 +394,7 @@ describe("device tokens (security.md D411–D414)", () => {
           for (const name of ["app.shell", "app.maybe"]) {
             context.commands.register({
               name,
+              description: "A test command",
               input: z.object({}),
               output: z.object({}),
               permissions: [name],
