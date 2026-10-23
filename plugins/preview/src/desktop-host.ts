@@ -59,9 +59,12 @@ export function createDesktopHost(streams: MemoryStreams) {
         if (!open) return;
         open = false;
         hosts -= 1;
-        // The last page that hosted went: nothing attaches what it was asked for.
+        // The last page that hosted went: nothing attaches what it was asked for, and the
+        // webviews it attached went with it, so the next page is told of none of them.
         if (hosts === 0) {
           for (const entry of entries.values()) entry.settle?.(null);
+          entries.clear();
+          publish();
         }
       });
     },

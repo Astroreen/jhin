@@ -402,8 +402,13 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   is not bound to the page that subscribed: any caller with
   `preview.control` (the owner's own clients, D393) may answer a waiting
   tab, and what it can point the node at is a loopback relay with a random
-  path, which only a process of the node's machine can serve. That is
-  accepted, as the same caller may already drive every tab.
+  path, which only a process of the node's machine can serve (a browser's
+  own DevTools endpoint, `/devtools/browser/<id>`, does not match). That is
+  accepted, as the same caller may already drive every tab. Likewise any
+  subscriber to `preview-desktop` counts as a hosting page: a client with
+  `preview.control` that subscribes and never attaches makes each new tab
+  wait the 10 s before it opens headless. When the last subscriber goes,
+  the stream forgets its tabs, since their webviews went with the page.
   `PreviewTab` gets `desktop: true` for such a tab (additive). The node does
   not size, zoom or screencast a desktop page: the webview's size is the
   page's viewport, so `fill` follows the panel by itself, and a preset or a
@@ -434,7 +439,9 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   the endpoint closes with the guest, and the debugger is let go when the
   node disconnects. A dropped connection is final: the node drops the tab
   with it (D1321), so nothing reconnects to the endpoint; the app's page
-  removes the webview, and a new tab attaches anew.
+  removes the webview, and a new tab attaches anew. A connection to the node
+  that drops and reconnects keeps the page's webviews: the client subscribes
+  again on its own.
 
 - **D1323. Webviews are T3's hardened guests, one partition per profile.**
   The window enables the `<webview>` tag and gates `will-attach-webview` as
@@ -443,11 +450,13 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   isolated `jhin-preview-agent-<tab>` in memory, as D394 isolates an agent's
   tab), no preload, sandboxed, no Node, HTML full screen kept inside the
   webview; any other attach is refused. A guest's sessions grant T3's preview
-  permissions (clipboard read and write, notifications, geolocation, full
-  screen) and nothing else, without a prompt, as T3's `BrowserSession.ts`
-  grants them to every preview page, an agent's included: the preview is a
-  development browser for the user's own pages, which ask for these to be
-  tested. A prompt per permission, or a per-profile choice, is Deferred. A page that opens a window gets none: an http(s) URL opens as
+  permissions (clipboard write, notifications, geolocation, full screen) and
+  nothing else, without a prompt, as T3's `BrowserSession.ts` grants them to
+  every preview page, an agent's included: the preview is a development
+  browser for the user's own pages, which ask for these to be tested. T3
+  also grants reading the clipboard; here it waits for the prompt, as a page
+  the agent navigates to could read whatever the user copied. A prompt per
+  permission, or a per-profile choice, is Deferred. A page that opens a window gets none: an http(s) URL opens as
   a new tab of the same thread and profile (T3's `onOpenLink`), anything else
   is dropped. A profile's cookies in the app are its partition's: removing a
   profile in Settings → Browser also clears the partition in the app
@@ -530,8 +539,11 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   origin stable, so the choice must be kept).
 - The trackpad
   scroll-end and window-fullscreen events beyond macOS's controls inset.
-- Asking the user before a preview page gets the clipboard, notifications
-  or the location (D1323 grants them as T3 does).
+- Asking the user before a preview page reads the clipboard (withheld
+  until then), gets notifications or the location (D1323 grants these as
+  T3 does).
+- Telling the app's page from other subscribers of `preview-desktop`
+  (D1321): any subscriber holds new tabs for the 10 s wait.
 - Around the preview in the app (D1321–D1324): a desktop tab that outlives
   its webview (T3 reconnects a tab after a reload of the window or once its
   DevTools close; here the tab closes); T3's DevTools, element annotation,

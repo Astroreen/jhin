@@ -40,17 +40,28 @@ class FakeGuest extends EventEmitter {
 }
 
 const guests = new Map<number, FakeGuest>();
-const sessions = new Map<string, EventEmitter>();
+type Handlers = {
+  request?:
+    | ((contents: unknown, permission: string, callback: (granted: boolean) => void) => void)
+    | undefined;
+  check?: ((contents: unknown, permission: string) => boolean) | undefined;
+};
+const sessions = new Map<string, EventEmitter & { handlers: Handlers }>();
 vi.mock("electron", () => ({
   webContents: { fromId: (id: number) => guests.get(id) },
   session: {
     fromPartition: (partition: string) => {
-      const known = sessions.get(partition) ?? new EventEmitter();
+      const known =
+        sessions.get(partition) ?? Object.assign(new EventEmitter(), { handlers: {} as Handlers });
       sessions.set(
         partition,
         Object.assign(known, {
-          setPermissionRequestHandler: () => undefined,
-          setPermissionCheckHandler: () => undefined,
+          setPermissionRequestHandler: (handler: Handlers["request"]) => {
+            known.handlers.request = handler;
+          },
+          setPermissionCheckHandler: (handler: Handlers["check"]) => {
+            known.handlers.check = handler;
+          },
         }),
       );
       return known;
@@ -233,5 +244,44 @@ describe("the app's webview relay (D1322)", () => {
     await webviews.attach(page as never, 11);
     expect(webview.listenerCount("destroyed")).toBe(1);
     expect(webview.debugger.listenerCount("detach")).toBe(1);
+  });
+
+  it("keeps a working relay when the relay to replace it cannot start, and says so", async () => {
+    const webviews = host();
+    const webview = guest(12);
+    const first = await webviews.attach(page as never, 12);
+    const node = await connect(first.endpoint);
+    // The guest's debugger refuses once its relay has gone: the attach fails, and says why.
+    const attach = webview.debugger.attach;
+    webview.debugger.attach = () => {
+      throw new Error("the debugger refused");
+    };
+    await expect(webviews.attach(page as never, 12)).rejects.toThrow("the debugger refused");
+    // A guest with no relay of ours: the node's connection ended with the handover, and
+    // nothing is left listening.
+    await closed(node);
+    expect(await refused(first.endpoint)).toBe("refused");
+    webview.debugger.attach = attach;
+    const again = await webviews.attach(page as never, 12);
+    await connect(again.endpoint);
+  });
+
+  it("grants a preview page T3's permissions but reading the clipboard (D1323)", () => {
+    const webviews = host();
+    const partition = "persist:jhin-preview-cGVybWlzc2lvbnM";
+    webviews.willAttach({ preventDefault() {} } as never, {}, { partition, src: "about:blank" });
+    const { handlers } = sessions.get(partition)!;
+    const granted = (permission: string) => {
+      let answer: boolean | undefined;
+      handlers.request!({}, permission, (value) => {
+        answer = value;
+      });
+      expect(handlers.check!({}, permission)).toBe(answer);
+      return answer;
+    };
+    expect(granted("clipboard-sanitized-write")).toBe(true);
+    expect(granted("fullscreen")).toBe(true);
+    expect(granted("clipboard-read")).toBe(false);
+    expect(granted("local-fonts")).toBe(false);
   });
 });

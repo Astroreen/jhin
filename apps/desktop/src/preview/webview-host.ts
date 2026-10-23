@@ -107,15 +107,15 @@ export function createWebviewHost(options: WebviewHostOptions) {
       throw new Error("No webview of the app has this id.");
     }
     if (guest.hostWebContents !== host) throw new Error("The webview is not this page's.");
-    // An attach refused (DevTools, a foreign debugger) keeps the node's working connection.
-    // Once it is allowed, the earlier relay of the guest goes first: Electron allows the guest
-    // one debugger, so the new attach cannot be made beside it.
+    // An attach refused (DevTools, a foreign debugger) or a relay that cannot start keeps the
+    // node's working connection. Once both are fine, the earlier relay of the guest goes:
+    // Electron allows the guest one debugger, so the new attach cannot be made beside it, and
+    // a debugger attach that still fails then leaves the guest with no relay (the node's tab
+    // ends, D1322).
     const previous = attached.get(webContentsId);
     if (guest.isDevToolsOpened() || (guest.debugger.isAttached() && previous === undefined)) {
       throw new Error("Another debugger holds the webview.");
     }
-    previous?.close();
-    guest.debugger.attach("1.3");
     const secret = Crypto.randomBytes(24).toString("base64url");
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0, path: `/${secret}` });
     let address: ReturnType<WebSocketServer["address"]>;
@@ -126,10 +126,12 @@ export function createWebviewHost(options: WebviewHostOptions) {
       });
       address = server.address();
       if (address === null || typeof address === "string") throw new Error("No relay address.");
+      previous?.close();
+      guest.debugger.attach("1.3");
     } catch (error) {
-      // Nothing of a failed attach stays: no server, no debugger on the guest.
+      // Nothing of a failed attach stays: no server, no debugger of ours on the guest.
       server.close();
-      if (guest.debugger.isAttached()) guest.debugger.detach();
+      if (previous === undefined && guest.debugger.isAttached()) guest.debugger.detach();
       throw error;
     }
     let connection: WebSocket | null = null;
@@ -181,6 +183,11 @@ export function createWebviewHost(options: WebviewHostOptions) {
     // DevTools took the debugger, or the guest went: the node's tab ends.
     guest.debugger.on("detach", close);
     guest.once("destroyed", close);
+    // A relay that fails once it listens ends, rather than throwing in the main process.
+    server.on("error", (error) => {
+      options.log("preview relay failed", { webContentsId, error: String(error) });
+      close();
+    });
     server.on("connection", (socket) => {
       // One Playwright connection: a second would see the first's sessions.
       if (connection !== null || closed) {

@@ -11,11 +11,11 @@ import type { WebPreferences } from "electron";
 export const PREVIEW_PARTITION = PREVIEW_PARTITION_PATTERN;
 
 /**
- * T3's preview permissions: the clipboard, notifications, location and full
+ * T3's preview permissions but reading the clipboard, which waits for a
+ * prompt (D1323): writing to the clipboard, notifications, location and full
  * screen (kept inside the webview). Nothing else, such as local fonts.
  */
 export const ALLOWED_PREVIEW_PERMISSIONS: ReadonlySet<string> = new Set([
-  "clipboard-read",
   "clipboard-sanitized-write",
   "notifications",
   "geolocation",

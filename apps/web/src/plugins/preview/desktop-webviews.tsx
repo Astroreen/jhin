@@ -39,6 +39,8 @@ function ownConnection(connections: Connections): NodeConnection | undefined {
   });
 }
 
+const desktopKey = (tab: DesktopTab) => `${tab.threadId}\u0000${tab.tabId}`;
+
 const DesktopTabs = z.object({ tabs: z.array(PreviewDesktopTab) });
 
 /** The tabs the node asks this page to host, from `preview-desktop`. */
@@ -48,7 +50,8 @@ function useDesktopTabs(client: RpcClient): readonly DesktopTab[] {
     setTabs([]);
     const subscription = client.subscribe(
       PREVIEW_DESKTOP_STREAM,
-      // A node without the stream, or a token without `preview.control`: nothing to host.
+      // A node without the stream, or a token without `preview.control`: nothing to host. A
+      // dropped connection is no error: the client subscribes again once it reconnects.
       { after: 0, onError: () => setTabs([]) },
       (event) => {
         if (event.type !== PreviewEvents.desktopTabs) return;
@@ -74,9 +77,11 @@ export interface DesktopWebviewsProps {
  */
 export function DesktopWebviews(props: DesktopWebviewsProps) {
   const preview = props.shell()?.preview;
+  // Kept while the connection reconnects, so a dropped connection does not unmount the
+  // webviews (and end the node's tabs with their relays).
   const connection = useExternal(props.connections, () => {
     const own = ownConnection(props.connections);
-    return own?.state === "open" ? own.client : undefined;
+    return own === undefined || own.state === "closed" ? undefined : own.client;
   });
   if (preview === undefined || connection === undefined) return null;
   return <Host client={connection} preview={preview} {...props} />;
@@ -92,12 +97,19 @@ function Host(
   const announced = useDesktopTabs(client);
   // A tab another page (or this page before a reload) attached has its webview there: this
   // page hosts the tabs it was asked for while they waited, and keeps them.
-  const mine = useRef(new Set<string>());
-  const tabs = announced.filter((tab) => {
-    const key = `${tab.threadId}\u0000${tab.tabId}`;
-    if (!tab.attached) mine.current.add(key);
-    return mine.current.has(key);
+  // Derived from each announcement while rendering (React's "state from the previous
+  // render"), and pruned of the tabs no longer announced.
+  const [mine, setMine] = useState<{ from: readonly DesktopTab[] | null; keys: Set<string> }>({
+    from: null,
+    keys: new Set(),
   });
+  if (mine.from !== announced) {
+    const keys = new Set(
+      announced.filter((tab) => !tab.attached || mine.keys.has(desktopKey(tab))).map(desktopKey),
+    );
+    setMine({ from: announced, keys });
+  }
+  const tabs = announced.filter((tab) => mine.keys.has(desktopKey(tab)));
   useEffect(() => {
     const hosting = surfaces.host(client);
     return () => hosting.dispose();
@@ -127,7 +139,7 @@ function Host(
           client={client}
           guests={guests.current}
           onError={onError}
-          key={`${tab.threadId}\u0000${tab.tabId}`}
+          key={desktopKey(tab)}
           preview={preview}
           surfaces={surfaces}
           tab={tab}
@@ -185,6 +197,8 @@ function HostedWebview(props: {
         // then opens the tab headless.
         if (disposed) return;
         attachedOnce.current = false;
+        // The node stopped waiting (its tab opened headless): the stream drops this webview.
+        if ((error as { code?: unknown }).code === "PREVIEW_TAB_NOT_FOUND") return;
         onError.current("Couldn't show the browser tab in the app", error);
       });
     };

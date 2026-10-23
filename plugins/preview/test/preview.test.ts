@@ -1257,6 +1257,31 @@ describe("jhin.preview in the desktop app (D1321)", () => {
     expect(remote.code).not.toBe("PREVIEW_TAB_NOT_FOUND");
   });
 
+  it("tells a page that hosts after a reload of none of the earlier page's tabs (D1321)", async () => {
+    const streams = createMemoryStreams({});
+    const desktop = createDesktopHost(streams);
+    const first = desktop.source.subscribe(PREVIEW_DESKTOP_STREAM, (event) => {
+      const list = (
+        event.payload as { tabs: { threadId: string; tabId: string; attached: boolean }[] }
+      ).tabs;
+      const waiting = list.find((tab) => !tab.attached);
+      if (waiting !== undefined) desktop.attach({ ...waiting, endpoint: "ws://127.0.0.1:1/x" });
+    });
+    const endpoint = await desktop.request({ threadId: "t", tabId: "a", partition: "p" } as never);
+    expect(endpoint).toBe("ws://127.0.0.1:1/x");
+    desktop.confirm("t", "a");
+    first.dispose();
+    // The page of the reloaded window subscribes and reads the stream.
+    const second = desktop.source.subscribe(PREVIEW_DESKTOP_STREAM, () => undefined);
+    try {
+      const head = await desktop.source.read(PREVIEW_DESKTOP_STREAM, { after: 0 });
+      expect(head.at(-1)!.payload).toEqual({ tabs: [] });
+    } finally {
+      second.dispose();
+      desktop.dispose();
+    }
+  });
+
   it("lets go of a desktop page it could not set up (D1321)", async () => {
     const streams = createMemoryStreams({});
     const desktop = createDesktopHost(streams);
