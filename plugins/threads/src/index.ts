@@ -1730,7 +1730,11 @@ export default definePlugin({
           if (child?.open === true) child.background = true;
         } else if (item.kind === "subagent.progress") {
           const child = subagents.get(item.subagentId);
-          const progress = item.progress.trim().slice(0, MAX_PROGRESS_LENGTH);
+          // Cut by characters, never inside one, and with no space left at the cut.
+          const progress = Array.from(item.progress.trim())
+            .slice(0, MAX_PROGRESS_LENGTH)
+            .join("")
+            .trimEnd();
           if (child === undefined || !child.open || progress === "") return;
           // Written while its turn runs or waits, and kept on that turn once it ended (D1344).
           await updateThread(child.threadId, (record) =>
