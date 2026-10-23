@@ -301,9 +301,15 @@ export default definePlugin({
           redirectHost: new URL(authorization.redirectUri).host,
           nodeHost: new URL(urls.issuer).host,
           params: kept,
-          permissions: authorization.scopes.map(
-            (scope) => known.get(scope) ?? { permission: scope },
-          ),
+          permissions: authorization.scopes.map((scope) => {
+            const entry = known.get(scope) ?? { permission: scope };
+            // A pattern (`terminals.*`) grants shell access when it covers a permission
+            // that has it (security.md D1364).
+            const shell = [...known.values()].some(
+              (other) => other.shellAccess === true && holdsPermission([scope], other.permission),
+            );
+            return shell ? { ...entry, shellAccess: true } : entry;
+          }),
           ...(approver.kind === "ok" ? { csrf: oauth.csrf(approver.session, authorization) } : {}),
           ...(approver.kind === "short"
             ? {
