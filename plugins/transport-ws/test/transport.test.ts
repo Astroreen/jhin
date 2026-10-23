@@ -1281,10 +1281,19 @@ describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D13
     const ticketUrl = `${httpUrl(node)}/auth/ws-ticket`;
     const mint = () =>
       ticketFor(node, `DPoP ${issued.token}`, sign("POST", ticketUrl, { ath: sha(issued.token) }));
-    for (let n = 0; n < 16; n += 1) expect((await mint()).status).toBe(200);
-    const refused = await mint();
+    const held: string[] = [];
+    for (let n = 0; n < 16; n += 1) {
+      const minted = await mint();
+      expect(minted.status).toBe(200);
+      held.push(((await minted.json()) as { ticket: string }).ticket);
+    }
+    // Refused before its proof is checked: the same proof works once a ticket is used.
+    const proof = sign("POST", ticketUrl, { ath: sha(issued.token) });
+    const refused = await ticketFor(node, `DPoP ${issued.token}`, proof);
     expect(refused.status).toBe(429);
     expect(await refused.json()).toMatchObject({ code: "TOO_MANY_TICKETS" });
+    expect(await openWith(node, held[0]!)).toBe("open");
+    expect((await ticketFor(node, `DPoP ${issued.token}`, proof)).status).toBe(200);
   });
 
   it("ends a ticket with its token, and never turns one into a page session", async () => {

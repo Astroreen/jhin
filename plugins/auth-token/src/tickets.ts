@@ -23,12 +23,17 @@ export class TicketStore {
     for (const [id, ticket] of this.#open) if (ticket.expiresAt <= now) this.#open.delete(id);
   }
 
-  /** A ticket for device token `clientId`, or undefined when it holds too many open. */
-  issue(clientId: string, now: number): { ticket: string; expiresAt: number } | undefined {
+  /** Whether device token `clientId` holds as many open tickets as it may. */
+  full(clientId: string, now: number): boolean {
     this.#prune(now);
     let held = 0;
     for (const open of this.#open.values()) if (open.clientId === clientId) held += 1;
-    if (held >= MAX_OPEN_PER_CLIENT) return undefined;
+    return held >= MAX_OPEN_PER_CLIENT;
+  }
+
+  /** A ticket for device token `clientId`, or undefined when it holds too many open. */
+  issue(clientId: string, now: number): { ticket: string; expiresAt: number } | undefined {
+    if (this.full(clientId, now)) return undefined;
     const id = Crypto.randomBytes(9).toString("base64url");
     const secret = Crypto.randomBytes(32).toString("base64url");
     const expiresAt = now + TICKET_TTL_MS;

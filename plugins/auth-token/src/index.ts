@@ -485,6 +485,7 @@ export default definePlugin({
             if (record === undefined) return undefined;
             return {
               ...(record.jkt === undefined ? {} : { jkt: record.jkt }),
+              full: () => tickets.full(record.id, Date.now()),
               issue: () => tickets.issue(record.id, Date.now()),
             };
           },

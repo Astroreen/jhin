@@ -798,9 +798,11 @@ Connect stays out of scope.
   kernel-scoped state, at most 1 000 per key: past that the key's proofs
   are refused, `DPOP_BUSY`, rather than an old one forgotten). The guard
   lives in memory, so a proof made before it began (before the node last
-  started) is refused too: a proof captured with its token cannot be
-  replayed after a restart. A device whose clock runs behind the node's
-  is refused for that long after a start, and retries. A pairing
+  started, less the 5 seconds of skew allowed) is refused too: a proof
+  captured with its token cannot be replayed after a restart. A device
+  whose clock runs more than 5 seconds behind the node's is refused for
+  that long after a start, and retries. A device at its cap of tickets is
+  refused before its proof is checked, so no proof is spent on it. A pairing
   proof is not remembered: its code is used once, and a replayed pairing
   proof binds the token to its author's key, worth nothing to whoever
   replays it; so nobody without a token can fill the guard. `htu` names the node as the device reached it: its host must

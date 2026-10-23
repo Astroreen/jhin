@@ -59,10 +59,13 @@ export interface AuthHttpOptions {
    * A device token that may ask for a WebSocket ticket (D1367): its key's
    * thumbprint when bound, and how to mint one (undefined when too many are open).
    */
-  ticket(
-    token: string,
-  ):
-    | { readonly jkt?: string; issue(): { ticket: string; expiresAt: number } | undefined }
+  ticket(token: string):
+    | {
+        readonly jkt?: string;
+        /** At its cap of open tickets: refused before its proof is spent. */
+        full(): boolean;
+        issue(): { ticket: string; expiresAt: number } | undefined;
+      }
     | undefined;
   /** A token or pairing code becomes the page's own device token (security.md D421). */
   openSession(credential: string, metadata: ClientMetadata): Promise<IssuedToken | undefined>;
@@ -301,6 +304,17 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         return;
       }
       const dpop = scheme[1]!.toLowerCase() === "dpop";
+      // At its cap, refused before the proof is checked, so no proof is spent on it.
+      if (holder.full()) {
+        succeeded(counted);
+        send(
+          response,
+          429,
+          { code: "TOO_MANY_TICKETS", message: "Too many open tickets; try again in a minute" },
+          { ...CORS, "retry-after": "60" },
+        );
+        return;
+      }
       if (holder.jkt !== undefined || dpop) {
         // A bound token needs its key's proof; DPoP names a bound token (RFC 9449 §7.1).
         if (!dpop || holder.jkt === undefined) {

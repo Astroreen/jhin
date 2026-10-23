@@ -178,8 +178,9 @@ export function verifyDpopProof(input: {
     return fail("time_window");
   }
   if (input.replay !== undefined) {
-    // Older than the guard's memory: it may have been used before a restart.
-    if (iat < input.replay.since) return fail("time_window");
+    // Older than the guard's memory (less the skew allowed ahead): it may have
+    // been used before a restart.
+    if (iat < input.replay.since - MAX_SKEW_SECONDS) return fail("time_window");
     const admitted = input.replay.admit(thumbprint, jti, input.nowSeconds);
     if (admitted !== "ok") return fail(admitted);
   }
