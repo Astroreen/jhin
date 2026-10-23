@@ -2438,6 +2438,9 @@ three agents, and otherwise read the streams.
 - ~~L2: public ids the source does not spell out (template literals such as
   `sidebar.thread.jump.${jump}`, D1247).~~ L2, D1394.
 - L2: hook names and permission names, which rule 8 does not list yet.
+- A3: deleting asks the `missions.deleting` hook before it appends, so an
+  orchestrator run started in between is not refused (D1395); the same
+  window as `missions.step`'s review check (D1241).
 - L3: a wave's handoffs to one agent as one message. Each handoff starts a
   turn of its own; an agent that does the whole wave in the first spends the
   others on "Duplicate handoff" (the L3 run).
