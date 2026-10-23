@@ -2,6 +2,8 @@
 // web client does it (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/auth/PairingRouteSurface.tsx and packages/shared/src/remote.ts.
 
+import { dpopProof, type DeviceKey } from "./dpop.ts";
+
 /**
  * The path this page's node serves the client under: `/`, or `/jhin/` behind a
  * proxy path. A pairing link's own `/pair` is not part of it.
@@ -61,19 +63,92 @@ async function failure(response: Response): Promise<PairingError> {
   );
 }
 
-/** Exchanges a pairing code for a device token at the node behind `webSocketUrl` (D420). */
+/**
+ * Exchanges a pairing code for a device token at the node behind
+ * `webSocketUrl` (D420), bound to `key` when given (DPoP, security.md D1366):
+ * `tokenType` says whether the node bound it.
+ */
 export async function pairWithCode(
   webSocketUrl: string,
   code: string,
   label: string,
-): Promise<{ token: string }> {
-  const response = await fetch(`${httpBase(webSocketUrl)}/auth/pair`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ code, label }),
-  });
+  key?: DeviceKey,
+): Promise<{ token: string; tokenType?: "DPoP" | "Bearer" }> {
+  const endpoint = `${httpBase(webSocketUrl)}/auth/pair`;
+  const send = async (bound: DeviceKey | undefined) =>
+    fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(bound === undefined ? {} : { dpop: await dpopProof(bound, "POST", endpoint) }),
+      },
+      body: JSON.stringify({ code, label }),
+    });
+  let response: Response;
+  try {
+    response = await send(key);
+  } catch (error) {
+    // A node on another origin from before D1366 refuses the `dpop` header in
+    // its preflight: the request never left, so its code is unspent. A browser
+    // tells that apart from a network error only by asking again without the
+    // header: a request needing no preflight that reaches the node.
+    if (key === undefined || !(await reachable(endpoint))) throw error;
+    response = await send(undefined);
+  }
   if (!response.ok) throw await failure(response);
-  return (await response.json()) as { token: string };
+  return (await response.json()) as { token: string; tokenType?: "DPoP" | "Bearer" };
+}
+
+/** Whether the node answers at all: a request that needs no CORS preflight. */
+async function reachable(endpoint: string): Promise<boolean> {
+  try {
+    await fetch(new URL("/.well-known/jhin", endpoint), { mode: "no-cors" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A one-time WebSocket ticket for a bound token (security.md D1367). A
+ * refused token rejects with `UNAUTHENTICATED`, so the client stops retrying.
+ */
+export async function webSocketTicket(
+  webSocketUrl: string,
+  token: string,
+  key: DeviceKey,
+): Promise<string> {
+  const endpoint = `${httpBase(webSocketUrl)}/auth/ws-ticket`;
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        authorization: `DPoP ${token}`,
+        dpop: await dpopProof(key, "POST", endpoint, token),
+      },
+    });
+  } catch (error) {
+    throw Object.assign(new Error(`The node could not be reached: ${String(error)}`), {
+      code: "CONNECT_FAILED",
+    });
+  }
+  // Only a refused token stops the client; a refused proof (a clock off by
+  // minutes, a busy node) is tried again like a network error.
+  if (response.status === 401) {
+    const refused = await failure(response);
+    throw Object.assign(new Error(refused.message), {
+      code:
+        refused.code === "CREDENTIAL_INVALID" || refused.code === "TOKEN_TYPE_MISMATCH"
+          ? "UNAUTHENTICATED"
+          : "CONNECT_FAILED",
+    });
+  }
+  if (!response.ok) {
+    const failed = await failure(response);
+    throw Object.assign(new Error(failed.message), { code: "CONNECT_FAILED" });
+  }
+  return ((await response.json()) as { ticket: string }).ticket;
 }
 
 /**

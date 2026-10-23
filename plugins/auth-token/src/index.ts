@@ -27,9 +27,11 @@ import {
 } from "@jhin/sdk";
 
 import { ClientRecord, createClientStore } from "./clients.ts";
+import { ReplayGuard } from "./dpop.ts";
 import { serveAuthHttp } from "./http.ts";
 import { ClientMetadata } from "./metadata.ts";
 import { createPairingStore, type PairingStore } from "./pairing.ts";
+import { TICKET_PREFIX, TicketStore } from "./tickets.ts";
 
 /** The single owner of a node (D22): every permission. */
 const OWNER: Principal = { id: OWNER_PRINCIPAL_ID, permissions: ["*"] };
@@ -65,9 +67,11 @@ const AuthConfig = z
   .default({})
   .meta({ title: "Pairing", description: "How other devices pair with this node." });
 
-const Client = ClientRecord.omit({ secretHash: true }).extend({
+const Client = ClientRecord.omit({ secretHash: true, jkt: true }).extend({
   /** The token the caller itself connected with. */
   current: z.boolean(),
+  /** Bound to a key of its device: used only with a DPoP proof (security.md D1366). */
+  bound: z.boolean().optional(),
 });
 
 function failure(code: string, message: string, details: Record<string, unknown> = {}): Error {
@@ -125,13 +129,36 @@ export default definePlugin({
       context.log.warn("access token created", { file, replacedInvalid: existing.length > 0 });
     }
 
+    // Open WebSocket tickets outlive a reload of this plugin, not a restart (D1367).
+    const tickets =
+      context.state.get<TicketStore>("tickets") ??
+      (() => {
+        const created = new TicketStore();
+        context.state.set("tickets", created);
+        return created;
+      })();
+    const principalOf = (record: ClientRecord): Principal => ({
+      id: clientPrincipalId(record.id),
+      permissions: record.permissions,
+      ...(record.expiresAt === undefined ? {} : { expiresAt: record.expiresAt }),
+    });
     const verifier: AuthVerifier = {
       async verify(credentials) {
         const given = credentials.token;
         if (given === undefined || given.length < MIN_TOKEN_LENGTH) return undefined;
         if (sameToken(given, token)) return OWNER;
-        const record = clients.verify(given, Date.now());
-        return record === undefined
+        const now = Date.now();
+        // A ticket stands for its device token once (security.md D1367).
+        if (given.startsWith(TICKET_PREFIX)) {
+          const id = tickets.redeem(given, now);
+          const record = id === undefined ? undefined : clients.get(id);
+          if (record === undefined) return undefined;
+          if (record.expiresAt !== undefined && record.expiresAt <= now) return undefined;
+          return principalOf(record);
+        }
+        const record = clients.verify(given, now);
+        // A bound token is never accepted alone: only with a proof, for a ticket (D1366).
+        return record === undefined || record.jkt !== undefined
           ? undefined
           : {
               id: clientPrincipalId(record.id),
@@ -198,8 +225,12 @@ export default definePlugin({
     });
 
     const view = (record: ClientRecord, invocation: Invocation): z.input<typeof Client> => {
-      const { secretHash: _secret, ...rest } = record;
-      return { ...rest, current: invocation.caller?.id === clientPrincipalId(record.id) };
+      const { secretHash: _secret, jkt, ...rest } = record;
+      return {
+        ...rest,
+        current: invocation.caller?.id === clientPrincipalId(record.id),
+        ...(jkt === undefined ? {} : { bound: true }),
+      };
     };
     const revoke = (ids: readonly string[]) => {
       // A page session opened with a revoked token goes with it, and so on down.
@@ -286,6 +317,7 @@ export default definePlugin({
       label: string,
       from?: { readonly id: string; readonly expiresAt?: number },
       metadata?: ClientMetadata,
+      jkt?: string,
     ) => {
       const now = Date.now();
       const longest = now + DEFAULT_TTL_DAYS * DAY_MS;
@@ -297,6 +329,7 @@ export default definePlugin({
         expiresAt: from?.expiresAt === undefined ? longest : Math.min(longest, from.expiresAt),
         ...(from === undefined ? {} : { parent: from.id }),
         ...(metadata === undefined ? {} : { metadata }),
+        ...(jkt === undefined ? {} : { jkt }),
       });
       changed();
       if (from === undefined) {
@@ -309,6 +342,7 @@ export default definePlugin({
         token: issued,
         permissions: record.permissions,
         ...(record.expiresAt === undefined ? {} : { expiresAt: record.expiresAt }),
+        tokenType: jkt === undefined ? ("Bearer" as const) : ("DPoP" as const),
       };
     };
     // Open codes outlive a reload of this plugin, not a restart of the node.
@@ -427,17 +461,37 @@ export default definePlugin({
               context.state.set("attempts", created);
               return created;
             })(),
-          pair(code, label, metadata) {
+          pair(code, label, metadata, jkt) {
             return pairing.redeem(code, Date.now(), (link) =>
               issuePaired(
                 link.permissions,
                 link.label ?? label ?? "Paired device",
                 undefined,
                 metadata,
+                jkt,
               ),
             );
           },
+          replay:
+            context.state.get<ReplayGuard>("dpop") ??
+            (() => {
+              const created = new ReplayGuard();
+              context.state.set("dpop", created);
+              return created;
+            })(),
+          ticket(given) {
+            // The token itself, with its key's thumbprint when it is bound (D1367).
+            const record = clients.verify(given, Date.now());
+            if (record === undefined) return undefined;
+            return {
+              ...(record.jkt === undefined ? {} : { jkt: record.jkt }),
+              full: () => tickets.full(record.id, Date.now()),
+              issue: () => tickets.issue(record.id, Date.now()),
+            };
+          },
           async openSession(credential, metadata) {
+            // A ticket is for one socket (D1367), never a standing page session.
+            if (credential.startsWith(TICKET_PREFIX)) return undefined;
             const paired = pairing.redeem(credential, Date.now(), (link) =>
               issuePaired(link.permissions, link.label ?? "Browser", undefined, metadata),
             );

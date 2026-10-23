@@ -1,3 +1,4 @@
+import * as NodeCrypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
@@ -1067,5 +1068,284 @@ describe("clients and links (security.md D1187, D1188, D1190)", () => {
         clientUrl: "https://jhin.example.com/?x=1",
       }),
     ).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
+  });
+});
+
+describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D1367)", () => {
+  const httpUrl = (node: Node) => node.url.replace(/^ws/, "http").replace(/\/rpc$/, "");
+  const createCode = async (node: Node) =>
+    (
+      (await node.kernel.commands.execute("auth.pairing.create", { permissions: ["app.*"] })) as {
+        code: string;
+      }
+    ).code;
+  const sha = (text: string) => NodeCrypto.createHash("sha256").update(text).digest("base64url");
+  /** A device's key, and proofs signed with it as RFC 9449 says. */
+  const deviceKey = () => {
+    const { privateKey, publicKey } = NodeCrypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const { kty, crv, x, y } = publicKey.export({ format: "jwk" });
+    return (
+      htm: string,
+      htu: string,
+      claims: { jti?: string; iat?: number; ath?: string; typ?: string } = {},
+    ) => {
+      const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+      const header = part({ typ: claims.typ ?? "dpop+jwt", alg: "ES256", jwk: { kty, crv, x, y } });
+      const payload = part({
+        htm,
+        htu,
+        jti: claims.jti ?? NodeCrypto.randomUUID(),
+        iat: claims.iat ?? Math.floor(Date.now() / 1000),
+        ...(claims.ath === undefined ? {} : { ath: claims.ath }),
+      });
+      const signature = NodeCrypto.sign("sha256", Buffer.from(`${header}.${payload}`), {
+        key: privateKey,
+        dsaEncoding: "ieee-p1363",
+      }).toString("base64url");
+      return `${header}.${payload}.${signature}`;
+    };
+  };
+  const pair = (node: Node, code: string, proof?: string) =>
+    fetch(`${httpUrl(node)}/auth/pair`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(proof === undefined ? {} : { dpop: proof }),
+      },
+      body: JSON.stringify({ code }),
+    });
+  const ticketFor = (node: Node, authorization: string, proof?: string) =>
+    fetch(`${httpUrl(node)}/auth/ws-ticket`, {
+      method: "POST",
+      headers: { authorization, ...(proof === undefined ? {} : { dpop: proof }) },
+    });
+  /** Opens a socket with `credential` as its token; "open" once the node said it is ready. */
+  const openWith = (node: Node, credential: string) =>
+    new Promise<number | "open">((resolve, reject) => {
+      const socket = new WebSocket(node.url, ["jhin.v1", `jhin.token.${credential}`]);
+      socket.once("message", () => {
+        socket.close();
+        resolve("open");
+      });
+      socket.once("close", (status) => resolve(status));
+      socket.once("error", reject);
+    });
+
+  it("binds a paired token to the proof's key, and accepts it only through a ticket", async () => {
+    const node = await startNode();
+    const sign = deviceKey();
+    const pairUrl = `${httpUrl(node)}/auth/pair`;
+    const paired = await pair(node, await createCode(node), sign("POST", pairUrl));
+    expect(paired.status).toBe(200);
+    const issued = (await paired.json()) as { id: string; token: string; tokenType: string };
+    expect(issued.tokenType).toBe("DPoP");
+    const { clients: listed } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+      clients: Record<string, unknown>[];
+    };
+    const record = listed.find((client) => client.id === issued.id)!;
+    expect(record).toMatchObject({ bound: true });
+    expect(record).not.toHaveProperty("jkt");
+
+    // Alone, the token is worth nothing: not on the socket, not for a page session.
+    expect(await openWith(node, issued.token)).toBe(4401);
+    const session = await fetch(`${httpUrl(node)}/auth/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ credential: issued.token }),
+    });
+    expect(session.status).toBe(401);
+    expect((await ticketFor(node, `Bearer ${issued.token}`)).status).toBe(401);
+
+    const ticketUrl = `${httpUrl(node)}/auth/ws-ticket`;
+    const minted = await ticketFor(
+      node,
+      `DPoP ${issued.token}`,
+      sign("POST", ticketUrl, { ath: sha(issued.token) }),
+    );
+    expect(minted.status).toBe(200);
+    expect(minted.headers.get("cache-control")).toBe("no-store");
+    expect(minted.headers.get("access-control-allow-origin")).toBe("*");
+    const { ticket, expiresAt } = (await minted.json()) as { ticket: string; expiresAt: number };
+    expect(ticket).toMatch(/^jht1\./);
+    expect(expiresAt).toBeLessThanOrEqual(Date.now() + 60_000);
+
+    const device = connect(node.url, ticket);
+    expect(await device.call("app.write", { text: "bound" })).toEqual({ text: "bound" });
+    device.close();
+    // Used once: never again.
+    expect(await openWith(node, ticket)).toBe(4401);
+  });
+
+  it("refuses a replayed, stale, foreign, mismatched or wrongly signed proof", async () => {
+    const node = await startNode();
+    const sign = deviceKey();
+    const pairUrl = `${httpUrl(node)}/auth/pair`;
+    const refusal = async (proof: string) => {
+      const response = await pair(node, await createCode(node), proof);
+      return [response.status, ((await response.json()) as { message: string }).message];
+    };
+    // A pairing proof is not remembered: its code is used once, and nobody
+    // without a token can fill the replay guard.
+    const proof = sign("POST", pairUrl);
+    expect((await pair(node, await createCode(node), proof)).status).toBe(200);
+    expect((await pair(node, await createCode(node), proof)).status).toBe(200);
+    expect(
+      await refusal(sign("POST", pairUrl, { iat: Math.floor(Date.now() / 1000) - 301 })),
+    ).toEqual([400, "The DPoP proof was refused (time_window)."]);
+    // Another port is another node.
+    const otherPort = new URL(httpUrl(node));
+    otherPort.port = String(Number(otherPort.port) + 1);
+    expect(await refusal(sign("POST", `${otherPort.origin}/auth/pair`))).toEqual([
+      400,
+      "The DPoP proof was refused (url_mismatch).",
+    ]);
+    // The path matches whole segments only.
+    expect(await refusal(sign("POST", `${httpUrl(node)}/xauth/pair`))).toEqual([
+      400,
+      "The DPoP proof was refused (url_mismatch).",
+    ]);
+    expect(await refusal(sign("POST", "http://evil.example/auth/pair"))).toEqual([
+      400,
+      "The DPoP proof was refused (url_mismatch).",
+    ]);
+    expect(await refusal(sign("GET", pairUrl))).toEqual([
+      400,
+      "The DPoP proof was refused (method_mismatch).",
+    ]);
+    expect(await refusal(sign("POST", pairUrl, { typ: "JWT" }))).toEqual([
+      400,
+      "The DPoP proof was refused (malformed_proof).",
+    ]);
+    const [header, payload] = sign("POST", pairUrl).split(".");
+    const forged = `${header}.${payload}.${sign("POST", pairUrl).split(".")[2]}`;
+    expect(await refusal(forged)).toEqual([400, "The DPoP proof was refused (invalid_signature)."]);
+    // A proxy that strips a path prefix still names the same request.
+    expect(
+      (await pair(node, await createCode(node), sign("POST", `${httpUrl(node)}/jhin/auth/pair`)))
+        .status,
+    ).toBe(200);
+
+    // A ticket needs the bound key, and a proof naming this token.
+    const issued = (await (
+      await pair(node, await createCode(node), sign("POST", pairUrl))
+    ).json()) as {
+      token: string;
+    };
+    const ticketUrl = `${httpUrl(node)}/auth/ws-ticket`;
+    const other = deviceKey();
+    expect(
+      (
+        await ticketFor(
+          node,
+          `DPoP ${issued.token}`,
+          other("POST", ticketUrl, { ath: sha(issued.token) }),
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await ticketFor(
+          node,
+          `DPoP ${issued.token}`,
+          sign("POST", ticketUrl, { ath: sha("other") }),
+        )
+      ).status,
+    ).toBe(401);
+    expect((await ticketFor(node, `DPoP ${issued.token}`)).status).toBe(401);
+    // A proof made before the node started may have been used before a restart.
+    const before = await ticketFor(
+      node,
+      `DPoP ${issued.token}`,
+      sign("POST", ticketUrl, { ath: sha(issued.token), iat: Math.floor(Date.now() / 1000) - 60 }),
+    );
+    expect(before.status).toBe(401);
+    expect(((await before.json()) as { message: string }).message).toBe(
+      "The DPoP proof was refused (time_window).",
+    );
+    // A ticket's proof is used once.
+    const once = sign("POST", ticketUrl, { ath: sha(issued.token) });
+    expect((await ticketFor(node, `DPoP ${issued.token}`, once)).status).toBe(200);
+    const replayed = await ticketFor(node, `DPoP ${issued.token}`, once);
+    expect(replayed.status).toBe(401);
+    expect(((await replayed.json()) as { message: string }).message).toBe(
+      "The DPoP proof was refused (replay).",
+    );
+  });
+
+  it("holds at most 16 open tickets per device (security.md D1367)", async () => {
+    const node = await startNode();
+    const sign = deviceKey();
+    const issued = (await (
+      await pair(node, await createCode(node), sign("POST", `${httpUrl(node)}/auth/pair`))
+    ).json()) as { token: string };
+    const ticketUrl = `${httpUrl(node)}/auth/ws-ticket`;
+    const mint = () =>
+      ticketFor(node, `DPoP ${issued.token}`, sign("POST", ticketUrl, { ath: sha(issued.token) }));
+    const held: string[] = [];
+    for (let n = 0; n < 16; n += 1) {
+      const minted = await mint();
+      expect(minted.status).toBe(200);
+      held.push(((await minted.json()) as { ticket: string }).ticket);
+    }
+    // Refused before its proof is checked: the same proof works once a ticket is used.
+    const proof = sign("POST", ticketUrl, { ath: sha(issued.token) });
+    const refused = await ticketFor(node, `DPoP ${issued.token}`, proof);
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toMatchObject({ code: "TOO_MANY_TICKETS" });
+    expect(await openWith(node, held[0]!)).toBe("open");
+    expect((await ticketFor(node, `DPoP ${issued.token}`, proof)).status).toBe(200);
+  });
+
+  it("ends a ticket with its token, and never turns one into a page session", async () => {
+    const node = await startNode();
+    const sign = deviceKey();
+    const issued = (await (
+      await pair(node, await createCode(node), sign("POST", `${httpUrl(node)}/auth/pair`))
+    ).json()) as { id: string; token: string };
+    const ticketUrl = `${httpUrl(node)}/auth/ws-ticket`;
+    const mint = async () =>
+      (
+        (await (
+          await ticketFor(
+            node,
+            `DPoP ${issued.token}`,
+            sign("POST", ticketUrl, { ath: sha(issued.token) }),
+          )
+        ).json()) as { ticket: string }
+      ).ticket;
+    const forSession = await mint();
+    const session = await fetch(`${httpUrl(node)}/auth/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ credential: forSession }),
+    });
+    expect(session.status).toBe(401);
+
+    const ticket = await mint();
+    await node.kernel.commands.execute("auth.clients.revoke", { id: issued.id });
+    expect(await openWith(node, ticket)).toBe(4401);
+  });
+
+  it("pairs a bearer token without a proof, which may take tickets too", async () => {
+    const node = await startNode();
+    const issued = (await (await pair(node, await createCode(node))).json()) as {
+      token: string;
+      tokenType: string;
+    };
+    expect(issued.tokenType).toBe("Bearer");
+    expect(await openWith(node, issued.token)).toBe("open");
+    // DPoP names a bound token; this one is not.
+    const mismatch = await ticketFor(node, `DPoP ${issued.token}`, "x.y.z");
+    expect(mismatch.status).toBe(401);
+    expect(await mismatch.json()).toMatchObject({ code: "TOKEN_TYPE_MISMATCH" });
+    const minted = await ticketFor(node, `Bearer ${issued.token}`);
+    expect(minted.status).toBe(200);
+    const { ticket } = (await minted.json()) as { ticket: string };
+    expect(await openWith(node, ticket)).toBe("open");
+    expect(await openWith(node, ticket)).toBe(4401);
+    // The preflight a page on another origin sends first.
+    const preflight = await fetch(`${httpUrl(node)}/auth/ws-ticket`, { method: "OPTIONS" });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-headers")).toContain("dpop");
   });
 });
