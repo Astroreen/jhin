@@ -278,6 +278,15 @@ test("lists a thread's parent and forks in the thread details panel, and merges 
   const related = panel.getByRole("list", { name: "Related threads" });
   await expect(panel.getByRole("heading", { name: "Lineage" })).toBeVisible();
   await expect(related.getByRole("listitem")).toHaveText([/plan a picnic.*Idle/]);
+  // D1350: at this width the card is beside the chat, not the popover, and the chat's lane
+  // (its messages and composer) ends left of it.
+  await expect(toggle).toHaveAttribute("data-details-effective", "inline");
+  await expect(page.locator("[data-popup-open]")).toHaveCount(0);
+  const card = (await panel.boundingBox())!;
+  const lane = (await page.locator(".chat-content-lane").first().boundingBox())!;
+  const composer = (await message.boundingBox())!;
+  expect(lane.x + lane.width).toBeLessThanOrEqual(card.x);
+  expect(composer.x + composer.width).toBeLessThanOrEqual(card.x);
   const merge = panel.getByRole("button", { name: "Merge back to plan a picnic" });
   await expect(merge).toBeDisabled();
   // An unavailable button still says why (aria-disabled, so it keeps its pointer and focus).
