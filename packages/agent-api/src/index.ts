@@ -302,9 +302,9 @@ export interface AgentTurn {
   /**
    * Since 1.7: the later work of the turn's backgrounded subagents
    * (`subagent.backgrounded`), read once `items` ended: their `subagent.item`,
-   * `subagent.progress` (since 1.12) and `subagent.ended` items only. Ends once each has ended, or when the
-   * runtime can no longer follow them; one still open then ended
-   * `interrupted` (D1164).
+   * `subagent.progress` (since 1.12) and `subagent.ended` items only. Ends
+   * once each has ended, or when the runtime can no longer follow them; one
+   * still open then ended `interrupted` (D1164).
    */
   readonly afterwards?: AsyncIterable<
     Extract<AgentItem, { readonly kind: "subagent.item" | "subagent.progress" | "subagent.ended" }>
