@@ -250,7 +250,7 @@ describe("messages between agents (A2)", () => {
     ).rejects.toMatchObject({ code: "ASK_NOT_FOUND" });
   });
 
-  it("keeps the owner's conversation with an agent, answers included (C1, D1061)", async () => {
+  it("keeps the owner's conversation with an agent, answers included (C1, D1061, D1221)", async () => {
     const { client, kernel } = await node({
       agents: { builder, lead },
       capture: { answer: (request) => `answer to: ${request.input.text.split("\n\n")[1]}` },
@@ -259,7 +259,14 @@ describe("messages between agents (A2)", () => {
       to: address("lead"),
       question: "Where are we?",
     });
+    const messages = watch(client, MESSAGES_STREAM);
     const sent = await client.call<Sent>("agents.send", { to: address("lead"), body: "Go on." });
+    // The turn the owner's message started answers the owner (D1221).
+    await messages.untilMatch(
+      (event) =>
+        event.type === MessageEvents.answered &&
+        (event.payload as { messageId?: string }).messageId === sent.message.messageId,
+    );
     const { generation } = await client.call<{ generation: { threadId: string } }>(
       "agents.rotate",
       { agentId: "lead" },
@@ -292,6 +299,10 @@ describe("messages between agents (A2)", () => {
     ]);
     expect(before.entries[0]).toMatchObject({
       answer: "answer to: Where are we?",
+      answeredBy: address("lead"),
+    });
+    expect(before.entries[1]).toMatchObject({
+      answer: "answer to: Go on.",
       answeredBy: address("lead"),
     });
     expect(before.entries[2]).toMatchObject({ inbox: "open" });

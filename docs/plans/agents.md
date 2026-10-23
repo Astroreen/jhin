@@ -1567,6 +1567,19 @@ process and CI, not by asking agents nicely in a prompt
 - A turn's answer meant for the owner never stays only in the lead's thread
   (the C3 run's "Missing").
 
+Decisions (L1):
+
+- **D1221. An agent's answer to the owner's message comes back to the
+  owner.** A message (not an ask) from this node's owner to an agent of this
+  node starts a turn like any message (D623); what that turn answers (its
+  last assistant message, D624) is recorded with the message as
+  `agents.message.answered`, as an ask's answer is, and
+  `agents.conversation` (D1061) shows it under the owner's message, so the
+  Lead view does too. Nobody waits for it: `agents.send` returns at once, and
+  a failed, interrupted or silent turn records nothing. It takes the C3
+  Deferred item: the turn records it, instead of the lead's instructions
+  asking it to report.
+
 ### L2. Guards in the process (D1241–D1260)
 
 - **Review after the last change**: a mission's commit or merge step is
@@ -1624,8 +1637,8 @@ process and CI, not by asking agents nicely in a prompt
 - C1: `agents.conversation` folds the node's whole `agents/messages` stream
   on each call (D1061); an index of messages by party once it grows.
 - C1: telling the lead something without waiting for an answer
-  (`agents.send`) from the Lead view: it asks (D1063); the lead replies to a
-  message only when it chooses to send one.
+  (`agents.send`) from the Lead view: it asks (D1063); a message's answer
+  comes back too (D1221), but the composer has no way to send one.
 - C1: a lead's message (not an ask) to the owner stays an open inbox item
   until it is answered there; the Lead view shows it without closing it
   (dismissing an item is A2's, D626).
@@ -1794,14 +1807,8 @@ process and CI, not by asking agents nicely in a prompt
   node is quiet but its open warning stays: two warnings for one cause, which
   D724 means to avoid. Seen running the scenario (D1101): its Health
   section lists both; the test asserts only the mission's.
-- C3: a reply from the lead to the owner's message. An `agents.send`
-  from the owner starts the lead's turn, but what the lead answers stays in
-  its thread: only an ask's answer comes back (D624), so the owner's
-  conversation (D1061) shows nothing of it. In the C3 run the lead closed the
-  mission and told the builder, never the owner. Either the lead's
-  instructions (D688) ask it to report to the owner with `agents_send`, or
-  the turn a message of the owner starts records its last answer as an
-  ask's does. C1 decides.
+- L1: the answer to the owner's message (D1221) is followed while the node
+  runs; a node that stops before the turn starts records none for it.
 
 ## Landing
 
@@ -1905,3 +1912,5 @@ Each workstream lists its PRs here as they merge.
   and New generation, Edit and Remove on an agent's page (D1065–D1067).
 - C3 #201: the C3 run, its report and D1107 (honest empty sections in
   Civilization mode), the lore story "own homework".
+- L1 #PR: the answer of an agent's turn to the owner's message is recorded
+  with it and shows in the owner's conversation and the Lead view (D1221).
