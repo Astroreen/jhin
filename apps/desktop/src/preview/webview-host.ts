@@ -24,8 +24,11 @@ interface Attached {
   readonly guest: WebContents;
   readonly endpoint: string;
   downloadDirectory: string | null;
-  /** Downloads CDP named that Electron has not asked to place yet, oldest first. */
-  readonly pendingDownloads: { readonly guid: string; readonly url: string }[];
+  /**
+   * Downloads CDP named that Electron has not asked to place yet, oldest first; `fresh`
+   * until Electron placed a download after it (one never placed was cancelled first).
+   */
+  readonly pendingDownloads: { readonly guid: string; readonly url: string; fresh: boolean }[];
   close(): void;
 }
 
@@ -58,13 +61,21 @@ export function createWebviewHost(options: WebviewHostOptions) {
     guestSession.on("will-download", (_event, item, source) => {
       const tab = source === undefined ? undefined : attached.get(source.id);
       if (tab === undefined) return;
-      // The download CDP named for this URL, so a download CDP named and Electron never
-      // placed (cancelled first) cannot lend its name to the next one.
-      const index = tab.pendingDownloads.findIndex((pending) => pending.url === item.getURL());
-      const pending = index < 0 ? undefined : tab.pendingDownloads.splice(index, 1)[0];
+      // The download CDP named for this URL. Electron's URL is the final one, so a redirected,
+      // blob: or data: download is the newest one CDP named since the last placed; one CDP
+      // named and Electron never placed (cancelled first) cannot lend its name.
+      const pendings = tab.pendingDownloads;
+      let index = pendings.findIndex((pending) => pending.url === item.getURL());
+      if (index < 0) index = pendings.findLastIndex((pending) => pending.fresh);
+      const pending = index < 0 ? undefined : pendings.splice(index, 1)[0];
+      for (const left of pendings) left.fresh = false;
       // No folder from the node, or a download the node did not hear of: nothing to place it,
       // and no Save dialog over the app either.
       if (tab.downloadDirectory === null || pending === undefined) {
+        options.log("preview download cancelled", {
+          webContentsId: source?.id,
+          reason: tab.downloadDirectory === null ? "no folder" : "not announced",
+        });
         item.cancel();
         return;
       }
@@ -146,7 +157,9 @@ export function createWebviewHost(options: WebviewHostOptions) {
       if (method === "Browser.downloadWillBegin") {
         const { guid, url } = (params ?? {}) as { guid?: unknown; url?: unknown };
         if (typeof guid === "string" && typeof url === "string") {
-          tab.pendingDownloads.push({ guid, url });
+          tab.pendingDownloads.push({ guid, url, fresh: true });
+          // A few never placed (cancelled first) are all that can pile up.
+          if (tab.pendingDownloads.length > 20) tab.pendingDownloads.shift();
         }
       }
       relay?.event(method, params, sessionId);

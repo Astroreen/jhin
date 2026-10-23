@@ -15,7 +15,7 @@ import {
 import type { RpcClient } from "@jhin/rpc";
 import { z } from "@jhin/sdk";
 import { MousePointer2Icon } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
 import type { NativeSurfaces } from "./native-surfaces.ts";
@@ -110,6 +110,15 @@ function Host(
     setMine({ from: announced, keys });
   }
   const tabs = announced.filter((tab) => mine.keys.has(desktopKey(tab)));
+  /** The node no longer waits for this page's webview of a tab: it goes, with its relay. */
+  const lose = useCallback((key: string) => {
+    setMine((current) => {
+      if (!current.keys.has(key)) return current;
+      const keys = new Set(current.keys);
+      keys.delete(key);
+      return { from: current.from, keys };
+    });
+  }, []);
   useEffect(() => {
     const hosting = surfaces.host(client);
     return () => hosting.dispose();
@@ -140,6 +149,7 @@ function Host(
           guests={guests.current}
           onError={onError}
           key={desktopKey(tab)}
+          onLost={lose}
           preview={preview}
           surfaces={surfaces}
           tab={tab}
@@ -156,8 +166,9 @@ function HostedWebview(props: {
   readonly tab: DesktopTab;
   readonly guests: Map<number, DesktopTab>;
   readonly onError: { current: (title: string, error: unknown) => void };
+  readonly onLost: (key: string) => void;
 }) {
-  const { client, preview, surfaces, tab, guests, onError } = props;
+  const { client, preview, surfaces, tab, guests, onError, onLost } = props;
   const ref = useRef<ElectronWebview | null>(null);
   // Fixed for the tab's life: Electron reads the partition once, as the guest attaches.
   const [partition] = useState(tab.partition);
@@ -197,8 +208,12 @@ function HostedWebview(props: {
         // then opens the tab headless.
         if (disposed) return;
         attachedOnce.current = false;
-        // The node stopped waiting (its tab opened headless): the stream drops this webview.
-        if ((error as { code?: unknown }).code === "PREVIEW_TAB_NOT_FOUND") return;
+        // The node no longer waits: another page attached the tab first, or it opened headless.
+        // This webview goes, and its guest's relay with it, at once.
+        if ((error as { code?: unknown }).code === "PREVIEW_TAB_NOT_FOUND") {
+          onLost(desktopKey(tab));
+          return;
+        }
         onError.current("Couldn't show the browser tab in the app", error);
       });
     };

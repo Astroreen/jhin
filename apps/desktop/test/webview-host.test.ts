@@ -231,6 +231,17 @@ describe("the app's webview relay (D1322)", () => {
     const second = item("http://x/b");
     session.emit("will-download", {}, second, webview);
     expect(second.placed).toEqual({ path: "/downloads/g2", cancelled: false });
+    // Redirected: Electron gives the final URL, CDP named the first; it is still placed.
+    webview.debugger.emit(
+      "message",
+      {},
+      "Browser.downloadWillBegin",
+      { guid: "g3", url: "http://x/redirect" },
+      "",
+    );
+    const redirected = item("http://cdn.x/file");
+    session.emit("will-download", {}, redirected, webview);
+    expect(redirected.placed).toEqual({ path: "/downloads/g3", cancelled: false });
     // A download the node never heard of is cancelled, not left to a Save dialog.
     const stray = item("http://x/c");
     session.emit("will-download", {}, stray, webview);

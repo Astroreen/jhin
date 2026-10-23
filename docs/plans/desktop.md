@@ -439,7 +439,12 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   the endpoint closes with the guest, and the debugger is let go when the
   node disconnects. A dropped connection is final: the node drops the tab
   with it (D1321), so nothing reconnects to the endpoint; the app's page
-  removes the webview, and a new tab attaches anew. A connection to the node
+  removes the webview, and a new tab attaches anew. Two app pages of one node
+  both host a new tab; the first attach wins, and the other page drops its
+  webview (and so its relay) once the node answers that the tab no longer
+  waits. A download is placed under the name CDP gave it for its URL, or,
+  redirected (Electron reports the final URL), the newest CDP named since
+  the last one placed; one the node never heard of is cancelled and logged. A connection to the node
   that drops and reconnects keeps the page's webviews: the client subscribes
   again on its own.
 
