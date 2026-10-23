@@ -1184,9 +1184,11 @@ describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D13
       const response = await pair(node, await createCode(node), proof);
       return [response.status, ((await response.json()) as { message: string }).message];
     };
+    // A pairing proof is not remembered: its code is used once, and nobody
+    // without a token can fill the replay guard.
     const proof = sign("POST", pairUrl);
     expect((await pair(node, await createCode(node), proof)).status).toBe(200);
-    expect(await refusal(proof)).toEqual([400, "The DPoP proof was refused (replay)."]);
+    expect((await pair(node, await createCode(node), proof)).status).toBe(200);
     expect(
       await refusal(sign("POST", pairUrl, { iat: Math.floor(Date.now() / 1000) - 301 })),
     ).toEqual([400, "The DPoP proof was refused (time_window)."]);
@@ -1238,6 +1240,44 @@ describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D13
       ).status,
     ).toBe(401);
     expect((await ticketFor(node, `DPoP ${issued.token}`)).status).toBe(401);
+    // A ticket's proof is used once.
+    const once = sign("POST", ticketUrl, { ath: sha(issued.token) });
+    expect((await ticketFor(node, `DPoP ${issued.token}`, once)).status).toBe(200);
+    const replayed = await ticketFor(node, `DPoP ${issued.token}`, once);
+    expect(replayed.status).toBe(401);
+    expect(((await replayed.json()) as { message: string }).message).toBe(
+      "The DPoP proof was refused (replay).",
+    );
+  });
+
+  it("ends a ticket with its token, and never turns one into a page session", async () => {
+    const node = await startNode();
+    const sign = deviceKey();
+    const issued = (await (
+      await pair(node, await createCode(node), sign("POST", `${httpUrl(node)}/auth/pair`))
+    ).json()) as { id: string; token: string };
+    const ticketUrl = `${httpUrl(node)}/auth/ws-ticket`;
+    const mint = async () =>
+      (
+        (await (
+          await ticketFor(
+            node,
+            `DPoP ${issued.token}`,
+            sign("POST", ticketUrl, { ath: sha(issued.token) }),
+          )
+        ).json()) as { ticket: string }
+      ).ticket;
+    const forSession = await mint();
+    const session = await fetch(`${httpUrl(node)}/auth/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ credential: forSession }),
+    });
+    expect(session.status).toBe(401);
+
+    const ticket = await mint();
+    await node.kernel.commands.execute("auth.clients.revoke", { id: issued.id });
+    expect(await openWith(node, ticket)).toBe(4401);
   });
 
   it("pairs a bearer token without a proof, which may take tickets too", async () => {

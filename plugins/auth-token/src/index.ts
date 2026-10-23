@@ -489,6 +489,8 @@ export default definePlugin({
             };
           },
           async openSession(credential, metadata) {
+            // A ticket is for one socket (D1367), never a standing page session.
+            if (credential.startsWith(TICKET_PREFIX)) return undefined;
             const paired = pairing.redeem(credential, Date.now(), (link) =>
               issuePaired(link.permissions, link.label ?? "Browser", undefined, metadata),
             );

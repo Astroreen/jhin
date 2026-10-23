@@ -4,8 +4,8 @@ import * as Crypto from "node:crypto";
 export const TICKET_PREFIX = "jht1.";
 /** How long a ticket is good for: Jhin mints one right before each connect. */
 const TICKET_TTL_MS = 60_000;
-/** Open tickets at once; a client minting more is refused until some are used or expire. */
-const MAX_OPEN = 1_000;
+/** Open tickets per device token; one minting more is refused until some are used or expire. */
+const MAX_OPEN_PER_CLIENT = 16;
 
 const hash = (secret: string) => Crypto.createHash("sha256").update(secret).digest("base64url");
 
@@ -23,10 +23,12 @@ export class TicketStore {
     for (const [id, ticket] of this.#open) if (ticket.expiresAt <= now) this.#open.delete(id);
   }
 
-  /** A ticket for device token `clientId`, or undefined when too many are open. */
+  /** A ticket for device token `clientId`, or undefined when it holds too many open. */
   issue(clientId: string, now: number): { ticket: string; expiresAt: number } | undefined {
     this.#prune(now);
-    if (this.#open.size >= MAX_OPEN) return undefined;
+    let held = 0;
+    for (const open of this.#open.values()) if (open.clientId === clientId) held += 1;
+    if (held >= MAX_OPEN_PER_CLIENT) return undefined;
     const id = Crypto.randomBytes(9).toString("base64url");
     const secret = Crypto.randomBytes(32).toString("base64url");
     const expiresAt = now + TICKET_TTL_MS;

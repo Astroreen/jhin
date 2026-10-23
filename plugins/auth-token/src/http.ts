@@ -83,7 +83,7 @@ interface IssuedToken {
 
 class BodyTooLarge extends Error {}
 
-/** One header's value; a repeated one counts as none (a proof is one JWT). */
+/** One header's value. Node joins a repeated one with ", ", which no proof parses as. */
 function headerOf(request: IncomingMessage, name: string): string | undefined {
   const value = request.headers[name];
   return typeof value === "string" ? value : undefined;
@@ -201,7 +201,13 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
     if (count > 0) attempts.set(key, count - 1);
   };
 
-  /** A proof for this request (D1366), as `verifyDpopProof` judges it. */
+  /**
+   * A proof for this request (D1366), as `verifyDpopProof` judges it. Only a
+   * proof for a bound token's ticket is remembered against replay: a pairing
+   * code is used once anyway, and a replayed pairing proof binds the token to
+   * its author's key, worth nothing to whoever replays it. So nobody without
+   * a token can fill the guard.
+   */
   const checkProof = (
     request: IncomingMessage,
     proof: string | undefined,
@@ -213,7 +219,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       host: http.requestedHost(request),
       path: new URL(request.url ?? "/", "http://node").pathname,
       nowSeconds: Math.floor(Date.now() / 1000),
-      replay: options.replay,
+      ...(expected.expectedThumbprint === undefined ? {} : { replay: options.replay }),
       ...expected,
     });
   /** Refuses a proof, saying why in RFC 9449's words (`invalid_dpop_proof`). */

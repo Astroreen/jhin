@@ -6,8 +6,12 @@ import * as Crypto from "node:crypto";
 
 const MAX_AGE_SECONDS = 300;
 const MAX_SKEW_SECONDS = 5;
-/** Proofs remembered at once (security.md D1366); past it new proofs are refused, never old ones forgotten. */
-const MAX_REMEMBERED = 10_000;
+/**
+ * Proofs remembered at once per key (security.md D1366); past it that key's
+ * new proofs are refused, never old ones forgotten. Per key, so one device
+ * cannot fill it for the others.
+ */
+const MAX_REMEMBERED_PER_KEY = 1_000;
 
 type DpopFailure =
   | "missing_proof"
@@ -79,14 +83,24 @@ function sameTarget(htu: string, host: string | undefined, path: string): boolea
 
 /** The `jti`s seen per key, until their proofs could no longer be fresh. */
 export class ReplayGuard {
-  readonly #seen = new Map<string, number>();
+  readonly #seen = new Map<string, Map<string, number>>();
+  #calls = 0;
 
-  /** False when `key` was seen within its window, or too many are remembered. */
-  admit(key: string, nowSeconds: number): "ok" | "replay" | "busy" {
-    for (const [seen, until] of this.#seen) if (until < nowSeconds) this.#seen.delete(seen);
-    if (this.#seen.has(key)) return "replay";
-    if (this.#seen.size >= MAX_REMEMBERED) return "busy";
-    this.#seen.set(key, nowSeconds + MAX_AGE_SECONDS + MAX_SKEW_SECONDS);
+  /** Whether key `thumbprint` used `jti` within its window, or holds too many. */
+  admit(thumbprint: string, jti: string, nowSeconds: number): "ok" | "replay" | "busy" {
+    // Now and then every key is swept, so a revoked device's proofs do not stay.
+    if (++this.#calls % 1_000 === 0) {
+      for (const [key, seen] of this.#seen) {
+        for (const [id, until] of seen) if (until < nowSeconds) seen.delete(id);
+        if (seen.size === 0) this.#seen.delete(key);
+      }
+    }
+    const seen = this.#seen.get(thumbprint) ?? new Map<string, number>();
+    for (const [id, until] of seen) if (until < nowSeconds) seen.delete(id);
+    if (seen.has(jti)) return "replay";
+    if (seen.size >= MAX_REMEMBERED_PER_KEY) return "busy";
+    seen.set(jti, nowSeconds + MAX_AGE_SECONDS + MAX_SKEW_SECONDS);
+    this.#seen.set(thumbprint, seen);
     return "ok";
   }
 }
@@ -99,7 +113,8 @@ export function verifyDpopProof(input: {
   /** The request's path, without its query. */
   readonly path: string;
   readonly nowSeconds: number;
-  readonly replay: ReplayGuard;
+  /** Proofs seen; without it a proof may be used again (pairing, whose code is used once). */
+  readonly replay?: ReplayGuard;
   readonly expectedThumbprint?: string;
   readonly accessToken?: string;
 }): DpopResult {
@@ -153,7 +168,9 @@ export function verifyDpopProof(input: {
   if (iat > input.nowSeconds + MAX_SKEW_SECONDS || input.nowSeconds - iat > MAX_AGE_SECONDS) {
     return fail("time_window");
   }
-  const admitted = input.replay.admit(`${thumbprint}:${jti}`, input.nowSeconds);
-  if (admitted !== "ok") return fail(admitted);
+  if (input.replay !== undefined) {
+    const admitted = input.replay.admit(thumbprint, jti, input.nowSeconds);
+    if (admitted !== "ok") return fail(admitted);
+  }
   return { ok: true, thumbprint };
 }

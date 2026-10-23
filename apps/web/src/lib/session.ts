@@ -111,9 +111,13 @@ export async function webSocketTicket(
       code: "CONNECT_FAILED",
     });
   }
+  // Only a refused token stops the client; a refused proof (a clock off by
+  // minutes, a busy node) is tried again like a network error.
   if (response.status === 401) {
     const refused = await failure(response);
-    throw Object.assign(new Error(refused.message), { code: "UNAUTHENTICATED" });
+    throw Object.assign(new Error(refused.message), {
+      code: refused.code === "CREDENTIAL_INVALID" ? "UNAUTHENTICATED" : "CONNECT_FAILED",
+    });
   }
   if (!response.ok) {
     const failed = await failure(response);

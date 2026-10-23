@@ -793,21 +793,26 @@ Connect stays out of scope.
   key as `jwk` (P-256, no private part), with `htm` (`POST`), `htu`, `jti`
   and `iat`. The node checks T3's way (`packages/shared/src/dpop.ts`): the
   signature, the method, the URL, `iat` no more than 5 seconds ahead and
-  300 seconds behind, and a `jti` never seen before from that key in that
-  window (kept in the plugin's kernel-scoped state, at most 10 000 at
-  once: past that a proof is refused, `DPOP_BUSY`, rather than an old one
-  forgotten). `htu` names the node as the device reached it: its host must
+  300 seconds behind, and, for a ticket (D1367), a `jti` never seen before
+  from that key in that window (kept per key in the plugin's
+  kernel-scoped state, at most 1 000 per key: past that the key's proofs
+  are refused, `DPOP_BUSY`, rather than an old one forgotten). A pairing
+  proof is not remembered: its code is used once, and a replayed pairing
+  proof binds the token to its author's key, worth nothing to whoever
+  replays it; so nobody without a token can fill the guard. `htu` names the node as the device reached it: its host must
   be the requested host (`requestedHost`) and its path must end with the
   request's path, so a proxy that strips a path prefix keeps working; its
   scheme is not compared (a TLS proxy the node does not trust tells it
-  `http`). The device token is then bound: its record keeps the key's RFC
+  `http`). Both are deliberate: the proof's signature and its key bind it
+  already, `htu` only keeps a proof for one endpoint from serving another. The device token is then bound: its record keeps the key's RFC
   7638 thumbprint (`jkt`, additive), and the answer says `tokenType:
   "DPoP"` (else `"Bearer"`, additive). A bound token is never accepted on
   its own: not on the WebSocket, not at `/mcp`, not for a page session
   (`auth.verifier` refuses it, so every transport does without a change).
   It is used only with a fresh proof, to get a WebSocket ticket (D1367).
-  A proof that does not verify is refused (`DPOP_PROOF_INVALID`, 400) and
-  counts as a failed attempt (D420). A pairing without a proof is the
+  A proof that does not verify is refused (`DPOP_PROOF_INVALID`, 400 at
+  `/auth/pair`, 401 with `WWW-Authenticate: DPoP` at `/auth/ws-ticket`)
+  and counts as a failed attempt (D420). A pairing without a proof is the
   bearer pairing it was: older clients and the CLI keep working.
   What it does not defend: a script running in the page that holds the
   key can use it while it runs (the key cannot be read out, D1368), and
@@ -820,9 +825,10 @@ Connect stays out of scope.
   answers `{ticket, expiresAt}`, `no-store`, with CORS without
   credentials (a `jhin client` page on another origin, D420). A ticket is
   `jht1.<id>.<secret>`, used once, valid 60 seconds (T3: 5 minutes; Jhin
-  mints one right before each connect), kept only as its SHA-256 in the
-  plugin's kernel-scoped state, and acts as its device token's principal
-  (its grants, its expiry, revoked with it). The device offers it as the
+  mints one right before each connect), at most 16 open per device token,
+  kept only as its SHA-256 in the plugin's kernel-scoped state, and acts
+  as its device token's principal (its grants, its expiry, revoked with
+  it). It never opens a page session (`/auth/session` refuses it). The device offers it as the
   WebSocket's token subprotocol, where Jhin already carries tokens, never
   in the URL (T3's `?wsTicket=` lands in access logs); `auth.verifier`
   spends it, so a ticket works wherever a token does, once. Failed
@@ -834,7 +840,9 @@ Connect stays out of scope.
   node in IndexedDB (D423; a `CryptoKey` is stored as is, never as bytes).
   A node that answers `tokenType: "DPoP"` is reached through a ticket on
   every connect; one that answers otherwise (an older node) keeps the
-  token as a bearer token. Without WebCrypto the page pairs as before.
+  token as a bearer token. Only a refused token (`CREDENTIAL_INVALID`)
+  stops the client; a refused proof (a clock minutes off, a busy node) is
+  tried again like a network error. Without WebCrypto the page pairs as before.
   Nodes saved before keep their bearer tokens; pairing again binds.
   `auth.clients.list` says `bound: true` for a bound token (additive).
 
@@ -998,6 +1006,9 @@ A slice a PR, in the order of D1361's risks:
   mapping another home made is refused, not repaired. When `jhin pair
   --tailscale` fails after `auth.pairing.create` succeeded (printing, an
   unreachable node mid-run), the mapping's notes are not repeated.
+- The web client's DPoP fallbacks (D1368: an older node's bearer answer,
+  a page without WebCrypto) have no test of their own; Playwright covers
+  the bound path.
 - DPoP (D1366–D1368) binds what the web client pairs by a code. Tokens
   from `auth.tokens.issue`, `jhin pair` used by other programs, the
   owner token and page sessions stay bearer tokens; the CLI has no key of

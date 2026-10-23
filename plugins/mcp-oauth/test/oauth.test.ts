@@ -360,6 +360,44 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     expect(await page("threads.read")).not.toContain(shellLine);
   });
 
+  it("refuses a DPoP-bound device token at /mcp, where no proof is sent (security.md D1366)", async () => {
+    const { kernel, base } = await startNode();
+    const { privateKey, publicKey } = Crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const { kty, crv, x, y } = publicKey.export({ format: "jwk" });
+    const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+    const header = part({ typ: "dpop+jwt", alg: "ES256", jwk: { kty, crv, x, y } });
+    const payload = part({
+      htm: "POST",
+      htu: `${base}/auth/pair`,
+      jti: Crypto.randomUUID(),
+      iat: Math.floor(Date.now() / 1000),
+    });
+    const signature = Crypto.sign("sha256", Buffer.from(`${header}.${payload}`), {
+      key: privateKey,
+      dsaEncoding: "ieee-p1363",
+    }).toString("base64url");
+    const { code } = (await kernel.commands.execute("auth.pairing.create", {})) as {
+      code: string;
+    };
+    const paired = await fetch(`${base}/auth/pair`, {
+      method: "POST",
+      headers: { "content-type": "application/json", dpop: `${header}.${payload}.${signature}` },
+      body: JSON.stringify({ code }),
+    });
+    const { token, tokenType } = (await paired.json()) as { token: string; tokenType: string };
+    expect(tokenType).toBe("DPoP");
+    const mcp = await fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(mcp.status).toBe(401);
+  });
+
   it("never lets a session approve more than it holds, nor without auth.write", async () => {
     const { kernel, base } = await startNode();
     const { client_id: clientId } = (await (await register(base)).json()) as { client_id: string };
