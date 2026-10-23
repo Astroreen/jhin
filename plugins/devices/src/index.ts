@@ -56,6 +56,8 @@ import { readDeviceDetail, runDeviceAction, type ActionHost } from "./actions.ts
 import { createLocalHost } from "./hosts.ts";
 import { HUB_SPEC, runProgram, toolEnvironment, toolPaths } from "./toolchain.ts";
 import { createDeviceHub } from "./hub.ts";
+import { resolveNode } from "./hub-host.ts";
+import { createKeyedQueue } from "./keyed-queue.ts";
 
 const CONFIG_SECTION = "jhin.devices";
 /** A watched device's screen is taken again this long after the last one. */
@@ -487,7 +489,8 @@ export default definePlugin({
         },
         async run(command, args, options) {
           const program =
-            command === "node" ? (config().node ?? process.execPath) : programs[command];
+            // The node that runs serve-sim's CLI is the hub's: not Electron's own executable.
+            command === "node" ? (resolveNode(config().node) ?? "node") : programs[command];
           if (program === undefined) {
             throw new DeviceError(
               "DEVICE_PLATFORM_UNAVAILABLE",
@@ -514,22 +517,8 @@ export default definePlugin({
       };
     };
     /** Runs work for a device after the work queued for it before. */
-    const actionQueue = (() => {
-      const tails = new Map<string, Promise<unknown>>();
-      return {
-        /** `key` names the device on its host: two hosts may report the same id. */
-        run<T>(key: string, work: () => Promise<T>): Promise<T> {
-          const previous = tails.get(key) ?? Promise.resolve();
-          const next = previous.then(work, work);
-          const tail = next.catch(() => undefined);
-          tails.set(key, tail);
-          void tail.then(() => {
-            if (tails.get(key) === tail) tails.delete(key);
-          });
-          return next;
-        },
-      };
-    })();
+    /** One action or settings read at a time per device (D1332). */
+    const actionQueue = createKeyedQueue();
     const runningDevice = async (input: { threadId: string; deviceId?: string | undefined }) => {
       const device = await target(input);
       if (!device.booted) {
