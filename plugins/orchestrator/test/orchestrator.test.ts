@@ -800,6 +800,13 @@ describe("the lead reports to the owner (L1: D1222, D1223)", () => {
     expect(await workflowEnds(workflows, first.workflowId)).toMatchObject({
       result: { outcome: "decide" },
     });
+    // Another thread's open ask does not hold this mission.
+    const other = await client.call<{ id: string }>("threads.create", { title: "Other" });
+    await kernel.commands.execute(
+      "agents.ask",
+      { to: OWNER, question: "Unrelated?" },
+      { caller: AGENT, threadId: other.id },
+    );
     const asked = (await kernel.commands.execute(
       "agents.ask",
       { to: OWNER, question: "May the door face north?" },

@@ -269,14 +269,12 @@ export default definePlugin({
       if (!hasCommand("agents.inbox.list")) return [];
       const lead = await leadOf(missionId);
       if (lead === undefined) return [];
-      const { items } = await run<{ items: InboxItem[] }>("agents.inbox.list", {});
+      const { items } = await run<{ items: InboxItem[] }>("agents.inbox.list", {
+        status: "open",
+        from: lead.address,
+      });
       return items
-        .filter(
-          (item) =>
-            item.status === "open" &&
-            item.message.kind === "ask" &&
-            item.message.from === lead.address,
-        )
+        .filter((item) => item.message.kind === "ask")
         .map((item) => item.message.messageId);
     };
     /** Sends the lead's report to the owner, once per id (D1222). */
