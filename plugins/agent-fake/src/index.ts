@@ -163,7 +163,7 @@ export function fakeTurn(
       yield* say(JSON.stringify({ title: `About ${first}`, needsRefinement: false }));
       return;
     }
-    if (text.startsWith("/app")) {
+    if (/^\/app(\s|$)/.test(text)) {
       // A tool call that returns an MCP app (providers.md D1401): its document is FAKE_APP.
       const itemId = nextId();
       yield {
