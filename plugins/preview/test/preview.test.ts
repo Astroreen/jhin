@@ -998,7 +998,10 @@ describe("jhin.preview", () => {
   });
 
   it("keeps 20 downloads, offers a user's navigation to a file, and answers a file gone from the node (D1331)", async () => {
-    const { client } = await node();
+    // A node of its own: the shared one is near its 32 tabs by now.
+    const started = await startNode();
+    stops.push(started.stop);
+    const { client } = started;
     const opened = await client.call<PreviewTab>("preview.tab.open", {
       threadId: thread,
       url: `${origin}/download`,
