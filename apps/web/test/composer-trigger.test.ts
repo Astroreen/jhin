@@ -113,6 +113,9 @@ describe("a sent message's file links and skills (D1341)", () => {
     // A link the user wrote, or one with a scheme, is no file.
     expect(fileLinkPath("the code", "src/a.ts")).toBeUndefined();
     expect(fileLinkPath("a.ts", "https://example.com/a.ts")).toBeUndefined();
+    expect(fileLinkPath("#install", "#install")).toBeUndefined();
+    expect(fileLinkPath("?q", "?q")).toBeUndefined();
+    expect(fileLinkPath("a.ts", "//cdn.example.com/a.ts")).toBeUndefined();
   });
 
   it("finds `$name`s as T3's matchInlineSkills, not prices", () => {

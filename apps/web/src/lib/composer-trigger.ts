@@ -272,6 +272,8 @@ export function fileLinkPath(label: string, href: string): string | undefined {
   if (!path || (URI_SCHEME_REGEX.test(path) && !WINDOWS_DRIVE_PATH_REGEX.test(path))) {
     return undefined;
   }
+  // A link within the page or to another host (`#install`, `?q`, `//host/a`) names no file.
+  if (/^(?:#|\?|\/\/)/.test(href)) return undefined;
   return label === basename(path) ? path : undefined;
 }
 
