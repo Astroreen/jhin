@@ -590,7 +590,7 @@ Round 4 of `t3-roadmap.md` (D1341–D1360), at T3 Code `eb7b35ac`.
   (`agent.registry` 1.6, additive): the threads plugin writes it to the
   subagent thread's record as `lastTurn.progress` while that turn runs, and
   keeps it on that turn once it ended (a later turn starts without one). A
-  waiting turn shows the line it had. The hover card of a
+  waiting turn takes new lines too, and shows the last. The hover card of a
   subagent row (D1162) shows T3's detail line: a running subagent its
   progress, else its result; an ended one its result, else its last
   progress (T3's `settled ? result || progress : progress || result`),

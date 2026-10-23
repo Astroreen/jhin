@@ -1732,10 +1732,10 @@ export default definePlugin({
           const child = subagents.get(item.subagentId);
           const progress = item.progress.trim().slice(0, MAX_PROGRESS_LENGTH);
           if (child === undefined || !child.open || progress === "") return;
-          // Written while its turn runs, and kept on that turn once it ended (D1344).
+          // Written while its turn runs or waits, and kept on that turn once it ended (D1344).
           await updateThread(child.threadId, (record) =>
             record.lastTurn?.turnId === child.turnId &&
-            record.lastTurn.status === "running" &&
+            (record.lastTurn.status === "running" || record.lastTurn.status === "waiting") &&
             record.lastTurn.progress !== progress
               ? { ...record, lastTurn: { ...record.lastTurn, progress } }
               : record,
