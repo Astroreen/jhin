@@ -569,8 +569,18 @@ export default definePlugin({
           await runningDevice(input);
           const actions = actionHost();
           await runDeviceAction(actions, device.platform, device.id, input.action);
-          // The settings read back after the change, as T3's panel shows them.
-          const read = await readDeviceDetail(actions, device.platform, device.id);
+          // The settings read back after the change, as T3's panel shows them. The action took
+          // either way: a read-back that fails answers unknown settings, not a failed action
+          // an agent would repeat.
+          const read = await readDeviceDetail(actions, device.platform, device.id).catch(
+            (error: unknown) => {
+              context.log.warn("device settings not read back", {
+                deviceId: device.id,
+                error: String(error),
+              });
+              return { settings: {}, foregroundApp: null };
+            },
+          );
           return { hostId: device.hostId, deviceId: device.id, ...read, readAt: now() };
         });
       },

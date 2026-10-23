@@ -456,11 +456,14 @@ export async function readDeviceDetail(
  */
 const quiet = <A>(work: Promise<A>): Promise<A | undefined> =>
   work.catch((error: unknown) => {
+    // Output the reader cannot parse (a warning line, a helper of another version) is unknown
+    // too: the tool ran.
     const unknown =
-      error instanceof DeviceError &&
-      ((error.code === "DEVICE_OPERATION_FAILED" &&
-        typeof error.details["exitCode"] === "number") ||
-        error.code === "DEVICE_ACTION_UNAVAILABLE");
+      error instanceof SyntaxError ||
+      (error instanceof DeviceError &&
+        ((error.code === "DEVICE_OPERATION_FAILED" &&
+          typeof error.details["exitCode"] === "number") ||
+          error.code === "DEVICE_ACTION_UNAVAILABLE"));
     if (unknown) return undefined;
     throw error;
   });

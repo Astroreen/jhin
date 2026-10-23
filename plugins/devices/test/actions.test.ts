@@ -520,4 +520,15 @@ describe("readDeviceDetail", () => {
       "could not be run",
     );
   });
+
+  it("reads iOS accessibility as unknown when the helper prints no JSON", async () => {
+    const { host } = makeHost((call) =>
+      call.args.some((arg) => arg.includes("serve-sim-ax-settings"))
+        ? { stdout: "warning: helper is outdated\n" }
+        : { stdout: "light\n" },
+    );
+    const detail = await readDeviceDetail(host, "ios", "SIM-1");
+    expect(detail.settings.appearance).toBe("light");
+    expect(detail.settings.reduceMotion).toBeUndefined();
+  });
 });
