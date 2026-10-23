@@ -78,6 +78,18 @@ describe("findRanges", () => {
     );
     expect(findRanges(container, "match")).toHaveLength(1);
   });
+
+  it("finds folded work kept hidden for it, but nothing else that is hidden (D1351)", () => {
+    const container = render(
+      "<p>match</p><div hidden data-thread-find-fold><p>match folded</p></div>" +
+        "<div hidden><p>match gone</p></div><p>last match</p>",
+    );
+    const ranges = findRanges(container, "match");
+    expect(ranges).toHaveLength(3);
+    expect(
+      ranges[1]!.startContainer.parentElement?.closest("[data-thread-find-fold]"),
+    ).not.toBeNull();
+  });
 });
 
 describe("the count and stepping", () => {

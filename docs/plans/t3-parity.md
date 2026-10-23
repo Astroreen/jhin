@@ -2131,6 +2131,25 @@ Code at `eb7b35ac` (D53).
   instead of "Error occurred". A working thread whose goal is `active` says
   "Goal" instead of "Working", with the same icon and the working time.
 
+### The composer, thread panels and subagents (W38, `t3-roadmap.md`)
+
+Round 4 of `t3-roadmap.md` (D1341–D1360), at T3 Code `eb7b35ac` as D290
+says. The other W38 decisions land in their own pull requests.
+
+- **D1351. Find opens a finished turn's folded work,** as T3's find opens
+  the work its match is in. While the find bar is open, a finished turn
+  renders the work it folds as well, hidden (`hidden`,
+  `data-thread-find-fold`), in its place among the turn's blocks, so the
+  same text the unfolded turn shows is found and counted in document
+  order; nothing else that is hidden is searched. When the current match
+  is in such work, its turn opens the fold (the event
+  `jhin-thread-find-unfold` from the find to the turn), and the match,
+  found again in the opened work, is scrolled to. A work row folded inside
+  its group (several entries summarised) stays as its summary, and a
+  tool's output only shows once its row is expanded: neither is searched,
+  as before. Closing the bar drops the hidden copies; an opened fold stays
+  open.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -2218,9 +2237,8 @@ Code at `eb7b35ac` (D53).
 - The thread details panel (D802): T3's inline presentation, a card beside
   the chat when it is wide enough (here it is always the popover), and the
   heights T3 measures to drop rows on a short window.
-- Find in a thread (D801): matches inside a finished turn's folded work,
-  which T3 finds and opens the fold for; here they are found once the fold
-  is open.
+- Find in a thread (D801, D1351): a work group's own fold and a tool's
+  output are not searched until they are expanded.
   While the bar is open, each change of the thread's text (every streamed
   token, once a frame) walks the whole thread again; finding again only in
   the turns that changed would keep a long streaming thread cheap. And white

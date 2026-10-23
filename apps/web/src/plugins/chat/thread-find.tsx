@@ -5,6 +5,14 @@
 // rather than on the node (docs/plans/t3-parity.md, D801).
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
+/**
+ * Sent to a fold holding the current match (D1351): its turn opens it, as T3's find opens the
+ * work it found the match in.
+ */
+export const THREAD_FIND_UNFOLD_EVENT = "jhin-thread-find-unfold";
+/** Folded work rendered hidden while the bar is open, so its text is found too. */
+const FOLD = "[data-thread-find-fold]";
+
 const HIGHLIGHT = "jhin-thread-find";
 const ACTIVE_HIGHLIGHT = "jhin-thread-find-active";
 /** What the find passes over: controls, icons and what is marked to be skipped. */
@@ -101,8 +109,12 @@ export function findRanges(container: HTMLElement, query: string): Range[] {
   };
   const visit = (node: Node, inPre: boolean) => {
     const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : null;
-    // Skipped, and a break: the text on either side never joins into one match.
-    if (element?.matches(IGNORE) === true) {
+    // Skipped, and a break: the text on either side never joins into one match. What is hidden
+    // is too, but the folded work kept to be found.
+    if (
+      element?.matches(IGNORE) === true ||
+      (element?.hasAttribute("hidden") === true && !element.matches(FOLD))
+    ) {
       flush();
       return;
     }
@@ -212,6 +224,16 @@ export function useThreadFind(scroller: RefObject<HTMLElement | null>, threadKey
     }
     const key = `${needle}|${active}`;
     if (scrolledTo.current === key) return;
+    // In folded work: its turn unfolds it, and the match found there again is scrolled to.
+    const fold = (
+      current.startContainer instanceof Element
+        ? current.startContainer
+        : current.startContainer.parentElement
+    )?.closest(FOLD);
+    if (fold !== null && fold !== undefined) {
+      fold.dispatchEvent(new CustomEvent(THREAD_FIND_UNFOLD_EVENT, { bubbles: true }));
+      return;
+    }
     scrolledTo.current = key;
     const box = current.getBoundingClientRect();
     const viewport = container.getBoundingClientRect();

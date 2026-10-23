@@ -236,6 +236,30 @@ test("finds text in the thread with mod+f and steps through the matches (D801)",
   await expect(message).toBeFocused();
 });
 
+test("finds text in a finished turn's folded work and opens the fold (D1351)", async ({
+  page,
+}, info) => {
+  const { message, log } = await thread(page, "/write grocery.txt eggs");
+  await expect(log.getByRole("article", { name: "Agent" })).toHaveText("Wrote grocery.txt");
+  const fold = log.getByRole("button", { name: /^Worked for / });
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await message.press("ControlOrMeta+f");
+  const find = page.getByRole("searchbox", { name: "Find in thread" });
+  await find.fill("grocery");
+  const count = page.getByRole("search", { name: "Find in thread" }).getByText(/^\d+\/\d+$/);
+  // The message, the folded tool row and the answer: the fold stays shut on the first.
+  await expect(count).toHaveText("1/3");
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  // The second is in the folded work, which opens to show it.
+  await find.press("Enter");
+  await expect(count).toHaveText("2/3");
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  await expect(log.getByRole("button", { name: "Edited grocery.txt" })).toBeVisible();
+  await shoot(page, info, "thread-find-fold");
+  await find.press("Enter");
+  await expect(count).toHaveText("3/3");
+});
+
 test("lists a thread's parent and forks in the thread details panel, and merges back from it (D802)", async ({
   page,
 }, info) => {
