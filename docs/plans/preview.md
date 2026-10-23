@@ -821,6 +821,11 @@ probe of `ServerBrowser.ts`.
   - A test of the panel decoding real H.264 through WebCodecs: the fake hub
     cannot encode video, so the e2e takes the MJPEG feed (no WebCodecs) and
     the H.264 parsing is proven by T3's stream unit cases.
+  - A run of the pinned `expo-device-hub` and `agent-device` on a Mac with a
+    simulator and on an Android emulator, by the owner before relying on the
+    hub and again with every pin bump: the proxy's allow-list follows T3's
+    route names and the input follows agent-device's CLI, both read from the
+    packages, not run (CI has neither).
 
 ## PR plan
 

@@ -441,9 +441,16 @@ export default definePlugin({
       input: DeviceHubAccessInput,
       output: DeviceHubAccessResult,
       permissions: ["devices.read"],
-      handler: (_input, invocation) =>
-        // A caller without a principal (in-process code) gets what the command declares: watching.
-        hub.access(invocation.caller ?? { id: "node", permissions: ["devices.read"] }),
+      handler: (_input, invocation) => {
+        // A ticket belongs to a principal, so revoking its token ends it: no caller, no ticket.
+        if (invocation.caller === undefined) {
+          throw new DeviceError(
+            "DEVICE_UNAVAILABLE",
+            "device.hub.access issues tickets to a caller; call it over RPC, the CLI or MCP.",
+          );
+        }
+        return hub.access(invocation.caller);
+      },
     });
 
     /** One input to a thread's device (D1209). */

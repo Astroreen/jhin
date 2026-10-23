@@ -136,6 +136,10 @@ describe("the device hub", () => {
       if (status !== undefined && statuses.at(-1) !== status.status) statuses.push(status.status);
       return status?.status === "ready";
     });
+    // A ticket belongs to a caller: in-process code without one gets none.
+    await expect(node.kernel.commands.execute("device.hub.access", {})).rejects.toThrow(
+      "device.hub.access issues tickets to a caller",
+    );
     // Watching alone never installs or starts the hub.
     await expect(node.call("device.hub.access", {}, READER)).rejects.toThrow(
       "The device hub is not running. Open the device to start it.",
