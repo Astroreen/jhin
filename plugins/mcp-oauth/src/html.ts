@@ -188,6 +188,7 @@ export function renderApprovalPage(page: ApprovalPage): string {
           return `<label class="level"><input type="radio" name="access" value="${access}"${chosen ? " checked" : ""}${disabled ? " disabled" : ""} /><span><strong>${label}</strong><span>${description}</span></span></label>`;
         }).join("\n        ")}
         <p class="note">Beyond read only, it can start, message and stop threads, and none of them can run with more than the mode you pick.</p>
+        <p class="note">Read only grants only the permissions above that read.</p>
       </fieldset>
       <div class="actions">
         <button class="primary" type="submit" name="decision" value="approve">Approve</button>

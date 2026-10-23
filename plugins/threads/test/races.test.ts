@@ -491,6 +491,19 @@ describe("jhin.threads: answering requests", () => {
         { caller: { id: "client:agent", permissions: ["*", "threads.mode.approval-required"] } },
       ),
     ).rejects.toMatchObject({ code: "APPROVAL_NOT_ALLOWED" });
+    // At every level, "Full access" included, as T3's MCP clients.
+    await expect(
+      kernel.commands.execute(
+        "threads.respond",
+        { threadId: thread.id, requestId, response: { kind: "approval", decision: "accept" } },
+        {
+          caller: {
+            id: "client:agent",
+            permissions: ["threads.write", "threads.mode.full-access"],
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "APPROVAL_NOT_ALLOWED" });
     await expect(
       kernel.commands.execute(
         "threads.respond",

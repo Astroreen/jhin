@@ -901,7 +901,10 @@ Connect stays out of scope.
   issued before keeps working as it did (`ceilingOf` in
   `@jhin/agent-api`). It applies wherever a caller sets the mode of a
   turn, of a thread or of later turns: `threads.create` and
-  `threads.update` lower a mode they are given (and `threads.create` gives
+  `threads.update` lower a mode they are given (a thread's commands lower,
+  so a held caller's message still goes, as T3 steps an inherited mode
+  down; `tasks.delegate` and `jhin.scheduler` refuse a broader mode
+  instead, as they already do for the calling thread's, D1352) (and `threads.create` gives
   a held caller's thread its ceiling when it names none); `threads.send`,
   `threads.queue.add`, `threads.steer` and `threads.regenerate` give the
   message the thread's mode (or the default) lowered to the ceiling, so
