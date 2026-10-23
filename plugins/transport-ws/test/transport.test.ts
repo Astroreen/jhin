@@ -1252,6 +1252,16 @@ describe("DPoP-bound device tokens and WebSocket tickets (security.md D1366, D13
       ).status,
     ).toBe(401);
     expect((await ticketFor(node, `DPoP ${issued.token}`)).status).toBe(401);
+    // A proof made before the node started may have been used before a restart.
+    const before = await ticketFor(
+      node,
+      `DPoP ${issued.token}`,
+      sign("POST", ticketUrl, { ath: sha(issued.token), iat: Math.floor(Date.now() / 1000) - 60 }),
+    );
+    expect(before.status).toBe(401);
+    expect(((await before.json()) as { message: string }).message).toBe(
+      "The DPoP proof was refused (time_window).",
+    );
     // A ticket's proof is used once.
     const once = sign("POST", ticketUrl, { ath: sha(issued.token) });
     expect((await ticketFor(node, `DPoP ${issued.token}`, once)).status).toBe(200);

@@ -32,7 +32,7 @@ describe("WebSocket tickets (security.md D1367)", () => {
 
 describe("the replay guard (security.md D1366)", () => {
   it("refuses a jti seen within its window, per key, and fills per key only", () => {
-    const guard = new ReplayGuard();
+    const guard = new ReplayGuard(0);
     expect(guard.admit("key-a", "1", 100)).toBe("ok");
     expect(guard.admit("key-a", "1", 200)).toBe("replay");
     expect(guard.admit("key-b", "1", 200)).toBe("ok");

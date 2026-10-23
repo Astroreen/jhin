@@ -85,6 +85,15 @@ function sameTarget(htu: string, host: string | undefined, path: string): boolea
 export class ReplayGuard {
   readonly #seen = new Map<string, Map<string, number>>();
   #calls = 0;
+  /**
+   * When the guard began remembering (seconds). A proof made before it could
+   * have been used already, before the node restarted: it is refused.
+   */
+  readonly since: number;
+
+  constructor(nowSeconds: number = Math.floor(Date.now() / 1000)) {
+    this.since = nowSeconds;
+  }
 
   /** Whether key `thumbprint` used `jti` within its window, or holds too many. */
   admit(thumbprint: string, jti: string, nowSeconds: number): "ok" | "replay" | "busy" {
@@ -169,6 +178,8 @@ export function verifyDpopProof(input: {
     return fail("time_window");
   }
   if (input.replay !== undefined) {
+    // Older than the guard's memory: it may have been used before a restart.
+    if (iat < input.replay.since) return fail("time_window");
     const admitted = input.replay.admit(thumbprint, jti, input.nowSeconds);
     if (admitted !== "ok") return fail(admitted);
   }
