@@ -18,6 +18,7 @@ import {
   EMPTY_MISSIONS,
   IntentChain,
   MISSIONS_STREAM,
+  MISSION_DELETE_HOOK,
   MISSION_STEP_HOOK,
   Mission,
   MissionEvents,
@@ -112,6 +113,8 @@ export type OrchestratorErrorCode =
   | "ESCALATION_OPEN"
   /** The step needs a review, and a slice changed after its last one (D1241). */
   | "REVIEW_REQUIRED"
+  /** An orchestrator run of the mission is active: stop it before deleting (D1295). */
+  | "RUN_ACTIVE"
   /** The slice reviews no slice (D1244). */
   | "NOT_A_REVIEW";
 
@@ -700,6 +703,30 @@ export default definePlugin({
           { missionId: input.mission.id, step: input.step, unreviewed: check.unreviewed },
         );
       }),
+    );
+
+    // The missions plugin runs this hook before it deletes a mission or one of its slices.
+    context.subscriptions.add(
+      context.hooks.before<{ mission: Mission; sliceId?: string }>(
+        MISSION_DELETE_HOOK,
+        async (input) => {
+          const last = (await kv.get(NAMESPACE, `run/${input.mission.id}`)) as
+            | { workflowId?: string }
+            | undefined;
+          if (last?.workflowId === undefined) return input;
+          const runs = await run<{ workflowId: string; status: string }[]>("workflows.list", {});
+          if (
+            runs.some((item) => item.workflowId === last.workflowId && item.status === "running")
+          ) {
+            throw new OrchestratorError(
+              "RUN_ACTIVE",
+              `Mission ${input.mission.id} is being orchestrated: pause or stop the run first`,
+              { missionId: input.mission.id },
+            );
+          }
+          return input;
+        },
+      ),
     );
 
     // --- The orchestrator workflow (D706) ----------------------------------------

@@ -56,6 +56,8 @@ export const missionsViewPlugin = builtin(
         connections,
         threads: context.services.get<ThreadsCatalog>(THREADS_CAPABILITY),
         mesh: context.services.tryGet<MeshMembership>(MESH_CAPABILITY),
+        // Deleting, like stopping, is confirmed or not done (D1090, D1295).
+        dialogs: context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY),
       };
       // The view and its store are a chunk of their own (D440), loaded once the
       // Missions section or a mission shows: Threads mode never loads them. The
@@ -117,7 +119,7 @@ export const missionsViewPlugin = builtin(
       const orchestrator = {
         connections,
         threads: shared.threads,
-        dialogs: context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY),
+        dialogs: shared.dialogs,
       };
       const Orchestrator = lazyChunk(
         () =>

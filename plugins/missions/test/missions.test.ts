@@ -5,6 +5,7 @@ import * as Path from "node:path";
 import {
   EMPTY_MISSIONS,
   MISSIONS_STREAM,
+  MISSION_DELETE_HOOK,
   applyMissionEvent,
   type Mission,
   type Slice,
@@ -33,7 +34,11 @@ afterEach(async () => {
   for (const stop of stops.splice(0)) await stop();
 });
 
-async function node(storage = memoryStoragePlugin()) {
+async function node(
+  storage = memoryStoragePlugin(),
+  /** Plugins beside the missions plugin, e.g. one answering a hook. */
+  extra: NonNullable<Parameters<typeof createTestKernel>[0]>["plugins"] = [],
+) {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-missions-"));
   const streams = createLiveStreams();
   const kernel = await createTestKernel({
@@ -49,6 +54,7 @@ async function node(storage = memoryStoragePlugin()) {
       storage,
       { manifest: manifest("threads"), definition: threads },
       { manifest: manifest("missions"), definition: missions },
+      ...extra,
     ],
   });
   const { client } = connectInMemory(kernel, { log: storage.storage.log });
@@ -455,6 +461,152 @@ describe("jhin.missions", () => {
     await expect(
       client.call("slices.create", { missionId: mission.id, title: "Late", spec: "" }),
     ).rejects.toMatchObject({ code: "MISSION_CLOSED" });
+  });
+
+  it("deletes a slice or a mission as a tombstone: the record leaves the state, the log stays (D1295)", async () => {
+    const storage = memoryStoragePlugin();
+    const { client, project, stop } = await node(storage);
+    const mission = await client.call<Mission>("missions.create", {
+      projectId: project.id,
+      title: "M",
+      outcome: "O",
+    });
+    const other = await client.call<Mission>("missions.create", {
+      projectId: project.id,
+      title: "Other",
+      outcome: "O",
+    });
+    const first = await client.call<Slice>("slices.create", {
+      missionId: mission.id,
+      title: "First",
+      spec: "",
+    });
+    const second = await client.call<Slice>("slices.create", {
+      missionId: mission.id,
+      title: "Second",
+      spec: "",
+      dependsOn: [first.id],
+    });
+    const review = await client.call<Slice>("slices.create", {
+      missionId: mission.id,
+      title: "Review",
+      spec: "",
+      reviews: [second.id],
+    });
+    const kept = await client.call<Slice>("slices.create", {
+      missionId: other.id,
+      title: "Kept",
+      spec: "",
+    });
+
+    // What another live slice depends on or reviews stays until that one is gone.
+    await expect(client.call("slices.delete", { sliceId: first.id })).rejects.toMatchObject({
+      code: "SLICE_IN_USE",
+    });
+    await expect(client.call("slices.delete", { sliceId: second.id })).rejects.toMatchObject({
+      code: "SLICE_IN_USE",
+    });
+    await expect(client.call("slices.delete", { sliceId: "nope" })).rejects.toMatchObject({
+      code: "SLICE_NOT_FOUND",
+    });
+    expect(await client.call<Slice>("slices.delete", { sliceId: review.id })).toMatchObject({
+      id: review.id,
+    });
+    await client.call("slices.delete", { sliceId: second.id });
+    await client.call("slices.delete", { sliceId: first.id });
+    expect(
+      (await client.call<Slice[]>("slices.list", { missionId: mission.id })).map((s) => s.id),
+    ).toEqual([]);
+    await expect(client.call("slices.get", { sliceId: first.id })).rejects.toMatchObject({
+      code: "SLICE_NOT_FOUND",
+    });
+
+    // A mission goes with its slices, in one event; another mission's stay.
+    const doomed = await client.call<Slice>("slices.create", {
+      missionId: mission.id,
+      title: "Doomed",
+      spec: "",
+    });
+    expect(await client.call<Mission>("missions.delete", { missionId: mission.id })).toMatchObject({
+      id: mission.id,
+    });
+    await expect(client.call("missions.get", { missionId: mission.id })).rejects.toMatchObject({
+      code: "MISSION_NOT_FOUND",
+    });
+    await expect(client.call("slices.get", { sliceId: doomed.id })).rejects.toMatchObject({
+      code: "SLICE_NOT_FOUND",
+    });
+    const catalog = await client.call<{ missions: Mission[]; slices: Slice[] }>("missions.catalog");
+    expect(catalog.missions.map((item) => item.id)).toEqual([other.id]);
+    expect(catalog.slices.map((item) => item.id)).toEqual([kept.id]);
+
+    // The log is append-only, and a reader folding it gets the same state; so does a restart.
+    const events: StoredEvent[] = await storage.storage.log.read(MISSIONS_STREAM);
+    expect(events.map((event) => event.type).filter((type) => type.endsWith(".deleted"))).toEqual([
+      "missions.slice.deleted",
+      "missions.slice.deleted",
+      "missions.slice.deleted",
+      "missions.mission.deleted",
+    ]);
+    const folded = events.reduce(applyMissionEvent, EMPTY_MISSIONS);
+    expect(Object.keys(folded.missions)).toEqual([other.id]);
+    expect(Object.keys(folded.slices)).toEqual([kept.id]);
+    await stop();
+    const again = await node(storage);
+    expect(
+      (await again.client.call<{ slices: Slice[] }>("missions.catalog")).slices.map((s) => s.id),
+    ).toEqual([kept.id]);
+  });
+
+  it("asks the deleting hook first, and a refusal deletes nothing (D1295)", async () => {
+    const seen: { mission: string; sliceId?: string }[] = [];
+    let refuse = true;
+    const { client, project } = await node(memoryStoragePlugin(), [
+      {
+        manifest: testManifest("test.guard", { side: "server" }),
+        definition: definePlugin({
+          activate(context) {
+            context.hooks.before<{ mission: Mission; sliceId?: string }>(
+              MISSION_DELETE_HOOK,
+              (input) => {
+                seen.push({
+                  mission: input.mission.id,
+                  ...(input.sliceId === undefined ? {} : { sliceId: input.sliceId }),
+                });
+                if (refuse) throw new Error("A run is active");
+                return input;
+              },
+            );
+          },
+        }),
+      },
+    ]);
+    const mission = await client.call<Mission>("missions.create", {
+      projectId: project.id,
+      title: "M",
+      outcome: "O",
+    });
+    const slice = await client.call<Slice>("slices.create", {
+      missionId: mission.id,
+      title: "S",
+      spec: "",
+    });
+    await expect(client.call("slices.delete", { sliceId: slice.id })).rejects.toThrow(
+      "A run is active",
+    );
+    await expect(client.call("missions.delete", { missionId: mission.id })).rejects.toThrow(
+      "A run is active",
+    );
+    expect(await client.call<Slice>("slices.get", { sliceId: slice.id })).toMatchObject({
+      id: slice.id,
+    });
+    refuse = false;
+    await client.call("missions.delete", { missionId: mission.id });
+    expect(seen).toEqual([
+      { mission: mission.id, sliceId: slice.id },
+      { mission: mission.id },
+      { mission: mission.id },
+    ]);
   });
 
   it("appends after another writer of the same storage instead of over it", async () => {

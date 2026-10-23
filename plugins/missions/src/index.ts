@@ -6,6 +6,7 @@ import {
   EMPTY_MISSIONS,
   IntentChain,
   MISSIONS_STREAM,
+  MISSION_DELETE_HOOK,
   MISSION_EVENT_RECORD,
   MISSION_STEP_HOOK,
   Mission,
@@ -452,6 +453,24 @@ export default definePlugin({
       },
     });
 
+    context.commands.register({
+      name: "missions.delete",
+      description:
+        "Deletes a mission with its slices, as a tombstone: the records leave the state, the event log keeps what happened (D1295). Refused while an orchestrator run of the mission is active",
+      input: z.object({ missionId: z.string() }),
+      output: Mission,
+      ...write,
+      handler: async ({ missionId }, invocation) => {
+        await sync();
+        const mission = getMission(state, missionId);
+        await context.hooks.run(MISSION_DELETE_HOOK, { mission }, async (input) => input);
+        return change(invocation, (current) => {
+          const gone = getMission(current, missionId);
+          return { type: MissionEvents.missionDeleted, record: gone };
+        });
+      },
+    });
+
     // --- Reading as Markdown and the intent chain ---------------------------------
     context.commands.register({
       name: "missions.markdown",
@@ -682,6 +701,34 @@ export default definePlugin({
           assertProof(slice);
           return { type: MissionEvents.sliceUpdated, record: { ...slice, updatedAt: now() } };
         }),
+    });
+    context.commands.register({
+      name: "slices.delete",
+      description:
+        "Deletes a slice, as a tombstone: the record leaves the state, the event log keeps what happened (D1295). Refused while another slice depends on it or reviews it, or an orchestrator run of its mission is active",
+      input: z.object({ sliceId: z.string() }),
+      output: Slice,
+      ...write,
+      handler: async ({ sliceId }, invocation) => {
+        await sync();
+        const slice = getSlice(state, sliceId);
+        const mission = getMission(state, slice.missionId);
+        await context.hooks.run(MISSION_DELETE_HOOK, { mission, sliceId }, async (input) => input);
+        return change(invocation, (current) => {
+          const gone = getSlice(current, sliceId);
+          const user = slicesOf(current, gone.missionId).find(
+            (other) => other.dependsOn.includes(sliceId) || (other.reviews ?? []).includes(sliceId),
+          );
+          if (user !== undefined) {
+            throw new MissionsError(
+              "SLICE_IN_USE",
+              `Slice ${user.id} ${user.dependsOn.includes(sliceId) ? "depends on" : "reviews"} this one: delete or change it first`,
+              { sliceId, user: user.id },
+            );
+          }
+          return { type: MissionEvents.sliceDeleted, record: gone };
+        });
+      },
     });
     context.commands.register({
       name: "slices.link",

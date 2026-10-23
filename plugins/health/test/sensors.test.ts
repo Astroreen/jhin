@@ -55,6 +55,46 @@ describe("health's sensors (D722)", () => {
     expect(sensors.evaluate(config, EMPTY_HEALTH, NOW)).toEqual([]);
   });
 
+  it("takes a deleted slice or mission out of the fold and counts nothing (D1295)", () => {
+    const sensors = new Sensors();
+    const slice = {
+      id: "s1",
+      missionId: "m1",
+      projectId: "p1",
+      title: "Floor",
+      spec: "",
+      wave: 1,
+      dependsOn: [],
+      status: "done",
+      threads: [{ threadId: "t1" }],
+      createdAt: hoursAgo(1),
+      updatedAt: hoursAgo(1),
+    } satisfies Slice;
+    sensors.ingestMission(event("missions", 1, MissionEvents.sliceCreated, hoursAgo(1), { slice }));
+    expect(sensors.linkedThreads()).toEqual(new Set(["t1"]));
+    const config = HealthConfig.parse({ windowHours: 24 });
+    const counted = sensors.status(config, NOW);
+
+    expect(
+      sensors.ingestMission(
+        event("missions", 2, MissionEvents.sliceDeleted, hoursAgo(1), { slice }),
+      ),
+    ).toBe(false);
+    expect(sensors.missions.slices["s1"]).toBeUndefined();
+    expect(sensors.linkedThreads()).toEqual(new Set());
+    expect(sensors.slicesOfThread("t1")).toEqual([]);
+    // Deleting is no slice done, and the counted signals stay what they were.
+    expect(sensors.status(config, NOW)).toEqual(counted);
+
+    sensors.ingestMission(event("missions", 3, MissionEvents.sliceCreated, hoursAgo(1), { slice }));
+    const mission = { id: "m1", projectId: "p1", title: "M", outcome: "", status: "active" };
+    sensors.ingestMission(
+      event("missions", 4, MissionEvents.missionDeleted, hoursAgo(1), { mission }),
+    );
+    expect(sensors.missions.slices).toEqual({});
+    expect(sensors.evaluate(config, EMPTY_HEALTH, NOW)).toEqual([]);
+  });
+
   it("counts a thread followed after a dismissal from the dismissal's time, not from its start", () => {
     const sensors = new Sensors();
     const slice = {

@@ -23,6 +23,10 @@ export const MissionEvents = {
   sliceProved: "missions.slice.proved",
   /** `{ slice, by?, traceId? }`: a review of the slice's work was recorded (L2, D1242). */
   sliceReviewed: "missions.slice.reviewed",
+  /** `{ mission, by?, traceId? }`: the mission, as it was, is deleted with its slices (D1295). */
+  missionDeleted: "missions.mission.deleted",
+  /** `{ slice, by?, traceId? }`: the slice, as it was, is deleted (D1295). */
+  sliceDeleted: "missions.slice.deleted",
 } as const;
 export type MissionEventType = (typeof MissionEvents)[keyof typeof MissionEvents];
 
@@ -35,6 +39,8 @@ export const MISSION_EVENT_RECORD = {
   [MissionEvents.sliceUpdated]: "slice",
   [MissionEvents.sliceProved]: "slice",
   [MissionEvents.sliceReviewed]: "slice",
+  [MissionEvents.missionDeleted]: "mission",
+  [MissionEvents.sliceDeleted]: "slice",
 } as const satisfies Record<MissionEventType, "intent" | "mission" | "slice">;
 
 /** Error codes of the `missions.*` and `slices.*` commands. */
@@ -50,6 +56,8 @@ export type MissionErrorCode =
   | "MISSION_STEP_INVALID"
   /** A slice is marked done without a proof: record one with `slices.prove`. */
   | "PROOF_REQUIRED"
+  /** Another slice that is not deleted depends on the slice or reviews it (D1295). */
+  | "SLICE_IN_USE"
   /** A dropped slice stays dropped (D651): plan a new one instead. */
   | "SLICE_DROPPED"
   /** A done or dropped mission takes no new slices: reopen it or plan another. */
@@ -116,6 +124,14 @@ export const DEFAULT_MISSION_PROCESS: MissionProcess = {
  * changed after its last one (D1241).
  */
 export const MISSION_STEP_HOOK = "missions.step";
+
+/**
+ * Before a mission, or one of its slices, is deleted (`missions.delete`,
+ * `slices.delete`, D1295), this hook runs with `{ mission, sliceId? }`: a
+ * plugin refuses by throwing. The orchestrator refuses while a run of the
+ * mission is active.
+ */
+export const MISSION_DELETE_HOOK = "missions.deleting";
 
 /** A project's intent (D643): what the project is for, and its process between missions. */
 export const ProjectIntent = z.object({
@@ -272,6 +288,21 @@ export function applyMissionEvent(
     mission?: Mission;
     slice?: Slice;
   };
+  // A deletion is a tombstone (D1295): the record leaves the fold, and a mission's slices with it.
+  if (event.type === MissionEvents.missionDeleted && payload.mission !== undefined) {
+    const id = payload.mission.id;
+    const { [id]: _mission, ...missions } = state.missions;
+    const slices = Object.fromEntries(
+      Object.entries(state.slices).filter(([, slice]) => slice.missionId !== id),
+    );
+    return { ...state, missions, slices };
+  }
+  if (event.type === MissionEvents.sliceDeleted && payload.slice !== undefined) {
+    const id = payload.slice.id;
+    if (state.slices[id] === undefined) return state;
+    const { [id]: _slice, ...slices } = state.slices;
+    return { ...state, slices };
+  }
   switch (MISSION_EVENT_RECORD[event.type as MissionEventType]) {
     case "intent":
       if (payload.intent === undefined) return state;

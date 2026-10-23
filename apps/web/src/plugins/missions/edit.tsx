@@ -29,7 +29,9 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  type Dialogs,
 } from "@jhin/ui";
+import { Trash2Icon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import type { Directory } from "./directory.ts";
@@ -41,6 +43,59 @@ import { assigneeLabel, formatSteps, parseSteps, STATUS_LABELS } from "./route.t
 export type Call = <T = unknown>(method: string, input: unknown) => Promise<T>;
 
 const NONE = "none";
+
+/**
+ * Deleting a mission or a slice (D1295): asked first, through the command, and
+ * the command's refusal is shown. Without a dialog host it is not offered, since
+ * a delete is never done unconfirmed.
+ */
+export function DeleteButton(props: {
+  label: string;
+  title: string;
+  description: string;
+  dialogs: Dialogs | undefined;
+  run: () => Promise<unknown>;
+  onDone?: () => void;
+}) {
+  const { label, title, description, dialogs, run, onDone } = props;
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  if (dialogs === undefined) return null;
+  const ask = async () => {
+    const confirmed = await dialogs.confirm({
+      title,
+      description,
+      confirmLabel: label,
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    setPending(true);
+    setError(undefined);
+    run().then(
+      () => {
+        setPending(false);
+        onDone?.();
+      },
+      (failure: unknown) => {
+        setPending(false);
+        setError(failure instanceof Error ? failure.message : String(failure));
+      },
+    );
+  };
+  return (
+    <>
+      <Button disabled={pending} onClick={ask} size="compact" type="button" variant="ghost-muted">
+        <Trash2Icon aria-hidden />
+        {label}
+      </Button>
+      {error === undefined ? null : (
+        <span className="text-destructive text-xs" role="alert">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
 
 /** A form in a dialog: submits once at a time and shows the command's error (D1083). */
 function EditDialog(props: {
