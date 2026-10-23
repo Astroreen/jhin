@@ -537,9 +537,15 @@ describe("code blocks in the prompt (D841–D843)", () => {
 
   it("changes the fence's language from the header and keeps what follows it", async () => {
     const editor = mount("```ts title=x\nconst a = 1;\n```");
-    await userEvent.click(page.getByRole("combobox", { name: "Code language: TypeScript" }));
+    // T3's language icons: the header and each option show their language's file icon (D1346).
+    const trigger = page.getByRole("combobox", { name: "Code language: TypeScript" });
+    await expect.element(trigger).toBeVisible();
+    expect(trigger.element().querySelector("svg[data-pierre-icon]")).not.toBeNull();
+    await userEvent.click(trigger);
     await userEvent.fill(page.getByRole("combobox", { name: "Search languages" }), "pyth");
-    await userEvent.click(page.getByRole("option", { name: "Python" }));
+    const python = page.getByRole("option", { name: "Python" });
+    expect(python.element().querySelector("svg[data-pierre-icon]")).not.toBeNull();
+    await userEvent.click(python);
     await editor.reported("```python title=x\nconst a = 1;\n```");
     // The caret is back at the block's end.
     await userEvent.keyboard("2");

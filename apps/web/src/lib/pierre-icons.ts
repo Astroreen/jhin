@@ -125,6 +125,41 @@ export const T3_PIERRE_ICONS = {
 
 const completeIconResolver = createFileTreeIconResolver(T3_PIERRE_ICONS);
 
+/** File extensions of languages whose id is not one (T3's `LANGUAGE_EXTENSION_ALIASES`). */
+const LANGUAGE_EXTENSION_ALIASES: Record<string, string> = {
+  bash: "sh",
+  csharp: "cs",
+  elixir: "ex",
+  haskell: "hs",
+  javascript: "js",
+  jsx: "jsx",
+  kotlin: "kt",
+  markdown: "md",
+  mdx: "mdx",
+  plaintext: "txt",
+  powershell: "ps1",
+  python: "py",
+  ruby: "rb",
+  rust: "rs",
+  shell: "sh",
+  shellscript: "sh",
+  swift: "swift",
+  typescript: "ts",
+  tsx: "tsx",
+  yaml: "yml",
+};
+
+const LANGUAGE_FILE_NAMES: Record<string, string> = { dockerfile: "Dockerfile" };
+
+/** A file name whose icon is a code language's (t3-parity.md D1346, the language picker). */
+export function syntheticFileNameForLanguageId(languageId: string): string {
+  const normalized = languageId.toLowerCase();
+  return (
+    LANGUAGE_FILE_NAMES[normalized] ??
+    `file.${LANGUAGE_EXTENSION_ALIASES[normalized] ?? normalized}`
+  );
+}
+
 /** The icon of a file, none for a folder (T3 draws folders with Lucide's). */
 export function resolvePierreIconForEntry(
   pathValue: string,

@@ -91,6 +91,10 @@ export interface PromptEditorProps {
   readonly onFocus?: (() => void) | undefined;
   readonly onBlur?: (() => void) | undefined;
   readonly placeholder: string;
+  /** The `/`, `@`, `$` or `#` menu's listbox, while it shows (D1348, T3's `suggestionListId`). */
+  readonly suggestionListId?: string | undefined;
+  /** Its highlighted option's element id, read by assistive tools as the editor's active one. */
+  readonly activeSuggestionId?: string | undefined;
   readonly disabled?: boolean | undefined;
   readonly readOnly?: boolean | undefined;
   readonly sendShortcut: ComposerSendShortcut;
@@ -2034,11 +2038,11 @@ function caretOnVisualEdge(editor: Editor | null, edge: "start" | "end"): boolea
 // ---------------------------------------------------------------------------------------------
 // The component
 
-// Headings, rules and task lists follow T3's index.css (`.composer-tiptap`), without the block
-// margins the composer's other blocks do not have either.
+// Headings, rules and task lists follow T3's index.css (`.composer-tiptap`), headings with T3's
+// margins (1.25rem above, 0.5rem below, D1347).
 const EDITOR_CLASS_NAME = [
   "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed whitespace-pre-wrap wrap-break-word text-foreground outline-none [&_blockquote]:border-s-2 [&_blockquote]:ps-3 [&_blockquote]:text-muted-foreground [&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_ol]:list-decimal [&_ol]:ps-5 [&_pre]:font-mono [&_pre]:text-[0.9em] [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:list-disc [&_ul]:ps-5",
-  "[&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&_:is(h1,h2,h3,h4,h5,h6)]:leading-[1.3] [&_:is(h1,h2,h3,h4,h5,h6)]:text-foreground [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_:is(h4,h5,h6)]:text-sm [&_h6]:text-muted-foreground",
+  "[&_:is(h1,h2,h3,h4,h5,h6)]:mt-5 [&_:is(h1,h2,h3,h4,h5,h6)]:mb-2 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&_:is(h1,h2,h3,h4,h5,h6)]:leading-[1.3] [&_:is(h1,h2,h3,h4,h5,h6)]:text-foreground [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_:is(h4,h5,h6)]:text-sm [&_h6]:text-muted-foreground",
   "[&_hr]:my-2.5",
   // Tiptap's task item view builds its <li> with only a data-checked attribute.
   "[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:ps-0 [&_ul[data-type=taskList]_ul[data-type=taskList]]:ps-[1.375rem] [&_li[data-checked]]:flex [&_li[data-checked]]:items-start [&_li[data-checked]]:gap-2 [&_li[data-checked]>label]:flex [&_li[data-checked]>label]:h-[1lh] [&_li[data-checked]>label]:flex-none [&_li[data-checked]>label]:cursor-pointer [&_li[data-checked]>label]:items-center [&_li[data-checked]>label>input]:m-0 [&_li[data-checked]>label>input]:block [&_li[data-checked]>label>input]:size-[0.95rem] [&_li[data-checked]>label>input]:cursor-pointer [&_li[data-checked]>div]:min-w-0 [&_li[data-checked]>div]:flex-auto",
@@ -2223,6 +2227,19 @@ export function PromptEditor(props: PromptEditorProps) {
     "data-composer-rich-text": richText ? "true" : "false",
     ...(disabled ? { "aria-disabled": "true" } : {}),
     ...(readOnly ? { "aria-readonly": "true" } : {}),
+    // T3's: the menu is the editor's list, its highlighted option the active one (D1348).
+    ...(editable && props.suggestionListId !== undefined
+      ? {
+          "aria-autocomplete": "list",
+          "aria-haspopup": "listbox",
+          ...(props.activeSuggestionId === undefined
+            ? {}
+            : {
+                "aria-controls": props.suggestionListId,
+                "aria-activedescendant": props.activeSuggestionId,
+              }),
+        }
+      : {}),
   };
 
   const editor = useEditor(

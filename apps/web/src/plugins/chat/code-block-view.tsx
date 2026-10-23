@@ -1,5 +1,6 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/chat/ComposerCodeBlockNodeView.tsx
-// and ComposerCodeBlockLanguagePicker.tsx (the language picker of a code block in the prompt).
+// and ComposerCodeBlockLanguagePicker.tsx (the language picker of a code block in the prompt, with
+// its languages' file icons).
 import {
   Button,
   Combobox,
@@ -27,6 +28,16 @@ import {
   languageOfInfoString,
   withInfoStringLanguage,
 } from "../../lib/code-languages.ts";
+import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
+import { syntheticFileNameForLanguageId } from "../../lib/pierre-icons.ts";
+import { useResolvedTheme } from "../../lib/resolved-theme.ts";
+
+/** T3's LanguageIcon: the icon of a file in that language (D1346). */
+function LanguageIcon(props: { language: string }) {
+  const theme = useResolvedTheme();
+  const fileName = props.language ? syntheticFileNameForLanguageId(props.language) : "file.txt";
+  return <PierreEntryIcon className="size-3.5" kind="file" pathValue={fileName} theme={theme} />;
+}
 
 /** The header's class, whose events the editor leaves alone (`stopEvent`). */
 export const CODE_BLOCK_HEADER_CLASS_NAME = "composer-codeblock-header";
@@ -76,6 +87,7 @@ function LanguagePicker(props: {
             />
           }
         >
+          <LanguageIcon language={current} />
           <span className="max-w-40 truncate font-mono text-2xs">
             {codeLanguageLabel(props.language)}
           </span>
@@ -92,6 +104,7 @@ function LanguagePicker(props: {
           <ComboboxList className="max-h-64">
             {(entry: CodeBlockLanguage) => (
               <ComboboxItem key={entry.id || "plain"} value={entry}>
+                <LanguageIcon language={entry.id} />
                 <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                 {entry.id === current ? <CheckIcon className="ml-auto size-3.5" /> : null}
               </ComboboxItem>

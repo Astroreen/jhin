@@ -90,6 +90,7 @@ import {
   shouldHandleAttachmentPaste,
 } from "../../lib/attachment-files.ts";
 import {
+  composerSuggestionOptionId,
   menuContextRecord,
   menuInsertion,
   type ComposerMenuItem,
@@ -1538,6 +1539,12 @@ export function Composer(props: ComposerProps) {
           : "Ask anything, @tag files/folders, $use skills, or / for commands";
   const disabled = approval !== undefined;
   const mode = RUNTIME_MODES[runtimeMode] ?? RUNTIME_MODES["full-access"]!;
+  // The menu is the editor's list while it shows; its highlighted item the active option (D1348).
+  const menuShown = menu.trigger !== null && approval === undefined && question === undefined;
+  const menuActive =
+    menuShown && menu.activeId !== null && menu.items.some((item) => item.id === menu.activeId)
+      ? composerSuggestionOptionId(menuListId, menu.activeId)
+      : undefined;
 
   return (
     <div
@@ -1684,6 +1691,12 @@ export function Composer(props: ComposerProps) {
                             onPaste={onPaste}
                             onSubmit={() => void send()}
                             placeholder={placeholder}
+                            {...(menuShown
+                              ? {
+                                  suggestionListId: menuListId,
+                                  activeSuggestionId: menuActive,
+                                }
+                              : {})}
                             readOnly={busy && question === undefined}
                             literalText={literalAnswer}
                             richText={settings.composerRichTextEnabled}

@@ -12,7 +12,11 @@ import {
 } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 
-import { skillDisplayName, type ComposerMenuItem } from "../../lib/composer-menu.ts";
+import {
+  composerSuggestionOptionId,
+  skillDisplayName,
+  type ComposerMenuItem,
+} from "../../lib/composer-menu.ts";
 import { resolvePullRequestState } from "../../lib/pull-request.ts";
 import { ComposerBanner } from "./banner.tsx";
 
@@ -24,10 +28,6 @@ const LISTBOX_LABEL_BY_TRIGGER: Record<MenuTrigger, string> = {
   "slash-command": "Commands",
   skill: "Skills",
 };
-
-function composerSuggestionOptionId(listId: string, itemId: string): string {
-  return `${listId}-${encodeURIComponent(JSON.stringify(itemId))}`;
-}
 
 const SCOPE_LABEL: Record<string, string> = { user: "Personal", project: "Project" };
 
