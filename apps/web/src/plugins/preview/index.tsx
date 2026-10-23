@@ -490,8 +490,8 @@ export const previewPanelPlugin = builtin(
           /**
            * Why nothing popped out: no user's gesture to open a window with (RPC, the CLI,
            * MCP), no player floats on screen, the right panel shows its tab, the app hosts the
-           * tab in a webview, the browser has no picture-in-picture, or it was closed or
-           * replaced while it opened.
+           * tab in a webview, the browser has no picture-in-picture, or it closed while it
+           * opened (`superseded`: the user closed it, another open replaced it, or its tab went).
            */
           reason: z
             .enum([

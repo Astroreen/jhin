@@ -499,7 +499,8 @@ the `.chat-composer-lane` and `.messages-timeline-scroll` rules of
   `poppedOut: false` means there was nothing to pop out, and `reason` says
   which: `needs-gesture`, `nothing-floats`, `in-panel` (the right panel
   shows the tab), `app-tab` (the app's webview), `unsupported`, or
-  `superseded` (closed or replaced while it opened). A tab the desktop app
+  `superseded` (closed while it opened: by the user, by another open, or
+  as its tab went). A tab the desktop app
   hosts (D1321) has no node frames: it gets no toggle (Deferred). The
   canvas lays out one player at a time, as T3's: a second overlay that
   reports displaces the first (Deferred).
