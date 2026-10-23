@@ -375,7 +375,7 @@ export const chatPlugin = builtin(
             : { node: node.id, ...(route.remote === undefined ? {} : { remote: route.remote }) };
         const catalog = useCatalog(threads, target);
 
-        if (route.panel === "settings") return null;
+        if (route.panel === "settings" || route.panel === "usage") return null;
         if (nodes.length === 0 || route.panel === "connect")
           return <Connect cancellable={nodes.length > 0} />;
         if (node?.state === "open" && route.remote !== undefined && members === undefined) {

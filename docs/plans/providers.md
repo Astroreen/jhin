@@ -901,8 +901,6 @@ gone. The reference is T3 Code `eb7b35ac` (D53).
 
 - Reset credits: carried in `AgentUsageLimits`, neither shown nor redeemable
   (T3's `ResetCredits` and `consumeResetCredit`).
-- T3's Usage page (every account's limits, pooled accounts, usage-limit
-  sources such as CLIProxy). The sidebar's "Limited" is `t3-parity.md` D1307.
 - A reset time Codex sends after the turn already failed (T3 updates the
   failure item); Codex sends its rate-limit update before the error in
   practice.
