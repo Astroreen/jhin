@@ -89,7 +89,7 @@ export interface SessionRecord {
 }
 
 /** A turn of a Claude session and the uuid of its last top-level entry. */
-export interface SessionTurn {
+interface SessionTurn {
   readonly turnId: string;
   readonly head: string;
 }
