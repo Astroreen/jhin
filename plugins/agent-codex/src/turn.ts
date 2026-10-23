@@ -105,7 +105,10 @@ export interface CodexTurnDependencies {
    */
   readonly mcp?: (threadId: string, writes: boolean) => McpAttachment;
   /** Keeps an MCP app's document for the thread, answering its id (D1401). */
-  readonly keepMcpApp?: (threadId: string, html: string) => Promise<string>;
+  readonly keepMcpApp?: (
+    threadId: string,
+    document: { readonly html: string; readonly server: string; readonly tool: string },
+  ) => Promise<string>;
   /** What a turn can choose for `model`, as `model/list` described it (D881). */
   readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** Sent in `initialize`. */
@@ -563,6 +566,14 @@ export function codexTurn(
   // --- MCP apps (D1401) ----------------------------------------------------------------
   /** Reads of apps' documents still running: the turn ends after them. */
   const captures: Promise<void>[] = [];
+  /** Given up once the turn is interrupted or failed: its calls complete without their apps. */
+  let abandonCaptures!: () => void;
+  const capturesAbandoned = new Promise<never>((_, reject) => {
+    abandonCaptures = () => reject(new Error("the turn ended"));
+  });
+  capturesAbandoned.catch(() => undefined);
+  /** Whether the turn ended as Codex ended it, its apps' reads still awaited. */
+  let appsRead = false;
   /** T3's snapshot of an app: its resource read from the server, within 20 s. */
   const captureApp = async (
     current: Lease,
@@ -587,13 +598,14 @@ export function codexTurn(
             MCP_APP_READ_TIMEOUT_MS,
           );
         }),
+        capturesAbandoned,
       ])) as { contents?: unknown } | null;
       app = await snapshotMcpApp({
         server,
         tool,
         resourceUri,
         contents: Array.isArray(read?.contents) ? read.contents : [],
-        keep: (html) => deps.keepMcpApp!(request.threadId, html),
+        keep: (html) => deps.keepMcpApp!(request.threadId, { html, server, tool }),
       });
     } catch (error) {
       deps.log?.("codex could not read an MCP app", { server, resourceUri, error: String(error) });
@@ -1428,11 +1440,14 @@ export function codexTurn(
       for (const input of steers.splice(0)) sendSteer(current, input);
       if (stopRequested) sendInterrupt(current);
       const outcome = await finished;
-      // The apps its tool calls returned are read before the turn ends (D1401).
-      await Promise.allSettled(captures);
+      appsRead = outcome.error === undefined;
       keep = outcome.ended === true;
       if (outcome.error !== undefined) throw outcome.error;
     } finally {
+      // The apps its tool calls returned are read before the turn ends (D1401), so no call
+      // completes after it; a turn that failed gives up the reads still running.
+      if (!appsRead) abandonCaptures();
+      await Promise.allSettled(captures);
       // Subagents still working when Codex ended the turn go on in the background (T3 follows
       // a child past its parent's turn, D1318): their app-server's later frames are read.
       const open = [...subagents.entries()].filter(([, subagent]) => subagent.open);
@@ -1492,6 +1507,8 @@ export function codexTurn(
       if (interrupted) return;
       interrupted = true;
       stopRequested = true;
+      // An app's document still being read is not waited for (D1401).
+      abandonCaptures();
       // A Codex that takes the interrupt but never ends the turn: the turn ends anyway, and
       // its app-server with it, so the thread is free for its next turn.
       const grace = setTimeout(() => finish({}), INTERRUPT_GRACE_MS);

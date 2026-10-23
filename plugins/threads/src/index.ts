@@ -34,6 +34,7 @@ import {
   ThreadEvents,
   ThreadHooks,
   threadStream,
+  mcpAppRequestReasonOf,
   turnFailureOf,
   USAGE_LIMITS_COMMAND,
   type AgentItem,
@@ -2751,8 +2752,9 @@ export default definePlugin({
       },
     });
 
-    // MCP apps (providers.md D1401–D1403): an app's document and its calls go to the agent
-    // that ran the thread's latest turn, which keeps the documents its calls returned.
+    // MCP apps (providers.md D1401, D1402): an app's document and its calls go to the agent
+    // that ran the thread's latest turn, which keeps the documents its calls returned. A call
+    // names the app by its document: the agent sends it to that app's server only.
     const appRuntime = async (threadId: string) => {
       const thread = await getThread(threadId);
       const agentId = thread.lastTurn?.agentId ?? thread.agentId;
@@ -2784,36 +2786,61 @@ export default definePlugin({
         return { html };
       },
     });
+    /** An app's call the agent refused, as T3's McpAppRequestError reasons say. */
+    const appRequest = async <T>(threadId: string, documentId: string, call: () => Promise<T>) => {
+      try {
+        return await call();
+      } catch (error) {
+        const reason = mcpAppRequestReasonOf(error);
+        if (reason === undefined) throw error;
+        const code = {
+          "not-an-app": "MCP_APP_NOT_FOUND",
+          "tool-not-callable": "MCP_APP_TOOL_NOT_CALLABLE",
+          "session-stopped": "MCP_APP_SESSION_STOPPED",
+        }[reason];
+        throw new ThreadsError(code, (error as Error).message, { threadId, documentId });
+      }
+    };
     context.commands.register({
       name: "agents.mcp-app.call-tool",
       description:
-        "Calls a tool of an MCP server for an app the thread shows (the MCP Apps extension's tools/call), on the thread's running agent",
+        "Calls a tool for an MCP app the thread showed (the MCP Apps extension's tools/call), on its own server through the thread's running agent; only a tool the server lets apps call",
       input: z.object({
         threadId: z.string(),
-        server: z.string().max(256),
+        documentId: z.string().max(256),
         tool: z.string().max(256),
         arguments: z.record(z.string(), z.unknown()).default({}),
       }),
       output: z.object({ result: z.unknown() }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, ...call }) => ({
-        result: await (await appRuntime(threadId)).callTool({ threadId, ...call }),
-      }),
+      handler: async ({ threadId, documentId, tool, arguments: args }) => {
+        const apps = await appRuntime(threadId);
+        return {
+          result: await appRequest(threadId, documentId, () =>
+            apps.callTool({ threadId, documentId, tool, arguments: args }),
+          ),
+        };
+      },
     });
     context.commands.register({
       name: "agents.mcp-app.read-resource",
       description:
-        "Reads a resource of an MCP server for an app the thread shows (resources/read), on the thread's running agent",
+        "Reads a resource for an MCP app the thread showed (resources/read), from its own server through the thread's running agent",
       input: z.object({
         threadId: z.string(),
-        server: z.string().max(256),
+        documentId: z.string().max(256),
         uri: z.string().max(4096),
       }),
       output: z.object({ result: z.unknown() }),
       permissions: ["threads.read"],
-      handler: async ({ threadId, ...read }) => ({
-        result: await (await appRuntime(threadId)).readResource({ threadId, ...read }),
-      }),
+      handler: async ({ threadId, documentId, uri }) => {
+        const apps = await appRuntime(threadId);
+        return {
+          result: await appRequest(threadId, documentId, () =>
+            apps.readResource({ threadId, documentId, uri }),
+          ),
+        };
+      },
     });
 
     // T3's "View instructions" of a skill chip (t3-parity.md D1004): only a file the agent

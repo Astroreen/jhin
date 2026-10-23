@@ -124,7 +124,7 @@ export interface ToolCall {
 /**
  * An MCP app a tool call returned (T3's `McpAppReference`, the MCP Apps extension's `ui://`
  * resource): its document, kept by the agent's runtime under `documentId`, is shown in a
- * sandboxed frame that may call the server's tools through the runtime (D1401–D1403).
+ * sandboxed frame that may call the server's tools through the runtime (D1401, D1402).
  */
 export interface AgentMcpApp {
   readonly server: string;
@@ -567,8 +567,10 @@ export interface AgentRuntime {
     readonly reason?: string;
   }): Promise<{ readonly feedbackId: string }>;
   /**
-   * Since 1.15: the MCP apps its tool calls returned (D1401–D1403): an app's document, and
-   * the server's tools and resources the app calls, on the thread's running agent.
+   * Since 1.15: the MCP apps its tool calls returned (D1401, D1402): an app's document, and
+   * its calls on the thread's running agent, each named by the app's `documentId`: it goes to
+   * the app's own server, and only to a tool the server lets apps call. One that cannot
+   * throws an `McpAppRequestError`.
    */
   readonly mcpApps?: {
     document(request: {
@@ -577,17 +579,39 @@ export interface AgentRuntime {
     }): Promise<string | undefined>;
     callTool(request: {
       readonly threadId: string;
-      readonly server: string;
+      readonly documentId: string;
       readonly tool: string;
       readonly arguments: Readonly<Record<string, unknown>>;
     }): Promise<unknown>;
     readResource(request: {
       readonly threadId: string;
-      readonly server: string;
+      readonly documentId: string;
       readonly uri: string;
     }): Promise<unknown>;
   };
   startTurn(request: TurnRequest): AgentTurn;
+}
+
+/** Why an MCP app's call was refused (T3's `McpAppRequestError` reasons, D1402). */
+export type McpAppRequestReason = "not-an-app" | "tool-not-callable" | "session-stopped";
+
+/** An MCP app's call the runtime refused: not an app of the thread, a tool apps may not call, or no running agent. */
+export class McpAppRequestError extends Error {
+  readonly reason: McpAppRequestReason;
+  constructor(reason: McpAppRequestReason, message: string) {
+    super(message);
+    this.name = "McpAppRequestError";
+    this.reason = reason;
+  }
+}
+
+/** The reason an error an app's call threw carries, if any (also across copies of this package). */
+export function mcpAppRequestReasonOf(error: unknown): McpAppRequestReason | undefined {
+  if ((error as { name?: unknown } | null)?.name !== "McpAppRequestError") return undefined;
+  const reason = (error as { reason?: unknown }).reason;
+  return reason === "not-an-app" || reason === "tool-not-callable" || reason === "session-stopped"
+    ? reason
+    : undefined;
 }
 
 /** `agent.registry@1`: the agent runtimes of a node. */

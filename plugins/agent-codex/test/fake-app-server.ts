@@ -36,6 +36,8 @@ export interface Scenario {
   readonly rateLimits?: unknown;
   /** `mcpServer/resource/read`'s contents, by URI (D1401). */
   readonly resources?: Readonly<Record<string, readonly unknown[]>>;
+  /** `mcpServerStatus/list`'s tools, by server (D1402). */
+  readonly mcpTools?: Readonly<Record<string, readonly unknown[]>>;
   /** `skills/list`'s entries, one per folder. */
   readonly skills?: readonly unknown[];
   /** Pages of `model/list`. */
@@ -236,6 +238,27 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
     case "mcpServer/resource/read": {
       const uri = (params as { uri?: string }).uri ?? "";
       send({ id, result: { contents: scenario.resources?.[uri] ?? [] } });
+      return;
+    }
+    case "mcpServerStatus/list": {
+      const name = (params as { serverName?: string }).serverName ?? "";
+      const tools = scenario.mcpTools?.[name];
+      send({
+        id,
+        result: {
+          data:
+            tools === undefined
+              ? []
+              : [
+                  {
+                    name,
+                    tools: Object.fromEntries(
+                      tools.map((tool) => [(tool as { name: string }).name, tool]),
+                    ),
+                  },
+                ],
+        },
+      });
       return;
     }
     case "mcpServer/tool/call":

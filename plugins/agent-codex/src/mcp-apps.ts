@@ -1,6 +1,8 @@
-// MCP apps of Codex's tool calls (providers.md D1401–D1403). Derived from T3 Code (MIT, see
+// MCP apps of Codex's tool calls (providers.md D1401, D1402). Derived from T3 Code (MIT, see
 // THIRD_PARTY_NOTICES.md) at eb7b35ac: packages/shared/src/mcpApp.ts (the MIME type, size
-// limit, CSP and permission readers, mcpAppContentSecurityPolicy, injectMcpAppCsp),
+// limit, CSP and permission readers, mcpAppContentSecurityPolicy, injectMcpAppCsp,
+// mcpAppToolCallableByApp), apps/server/src/mcpApps/McpAppRequests.ts (an app's calls go to
+// its own server, and only to tools it may call),
 // apps/server/src/mcpApps/McpAppSnapshot.ts (readMcpAppDocument) and the resource URI of
 // an `mcpToolCall` in apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts.
 import type { AgentMcpApp } from "@jhin/agent-api";
@@ -16,6 +18,15 @@ type Permission = NonNullable<AgentMcpApp["permissions"]>[number];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Whether an app may call a tool (T3's mcpAppToolCallableByApp): unless the tool's
+ * `_meta.ui.visibility` lists who sees it, it is visible to apps too.
+ */
+export function mcpAppToolCallableByApp(meta: unknown): boolean {
+  const visibility = isRecord(meta) && isRecord(meta["ui"]) ? meta["ui"]["visibility"] : undefined;
+  return !Array.isArray(visibility) || visibility.includes("app");
+}
 
 /** The `ui://` resource an `mcpToolCall` names (T3's codexMcpAppResourceUri). */
 export function mcpAppResourceUri(item: Record<string, unknown>): string | undefined {

@@ -1162,3 +1162,20 @@ describe("jhin.threads: usage limits (providers.md D1141)", () => {
     ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
   });
 });
+
+describe("jhin.threads: MCP apps (providers.md D1401, D1402)", () => {
+  it("says a thread whose agent shows no MCP apps has none", async () => {
+    const { client } = await node();
+    const thread = await client.call<{ id: string }>("threads.create", {});
+    const documentId = "f".repeat(64);
+    for (const [name, input] of [
+      ["agents.mcp-app.document", { documentId }],
+      ["agents.mcp-app.call-tool", { documentId, tool: "move_card" }],
+      ["agents.mcp-app.read-resource", { documentId, uri: "ui://board/view" }],
+    ] as const) {
+      await expect(client.call(name, { threadId: thread.id, ...input })).rejects.toMatchObject({
+        code: "MCP_APPS_UNSUPPORTED",
+      });
+    }
+  });
+});

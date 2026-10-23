@@ -1407,26 +1407,50 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   only scheme-qualified ones, at most 32 each), browser features (camera,
   microphone, geolocation, clipboard write) and a border. The document is
   kept with T3's Content-Security-Policy as its first element (nothing from
-  the host's own origin, undeclared origins blocked), in the Codex plugin's
-  storage under the thread (`documentId`), and removed with the thread. The
+  the host's own origin, undeclared origins blocked), with the server and
+  tool whose call returned it, in the Codex plugin's storage under the
+  thread; its `documentId` is the hash of the three, so an app the thread's
+  calls return again is kept once. Its documents are removed with the thread,
+  once the thread's turns have ended. The
   call's item carries `app` (`{ server, tool, resourceUri, documentId,
   csp?, permissions?, prefersBorder? }`), recorded with its completion
   (`agent.item.completed`). A read that fails or a document past the limit
-  completes the call without one; a subagent's calls keep none.
+  completes the call without one; a subagent's calls keep none. The turn
+  ends after its apps' reads, so no call completes after it; an interrupted
+  or failed turn gives up the reads still running (the calls complete
+  without their apps). A call with an app completes once its document is
+  read: after later items of the turn, as items pair by `itemId`.
 - **D1402. An app's document and its calls**: the node commands
   `agents.mcp-app.document` (`{ threadId, documentId }` → `{ html }`,
   `threads.read`; `MCP_APP_NOT_FOUND` for an unknown id),
-  `agents.mcp-app.call-tool` (`{ threadId, server, tool, arguments }`,
-  `threads.write`) and `agents.mcp-app.read-resource` (`{ threadId, server,
-  uri }`, `threads.read`) go to the agent that ran the thread's latest turn
-  (`AgentRuntime.mcpApps`, `MCP_APPS_UNSUPPORTED` without). Codex sends
-  `mcpServer/tool/call` and `mcpServer/resource/read` on the thread's running
-  app-server, as T3 asks its provider session, and answers T3's result
-  shape (`content`, `structuredContent`, `isError`, `_meta`); without one
-  running it says "The thread's Codex is not running. Send a message first.".
+  `agents.mcp-app.call-tool` (`{ threadId, documentId, tool, arguments }`,
+  `threads.write`) and `agents.mcp-app.read-resource` (`{ threadId,
+  documentId, uri }`, `threads.read`) go to the agent that ran the thread's
+  latest turn (`AgentRuntime.mcpApps`, `MCP_APPS_UNSUPPORTED` without). As
+  T3's `McpAppRequests` resolves an app by its item, a call names the app by
+  its document, and goes to that app's server only, never to one the caller
+  names: an id the thread's calls did not return is `MCP_APP_NOT_FOUND`. A
+  tool call is sent only for a tool that server lists (`mcpServerStatus/list`)
+  and lets apps call (T3's `mcpAppToolCallableByApp`: no `_meta.ui.visibility`,
+  or one with `app`), else `MCP_APP_TOOL_NOT_CALLABLE`, checked on the node as
+  T3 checks it on its server. Codex sends `mcpServer/tool/call` and
+  `mcpServer/resource/read` on the thread's running app-server, as T3 asks
+  its provider session, and answers T3's result shape (`content`,
+  `structuredContent`, `isError`, `_meta`); without one running it is
+  `MCP_APP_SESSION_STOPPED`, "The thread's Codex is not running. Send a
+  message first." (the runtime throws `agent-api`'s `McpAppRequestError`
+  with T3's reasons). The trust is T3's: an app's call is the owner's own
+  (a client holding `threads.write`), confirmed in the client before it
+  goes, and not the agent's, so it asks no approval of the thread's
+  approval policy (T3 asks none either).
 
 ### Deferred
 
+- MCP apps (D1401): the 20 s limit of an app's read has no test of its own
+  (it would need a timeout to wait for; the abandoned read of an interrupted
+  turn is tested), and a read given up is not cancelled in Codex
+  (`mcpServer/resource/read` has no cancel): the app-server answers it later,
+  to nobody.
 - T3's mid-turn notice of a Claude usage limit ("Claude usage limit reached.
   This turn is paused until the Session limit resets in 2h.") while Claude
   Code waits on it: the turn shows nothing until it fails.
