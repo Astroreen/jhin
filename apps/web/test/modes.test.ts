@@ -2,7 +2,7 @@ import type { Mode, Navigation, Route } from "@jhin/client-api";
 import { toDisposable } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createModes } from "../src/lib/modes.ts";
+import { createModes, persistedPlaces } from "../src/lib/modes.ts";
 
 /** Navigation over a variable, as the fragment would be. */
 function fakeNavigation(start: Route = {}): Navigation {
@@ -187,5 +187,80 @@ describe("client.modes@1 (D742, D744)", () => {
     expect(modes.badges().get("a")).toBe(3);
     second.set(0);
     expect(modes.badges().has("a")).toBe(false);
+  });
+});
+
+describe("mode places survive a reload (D1389)", () => {
+  /** A storage over a map; `fail` makes every call throw, as a blocked one does. */
+  function memoryStorage(initial: Record<string, string> = {}, fail = false) {
+    const items = new Map(Object.entries(initial));
+    const check = () => {
+      if (fail) throw new Error("blocked");
+    };
+    return {
+      items,
+      getItem: (key: string) => (check(), items.get(key) ?? null),
+      setItem: (key: string, value: string) => (check(), void items.set(key, value)),
+    };
+  }
+
+  it("keeps a place for the next page load", () => {
+    const storage = memoryStorage();
+    const navigation = fakeNavigation({ node: "a" });
+    const modes = createModes(navigation, persistedPlaces({}, storage, "k"));
+    modes.register(mode("threads", 0));
+    modes.register(mode("civilization", 100));
+    modes.open("civilization");
+    navigation.navigate({ node: "a", mode: "civilization", panel: "missions" });
+
+    // A fresh page: new places over the same storage, a new navigation.
+    const reloaded = fakeNavigation({ node: "a" });
+    const again = createModes(reloaded, persistedPlaces({}, storage, "k"));
+    again.register(mode("threads", 0));
+    again.register(mode("civilization", 100));
+    again.open("civilization");
+    expect(reloaded.current()).toEqual({ node: "a", mode: "civilization", panel: "missions" });
+  });
+
+  it("drops what is stored but not a route, and what is not JSON", () => {
+    const stored = JSON.stringify({
+      ok: { node: "a", panel: "missions" },
+      extra: { node: "a", surprise: "x" },
+      number: { node: 1 },
+      list: ["a"],
+      text: "a",
+      nothing: null,
+    });
+    const places = persistedPlaces({}, memoryStorage({ k: stored }), "k");
+    expect(places.get("ok")).toEqual({ node: "a", panel: "missions" });
+    for (const id of ["extra", "number", "list", "text", "nothing"]) {
+      expect(places.get(id)).toBeUndefined();
+    }
+    for (const bad of ["{not json", "[]", "7", "null"]) {
+      expect(persistedPlaces({}, memoryStorage({ k: bad }), "k").get("ok")).toBeUndefined();
+    }
+  });
+
+  it("never stores an app page, even if one was stored", () => {
+    const storage = memoryStorage({ k: JSON.stringify({ threads: { panel: "settings" } }) });
+    const places = persistedPlaces({}, storage, "k");
+    expect(places.get("threads")).toBeUndefined();
+
+    const navigation = fakeNavigation({ node: "a", thread: "t1" });
+    const modes = createModes(navigation, places);
+    modes.register(mode("threads", 0));
+    navigation.navigate({ node: "a", panel: "settings" });
+    expect(JSON.parse(storage.items.get("k") ?? "{}")).toEqual({
+      threads: { node: "a", thread: "t1" },
+    });
+  });
+
+  it("falls back to the page's places when there is no storage or it throws", () => {
+    for (const storage of [undefined, memoryStorage({}, true)]) {
+      const places = persistedPlaces({ threads: { node: "a" } }, storage, "k");
+      expect(places.get("threads")).toEqual({ node: "a" });
+      places.set("civilization", { mode: "civilization" });
+      expect(places.get("civilization")).toEqual({ mode: "civilization" });
+    }
   });
 });

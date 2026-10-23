@@ -12,7 +12,7 @@ import {
 import { definePlugin, toDisposable } from "@jhin/sdk";
 import { createTestKernel, mockCapability, testManifest } from "@jhin/testing";
 import { UI_SLOTS_CAPABILITY, createSlotRegistry } from "@jhin/ui";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { civilizationPlugin } from "../src/plugins/civilization.tsx";
 import { modesPlugin } from "../src/plugins/modes.ts";
@@ -75,13 +75,14 @@ const drain = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 async function start(options: { connections?: Connections; enabled?: string } = {}) {
   let modes: Modes | undefined;
+  const navigation = fakeNavigation({ node: "a" });
   const kernel = await createTestKernel({
     side: "client",
     ...(options.enabled === undefined
       ? {}
       : { config: { node: { "jhin.civilization": { enabled: options.enabled } } } }),
     plugins: [
-      mockCapability(NAVIGATION_CAPABILITY, fakeNavigation({ node: "a" })),
+      mockCapability(NAVIGATION_CAPABILITY, navigation),
       mockCapability(UI_SLOTS_CAPABILITY, createSlotRegistry()),
       mockCapability(CONNECTIONS_CAPABILITY, options.connections ?? fakeConnections().connections),
       modesPlugin,
@@ -100,7 +101,7 @@ async function start(options: { connections?: Connections; enabled?: string } = 
     ],
   });
   const ids = () => modes!.list().map((mode) => mode.id);
-  return { kernel, modes: modes!, ids };
+  return { kernel, modes: modes!, ids, navigation };
 }
 
 describe("jhin.modes", () => {
@@ -125,6 +126,49 @@ describe("jhin.modes", () => {
     registration.dispose();
     expect(names()).not.toContain("ui.mode.next");
     expect(modes.current()?.id).toBe("threads");
+    await kernel.stop();
+  });
+});
+
+describe("jhin.modes places (D1389)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads the places the browser kept, and writes a change back", async () => {
+    const items = new Map([
+      ["jhin.modes.places", JSON.stringify({ other: { node: "a", panel: "x" } })],
+    ]);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+    });
+    const { kernel, modes, navigation } = await start({ enabled: "off" });
+    modes.register({ id: "other", title: "Other", order: 50, sidebarSlot: "o.s", mainSlot: "o.m" });
+    modes.open("other");
+    expect(navigation.current()).toEqual({ node: "a", panel: "x", mode: "other" });
+    navigation.navigate({ node: "a", mode: "other", panel: "y" });
+    expect(JSON.parse(items.get("jhin.modes.places")!).other).toEqual({
+      node: "a",
+      mode: "other",
+      panel: "y",
+    });
+    await kernel.stop();
+  });
+
+  it("works where the browser's storage throws", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+    });
+    const { kernel, modes, navigation } = await start({ enabled: "off" });
+    modes.register({ id: "other", title: "Other", order: 50, sidebarSlot: "o.s", mainSlot: "o.m" });
+    navigation.navigate({ node: "a", mode: "other", panel: "y" });
+    modes.open("threads");
+    modes.open("other");
+    expect(navigation.current()).toEqual({ node: "a", mode: "other", panel: "y" });
     await kernel.stop();
   });
 });

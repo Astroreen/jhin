@@ -16,6 +16,65 @@ export const CIVILIZATION_MODE = "civilization";
  */
 export const APP_PANELS: ReadonlySet<string> = new Set(["settings", "connect"]);
 
+const ROUTE_KEYS: ReadonlySet<string> = new Set([
+  "node",
+  "remote",
+  "thread",
+  "project",
+  "panel",
+  "section",
+  "mode",
+]);
+
+/** A stored place: a route of strings only, never an app page's (D748); anything else is not one. */
+function storedRoute(value: unknown): Route | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value);
+  for (const [key, field] of entries) {
+    if (!ROUTE_KEYS.has(key) || typeof field !== "string") return undefined;
+  }
+  const route = value as Route;
+  if (route.panel !== undefined && APP_PANELS.has(route.panel)) return undefined;
+  return route;
+}
+
+/**
+ * The places of `base` also kept in `storage`, under `key`, for the next page
+ * load (D1389). What is stored is validated before use: a malformed value, or
+ * an entry that is no route, is dropped, never thrown; with no storage, or a
+ * storage that throws, the places are `base` alone, as before.
+ */
+export function persistedPlaces(
+  base: Record<string, Route>,
+  storage: Pick<Storage, "getItem" | "setItem"> | undefined,
+  key: string,
+): ModePlaces {
+  try {
+    const raw = storage?.getItem(key) ?? null;
+    const parsed: unknown = raw === null ? undefined : JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      for (const [id, value] of Object.entries(parsed)) {
+        const route = storedRoute(value);
+        // The page's own (kernel-scoped) place is newer than the stored one.
+        if (route !== undefined && base[id] === undefined) base[id] = route;
+      }
+    }
+  } catch {
+    // Unreadable: the places of this page alone.
+  }
+  return {
+    get: (id) => base[id],
+    set(id, route) {
+      base[id] = route;
+      try {
+        storage?.setItem(key, JSON.stringify(base));
+      } catch {
+        // Not kept; still applied.
+      }
+    },
+  };
+}
+
 const sortModes = (modes: readonly Mode[]) =>
   modes.toSorted((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
 
