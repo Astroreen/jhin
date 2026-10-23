@@ -693,6 +693,67 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   `npm install --package-lock-only --ignore-scripts`, whose output a unit
   test checks against `DEVICE_TOOL_VERSIONS`.
 
+### The device setup (W37)
+
+The reference is T3 Code `eb7b35ac`: `apps/web/src/components/device/{DeviceSetup,DeviceHostUpdates,DevicePanel}.tsx`,
+`components/ui/wizard.tsx` and `configure`, `readinessIfSupported` and
+`agentReadinessIfSupported` of `apps/server/src/device/DeviceService.ts`.
+
+- **D1328. T3's "Set up devices" wizard is the consent.** The Device panel
+  shows T3's wizard until the node's devices are set up: its steps "Device
+  hub", "Simulators" and "Agent access" with T3's copy ("Enable the device
+  hub", "Check simulator support" with each platform's status and "Check
+  again", "Allow agent control", "Leave this off to keep manual device
+  controls without giving agents access."), Cancel, Back, Continue (once the
+  hub is ready) and Done. Its switches are the node's settings, written with
+  `host.config.patch` as T3 writes its server settings: "Enable device hub"
+  is `jhin.devices.hub` (D1206), "Allow agents to control devices" the new
+  `jhin.devices.agentAccess`, and Done sets the new
+  `jhin.devices.onboardingCompleted` and writes agent access as the wizard
+  showed it, so a node whose access only followed its hub records the
+  user's choice; turning the hub off there also turns
+  agent access off, as T3's wizard does (`agentAccessEnabled: false` with
+  `enabled: false`). It takes `host.config.write` (T3's
+  settings-write scope), and a client without it gets the node's refusal. Turning the hub on starts
+  it at once (`device.hub.access`), so the wizard shows T3's "Installing
+  device hub…" and "Device hub is ready."; T3's host update rows and their
+  failure ("Device support could not start.") show above the steps. The
+  `devices` stream and `device.state` carry the setup (`setup`:
+  `hubEnabled`, `agentAccessEnabled`, `onboardingCompleted`,
+  `agentToolsReady`, additive). Cancel closes the wizard and leaves the
+  panel with D1207's screenshots, its notice now offering "Set up devices";
+  Cancel is kept on this device per node, so it is not asked again on each
+  visit (T3 has no screenshots to fall back on and closes its panel
+  instead). Escape or a click outside closes it for this visit only, so a
+  stray click during an install does not decline the setup. A host that
+  failed to start shows T3's row with "Retry"; Continue and Done wait for a
+  ready hub, as T3's do, so until a Retry succeeds the way out is Cancel.
+  A node whose hub was turned on by hand shows the wizard once too, its
+  switch already on.
+
+- **D1329. Agents control devices only after they are allowed.** As T3
+  installs `agent-device` only when agent access is on
+  (`agentReadinessIfSupported`), `device.tap`, `.swipe`, `.type` and
+  `.button` go through agent-device only while `jhin.devices.agentAccess` is
+  on; off (the default on a node new to the hub), they take D1207's adb path, and an iOS input says
+  it needs agent access. The agent tools run while the hub is on and agents
+  are allowed: turning either on (the other already on) installs and starts
+  them at once ("Installing agent tools…", "Agent tools are ready."), a
+  failed install shows as the host's failure with its step, and turning
+  either off stops their daemon. The panel's own touches go over the hub's
+  socket and need no agent access, as in T3. Unset, agent access follows the
+  hub: a node that turned the hub on before this setting existed had agreed
+  to agent-device with it (D1206 installed both), so an upgrade takes
+  nothing away; the wizard writes the setting whenever it turns the hub on
+  or off. The same holds for a hub turned on outside the wizard (the config
+  file, `host.config.patch`, a mesh's `mesh.config.patch` to its members)
+  with `jhin.devices.agentAccess` left unset: turning the hub on that way
+  grants agents too, as D1206's hub did, and whoever writes it sets
+  `agentAccess: false` alongside to keep agents out. The wizard shows such a
+  node once, its switch on, and Done records the choice. Agents cannot grant it to themselves: it is written with
+  `host.config.patch`, whose `host.config.write` an agent's credential never
+  holds (`AGENT_PERMISSIONS`, providers.md D341).
+
 ### The device tools (W37)
 
 The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
@@ -906,9 +967,6 @@ probe of `ServerBrowser.ts`.
 - Devices, beside the hub (D1206–D1209):
   - Device hosts over SSH (T3's `SshDeviceHost`, `sshDeviceScript`): a host
     model of its own, with the hub and its tickets on another machine.
-  - T3's setup wizard (enable device support, agent access, onboarding) and
-    its consent before the first download; until then the hub is opt-in
-    (`jhin.devices.hub`, off by default).
   - Pinning what the install scripts download (the hub's `node-datachannel`
     native build): `npm ci` pins the npm tree only (D1330).
   - Of T3's device tools (D1332, D1333): the accessibility frames overlay

@@ -122,8 +122,9 @@ webviews: their CDP relay, guest input, hardening and placement;
 packaging configuration, signing and the release workflow), and the devices
 (`plugins/devices`, `packages/preview-api/src/devices.ts`,
 `apps/web/src/plugins/devices`: the device tools and their errors, the device
-actions and the tools panel, the device hub's toolchain, host, proxy and
-agent-device input, its stream client, flat stream view and control rail). The device hub (`expo-device-hub`) and
+setup wizard and its copy, the device actions and the tools panel, the device
+hub's toolchain, host, proxy and agent-device input, its stream client, flat
+stream view and control rail). The device hub (`expo-device-hub`) and
 `agent-device` themselves are not part of Jhin: the node downloads them from
 npm on first use (`docs/plans/preview.md` D1206), under their own MIT licenses.
 `packages/qr-code/src/qr-code.ts` is Project Nayuki's QR Code generator (MIT,

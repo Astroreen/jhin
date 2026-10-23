@@ -31,6 +31,8 @@ export interface DeviceHubOptions {
   /** Where agent-device keeps its daemon state (the plugin's data). */
   readonly stateDir: string | undefined;
   readonly enabled: () => boolean;
+  /** Agents may use the agent tools (`jhin.devices.agentAccess`, D1329). */
+  readonly agentAccess: () => boolean;
   readonly node: () => string | undefined;
   readonly npm: () => string | undefined;
   readonly androidSdk: () => string | undefined;
@@ -180,10 +182,14 @@ export function createDeviceHub(options: DeviceHubOptions) {
       device: DeviceSummary,
       input: DeviceInput,
     ): Promise<"agent-device" | "adb"> {
-      let reason = unavailable();
+      let reason =
+        unavailable() ??
+        (options.agentAccess()
+          ? undefined
+          : "Agents may not use the device tools on this node (jhin.devices.agentAccess).");
       if (reason === undefined && host !== undefined && options.stateDir !== undefined) {
         try {
-          const endpoint = await within(host.ensureAgent(), late);
+          const endpoint = await within(host.ensureAgent(options.agentAccess), late);
           try {
             await runAgentDeviceInput({
               endpoint,
@@ -210,6 +216,26 @@ export function createDeviceHub(options: DeviceHubOptions) {
       await options.adbInput(device, input);
       return "adb";
     },
+
+    /**
+     * Agent access was turned on: the agent tools install and start now (T3's
+     * `agentReadinessIfSupported`); failures show in the status.
+     */
+    warmAgent(): void {
+      if (unavailable() !== undefined || host === undefined || !options.agentAccess()) return;
+      void host
+        .ensureAgent(options.agentAccess)
+        .catch((error: unknown) =>
+          options.log("agent tools not started", { error: failureDetail(error) }),
+        );
+    },
+
+    /** Agent access was turned off: their daemon stops, the hub runs on. */
+    async stopAgent(): Promise<void> {
+      await host?.stopAgent();
+    },
+
+    agentReady: (): boolean => host?.agentReady() ?? false,
 
     /**
      * The setting was turned off: tickets and proxied sockets go, the hub and its daemon

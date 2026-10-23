@@ -312,4 +312,14 @@ describe("jhin.devices", () => {
     );
     expect(stopped.code).toBe("DEVICE_UNAVAILABLE");
   });
+
+  it("says an iOS input needs agent access when the agent tools cannot take it (D1329)", async () => {
+    const tools = fakeTools();
+    Fs.writeFileSync(Path.join(tools.dir, "ios-state"), "Booted");
+    const { client } = await node({ adb: tools.adb, xcrun: tools.xcrun });
+    const refused = await rejection(
+      client.call("device.tap", { threadId: "t1", deviceId: "SIM-1", x: 1, y: 2 }),
+    );
+    expect(refused.message).toContain("Set up devices → Agent access, jhin.devices.agentAccess");
+  });
 });

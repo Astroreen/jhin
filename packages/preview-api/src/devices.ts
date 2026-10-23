@@ -88,6 +88,16 @@ export const DeviceState = z.object({
   detail: z.string().optional(),
   /** Each host's device hub by host id, once one was asked for (D1207). */
   hostStatuses: z.record(z.string(), DeviceHostStatus).optional(),
+  /** The node's device setup (T3's settings and onboarding, D1328). */
+  setup: z
+    .object({
+      hubEnabled: z.boolean(),
+      agentAccessEnabled: z.boolean(),
+      onboardingCompleted: z.boolean(),
+      /** agent-device runs for agents (D1329). */
+      agentToolsReady: z.boolean(),
+    })
+    .optional(),
 });
 export type DeviceState = z.infer<typeof DeviceState>;
 
