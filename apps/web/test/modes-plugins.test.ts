@@ -38,6 +38,9 @@ function fakeConnections() {
   const pending: { resolve(value: unknown): void; reject(error: unknown): void }[] = [];
   const listeners = new Set<() => void>();
   let state: NodeConnection["state"] = "open";
+  /** The streams followed on this node; `disposed` once the follower let go. */
+  const streams: { stream: string; after: number | undefined; send(): void; disposed: boolean }[] =
+    [];
   const connection = {
     id: "a",
     url: "ws://a",
@@ -46,6 +49,27 @@ function fakeConnections() {
       return state;
     },
     client: {
+      subscribe: (
+        stream: string,
+        options: { after?: number },
+        onEvent: (event: unknown) => void,
+      ) => {
+        const followed = {
+          stream,
+          after: options.after,
+          // A client delivers nothing to a subscription that was disposed.
+          send: () => {
+            if (!followed.disposed) onEvent({});
+          },
+          disposed: false,
+        };
+        streams.push(followed);
+        return {
+          dispose: () => {
+            followed.disposed = true;
+          },
+        };
+      },
       call: (method: string) => {
         if (method !== "agents.catalog") return Promise.reject(new Error(`unexpected ${method}`));
         return new Promise((resolve, reject) => pending.push({ resolve, reject }));
@@ -63,6 +87,8 @@ function fakeConnections() {
     connections,
     /** The `agents.catalog` calls asked so far, oldest first. */
     pending,
+    /** The streams followed so far, oldest first. */
+    streams,
     setState(next: NodeConnection["state"]) {
       state = next;
       for (const listener of Array.from(listeners)) listener();
@@ -209,6 +235,90 @@ describe("jhin.civilization (D747)", () => {
     await drain();
     expect(ids()).toEqual(["threads"]);
     await kernel.stop();
+  });
+
+  it("asks again when an agents event arrives on a node that had none (D1398)", async () => {
+    const node = fakeConnections();
+    const { kernel, ids } = await start({ connections: node.connections });
+    // The agents plugin is not active yet: no such command, taken as none for now.
+    node.pending[0]!.reject(Object.assign(new Error("none"), { code: "COMMAND_NOT_FOUND" }));
+    await drain();
+    expect(ids()).toEqual(["threads"]);
+    expect(node.streams.map((followed) => followed.stream)).toEqual(["agents"]);
+    // No catalog to say where the stream is: followed from its start.
+    expect(node.streams[0]!.after).toBe(0);
+    expect(node.streams[0]!.disposed).toBe(false);
+
+    // An agent is defined once the plugin is up: the node is asked again, at once.
+    node.streams[0]!.send();
+    expect(node.pending).toHaveLength(2);
+    node.pending[1]!.resolve({ head: 1, agents: [{ id: "lead" }] });
+    await drain();
+    expect(ids()).toEqual(["threads", "civilization"]);
+    // It has agents: the stream is let go, and a later event asks nothing.
+    expect(node.streams[0]!.disposed).toBe(true);
+    node.streams[0]!.send();
+    expect(node.pending).toHaveLength(2);
+    await kernel.stop();
+  });
+
+  it("follows the stream from the catalog's head, asks once more when an event came meanwhile, and follows the unknown too (D1398)", async () => {
+    const node = fakeConnections();
+    const { kernel, ids } = await start({ connections: node.connections });
+    node.pending[0]!.resolve({ head: 5, agents: [] });
+    await drain();
+    // From the head the catalog was read at: no backlog is replayed.
+    expect(node.streams.map((followed) => followed.after)).toEqual([5]);
+
+    // An event asks at once; one more while that answer is awaited asks once more.
+    node.streams[0]!.send();
+    expect(node.pending).toHaveLength(2);
+    node.streams[0]!.send();
+    node.streams[0]!.send();
+    expect(node.pending).toHaveLength(2);
+    node.pending[1]!.resolve({ head: 7, agents: [] });
+    await drain();
+    expect(node.pending).toHaveLength(3);
+    node.pending[2]!.reject(Object.assign(new Error("slow"), { code: "TIMEOUT" }));
+    await drain();
+    expect(ids()).toEqual(["threads"]);
+    // Not known: still followed, and an event asks again without a change of the connections.
+    expect(node.streams[0]!.disposed).toBe(false);
+    node.streams[0]!.send();
+    expect(node.pending).toHaveLength(4);
+    node.pending[3]!.resolve({ head: 9, agents: [{ id: "lead" }] });
+    await drain();
+    expect(ids()).toEqual(["threads", "civilization"]);
+    expect(node.streams).toHaveLength(1);
+    await kernel.stop();
+  });
+
+  it("leaves a node that may not read its agents alone, and drops the stream with the opening or the plugin (D1398)", async () => {
+    const node = fakeConnections();
+    const { kernel, ids } = await start({ connections: node.connections });
+    node.pending[0]!.reject(Object.assign(new Error("no"), { code: "PERMISSION_DENIED" }));
+    await drain();
+    // Final for the opening: nothing is followed.
+    expect(node.streams).toHaveLength(0);
+    expect(ids()).toEqual(["threads"]);
+
+    // A closed connection lets its follower go; the next opening follows afresh.
+    node.setState("closed");
+    node.setState("open");
+    expect(node.pending).toHaveLength(2);
+    node.pending[1]!.resolve({ head: 0, agents: [] });
+    await drain();
+    const followed = node.streams[0]!;
+    expect(followed.disposed).toBe(false);
+    node.setState("closed");
+    expect(followed.disposed).toBe(true);
+
+    node.setState("open");
+    node.pending[2]!.resolve({ head: 0, agents: [] });
+    await drain();
+    const last = node.streams[1]!;
+    await kernel.stop();
+    expect(last.disposed).toBe(true);
   });
 
   it("gives up on a node after three unknown answers in one opening", async () => {
