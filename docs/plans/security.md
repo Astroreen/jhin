@@ -1107,6 +1107,16 @@ A slice a PR, in the order of D1361's risks:
   address's attempts (D420), so a thief with a stolen bound token locks
   out only its own address, unless both share a proxy the node does not
   know (`jhin.http.trustProxy`).
+- A runtime mode ceiling (D1370) holds the turns a caller starts through
+  `jhin.threads`, `tasks.delegate` and `jhin.scheduler`. It does not bind
+  what is granted beside it: a client approved with shell access
+  (`terminals.write`, marked on the page, D1364) runs commands with no
+  mode at all (`*` and `auth.*` are never granted to MCP clients, D1194,
+  so it cannot mint an unheld token). Nor does it follow commands that
+  reach `jhin.threads` from another plugin without the caller's
+  invocation (`agents.send` and `agents.ask` messaging an agent's own
+  thread, teams, mission handoffs, workflows): those run in the target
+  thread's own mode, as the owner set it.
 - A bound device holding `auth.write` can still issue bearer tokens
   (`auth.tokens.issue`) through a ticket's connection: D1361 (5) is closed
   for the bound token itself, not for what its grants let it make.
