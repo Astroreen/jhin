@@ -359,11 +359,9 @@ export function isAbortedResult(result: SDKResultMessage): boolean {
 /**
  * Why a result failed the turn, or `undefined` when it completed. The CLI reports API
  * failures (401, 429, 529) as subtype "success" with `is_error` set; its
- * "[ede_diagnostic]" entries are internal telemetry and never the message.
- */
-/**
- * The error a result reports, if any. `hint` is what a failure without its own words says
- * (T3's failureHint): the usage limit's text when a limit stopped the turn (D1303).
+ * "[ede_diagnostic]" entries are internal telemetry and never the message. `hint` is what
+ * a failure without its own words says (T3's failureHint): the usage limit's text when a
+ * limit stopped the turn (D1303).
  */
 export function resultError(result: SDKResultMessage, hint?: string): string | undefined {
   const listed =

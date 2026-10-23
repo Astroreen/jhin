@@ -1241,7 +1241,9 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   0–1 utilization lands on the row of its window id, keeping the row's reset
   time and duration when the event names none; `seven_day_overage_included`
   lands on the model-scoped row the last read named, and is dropped before
-  any read named one. An account without limits stays without. A new probe
+  any read named one. An account without limits stays without, and a read
+  that failed stays failed (one window is not the account's limits) until
+  the next read. A new probe
   forgets the events older than its read; the events are forgotten once the
   config names another Claude Code (binary or environment).
 - **D1303. A turn a usage limit stopped fails as one**
@@ -1272,7 +1274,7 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   disabled, for a server the config names (it owns its credentials), without
   a key or for a key without a Go subscription (403); any other failure, or a
   read past 5 s, is `probeFailed` ("OpenCode Go could not read usage."). It
-  is read again as D1304 says.
+  is read again as D1304 says; looks while a read runs share it.
 
 ### Deferred
 

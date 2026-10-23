@@ -708,8 +708,9 @@ export function probeRecords(kv: KeyValueStore): ProbeStore {
       const kept = await kv.get(NAMESPACE, "probe");
       return StoredProbe.safeParse(kept).data as StoredProbe | undefined;
     },
-    // Plain data (status, models): JSON as it is.
-    save: (kept) => kv.set(NAMESPACE, "probe", kept as unknown as Json),
+    // Plain data (status, models): JSON as it is. The account's usage is not kept (D1301).
+    save: ({ probe: { usageLimits: _limits, limitNames: _names, ...probe }, ...kept }) =>
+      kv.set(NAMESPACE, "probe", { ...kept, probe } as unknown as Json),
   };
 }
 

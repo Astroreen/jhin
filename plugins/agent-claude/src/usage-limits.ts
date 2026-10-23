@@ -161,14 +161,15 @@ export function claudeRateLimitEventToWindow(
 /**
  * The limits with one window updated (T3's applyUsageLimitsUpdate): the row of the same id
  * is replaced, keeping its reset time and duration when the update names none. An account
- * without limits stays without.
+ * without limits stays without, and a read that failed stays failed: one window is not the
+ * account's limits, and the next look reads them again (D1304).
  */
 export function applyUsageWindow(
   previous: AgentUsageLimits | undefined,
   window: AgentUsageWindow,
   checkedAt: string,
 ): AgentUsageLimits | undefined {
-  if (previous?.unavailable?.reason === "unsupported") return previous;
+  if (previous?.unavailable !== undefined) return previous;
   const merged = new Map(previous?.windows.map((entry) => [entry.id, entry] as const));
   const existing = merged.get(window.id);
   merged.set(window.id, {

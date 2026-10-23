@@ -237,6 +237,8 @@ export function createOpenCodeRuntime(options: {
 
   /** The last read of OpenCode Go's usage, and the config it was read with. */
   let usageRead: { at: number; key: string; limits: AgentUsageLimits } | undefined;
+  /** The read running now, by the config it runs with. */
+  const usageReading = new Map<string, Promise<AgentUsageLimits>>();
   /** Undelivered steers of stopped turns, by session (D883). */
   const strandedSteers = new Map<string, Set<string>>();
   const models = () => probed?.probe.models ?? [];
@@ -297,15 +299,24 @@ export function createOpenCodeRuntime(options: {
           (window) => window.resetsAt !== undefined && Date.parse(window.resetsAt) <= now,
         );
       if (!stale) return kept.limits;
-      const config = options.config();
-      const limits = await readOpenCodeGoUsageLimits({
-        enabled: config.enabled,
-        serverUrl: config.serverUrl,
-        env: env(),
-        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-      });
-      usageRead = { at: now, key, limits };
-      return limits;
+      // Looks while a read runs share it.
+      let reading = usageReading.get(key);
+      if (reading === undefined) {
+        const config = options.config();
+        reading = readOpenCodeGoUsageLimits({
+          enabled: config.enabled,
+          serverUrl: config.serverUrl,
+          env: env(),
+          ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+        })
+          .then((limits) => {
+            usageRead = { at: now, key, limits };
+            return limits;
+          })
+          .finally(() => usageReading.delete(key));
+        usageReading.set(key, reading);
+      }
+      return reading;
     },
     startTurn(request) {
       if (!options.config().enabled) {

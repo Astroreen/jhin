@@ -1,10 +1,15 @@
 import { UsageLimitError, turnFailureOf, type TurnRequest } from "@jhin/agent-api";
+import { createMemoryStorage } from "@jhin/storage-api";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it } from "vite-plus/test";
 
-import { Config, createClaudeRuntime, type QueryFunction } from "../src/index.ts";
+import { Config, createClaudeRuntime, probeRecords, type QueryFunction } from "../src/index.ts";
 import { claudeTurn } from "../src/turn.ts";
-import { claudeUsageResponseToLimits } from "../src/usage-limits.ts";
+import {
+  applyUsageWindow,
+  claudeRateLimitEventToWindow,
+  claudeUsageResponseToLimits,
+} from "../src/usage-limits.ts";
 import { drain, init, memorySessions, result, scriptedQuery, type Script } from "./support.ts";
 
 const THREAD = "0b6c5e5e-0000-4000-8000-000000000001";
@@ -163,6 +168,52 @@ describe("jhin.agent-claude: the runtime's usage limits (D1301, D1302, D1304)", 
   });
 });
 
+describe("jhin.agent-claude: what an event leaves alone (D1302)", () => {
+  it("keeps a failed read failed, and an account without limits without", () => {
+    const window = claudeRateLimitEventToWindow(
+      { status: "allowed", rateLimitType: "five_hour", utilization: 0.5 },
+      { overageIncluded: undefined },
+    )!;
+    const failed = {
+      checkedAt: "then",
+      windows: [],
+      unavailable: { reason: "probeFailed" as const, message: "x" },
+    };
+    expect(applyUsageWindow(failed, window, "now")).toBe(failed);
+    const unsupported = {
+      checkedAt: "then",
+      windows: [],
+      unavailable: { reason: "unsupported" as const },
+    };
+    expect(applyUsageWindow(unsupported, window, "now")).toBe(unsupported);
+    // An overage-included event before any read named its bucket is dropped.
+    expect(
+      claudeRateLimitEventToWindow(
+        { status: "allowed", rateLimitType: "seven_day_overage_included", utilization: 0.5 },
+        { overageIncluded: undefined },
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps no usage in the kept probe (D1301, D344)", async () => {
+    const kv = createMemoryStorage().kv;
+    await probeRecords(kv).save({
+      at: 1,
+      key: "k",
+      probe: {
+        status: { available: true },
+        usageLimits: { checkedAt: "now", windows: [] },
+        limitNames: { overageIncluded: "Opus" },
+      } as never,
+    });
+    expect(await kv.get("jhin.agent-claude", "probe")).toEqual({
+      at: 1,
+      key: "k",
+      probe: { status: { available: true } },
+    });
+  });
+});
+
 describe("jhin.agent-claude: a turn stopped by a usage limit (D1303)", () => {
   const run = (script: Script) => {
     const { query } = scriptedQuery(script);
@@ -178,7 +229,7 @@ describe("jhin.agent-claude: a turn stopped by a usage limit (D1303)", () => {
   const failure = async (items: Promise<unknown>) => {
     const error = await items.then(
       () => undefined,
-      (error: unknown) => error,
+      (caught: unknown) => caught,
     );
     expect(error).toBeInstanceOf(UsageLimitError);
     return { message: (error as Error).message, failure: turnFailureOf(error) };
