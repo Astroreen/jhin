@@ -172,6 +172,7 @@ describe("jhin.threads: thread management", () => {
       "running",
       "completed",
     ]);
+  });
 
   it("refuses an approval decision the agent does not offer (D1316)", async () => {
     // An approval that names its decisions, and one that names none.
