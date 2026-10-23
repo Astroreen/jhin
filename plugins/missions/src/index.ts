@@ -27,6 +27,7 @@ import {
   type MissionErrorCode,
   type MissionEventType,
   type MissionsState,
+  REVIEW_TREE_EXCLUDE,
   type ReviewedWork,
 } from "@jhin/missions-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
@@ -776,7 +777,9 @@ export default definePlugin({
       try {
         const work = (await context.commands.execute(
           "git.tree",
-          thread === undefined ? { projectId: slice.projectId } : { threadId: thread },
+          thread === undefined
+            ? { projectId: slice.projectId, exclude: REVIEW_TREE_EXCLUDE }
+            : { threadId: thread, exclude: REVIEW_TREE_EXCLUDE },
         )) as { projectId: string; path: string; tree: string };
         return {
           projectId: work.projectId,

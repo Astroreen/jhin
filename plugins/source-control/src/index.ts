@@ -2845,15 +2845,30 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   context.commands.register({
     name: "git.tree",
     description:
-      "The git tree of the files where a thread works (its worktree, else its project) or of a project, committed or not (untracked in, ignored out): the same content has the same tree, so a different tree means the files changed",
-    input: Target,
+      "The git tree of the files where a thread works (its worktree, else its project) or of a project, committed or not (untracked in, ignored out): the same content has the same tree, so a different tree means the files changed. `exclude` names folders left out wherever they are: they keep what HEAD has",
+    input: z
+      .object({
+        projectId: z.string().min(1).optional(),
+        threadId: z.string().min(1).optional(),
+        exclude: z
+          .array(z.string().min(1))
+          .optional()
+          .meta({ description: "Folders whose edits the tree leaves out, at any depth (D1261)" }),
+      })
+      .refine((input) => (input.projectId === undefined) !== (input.threadId === undefined), {
+        message: "Name a projectId or a threadId",
+      }),
     output: z.object({ projectId: z.string(), path: z.string(), tree: z.string() }),
     permissions: ["git.read"],
     handler: async (input) => {
       const projectId = await projectOf(input);
       const repo = await repoFor(projectId, input.threadId);
       const { git, root, commonDir } = await gitOf(repo);
-      return { projectId, path: root, tree: await writeWorkingTree(git, commonDir) };
+      return {
+        projectId,
+        path: root,
+        tree: await writeWorkingTree(git, commonDir, input.exclude ?? []),
+      };
     },
   });
 

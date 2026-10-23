@@ -1732,6 +1732,20 @@ Decisions (L2):
   into [Deferred](#deferred); an "L3 run" note records the run like the C3
   run.
 
+Decisions (L3):
+
+- **D1261. A review's tree leaves the agents' knowledge out.**
+  `git.tree` takes `exclude`, folders left out wherever they are in the
+  tree: they keep what HEAD has, so editing, adding or deleting files there
+  never changes the tree. `slices.review` and the review check (D1242) pass
+  `REVIEW_TREE_EXCLUDE` (`@jhin/missions-api`): the agents' inherited
+  knowledge, `.jhin/agents/` (D607). Before, it was untracked work like any
+  other: in the L3 run the reviewer wrote a note for its next generation,
+  every approval of the mission became `changed-after-review`, and the team
+  learnt to write knowledge only after a commit, which D605 asks them to
+  keep current while they work. Reviews recorded before this change saw the
+  folder, so a checkout with notes in it asks for one more review.
+
 ## Deferred
 
 - Pods (groups inside a team).

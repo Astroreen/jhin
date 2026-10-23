@@ -113,6 +113,36 @@ describe("jhin.source-control: checkpoints", () => {
     expect((await tree()).tree).not.toBe(first.tree);
   });
 
+  it("leaves an excluded folder out of git.tree at any depth, keeping what HEAD has (D1261)", async () => {
+    const dir = repository();
+    write(dir, "work.txt", "work\n");
+    write(dir, ".jhin/agents/crew-builder/notes.md", "first\n");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "work and notes");
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    const tree = (exclude?: string[]) =>
+      sc.client
+        .call<{ tree: string }>("git.tree", {
+          projectId,
+          ...(exclude === undefined ? {} : { exclude }),
+        })
+        .then((result) => result.tree);
+    const before = await tree([".jhin/agents"]);
+
+    // Notes written, added or deleted in the folder change the whole tree, not the excluded one.
+    write(dir, ".jhin/agents/crew-builder/notes.md", "learnt more\n");
+    write(dir, ".jhin/agents/crew-reviewer/habits.md", "new\n");
+    write(dir, "sub/.jhin/agents/lead/plan.md", "nested\n");
+    Fs.rmSync(Path.join(dir, ".jhin/agents/crew-builder/notes.md"));
+    expect(await tree([".jhin/agents"])).toBe(before);
+    expect(await tree()).not.toBe(before);
+
+    // The work beside it still counts.
+    write(dir, "work.txt", "changed\n");
+    expect(await tree([".jhin/agents"])).not.toBe(before);
+  });
+
   it("diffs a turn against the one before it, or from any earlier turn", async () => {
     const dir = repository();
     const sc = await node({ watch: false });

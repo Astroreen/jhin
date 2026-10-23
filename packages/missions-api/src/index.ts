@@ -208,6 +208,13 @@ export const ReviewedWork = z.object({
 });
 export type ReviewedWork = z.infer<typeof ReviewedWork>;
 
+/**
+ * Folders a review's `git.tree` leaves out (D1261): the agents' inherited
+ * knowledge (`.jhin/agents/<id>/`, D607), which agents write as they work,
+ * is not the work under review.
+ */
+export const REVIEW_TREE_EXCLUDE: readonly string[] = [".jhin/agents"];
+
 export const REVIEW_VERDICTS = ["approved", "changes-requested"] as const;
 export const ReviewVerdict = z.enum(REVIEW_VERDICTS);
 

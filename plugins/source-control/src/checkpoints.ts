@@ -54,12 +54,18 @@ const headExists = async (git: Git) =>
  * oid: the real index, `HEAD` and the branch are never touched. Two working
  * trees with the same content have the same oid, committed or not.
  */
-export async function writeWorkingTree(git: Git, commonDir: string): Promise<string> {
+export async function writeWorkingTree(
+  git: Git,
+  commonDir: string,
+  exclude: readonly string[] = [],
+): Promise<string> {
   const index = Path.join(commonDir, `jhin-checkpoint-index-${Crypto.randomUUID()}`);
   const env = { GIT_INDEX_FILE: index };
   try {
     if (await headExists(git)) await git([...INDEX_CONFIG, "read-tree", "HEAD"], { env });
-    await git([...INDEX_CONFIG, ...DURABLE, "add", "-A", "--", "."], { env });
+    // An excluded folder keeps what HEAD has, so its edits never change the tree.
+    const excluded = exclude.map((folder) => `:(exclude,glob)**/${folder}/**`);
+    await git([...INDEX_CONFIG, ...DURABLE, "add", "-A", "--", ".", ...excluded], { env });
     const tree = (await git([...INDEX_CONFIG, ...DURABLE, "write-tree"], { env })).stdout.trim();
     if (tree === "") throw new Error("git write-tree returned an empty tree oid.");
     return tree;
