@@ -179,7 +179,7 @@ describe("jhin.threads: thread management", () => {
     const asking: AgentRuntime = {
       agentId: "acme.asking",
       status: async () => ({ available: true }),
-      startTurn: (request) => {
+      startTurn: () => {
         const answers: string[] = [];
         let answered!: () => void;
         const both = new Promise<void>((resolve) => (answered = resolve));
