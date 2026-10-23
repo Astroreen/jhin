@@ -1793,7 +1793,6 @@ Decisions (L3):
   the reviewer sent a change request for builder2's slice to builder, who
   forwarded it.
 
-
 #### L3 run
 
 On 2026-10-23 a team `crew` of four Claude Code agents (the lead on Opus 5.5,
@@ -1827,8 +1826,7 @@ three agents, and otherwise read the streams.
     predecessor's notes said. The lead's second generation planned in the
     order its notes gave (builds, one review wave, the commit step).
   - A7: health counted the whole stream (the node at 11:17: ceremony 220,
-    progress 51) and raised no warning, since no group crossed the ratio of
-    10.
+    progress 51) and raised no warning, since no group crossed the ratio of 10.
 - **Fixed.** Knowledge notes invalidated every review (D1261, #238). The
   owner got two answers to one message (D1262, #239). An escalation held
   the whole mission, so the lead sent it as a plain message (D1263, #244;
