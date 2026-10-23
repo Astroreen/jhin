@@ -130,6 +130,33 @@ describe("the mission view's route (D653)", () => {
     expect(sameSteps(parseSteps("build test", previous), previous)).toBe(true);
     expect(sameSteps(parseSteps("test build"), previous)).toBe(false);
   });
+
+  it("D1388: a description is edited per step; a rename drops it, review stays", () => {
+    const previous = [
+      { id: "build", description: "Make it work" },
+      { id: "merge", review: true },
+    ];
+    // Typed over a kept id, added to one without, cleared with nothing.
+    expect(
+      parseSteps("build merge", previous, { build: " Make it right ", merge: "Land it" }),
+    ).toEqual([
+      { id: "build", description: "Make it right" },
+      { id: "merge", review: true, description: "Land it" },
+    ]);
+    expect(parseSteps("build merge", previous, { build: "" })).toEqual([
+      { id: "build" },
+      { id: "merge", review: true },
+    ]);
+    // A renamed id is a new step: it has no old description and no review.
+    expect(parseSteps("make merge", previous)).toEqual([
+      { id: "make" },
+      { id: "merge", review: true },
+    ]);
+    expect(sameSteps(parseSteps("build merge", previous), previous)).toBe(true);
+    expect(sameSteps(parseSteps("build merge", previous, { build: "x" }), previous)).toBe(false);
+    expect(sameSteps([{ id: "a", review: false }], [{ id: "a" }])).toBe(true);
+    expect(sameSteps([{ id: "a", review: true }], [{ id: "a" }])).toBe(false);
+  });
 });
 
 describe("what an edit dialog sends (D1083, D1085)", () => {
@@ -190,6 +217,40 @@ describe("what an edit dialog sends (D1083, D1085)", () => {
         mission: [{ id: "merge", review: true }, { id: "release" }],
       },
     });
+  });
+
+  it("D1388: a description edit alone is sent, with the review flags kept", () => {
+    const current = mission();
+    const unchanged = {
+      title: current.title,
+      outcome: current.outcome,
+      status: current.status,
+      sliceProcess: "spec → build → test",
+      missionProcess: "merge",
+    };
+    expect(
+      missionChanges(current, { ...unchanged, missionDescriptions: { merge: "Land it on main" } }),
+    ).toEqual({
+      process: {
+        slice: DEFAULT_MISSION_PROCESS.slice,
+        mission: [{ id: "merge", review: true, description: "Land it on main" }],
+      },
+    });
+    expect(
+      missionChanges(current, { ...unchanged, sliceDescriptions: { build: "Make it work" } }),
+    ).toMatchObject({
+      process: {
+        slice: [{ id: "spec" }, { id: "build", description: "Make it work" }, { id: "test" }],
+      },
+    });
+    const previous = { projectId: "p1", intent: "A harbor.", process: [], updatedAt: "" };
+    expect(
+      intentChanges(previous, {
+        intent: "A harbor.",
+        process: "plan",
+        descriptions: { plan: "Think" },
+      }),
+    ).toEqual({ process: [{ id: "plan", description: "Think" }] });
   });
 
   it("an intent sends what changed, and everything when there is none yet", () => {
