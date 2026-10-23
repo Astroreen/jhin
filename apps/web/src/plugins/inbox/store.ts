@@ -77,6 +77,13 @@ export function createInboxStore(
   });
 }
 
+/** How many items are open on every node together (D1273). */
+export function openCount(nodes: ReadonlyMap<string, NodeInbox>): number {
+  let count = 0;
+  for (const feed of nodes.values()) count += feed.value.length;
+  return count;
+}
+
 /** The open items of every node, oldest first, with the connection each is on. */
 export function openItems(
   nodes: ReadonlyMap<string, NodeInbox>,

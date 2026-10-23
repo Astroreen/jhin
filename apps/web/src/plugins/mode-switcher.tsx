@@ -27,7 +27,7 @@ const Buttons = lazyChunk(() => import("./mode-buttons.tsx").then((module) => mo
 export const modeSwitcherPlugin = builtin(
   "jhin.mode-switcher",
   {
-    requires: { [MODES_CAPABILITY]: "^1", [UI_SLOTS_CAPABILITY]: "^1" },
+    requires: { [MODES_CAPABILITY]: "^1.1", [UI_SLOTS_CAPABILITY]: "^1" },
     optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
   },
   definePlugin({
@@ -37,10 +37,16 @@ export const modeSwitcherPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
 
       function ModeSwitcher() {
-        const { list, current } = useModes(modes);
+        const { list, current, badges } = useModes(modes);
         if (list.length < 2) return null;
         return (
-          <Buttons context={context} current={current} keybindings={keybindings} list={list} />
+          <Buttons
+            badges={badges}
+            context={context}
+            current={current}
+            keybindings={keybindings}
+            list={list}
+          />
         );
       }
 

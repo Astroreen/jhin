@@ -5,7 +5,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { NodeFeeds } from "../src/lib/node-feeds.ts";
 import { senderLabel } from "../src/plugins/inbox/route.ts";
-import { applyInboxEvent, createInboxStore, openItems } from "../src/plugins/inbox/store.ts";
+import {
+  applyInboxEvent,
+  createInboxStore,
+  openCount,
+  openItems,
+} from "../src/plugins/inbox/store.ts";
 
 const item = (messageId: string, sentAt: string, kind: "ask" | "message" = "ask"): InboxItem => ({
   message: {
@@ -163,6 +168,19 @@ describe("the owner's inbox (D630)", () => {
     expect(
       applyInboxEvent(state, { type: MessageEvents.inboxDismissed, payload: { messageId: "x" } }),
     ).toBe(state);
+  });
+
+  it("counts the open items of every node (D1273)", () => {
+    const open = (...ids: string[]) => ({
+      status: "ready" as const,
+      value: ids.map((id) => item(id, "2026-10-23T10:00:00Z")),
+    });
+    const nodes = new Map([
+      ["a", open("x", "y")],
+      ["b", open("z")],
+    ]) as unknown as Parameters<typeof openCount>[0];
+    expect(openCount(nodes)).toBe(3);
+    expect(openCount(new Map())).toBe(0);
   });
 
   it("ignores events that are not an open item's", () => {
