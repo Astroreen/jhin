@@ -24,6 +24,7 @@ import { node as agentsNode, watch } from "../../agents/test/support.ts";
 import missions from "../../missions/src/index.ts";
 import orchestration from "../../orchestration/src/index.ts";
 import orchestrator from "../src/index.ts";
+import { REVIEW_BRIEF_LENGTH, owningPlans, reviewBriefText } from "../src/review.ts";
 
 const manifest = (dir: string) =>
   JSON.parse(Fs.readFileSync(new URL(`../../${dir}/package.json`, import.meta.url), "utf8")).jhin;
@@ -71,6 +72,58 @@ function fakeGit() {
               tree: files.tree,
             }),
           });
+        },
+      }),
+    },
+  };
+}
+
+/** The context library, lore and diffs a reviewer's brief is built from (D1244). */
+function fakeLibrary() {
+  const read: string[] = [];
+  return {
+    read,
+    plugin: {
+      manifest: {
+        id: "test.library",
+        version: "1.0.0",
+        apiVersion: 1,
+        side: "server",
+        entry: "index.js",
+      },
+      definition: definePlugin({
+        activate(context) {
+          const any = z.object({}).loose();
+          const register = (name: string, handler: (input: any) => unknown) =>
+            context.commands.register({
+              name,
+              description: name,
+              input: any,
+              output: z.unknown(),
+              handler,
+            });
+          register("context.map", () => ({
+            map: "docs/map.md",
+            trailhead: "AGENTS.md",
+            content:
+              "| `jhin.kennel` | the kennel | `kennel.*` | `plans/doghouse.md#walls` |\n| `jhin.other` | | | `plans/other.md` |",
+          }));
+          register("context.read", ({ path }) => {
+            read.push(path);
+            return {
+              content:
+                path === "AGENTS.md"
+                  ? "8. **Ids are public API.** Never renamed without a deprecation."
+                  : `${path}: D7. Walls are wood.`,
+            };
+          });
+          register("lore.brief", () => ({ markdown: "- moonbase: walk back up to the intent" }));
+          register("git.diff", ({ scope }) => ({
+            scope,
+            baseRef: "main",
+            patch: "+++ b/plugins/kennel/src/walls.ts\n+export const walls = 4;\n",
+            files: [{ path: "plugins/kennel/src/walls.ts", insertions: 1, deletions: 0 }],
+          }));
         },
       }),
     },
@@ -397,6 +450,126 @@ describe("review after the last change (D1241–D1243)", () => {
     // Without git.tree a review is checked by its time alone.
     await client.call("slices.review", { sliceId: walls.id, verdict: "approved" });
     expect(await step("deploy")).toMatchObject({ step: "deploy" });
+  });
+});
+
+describe("the reviewer's brief (D1244–D1246)", () => {
+  it("finds the plans that own the changed files through the map", () => {
+    const map = [
+      "| `@jhin/missions-api` | missions | `plans/agents.md#a3-missions` |",
+      "| `jhin.orchestrator` | runs missions | `plans/agents.md#a6-orchestration` |",
+      "| `missions` | `jhin.missions-view` | `plans/agents.md#a3-missions` D653 |",
+      "| `jhin.terminal` | terminals | `plans/terminal.md` |",
+    ].join("\n");
+    expect(
+      owningPlans(map, "docs/map.md", [
+        "packages/missions-api/src/index.ts",
+        "plugins/orchestrator/src/index.ts",
+        "apps/web/src/plugins/missions/edit.tsx",
+        "docs/plans/source-control.md",
+        "README.md",
+      ]),
+    ).toEqual([
+      "docs/plans/source-control.md",
+      "docs/plans/agents.md#a3-missions",
+      "docs/plans/agents.md#a6-orchestration",
+    ]);
+  });
+
+  it("puts the project first and the lead's notes after it, within one message", () => {
+    const at = "2026-10-21T00:00:00.000Z";
+    const slice = (id: string, spec: string): Slice => ({
+      id,
+      missionId: "m",
+      projectId: "p",
+      title: id,
+      spec,
+      wave: 1,
+      dependsOn: [],
+      status: "done",
+      threads: [],
+      createdAt: at,
+      updatedAt: at,
+    });
+    const brief = reviewBriefText({
+      slice: { ...slice("review", "Check that no dead import is left"), reviews: ["walls"] },
+      rules: { address: "AGENTS.md", text: "Rule 8: ids are public API." },
+      plans: [{ address: "docs/plans/doghouse.md", missing: "context.read failed: gone" }],
+      lore: { address: "lore.brief", text: "- own homework" },
+      work: [
+        {
+          slice: slice("walls", "Four walls"),
+          diff: {
+            scope: "branch",
+            baseRef: "main",
+            patch: `+${"x".repeat(100_000)}\n`,
+            files: [{ path: "a.ts", insertions: 1, deletions: 0 }],
+          },
+        },
+      ],
+    });
+    const order = [
+      "should this be done at all?",
+      "## The project's rules",
+      "Rule 8: ids are public API.",
+      "(`docs/plans/doghouse.md`: context.read failed: gone)",
+      "- own homework",
+      "### walls",
+      "- a.ts (+1 −0)",
+      "## The lead's notes",
+      "Check that no dead import is left",
+      "## The diff",
+      "[… cut here: read the rest at `git_diff for slice walls",
+    ].map((text) => brief.indexOf(text));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual(order.toSorted((a, b) => a - b));
+    expect(brief.length).toBeLessThanOrEqual(REVIEW_BRIEF_LENGTH);
+  });
+
+  it("hands a review slice the project, the diff and then the lead's notes", async () => {
+    const library = fakeLibrary();
+    const { client, slice } = await node({}, { plugins: [library.plugin] });
+    const walls = await slice({ title: "Walls", assignee: BUILDER });
+    await prove(client, walls.id);
+    const review = await slice({
+      title: "Review walls",
+      spec: "Check that no dead import is left",
+      assignee: BUILDER,
+      reviews: [walls.id],
+    });
+    const { markdown, sources } = await client.call<{
+      markdown: string;
+      sources: { address: string }[];
+    }>("review.brief", { sliceId: review.id });
+    expect(sources.map((source) => source.address)).toEqual([
+      "AGENTS.md",
+      "docs/plans/doghouse.md#walls",
+      "lore.brief",
+    ]);
+    for (const text of [
+      "Ids are public API",
+      "docs/plans/doghouse.md#walls: D7. Walls are wood.",
+      "moonbase",
+      "plugins/kennel/src/walls.ts (+1 −0)",
+      "+export const walls = 4;",
+    ])
+      expect(markdown).toContain(text);
+    expect(markdown.indexOf("Ids are public API")).toBeLessThan(
+      markdown.indexOf("Check that no dead import is left"),
+    );
+    await expect(client.call("review.brief", { sliceId: walls.id })).rejects.toMatchObject({
+      code: "NOT_A_REVIEW",
+    });
+
+    const handed = await client.call<{ threadId: string }>("slices.handoff", {
+      sliceId: review.id,
+    });
+    const turn = await watch(client, threadStream(handed.threadId)).until(ThreadEvents.turnStarted);
+    const text = payloadOf(turn).input.text as string;
+    expect(text).toContain("[Slice handed to you]");
+    expect(text).toContain("[Review handed to you]");
+    expect(text).toContain("Ids are public API");
+    expect(text).toContain("+export const walls = 4;");
   });
 });
 

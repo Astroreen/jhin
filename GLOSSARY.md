@@ -346,6 +346,9 @@ Words about Jhin:
   approved it, and its files are still those the review saw.
 - **Review slice** — a slice that reviews the work of slices of earlier
   waves (`reviews`); its assignee records each review with `slices.review`.
+  Its handoff carries the **reviewer's brief**: the project's rules, the
+  plans that own what changed, the lore and the diff, with the lead's notes
+  after them (`review.brief`).
 - **Ready slice** — a planned slice of a mission's current wave (the
   earliest with open slices) that has an assignee and can be handed off. A
   slice that cannot move waits for a **decision** of whoever runs the

@@ -1665,6 +1665,35 @@ Decisions (L2):
   `SLICE_ORDER_INVALID` otherwise; a new slice's wave follows them as it
   follows `dependsOn`). A review slice needs no review itself, and its
   handoff tells its assignee to record each review with `slices_review`.
+- **D1244. The reviewer's brief is built from the project.**
+  `review.brief { sliceId }` (`jhin.orchestrator`, `missions.read`, so the
+  reviewer can read it again) composes it for a review slice
+  (`NOT_A_REVIEW` otherwise). The sources come in this order: the
+  project's trailhead (`context.map`'s `trailhead` through `context.read`:
+  this repository's `AGENTS.md`), the plans that own the changed files, the
+  lore brief (`lore.brief`, reason `request`), the reviewed slices with their
+  spec, proof and changed files, then the lead's notes (the review slice's
+  spec) under their own heading, then the diff. The lead's notes are added,
+  never a replacement. The owning plans come from the map: a row naming a
+  changed package (`@jhin/<dir>`), plugin (`jhin.<dir>`) or client plugin
+  (`<dir>` of `apps/web/src/plugins/`) in backticks gives the plan addresses
+  it links, and a changed plan owns itself (`owningPlans`). The diff is
+  `git.diff` of where the reviewed slice's work lives, its branch against
+  the base (commits and edits), else its uncommitted edits. The node reads
+  them, since an agent holds no `context.read`. A source that is missing (no
+  `jhin.context`, no git) is named with the reason, never dropped silently.
+- **D1245. The brief fits one message.** Every part has a share of
+  `REVIEW_BRIEF_LENGTH` (26 000 characters, under `agents.send`'s 32 000).
+  The diff takes what the others leave, and a part that is cut names where
+  the rest is (its address, `git_diff`, `review_brief`), so the reviewer
+  reads it from the checkout.
+- **D1246. A review slice's handoff sends it.** `slices.handoff` of a slice
+  with `reviews` sends the handoff and then the brief. The brief asks the
+  reviewer to begin with "should this be done at all?", to name the rules
+  and decisions it checked
+  ([just following orders](../lore/just-following-orders.md)), to treat a
+  renamed or removed public id as the owner's decision, and to record a
+  verdict on each slice with `slices_review`.
 - **D1247. Public ids are read from the source, at the merge base and
   now.** `scripts/public-ids.ts` reads string literals where each kind is
   declared: capabilities from the `provides` of a plugin's `package.json` and
@@ -1927,6 +1956,11 @@ Decisions (L2):
   commit for a thread of a mission, would close it.
 - L2: the mission view shows a mission's `step`, its slices' reviews and
   `missions.review.check` (C2's dialogs edit `reviews` neither).
+- L2: the owning plan is found by the map's rows (D1244); a project whose
+  map names plans differently, or a change in a directory no row names,
+  gets none, and the reviewer finds it through the trailhead. An agent's own
+  `context.read` (D670 gives agents no grant) would let it read further
+  through the library instead of the checkout.
 - L2: which files a slice owns. A review covers the whole place a slice
   lives in (D1242), so in a shared checkout a change by one slice asks for
   another review of every slice there.
@@ -2052,3 +2086,7 @@ Each workstream lists its PRs here as they merge.
   `missions.review.check`, `slices.review` with the files' tree from
   `git.tree` (`jhin.source-control`), review slices (`reviews`)
   (D1241–D1243).
+- L2 #237: the reviewer's brief from the project: `review.brief`
+  (trailhead, owning plans through the map, lore, the reviewed work and its
+  diff, then the lead's notes), sent by a review slice's handoff
+  (D1244–D1246).
