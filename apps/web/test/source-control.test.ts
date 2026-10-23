@@ -3,6 +3,7 @@ import type {
   NodeCatalog,
   NodeConnection,
   NodeTarget,
+  Route,
   ThreadCreateInput,
   ThreadRecord,
   ThreadsCatalog,
@@ -28,6 +29,7 @@ import {
   threadPullRequestBadgePresentation,
 } from "../src/lib/pull-request.ts";
 import { parsePullRequestReference } from "../src/plugins/source-control/pull-request-checkout.tsx";
+import { showPullRequestsPanel } from "../src/plugins/source-control/services.ts";
 import { readPullRequestInput } from "../src/plugins/source-control/links.tsx";
 import { splitForMiddleTruncate } from "../src/lib/middle-truncate.tsx";
 import { formatCompactDiffCount, prStatusIndicator } from "../src/lib/pull-request.ts";
@@ -1243,5 +1245,45 @@ describe("a node path inside a project (terminal.md D965)", () => {
 
   it("compares Windows paths without case", () => {
     expect(pathInside("C:\\Users\\Me\\Repo", "c:\\users\\me\\repo\\a.ts")).toBe("a.ts");
+  });
+});
+
+describe("pull-requests.show (D1282)", () => {
+  function navigation(start: Route) {
+    let route = start;
+    const visited: Route[] = [];
+    return {
+      visited,
+      current: () => route,
+      navigate: (next: Route) => {
+        route = next;
+        visited.push(next);
+      },
+    };
+  }
+
+  it("opens the panel of the thread on screen, its section dropped", () => {
+    const nav = navigation({ node: "n1", remote: "m2", thread: "t1", panel: "diff", section: "x" });
+    const asked: string[] = [];
+    const shown = showPullRequestsPanel(nav, (target, threadId) => {
+      asked.push(`${target.node}/${target.remote}/${threadId}`);
+      return 2;
+    });
+    expect(shown).toBe(true);
+    expect(asked).toEqual(["n1/m2/t1"]);
+    expect(nav.visited).toEqual([
+      { node: "n1", remote: "m2", thread: "t1", panel: "pull-requests" },
+    ]);
+    // Already open: shown, and the route stays.
+    expect(showPullRequestsPanel(nav, () => 1)).toBe(true);
+    expect(nav.visited).toHaveLength(1);
+  });
+
+  it("shows nothing without a thread on screen or with nothing linked", () => {
+    const draft = navigation({ node: "n1", project: "p1" });
+    expect(showPullRequestsPanel(draft, () => 3)).toBe(false);
+    const empty = navigation({ node: "n1", thread: "t1" });
+    expect(showPullRequestsPanel(empty, () => 0)).toBe(false);
+    expect([...draft.visited, ...empty.visited]).toEqual([]);
   });
 });

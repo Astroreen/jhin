@@ -382,7 +382,10 @@ export function createPullRequestsPanel(
           </Button>
         </div>
         <div className="min-h-0 flex-1">
-          <ThreadPullRequestsList actions={actions} links={links} onLink={onLink} />
+          {/* Until the thread is known, its empty state would be a guess. */}
+          {thread === undefined ? null : (
+            <ThreadPullRequestsList actions={actions} links={links} onLink={onLink} />
+          )}
         </div>
       </aside>
     );

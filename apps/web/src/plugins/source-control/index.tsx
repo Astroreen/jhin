@@ -64,6 +64,7 @@ import { createLinkActions, createLinkPrompt } from "./links.tsx";
 import {
   DIFF_PANEL,
   PULL_REQUESTS_PANEL,
+  showPullRequestsPanel,
   useSourceControl,
   type SourceControlServices,
 } from "./services.ts";
@@ -471,22 +472,12 @@ export const sourceControlPlugin = builtin(
           "Opens the panel of the pull requests linked to the thread on screen; `shown` is false when no thread is on screen or it has none linked",
         input: z.object({}),
         output: z.object({ shown: z.boolean() }),
-        handler: () => {
-          const route = navigation.current();
-          if (route.node === undefined || route.thread === undefined) return { shown: false };
-          const target = {
-            node: route.node,
-            ...(route.remote === undefined ? {} : { remote: route.remote }),
-          };
-          if ((store.view(target).links.get(route.thread) ?? []).length === 0) {
-            return { shown: false };
-          }
-          if (route.panel !== PULL_REQUESTS_PANEL) {
-            const { section: _section, ...rest } = route;
-            navigation.navigate({ ...rest, panel: PULL_REQUESTS_PANEL });
-          }
-          return { shown: true };
-        },
+        handler: () => ({
+          shown: showPullRequestsPanel(
+            navigation,
+            (target, threadId) => (store.view(target).links.get(threadId) ?? []).length,
+          ),
+        }),
       });
       context.subscriptions.add(
         slots.contribute<ChatThreadDetailsProps>("chat.thread.details", {

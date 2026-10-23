@@ -179,21 +179,17 @@ describe("the thread details rows (D1283)", () => {
       />,
     );
     await expect
-      .element(page.getByRole("button", { name: "https://github.com/acme/app/pull/2" }))
+      .element(page.getByRole("button", { name: /^#2: / }))
       .toHaveTextContent("#2: Layer 2");
-    await expect
-      .element(page.getByRole("button", { name: "https://github.com/acme/app/pull/1" }))
-      .not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: /^#1: / })).not.toBeInTheDocument();
     await userEvent.click(page.getByRole("button", { name: "Stop watching #2" }));
     expect(stopped).toEqual([2]);
     await userEvent.click(page.getByRole("button", { name: "Show 1 more" }));
     await expect
-      .element(page.getByRole("button", { name: "https://github.com/acme/app/pull/1" }))
+      .element(page.getByRole("button", { name: /^#1: / }))
       .toHaveTextContent("#1: Layer 1");
     await userEvent.click(page.getByRole("button", { name: "Show less" }));
-    await expect
-      .element(page.getByRole("button", { name: "https://github.com/acme/app/pull/1" }))
-      .not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: /^#1: / })).not.toBeInTheDocument();
   });
 
   it("shows the branch's pull request when nothing is linked, with its tooltip", async () => {
@@ -206,7 +202,7 @@ describe("the thread details rows (D1283)", () => {
         onStopWatching={() => {}}
       />,
     );
-    const row = page.getByRole("button", { name: "https://github.com/acme/app/pull/7" });
+    const row = page.getByRole("button", { name: /^#7: / });
     await expect.element(row).toHaveTextContent("#7: Layer 7");
     await userEvent.hover(row);
     await expect.element(page.getByText("main ← fix")).toBeVisible();

@@ -105,7 +105,7 @@ function PullRequestRow({
       <TooltipTrigger
         render={
           <button
-            aria-label={url}
+            aria-description={url}
             className={className}
             onClick={() => openUrl(url)}
             type="button"
