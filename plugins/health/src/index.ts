@@ -320,6 +320,23 @@ export default definePlugin({
     };
 
     /**
+     * Closes an open warning whose measure is back under its threshold. Decided
+     * on the fold right before the write: two runs, or a dismissal meanwhile,
+     * make one exit (D1283). The analysis stays; the analyst is not asked again.
+     */
+    const clear = (warningId: string) =>
+      appendIf(() =>
+        health.warnings[warningId]?.status !== "open"
+          ? undefined
+          : {
+              type: HealthEvents.warningCleared,
+              payload: { warningId, clearedAt: now(), reason: "under-threshold" },
+            },
+      ).catch((error: unknown) =>
+        context.log.warn("a warning could not be cleared", { warningId, error: String(error) }),
+      );
+
+    /**
      * The agent that has the context (D726): the analyst configured for the
      * project, else the team's lead (A5, not landed: the seam), else the agent
      * assigned most of the group's open and done slices. Never a random agent.
@@ -509,6 +526,11 @@ export default definePlugin({
       if (!current.enabled || !active) return;
       // A linked thread that could not be read is tried again on every run.
       followThreads();
+      // Warnings whose measure dropped back are cleared first, so a subject
+      // that crossed again in the same run raises a new one (D1283).
+      for (const warning of sensors.clearable(current, health, Date.now())) {
+        await clear(warning.warningId);
+      }
       // The health stream's head the findings were made against.
       const evaluatedAt = healthHead;
       for (const finding of sensors.evaluate(current, health, Date.now())) {
@@ -818,7 +840,7 @@ export default definePlugin({
       name: "health.warnings.list",
       description: "Health warnings, newest first",
       input: z.object({
-        status: z.enum(["open", "dismissed", "all"]).default("open"),
+        status: z.enum(["open", "dismissed", "cleared", "all"]).default("open"),
         projectId: z.string().optional(),
       }),
       output: z.array(Warning),
@@ -896,7 +918,7 @@ export default definePlugin({
         );
         // Decided on the fold right before the write: two dismissals make one.
         await appendIf(() =>
-          getWarning(warningId).status === "dismissed"
+          getWarning(warningId).status !== "open"
             ? undefined
             : {
                 type: HealthEvents.warningDismissed,

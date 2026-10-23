@@ -326,6 +326,37 @@ export class Sensors {
   }
 
   /**
+   * The open warnings whose detector no longer finds its subject at or over
+   * its own threshold (D1283). Only the detector's own measure decides: a
+   * broader group kept quiet by a narrower one still crosses, so stays open.
+   */
+  clearable(config: HealthConfig, health: HealthState, now: number): Warning[] {
+    this.prune(config, now);
+    const over = new Set<string>();
+    const { ratio, minCeremony } = config.ceremony;
+    for (const entry of this.tally()) {
+      if (entry.ceremony >= Math.max(minCeremony, ratio * Math.max(entry.progress, 1))) {
+        over.add(`ceremony|${entry.key}`);
+      }
+    }
+    for (const [sliceId, edits] of this.proofEdits) {
+      if (edits.length >= config.proofLoop.maxEdits) over.add(`proof-loop|slice:${sliceId}`);
+    }
+    for (const [ideaId, found] of this.occurrences) {
+      if (found.length >= config.mindVirus.minOccurrences) over.add(`mind-virus|idea:${ideaId}`);
+    }
+    return Object.values(health.warnings).filter(
+      (warning) =>
+        warning.status === "open" &&
+        !over.has(`${warning.detector}|${warning.subject}`) &&
+        // A withdrawn idea or a forgotten slice is not a measure dropping.
+        !(
+          warning.detector === "mind-virus" && health.ideas[warning.subject.slice(5)] === undefined
+        ),
+    );
+  }
+
+  /**
    * What every detector finds now (D724, D727, D728). Every detector counts
    * over the window; a dismissal starts the count of its subject again, so
    * the same subject warns again only when what came after the dismissal
@@ -347,9 +378,13 @@ export class Sensors {
      */
     const after = (detector: Detector, subject: string): ((ref: EventRef) => boolean) => {
       const warning = latest.get(`${detector}|${subject}`);
-      if (warning?.status !== "dismissed") return () => true;
-      const seen = warning.dismissedAfter;
-      const since = Date.parse(warning.dismissedAt ?? warning.raisedAt);
+      if (warning?.status !== "dismissed" && warning?.status !== "cleared") return () => true;
+      // A clear has no stream positions: its events count from its time (D1283).
+      const seen = warning.status === "dismissed" ? warning.dismissedAfter : undefined;
+      const since = Date.parse(
+        (warning.status === "dismissed" ? warning.dismissedAt : warning.clearedAt) ??
+          warning.raisedAt,
+      );
       // A stream the dismissal did not follow yet (a thread linked later) has
       // no cut: its events count from the dismissal's time.
       return (ref) => {

@@ -99,6 +99,65 @@ describe("health's sensors (D722)", () => {
     ).toMatchObject({ ceremony: 2 });
   });
 
+  it("clears an open warning once its measure is under the threshold, and counts from the clear after (D1283)", () => {
+    const sensors = new Sensors();
+    const slice = {
+      id: "s1",
+      missionId: "m1",
+      projectId: "p1",
+      title: "Floor",
+      spec: "",
+      wave: 1,
+      dependsOn: [],
+      status: "active",
+      threads: [{ threadId: "t1" }],
+      createdAt: hoursAgo(30),
+      updatedAt: hoursAgo(30),
+    } satisfies Slice;
+    sensors.ingestMission(
+      event("missions", 1, MissionEvents.sliceCreated, hoursAgo(30), { slice }),
+    );
+    const queue = (sequence: number, at: string) =>
+      sensors.ingestThread("t1", event("thread/t1", sequence, ThreadEvents.queueUpdated, at, {}));
+    queue(1, hoursAgo(25));
+    queue(2, hoursAgo(23));
+    queue(3, hoursAgo(22));
+    const warning = {
+      warningId: "w1",
+      detector: "ceremony" as const,
+      subject: "mission:m1",
+      group: { kind: "mission" as const, projectId: "p1", missionId: "m1" },
+      summary: "",
+      measures: {},
+      evidence: [],
+      raisedAt: hoursAgo(22),
+      status: "open" as const,
+    };
+    const health = { ...EMPTY_HEALTH, warnings: { w1: warning } };
+    const config = HealthConfig.parse({ windowHours: 24, ceremony: { ratio: 1, minCeremony: 3 } });
+    // Three in the window against the threshold of three: still over.
+    expect(sensors.clearable(config, health, NOW - 3_600_000)).toEqual([]);
+    // An hour later the oldest left the window: two, under it.
+    expect(sensors.clearable(config, health, NOW).map((w) => w.warningId)).toEqual(["w1"]);
+    // Cleared, the warning is history; the next crossing counts from the clear.
+    const cleared = {
+      ...EMPTY_HEALTH,
+      warnings: {
+        w1: { ...warning, status: "cleared" as const, clearedAt: hoursAgo(0.5) },
+      },
+    };
+    expect(sensors.clearable(config, cleared, NOW)).toEqual([]);
+    queue(4, hoursAgo(0.2));
+    queue(5, hoursAgo(0.1));
+    expect(
+      sensors.evaluate(config, cleared, NOW).filter((f) => f.subject === "mission:m1"),
+    ).toEqual([]);
+    queue(6, hoursAgo(0.05));
+    expect(
+      sensors.evaluate(config, cleared, NOW).find((f) => f.subject === "mission:m1")?.measures,
+    ).toMatchObject({ ceremony: 3 });
+  });
+
   it("finds an idea as whole words only", () => {
     const idea = normalizeIdea("Retry the flaky test!");
     expect(carriesIdea(normalizeIdea("ok, retry the FLAKY test, then"), idea)).toBe(true);

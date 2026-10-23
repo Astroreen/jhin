@@ -429,7 +429,9 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     >
       <header className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">{detectorLabel(warning)}</h1>
-        <Badge variant={open ? "warning" : "secondary"}>{open ? "Open" : "Dismissed"}</Badge>
+        <Badge variant={open ? "warning" : "secondary"}>
+          {open ? "Open" : warning.status === "cleared" ? "Cleared" : "Dismissed"}
+        </Badge>
       </header>
       {feed?.status === "error" ? (
         <p className="text-xs text-destructive">
@@ -445,6 +447,19 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
         <dd>{groupLabel(warning.group)}</dd>
         <dt>Raised</dt>
         <dd>{new Date(warning.raisedAt).toLocaleString()}</dd>
+        {warning.status === "cleared" ? (
+          <>
+            <dt>Cleared</dt>
+            <dd>
+              {warning.clearedReason === "under-threshold" || warning.clearedReason === undefined
+                ? "back under the threshold"
+                : warning.clearedReason}
+              {warning.clearedAt === undefined
+                ? null
+                : `, ${new Date(warning.clearedAt).toLocaleString()}`}
+            </dd>
+          </>
+        ) : null}
         {Object.entries(warning.measures).map(([name, value]) => (
           <div className="contents" key={name}>
             <dt className="capitalize">{name}</dt>
