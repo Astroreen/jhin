@@ -996,4 +996,86 @@ describe("jhin.preview", () => {
     );
     expect(missing.code).toBe("PREVIEW_TAB_NOT_FOUND");
   });
+
+  it("keeps 20 downloads, offers a user's navigation to a file, and answers a file gone from the node (D1331)", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewTab>("preview.tab.open", {
+      threadId: thread,
+      url: `${origin}/download`,
+    });
+    const tabId = opened.tabId;
+    await client.call("preview.tab.control", { threadId: thread, tabId, viewer: "v1", take: true });
+    const frames = watch(client, previewFramesStream(thread, tabId));
+    const offers = () =>
+      frames.events
+        .filter((event) => event.type === PreviewEvents.download)
+        .map((event) => event.payload as { id: string });
+    // The user's own navigation to a file is no failure: the page stays, the file is offered.
+    await client.call("preview.tab.navigate", {
+      threadId: thread,
+      tabId,
+      viewer: "v1",
+      url: `${origin}/report.txt`,
+    });
+    await frames.until(() => offers().length === 1);
+    const status = await client.call<PreviewStatus>("preview.status", { threadId: thread, tabId });
+    const firstPath = (status.downloads as { path: string }[])[0]!.path;
+    // Twenty more: the first file goes with its entry.
+    for (let count = 2; count <= 21; count += 1) {
+      await client.call("preview.tab.navigate", {
+        threadId: thread,
+        tabId,
+        viewer: "v1",
+        url: `${origin}/report.txt`,
+      });
+      await frames.until(() => offers().length === count);
+    }
+    frames.subscription.dispose();
+    expect(Fs.existsSync(firstPath)).toBe(false);
+    const dropped = await rejection(
+      client.call("preview.tab.download", { threadId: thread, tabId, id: offers()[0]!.id }),
+    );
+    expect(dropped.code).toBe("PREVIEW_TAB_NOT_FOUND");
+    // A kept entry whose file was removed from the node answers the same.
+    const kept = await client.call<PreviewStatus>("preview.status", { threadId: thread, tabId });
+    Fs.rmSync((kept.downloads as { path: string }[]).at(-1)!.path);
+    const removed = await rejection(
+      client.call("preview.tab.download", { threadId: thread, tabId, id: offers().at(-1)!.id }),
+    );
+    expect(removed.code).toBe("PREVIEW_TAB_NOT_FOUND");
+  });
+
+  it("refuses to send a download over the limit, and keeps it on the node (D1331)", async () => {
+    const streams = createMemoryStreams({});
+    const tabs = createTabs({
+      chromium: new Chromium(),
+      streams,
+      dataDir: Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-preview-")),
+      log: { info() {}, warn() {}, error() {}, debug() {} } as unknown as Logger,
+      downloadMaxBytes: 5,
+    });
+    try {
+      const tab = await tabs.openForHuman({ threadId: "t", url: `${origin}/download` });
+      await tabs.control({ threadId: "t", tabId: tab.tabId, viewer: "v1", take: true });
+      const offered = new Promise<{ id: string }>((resolve) => {
+        const subscription = streams.subscribe(previewFramesStream("t", tab.tabId), (event) => {
+          if (event.type !== PreviewEvents.download) return;
+          subscription.dispose();
+          resolve(event.payload as { id: string });
+        });
+      });
+      await tabs.navigateAsHuman({
+        threadId: "t",
+        tabId: tab.tabId,
+        viewer: "v1",
+        url: `${origin}/report.txt`,
+      });
+      const { id } = await offered;
+      const error = await rejection(tabs.download({ threadId: "t", tabId: tab.tabId, id }));
+      expect(error.code).toBe("PREVIEW_RESULT_TOO_LARGE");
+      expect(error.message).toContain("stays on the node");
+    } finally {
+      await tabs.dispose();
+    }
+  });
 });

@@ -81,6 +81,13 @@ const VIEWER_NAVIGATION = { waitUntil: "commit", timeout: Ops.DEFAULT_TIMEOUT_MS
 /** How long a probe waits for the page before it answers "not text" (D1203). */
 const PROBE_TIMEOUT_MS = 2_000;
 
+/**
+ * A navigation that became a download: Playwright rejects `goto` with this, and the file
+ * arrives as a download event (D1331). Its wording is the one signal Playwright gives.
+ */
+const isDownloadStarting = (error: unknown): boolean =>
+  /Download is starting/i.test(error instanceof Error ? error.message : String(error));
+
 /** The few DOM shapes `editableAtPoint` reads; the plugin has no DOM types. */
 interface PageElement {
   readonly tagName: string;
@@ -204,6 +211,8 @@ export interface TabsOptions {
   readonly log: Logger;
   /** The clock tabs are stamped and swept by. */
   readonly now?: () => Date;
+  /** The largest download `preview.tab.download` sends (D1331); tests give a smaller one. */
+  readonly downloadMaxBytes?: number;
 }
 
 const tabKey = (threadId: string, tabId: string) => `${threadId}\u0000${tabId}`;
@@ -983,7 +992,7 @@ export function createTabs(options: TabsOptions) {
       await navigation;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/Download is starting/i.test(message)) {
+      if (isDownloadStarting(error)) {
         throw new PreviewError(
           "PREVIEW_EXECUTION",
           "URL is a file this browser cannot show, so it was downloaded instead. preview_status lists it under downloads.",
@@ -1495,14 +1504,29 @@ export function createTabs(options: TabsOptions) {
             `Download ${input.id} is no longer kept for this tab.`,
           );
         }
-        if (saved.sizeBytes > PREVIEW_DOWNLOAD_MAX_BYTES) {
-          throw new PreviewError(
-            "PREVIEW_RESULT_TOO_LARGE",
-            `${saved.fileName} is too large to send to this client (at most ${PREVIEW_DOWNLOAD_MAX_BYTES / 1024 / 1024} MiB); it stays on the node at ${saved.path}.`,
+        const gone = () =>
+          new PreviewError(
+            "PREVIEW_TAB_NOT_FOUND",
+            `Download ${input.id} is no longer kept for this tab.`,
           );
+        // The file as it is now: removed from the node, or changed since it was saved.
+        const file = await Fs.open(saved.path, "r").catch(() => {
+          throw gone();
+        });
+        try {
+          const { size } = await file.stat();
+          const max = options.downloadMaxBytes ?? PREVIEW_DOWNLOAD_MAX_BYTES;
+          if (size > max) {
+            throw new PreviewError(
+              "PREVIEW_RESULT_TOO_LARGE",
+              `${saved.fileName} is too large to send to this client (at most ${Math.floor(max / 1024 / 1024)} MiB); it stays on the node at ${saved.path}.`,
+            );
+          }
+          const data = await file.readFile();
+          return { fileName: saved.fileName, data: data.toString("base64") };
+        } finally {
+          await file.close();
         }
-        const data = await Fs.readFile(saved.path);
-        return { fileName: saved.fileName, data: data.toString("base64") };
       });
     },
 
@@ -1531,7 +1555,7 @@ export function createTabs(options: TabsOptions) {
               .goto(targetUrl({ url: input.url }), VIEWER_NAVIGATION)
               .catch((error: unknown) => {
                 // A file the page cannot show downloads instead: the user is offered it (D1331).
-                if (/Download is starting/i.test(String(error))) return null;
+                if (isDownloadStarting(error)) return null;
                 throw error;
               });
           } else if (input.delta !== undefined) {

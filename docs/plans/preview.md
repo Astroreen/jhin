@@ -744,7 +744,12 @@ probe of `ServerBrowser.ts`.
   the node for the agent, and Save says it is too large for this client. A
   download whose file the node dropped (beyond the 20 it keeps) answers
   `PREVIEW_TAB_NOT_FOUND`. The user's own navigation to such a file (the
-  address bar) is no failure: the page stays, and the file is offered.
+  address bar) is no failure: the page stays, and the file is offered. The
+  offer goes to whoever watches the tab right then and is not replayed, as
+  T3 pushes it to the connected viewer only: a viewer that attaches later is
+  not offered it, while the file still counts among the 20 kept. Save reads
+  the file as it is on the node at that moment: one removed meanwhile
+  answers `PREVIEW_TAB_NOT_FOUND`, one grown past 64 MiB is too large.
 
 ### Proof
 
@@ -801,7 +806,8 @@ probe of `ServerBrowser.ts`.
   plugin's memory for the session (one small record per thread).
 - Downloads and uploads above 64 MiB (D1203, D1331): a binary channel or an
   HTTP route for them; T3's in-tab state for a navigation that became a
-  download.
+  download; offering a download again to a viewer that attaches after it
+  (the tab's downloads in its state, D1331).
 - T3's work-log presentation of preview tools ("Used browser N times").
 - Reading password values in isolated worlds of out-of-process frames: Jhin
   reads them in each frame's own world.

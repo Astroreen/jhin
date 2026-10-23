@@ -811,7 +811,6 @@ export const PreviewTabDialogInput = z.object({
   promptText: z.string().max(10_000).optional(),
 });
 
-/** T3's most files a page's file picker takes in one upload (D1203). */
 /** What one `preview.tab.download` answer carries at most (D1331), as an upload. */
 export const PREVIEW_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
 
@@ -826,6 +825,7 @@ export const PreviewTabDownloadResult = z.object({
   data: z.string(),
 });
 
+/** T3's most files a page's file picker takes in one upload (D1203). */
 export const PREVIEW_UPLOAD_MAX_FILES = 20;
 /**
  * The most bytes one upload carries. T3 takes 100 MB through HTTP; an upload here is one RPC

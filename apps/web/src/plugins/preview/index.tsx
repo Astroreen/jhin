@@ -280,6 +280,12 @@ export const previewPanelPlugin = builtin(
           description: error instanceof Error ? error.message : String(error),
         });
 
+      let savedUrl: string | undefined;
+      context.subscriptions.add({
+        dispose: () => {
+          if (savedUrl !== undefined) URL.revokeObjectURL(savedUrl);
+        },
+      });
       /** T3's download toast: "Downloaded <file>", and Save fetches it from the node (D1331). */
       const offerDownload = (
         client: RpcClient,
@@ -298,18 +304,22 @@ export const previewPanelPlugin = builtin(
                   ...tab,
                   id: download.id,
                 })
-                .then(({ fileName, data }) => {
-                  const binary = atob(data);
-                  const bytes = new Uint8Array(binary.length);
-                  for (let index = 0; index < binary.length; index += 1) {
-                    bytes[index] = binary.charCodeAt(index);
-                  }
-                  const url = URL.createObjectURL(new Blob([bytes]));
+                .then(async ({ fileName, data }) => {
+                  // The browser decodes it, off this loop's per-byte work.
+                  const blob = await (
+                    await fetch(`data:application/octet-stream;base64,${data}`)
+                  ).blob();
+                  // The newest saved file's URL lives until the next save or the plugin goes,
+                  // so the browser reads it whenever it starts the download.
+                  if (savedUrl !== undefined) URL.revokeObjectURL(savedUrl);
+                  savedUrl = URL.createObjectURL(blob);
                   const anchor = document.createElement("a");
-                  anchor.href = url;
+                  anchor.href = savedUrl;
                   anchor.download = fileName;
+                  anchor.hidden = true;
+                  document.body.append(anchor);
                   anchor.click();
-                  setTimeout(() => URL.revokeObjectURL(url), 0);
+                  anchor.remove();
                 })
                 .catch((error: unknown) => onError("Couldn't save the download", error));
             },
