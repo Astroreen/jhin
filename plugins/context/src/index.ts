@@ -1,6 +1,7 @@
-import { AgentId } from "@jhin/agent-api";
+import { AgentId, THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
+import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 
 import {
   ContextError,
@@ -138,6 +139,8 @@ export default definePlugin({
     // change; a config change replaces it.
     const libraries = new Map<string, { config: string; library: Library }>();
     context.subscriptions.add(toDisposable(() => libraries.clear()));
+    // Where each project's library is cached: `threads.project.deleted` names only the id (D1285).
+    const roots = new Map<string, string>();
 
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
     // host.paths@1.1 is required: a node host names the directory it runs in.
@@ -168,6 +171,8 @@ export default definePlugin({
         ...projects.map((entry) => entry.path),
       ]);
       for (const root of libraries.keys()) if (!known.has(root)) libraries.delete(root);
+      roots.clear();
+      for (const entry of projects) roots.set(entry.id, entry.path);
       const project = projects.find((candidate) => candidate.id === projectId);
       if (project === undefined) {
         throw new ContextError("PROJECT_NOT_FOUND", `No project ${projectId} on this node`, {
@@ -176,6 +181,25 @@ export default definePlugin({
       }
       return project.path;
     };
+
+    // A removed project drops its cached library when `jhin.threads` reports it, not only on
+    // the next call with a project id (D1285). Without the event log the next call still does.
+    const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
+    if (log !== undefined) {
+      context.subscriptions.add(
+        log.subscribe(THREADS_STREAM, (event) => {
+          if (event.type !== ThreadEvents.projectDeleted) return;
+          const id = (event.payload as { id?: unknown } | null)?.id;
+          const root = typeof id === "string" ? roots.get(id) : undefined;
+          if (typeof id === "string") roots.delete(id);
+          // The node's own directory stays: calls without a project id read it.
+          if (root === undefined || root === paths.cwd) return;
+          // Another project at the same directory keeps it.
+          if ([...roots.values()].includes(root)) return;
+          libraries.delete(root);
+        }),
+      );
+    }
 
     const libraryOf = async (projectId: string | undefined): Promise<Library> => {
       const root = await rootOf(projectId);
