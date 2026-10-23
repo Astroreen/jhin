@@ -742,7 +742,7 @@ The reference is T3 Code `eb7b35ac`: `apps/web/src/components/device/{DeviceSetu
   failed install shows as the host's failure with its step, and turning
   either off stops their daemon. The panel's own touches go over the hub's
   socket and need no agent access, as in T3. Unset, agent access follows the
-  hub: a node that turned the hub on before this setting existed had agreed
+  hub (the owner confirmed this default, 2026-10-23): a node that turned the hub on before this setting existed had agreed
   to agent-device with it (D1206 installed both), so an upgrade takes
   nothing away; the wizard writes the setting whenever it turns the hub on
   or off. The same holds for a hub turned on outside the wizard (the config
