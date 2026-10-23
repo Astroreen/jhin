@@ -658,6 +658,24 @@ describe("jhin.scheduler: the calling thread's ceiling on a task's modes (D1352)
     await expect(
       asThread(kernel, narrow.id)("scheduler.tasks.run", { id: task.id }),
     ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+
+    // Its own task may not be moved into a broader thread either.
+    const call = asThread(kernel, narrow.id);
+    const own = await call("scheduler.tasks.create", { prompt: "y", schedule });
+    await expect(
+      call("scheduler.tasks.update", { id: own.id, threadId: wide.id }),
+    ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
+    // Named, a thread of its own to post into still takes the caller's modes it leaves out.
+    const named = await call("scheduler.tasks.create", {
+      prompt: "z",
+      schedule,
+      threadId: narrow.id,
+    });
+    expect(named).toMatchObject({ threadId: narrow.id, runtimeMode: "approval-required" });
+    // Without a calling thread nothing is checked: the user may move it anywhere.
+    expect(
+      await client.call<ScheduledTask>("scheduler.tasks.update", { id: own.id, threadId: wide.id }),
+    ).toMatchObject({ threadId: wide.id });
   });
 });
 

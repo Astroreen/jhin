@@ -243,8 +243,12 @@ function activateScheduler(context: PluginContext): void {
       return next;
     });
 
-  const removeTask = (id: string): Promise<boolean> =>
+  const removeTask = (id: string, guard?: Guard): Promise<boolean> =>
     locked(id, async () => {
+      if (guard !== undefined) {
+        const current = await load(id);
+        if (current !== undefined) await guard(current);
+      }
       const removed = await kv.delete(NAMESPACE, taskKey(id));
       if (!removed) return false;
       for (const { key } of await kv.list(NAMESPACE, { prefix: deliveryPrefix(id) })) {
@@ -360,6 +364,7 @@ function activateScheduler(context: PluginContext): void {
     id: string,
     trigger: Trigger,
     webhook?: { readonly prompt: string; readonly createdAt: string },
+    guard?: Guard,
   ): Promise<RunResult | undefined> => {
     if (activeRuns.has(id)) {
       if (trigger === "scheduled") return Promise.resolve(undefined);
@@ -373,7 +378,8 @@ function activateScheduler(context: PluginContext): void {
       const startedAt = Date.now();
       const startedAtIso = iso(startedAt);
       let skipped: SchedulerError | undefined;
-      const started = await mutate(id, (task) => {
+      const started = await mutate(id, async (task) => {
+        await guard?.(task);
         if (trigger === "scheduled") {
           const due = task.nextRunAt === null ? undefined : Date.parse(task.nextRunAt);
           if (!task.enabled || due === undefined || due > startedAt) {
@@ -678,9 +684,23 @@ function activateScheduler(context: PluginContext): void {
     if (input.bindToCurrentThread !== undefined && namedThread) {
       throw invalid("Give threadId or bindToCurrentThread, not both.");
     }
-    if (callerThreadId === undefined || namedThread) {
+    if (callerThreadId === undefined) {
       if (input.bindToCurrentThread === true) throw invalid(NEEDS_THREAD);
       return input;
+    }
+    if (namedThread) {
+      // Posting into another thread, it still runs at the caller's modes for what it leaves
+      // out (D1352): the ceiling is the caller's.
+      const caller = await callingThread(callerThreadId);
+      return {
+        ...input,
+        ...(input.runtimeMode === undefined && caller.runtimeMode !== undefined
+          ? { runtimeMode: caller.runtimeMode }
+          : {}),
+        ...(input.interactionMode === undefined && caller.interactionMode !== undefined
+          ? { interactionMode: caller.interactionMode }
+          : {}),
+      };
     }
     const caller = await callingThread(callerThreadId);
     const projectId = input.projectId ?? caller.projectId;
@@ -741,7 +761,11 @@ function activateScheduler(context: PluginContext): void {
   const runModes = async (task: Modes & { readonly threadId: string | null }) => {
     const modes: Modes[] = [task];
     if (task.threadId !== null) {
-      const bound = await callingThread(task.threadId).catch(() => undefined);
+      // A thread that is gone posts nothing; any other failure refuses rather than lets through.
+      const bound = await callingThread(task.threadId).catch((error: unknown) => {
+        if ((error as { code?: unknown } | null)?.code === "THREAD_NOT_FOUND") return undefined;
+        throw error;
+      });
       if (bound !== undefined) modes.push(bound);
     }
     return modes;
@@ -778,16 +802,24 @@ function activateScheduler(context: PluginContext): void {
     try {
       assertWithin(limits, modes);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof SchedulerError && error.code.endsWith("_ESCALATION_DENIED"))
+        return false;
+      throw error;
     }
   };
 
-  /** A task the calling thread may change, run or delete: one that runs no broader than it. */
-  const taskWithin = async (id: string, callerThreadId: string | undefined) => {
+  /** Checks a task as it is under its lock, before what changes, runs or deletes it. */
+  type Guard = (task: StoredTask) => Promise<void>;
+  /**
+   * The calling thread's guard: a task it may change, run or delete runs no broader than it.
+   * Undefined without a calling thread.
+   */
+  const guardFor = async (callerThreadId: string | undefined): Promise<Guard | undefined> => {
     const limits = await callerLimits(callerThreadId);
-    if (limits === undefined) return;
-    assertWithin(limits, await runModes(await getTask(id)));
+    return limits === undefined
+      ? undefined
+      : async (task) => assertWithin(limits, await runModes(task));
   };
 
   const threadProject = async (threadId: string): Promise<string> => {
@@ -896,21 +928,9 @@ function activateScheduler(context: PluginContext): void {
     callerThreadId?: string,
   ): Promise<ScheduledTask> => {
     let parsed = UpdateTaskInput.parse(raw);
-    // From a thread: only a task no broader than it, into modes no broader (D1352).
+    // From a thread: only a task no broader than it, into modes and a thread no broader (D1352),
+    // checked on the task as it is under its lock.
     const limits = await callerLimits(callerThreadId);
-    if (limits !== undefined) {
-      const existing = await getTask(parsed.id);
-      assertWithin(limits, await runModes(existing));
-      assertWithin(limits, [
-        {
-          runtimeMode: parsed.runtimeMode ?? existing.runtimeMode,
-          interactionMode: parsed.interactionMode ?? existing.interactionMode,
-        },
-      ]);
-      if (typeof parsed.threadId === "string") {
-        assertWithin(limits, [await callingThread(parsed.threadId)]);
-      }
-    }
     // Moved into the calling thread, or out of any, with T3's workspace (D1177).
     if (parsed.bindToCurrentThread !== undefined) {
       if (parsed.threadId !== undefined) {
@@ -935,7 +955,19 @@ function activateScheduler(context: PluginContext): void {
       parsed.threadId === undefined || parsed.threadId === null
         ? undefined
         : await threadProject(parsed.threadId);
-    const updated = await mutate(parsed.id, (existing) => {
+    const updated = await mutate(parsed.id, async (existing) => {
+      if (limits !== undefined) {
+        assertWithin(limits, await runModes(existing));
+        assertWithin(limits, [
+          {
+            runtimeMode: parsed.runtimeMode ?? existing.runtimeMode,
+            interactionMode: parsed.interactionMode ?? existing.interactionMode,
+          },
+        ]);
+        if (typeof parsed.threadId === "string") {
+          assertWithin(limits, [await callingThread(parsed.threadId)]);
+        }
+      }
       // A ref is consumed for the task's project after this update, under its lock (D1034).
       const input =
         parsed.schedule === undefined
@@ -1019,8 +1051,10 @@ function activateScheduler(context: PluginContext): void {
     return toPublic(updated);
   };
 
-  const runNow = async (id: string): Promise<RunResult> => {
+  const runNow = async (id: string, guard?: Guard): Promise<RunResult> => {
     const task = await getTask(id);
+    // Refused for what it is first; checked again on the task as it starts, under its lock.
+    await guard?.(task);
     if (task.schedule.type === "webhook") {
       throw new SchedulerError(
         "WEBHOOK_TASK",
@@ -1028,13 +1062,14 @@ function activateScheduler(context: PluginContext): void {
         { id },
       );
     }
-    const result = await runTask(id, "manual");
+    const result = await runTask(id, "manual", undefined, guard);
     if (result === undefined) throw notFound(id);
     return result;
   };
 
-  const rotateWebhookToken = async (id: string): Promise<ScheduledTask> => {
-    const rotated = await mutate(id, (task) => {
+  const rotateWebhookToken = async (id: string, guard?: Guard): Promise<ScheduledTask> => {
+    const rotated = await mutate(id, async (task) => {
+      await guard?.(task);
       if (task.schedule.type !== "webhook") {
         throw new SchedulerError("NOT_A_WEBHOOK", "Only webhook tasks have a URL token.", { id });
       }
@@ -1514,10 +1549,10 @@ function activateScheduler(context: PluginContext): void {
     input: withId,
     output: z.object({ id: z.string(), deleted: z.boolean() }),
     permissions: ["scheduler.write"],
-    handler: async ({ id }, invocation) => {
-      await taskWithin(id, invocation.threadId);
-      return { id, deleted: await removeTask(id) };
-    },
+    handler: async ({ id }, invocation) => ({
+      id,
+      deleted: await removeTask(id, await guardFor(invocation.threadId)),
+    }),
   });
 
   context.commands.register({
@@ -1528,10 +1563,7 @@ function activateScheduler(context: PluginContext): void {
     input: withId,
     output: z.object({ task: ScheduledTask, threadId: z.string().nullable() }),
     permissions: write,
-    handler: async ({ id }, invocation) => {
-      await taskWithin(id, invocation.threadId);
-      return runNow(id);
-    },
+    handler: async ({ id }, invocation) => runNow(id, await guardFor(invocation.threadId)),
   });
 
   context.commands.register({
@@ -1541,10 +1573,8 @@ function activateScheduler(context: PluginContext): void {
     input: withId,
     output: ScheduledTask,
     permissions: write,
-    handler: async ({ id }, invocation) => {
-      await taskWithin(id, invocation.threadId);
-      return rotateWebhookToken(id);
-    },
+    handler: async ({ id }, invocation) =>
+      rotateWebhookToken(id, await guardFor(invocation.threadId)),
   });
 
   context.commands.register({

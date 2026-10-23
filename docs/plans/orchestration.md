@@ -782,11 +782,13 @@ Round 4 of `t3-roadmap.md` (D1341–D1360), at T3 Code `eb7b35ac`.
   broader than the ceiling (`RUNTIME_MODE_ESCALATION_DENIED`,
   `INTERACTION_MODE_ESCALATION_DENIED`: "Scheduled task runtime mode X is
   broader than this thread's mode Y."); what it leaves out it takes from
-  the thread, so it fits. `scheduler.tasks.update`, `.delete`, `.run` and
+  the thread, so it fits, also when it names another thread to post into. `scheduler.tasks.update`, `.delete`, `.run` and
   `scheduler.webhooks.rotate` refuse a task whose runs go broader (its own
   modes, and the modes of the thread it posts into, T3's
   `scheduledTaskRunModes`), and an update refuses new modes or a thread to
-  post into that are broader. `scheduler.tasks.list` and `.get` leave out
+  post into that are broader. Each is checked on the task as it is under
+  its lock, where it changes, starts or is deleted. A bound thread that is
+  gone adds no modes; any other failure to read it refuses. `scheduler.tasks.list` and `.get` leave out
   such a task's webhook URL for that thread (T3's `summarizeScheduledTask`):
   it starts runs. Without a calling thread (the settings page, the CLI)
   nothing changes; a caller outside a thread has no ceiling until W13's
