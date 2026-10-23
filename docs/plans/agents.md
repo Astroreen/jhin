@@ -1956,7 +1956,7 @@ Each workstream lists its PRs here as they merge.
   Civilization mode), the lore story "own homework".
 - L1 #233: the answer of an agent's turn to the owner's message is recorded
   with it and shows in the owner's conversation and the Lead view (D1221).
-- L1 #PR: the lead's mission report from `jhin.orchestrator` (done,
+- L1 #235: the lead's mission report from `jhin.orchestrator` (done,
   dropped, a run failed or stopped) to the inbox and the Lead view,
   `missions.close`, and the mission held while the lead's escalation is
   open (`escalations`, `ESCALATION_OPEN`, outcome `waiting`); the
