@@ -49,37 +49,44 @@ const headExists = async (git: Git) =>
   (await git(["rev-parse", "--verify", "--quiet", "HEAD"], { ok: [0, 1, 128] })).code === 0;
 
 /**
- * Commits the whole working tree of `git`'s directory (untracked files in,
- * ignored ones out) under `ref`, through a scratch index: the real index,
- * `HEAD` and the branch are never touched.
+ * Writes the whole working tree of `git`'s directory (untracked files in,
+ * ignored ones out) as a tree object through a scratch index, and returns its
+ * oid: the real index, `HEAD` and the branch are never touched. Two working
+ * trees with the same content have the same oid, committed or not.
  */
-export async function captureCheckpoint(git: Git, commonDir: string, ref: string): Promise<void> {
+export async function writeWorkingTree(git: Git, commonDir: string): Promise<string> {
   const index = Path.join(commonDir, `jhin-checkpoint-index-${Crypto.randomUUID()}`);
-  const env = { ...IDENTITY, GIT_INDEX_FILE: index };
+  const env = { GIT_INDEX_FILE: index };
   try {
-    const head = await headExists(git);
-    if (head) await git([...INDEX_CONFIG, "read-tree", "HEAD"], { env });
+    if (await headExists(git)) await git([...INDEX_CONFIG, "read-tree", "HEAD"], { env });
     await git([...INDEX_CONFIG, ...DURABLE, "add", "-A", "--", "."], { env });
     const tree = (await git([...INDEX_CONFIG, ...DURABLE, "write-tree"], { env })).stdout.trim();
     if (tree === "") throw new Error("git write-tree returned an empty tree oid.");
-    // HEAD is the parent, so how HEAD moved between two checkpoints can be read (authoredPaths).
-    const commit = (
-      await git(
-        [
-          ...DURABLE,
-          "commit-tree",
-          tree,
-          ...(head ? ["-p", "HEAD"] : []),
-          "-m",
-          `jhin checkpoint ref=${ref}`,
-        ],
-        { env },
-      )
-    ).stdout.trim();
-    await git([...DURABLE, "update-ref", ref, commit], { env });
+    return tree;
   } finally {
     await Promise.all([Fs.rm(index, { force: true }), Fs.rm(`${index}.lock`, { force: true })]);
   }
+}
+
+/** Commits the whole working tree (`writeWorkingTree`) under `ref`. */
+export async function captureCheckpoint(git: Git, commonDir: string, ref: string): Promise<void> {
+  const tree = await writeWorkingTree(git, commonDir);
+  const head = await headExists(git);
+  // HEAD is the parent, so how HEAD moved between two checkpoints can be read (authoredPaths).
+  const commit = (
+    await git(
+      [
+        ...DURABLE,
+        "commit-tree",
+        tree,
+        ...(head ? ["-p", "HEAD"] : []),
+        "-m",
+        `jhin checkpoint ref=${ref}`,
+      ],
+      { env: IDENTITY },
+    )
+  ).stdout.trim();
+  await git([...DURABLE, "update-ref", ref, commit], { env: IDENTITY });
 }
 
 export async function hasCheckpoint(git: Git, ref: string): Promise<boolean> {

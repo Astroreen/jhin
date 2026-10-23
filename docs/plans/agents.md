@@ -1626,8 +1626,45 @@ Decisions (L1):
   or removed without a deprecation (AGENTS.md rule 8). It runs for every PR,
   agents' and humans' alike.
 
-Decisions:
+Decisions (L2):
 
+- **D1241. A step that needs a review is refused until the work is
+  reviewed after its last change.** Which mission steps need a review is
+  data in two places: the orchestrator's config `reviewSteps` (the owner's,
+  default `commit` and `merge`, whatever a mission says, so the lead does not
+  choose its own guard ([own homework](../lore/own-homework.md))) and
+  `review: true` on a step of a mission's process (the default process's
+  `merge` has it, D648). A mission takes a step of its own process with
+  `missions.update { missionId, step }` (the mission records `step`; a step
+  of no process is `MISSION_STEP_INVALID`), and the missions plugin runs the
+  `missions.step` hook (`MISSION_STEP_HOOK`) before it, also for the same
+  step taken again. `jhin.orchestrator` refuses there with
+  `REVIEW_REQUIRED` and the slices in the way, and answers the same check as
+  `missions.review.check { missionId, step? }`. Its workflow's `wave-done`
+  and `slices-done` carry that check (`review`) and tell the lead to take
+  each step before running it. A node without the orchestrator takes any
+  step: A6 drives the process (D701).
+- **D1242. A review is recorded with the files it saw.**
+  `slices.review { sliceId, verdict, notes?, threadId? }` records the
+  slice's last review (`approved` or `changes-requested`, notes on what was
+  checked and found, who and when) as `missions.slice.reviewed`, with the
+  git tree of the files where the work lives (the thread named, else the
+  slice's first thread of this node, else its project): the new
+  `git.tree { projectId | threadId }` of `jhin.source-control`, the working
+  tree's content committed or not, written through a scratch index as a
+  checkpoint is (D243), so a commit of the same files keeps the tree. A done
+  slice is reviewed (`reviewCheck` in `@jhin/missions-api`) when its last
+  review approved it after its proof and its files are still the tree the
+  latest review of that place saw: a later review of the same files covers
+  every slice living there, and a change after it, by anyone, the lead's
+  included, is `changed-after-review`. Files that cannot be read now are
+  `work-unknown`; a review without files (a node without `git.tree`, a
+  project outside git) is checked by its time alone.
+- **D1243. Review slices are data too.** A slice names the slices it
+  reviews (`reviews`: slices of its mission in earlier waves,
+  `SLICE_ORDER_INVALID` otherwise; a new slice's wave follows them as it
+  follows `dependsOn`). A review slice needs no review itself, and its
+  handoff tells its assignee to record each review with `slices_review`.
 - **D1247. Public ids are read from the source, at the merge base and
   now.** `scripts/public-ids.ts` reads string literals where each kind is
   declared: capabilities from the `provides` of a plugin's `package.json` and
@@ -1884,6 +1921,15 @@ Decisions:
 - L1: the report as a card of its own in the Lead view (today the lead's
   Markdown text), and a way to clear a report from the inbox without an
   answer (A2, D626).
+- L2: a commit made in a shell is not refused: the guard holds the mission's
+  step (D1241), not git itself. A `pre-commit` hook in the node's managed
+  worktrees asking `missions.review.check`, or refusing `git.action.run`'s
+  commit for a thread of a mission, would close it.
+- L2: the mission view shows a mission's `step`, its slices' reviews and
+  `missions.review.check` (C2's dialogs edit `reviews` neither).
+- L2: which files a slice owns. A review covers the whole place a slice
+  lives in (D1242), so in a shared checkout a change by one slice asks for
+  another review of every slice there.
 - L2: public ids the source does not spell out (template literals such as
   `sidebar.thread.jump.${jump}`, D1247), and hook names and permission names,
   which rule 8 does not list yet.
@@ -2000,3 +2046,9 @@ Each workstream lists its PRs here as they merge.
 - L2 #236: public ids in CI: `scripts/public-ids.ts`, `deprecations.json`,
   the "Public ids" CI job and `pnpm verify` step; how to deprecate in
   `docs/README.md` and AGENTS.md rule 8 (D1247–D1249).
+- L2 #234: review after the last change: `missions.update { step }` runs
+  the `missions.step` hook and `jhin.orchestrator` refuses a step that needs
+  a review (`reviewSteps`, `review: true`) with `REVIEW_REQUIRED`;
+  `missions.review.check`, `slices.review` with the files' tree from
+  `git.tree` (`jhin.source-control`), review slices (`reviews`)
+  (D1241–D1243).

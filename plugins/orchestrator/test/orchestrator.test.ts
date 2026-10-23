@@ -8,8 +8,15 @@ import {
   threadAddress,
   threadStream,
 } from "@jhin/agent-api";
-import { MISSIONS_STREAM, missionProgress, type Mission, type Slice } from "@jhin/missions-api";
+import {
+  MISSIONS_STREAM,
+  missionProgress,
+  reviewCheck,
+  type Mission,
+  type Slice,
+} from "@jhin/missions-api";
 import type { RpcClient } from "@jhin/rpc";
+import { definePlugin, z } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -35,11 +42,47 @@ const AGENT = {
   ],
 };
 
-async function node(config: Record<string, unknown> = {}) {
+/**
+ * `git.tree` as jhin.source-control answers it, over files the test changes:
+ * `files.tree` is the tree of every path now.
+ */
+function fakeGit() {
+  const files = { tree: "tree-1" };
+  return {
+    files,
+    plugin: {
+      manifest: {
+        id: "test.git",
+        version: "1.0.0",
+        apiVersion: 1,
+        side: "server",
+        entry: "index.js",
+      },
+      definition: definePlugin({
+        activate(context) {
+          context.commands.register({
+            name: "git.tree",
+            description: "The fake files' tree",
+            input: z.object({ projectId: z.string().optional(), threadId: z.string().optional() }),
+            output: z.object({ projectId: z.string(), path: z.string(), tree: z.string() }),
+            handler: ({ projectId, threadId }) => ({
+              projectId: projectId ?? "p",
+              path: threadId === undefined ? "/project" : `/worktrees/${threadId}`,
+              tree: files.tree,
+            }),
+          });
+        },
+      }),
+    },
+  };
+}
+
+async function node(config: Record<string, unknown> = {}, more: { plugins?: any[] } = {}) {
   const started = await agentsNode({
     agents: { builder: { title: "Builder", role: "Builds slices", runtime: "jhin.agent-fake" } },
     project: { "jhin.orchestrator": { refocusEveryTurns: 0, ...config } },
     plugins: [
+      ...(more.plugins ?? []),
       { manifest: manifest("missions"), definition: missions },
       { manifest: manifest("orchestration"), definition: orchestration },
       { manifest: manifest("orchestrator"), definition: orchestrator },
@@ -205,6 +248,155 @@ describe("slices.handoff (D703)", () => {
     await expect(client.call("slices.handoff", { sliceId: far.id })).rejects.toMatchObject({
       code: "AGENT_ELSEWHERE",
     });
+  });
+});
+
+describe("review after the last change (D1241–D1243)", () => {
+  const at = (n: number) => `2026-10-21T00:00:0${n}.000Z`;
+  const record = (id: string, fields: Partial<Slice>): Slice => ({
+    id,
+    missionId: "m",
+    projectId: "p",
+    title: id,
+    spec: "",
+    wave: 1,
+    dependsOn: [],
+    status: "done",
+    threads: [],
+    proof: { items: [{ kind: "link", url: "https://example.com" }], recordedAt: at(1) },
+    createdAt: at(Number(id.slice(1))),
+    updatedAt: at(0),
+    ...fields,
+  });
+  const work = (tree: string) => ({ projectId: "p", path: "/w", tree });
+
+  it("checks each done slice against the latest review of the files it lives in", () => {
+    const trees = new Map([["/w", "t2"]]);
+    expect(
+      reviewCheck(
+        [
+          record("s1", {}),
+          record("s2", { review: { verdict: "approved", recordedAt: at(2), work: work("t1") } }),
+          // A later review of the same files covers s2 too: nothing changed since.
+          record("s3", { review: { verdict: "approved", recordedAt: at(3), work: work("t2") } }),
+          record("s4", { review: { verdict: "changes-requested", recordedAt: at(3) } }),
+          // Proved again after its review.
+          record("s5", {
+            proof: { items: [{ kind: "link", url: "https://example.com" }], recordedAt: at(5) },
+            review: { verdict: "approved", recordedAt: at(4) },
+          }),
+          // A review slice needs no review; an open slice none yet.
+          record("s6", { wave: 2, reviews: ["s3"] }),
+          record("s7", { status: "active", proof: undefined }),
+        ],
+        trees,
+      ),
+    ).toEqual({
+      clear: false,
+      unreviewed: [
+        { sliceId: "s1", reason: "unreviewed" },
+        { sliceId: "s4", reason: "changes-requested" },
+        { sliceId: "s5", reason: "changed-after-review" },
+      ],
+    });
+    // The files changed after the latest review, by anyone: both slices living there.
+    const reviewed = [
+      record("s2", { review: { verdict: "approved", recordedAt: at(2), work: work("t1") } }),
+      record("s3", { review: { verdict: "approved", recordedAt: at(3), work: work("t2") } }),
+    ];
+    expect(reviewCheck(reviewed, trees)).toEqual({ clear: true, unreviewed: [] });
+    expect(reviewCheck(reviewed, new Map([["/w", "t3"]])).unreviewed).toEqual([
+      { sliceId: "s2", reason: "changed-after-review", path: "/w" },
+      { sliceId: "s3", reason: "changed-after-review", path: "/w" },
+    ]);
+    expect(reviewCheck(reviewed, new Map()).unreviewed[0]).toMatchObject({
+      reason: "work-unknown",
+    });
+  });
+
+  it("refuses a step that needs a review until the slices were reviewed after the last change", async () => {
+    const git = fakeGit();
+    const { client, kernel, mission, slice } = await node({}, { plugins: [git.plugin] });
+    const walls = await slice({ title: "Walls", assignee: BUILDER });
+    const review = await slice({ title: "Review walls", wave: 2, reviews: [walls.id] });
+    expect(review).toMatchObject({ wave: 2, reviews: [walls.id] });
+    await prove(client, walls.id);
+    const merge = () =>
+      client.call<Mission>("missions.update", { missionId: mission.id, step: "merge" });
+
+    // merge needs a review by default; walls has none.
+    await expect(merge()).rejects.toMatchObject({
+      code: "REVIEW_REQUIRED",
+      details: { step: "merge", unreviewed: [{ sliceId: walls.id, reason: "unreviewed" }] },
+    });
+    // The reviewer asks for changes, then approves; the review slice itself needs none.
+    const reviewer = { caller: AGENT };
+    await kernel.commands.execute(
+      "slices.review",
+      { sliceId: walls.id, verdict: "changes-requested", notes: "Checked AGENTS.md rule 8" },
+      reviewer,
+    );
+    await expect(merge()).rejects.toMatchObject({ code: "REVIEW_REQUIRED" });
+    const approved = (await kernel.commands.execute(
+      "slices.review",
+      { sliceId: walls.id, verdict: "approved" },
+      reviewer,
+    )) as Slice;
+    expect(approved.review).toMatchObject({
+      verdict: "approved",
+      by: AGENT.id,
+      work: { path: "/project", tree: "tree-1" },
+    });
+    await prove(client, review.id);
+    expect(await merge()).toMatchObject({ step: "merge" });
+
+    // The lead changes the files after the review: taking the step again is refused.
+    git.files.tree = "tree-2";
+    expect(
+      await client.call("missions.review.check", { missionId: mission.id, step: "merge" }),
+    ).toEqual({
+      needed: true,
+      clear: false,
+      unreviewed: [{ sliceId: walls.id, reason: "changed-after-review", path: "/project" }],
+    });
+    await expect(merge()).rejects.toMatchObject({ code: "REVIEW_REQUIRED" });
+    await client.call("slices.review", { sliceId: walls.id, verdict: "approved" });
+    expect(await merge()).toMatchObject({ step: "merge" });
+
+    // A step of no process is invalid; one that needs no review is taken as it is.
+    await expect(
+      client.call("missions.update", { missionId: mission.id, step: "deploy" }),
+    ).rejects.toMatchObject({ code: "MISSION_STEP_INVALID" });
+    git.files.tree = "tree-3";
+    const process = { slice: mission.process.slice, mission: [{ id: "demo" }, { id: "merge" }] };
+    expect(
+      await client.call("missions.update", { missionId: mission.id, process, step: "demo" }),
+    ).toMatchObject({ step: "demo" });
+  });
+
+  it("takes the steps that need a review from the config and the process", async () => {
+    const { client, mission, slice } = await node({ reviewSteps: ["ship"] });
+    const walls = await slice({ title: "Walls", assignee: BUILDER });
+    // A slice reviews only slices of earlier waves.
+    await expect(slice({ title: "Review", wave: 1, reviews: [walls.id] })).rejects.toMatchObject({
+      code: "SLICE_ORDER_INVALID",
+    });
+    await prove(client, walls.id);
+    await client.call("missions.update", {
+      missionId: mission.id,
+      process: {
+        slice: mission.process.slice,
+        mission: [{ id: "merge" }, { id: "ship" }, { id: "deploy", review: true }],
+      },
+    });
+    const step = (id: string) =>
+      client.call("missions.update", { missionId: mission.id, step: id });
+    expect(await step("merge")).toMatchObject({ step: "merge" });
+    await expect(step("ship")).rejects.toMatchObject({ code: "REVIEW_REQUIRED" });
+    await expect(step("deploy")).rejects.toMatchObject({ code: "REVIEW_REQUIRED" });
+    // Without git.tree a review is checked by its time alone.
+    await client.call("slices.review", { sliceId: walls.id, verdict: "approved" });
+    expect(await step("deploy")).toMatchObject({ step: "deploy" });
   });
 });
 

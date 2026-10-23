@@ -4,7 +4,8 @@
  * lead's head and decides nothing itself: it hands each ready slice to its
  * assignee, waits for the mission to change, and ends with what the lead has
  * to decide or run (the mission's own steps between waves, the project's
- * after the last). Its end wakes the lead like any workflow's (D376); running
+ * after the last), with whether the slices were reviewed after their last
+ * change (D1241). Its end wakes the lead like any workflow's (D376); running
  * it again goes on from what the mission says, so it holds no state.
  */
 export const ORCHESTRATOR_WORKFLOW = `export const meta = {
@@ -14,6 +15,7 @@ export const ORCHESTRATOR_WORKFLOW = `export const meta = {
 };
 
 const { missionId, waitMs } = args;
+const STEPS_NOTE = "Take each step with missions_update { missionId, step } before you run it: a step that needs a review (commit, merge) is refused while a slice changed after its last review, as review.unreviewed lists them; have them reviewed again with slices_review first.";
 const handed = [];
 // The wave this run saw at work: once it is over, the mission's steps between waves are the lead's.
 let watched = null;
@@ -36,14 +38,16 @@ for (;;) {
     return end("slices-done", {
       steps: next.steps,
       projectSteps: next.projectSteps,
-      note: "Every slice is done or dropped. Run the mission's steps, then close it with missions.close once its outcome holds, saying what was committed or merged and where: the owner gets your report.",
+      review: await command("missions.review.check", { missionId }),
+      note: "Every slice is done or dropped. Run the mission's steps, then close it with missions.close once its outcome holds, saying what was committed or merged and where: the owner gets your report. " + STEPS_NOTE,
     });
   }
   if (watched !== null && next.wave !== watched && next.steps.length > 0) {
     return end("wave-done", {
       wave: watched,
       steps: next.steps,
-      note: "Run the mission's steps for this wave, then run the orchestrator again for the next one.",
+      review: await command("missions.review.check", { missionId }),
+      note: "Run the mission's steps for this wave, then run the orchestrator again for the next one. " + STEPS_NOTE,
     });
   }
   watched = next.wave;

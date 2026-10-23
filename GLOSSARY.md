@@ -340,7 +340,12 @@ Words about Jhin:
   screenshots, links; small on purpose).
 - **Process** — the steps of a level as data: a slice's (spec → build →
   test), a mission's between its slices (merge), a project's between missions
-  (release). A slice records its current **step**.
+  (release). A slice records its current **step**, a mission the step it
+  took last. A step that needs a review (commit, merge) is taken only while
+  every slice was **reviewed after its last change**: its last review
+  approved it, and its files are still those the review saw.
+- **Review slice** — a slice that reviews the work of slices of earlier
+  waves (`reviews`); its assignee records each review with `slices.review`.
 - **Ready slice** — a planned slice of a mission's current wave (the
   earliest with open slices) that has an assignee and can be handed off. A
   slice that cannot move waits for a **decision** of whoever runs the

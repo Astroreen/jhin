@@ -7,12 +7,14 @@ import {
   IntentChain,
   MISSIONS_STREAM,
   MISSION_EVENT_RECORD,
+  MISSION_STEP_HOOK,
   Mission,
   MissionEvents,
   MissionProcess,
   MissionStatus,
   ProjectIntent,
   ProofItems,
+  ReviewVerdict,
   Slice,
   SliceStatus,
   SliceThread,
@@ -25,6 +27,7 @@ import {
   type MissionErrorCode,
   type MissionEventType,
   type MissionsState,
+  type ReviewedWork,
 } from "@jhin/missions-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z, type Invocation, describePermissions } from "@jhin/sdk";
@@ -228,6 +231,35 @@ export default definePlugin({
         );
       }
     };
+    const assertMissionStep = (mission: Mission, step: string | undefined) => {
+      if (
+        step !== undefined &&
+        !mission.process.mission.some((candidate) => candidate.id === step)
+      ) {
+        throw new MissionsError(
+          "MISSION_STEP_INVALID",
+          `${step} is not a step of mission ${mission.id}'s own process`,
+          { missionId: mission.id, step },
+        );
+      }
+    };
+    /** A slice reviews slices of its mission in earlier waves (D1243), as it depends on them. */
+    const assertReviews = (current: MissionsState, slice: Slice) => {
+      for (const id of slice.reviews ?? []) {
+        const reviewed = current.slices[id];
+        if (
+          reviewed === undefined ||
+          reviewed.missionId !== slice.missionId ||
+          reviewed.wave >= slice.wave
+        ) {
+          throw new MissionsError(
+            "SLICE_ORDER_INVALID",
+            `Slice ${slice.id} can review only slices of its mission in earlier waves, not ${id}`,
+            { sliceId: slice.id, reviews: id },
+          );
+        }
+      }
+    };
     const assertProof = (slice: Slice) => {
       if (slice.status === "done" && slice.proof === undefined)
         throw new MissionsError("PROOF_REQUIRED", "A slice is done once its proof is recorded", {
@@ -377,21 +409,47 @@ export default definePlugin({
         outcome: Text.optional(),
         status: MissionStatus.optional(),
         process: MissionProcess.optional(),
+        step: z.string().nullable().optional().meta({
+          description:
+            "Takes a step of the mission's own process (e.g. commit, merge) before running it; null clears it. A step that needs a review is refused while a slice changed after its last review (D1241)",
+        }),
       }),
       output: Mission,
       ...write,
-      handler: ({ missionId, ...fields }, invocation) =>
-        change(invocation, (current) => {
+      handler: async ({ missionId, step, ...fields }, invocation) => {
+        if (typeof step === "string") {
+          // Taking a step, also the same one again, goes through the hook first: a
+          // plugin refuses it by throwing (D1241).
+          await sync();
+          const mission = getMission(state, missionId);
+          const process = fields.process ?? mission.process;
+          assertMissionStep({ ...mission, process }, step);
+          await context.hooks.run(
+            MISSION_STEP_HOOK,
+            { mission: { ...mission, process }, step },
+            async (input) => input,
+          );
+        }
+        return change(invocation, (current) => {
           const mission = getMission(current, missionId);
           const defined = Object.fromEntries(
             Object.entries(fields).filter(([, value]) => value !== undefined),
           );
-          const next = Mission.parse({ ...mission, ...defined, updatedAt: mission.updatedAt });
+          const { step: _step, ...kept } = mission;
+          const nextStep = step === undefined ? mission.step : (step ?? undefined);
+          const next = Mission.parse({
+            ...kept,
+            ...defined,
+            ...(nextStep === undefined ? {} : { step: nextStep }),
+            updatedAt: mission.updatedAt,
+          });
           if (same(next, mission)) return { record: mission };
-          // A new slice process keeps every slice's step one of its steps (D648).
+          // A new process keeps the mission's and every slice's step one of its steps (D648).
+          assertMissionStep(next, next.step);
           for (const slice of slicesOf(current, missionId)) assertStep(next, slice.step, slice.id);
           return { type: MissionEvents.missionUpdated, record: { ...next, updatedAt: now() } };
-        }),
+        });
+      },
     });
 
     // --- Reading as Markdown and the intent chain ---------------------------------
@@ -522,12 +580,16 @@ export default definePlugin({
         spec: Text,
         wave: z.number().int().min(1).optional(),
         dependsOn: z.array(z.string()).default([]),
+        reviews: z.array(z.string()).optional().meta({
+          description:
+            "Slices of the mission, in earlier waves, whose work this slice reviews (D1243)",
+        }),
         assignee: Assignee.optional(),
         status: SliceStatus.exclude(["done", "dropped"]).default("planned"),
       }),
       output: Slice,
       ...write,
-      handler: ({ missionId, wave, dependsOn, assignee, ...fields }, invocation) =>
+      handler: ({ missionId, wave, dependsOn, reviews, assignee, ...fields }, invocation) =>
         change(invocation, (current) => {
           const mission = getMission(current, missionId);
           if (mission.status === "done" || mission.status === "dropped") {
@@ -541,14 +603,24 @@ export default definePlugin({
             missionId,
             projectId: mission.projectId,
             ...fields,
-            wave: wave ?? 1 + Math.max(0, ...dependsOn.map((id) => current.slices[id]?.wave ?? 0)),
+            wave:
+              wave ??
+              1 +
+                Math.max(
+                  0,
+                  ...[...dependsOn, ...(reviews ?? [])].map((id) => current.slices[id]?.wave ?? 0),
+                ),
             dependsOn: [...new Set(dependsOn)],
+            ...(reviews === undefined || reviews.length === 0
+              ? {}
+              : { reviews: [...new Set(reviews)] }),
             ...(assignee === undefined ? {} : { assignee }),
             threads: [],
             createdAt: at,
             updatedAt: at,
           };
           assertOrder(current, slice);
+          assertReviews(current, slice);
           return { type: MissionEvents.sliceCreated, record: slice };
         }),
     });
@@ -562,13 +634,14 @@ export default definePlugin({
         spec: Text.optional(),
         wave: z.number().int().min(1).optional(),
         dependsOn: z.array(z.string()).optional(),
+        reviews: z.array(z.string()).optional(),
         assignee: Assignee.nullable().optional(),
         status: SliceStatus.optional(),
         step: z.string().nullable().optional(),
       }),
       output: Slice,
       ...write,
-      handler: ({ sliceId, assignee, step, dependsOn, ...fields }, invocation) =>
+      handler: ({ sliceId, assignee, step, dependsOn, reviews, ...fields }, invocation) =>
         change(invocation, (current) => {
           const previous = getSlice(current, sliceId);
           const defined = Object.fromEntries(
@@ -576,7 +649,14 @@ export default definePlugin({
           );
           // A slice leaving done leaves its proof behind: done again takes slices.prove (D646).
           const reopened = previous.status === "done" && (fields.status ?? "done") !== "done";
-          const { assignee: _assignee, step: _step, proof: _proof, ...kept } = previous;
+          const {
+            assignee: _assignee,
+            step: _step,
+            proof: _proof,
+            reviews: _reviews,
+            ...kept
+          } = previous;
+          const nextReviews = reviews === undefined ? previous.reviews : [...new Set(reviews)];
           const rest =
             reopened || previous.proof === undefined ? kept : { ...kept, proof: previous.proof };
           const nextAssignee = assignee === undefined ? previous.assignee : (assignee ?? undefined);
@@ -585,6 +665,9 @@ export default definePlugin({
             ...rest,
             ...defined,
             ...(dependsOn === undefined ? {} : { dependsOn: [...new Set(dependsOn)] }),
+            ...(nextReviews === undefined || nextReviews.length === 0
+              ? {}
+              : { reviews: nextReviews }),
             ...(nextAssignee === undefined ? {} : { assignee: nextAssignee }),
             ...(nextStep === undefined ? {} : { step: nextStep }),
           });
@@ -594,6 +677,7 @@ export default definePlugin({
             throw new MissionsError("SLICE_DROPPED", `Slice ${sliceId} is dropped`, { sliceId });
           }
           assertOrder(current, slice, previous);
+          assertReviews(current, slice);
           assertStep(getMission(current, slice.missionId), slice.step);
           assertProof(slice);
           return { type: MissionEvents.sliceUpdated, record: { ...slice, updatedAt: now() } };
@@ -675,6 +759,77 @@ export default definePlugin({
             } satisfies Slice,
           };
         }),
+    });
+
+    /**
+     * The files of a slice's work as a review sees them (D1242): where it
+     * lives (the thread named, else the slice's first thread of this node,
+     * else its project) and their git tree, through `git.tree` when a plugin
+     * registers it. Without it, or outside a repository, a review records none.
+     */
+    const workOf = async (
+      slice: Slice,
+      threadId: string | undefined,
+    ): Promise<ReviewedWork | undefined> => {
+      const thread =
+        threadId ?? slice.threads.find((linked) => linked.nodeId === undefined)?.threadId;
+      try {
+        const work = (await context.commands.execute(
+          "git.tree",
+          thread === undefined ? { projectId: slice.projectId } : { threadId: thread },
+        )) as { projectId: string; path: string; tree: string };
+        return {
+          projectId: work.projectId,
+          ...(thread === undefined ? {} : { threadId: thread }),
+          path: work.path,
+          tree: work.tree,
+        };
+      } catch (error) {
+        const { code, details } = error as { code?: unknown; details?: { command?: unknown } };
+        if (code === "COMMAND_NOT_FOUND" && details?.command === "git.tree") return undefined;
+        if (code === "NOT_A_REPOSITORY") return undefined;
+        throw error;
+      }
+    };
+    context.commands.register({
+      name: "slices.review",
+      description:
+        "Records a review of a slice's work: approved or changes-requested, with notes on what was checked and found, and the git tree of the files reviewed (where the slice's thread works, or threadId's). A mission step that needs a review is refused while a slice changed after its last review",
+      input: z.object({
+        sliceId: z.string(),
+        verdict: ReviewVerdict,
+        notes: Text.optional(),
+        threadId: z.string().min(1).optional().meta({
+          description: "The thread whose files were reviewed, when not the slice's own",
+        }),
+      }),
+      output: Slice,
+      ...write,
+      handler: async ({ sliceId, verdict, notes, threadId }, invocation) => {
+        await sync();
+        const work = await workOf(getSlice(state, sliceId), threadId);
+        return change(invocation, (current) => {
+          const slice = getSlice(current, sliceId);
+          if (slice.status === "dropped") {
+            throw new MissionsError("SLICE_DROPPED", `Slice ${sliceId} is dropped`, { sliceId });
+          }
+          const at = now();
+          return {
+            type: MissionEvents.sliceReviewed,
+            record: {
+              ...slice,
+              review: {
+                verdict,
+                ...(notes === undefined || notes.trim() === "" ? {} : { notes }),
+                ...(work === undefined ? {} : { work }),
+                recordedAt: at,
+                ...(invocation.caller === undefined ? {} : { by: invocation.caller.id }),
+              },
+              updatedAt: at,
+            } satisfies Slice,
+          };
+        });
+      },
     });
   },
 });
