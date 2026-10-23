@@ -15,6 +15,8 @@ import {
   type DeviceSummary,
 } from "@jhin/preview-api";
 
+import { missingPermissions } from "@jhin/sdk";
+
 import { runAgentDeviceInput } from "./agent-device.ts";
 import { createHubHost, failureDetail } from "./hub-host.ts";
 import { TICKET_PARAM, createTickets, serveHubProxy } from "./hub-proxy.ts";
@@ -137,6 +139,17 @@ export function createDeviceHub(options: DeviceHubOptions) {
         throw new DeviceError(
           "DEVICE_UNAVAILABLE",
           unavailable() ?? "This node serves no HTTP, so clients cannot reach its device hub.",
+        );
+      }
+      // Watching never installs or starts anything: that takes devices.write (opening a
+      // device starts the hub too).
+      if (
+        host?.current() === undefined &&
+        missingPermissions(caller.permissions, ["devices.write"]).length > 0
+      ) {
+        throw new DeviceError(
+          "DEVICE_UNAVAILABLE",
+          "The device hub is not running. Open the device to start it.",
         );
       }
       await within(

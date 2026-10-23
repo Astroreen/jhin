@@ -74,12 +74,14 @@ const Config = z
     }),
     node: Path.meta({
       title: "Node.js",
-      description: "The node that runs the device hub; this node's own Node.js or node on PATH.",
+      description:
+        "The node that runs the device hub; this node's own Node.js or node on PATH. Takes effect when the hub next starts.",
       advanced: true,
     }),
     npm: Path.meta({
       title: "npm",
-      description: "The npm that installs the device hub; npm on PATH when unset.",
+      description:
+        "The npm that installs the device hub; npm on PATH when unset. Takes effect with the next install.",
       advanced: true,
     }),
   })

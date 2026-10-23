@@ -625,7 +625,8 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   and 503 "Device hub is not running" answers while none runs. A caller
   authenticates with a bearer token (`auth.verifier@1`) or, where a browser
   cannot send one (`<img>`, `WebSocket`), T3's `wsTicket`: `device.hub.access`
-  gives the path and two tickets, a media ticket for the HTTP URLs that can
+  (`devices.read`; starting a hub that is not running takes `devices.write`,
+  so watching never installs anything) gives the path and two tickets, a media ticket for the HTTP URLs that can
   only watch (it rides in `<img>` URLs, so in history and logs) and a socket
   ticket for the WebSocket upgrades with the caller's grants, valid five minutes
   and reusable within them as T3's, kept only as a SHA-256 hash and
@@ -660,7 +661,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   and the hub's flags and paths from T3; neither package ran here.
   An answer says whether `agent-device` or `adb` (D1207's fallback) did
   it. adb takes an input only when agent-device never got it (agent tools
-  that cannot start, or a daemon that does not answer before the command);
+  that cannot start, a daemon that does not answer before the command, or
+  agent-device refusing the arguments with `INVALID_ARGS`, so a wrong
+  argument order would not take input down);
   once the command ran, its failure is the command's error, a refusal or a
   daemon that died, so an input is never carried out twice. The panel's touches and rail buttons go over the hub's socket
   as in T3, since a command per pointer move would lag; they are the same

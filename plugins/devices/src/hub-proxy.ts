@@ -115,7 +115,8 @@ const READ = ["devices.read"];
 const CONTROL = ["devices.write"];
 
 /**
- * `media` tickets ride in `<img>` and `EventSource` URLs (history, logs) and can only watch;
+ * `media` tickets ride in `<img>` and `EventSource` URLs (history, logs) and carry only
+ * `devices.read`: watching, and T3's screenshot POST, which reads the screen;
  * `socket` tickets open the hub's WebSockets with the caller's grants and work for nothing else.
  */
 export type TicketKind = "media" | "socket";

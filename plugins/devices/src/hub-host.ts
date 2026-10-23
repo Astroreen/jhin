@@ -366,7 +366,8 @@ export function createHubHost(options: HubHostOptions) {
       status("ready");
       return hub;
     } catch (error) {
-      status("failed", failureDetail(error));
+      // A stop that cut the start short is no failure to report.
+      if (!stopping) status("failed", failureDetail(error));
       throw error;
     }
   };
@@ -476,7 +477,8 @@ export function createHubHost(options: HubHostOptions) {
           status("ready");
           return agent;
         } catch (error) {
-          status("failed", failureDetail(error));
+          // A stop that cut the start short is no failure to report.
+          if (!stopping) status("failed", failureDetail(error));
           throw error;
         }
       }),

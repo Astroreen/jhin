@@ -119,11 +119,22 @@ export async function runAgentDeviceInput(options: {
   });
   if (result.code === 0) return;
   let reason = `The device command failed (exit code ${result.code ?? "unknown"}).`;
+  let code: unknown;
   try {
-    const message = (JSON.parse(result.stdout) as { error?: { message?: unknown } }).error?.message;
-    if (typeof message === "string" && message !== "") reason = message;
+    const error = (JSON.parse(result.stdout) as { error?: { message?: unknown; code?: unknown } })
+      .error;
+    code = error?.code;
+    if (typeof error?.message === "string" && error.message !== "") reason = error.message;
   } catch {
     // Not the CLI's JSON: the exit code says enough.
+  }
+  // agent-device refused the arguments before doing anything: the input never ran, so adb
+  // may carry it (and a wrong argument order would not take input down with it).
+  if (code === "INVALID_ARGS") {
+    throw new DeviceError(
+      "DEVICE_UNAVAILABLE",
+      `agent-device did not accept the ${describe(options.input)} command: ${reason}`,
+    );
   }
   throw new DeviceError(
     "DEVICE_OPERATION_FAILED",

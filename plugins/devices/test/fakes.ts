@@ -125,6 +125,10 @@ if (args[0] !== "devices" && args[0] !== "daemon" && Fs.existsSync(${JSON.string
   console.log(JSON.stringify({ success: false, error: { message: "The daemon did not answer." } }));
   process.exit(1);
 }
+if (args.includes("BADARGS")) {
+  console.log(JSON.stringify({ success: false, error: { code: "INVALID_ARGS", message: "Unknown flag: --x" } }));
+  process.exit(1);
+}
 if (args.includes("DIE")) {
   // The daemon carries the input out, then dies before it answers.
   Fs.writeFileSync(${JSON.stringify(at("daemon-dead"))}, "");

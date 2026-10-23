@@ -136,6 +136,11 @@ describe("the device hub", () => {
       if (status !== undefined && statuses.at(-1) !== status.status) statuses.push(status.status);
       return status?.status === "ready";
     });
+    // Watching alone never installs or starts the hub.
+    await expect(node.call("device.hub.access", {}, READER)).rejects.toThrow(
+      "The device hub is not running. Open the device to start it.",
+    );
+    expect(tools.npmCalls()).toEqual([]);
     await node.call("device.open", { threadId: "t1", deviceId: "emulator-5554" });
     const access = await node.call<Access>("device.hub.access", {});
     await ready;
@@ -386,6 +391,14 @@ describe("the device hub", () => {
     });
     expect(Fs.statSync(config).mode & 0o777).toBe(0o600);
     expect(tools.adbInputs()).toEqual([]);
+
+    // Arguments agent-device does not accept never ran: adb carries the input.
+    const rejected = await node.call<{ via: string }>("device.type", {
+      threadId: "t1",
+      text: "BADARGS",
+    });
+    expect(rejected.via).toBe("adb");
+    expect(tools.adbInputs()).toEqual(["shell input text 'BADARGS'"]);
 
     // agent-device's own refusal is the command's answer.
     await expect(node.call("device.type", { threadId: "t1", text: "REFUSE" })).rejects.toThrow(
