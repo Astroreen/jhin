@@ -1558,7 +1558,7 @@ export function Composer(props: ComposerProps) {
       }}
     >
       <ComposerSurface.Shell>
-        {menu.trigger !== null && approval === undefined && question === undefined ? (
+        {menuShown && menu.trigger !== null ? (
           <CommandMenuBanner
             activeItemId={menu.activeId}
             emptyStateText={menu.emptyState}
