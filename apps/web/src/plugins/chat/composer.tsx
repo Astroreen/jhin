@@ -3,6 +3,7 @@
 // ContextWindowMeter.tsx and runtimeModeConfig.ts. The prompt is T3's tiptap editor (prompt-editor.tsx).
 import {
   applicableModelOptions,
+  collectContextReferences,
   referencedContext,
   serializeAssistantCitation,
 } from "@jhin/agent-api";
@@ -235,6 +236,11 @@ export interface ComposerHandleApi {
    * addTerminalContext, D1009), or why it cannot.
    */
   insertContext(record: MessageContextRecord): ContextInsertion;
+  /**
+   * Takes a record's chips out of the prompt, and the record with them (T3's
+   * removeReviewComment, D1286); false when the prompt names no such record.
+   */
+  removeContext(contextId: string): boolean;
   /** Puts a quote of an agent's message at the cursor as its chip (T3's onCite, D1012). */
   insertCitation(citation: AssistantCitation): ContextInsertion;
   toggleModelPicker(): void;
@@ -991,6 +997,21 @@ export function Composer(props: ComposerProps) {
     editor.current?.focus();
     return "inserted";
   };
+  const removeContext = (contextId: string): boolean => {
+    const text = editor.current?.value() ?? prompt;
+    const found = collectContextReferences(text).filter(
+      (occurrence) => occurrence.contextId === contextId,
+    );
+    if (found.length === 0) return false;
+    // From the last, so the earlier ones keep their places; the space inserted after a chip goes too.
+    for (const occurrence of found.toReversed()) {
+      const end = text[occurrence.end] === " " ? occurrence.end + 1 : occurrence.end;
+      editor.current?.replaceRange(occurrence.start, end, "");
+    }
+    contextsNow.current = contextsNow.current.filter((record) => record.contextId !== contextId);
+    setContexts(contextsNow.current);
+    return true;
+  };
   const insertCitation = (citation: AssistantCitation): ContextInsertion => {
     if (literalAnswer || approval !== undefined) return "not-now";
     const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
@@ -1091,6 +1112,7 @@ export function Composer(props: ComposerProps) {
     focus,
     insert,
     insertContext,
+    removeContext,
     insertCitation,
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,

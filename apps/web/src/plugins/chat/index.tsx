@@ -1,6 +1,11 @@
 // Empty states follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/NoActiveThreadState.tsx
 // and NoProjectsHero.tsx.
-import { AssistantCitationSchema, MessageContextRecordSchema } from "@jhin/agent-api";
+import {
+  AssistantCitationSchema,
+  MessageContextRecordSchema,
+  referencedContext,
+  type MessageContextRecord,
+} from "@jhin/agent-api";
 import {
   CHAT_DRAFTS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
@@ -273,10 +278,12 @@ const Transcript = lazyChunk(
   },
 );
 
+/** A thread's draft without context records (`chat.drafts`' `contexts`). */
+const NO_CONTEXTS: readonly MessageContextRecord[] = [];
 export const chatPlugin = builtin(
   "jhin.chat",
   {
-    provides: { [CHAT_DRAFTS_CAPABILITY]: "1.0.0" },
+    provides: { [CHAT_DRAFTS_CAPABILITY]: "1.1.0" },
     requires: {
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
@@ -455,6 +462,7 @@ export const chatPlugin = builtin(
         );
       }
 
+      const draftContexts = new WeakMap<object, readonly MessageContextRecord[]>();
       // Which threads keep an unsent draft, for their cards (t3-parity.md D963).
       context.services.provide<ChatDrafts>(CHAT_DRAFTS_CAPABILITY, {
         hasThreadDraft: (target, threadId) => {
@@ -463,6 +471,17 @@ export const chatPlugin = builtin(
           return (
             draft !== undefined && (draft.prompt.trim() !== "" || draft.attachments.length > 0)
           );
+        },
+        contexts: (target, threadId) => {
+          const draft = services.drafts.get(threadDraftKey(target, threadId));
+          if (draft === undefined) return NO_CONTEXTS;
+          // The same answer for the same draft, so a store's snapshot of it stays put.
+          let records = draftContexts.get(draft);
+          if (records === undefined) {
+            records = referencedContext(draft.prompt, draft.contexts ?? [])?.records ?? NO_CONTEXTS;
+            draftContexts.set(draft, records);
+          }
+          return records;
         },
         subscribe: (listener) => services.drafts.subscribe(listener),
       });
@@ -649,6 +668,17 @@ export const chatPlugin = builtin(
           const done = target.insertContext(record);
           return done === "inserted" ? { inserted: true } : { inserted: false, reason: done };
         },
+      });
+      // T3's removeReviewComment (D1286): a record's chips go, with the record.
+      context.commands.register({
+        name: "chat.composer.remove-context",
+        description:
+          "Takes a context record (a review comment, a terminal excerpt, …) and its chips out of the open thread's message; `removed` is false when the message names no such record",
+        input: z.object({ contextId: z.string().min(1) }),
+        output: z.object({ removed: z.boolean() }),
+        handler: ({ contextId }) => ({
+          removed: composer.current?.removeContext(contextId) ?? false,
+        }),
       });
       // T3's onCite (D1012): a quote of an agent's message as its chip, not text.
       context.commands.register({

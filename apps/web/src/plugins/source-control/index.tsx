@@ -2,6 +2,7 @@
 // apps/web/src/components/chat/PanelLayoutControls.tsx (the header's panel toggles) and
 // ChatView.tsx (`diff.toggle`, bound to mod+d outside a terminal).
 import {
+  CHAT_DRAFTS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
@@ -15,6 +16,7 @@ import {
   type ChatTurnFooterProps,
   type ChatThreadDetailsProps,
   type ChatTurnHeaderProps,
+  type ChatDrafts,
   type Connections,
   type DeviceSettings,
   type Keybindings,
@@ -93,6 +95,7 @@ export const sourceControlPlugin = builtin(
       [UI_DIALOGS_CAPABILITY]: "^1",
       [SETTINGS_CAPABILITY]: "^1",
       [THREAD_WORK_CAPABILITY]: "^1",
+      [CHAT_DRAFTS_CAPABILITY]: "^1.1",
     },
   },
   definePlugin({
@@ -124,6 +127,7 @@ export const sourceControlPlugin = builtin(
         selections: createDiffSelections(),
         editors: createEditors(threads, toasts),
         settings,
+        drafts: context.services.tryGet<ChatDrafts>(CHAT_DRAFTS_CAPABILITY),
         timestampFormat: () => readSection(context, CHAT_SECTION, ChatSettings).timestampFormat,
         shortcut: () => keybindings?.labelFor("diff.toggle"),
       };

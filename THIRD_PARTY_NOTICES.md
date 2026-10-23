@@ -15,8 +15,8 @@ thread order, settling, pinning, snoozing and dragging, with the threads
 plugin's rules for them, the thread cards' branch, pull request and diff
 indicators, the branch toolbar, the git actions control and the diff panel with
 its file tree, base ref picker, turn scopes and comments on lines (T3's
-`reviewCommentContext.ts`, `composerContextLegacySend.ts` and
-`DiffCommentAnnotation.tsx`), T3's file icons (`apps/web/src/lib/pierre-icons.ts`,
+`reviewCommentContext.ts`, `composerContextLegacySend.ts`,
+`composerContextRecords.ts` and `DiffCommentAnnotation.tsx`), T3's file icons (`apps/web/src/lib/pierre-icons.ts`,
 `pierre-entry-icon.tsx`; their sprite keeps T3's Lucide (ISC) and Simple
 Icons (CC0) symbols with those notes), find in the diff (T3's patch of
 `@pierre/diffs` at T3's commit `eb7b35ac`, `patches/@pierre%2Fdiffs@1.5.2.patch`), a

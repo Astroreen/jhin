@@ -2,7 +2,8 @@
 // (the scope menu, the header's controls, the file view and its empty states), DiffPanelShell.tsx
 // (the inline panel and its loading skeleton), DiffFilePathCopyButton.tsx, lib/diffCollapse.ts,
 // diffs/useCodeViewFileReveal.ts and chat/DiffStatLabel.tsx.
-import type { NodeTarget } from "@jhin/client-api";
+import type { MessageContextRecord, ReviewCommentContextRecord } from "@jhin/agent-api";
+import type { ChatDrafts, NodeTarget } from "@jhin/client-api";
 import type { DiffScopeContext, DiffScopeResult, ProjectStatus } from "@jhin/source-control-api";
 import type {
   CodeViewDiffItem,
@@ -51,15 +52,17 @@ import {
   TextWrapIcon,
 } from "lucide-react";
 import { z } from "@jhin/sdk";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useCatalog, useCommands, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
 import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
-import { DiffCommentAnnotation } from "./diff/comment-annotation.tsx";
+import { DiffComment, DiffCommentAnnotation } from "./diff/comment-annotation.tsx";
 import {
   annotationAnchor,
+  restoreReviewCommentRange,
+  reviewCommentRecord,
   buildDiffReviewComment,
   rangeInDiff,
   serializeReviewComment,
@@ -367,14 +370,53 @@ function ScopeMenu(props: {
   );
 }
 
-/** What a comment's annotation carries: the range it is about, as T3 labels it. */
-interface CommentDraft {
-  readonly rangeLabel: string;
-}
+/**
+ * What a comment's annotation carries: the draft being written, or a comment already in the
+ * composer (D1285), with the range it is about as T3 labels it.
+ */
+type CommentDraft =
+  | { readonly kind: "draft"; readonly rangeLabel: string }
+  | {
+      readonly kind: "comment";
+      readonly rangeLabel: string;
+      readonly contextId: string;
+      readonly text: string;
+    };
 
-/** The chat's command putting text into the open composer (W15, D473). */
+/** The chat's command putting text into the open composer (W15, D473), the fallback. */
 const COMPOSER_INSERT = "chat.composer.insert";
-const InsertAnswer = z.object({ inserted: z.boolean() });
+/** The chat's commands for a comment's record and its chip (D1284, D1286). */
+const COMPOSER_INSERT_CONTEXT = "chat.composer.insert-context";
+const COMPOSER_REMOVE_CONTEXT = "chat.composer.remove-context";
+const InsertAnswer = z.object({
+  inserted: z.boolean(),
+  reason: z.enum(["no-composer", "not-now", "full"]).optional(),
+});
+
+/** The review comments the thread's unsent message names, kept current (D1285). */
+function useDraftComments(
+  drafts: ChatDrafts | undefined,
+  target: NodeTarget,
+  threadId: string | undefined,
+): readonly ReviewCommentContextRecord[] {
+  const subscribe = (listener: () => void) => {
+    const subscription = drafts?.subscribe(listener);
+    return () => subscription?.dispose();
+  };
+  const read = () =>
+    drafts === undefined || threadId === undefined
+      ? EMPTY_RECORDS
+      : drafts.contexts(target, threadId);
+  const records = useSyncExternalStore(subscribe, read);
+  return records.filter(
+    (record): record is ReviewCommentContextRecord =>
+      record.kind === "review-comment" &&
+      "sectionId" in record &&
+      (record as ReviewCommentContextRecord).pullRequest === undefined &&
+      ((record as ReviewCommentContextRecord).fenceLanguage ?? "diff") === "diff",
+  );
+}
+const EMPTY_RECORDS: readonly MessageContextRecord[] = [];
 
 export function createDiffPanel(services: SourceControlServices) {
   const { store, threads, navigation, scopes, selections } = services;
@@ -449,7 +491,9 @@ export function createDiffPanel(services: SourceControlServices) {
     const [selectedLines, setSelectedLines] = useState<CodeViewLineSelection | null>(null);
     // Without a composer to put a comment in (no chat plugin), lines take none.
     const commandsNow = useCommands(services.context);
-    const canComment = commandsNow.some((command) => command.name === COMPOSER_INSERT);
+    const asRecord = commandsNow.some((command) => command.name === COMPOSER_INSERT_CONTEXT);
+    const canComment = asRecord || commandsNow.some((command) => command.name === COMPOSER_INSERT);
+    const draftComments = useDraftComments(services.drafts, target, threadId);
     const [reveal, setReveal] = useState<{ path: string; id: number } | null>(null);
     const [version, setVersion] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
@@ -560,16 +604,35 @@ export function createDiffPanel(services: SourceControlServices) {
     const items: CodeViewDiffItem<CommentDraft>[] = renderableFileEntries.map(
       ({ fileDiff, fileKey, fileVersion }) => {
         const collapsed = collapsedKeys.has(fileKey);
+        // The comments already in the message, under their lines while the diff still has them.
+        const filePath = resolveFileDiffPath(fileDiff);
+        const persisted = draftComments.flatMap((comment): DiffLineAnnotation<CommentDraft>[] => {
+          if (comment.sectionId !== reviewSectionId || comment.filePath !== filePath) return [];
+          const range = restoreReviewCommentRange(fileDiff, comment);
+          if (range === null) return [];
+          return [
+            {
+              ...annotationAnchor(fileDiff, range),
+              metadata: {
+                kind: "comment",
+                rangeLabel: comment.rangeLabel,
+                contextId: comment.contextId,
+                text: comment.text,
+              },
+            },
+          ];
+        });
         const annotations: DiffLineAnnotation<CommentDraft>[] =
           draft?.fileKey === fileKey
             ? [
+                ...persisted,
                 {
                   // Under the selection's last line, whichever way it was dragged.
                   ...annotationAnchor(fileDiff, draft.range),
-                  metadata: { rangeLabel: draft.rangeLabel },
+                  metadata: { kind: "draft", rangeLabel: draft.rangeLabel },
                 },
               ]
-            : [];
+            : persisted;
         return {
           id: fileKey,
           type: "diff",
@@ -579,7 +642,7 @@ export function createDiffPanel(services: SourceControlServices) {
           version: fnv1a32(
             `${fileVersion}:${collapsed ? "1" : "0"}:${
               draft?.fileKey === fileKey ? `${draft.range.start}-${draft.range.end}` : ""
-            }`,
+            }:${persisted.map((annotation) => (annotation.metadata.kind === "comment" ? annotation.metadata.contextId : "")).join(",")}`,
           ),
         };
       },
@@ -660,6 +723,20 @@ export function createDiffPanel(services: SourceControlServices) {
       });
     };
     /** Puts the comment into the composer as T3 sends a review comment to a provider. */
+    /** T3's "Delete comment": its chip and record leave the message (D1286). */
+    const deleteComment = (metadata: CommentDraft) => {
+      if (metadata.kind !== "comment") return;
+      setSelectedLines(null);
+      void services.context.commands
+        .execute(COMPOSER_REMOVE_CONTEXT, { contextId: metadata.contextId })
+        .catch((failure: unknown) =>
+          services.toasts?.show({
+            type: "error",
+            title: "Could not delete the comment",
+            description: failure instanceof Error ? failure.message : String(failure),
+          }),
+        );
+    };
     const sendComment = (text: string) => {
       if (draft === null) return;
       if (draftStale) {
@@ -687,8 +764,16 @@ export function createDiffPanel(services: SourceControlServices) {
       setSending(sent);
       // The answer belongs to this draft: a draft closed meanwhile (another scope) hears nothing.
       const current = () => drafts.current === sent;
-      void services.context.commands
-        .execute(COMPOSER_INSERT, { text: serializeReviewComment(comment) })
+      // A record and its chip where the chat takes them (D1284), else T3's text for a provider.
+      void (
+        asRecord
+          ? services.context.commands.execute(COMPOSER_INSERT_CONTEXT, {
+              record: reviewCommentRecord(comment, crypto.randomUUID()),
+            })
+          : services.context.commands.execute(COMPOSER_INSERT, {
+              text: serializeReviewComment(comment),
+            })
+      )
         .then(
           (answer) => {
             if (!current()) return;
@@ -703,6 +788,14 @@ export function createDiffPanel(services: SourceControlServices) {
             }
             if (parsed.data.inserted) {
               closeDraft();
+              return;
+            }
+            if (parsed.data.reason === "full") {
+              services.toasts?.show({
+                type: "error",
+                title: "Could not add the comment to the chat",
+                description: "The message already holds as much context as it can take.",
+              });
               return;
             }
             services.toasts?.show({
@@ -1070,18 +1163,29 @@ export function createDiffPanel(services: SourceControlServices) {
                       onGutterUtilityClick: (range, context) =>
                         beginComment(range, context.item as CodeViewDiffItem<CommentDraft>),
                     }}
-                    renderAnnotation={(annotation) => (
-                      <div className="py-1">
-                        <DiffCommentAnnotation
-                          onCancel={closeDraft}
-                          onComment={sendComment}
-                          onTextChange={setDraftText}
-                          pending={sending !== null && sending === draft?.id}
-                          rangeLabel={annotation.metadata.rangeLabel}
-                          text={draftText}
-                        />
-                      </div>
-                    )}
+                    renderAnnotation={(annotation) =>
+                      annotation.metadata.kind === "comment" ? (
+                        <div className="py-1">
+                          <DiffComment
+                            onDelete={() => deleteComment(annotation.metadata)}
+                            text={
+                              annotation.metadata.kind === "comment" ? annotation.metadata.text : ""
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="py-1">
+                          <DiffCommentAnnotation
+                            onCancel={closeDraft}
+                            onComment={sendComment}
+                            onTextChange={setDraftText}
+                            pending={sending !== null && sending === draft?.id}
+                            rangeLabel={annotation.metadata.rangeLabel}
+                            text={draftText}
+                          />
+                        </div>
+                      )
+                    }
                     selectedLines={selectedLines}
                     renderHeaderFilenameSuffix={(item) =>
                       item.type === "diff" ? (

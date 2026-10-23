@@ -156,6 +156,8 @@ export interface ComposerHandle {
         insert(text: string): void;
         /** Puts a context record's reference at the cursor (D1009), or says why it cannot. */
         insertContext(record: MessageContextRecord): ContextInsertion;
+        /** Takes a record's chips and the record out of the prompt (D1286). */
+        removeContext(contextId: string): boolean;
         /** Puts a quote of an agent's message at the cursor (D1012), or says why it cannot. */
         insertCitation(citation: AssistantCitation): ContextInsertion;
         toggleModelPicker(): void;

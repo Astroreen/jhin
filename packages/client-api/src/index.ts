@@ -1,4 +1,9 @@
-import type { AgentGoal, ModelOptionDescriptor, ModelOptionSelection } from "@jhin/agent-api";
+import type {
+  AgentGoal,
+  MessageContextRecord,
+  ModelOptionDescriptor,
+  ModelOptionSelection,
+} from "@jhin/agent-api";
 import type { MachineKind } from "@jhin/host-api";
 import type { ConnectionState, RpcClient } from "@jhin/rpc";
 import { z, type Disposable } from "@jhin/sdk";
@@ -365,6 +370,11 @@ export const CHAT_DRAFTS_CAPABILITY = "chat.drafts";
 export interface ChatDrafts {
   /** True while the thread's composer keeps text or attachments not sent yet. */
   hasThreadDraft(target: NodeTarget, threadId: string): boolean;
+  /**
+   * The context records the thread's unsent message still names (1.1, D1285): the diff shows
+   * the review comments among them on their lines.
+   */
+  contexts(target: NodeTarget, threadId: string): readonly MessageContextRecord[];
   /** Called after any draft changes, in this tab or another. */
   subscribe(listener: () => void): Disposable;
 }
