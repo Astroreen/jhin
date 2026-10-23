@@ -234,6 +234,9 @@ export const MessageCommands = {
         .enum(["open", "answered", "dismissed", "all"])
         .optional()
         .meta({ description: "`open` by default" }),
+      from: z.string().min(1).optional().meta({
+        description: "Only the items this sender sent, by its full address (D1275)",
+      }),
     }),
     /** Oldest first, and the head of the `agents/inbox` stream they reflect. */
     output: z.object({ head: z.number(), items: z.array(InboxItem) }),

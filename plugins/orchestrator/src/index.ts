@@ -276,15 +276,21 @@ export default definePlugin({
       if (!hasCommand("agents.inbox.list")) return [];
       const lead = await leadOf(missionId);
       if (lead === undefined) return [];
-      const { items } = await run<{ items: InboxItem[] }>("agents.inbox.list", {});
-      return items
-        .filter(
-          (item) =>
-            item.status === "open" &&
-            item.message.kind === "ask" &&
-            item.message.from === lead.address,
-        )
-        .map((item) => item.message.messageId);
+      const { items } = await run<{ items: InboxItem[] }>("agents.inbox.list", {
+        status: "open",
+        from: lead.address,
+      });
+      return (
+        items
+          // Checked here too, so a node whose inbox ignores `from` holds nothing it should not.
+          .filter(
+            (item) =>
+              item.status === "open" &&
+              item.message.kind === "ask" &&
+              item.message.from === lead.address,
+          )
+          .map((item) => item.message.messageId)
+      );
     };
     /** The lead's open asks, and whether they hold the whole mission (D1223, D1263). */
     const holdOf = async (mission: Mission) => {
