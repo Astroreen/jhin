@@ -972,7 +972,8 @@ describe("jhin.preview", () => {
       url: `${origin}/download`,
     });
     await client.call("preview.wait.for", { threadId: thread, text: "Get report" });
-    const frames = watch(client, previewFramesStream(thread, opened.tabId));
+    const tabId = opened.tabId!;
+    const frames = watch(client, previewFramesStream(thread, tabId));
     await client.call("preview.click", {
       threadId: thread,
       locator: "role=link[name='Get report']",
@@ -985,13 +986,13 @@ describe("jhin.preview", () => {
 
     const saved = await client.call<{ fileName: string; data: string }>("preview.tab.download", {
       threadId: thread,
-      tabId: opened.tabId,
+      tabId,
       id: offered.id,
     });
     expect(saved.fileName).toBe("report.txt");
     expect(Buffer.from(saved.data, "base64").toString()).toBe("the report");
     const missing = await rejection(
-      client.call("preview.tab.download", { threadId: thread, tabId: opened.tabId, id: "nope" }),
+      client.call("preview.tab.download", { threadId: thread, tabId, id: "nope" }),
     );
     expect(missing.code).toBe("PREVIEW_TAB_NOT_FOUND");
   });
