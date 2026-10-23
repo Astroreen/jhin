@@ -40,9 +40,22 @@ class FakeGuest extends EventEmitter {
 }
 
 const guests = new Map<number, FakeGuest>();
+const sessions = new Map<string, EventEmitter>();
 vi.mock("electron", () => ({
   webContents: { fromId: (id: number) => guests.get(id) },
-  session: { fromPartition: () => new EventEmitter() },
+  session: {
+    fromPartition: (partition: string) => {
+      const known = sessions.get(partition) ?? new EventEmitter();
+      sessions.set(
+        partition,
+        Object.assign(known, {
+          setPermissionRequestHandler: () => undefined,
+          setPermissionCheckHandler: () => undefined,
+        }),
+      );
+      return known;
+    },
+  },
 }));
 
 const { createWebviewHost } = await import("../src/preview/webview-host.ts");
@@ -156,5 +169,69 @@ describe("the app's webview relay (D1322)", () => {
     await released;
     expect(webview.debugger.isAttached()).toBe(false);
     expect(await refused(endpoint)).toBe("refused");
+  });
+
+  it("places a download the node asked for under its name, and lets no other open a dialog", async () => {
+    const webviews = host();
+    const partition = "persist:jhin-preview-ZGVmYXVsdA";
+    webviews.willAttach({ preventDefault() {} } as never, {}, { partition, src: "about:blank" });
+    const webview = guest(10);
+    const { endpoint } = await webviews.attach(page as never, 10);
+    const node = await connect(endpoint);
+    // The node's Playwright gives its download folder (relayed to the guest's debugger).
+    const answered = new Promise<void>((resolve) => node.once("message", () => resolve()));
+    node.send(
+      JSON.stringify({
+        id: 1,
+        method: "Browser.setDownloadBehavior",
+        params: { behavior: "allowAndName", downloadPath: "/downloads" },
+      }),
+    );
+    await answered;
+    const item = (url: string) => {
+      const placed = { path: undefined as string | undefined, cancelled: false };
+      return {
+        placed,
+        getURL: () => url,
+        setSavePath: (path: string) => {
+          placed.path = path;
+        },
+        cancel: () => {
+          placed.cancelled = true;
+        },
+      };
+    };
+    const session = sessions.get(partition)!;
+    // CDP names two downloads; Electron places only the second (the first was cancelled).
+    webview.debugger.emit(
+      "message",
+      {},
+      "Browser.downloadWillBegin",
+      { guid: "g1", url: "http://x/a" },
+      "",
+    );
+    webview.debugger.emit(
+      "message",
+      {},
+      "Browser.downloadWillBegin",
+      { guid: "g2", url: "http://x/b" },
+      "",
+    );
+    const second = item("http://x/b");
+    session.emit("will-download", {}, second, webview);
+    expect(second.placed).toEqual({ path: "/downloads/g2", cancelled: false });
+    // A download the node never heard of is cancelled, not left to a Save dialog.
+    const stray = item("http://x/c");
+    session.emit("will-download", {}, stray, webview);
+    expect(stray.placed).toEqual({ path: undefined, cancelled: true });
+  });
+
+  it("leaves no listener on a guest it attached again", async () => {
+    const webviews = host();
+    const webview = guest(11);
+    await webviews.attach(page as never, 11);
+    await webviews.attach(page as never, 11);
+    expect(webview.listenerCount("destroyed")).toBe(1);
+    expect(webview.debugger.listenerCount("detach")).toBe(1);
   });
 });

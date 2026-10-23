@@ -84,6 +84,8 @@ export function createDesktopHost(streams: MemoryStreams) {
     ): Promise<string | null> {
       if (hosts === 0) return Promise.resolve(null);
       const key = keyOf(tab.threadId, tab.tabId);
+      // A tab asked for again: the earlier wait gives up first.
+      entries.get(key)?.settle?.(null);
       return new Promise((resolve) => {
         const timer = setTimeout(() => settle(null), timeoutMs);
         const settle = (endpoint: string | null) => {

@@ -25,7 +25,7 @@ interface Attached {
   readonly endpoint: string;
   downloadDirectory: string | null;
   /** Downloads CDP named that Electron has not asked to place yet, oldest first. */
-  readonly pendingDownloadGuids: string[];
+  readonly pendingDownloads: { readonly guid: string; readonly url: string }[];
   close(): void;
 }
 
@@ -57,9 +57,18 @@ export function createWebviewHost(options: WebviewHostOptions) {
     // file the node asked for; CDP names the download just before this runs.
     guestSession.on("will-download", (_event, item, source) => {
       const tab = source === undefined ? undefined : attached.get(source.id);
-      const guid = tab?.pendingDownloadGuids.shift();
-      if (tab?.downloadDirectory == null || guid === undefined) return;
-      item.setSavePath(Path.join(tab.downloadDirectory, guid));
+      if (tab === undefined) return;
+      // The download CDP named for this URL, so a download CDP named and Electron never
+      // placed (cancelled first) cannot lend its name to the next one.
+      const index = tab.pendingDownloads.findIndex((pending) => pending.url === item.getURL());
+      const pending = index < 0 ? undefined : tab.pendingDownloads.splice(index, 1)[0];
+      // No folder from the node, or a download the node did not hear of: nothing to place it,
+      // and no Save dialog over the app either.
+      if (tab.downloadDirectory === null || pending === undefined) {
+        item.cancel();
+        return;
+      }
+      item.setSavePath(Path.join(tab.downloadDirectory, pending.guid));
     });
   };
 
@@ -98,8 +107,9 @@ export function createWebviewHost(options: WebviewHostOptions) {
       throw new Error("No webview of the app has this id.");
     }
     if (guest.hostWebContents !== host) throw new Error("The webview is not this page's.");
-    // A debugger this host holds (an earlier attach of the guest) is let go only once the
-    // new attach can proceed, so a refused attach keeps the node's working connection.
+    // An attach refused (DevTools, a foreign debugger) keeps the node's working connection.
+    // Once it is allowed, the earlier relay of the guest goes first: Electron allows the guest
+    // one debugger, so the new attach cannot be made beside it.
     const previous = attached.get(webContentsId);
     if (guest.isDevToolsOpened() || (guest.debugger.isAttached() && previous === undefined)) {
       throw new Error("Another debugger holds the webview.");
@@ -132,8 +142,10 @@ export function createWebviewHost(options: WebviewHostOptions) {
       sessionId: string,
     ) => {
       if (method === "Browser.downloadWillBegin") {
-        const guid = (params as { guid?: unknown } | undefined)?.guid;
-        if (typeof guid === "string") tab.pendingDownloadGuids.push(guid);
+        const { guid, url } = (params ?? {}) as { guid?: unknown; url?: unknown };
+        if (typeof guid === "string" && typeof url === "string") {
+          tab.pendingDownloads.push({ guid, url });
+        }
       }
       relay?.event(method, params, sessionId);
     };
@@ -147,6 +159,7 @@ export function createWebviewHost(options: WebviewHostOptions) {
       server.close();
       if (!guest.isDestroyed()) {
         guest.debugger.off("message", onMessage);
+        guest.off("destroyed", close);
         guest.debugger.off("detach", close);
         if (guest.debugger.isAttached()) guest.debugger.detach();
       }
@@ -155,7 +168,7 @@ export function createWebviewHost(options: WebviewHostOptions) {
       guest,
       endpoint: `ws://127.0.0.1:${address.port}/${secret}`,
       downloadDirectory: null,
-      pendingDownloadGuids: [],
+      pendingDownloads: [],
       close,
     };
     attached.set(webContentsId, tab);
