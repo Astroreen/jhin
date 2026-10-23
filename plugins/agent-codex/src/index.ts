@@ -751,6 +751,8 @@ export function createCodexRuntime(options: {
       void turn.done.then(() => turns.delete(turn));
       return {
         items: turn.items,
+        // Its subagents' work in the background after the turn (D1318).
+        afterwards: turn.afterwards,
         interrupt: () => turn.interrupt(),
         ...(turn.respond === undefined ? {} : { respond: turn.respond }),
         ...(turn.steer === undefined ? {} : { steer: (input) => turn.steer!(input) }),

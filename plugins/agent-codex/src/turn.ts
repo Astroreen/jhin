@@ -222,13 +222,39 @@ type Frame =
       readonly answer: (result: Promise<unknown>) => void;
     };
 
+/** Items `afterwards` holds unread before it gives up on its reader (D1318, as Claude's D1165). */
+const MAX_UNREAD_LATER = 10_000;
+
 /** Runs one turn of a thread on its Codex app-server; `done` settles once it let go of it. */
 export function codexTurn(
   request: TurnRequest,
   deps: CodexTurnDependencies,
-): AgentTurn & { readonly done: Promise<void> } {
+): AgentTurn & {
+  readonly done: Promise<void>;
+  readonly afterwards: NonNullable<AgentTurn["afterwards"]>;
+} {
   let interrupted = false;
   const out = channel<AgentItem>(() => interrupted);
+  /** The later work of its subagents in the background (D1318), read after `items`. */
+  const later = channel<AgentItem>(() => false);
+  /** Its open subagents went on past the turn: their items go to `afterwards`. */
+  let handedOver = false;
+  /** Stops following the app-server for them. */
+  let unfollow = () => {};
+  /** Items handed to `afterwards` and not read yet: past the bound its reader is given up. */
+  let unreadLater = 0;
+  /** A subagent's item: the turn's while it runs, `afterwards`' once handed over. */
+  const subagentPush = (item: AgentItem) => {
+    if (!handedOver) return out.push(item);
+    // Nobody reads `afterwards` (it is optional for a runtime's caller): let go (D1318).
+    if (unreadLater >= MAX_UNREAD_LATER) {
+      unfollow();
+      later.end();
+      return;
+    }
+    unreadLater += 1;
+    later.push(item);
+  };
   const runtimeMode = request.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode = request.interactionMode ?? "default";
   const answers = new Map<string, (response: AgentResponse | undefined) => void>();
@@ -311,12 +337,13 @@ export function codexTurn(
   /** An item of the turn, or of the subagent being read (only the kinds its thread shows). */
   const emit = (item: AgentItem) => {
     if (child === undefined) return out.push(item);
-    if (isSubagentWork(item)) out.push({ kind: "subagent.item", subagentId: child, item });
+    if (isSubagentWork(item)) subagentPush({ kind: "subagent.item", subagentId: child, item });
   };
   const startSubagent = (threadId: string, title: string, prompt: string, model?: string) => {
-    if (subagents.has(threadId)) return;
+    // One a followed subagent starts after the turn is not this turn's to show (D1318).
+    if (subagents.has(threadId) || handedOver) return;
     subagents.set(threadId, { open: true });
-    out.push({
+    subagentPush({
       kind: "subagent.started",
       subagentId: threadId,
       title,
@@ -332,12 +359,17 @@ export function codexTurn(
     const subagent = subagents.get(threadId);
     if (subagent === undefined || !subagent.open) return;
     subagent.open = false;
-    out.push({
+    subagentPush({
       kind: "subagent.ended",
       subagentId: threadId,
       status,
       ...(error === undefined ? {} : { error }),
     });
+    // The last one in the background ended: nothing more to follow.
+    if (handedOver && ![...subagents.values()].some((other) => other.open)) {
+      unfollow();
+      later.end();
+    }
   };
   /** T3's registerSubagentThreads, registerSubagentActivity and updateSubagentStates. */
   const subagentItem = (item: CodexItem, completed: boolean) => {
@@ -1322,6 +1354,25 @@ export function codexTurn(
       keep = outcome.ended === true;
       if (outcome.error !== undefined) throw outcome.error;
     } finally {
+      // Subagents still working when Codex ended the turn go on in the background (T3 follows
+      // a child past its parent's turn, D1318): their app-server's later frames are read.
+      const open = [...subagents.entries()].filter(([, subagent]) => subagent.open);
+      if (keep && !interrupted && open.length > 0) {
+        for (const [subagentId] of open) out.push({ kind: "subagent.backgrounded", subagentId });
+        handedOver = true;
+        unfollow = current.follow({
+          notification: (method, params) => {
+            const thread = frameThread({ kind: "notification", method, params });
+            if (thread !== undefined && subagents.get(thread)?.open === true) {
+              childFrame(thread, { kind: "notification", method, params });
+            }
+          },
+          end: () => {
+            unfollow();
+            later.end();
+          },
+        });
+      }
       // Kept only when Codex finished the turn: one that broke off mid-turn would hand the
       // rest of it to the next.
       current.release(keep);
@@ -1339,9 +1390,25 @@ export function codexTurn(
     },
   );
 
+  void done.then(() => {
+    if (!handedOver) later.end();
+  });
+
   return {
     done,
     items: out.read(),
+    afterwards: (async function* () {
+      try {
+        for await (const item of later.read()) {
+          unreadLater -= 1;
+          if (item.kind === "subagent.item" || item.kind === "subagent.ended") yield item;
+        }
+      } finally {
+        // Read no further (also when its reader stopped early): the app-server is let go.
+        unfollow();
+        later.end();
+      }
+    })(),
     interrupt() {
       if (interrupted) return;
       interrupted = true;

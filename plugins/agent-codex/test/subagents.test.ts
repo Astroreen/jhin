@@ -152,4 +152,84 @@ describe("jhin.agent-codex: subagents (D1145)", () => {
     expect(startedChild).toMatchObject({ subagentId: "child-b", title: "reviewer" });
     await until(client, String(startedChild!["childThreadId"]), "agent.turn.interrupted");
   });
+
+  it("follows a subagent that outlives its turn until it ends (D1318)", async () => {
+    const fake = fakeCodex({
+      turns: [
+        [
+          parentItem("item/completed", {
+            type: "collabAgentToolCall",
+            id: "spawn-1",
+            tool: "spawnAgent",
+            status: "completed",
+            senderThreadId: "$thread",
+            receiverThreadIds: ["child-c"],
+            prompt: "Keep watching the build",
+            agentsStates: {},
+          }),
+          parentItem("item/completed", { type: "agentMessage", id: "m1", text: "Started it" }),
+          { complete: "completed" },
+          // The subagent works on after its parent's turn, until the thread's next turn.
+          { waitFor: "turn/start", count: 2 },
+          childItem("child-c", "item/completed", {
+            type: "agentMessage",
+            id: "m1",
+            text: "The build is green",
+          }),
+          {
+            notify: "turn/completed",
+            params: {
+              threadId: "child-c",
+              turn: { id: "child-turn", status: "completed", items: [] },
+            },
+          },
+        ],
+        [{ complete: "completed" }],
+      ],
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const first = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "watch the build" });
+    const [startedChild] = payloads(await first, "threads.subagent.started");
+    const childThread = String(startedChild!["childThreadId"]);
+    const childDone = until(client, childThread, "agent.turn.completed");
+    // The thread's next turn: the subagent's later frames arrive while it runs.
+    await client.call("threads.send", { threadId: thread.id, text: "anything new?" });
+    const events = await childDone;
+    expect(payloads(events, "agent.item.completed")).toContainEqual(
+      expect.objectContaining({ kind: "message", text: "The build is green" }),
+    );
+    expect(events.some((event) => event.type === "agent.turn.interrupted")).toBe(false);
+  });
+
+  it("interrupts a followed subagent when its app-server ends (D1318)", async () => {
+    const fake = fakeCodex({
+      turns: [
+        [
+          parentItem("item/completed", {
+            type: "collabAgentToolCall",
+            id: "spawn-1",
+            tool: "spawnAgent",
+            status: "completed",
+            senderThreadId: "$thread",
+            receiverThreadIds: ["child-d"],
+            prompt: "Watch forever",
+            agentsStates: {},
+          }),
+          { complete: "completed" },
+          { exit: 0 },
+        ],
+      ],
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const first = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "watch" });
+    const [startedChild] = payloads(await first, "threads.subagent.started");
+    const child = String(startedChild!["childThreadId"]);
+    // Interrupted once, by the end of its app-server (the follow itself is proven above).
+    const childEvents = await until(client, child, "agent.turn.interrupted");
+    expect(childEvents.filter((event) => event.type === "agent.turn.interrupted")).toHaveLength(1);
+  });
 });
