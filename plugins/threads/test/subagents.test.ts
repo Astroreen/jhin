@@ -169,10 +169,9 @@ describe("jhin.threads: subagents in the background (D1164, D1166)", () => {
     await digEvents.until("agent.turn.interrupted");
     // The runtime followed them no further: the one still open ends with that.
     await watch(client, wait!).until("agent.turn.interrupted");
-    // Its end (recorded before the other's) drops the progress with the turn that had it.
+    // Its end (recorded before the other's) keeps its last progress on that turn.
     const ended = await client.call<{ thread: Thread }>("threads.get", { threadId: dig });
-    expect(ended.thread.lastTurn).toMatchObject({ status: "interrupted" });
-    expect(ended.thread.lastTurn?.progress).toBeUndefined();
+    expect(ended.thread.lastTurn).toMatchObject({ status: "interrupted", progress: "Digging" });
     await expect(client.call("threads.subagent.stop", { threadId: dig })).rejects.toMatchObject({
       code: "SUBAGENT_NOT_RUNNING",
     });

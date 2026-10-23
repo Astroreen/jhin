@@ -1183,6 +1183,10 @@ export default definePlugin({
                 agentId,
                 ...(waitingFor === undefined ? {} : { waitingFor }),
                 ...(failure === undefined ? {} : { failure: { ...failure } }),
+                // A subagent's last progress stays with its turn, ended too (D1344).
+                ...(thread.lastTurn?.turnId === turnId && thread.lastTurn.progress !== undefined
+                  ? { progress: thread.lastTurn.progress }
+                  : {}),
               },
             },
       ).then(
@@ -1728,7 +1732,7 @@ export default definePlugin({
           const child = subagents.get(item.subagentId);
           const progress = item.progress.trim().slice(0, MAX_PROGRESS_LENGTH);
           if (child === undefined || !child.open || progress === "") return;
-          // On its running turn only: the turn's end replaces `lastTurn` and drops it (D1344).
+          // Written while its turn runs, and kept on that turn once it ended (D1344).
           await updateThread(child.threadId, (record) =>
             record.lastTurn?.turnId === child.turnId &&
             record.lastTurn.status === "running" &&

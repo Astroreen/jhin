@@ -716,6 +716,9 @@ describe("jhin.agent-claude: a turn", () => {
         yield system("task_progress", { task_id: "task-2", description: " Looking around " });
         yield system("task_progress", { task_id: "task-2", description: "  " });
         yield system("task_progress", { task_id: "task-9", description: "Elsewhere" });
+        // A task that is no subagent call of this turn (a background shell) says nothing either.
+        yield system("task_started", { task_id: "task-3", tool_use_id: "bash-1" });
+        yield system("task_progress", { task_id: "task-3", description: "Compiling" });
         yield system("task_updated", { task_id: "task-2", patch: { is_backgrounded: true } });
         yield toolResult("agent-fg", "Running in the background");
         yield result();

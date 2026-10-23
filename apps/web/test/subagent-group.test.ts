@@ -8,6 +8,7 @@ import { adjacentExtensions, type TurnBlock } from "../src/lib/timeline.ts";
 import { runningSubagents } from "../src/plugins/chat/lineage.tsx";
 import {
   subagentGroupTiming,
+  subagentDetail,
   subagentPreview,
   summarizeSubagentStatuses,
 } from "../src/plugins/orchestration/rows.tsx";
@@ -149,6 +150,13 @@ describe("a subagent's hover card (D1162)", () => {
 
   it("previews a result on one line, at most 280 characters", () => {
     expect(subagentPreview(" Found\n\n  three files ")).toBe("Found three files");
+    // T3's detail line (D1344): progress first while running, the result first once ended.
+    const run = { summary: "Found it", progress: "Reading the map" };
+    expect(subagentDetail(true, run)).toBe("Reading the map");
+    expect(subagentDetail(false, run)).toBe("Found it");
+    expect(subagentDetail(false, { progress: "Reading the map" })).toBe("Reading the map");
+    expect(subagentDetail(true, { summary: "Found it" })).toBe("Found it");
+    expect(subagentDetail(true, undefined)).toBeNull();
     expect(subagentPreview(undefined)).toBeNull();
     const long = subagentPreview("x".repeat(300));
     expect(long).toBe(`${"x".repeat(280)}…`);
