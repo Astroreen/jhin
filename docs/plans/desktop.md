@@ -404,7 +404,14 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   tab, and what it can point the node at is a loopback relay with a random
   path, which only a process of the node's machine can serve (a browser's
   own DevTools endpoint, `/devtools/browser/<id>`, does not match). That is
-  accepted, as the same caller may already drive every tab. Likewise any
+  accepted, as the same caller may already drive every tab. The relay is on
+  the app's loopback, so it works only while the page's node runs on the
+  same machine as the app, as the app's own node does; a page loaded from
+  a node elsewhere offers an endpoint that node cannot reach, its attach
+  fails to connect, and the tab opens headless (D394). A webview whose
+  attach fails goes at once, with its relay; the node, still waiting, has
+  the page host it anew with its next announcement, or opens it headless
+  when its wait is over. Likewise any
   subscriber to `preview-desktop` counts as a hosting page: a client with
   `preview.control` that subscribes and never attaches makes each new tab
   wait the 10 s before it opens headless. When the last subscriber goes,

@@ -204,16 +204,13 @@ function HostedWebview(props: {
           endpoint,
         });
       })().catch((error: unknown) => {
-        // The next document of the webview tries again; until the node's deadline it waits,
-        // then opens the tab headless.
         if (disposed) return;
-        attachedOnce.current = false;
-        // The node no longer waits: another page attached the tab first, or it opened headless.
-        // This webview goes, and its guest's relay with it, at once.
-        if ((error as { code?: unknown }).code === "PREVIEW_TAB_NOT_FOUND") {
-          onLost(desktopKey(tab));
-          return;
-        }
+        // Not attached, and no later document asks again (the webview waits on about:blank):
+        // this webview goes at once, and its guest's relay with it. The node opens the tab
+        // headless once its wait is over (D1321).
+        onLost(desktopKey(tab));
+        // The node no longer waits (another page attached it, or it opened headless): no error.
+        if ((error as { code?: unknown }).code === "PREVIEW_TAB_NOT_FOUND") return;
         onError.current("Couldn't show the browser tab in the app", error);
       });
     };
