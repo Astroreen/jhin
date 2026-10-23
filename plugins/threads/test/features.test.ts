@@ -27,7 +27,8 @@ interface Thread {
   model?: string;
   runtimeMode?: string;
   updatedAt?: string;
-  lastTurn?: { turnId: string; status: string };
+  lastTurn?: { turnId: string; status: string; failure?: unknown };
+  goalStatus?: string;
 }
 
 /** A plugin that registers `runtime` through agent.registry@1. */
@@ -104,6 +105,37 @@ describe("jhin.threads: thread management", () => {
     });
     expect(named.title).toBe("Fix the login form");
     expect(named.lastTurn).toMatchObject({ status: "completed" });
+  });
+
+  it("records a usage limit's failure and the goal's status on the thread (D1306)", async () => {
+    const { client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const index = watch(client, "stream:threads");
+    const record = (test: (thread: Thread) => boolean) =>
+      index.untilMatch((event) => {
+        const payload = event.payload as unknown as Thread;
+        return payload.id === thread.id && test(payload);
+      });
+
+    await client.call("threads.send", { threadId: thread.id, text: "/limit" });
+    const limited = await record((current) => current.lastTurn?.status === "failed");
+    expect(limited.payload).toMatchObject({
+      lastTurn: { failure: { class: "usage_limit", resetAt: expect.any(String) } },
+    });
+
+    await client.call("threads.send", { threadId: thread.id, text: "/goal Ship it" });
+    await record(
+      (current) => current.lastTurn?.status === "completed" && current.goalStatus === "paused",
+    );
+    const { thread: paused } = await client.call<{ thread: Thread }>("threads.get", {
+      threadId: thread.id,
+    });
+    // The next turn's record says nothing of the earlier failure.
+    expect(paused.lastTurn?.failure).toBeUndefined();
+    await client.call("threads.send", { threadId: thread.id, text: "/goal clear" });
+    await record(
+      (current) => current.lastTurn?.status === "completed" && current.goalStatus === undefined,
+    );
   });
 
   it("shortens long titles at a word", () => {

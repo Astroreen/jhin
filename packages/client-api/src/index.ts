@@ -258,7 +258,17 @@ export interface ThreadRecord {
     readonly agentId: string;
     /** What a waiting turn asks the user for. */
     readonly waitingFor?: "approval" | "user-input";
+    /** Why a failed turn failed, when its agent classed it (t3-parity.md D1306). */
+    readonly failure?: { readonly class: "usage_limit"; readonly resetAt?: string };
   };
+  /** The status of the goal its agent pursues (D1306); absent without one. */
+  readonly goalStatus?:
+    | "active"
+    | "paused"
+    | "blocked"
+    | "usage_limited"
+    | "budget_limited"
+    | "complete";
   // Where the sidebar keeps the thread, kept on its node (D75–D78).
   /** Settled or kept active by hand, until the thread's next turn. */
   readonly settledOverride?: "settled" | "active";

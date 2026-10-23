@@ -40,6 +40,7 @@ import {
   type AgentSkill,
   type AgentSlashCommand,
   type AgentTurn,
+  type AgentGoal,
   type AgentTurnFailure,
   type AgentUsageLimits,
   type InteractionMode,
@@ -238,7 +239,15 @@ const Thread = z.object({
       agentId: z.string(),
       /** What a waiting turn asks for. */
       waitingFor: z.enum(["approval", "user-input"]).optional(),
+      /** Why a failed turn failed, when its agent classed it (a usage limit, D1306). */
+      failure: z
+        .object({ class: z.literal("usage_limit"), resetAt: z.string().optional() })
+        .optional(),
     })
+    .optional(),
+  /** The status of the goal the thread's agent pursues (D1306); absent without one. */
+  goalStatus: z
+    .enum(["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"])
     .optional(),
   // Where the sidebar keeps the thread (D75–D78). These are the user's
   // arrangement, not activity: changing them leaves `updatedAt` alone.
@@ -1118,6 +1127,19 @@ export default definePlugin({
         return next;
       });
     }
+    /** Records the status of the thread's goal; failures are logged, never thrown. */
+    const setGoalStatus = (threadId: string, goal: AgentGoal | null) =>
+      updateThread(threadId, (thread) => {
+        const { goalStatus: _previous, ...rest } = thread;
+        return goal === null ? rest : { ...rest, goalStatus: goal.status };
+      }).then(
+        () => undefined,
+        (error: unknown) =>
+          context.log.error("could not record a thread's goal", {
+            threadId,
+            error: String(error),
+          }),
+      );
     /** Records where the thread's latest turn is; failures are logged, never thrown. */
     const setTurnStatus = (
       threadId: string,
@@ -1125,6 +1147,7 @@ export default definePlugin({
       agentId: string,
       status: TurnStatus,
       waitingFor?: "approval" | "user-input",
+      failure?: AgentTurnFailure,
     ) =>
       updateThread(threadId, (thread) =>
         // A turn's late ending never overwrites the status of a newer turn, and
@@ -1145,6 +1168,7 @@ export default definePlugin({
                 at: now(),
                 agentId,
                 ...(waitingFor === undefined ? {} : { waitingFor }),
+                ...(failure === undefined ? {} : { failure: { ...failure } }),
               },
             },
       ).then(
@@ -1813,7 +1837,14 @@ export default definePlugin({
           release();
         }
         try {
-          await setTurnStatus(thread.id, turnId, runtime.agentId, ending.status);
+          await setTurnStatus(
+            thread.id,
+            turnId,
+            runtime.agentId,
+            ending.status,
+            undefined,
+            ending.failure,
+          );
         } finally {
           finish();
         }
@@ -1886,6 +1917,8 @@ export default definePlugin({
             } finally {
               if (entry.recording === recording) entry.recording = undefined;
             }
+            // The record says whether the thread pursues a goal, for its sidebar row (D1306).
+            if (item.kind === "goal.updated") await setGoalStatus(thread.id, item.goal);
             if (item.kind === "request.opened") {
               await setTurnStatus(
                 thread.id,

@@ -31,7 +31,14 @@ export const threadKey = (target: NodeTarget, threadId: string): string =>
   `${targetKey(target)}|${threadId}`;
 
 /** Where a thread's latest turn is, as T3's sidebar names it. */
-export type SidebarThreadStatus = "approval" | "input" | "working" | "waiting" | "failed" | "ready";
+export type SidebarThreadStatus =
+  | "approval"
+  | "input"
+  | "working"
+  | "waiting"
+  | "limited"
+  | "failed"
+  | "ready";
 
 /**
  * `waiting`: between its turns the thread waits on background work, such as a
@@ -42,7 +49,9 @@ export function sidebarThreadStatus(thread: ThreadRecord, waiting = false): Side
   if (turn?.status === "waiting") return turn.waitingFor === "user-input" ? "input" : "approval";
   if (turn?.status === "running") return "working";
   if (waiting) return "waiting";
-  if (turn?.status === "failed") return "failed";
+  // A turn that hit a usage limit is "limited", not "failed" (t3-parity.md D1307).
+  if (turn?.status === "failed")
+    return turn.failure?.class === "usage_limit" ? "limited" : "failed";
   return "ready";
 }
 
@@ -60,6 +69,8 @@ export type SidebarTopStatus =
   | "waiting"
   | "approval"
   | "input"
+  | "goal"
+  | "limited"
   | "failed"
   | "woke"
   | "done";
@@ -69,7 +80,10 @@ export function sidebarTopStatus(
   status: SidebarThreadStatus,
   unread: boolean,
   woke = false,
+  /** The thread pursues a goal: "Goal" instead of "Working" (D1307). */
+  goal = false,
 ): SidebarTopStatus | null {
+  if (status === "working" && goal) return "goal";
   if (status !== "ready") return status;
   if (woke) return "woke";
   return unread ? "done" : null;

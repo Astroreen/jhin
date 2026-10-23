@@ -2110,6 +2110,27 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   chunk's response held until the selection was made failed 3 of 5 runs
   before and none of 5 after.
 
+### Usage limits and goals in the sidebar (W36, `t3-roadmap.md`)
+
+Round 4's W36 (its agents' side is `providers.md` D1301–D1305). Reference: T3
+Code at `eb7b35ac` (D53).
+
+- **D1306. A thread's record says how its latest turn failed and whether it
+  pursues a goal** (the `threads` record, additive; `ThreadRecord` in
+  `@jhin/client-api`). `lastTurn.failure` is the failure an agent classed
+  (`{ class: "usage_limit", resetAt? }`, `providers.md` D1143), set with the
+  failed turn and gone with the next turn. `goalStatus` is the status of the
+  thread's goal as the agent last reported it (`agent.goal.updated`,
+  `providers.md` D1149), absent once it is cleared. T3 reads the same from
+  its projection (`lastErrorClass`, `thread.goal`).
+- **D1307. The sidebar's "Limited" and "Goal"**, T3's
+  `resolveSidebarThreadStatus` and topStatus (`Sidebar.tsx`): a thread whose
+  latest turn failed on a usage limit is `limited`, "Limited" in the warning
+  colour with the failed icon instead of "Failed", and it does not fade, as a
+  failed one; its card says "Usage limit reached" in the warning colour
+  instead of "Error occurred". A working thread whose goal is `active` says
+  "Goal" instead of "Working", with the same icon and the working time.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and

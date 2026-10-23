@@ -135,6 +135,19 @@ describe("a thread's status in the sidebar (D70)", () => {
     expect(sidebarTopStatus("working", false)).toBe("working");
   });
 
+  it("shows Limited for a usage limit and Goal while a goal is pursued (D1307)", () => {
+    const limited = thread("t", ago(1), {
+      lastTurn: { ...turn("failed", ago(1)), failure: { class: "usage_limit" } },
+    });
+    expect(sidebarThreadStatus(limited)).toBe("limited");
+    expect(sidebarTopStatus("limited", false)).toBe("limited");
+    // A limited thread does not fade, as a failed one.
+    expect(shouldRecede({ status: "limited", unread: false, active: false })).toBe(false);
+    expect(sidebarTopStatus("working", false, false, true)).toBe("goal");
+    // Only a working thread says Goal.
+    expect(sidebarTopStatus("ready", true, false, true)).toBe("done");
+  });
+
   it("fades a thread that needs nothing from the user", () => {
     expect(shouldRecede({ status: "ready", unread: false, active: false })).toBe(true);
     expect(shouldRecede({ status: "ready", unread: true, active: false })).toBe(false);
