@@ -239,6 +239,28 @@ async function iosDevices(tools: Tools): Promise<DeviceSummary[]> {
   );
 }
 
+// --- Text through `adb shell input` ------------------------------------------------------
+
+/**
+ * `input text` reads `%s` as a space and types no newline: text goes in pieces, a literal
+ * `%s` as `%` then `s`, and a newline as the Enter key.
+ */
+function inputTextPieces(typed: string): string[] {
+  const pieces: string[] = [];
+  for (const [index, line] of typed.split("\n").entries()) {
+    if (index > 0) pieces.push("\n");
+    for (const [at, part] of line.split("%s").entries()) {
+      if (at > 0) pieces.push("%", "s");
+      if (part !== "") pieces.push(part);
+    }
+  }
+  return pieces;
+}
+
+/** adb hands the line to the device's shell: quoted whole, spaces as input's `%s`. */
+const quoteForInput = (piece: string) =>
+  `'${piece.replaceAll(" ", "%s").replaceAll("'", "'\\''")}'`;
+
 // --- The host -----------------------------------------------------------------------------
 
 /** The node's own simulators and emulators. */
@@ -301,8 +323,9 @@ export function createLocalHost(paths: () => ToolPaths) {
           ]);
           return;
         case "text":
-          // adb hands the line to the device's shell: quoted whole, spaces as input's %s.
-          await shell(["text", `'${input.text.replaceAll(" ", "%s").replaceAll("'", "'\\''")}'`]);
+          for (const piece of inputTextPieces(input.text)) {
+            await shell(piece === "\n" ? ["keyevent", "66"] : ["text", quoteForInput(piece)]);
+          }
           return;
         case "button":
           await shell([

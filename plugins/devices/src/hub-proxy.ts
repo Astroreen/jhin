@@ -155,6 +155,8 @@ export function createTickets(now: () => number = Date.now) {
       sweep();
       const found = issued.get(digest(ticket));
       if (found === undefined || found.expiresAt <= now() || found.kind !== kind) return undefined;
+      // A socket ticket opens one socket: a client that reconnects asks for a fresh one.
+      if (kind === "socket") issued.delete(digest(ticket));
       return found;
     },
     /** A revoked token's tickets go with it (security.md D414). */
@@ -306,9 +308,9 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
       request.unpipe(outgoing);
       outgoing.destroy();
       response.setHeader("connection", "close");
+      // Nothing more of the upload is read once the 413 is out.
+      response.once("finish", () => request.destroy());
       text(response, 413, "Payload Too Large");
-      // Nothing more of the upload is read.
-      request.destroy();
     });
     // A client that aborts its upload ends the hub's side too.
     request.once("error", () => outgoing.destroy());

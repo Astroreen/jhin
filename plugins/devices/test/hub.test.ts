@@ -310,13 +310,17 @@ describe("the device hub", () => {
     expect(binary.binary).toBe(true);
     expect([...binary.data]).toEqual([0x83, 1, 2]);
 
+    // A socket ticket opens one socket.
+    expect(await connect(`${ws}&wsTicket=${access.socketQuery.wsTicket}`).opened).toBe(401);
+
     // A client that leaves during the handshake neither crashes the node nor blocks the next.
+    const second = await node.call<Access>("device.hub.access", {});
     const port = new URL(node.url).port;
     await new Promise<void>((resolve) => {
       const leaving = Net.connect(Number(port), "127.0.0.1", () => {
         leaving.write(
           [
-            `GET /device-hub/vendor/serve-emu/ws?wsTicket=${access.socketQuery.wsTicket} HTTP/1.1`,
+            `GET /device-hub/vendor/serve-emu/ws?wsTicket=${second.socketQuery.wsTicket} HTTP/1.1`,
             "Host: 127.0.0.1",
             "Upgrade: websocket",
             "Connection: Upgrade",
@@ -332,7 +336,8 @@ describe("the device hub", () => {
         );
       });
     });
-    const next = connect(`${ws}&wsTicket=${access.socketQuery.wsTicket}`);
+    const third = await node.call<Access>("device.hub.access", {});
+    const next = connect(`${ws}&wsTicket=${third.socketQuery.wsTicket}`);
     expect(await next.opened).toBe(101);
     next.socket.close();
 
@@ -505,10 +510,17 @@ describe("the device hub", () => {
     expect(tapped.via).toBe("adb");
     await node.call("device.type", { threadId: "t1", text: "it's here" });
     await node.call("device.button", { threadId: "t1", button: "appSwitcher" });
+    // `input text` reads `%s` as a space and types no newline: they go in pieces.
+    await node.call("device.type", { threadId: "t1", text: "50%s\nok" });
     expect(tools.adbInputs()).toEqual([
       "shell input tap 10 20",
       "shell input text 'it'\\''s%shere'",
       "shell input keyevent 187",
+      "shell input text '50'",
+      "shell input text '%'",
+      "shell input text 's'",
+      "shell input keyevent 66",
+      "shell input text 'ok'",
     ]);
     expect(tools.npmCalls()).toEqual([]);
   });

@@ -602,7 +602,8 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   Turn it on with Devices → Device hub (jhin.devices.hub)."), no home (tests), no simulator platform, no Node.js or npm, an offline node
   whose install fails, or a hub that does not answer. Then the panel shows
   D408's screenshots about twice a second with the reason under them, and
-  the input commands go through `adb shell input` (Android); iOS input then
+  the input commands go through `adb shell input` (Android; text in pieces,
+  as `input text` reads `%s` as a space and types no newline); iOS input then
   says it needs the agent tools, as simctl cannot tap.
 
 - **D1208. The hub only behind the node's authenticated proxy.** The hub
@@ -628,8 +629,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   (`devices.read`; starting a hub that is not running takes `devices.write`,
   so watching never installs anything) gives the path and two tickets, a media ticket for the HTTP URLs that can
   only watch (it rides in `<img>` URLs, so in history and logs) and a socket
-  ticket for the WebSocket upgrades with the caller's grants, valid five minutes
-  and reusable within them as T3's, kept only as a SHA-256 hash and
+  ticket for the WebSocket upgrades with the caller's grants that opens one
+  socket (a client that reconnects asks for a fresh one), both valid five
+  minutes as T3's (the media ticket reusable within them), kept only as a SHA-256 hash and
   stripped before the hub. A ticket keeps the grants it was issued with:
   grants narrowed in place reach it only when it expires; a
   rotated or revoked token drops its tickets and ends its proxied sockets and video feeds
@@ -800,9 +802,9 @@ probe of `ServerBrowser.ts`.
     controls and the keyboard accessory: only the flat view is ported.
   - Physical iOS devices (agent-device's XCTest runner on a device).
   - Showing a device as a surface of the right panel beside browser tabs.
-  - Hub tickets that follow a caller's grants as they change, or are single
-    use: the node keeps no token to verify again, so a ticket keeps its
-    grants for its five minutes, as T3's does.
+  - Hub tickets that follow a caller's grants as they change: the node keeps
+    no token to verify again, so a ticket keeps its grants for its five
+    minutes, as T3's does.
   - Proving that the process answering on the hub's port is the hub the node
     started: the port is reserved and freed before the hub binds it, as T3
     does, so a local process that takes it first would get the proxied
