@@ -48,16 +48,40 @@ describe("extractIds", () => {
           const rendered = <Slot name="x.rendered" />;
           const section = { slot: "x.section", sidebarSlot: "x.sidebar" };
           context.commands.register({ name: \`x.\${built}\` });
+          context.commands.register({ name: \`x.plain\` });
         `,
       },
     ]);
     expect(found).toEqual(
       ids({
         capability: ["x.store", "x.client"],
-        command: ["x.defined", "x.make"],
+        command: ["x.defined", "x.make", "x.*", "x.plain"],
         slot: ["x.panel", "x.actions", "x.used", "x.rendered", "x.section", "x.sidebar"],
         contribution: ["jhin.x.panel", "jhin.x.action"],
         event: ["x.made", "x.gone", "x.emitted"],
+      }),
+    );
+  });
+
+  it("reads a template literal as a pattern, each ${…} as *", () => {
+    const found = extractIds([
+      {
+        path: "apps/web/src/x.tsx",
+        text: `
+          slots.contribute("node.actions", { id: \`jhin.x.node.\${id}\`, order });
+          slots.contribute("node.actions", { id: \`jhin.x.\${a}.\${b}.tail\` });
+          const definition: CommandDefinition = { name: \`x.\${n}\`, description: "…" };
+          context.events.emit(\`x.\${what}.done\`, {});
+          const label = \`not an id \${here}\`;
+        `,
+      },
+    ]);
+    expect(found).toEqual(
+      ids({
+        command: ["x.*"],
+        slot: ["node.actions"],
+        contribution: ["jhin.x.node.*", "jhin.x.*.*.tail"],
+        event: ["x.*.done"],
       }),
     );
   });
@@ -110,6 +134,32 @@ describe("forbiddenRemovals", () => {
         "2026-11-02",
       ),
     ).toEqual([]);
+  });
+});
+
+describe("forbiddenRemovals for patterns (D1394)", () => {
+  const base = ids({ command: ["x.jump.*"] });
+  const deprecation: Deprecation = {
+    kind: "command",
+    id: "x.jump.*",
+    since: "2026-10-01",
+    removeAfter: "2026-11-01",
+  };
+
+  it("refuses a removed pattern, as it does an id", () => {
+    expect(forbiddenRemovals(base, ids({}), [], [], "2026-10-23")).toEqual([
+      { kind: "command", id: "x.jump.*", reason: "not-deprecated" },
+    ]);
+    expect(forbiddenRemovals(base, ids({ command: ["x.jump.*"] }), [], [], "2026-10-23")).toEqual(
+      [],
+    );
+  });
+
+  it("passes a pattern deprecated on main once its removeAfter has passed", () => {
+    expect(forbiddenRemovals(base, ids({}), [deprecation], [], "2026-11-02")).toEqual([]);
+    expect(forbiddenRemovals(base, ids({}), [deprecation], [], "2026-10-23")).toEqual([
+      { kind: "command", id: "x.jump.*", reason: "too-early", removeAfter: "2026-11-01" },
+    ]);
   });
 });
 
