@@ -93,7 +93,12 @@ async function startNode(tools: FakeTools, settings: Record<string, unknown> = {
   return { kernel, url, token, until, call, client };
 }
 
-type Access = { path: string; query: Record<string, string>; expiresAt: number };
+type Access = {
+  path: string;
+  query: Record<string, string>;
+  socketQuery: Record<string, string>;
+  expiresAt: number;
+};
 
 /** A WebSocket's first message, or how its handshake was refused. */
 function connect(url: string, headers: Record<string, string> = {}) {
@@ -161,6 +166,12 @@ describe("the device hub", () => {
     });
     expect(moved.status).toBe(302);
     expect(moved.headers.get("location")).toBe("/device-hub/vendor/serve-emu/api/devices");
+    // One that leaves the hub is dropped.
+    const away = await fetch(`${node.url}/device-hub/vendor/serve-emu/api/accessibility`, {
+      headers: { authorization: `Bearer ${node.token}` },
+      redirect: "manual",
+    });
+    expect(away.headers.get("location")).toBeNull();
     // A hub that dies mid-stream ends the client's response instead of leaving it open.
     const feed = await fetch(`${node.url}/device-hub/vendor/serve-sim/helper/SIM-1/stream.mjpeg`, {
       headers: { authorization: `Bearer ${node.token}` },
@@ -211,7 +222,15 @@ describe("the device hub", () => {
       (await fetch(`${tune}?wsTicket=${reader.query.wsTicket}`, { method: "POST", body: "{}" }))
         .status,
     ).toBe(403);
-    const tuned = await fetch(`${tune}?wsTicket=${ticket}`, { method: "POST", body: '{"fps":30}' });
+    // The owner's media ticket only watches too: tuning takes the bearer token.
+    expect((await fetch(`${tune}?wsTicket=${ticket}`, { method: "POST", body: "{}" })).status).toBe(
+      403,
+    );
+    const tuned = await fetch(tune, {
+      method: "POST",
+      body: '{"fps":30}',
+      headers: { authorization: `Bearer ${node.token}` },
+    });
     expect(((await tuned.json()) as { body: string }).body).toBe('{"fps":30}');
     // A screenshot POST reads the screen: watching is enough, as in T3.
     const shot = await fetch(
@@ -263,9 +282,11 @@ describe("the device hub", () => {
 
     expect(await connect(ws).opened).toBe(401);
     const reader = await node.call<Access>("device.hub.access", {}, READER);
-    expect(await connect(`${ws}&wsTicket=${reader.query.wsTicket}`).opened).toBe(403);
+    expect(await connect(`${ws}&wsTicket=${reader.socketQuery.wsTicket}`).opened).toBe(403);
+    // A media ticket opens no socket.
+    expect(await connect(`${ws}&wsTicket=${access.query.wsTicket}`).opened).toBe(401);
 
-    const client = connect(`${ws}&wsTicket=${access.query.wsTicket}`, {
+    const client = connect(`${ws}&wsTicket=${access.socketQuery.wsTicket}`, {
       authorization: `Bearer ${node.token}`,
     });
     expect(await client.opened).toBe(101);
@@ -290,7 +311,7 @@ describe("the device hub", () => {
       const leaving = Net.connect(Number(port), "127.0.0.1", () => {
         leaving.write(
           [
-            `GET /device-hub/vendor/serve-emu/ws?wsTicket=${access.query.wsTicket} HTTP/1.1`,
+            `GET /device-hub/vendor/serve-emu/ws?wsTicket=${access.socketQuery.wsTicket} HTTP/1.1`,
             "Host: 127.0.0.1",
             "Upgrade: websocket",
             "Connection: Upgrade",
@@ -306,7 +327,7 @@ describe("the device hub", () => {
         );
       });
     });
-    const next = connect(`${ws}&wsTicket=${access.query.wsTicket}`);
+    const next = connect(`${ws}&wsTicket=${access.socketQuery.wsTicket}`);
     expect(await next.opened).toBe(101);
     next.socket.close();
 

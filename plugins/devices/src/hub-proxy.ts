@@ -114,7 +114,14 @@ const TICKET_TTL_MS = 5 * 60_000;
 const READ = ["devices.read"];
 const CONTROL = ["devices.write"];
 
+/**
+ * `media` tickets ride in `<img>` and `EventSource` URLs (history, logs) and can only watch;
+ * `socket` tickets open the hub's WebSockets with the caller's grants and work for nothing else.
+ */
+export type TicketKind = "media" | "socket";
+
 interface Ticket {
+  readonly kind: TicketKind;
   readonly principal: string;
   readonly permissions: readonly string[];
   readonly expiresAt: number;
@@ -130,21 +137,23 @@ export function createTickets(now: () => number = Date.now) {
     for (const [key, ticket] of issued) if (ticket.expiresAt <= now()) issued.delete(key);
   };
   return {
-    issue(caller: { id: string; permissions: readonly string[] }) {
+    issue(caller: { id: string; permissions: readonly string[] }, kind: TicketKind) {
       sweep();
       const ticket = Crypto.randomBytes(32).toString("base64url");
       const expiresAt = now() + TICKET_TTL_MS;
-      issued.set(digest(ticket), {
-        principal: caller.id,
-        permissions: [...caller.permissions],
-        expiresAt,
-      });
+      const permissions =
+        kind === "socket"
+          ? [...caller.permissions]
+          : missingPermissions(caller.permissions, READ).length === 0
+            ? READ
+            : [];
+      issued.set(digest(ticket), { kind, principal: caller.id, permissions, expiresAt });
       return { ticket, expiresAt };
     },
-    verify(ticket: string): Ticket | undefined {
+    verify(ticket: string, kind: TicketKind): Ticket | undefined {
       sweep();
       const found = issued.get(digest(ticket));
-      if (found === undefined || found.expiresAt <= now()) return undefined;
+      if (found === undefined || found.expiresAt <= now() || found.kind !== kind) return undefined;
       return found;
     },
     /** A revoked token's tickets go with it (security.md D414). */
@@ -186,10 +195,11 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
   const authenticate = async (
     request: Http.IncomingMessage,
     url: URL,
+    kind: TicketKind,
   ): Promise<{ id: string; permissions: readonly string[] } | undefined> => {
     const ticket = url.searchParams.get(TICKET_PARAM);
     if (ticket !== null && ticket.trim() !== "") {
-      const found = tickets.verify(ticket);
+      const found = tickets.verify(ticket, kind);
       return found === undefined
         ? undefined
         : { id: found.principal, permissions: found.permissions };
@@ -238,7 +248,7 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
     // T3's rule: changing a stream or the fold drives the device; a screenshot POST only reads
     // the screen, so it is watching (`devices.read`).
     const controlsDevice = !readOnly && /\/api\/(stream-(mode|settings)|fold)$/.test(hubPath);
-    const caller = await authenticate(request, url);
+    const caller = await authenticate(request, url, "media");
     if (caller === undefined) {
       response.setHeader("www-authenticate", "Bearer");
       return text(response, 401, "Unauthorized");
@@ -267,10 +277,15 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
       }
       // Long-lived MJPEG and AVCC responses must not be buffered by compression.
       headers["cache-control"] = "no-store, no-transform";
-      // A redirect inside the hub stays under the node's hub path.
+      // A redirect inside the hub stays under the node's hub path; one elsewhere is dropped,
+      // so the hub's loopback origin never reaches a client.
       const location = answer.headers.location;
-      if (location?.startsWith("/") === true && !location.startsWith("//")) {
-        headers.location = `${DEVICE_HUB_PATH}${location}`;
+      delete headers.location;
+      if (location !== undefined) {
+        const target = URL.canParse(location, origin) ? new URL(location, origin) : undefined;
+        if (target?.origin === new URL(origin).origin) {
+          headers.location = `${DEVICE_HUB_PATH}${target.pathname}${target.search}`;
+        }
       }
       response.writeHead(answer.statusCode ?? 502, headers);
       // A hub that dies mid-stream ends the client's response too, so the stream reconnects.
@@ -354,7 +369,7 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
       if (!(HUB_WS_PATHS as readonly string[]).includes(hubPath)) {
         return refuse(socket, "404 Not Found");
       }
-      const caller = await authenticate(request, url);
+      const caller = await authenticate(request, url, "socket");
       if (caller === undefined) return refuse(socket, "401 Unauthorized");
       // Every socket but the device list's carries input; serve-emu's carries the video too,
       // so watching an Android Emulator needs devices.write, as T3 needs its operate scope.

@@ -384,6 +384,14 @@ export function createHubHost(options: HubHostOptions) {
       if (await answers(`http://127.0.0.1:${existing.httpPort}/health`, 2_000)) {
         return toEndpoint(existing);
       }
+      // A daemon left by a node that died, or one that stopped answering, never idles out:
+      // agent-device stops it before a new one starts, so two never run at once.
+      if (existing.pid !== undefined && isAlive(existing.pid)) {
+        await runProgram(node, [entryPath, "daemon", "stop", "--state-dir", options.stateDir], {
+          env: { ...environment(), AGENT_DEVICE_NO_UPDATE_NOTIFIER: "1" },
+          timeoutMs: 10_000,
+        }).catch(() => undefined);
+      }
       Fs.rmSync(daemonState, { force: true });
     }
     // There is no `daemon start`; the first command in a state dir spawns the daemon and

@@ -189,7 +189,12 @@ export const DeviceHubAccessResult = z.object({
   path: z.string().describe("The hub's path on the node's HTTP server."),
   query: z
     .record(z.string(), z.string())
-    .describe("Query parameters every hub URL carries: the short-lived ticket."),
+    .describe(
+      "Query parameters the hub's HTTP URLs carry: a short-lived ticket that only watches.",
+    ),
+  socketQuery: z
+    .record(z.string(), z.string())
+    .describe("Query parameters the hub's WebSocket URLs carry: a ticket for the caller's grants."),
   expiresAt: z.number().int().describe("When the ticket stops working (ms since the epoch)."),
 });
 export type DeviceHubAccessResult = z.infer<typeof DeviceHubAccessResult>;

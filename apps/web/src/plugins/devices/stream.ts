@@ -12,11 +12,17 @@ export interface DeviceHubAccess {
   readonly httpBase: string;
   readonly wsBase: string;
   readonly query: Readonly<Record<string, string>>;
+  /** The WebSocket URLs' query, when it differs from the HTTP one (Jhin's socket ticket). */
+  readonly socketQuery?: Readonly<Record<string, string>>;
   readonly credentials: boolean;
 }
 
-const withDeviceHubQuery = (url: string, access: DeviceHubAccess): string => {
-  const entries = Object.entries(access.query);
+const withDeviceHubQuery = (
+  url: string,
+  access: DeviceHubAccess,
+  query: Readonly<Record<string, string>> = access.query,
+): string => {
+  const entries = Object.entries(query);
   if (entries.length === 0) return url;
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}${new URLSearchParams(entries).toString()}`;
@@ -337,7 +343,9 @@ export function createDeviceStreamClient(
   const device = encodeURIComponent(deviceId);
   const httpUrl = (path: string) =>
     withDeviceHubQuery(`${access.httpBase}${vendor}${path}`, access);
-  const wsUrl = (path: string) => withDeviceHubQuery(`${access.wsBase}${vendor}${path}`, access);
+  const socketQuery = access.socketQuery ?? access.query;
+  const wsUrl = (path: string) =>
+    withDeviceHubQuery(`${access.wsBase}${vendor}${path}`, access, socketQuery);
   const useWebCodecs = isWebCodecsSupported() && !(platform === "ios" && target.preferMjpeg);
 
   let stopped = true;
@@ -757,7 +765,7 @@ export function createDeviceStreamClient(
       if (
         event.code === 1008 ||
         event.code === 4401 ||
-        (event.code === 1006 && access.query.wsTicket)
+        (event.code === 1006 && socketQuery.wsTicket)
       )
         return handleUnauthorized();
       scheduleRetry("input", () => void connectIosInput());
@@ -825,7 +833,7 @@ export function createDeviceStreamClient(
       if (
         event.code === 1008 ||
         event.code === 4401 ||
-        (event.code === 1006 && access.query.wsTicket)
+        (event.code === 1006 && socketQuery.wsTicket)
       )
         return handleUnauthorized();
       configuring = false;

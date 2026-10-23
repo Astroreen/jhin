@@ -73,6 +73,7 @@ function hubAccess(nodeUrl: string, result: DeviceHubAccessResult): DeviceHubAcc
     httpBase: http,
     wsBase: http.replace(/^http/, "ws"),
     query: result.query,
+    socketQuery: result.socketQuery,
     credentials: false,
   };
 }

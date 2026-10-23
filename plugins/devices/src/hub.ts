@@ -146,11 +146,13 @@ export function createDeviceHub(options: DeviceHubOptions) {
         }),
         late,
       );
-      const issued = tickets.issue(caller);
+      const media = tickets.issue(caller, "media");
+      const socket = tickets.issue(caller, "socket");
       return {
         path: DEVICE_HUB_PATH,
-        query: { [TICKET_PARAM]: issued.ticket },
-        expiresAt: issued.expiresAt,
+        query: { [TICKET_PARAM]: media.ticket },
+        socketQuery: { [TICKET_PARAM]: socket.ticket },
+        expiresAt: media.expiresAt,
       };
     },
 

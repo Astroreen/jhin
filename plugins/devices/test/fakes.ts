@@ -70,6 +70,10 @@ const server = Http.createServer((request, response) => {
     response.write("--frame\\r\\n", () => response.socket.destroy());
     return;
   }
+  if (url.pathname === "/vendor/serve-emu/api/accessibility") {
+    response.writeHead(302, { location: "https://elsewhere.example/x" });
+    return response.end();
+  }
   if (url.pathname === "/vendor/serve-emu/health") {
     response.writeHead(302, { location: "/vendor/serve-emu/api/devices" });
     return response.end();

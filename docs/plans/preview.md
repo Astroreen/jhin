@@ -591,7 +591,8 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   entry path both checked). `agent-device` gets its own state folder in the
   plugin's data, started by its first command (`devices --json`, the daemon
   in HTTP mode, never idling out) and read from its `daemon.json`, with
-  T3's startup errors. As in T3, the daemon starts after the hub: a hub that
+  T3's startup errors; a recorded daemon that no longer answers is stopped
+  with agent-device's own `daemon stop` before a new one starts. As in T3, the daemon starts after the hub: a hub that
   cannot install or start leaves input to adb. A hub that exits starts again
   with the next request that needs it. Deactivating the plugin stops the hub and runs `daemon
   stop` (devices keep running; the user owns those); a stop cuts short an
@@ -624,7 +625,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   and 503 "Device hub is not running" answers while none runs. A caller
   authenticates with a bearer token (`auth.verifier@1`) or, where a browser
   cannot send one (`<img>`, `WebSocket`), T3's `wsTicket`: `device.hub.access`
-  gives the path and a ticket for the caller's grants, valid five minutes
+  gives the path and two tickets, a media ticket for the HTTP URLs that can
+  only watch (it rides in `<img>` URLs, so in history and logs) and a socket
+  ticket for the WebSocket upgrades with the caller's grants, valid five minutes
   and reusable within them as T3's, kept only as a SHA-256 hash and
   stripped before the hub. A ticket keeps the grants it was issued with:
   grants narrowed in place reach it only when it expires; a
@@ -652,6 +655,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   with T3's per-host endpoint file (written `0600`) as `--config` and a
   session per thread and device (`jhin-<hash>`) as `--session`.
   Coordinates are the device's own, as agent-device's snapshots give them.
+  Unverified against the real tools: the argument order (flags, `--`, the
+  command) comes from reading agent-device 0.21.25's published CLI parser,
+  and the hub's flags and paths from T3; neither package ran here.
   An answer says whether `agent-device` or `adb` (D1207's fallback) did
   it. adb takes an input only when agent-device never got it (agent tools
   that cannot start, or a daemon that does not answer before the command);
