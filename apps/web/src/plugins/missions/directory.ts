@@ -11,9 +11,39 @@ export interface Directory {
   readonly agents: readonly AgentRecord[];
   /** Titles by address: each agent's, and "Owner" for the node's owner. */
   readonly titles: ReadonlyMap<string, string>;
+  /** Why a source failed, one short line each (D1277); none when both were read. */
+  readonly notices: readonly string[];
 }
 
-const EMPTY: Directory = { nodeId: undefined, agents: [], titles: new Map() };
+const EMPTY: Directory = { nodeId: undefined, agents: [], titles: new Map(), notices: [] };
+
+/** What failed to be read, with the command's message (D1277). */
+export interface DirectoryProblems {
+  readonly identity?: string;
+  readonly catalog?: string;
+}
+
+/** A node without the command has nothing to say; any other failure is a problem. */
+const ABSENT = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND"]);
+
+/** The failure of a read as a message, or undefined when the node simply lacks the command. */
+export function problemOf(error: unknown): string | undefined {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && ABSENT.has(code)) return undefined;
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** The quiet lines the view shows for what failed (D1277). */
+export function directoryNotices(problems: DirectoryProblems): string[] {
+  return [
+    ...(problems.identity === undefined
+      ? []
+      : [`Owner unavailable: host.identity failed: ${problems.identity}`]),
+    ...(problems.catalog === undefined
+      ? []
+      : [`Agent titles unavailable: agents.catalog failed: ${problems.catalog}`]),
+  ];
+}
 
 /**
  * Reads `host.identity` and `agents.catalog` of the target once per view that
@@ -23,22 +53,49 @@ const EMPTY: Directory = { nodeId: undefined, agents: [], titles: new Map() };
 export function useDirectory(threads: ThreadsCatalog, target: NodeTarget | undefined): Directory {
   const key = target === undefined ? undefined : targetKey(target);
   const [read, setRead] = useState<
-    { key: string; nodeId?: string; agents: readonly AgentRecord[] } | undefined
+    | {
+        key: string;
+        nodeId?: string;
+        agents: readonly AgentRecord[];
+        problems: DirectoryProblems;
+      }
+    | undefined
   >();
   useEffect(() => {
     if (target === undefined || key === undefined) return;
     let current = true;
+    const identity: { nodeId?: string; problem?: string } = {};
+    const catalog: { agents: AgentRecord[]; problem?: string } = { agents: [] };
     void Promise.all([
-      threads
-        .call<{ nodeId: string }>(target, "host.identity", {})
-        .then((identity) => identity.nodeId)
-        .catch(() => undefined),
-      threads
-        .call<{ agents: AgentRecord[] }>(target, "agents.catalog", {})
-        .then((catalog) => catalog.agents)
-        .catch(() => [] as AgentRecord[]),
-    ]).then(([nodeId, agents]) => {
-      if (current) setRead({ key, agents, ...(nodeId === undefined ? {} : { nodeId }) });
+      threads.call<{ nodeId: string }>(target, "host.identity", {}).then(
+        (answer) => {
+          identity.nodeId = answer.nodeId;
+        },
+        (error: unknown) => {
+          const problem = problemOf(error);
+          if (problem !== undefined) identity.problem = problem;
+        },
+      ),
+      threads.call<{ agents: AgentRecord[] }>(target, "agents.catalog", {}).then(
+        (answer) => {
+          catalog.agents = answer.agents;
+        },
+        (error: unknown) => {
+          const problem = problemOf(error);
+          if (problem !== undefined) catalog.problem = problem;
+        },
+      ),
+    ]).then(() => {
+      if (!current) return;
+      setRead({
+        key,
+        agents: catalog.agents,
+        problems: {
+          ...(identity.problem === undefined ? {} : { identity: identity.problem }),
+          ...(catalog.problem === undefined ? {} : { catalog: catalog.problem }),
+        },
+        ...(identity.nodeId === undefined ? {} : { nodeId: identity.nodeId }),
+      });
     });
     return () => {
       current = false;
@@ -48,6 +105,11 @@ export function useDirectory(threads: ThreadsCatalog, target: NodeTarget | undef
     if (read === undefined || read.key !== key) return EMPTY;
     const titles = new Map(read.agents.map((agent) => [agent.address, agent.title]));
     if (read.nodeId !== undefined) titles.set(ownerAddress(read.nodeId), "Owner");
-    return { nodeId: read.nodeId, agents: read.agents, titles };
+    return {
+      nodeId: read.nodeId,
+      agents: read.agents,
+      titles,
+      notices: directoryNotices(read.problems),
+    };
   }, [read, key]);
 }
