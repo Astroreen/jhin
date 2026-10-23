@@ -4,8 +4,10 @@
 import type { InboxItem } from "@jhin/agent-api";
 import {
   CONNECTIONS_CAPABILITY,
+  MODES_CAPABILITY,
   NAVIGATION_CAPABILITY,
   type Connections,
+  type Modes,
   type Navigation,
   type NodeConnection,
 } from "@jhin/client-api";
@@ -19,11 +21,12 @@ import {
 import { MessageCircleQuestionIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
+import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { tellOwner } from "../../lib/tell-owner.tsx";
 import { INBOX_PANEL, inboxRoute, senderLabel } from "./route.ts";
-import { createInboxStore } from "./store.ts";
+import { createInboxStore, openCount } from "./store.ts";
 import type { InboxView } from "./views.tsx";
 
 // The views are a chunk of their own (D440), loaded once Civilization mode shows them.
@@ -54,7 +57,7 @@ export const inboxPlugin = builtin(
       [CONNECTIONS_CAPABILITY]: "^1",
       [NAVIGATION_CAPABILITY]: "^1",
     },
-    optional: { [UI_TOASTS_CAPABILITY]: "^1" },
+    optional: { [UI_TOASTS_CAPABILITY]: "^1", [MODES_CAPABILITY]: "^1.1" },
   },
   definePlugin({
     activate(context) {
@@ -84,6 +87,14 @@ export const inboxPlugin = builtin(
       };
       const store = createInboxStore(connections, context.log, arrived);
       context.subscriptions.add(store);
+      // The open items on Civilization mode's button in the switcher (D1273).
+      const badge = context.services.tryGet<Modes>(MODES_CAPABILITY)?.badge(CIVILIZATION_MODE);
+      if (badge !== undefined) {
+        context.subscriptions.add(badge);
+        const count = () => badge.set(openCount(store.snapshot()));
+        context.subscriptions.add(store.subscribe(count));
+        count();
+      }
       const view: InboxView = { store, connections, navigation, toasts };
 
       // Opening an item is a command, so the palette, CLI and MCP reach it (rule 6).

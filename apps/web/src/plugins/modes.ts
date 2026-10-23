@@ -24,7 +24,7 @@ const PLACES_KEY = "places";
 export const modesPlugin = builtin(
   "jhin.modes",
   {
-    provides: { [MODES_CAPABILITY]: "1.0.0" },
+    provides: { [MODES_CAPABILITY]: "1.1.0" },
     requires: { [NAVIGATION_CAPABILITY]: "^1" },
     optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
   },

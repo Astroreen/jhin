@@ -137,6 +137,12 @@ export interface Mode {
   readonly mainSlot: string;
 }
 
+/** A plugin's count on a mode's button (since `client.modes@1.1`, D1273). */
+export interface ModeBadge extends Disposable {
+  /** Sets this badge's count; 0 shows nothing of it. */
+  set(count: number): void;
+}
+
 /**
  * `client.modes@1` (D742): the modes of the client and which one is active.
  * The active mode is the route's; each mode remembers the last place it
@@ -151,8 +157,16 @@ export interface Modes {
   current(): Mode | undefined;
   /** Switches to a mode, at the last place it showed. */
   open(id: string): void;
-  /** Fires when the list or the active mode changes. */
+  /** Fires when the list, the active mode or a badge changes. */
   subscribe(listener: () => void): Disposable;
+  /**
+   * Puts a count on a mode's button, e.g. the open items waiting there (since
+   * 1.1, D1273). The mode need not be registered yet; several badges of one
+   * mode add up. Disposing removes it.
+   */
+  badge(modeId: string): ModeBadge;
+  /** The count on each mode's button, only those above 0: the same map until one changes. */
+  badges(): ReadonlyMap<string, number>;
 }
 
 /** The `jhin.ui` config section: slot rules (D12), keyed by slot name. */

@@ -225,7 +225,7 @@ export const uiHostPlugin = builtin(
       [UI_DIALOGS_CAPABILITY]: "1.0.0",
     },
     requires: { [SETTINGS_CAPABILITY]: "^1" },
-    optional: { [KEYBINDINGS_CAPABILITY]: "^1", [MODES_CAPABILITY]: "^1" },
+    optional: { [KEYBINDINGS_CAPABILITY]: "^1", [MODES_CAPABILITY]: "^1.1" },
   },
   definePlugin({
     activate(context) {

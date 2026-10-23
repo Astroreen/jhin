@@ -169,4 +169,23 @@ describe("client.modes@1 (D742, D744)", () => {
     expect(modes.current()?.id).toBe("threads");
     expect(modes.list()).toHaveLength(1);
   });
+
+  it("adds up the badges of a mode, even before it is registered (D1273)", () => {
+    const modes = createModes(fakeNavigation(), memoryPlaces());
+    let told = 0;
+    modes.subscribe(() => told++);
+    const first = modes.badge("a");
+    const second = modes.badge("a");
+    first.set(2);
+    second.set(3);
+    expect(modes.badges().get("a")).toBe(5);
+    const before = modes.badges();
+    first.set(2);
+    expect(modes.badges()).toBe(before);
+    expect(told).toBe(2);
+    first.dispose();
+    expect(modes.badges().get("a")).toBe(3);
+    second.set(0);
+    expect(modes.badges().has("a")).toBe(false);
+  });
 });
