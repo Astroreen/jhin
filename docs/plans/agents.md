@@ -326,6 +326,15 @@ types and the schemas of the `agents.*` commands) is
   current one. While the next answer is read the last one stands; when the call
   fails the list shows as before, without statuses, and says they are
   unavailable.
+- **D1287. A broken agents feed starts over by itself.** When a node's feed
+  fails (a read or either of the `agents` and `threads` streams), the store
+  starts it over after a pause of 1 s, then 2 s, 4 s … up to 60 s. The pause
+  restarts at 1 s once the feed delivers an event again. A node that answers
+  "no such command" or "permission denied" is not asked again (it reads as
+  having no agents, D747). While it retries the roster keeps the agents it
+  last showed, with the error; the Retry button means now and resets the
+  pause. A closed connection or the end of the store stops the retrying. The
+  feeds of `node-feeds` (inbox, health) keep their own retry (D731).
 
 ### A2. Messaging between agents, and the owner (D621–D640)
 
@@ -1921,8 +1930,9 @@ Decisions (L2):
 - A1: agents of a mesh member reached through another node (`remote` in
   the route): the roster follows the client's open connections only (D617),
   as D747 does.
-- A1: starting the agents feed of a node over again with backoff when its
-  stream breaks; today the roster shows the error with a Retry button.
+- ~~A1: starting the agents feed of a node over again with backoff when its
+  stream breaks; today the roster shows the error with a Retry button.~~ A1,
+  D1287.
 - ~~A1: a generation's own status in the page's list of generations
   (`agents.generations` has it); the list marks the current one only.~~ A1, D1272.
 - A3: the Projects section (`civilization.sidebar.projects`) with a

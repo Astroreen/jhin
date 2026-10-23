@@ -30,6 +30,9 @@ const LOADING: NodeAgents = { status: "loading", agents: [], read: {}, turns: {}
 const UNSUPPORTED: NodeAgents = { ...LOADING, status: "unsupported" };
 
 /** Answers that say the node will not show agents to this client. */
+/** The longest pause before a node's feed that keeps failing starts over (D1287). */
+const MAX_RETRY_MS = 60_000;
+
 const NO_AGENTS = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_DENIED"]);
 
 const sorted = (agents: readonly AgentRecord[]) =>
@@ -150,7 +153,7 @@ export interface AgentsStore extends Disposable {
   snapshot(): ReadonlyMap<string, NodeAgents>;
   /** Follows the open connections while subscribed. */
   subscribe(listener: () => void): Disposable;
-  /** Reads a node again from the start, e.g. after a broken stream. */
+  /** Reads a node again from the start, now: the Retry button, which also resets the pause (D1287). */
   refresh(connection: string): void;
 }
 
@@ -163,9 +166,16 @@ export interface AgentsStore extends Disposable {
 export function createAgentsStore(
   connections: Connections,
   log: { warn(message: string, fields?: Record<string, unknown>): void },
+  /** Runs `run` after `ms`; returns a cancel. Tests run it themselves. */
+  delay: (run: () => void, ms: number) => () => void = (run, ms) => {
+    const timer = setTimeout(run, ms);
+    return () => clearTimeout(timer);
+  },
 ): AgentsStore {
   const states = new Map<string, NodeAgents>();
   const feeds = new Map<string, { client: NodeConnection["client"]; stop: () => void }>();
+  /** Failures in a row per node since its feed last delivered; the pause grows with it (D1287). */
+  const failures = new Map<string, number>();
   const listeners = new Set<() => void>();
   let snapshot: ReadonlyMap<string, NodeAgents> = new Map();
   const changed = () => {
@@ -187,25 +197,46 @@ export function createAgentsStore(
     changed();
   };
 
-  const start = (connection: NodeConnection) => {
+  /** `previous`: what the node showed before this attempt, which stays until the attempt reads. */
+  const start = (connection: NodeConnection, previous?: NodeAgents) => {
     const { id, client } = connection;
     const subscriptions: Disposable[] = [];
     let stopped = false;
+    let cancelRetry: (() => void) | undefined;
+    let failedOnce = false;
     feeds.set(id, {
       client,
       stop: () => {
         stopped = true;
+        cancelRetry?.();
         for (const subscription of subscriptions) subscription.dispose();
       },
     });
-    states.set(id, LOADING);
+    states.set(id, previous ?? LOADING);
     changed();
     const failed = (error: unknown) => {
-      if (stopped) return;
+      // A read and its streams never all schedule a restart.
+      if (stopped || failedOnce) return;
+      failedOnce = true;
       const code = String((error as { code?: unknown } | null)?.code);
       const message = error instanceof Error ? error.message : String(error);
       set(id, (state) =>
         NO_AGENTS.has(code) ? UNSUPPORTED : { ...state, status: "error", error: message },
+      );
+      // A node without the command or the permission is not asked again (D1287).
+      if (NO_AGENTS.has(code)) return;
+      const attempt = failures.get(id) ?? 0;
+      failures.set(id, attempt + 1);
+      cancelRetry = delay(
+        () => {
+          const feed = feeds.get(id);
+          const current = connections.get(id);
+          if (stopped || feed?.client !== client || current?.client !== client) return;
+          if (current.state !== "open") return;
+          feed.stop();
+          start(current, states.get(id));
+        },
+        Math.min(MAX_RETRY_MS, 1000 * 2 ** attempt),
       );
     };
     /** Each agent's latest read counts; an older answer is dropped. */
@@ -242,6 +273,7 @@ export function createAgentsStore(
       subscriptions.push(
         client.subscribe(AGENTS_STREAM, { after: head, onError: failed }, (event) => {
           if (stopped) return;
+          failures.delete(id);
           set(id, (state) => applyAgentEvent(state, event));
           const agentId = (event.payload as { agentId?: unknown } | null)?.agentId;
           if (
@@ -252,7 +284,9 @@ export function createAgentsStore(
           }
         }),
         client.subscribe(THREADS_STREAM, { after: threadsHead, onError: failed }, (event) => {
-          if (!stopped) set(id, (state) => applyThreadEvent(state, event));
+          if (stopped) return;
+          failures.delete(id);
+          set(id, (state) => applyThreadEvent(state, event));
         }),
       );
     })().catch(failed);
@@ -261,6 +295,7 @@ export function createAgentsStore(
   const stop = (id: string) => {
     feeds.get(id)?.stop();
     feeds.delete(id);
+    failures.delete(id);
     if (states.delete(id)) changed();
   };
 
