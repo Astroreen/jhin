@@ -1793,6 +1793,90 @@ Decisions (L3):
   the reviewer sent a change request for builder2's slice to builder, who
   forwarded it.
 
+
+#### L3 run
+
+On 2026-10-23 a team `crew` of four Claude Code agents (the lead on Opus 5.5,
+builder, builder2 and reviewer on Sonnet 5.5, full access) ran on a node
+started from a checkout (`jhin serve --ui` with its own home), in a
+throwaway worktree of this repository, for 2 h 06 min (09:46 to 11:52 UTC).
+The owner sent the lead four missions one after another, each a list of
+Deferred items of this plan, answered two escalations in the inbox, rotated
+three agents, and otherwise read the streams.
+
+- **What went right.** 27 items closed in four missions (27, 28, 45 and
+  19 minutes), each its own reviewed commit. The lead set the intent,
+  planned waves for two builders and ran each mission with
+  `missions_orchestrate`. Every guard of phase 3 was exercised:
+  - L1: each mission's report reached the inbox with its slices, proof and
+    commits, and both of the owner's decisions came to the owner (deleting
+    missions, D1395; the missions of a deleted project, D1399).
+  - L2: at 09:57 the commit step was refused with `REVIEW_REQUIRED`, since
+    the builders had edited after the approvals. The reviewer, briefed from
+    the project, caught a contract bump done halfway (D1273 left
+    `client.modes ^1` in two consumers) and an older hole in the guard
+    itself (D1264). The lead ran `scripts/public-ids.ts` before each close.
+  - A6: builder2 was compacted at 10:53:40, a manual `/compact` the owner
+    queued in front of its next handoff (the 1M-token windows never filled
+    in two hours). The refocus brief came two seconds later, steered into
+    the next turn and named the right open slice.
+  - A1: the owner rotated the reviewer and a builder after mission 1 and the
+    lead after mission 3. The new generations worked from the knowledge
+    folder (D607). The reviewer's second generation recognised repeat
+    handoffs and re-recorded its reviews on the final tree, as its
+    predecessor's notes said. The lead's second generation planned in the
+    order its notes gave (builds, one review wave, the commit step).
+  - A7: health counted the whole stream (the node at 11:17: ceremony 220,
+    progress 51) and raised no warning, since no group crossed the ratio of
+    10.
+- **Fixed.** Knowledge notes invalidated every review (D1261, #238). The
+  owner got two answers to one message (D1262, #239). An escalation held
+  the whole mission, so the lead sent it as a plain message (D1263, #244;
+  lore [toll road](../lore/toll-road.md)). A mission planned from the client
+  lost its steps' `review` (D1264, #256). Health did not see reviews, the
+  biggest ceremony of the run (D1265, #259). The reviewer sent a change
+  request to the wrong builder (D1266, #265).
+- **Not landed as made.** The owner handed the crew D1281–D1300 without
+  checking the roadmap, and W35 owns them. Missions 2–4's decisions were
+  renumbered by +100 when they landed. The work itself landed as four
+  stacked PRs, one commit per item (#267, #269, #270, #272). The team
+  worked around the D1261 bug with a ritual ("notes only right after a
+  commit") written into its knowledge and its slice specs, and nobody
+  reported it. Once the bug was fixed, the lead's next generation wrote the
+  correction under the old rule and the reviewer's notes kept the old rule
+  (lore [workaround](../lore/workaround.md)).
+- **Records.** The missions were `95f01c28`, `4ad1d431`, `c473e01c` and
+  `17867ecd` on a node whose home was thrown away with the run. The crew's
+  28 commits, as numbered, and the agents' knowledge files are on the
+  branch `pr-assets/docs/l3-run-crew`. The streams as the owner read them,
+  cut:
+
+  ```
+  09:46:10 message owner -> crew-lead: Hi, I'm the owner. This is a long mission …
+  09:50:06 missions.mission.created  Honest, quieter civilization: eight Deferred items
+  09:57:56 message crew-lead -> crew-reviewer: … the commit step was refused (REVIEW_REQUIRED) …
+  10:08:15 answer crew-reviewer -> crew-lead: … three approved, D1273 is changes-requested
+  10:11:19 answer crew-lead -> crew-reviewer: It does count: git.tree takes untracked files in …
+  10:12:52 inbox  Mission report: Honest, quieter civilization …, done
+  10:13:38 agents.generation.started crew-reviewer #2, crew-builder #2 (owner's rotate)
+  10:48:00 answer crew-lead -> owner: … a message, not an ask: an open ask of mine would hold the whole mission …
+  10:53:40 agent.context.compacted crew-builder2 (manual)
+  10:53:42 steered [Refocus: your context was compacted] … Slice: A8: mode places …
+  11:33:18 agents.generation.started crew-lead #2 (owner's rotate)
+  11:35:57 ask crew-lead -> owner: … item 4 is your decision … only its slice is blocked
+  11:51:57 inbox  Mission report: Quieter transcripts and tidier generations …, done
+  ```
+
+- **Missing.** In a shared checkout every change made every review stale.
+  So before each commit point the reviewer recorded every done slice again,
+  committed ones included (L2's Deferred items on the files a slice owns
+  and on committed slices). A wave's handoffs to one agent started one turn
+  each: the reviewer did the wave in its first turn and spent the rest
+  answering "Duplicate handoff". The agents' runtimes loaded the node
+  machine user's own Claude Code settings, so the crew's closing words and
+  answers to asks came in Russian from the owner's personal `CLAUDE.md`. A
+  natural compaction was not reached. These are in [Deferred](#deferred).
+
 ## Deferred
 
 - Pods (groups inside a team).
@@ -2028,6 +2112,15 @@ Decisions (L3):
 - L2: public ids the source does not spell out (template literals such as
   `sidebar.thread.jump.${jump}`, D1247), and hook names and permission names,
   which rule 8 does not list yet.
+- L3: a wave's handoffs to one agent as one message. Each handoff starts a
+  turn of its own; an agent that does the whole wave in the first spends the
+  others on "Duplicate handoff" (the L3 run).
+- L3: which setting sources a defined agent's runtime loads. Claude Code
+  reads the node machine user's own `~/.claude` (`CLAUDE.md`, memory,
+  skills), so a team inherits the owner's personal instructions; a choice in
+  the agent's definition (D604) is the owner's to make.
+- L3: refocus after a natural compaction in a long run. The run's 1M-token
+  windows never filled in two hours; D710 was proven on a manual `/compact`.
 - L3: an ask naming the slices it is about. D1263 takes every blocked slice
   to be what the lead's open asks are about, so while a slice is blocked for
   another reason (a builder stuck) an ask cannot hold the whole mission.
@@ -2154,3 +2247,15 @@ Each workstream lists its PRs here as they merge.
   (trailhead, owning plans through the map, lore, the reviewed work and its
   diff, then the lead's notes), sent by a review slice's handoff
   (D1244–D1246).
+- L3 #238: a review's tree leaves `.jhin/agents/` out: `git.tree { exclude }`,
+  `REVIEW_TREE_EXCLUDE` (D1261).
+- L3 #239: no second answer when an agent answers the owner's message itself
+  (D1262).
+- L3 #244: an escalation about some slices holds only them (`held`, D1263).
+- L3 #256: a mission planned from the client keeps the default steps'
+  `review` (D1264).
+- L3 #259: a recorded review is ceremony (`review`, D1265).
+- L3 #265: the reviewer's brief names who built each reviewed slice (D1266).
+- L3 #267, #269, #270, #272: the crew's four missions, 27 Deferred items
+  (D1271–D1278, D1381–D1399).
+- L3: the L3 run note, the lore stories "workaround" and "toll road".

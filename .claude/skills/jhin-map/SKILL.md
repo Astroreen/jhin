@@ -52,3 +52,5 @@ In review a name is enough. Read the story with `jhin lore.get --name <name>`.
 - **mind virus** (`docs/lore/mind-viruses.md`): a wrong idea written down spreads to every agent that reads it
 - **own homework** (`docs/lore/own-homework.md`): a review whose checklist the author wrote finds only what it foresaw
 - **reinvent the wheel** (`docs/lore/reinvent-the-wheel.md`): you cannot search for what you do not know exists; read the map first
+- **workaround** (`docs/lore/workaround.md`): a workaround nobody reported outlives the bug, in every copy of it
+- **toll road** (`docs/lore/toll-road.md`): a guard that makes the honest path costly gets routed around
