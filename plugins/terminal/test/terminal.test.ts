@@ -391,7 +391,7 @@ describe("jhin.terminal", () => {
       },
     ]);
     const after = await client.call<{ terminals: TerminalSummary[] }>("terminals.list", {});
-    expect(after.terminals.map((item) => item.threadId).sort()).toEqual(["archived", "kept"]);
+    expect(after.terminals.map((item) => item.threadId).toSorted()).toEqual(["archived", "kept"]);
   });
 
   it("runs without live streams; output is then read with terminals.get", async () => {
