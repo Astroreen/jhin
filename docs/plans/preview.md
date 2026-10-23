@@ -750,6 +750,17 @@ probe of `ServerBrowser.ts`.
   not offered it, while the file still counts among the 20 kept. Save reads
   the file as it is on the node at that moment: one removed meanwhile
   answers `PREVIEW_TAB_NOT_FOUND`, one grown past 64 MiB is too large.
+  Encoded, 64 MiB is about 85.4 MiB, under the 100 MiB a message may carry
+  on the node's and the mesh's WebSockets (`ws`'s `maxPayload`); a Save
+  holds the file and its base64 in the node's memory, and the base64, the
+  decoded file and its blob in the page's, once per Save, as an upload
+  does. The offer (`PreviewDownloadOffer`, exported) is appended and removed
+  at once: `append` hands an event to every subscriber before it returns,
+  an RPC subscription's forwarder included, so each viewer watching then
+  gets it. Going back, forward or reloading onto a file is no failure
+  either. A download Playwright reports but cannot save is logged on the
+  node and not offered. A failed Save leaves the toast up, so Save can be
+  tried again.
 
 ### Proof
 
@@ -805,7 +816,8 @@ probe of `ServerBrowser.ts`.
   too); dropping a deleted thread's floating entry, which stays in the
   plugin's memory for the session (one small record per thread).
 - Downloads and uploads above 64 MiB (D1203, D1331): a binary channel or an
-  HTTP route for them; T3's in-tab state for a navigation that became a
+  HTTP route for them, which also spares the node and the page holding a
+  Save's file and its base64 at once, and bounds Saves running together; T3's in-tab state for a navigation that became a
   download; offering a download again to a viewer that attaches after it
   (the tab's downloads in its state, D1331).
 - T3's work-log presentation of preview tools ("Used browser N times").

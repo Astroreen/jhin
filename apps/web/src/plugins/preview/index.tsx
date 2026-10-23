@@ -54,6 +54,9 @@ import type { BrowserPanelProps, PanelServices } from "./panel.tsx";
 import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
 
+/** Saved files whose object URLs are kept for the browser to read (D1331). */
+const SAVED_URLS_KEPT = 4;
+
 /** A placeholder of the panel's size while its chunk loads or the node connects. */
 function PanelPlaceholder(props: { children?: ReactNode }) {
   return (
@@ -280,10 +283,12 @@ export const previewPanelPlugin = builtin(
           description: error instanceof Error ? error.message : String(error),
         });
 
-      let savedUrl: string | undefined;
+      // The saved files' URLs, newest last. The browser reads one whenever it starts the
+      // download, so a URL lives until a few later saves (or the plugin goes), not one.
+      const savedUrls: string[] = [];
       context.subscriptions.add({
         dispose: () => {
-          if (savedUrl !== undefined) URL.revokeObjectURL(savedUrl);
+          for (const url of savedUrls.splice(0)) URL.revokeObjectURL(url);
         },
       });
       /** T3's download toast: "Downloaded <file>", and Save fetches it from the node (D1331). */
@@ -298,7 +303,6 @@ export const previewPanelPlugin = builtin(
           action: {
             label: "Save",
             onClick: () => {
-              if (id !== undefined) toasts?.close(id);
               void client
                 .call<{ fileName: string; data: string }>("preview.tab.download", {
                   ...tab,
@@ -309,17 +313,18 @@ export const previewPanelPlugin = builtin(
                   const blob = await (
                     await fetch(`data:application/octet-stream;base64,${data}`)
                   ).blob();
-                  // The newest saved file's URL lives until the next save or the plugin goes,
-                  // so the browser reads it whenever it starts the download.
-                  if (savedUrl !== undefined) URL.revokeObjectURL(savedUrl);
-                  savedUrl = URL.createObjectURL(blob);
+                  const url = URL.createObjectURL(blob);
+                  savedUrls.push(url);
+                  if (savedUrls.length > SAVED_URLS_KEPT) URL.revokeObjectURL(savedUrls.shift()!);
                   const anchor = document.createElement("a");
-                  anchor.href = savedUrl;
+                  anchor.href = url;
                   anchor.download = fileName;
                   anchor.hidden = true;
                   document.body.append(anchor);
                   anchor.click();
                   anchor.remove();
+                  // Saved: the offer is done. A failed Save keeps it, so Save can be tried again.
+                  if (id !== undefined) toasts?.close(id);
                 })
                 .catch((error: unknown) => onError("Couldn't save the download", error));
             },

@@ -2,7 +2,12 @@
 // (frames on a canvas, letterboxed pointer mapping, mouse, wheel and key input through a hidden
 // textarea, the resize the panel asks for, touch taps and pans with the editable-at-point probe that
 // raises a soft keyboard) and components/preview/AgentBrowserCursor.tsx.
-import { PreviewEvents, previewFramesStream, type PreviewInputEvent } from "@jhin/preview-api";
+import {
+  PreviewDownloadOffer,
+  PreviewEvents,
+  previewFramesStream,
+  type PreviewInputEvent,
+} from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { MousePointer2Icon } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
@@ -172,9 +177,8 @@ export function BrowserSurface(props: SurfaceProps) {
       (event) => {
         if (event.type === PreviewEvents.frame) void paint(event.payload as unknown as Frame);
         else if (event.type === PreviewEvents.download) {
-          onDownload.current?.(
-            event.payload as unknown as { id: string; fileName: string; sizeBytes: number },
-          );
+          const offer = PreviewDownloadOffer.safeParse(event.payload);
+          if (offer.success) onDownload.current?.(offer.data);
         } else if (event.type === PreviewEvents.pointer) {
           const pointer = event.payload as { x: number; y: number; phase: string };
           setAgentPointer({

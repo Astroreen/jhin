@@ -148,6 +148,14 @@ export const PreviewDownload = z.object({
   completedAt: z.string(),
 });
 
+/** The payload of `preview.download` on a tab's frames stream (D1331). */
+export const PreviewDownloadOffer = z.object({
+  id: z.string(),
+  fileName: z.string(),
+  sizeBytes: z.number(),
+});
+export type PreviewDownloadOffer = z.infer<typeof PreviewDownloadOffer>;
+
 export const PreviewStatusTab = z.object({
   tabId: PreviewTabId,
   url: z.string().nullable(),

@@ -983,6 +983,12 @@ describe("jhin.preview", () => {
       .payload as { id: string; fileName: string; sizeBytes: number };
     expect(offered).toMatchObject({ fileName: "report.txt", sizeBytes: 10 });
     frames.subscription.dispose();
+    // Told once: what a later subscriber reads from the start holds no offer.
+    const { live } = await node();
+    const kept = await live
+      .sourceOf(previewFramesStream(thread, tabId))!
+      .source.read(previewFramesStream(thread, tabId), { after: 0 });
+    expect(kept.filter((event) => event.type === PreviewEvents.download)).toEqual([]);
 
     const saved = await client.call<{ fileName: string; data: string }>("preview.tab.download", {
       threadId: thread,

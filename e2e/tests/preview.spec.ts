@@ -465,6 +465,8 @@ test("D1331: a page's download is offered to the user, who saves it to this devi
   const download = await saved;
   expect(download.suggestedFilename()).toBe("report.txt");
   expect(Fs.readFileSync(await download.path(), "utf8")).toBe("the report");
+  // Saved: the offer is done.
+  await expect(toast).toHaveCount(0);
 });
 
 test.describe("on a touch screen", () => {

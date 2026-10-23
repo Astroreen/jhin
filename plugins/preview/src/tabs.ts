@@ -48,6 +48,7 @@ import {
   type PreviewViewportSetting,
   type PreviewWaitForInput,
   DEFAULT_BROWSER_PROFILE_ID,
+  type PreviewDownloadOffer,
 } from "@jhin/preview-api";
 import type { MemoryStreams } from "@jhin/rpc";
 import type { Json } from "@jhin/storage-api";
@@ -87,6 +88,15 @@ const PROBE_TIMEOUT_MS = 2_000;
  */
 const isDownloadStarting = (error: unknown): boolean =>
   /Download is starting/i.test(error instanceof Error ? error.message : String(error));
+
+/**
+ * A human's navigation that became a download is no failure: the page stays, and the file is
+ * offered (D1331). Anything else is rethrown.
+ */
+const unlessDownload = (error: unknown): null => {
+  if (isDownloadStarting(error)) return null;
+  throw error;
+};
 
 /** The few DOM shapes `editableAtPoint` reads; the plugin has no DOM types. */
 interface PageElement {
@@ -619,11 +629,10 @@ export function createTabs(options: TabsOptions) {
       // The viewer holding control is offered the file (T3's download toast, D1331): told
       // once to whoever watches now, never replayed to a later subscriber.
       const frames = previewFramesStream(tab.threadId, tab.tabId);
-      const offered = streams.append(frames, PreviewEvents.download, {
-        id,
-        fileName,
-        sizeBytes: size,
-      });
+      const offer: PreviewDownloadOffer = { id, fileName, sizeBytes: size };
+      // `append` hands the event to every subscriber before it returns, an RPC client's
+      // forwarder included, so removing it at once loses no viewer watching now.
+      const offered = streams.append(frames, PreviewEvents.download, offer);
       streams.remove(frames, offered.sequence);
     } catch (error) {
       log.warn("download not saved", { tabId: tab.tabId, error: String(error) });
@@ -1497,18 +1506,13 @@ export function createTabs(options: TabsOptions) {
     }): Promise<{ fileName: string; data: string }> {
       return withErrors(async () => {
         const tab = humanTab(input.threadId, input.tabId);
-        const saved = tab.downloads.find((download) => download.id === input.id);
-        if (saved === undefined) {
-          throw new PreviewError(
-            "PREVIEW_TAB_NOT_FOUND",
-            `Download ${input.id} is no longer kept for this tab.`,
-          );
-        }
         const gone = () =>
           new PreviewError(
             "PREVIEW_TAB_NOT_FOUND",
             `Download ${input.id} is no longer kept for this tab.`,
           );
+        const saved = tab.downloads.find((download) => download.id === input.id);
+        if (saved === undefined) throw gone();
         // The file as it is now: removed from the node, or changed since it was saved.
         const file = await Fs.open(saved.path, "r").catch(() => {
           throw gone();
@@ -1553,19 +1557,17 @@ export function createTabs(options: TabsOptions) {
           if (input.url !== undefined) {
             await tab.page
               .goto(targetUrl({ url: input.url }), VIEWER_NAVIGATION)
-              .catch((error: unknown) => {
-                // A file the page cannot show downloads instead: the user is offered it (D1331).
-                if (isDownloadStarting(error)) return null;
-                throw error;
-              });
+              .catch(unlessDownload);
           } else if (input.delta !== undefined) {
-            await (input.delta < 0
-              ? tab.page.goBack(VIEWER_NAVIGATION)
-              : tab.page.goForward(VIEWER_NAVIGATION));
+            await (
+              input.delta < 0
+                ? tab.page.goBack(VIEWER_NAVIGATION)
+                : tab.page.goForward(VIEWER_NAVIGATION)
+            ).catch(unlessDownload);
           } else if (input.reload?.ignoreCache === true) {
             await tab.cdp.send("Page.reload", { ignoreCache: true });
           } else {
-            await tab.page.reload(VIEWER_NAVIGATION);
+            await tab.page.reload(VIEWER_NAVIGATION).catch(unlessDownload);
           }
         });
         return summary(tab);
