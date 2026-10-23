@@ -783,6 +783,67 @@ describe("jhin.agent-codex: two leases of one thread", () => {
   });
 });
 
+describe("jhin.agent-codex: following an app-server past its turn (D1318)", () => {
+  it("keeps a followed app-server from idling out, and lets it idle once unfollowed", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let closed = 0;
+    const launch: Launcher = () => ({
+      request: (method) => Promise.resolve(method === "initialize" ? {} : null),
+      notify: () => {},
+      onNotification: () => {},
+      onRequest: () => {},
+      exited: new Promise(() => {}),
+      running: true,
+      stderr: () => "",
+      close: () => void closed++,
+    });
+    const sessions = createSessions({ launch, idleMs: () => 60_000 });
+    const options = { binaryPath: "codex", args: [], cwd: "/work", env: {}, version: "0" };
+    const lease = await sessions.lease("thread-1", options);
+    let ended = 0;
+    const unfollow = lease.follow({ notification: () => {}, end: () => void ended++ });
+    lease.release(true);
+    vi.advanceTimersByTime(10 * 60_000);
+    // Followed: no idle timer runs, it is still up.
+    expect(closed).toBe(0);
+    expect(sessions.list()).toHaveLength(1);
+    unfollow();
+    vi.advanceTimersByTime(60_000);
+    expect(closed).toBe(1);
+    // Closing does not end a follower that already left.
+    expect(ended).toBe(0);
+    sessions.dispose();
+    vi.useRealTimers();
+  });
+
+  it("ends its followers when the app-server ends", async () => {
+    const launch: Launcher = () => ({
+      request: (method) => Promise.resolve(method === "initialize" ? {} : null),
+      notify: () => {},
+      onNotification: () => {},
+      onRequest: () => {},
+      exited: new Promise(() => {}),
+      running: true,
+      stderr: () => "",
+      close: () => {},
+    });
+    const sessions = createSessions({ launch, idleMs: () => 0 });
+    const lease = await sessions.lease("thread-1", {
+      binaryPath: "codex",
+      args: [],
+      cwd: "/work",
+      env: {},
+      version: "0",
+    });
+    let ended = 0;
+    lease.follow({ notification: () => {}, end: () => void ended++ });
+    lease.release(true);
+    // Archiving or deleting the thread closes it (index.ts), which ends what follows it.
+    expect(sessions.close("thread-1", true)).toBe(true);
+    expect(ended).toBe(1);
+  });
+});
+
 const connections: { close(): void }[] = [];
 const stopConnection = (connection: { close(): void }) => connections.push(connection);
 afterEach(() => {

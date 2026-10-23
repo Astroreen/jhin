@@ -1367,7 +1367,10 @@ export function codexTurn(
               childFrame(thread, { kind: "notification", method, params });
             }
           },
-          end: () => later.end(),
+          end: () => {
+            unfollow();
+            later.end();
+          },
         });
       }
       // Kept only when Codex finished the turn: one that broke off mid-turn would hand the

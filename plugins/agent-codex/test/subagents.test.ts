@@ -227,6 +227,9 @@ describe("jhin.agent-codex: subagents (D1145)", () => {
     const first = until(client, thread.id, "agent.turn.completed");
     await client.call("threads.send", { threadId: thread.id, text: "watch" });
     const [startedChild] = payloads(await first, "threads.subagent.started");
-    await until(client, String(startedChild!["childThreadId"]), "agent.turn.interrupted");
+    const child = String(startedChild!["childThreadId"]);
+    // Interrupted once, by the end of its app-server (the follow itself is proven above).
+    const childEvents = await until(client, child, "agent.turn.interrupted");
+    expect(childEvents.filter((event) => event.type === "agent.turn.interrupted")).toHaveLength(1);
   });
 });
