@@ -1405,6 +1405,20 @@ reviewer's note and a conflict on GitLab, and for a file thread's comment
 and a conflict on Azure DevOps; the node's own and system comments wake
 nothing).
 
+### "Waiting" for a thread on a mesh member (W35, D1289)
+
+- **D1289. A mesh member's thread that watches a pull request shows
+  "Waiting" too**, as a thread of the client's own connection does (D1131).
+  The work source follows a member's source control (the store's
+  `mesh.relay` of its `source-control` stream, D504's path) from the first
+  time a card asks about one of its threads, and stops when the connection it
+  is reached through goes; its threads are then told, as a node's are. A
+  member's empty view tells nothing until its links come.
+
+The proof: `apps/web/test/watched-work.test.ts` (a member followed once
+asked and once only, its watched link reported and told, the connection's
+own threads apart, unfollowed with its connection and followed again).
+
 ## Deferred
 
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
@@ -1474,8 +1488,8 @@ nothing).
   while the node cannot write (T3's `canWriteSourceControl`).
 - Watching (D274): review thread comments on lines, required checks of
   forges other than GitHub (D908), read fingerprints, rate limit pauses;
-  T3's hover list of a waiting thread's background tasks, and "Waiting" for
-  a thread on a mesh member (D1131 follows the client's own connections).
+  T3's hover list of a waiting thread's background tasks ("Waiting" for a
+  thread on a mesh member is D1289).
 - The pull request panel and rows (D1281–D1283): a row's author, diff stat
   and review decision, T3's speed actions under Shift, dragging a row into
   the composer, the virtualized list, T3's tab strip of right panels and its
