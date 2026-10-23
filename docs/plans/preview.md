@@ -491,8 +491,8 @@ the `.chat-composer-lane` and `.messages-timeline-scroll` rules of
   the same; the browser opens the window only during a user's gesture, so
   they work from the palette or a keybinding, not over RPC. This is a
   departure from "every operation is a command reachable from RPC, the CLI
-  and MCP", pending the owner's confirmation: `preview.pop-out` is a command
-  that opens a window only with the user's activation, and without it
+  and MCP", which the owner accepted (2026-10-23): `preview.pop-out` is a
+  command that opens a window only with the user's activation, and without it
   (`navigator.userActivation`) it answers `poppedOut: false` with `reason:
   "needs-gesture"`; where a browser has no `userActivation`, the browser's
   own refusal answers instead, as an error.
