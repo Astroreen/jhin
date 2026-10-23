@@ -231,6 +231,10 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
     case "skills/list":
       send({ id, result: { data: scenario.skills ?? [] } });
       return;
+    case "feedback/upload":
+      // Codex answers the thread it sent (T3's feedbackId).
+      send({ id, result: { threadId: (params as { threadId?: string } | null)?.threadId } });
+      return;
     case "model/list": {
       const pages = scenario.models ?? [[]];
       const index = typeof params["cursor"] === "string" ? Number(params["cursor"]) : 0;

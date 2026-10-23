@@ -483,7 +483,7 @@ export interface AgentAuth {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -533,6 +533,15 @@ export interface AgentRuntime {
   usageLimits?(): Promise<AgentUsageLimits | undefined>;
   /** Since 1.11: signing its account in and out (providers.md D1151). */
   readonly auth?: AgentAuth;
+  /**
+   * Since 1.14: sends a thread's conversation and the agent's logs to its maker (T3's
+   * `uploadFeedback`, Codex's `feedback/upload`, providers.md D1317); answers the id the
+   * maker knows it by. A runtime without it takes no feedback.
+   */
+  uploadFeedback?(request: {
+    readonly threadId: string;
+    readonly reason?: string;
+  }): Promise<{ readonly feedbackId: string }>;
   startTurn(request: TurnRequest): AgentTurn;
 }
 

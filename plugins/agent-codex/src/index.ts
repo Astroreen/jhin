@@ -53,6 +53,7 @@ import {
 } from "./rpc.ts";
 import { GOAL_COMMAND } from "./goal.ts";
 import { materializeShadowHome } from "./accounts.ts";
+import { FEEDBACK_COMMAND, GOAL_COMMAND } from "./goal.ts";
 import { createSessions, type Launcher, type Sessions } from "./session.ts";
 import {
   CODEX_AGENT_ID,
@@ -101,6 +102,8 @@ const PROBE_TIMEOUT_MS = 20_000;
 const MAX_LOGINS = 20;
 /** How old a usage read `/usage-limits` answers from before it reads them again. */
 const USAGE_TTL_MS = 60_000;
+/** An upload of a thread's feedback that takes longer is given up (D1317). */
+const FEEDBACK_TIMEOUT_MS = 120_000;
 /** A usage read that takes longer is reported as failed (T3's RATE_LIMITS_PROBE_TIMEOUT_MS). */
 const RATE_LIMITS_TIMEOUT_MS = 5_000;
 
@@ -771,11 +774,58 @@ export function createCodexRuntime(options: {
         options.log?.("codex did not list its skills", { cwd, error: String(error) });
         return [];
       });
-      return { commands: [COMPACT_COMMAND, GOAL_COMMAND], skills };
+      return { commands: [COMPACT_COMMAND, GOAL_COMMAND, FEEDBACK_COMMAND], skills };
     },
     status,
     usageLimits,
     auth,
+    // T3's uploadFeedback (D1317): Codex reads the thread's rollout and its logs from its home,
+    // so an app-server of its own sends them, as the status probe asks on one.
+    async uploadFeedback({ threadId, reason }) {
+      const codexThreadId =
+        (await options.threads.read?.(threadId))?.codexThreadId ??
+        (await options.threads.get(threadId));
+      if (codexThreadId === undefined) {
+        throw new Error("Start a Codex thread first: send a message before you submit feedback.");
+      }
+      const config = options.config();
+      const connection = launch({
+        binaryPath: config.binaryPath,
+        args: config.args ?? [],
+        cwd: Os.tmpdir(),
+        env: codexEnvironment(config.env, expandHome(config.homePath), config.inheritEnv),
+      });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await initialize(connection, VERSION);
+        const response = (await Promise.race([
+          connection.request("feedback/upload", {
+            classification: "bug",
+            includeLogs: true,
+            ...(reason === undefined ? {} : { reason }),
+            threadId: codexThreadId,
+          }),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("Codex did not answer the feedback upload.")),
+              FEEDBACK_TIMEOUT_MS,
+            );
+          }),
+        ])) as { threadId?: unknown } | null;
+        if (typeof response?.threadId !== "string") {
+          throw new Error("Codex did not say which thread it sent.");
+        }
+        return { feedbackId: response.threadId };
+      } catch (error) {
+        throw new Error(
+          `Failed to upload Codex thread feedback: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      } finally {
+        clearTimeout(timer);
+        connection.close();
+      }
+    },
     startTurn(request) {
       const config = options.config();
       const turn = codexTurn(request, {

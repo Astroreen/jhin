@@ -101,6 +101,7 @@ import {
   serializeComposerFileLink,
 } from "../../lib/composer-trigger.ts";
 import { formatTokens } from "../../lib/format.ts";
+import { parseFeedbackCommand, type FeedbackSubmission } from "../../lib/feedback.ts";
 import { isUsageLimitsCommand } from "../../lib/usage-limits.ts";
 import { useCatalog } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
@@ -194,6 +195,8 @@ const PlanFollowUpBanner = lazyChunk(
 const GoalBanner = lazyChunk(() => bannersChunk().then((module) => module.GoalBanner), quiet);
 const LimitRecoveryBanner = lazyChunk(
   () => bannersChunk().then((module) => module.LimitRecoveryBanner),
+const FeedbackBanner = lazyChunk(
+  () => bannersChunk().then((module) => module.FeedbackBanner),
   quiet,
 );
 const UsageLimitsBanner = lazyChunk(
@@ -942,6 +945,45 @@ export function Composer(props: ComposerProps) {
     setUsagePanel({ key, agentName: offered.name, limits: usageLimits, now: Date.now() });
     return true;
   };
+  // `/feedback` (D1317): the submission of the thread it was sent on, T3's banner.
+  const [feedback, setFeedback] = useState<{ key: string; submission: FeedbackSubmission }>();
+  const feedbackKey = props.context?.thread?.id ?? "";
+  if (feedback !== undefined && feedback.key !== feedbackKey) setFeedback(undefined);
+  /** Sends the thread's feedback; false when nothing was sent (the prompt then stays). */
+  const sendFeedback = async (command: { reason?: string }): Promise<boolean> => {
+    const threadId = props.context?.thread?.id;
+    if (threadId === undefined || props.context?.thread?.lastTurn === undefined) {
+      toasts?.show({
+        type: "warning",
+        title: "Start a Codex thread first",
+        description: "Send a message before you submit feedback.",
+      });
+      return false;
+    }
+    const id = `${Date.now()}`;
+    const update = (submission: FeedbackSubmission) =>
+      setFeedback((current) =>
+        current === undefined || current.submission.id === id || submission.status === "uploading"
+          ? { key: threadId, submission }
+          : current,
+      );
+    update({ id, status: "uploading" });
+    void chat.threads
+      .call<{ feedbackId: string }>(props.target, "agents.feedback.upload", {
+        threadId,
+        ...command,
+      })
+      .then(
+        ({ feedbackId }) => update({ id, status: "sent", feedbackId }),
+        (error: unknown) =>
+          update({
+            id,
+            status: "failed",
+            errorMessage: error instanceof Error ? error.message : "An error occurred.",
+          }),
+      );
+    return true;
+  };
   const runtimeMode = props.selection.runtimeMode ?? "full-access";
   const planSupported = agent?.interactionModes.includes("plan") === true;
   const planMode = props.selection.interactionMode === "plan";
@@ -1251,6 +1293,19 @@ export function Composer(props: ComposerProps) {
       return false;
     }
     if (!hasTyped) return false;
+    // `/feedback` sent alone goes to the agent's maker, not to the agent (T3, D1317).
+    const feedbackCommand =
+      attachments.length === 0 && agent?.feedback === true && contexts.length === 0
+        ? parseFeedbackCommand(typed)
+        : null;
+    if (feedbackCommand !== null) {
+      if (feedback?.submission.status === "uploading") return false;
+      if (await sendFeedback(feedbackCommand)) {
+        setPrompt("");
+        setCursor(0);
+      }
+      return false;
+    }
     // `/usage-limits` sent alone is answered here when the agent has limits (T3); otherwise it
     // goes to the agent untouched.
     if (attachments.length === 0 && isUsageLimitsCommand(typed) && agent?.usageLimits === true) {
@@ -1611,6 +1666,22 @@ export function Composer(props: ComposerProps) {
           <PlanFollowUpBanner planTitle={planFollowUp.title} />
         ) : props.limitRecovery !== undefined ? (
           <LimitRecoveryBanner state={props.limitRecovery} />
+        ) : feedback !== undefined ? (
+          <FeedbackBanner
+            onCopy={(feedbackId) => {
+              void navigator.clipboard.writeText(feedbackId).then(
+                () => toasts?.show({ type: "success", title: "Copied Codex feedback thread ID" }),
+                (error: unknown) =>
+                  toasts?.show({
+                    type: "error",
+                    title: "Could not copy thread ID",
+                    description: error instanceof Error ? error.message : "An error occurred.",
+                  }),
+              );
+            }}
+            onDismiss={() => setFeedback(undefined)}
+            submission={feedback.submission}
+          />
         ) : usagePanel !== undefined ? (
           <UsageLimitsBanner
             agentName={usagePanel.agentName}

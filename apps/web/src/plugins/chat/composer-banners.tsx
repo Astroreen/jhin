@@ -29,6 +29,7 @@ import {
   CornerUpRightIcon,
   EllipsisIcon,
   GaugeIcon,
+  MessageSquareIcon,
   GripVerticalIcon,
   ListOrderedIcon,
   PencilIcon,
@@ -38,6 +39,7 @@ import {
 import { Fragment, useId, useRef, useState, type ComponentProps } from "react";
 
 import type { TimestampFormat } from "../../lib/format.ts";
+import { feedbackNotice, type FeedbackSubmission } from "../../lib/feedback.ts";
 import { presentGoal } from "../../lib/goal.ts";
 import { PaceIcon } from "../../lib/pace-icon.tsx";
 import {
@@ -858,6 +860,57 @@ export function LimitRecoveryBanner(props: { readonly state: LimitRecoveryState 
               ) : null}
             </ComposerBanner.Actions>
           ) : null}
+/** T3's feedbackBannerItem (ComposerFeedback.tsx): a `/feedback` as it goes (D1317). */
+export function FeedbackBanner(props: {
+  readonly submission: FeedbackSubmission;
+  onCopy(feedbackId: string): void;
+  onDismiss(): void;
+}) {
+  const { submission } = props;
+  const notice = feedbackNotice(submission);
+  return (
+    <ComposerBanner.Attachment>
+      <ComposerBanner.Root
+        aria-label="Feedback"
+        density="comfortable"
+        role="status"
+        variant={
+          submission.status === "failed"
+            ? "error"
+            : submission.status === "sent"
+              ? "success"
+              : "info"
+        }
+      >
+        <ComposerBanner.Row layout="wrap-actions">
+          <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
+            <MessageSquareIcon />
+          </ComposerBanner.Icon>
+          <ComposerBanner.Content>
+            <span className="min-w-0 truncate font-medium leading-7 sm:leading-6">
+              {notice.title}
+            </span>
+            {notice.description === undefined ? null : (
+              <span className="min-w-0 truncate text-muted-foreground">{notice.description}</span>
+            )}
+          </ComposerBanner.Content>
+          {submission.status === "uploading" ? null : (
+            <ComposerBanner.Actions>
+              {submission.status === "sent" ? (
+                <Button
+                  onClick={() => props.onCopy(submission.feedbackId)}
+                  size="xs"
+                  variant="ghost"
+                >
+                  Copy ID
+                </Button>
+              ) : null}
+              <ComposerBanner.Dismiss
+                aria-label="Dismiss feedback notice"
+                onClick={props.onDismiss}
+              />
+            </ComposerBanner.Actions>
+          )}
         </ComposerBanner.Row>
       </ComposerBanner.Root>
     </ComposerBanner.Attachment>

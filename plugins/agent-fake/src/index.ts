@@ -500,6 +500,11 @@ export default definePlugin({
         stop?.();
         return stop !== undefined;
       },
+      // `/feedback` (D1317): "sent" as the thread's id, or failed when the reason says "fail".
+      uploadFeedback: async ({ threadId, reason }) => {
+        if (reason === "fail") throw new Error("The fake maker refused the feedback.");
+        return { feedbackId: `feedback-${threadId.slice(0, 8)}` };
+      },
       // A session and a weekly window, so `/usage-limits` has something to show (D1144).
       usageLimits: async () => {
         const now = Date.now();

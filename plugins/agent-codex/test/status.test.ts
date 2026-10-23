@@ -211,7 +211,7 @@ describe("jhin.agent-codex: status", () => {
     expect(third).toMatchObject({ model: "custom-slug", effort: "low" });
     expect(third).not.toHaveProperty("serviceTier");
     expect(fourth).toMatchObject({ serviceTier: "default" });
-    // T3 lists /compact and /goal for Codex.
+    // T3 lists /compact, /goal and /feedback for Codex (D1317).
     expect(await codex.commands!({ cwd: process.cwd() })).toEqual({
       commands: [
         { name: "compact", description: "Summarize the conversation and reduce context usage" },
@@ -219,6 +219,11 @@ describe("jhin.agent-codex: status", () => {
           name: "goal",
           description: "Set a goal Codex keeps working toward until it is done",
           input: { hint: "Objective, or pause, resume, clear" },
+        },
+        {
+          name: "feedback",
+          description: "Send this thread and Codex logs to OpenAI",
+          input: { hint: "Describe the issue (optional)" },
         },
       ],
       skills: [],
