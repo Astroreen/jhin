@@ -1,10 +1,13 @@
 // The surface follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/browser/ServerBrowserSurface.tsx
 // (frames on a canvas, letterboxed pointer mapping, mouse, wheel and key input through a hidden
-// textarea, the resize the panel asks for) and components/preview/AgentBrowserCursor.tsx.
+// textarea, the resize the panel asks for, touch taps and pans with the editable-at-point probe that
+// raises a soft keyboard) and components/preview/AgentBrowserCursor.tsx.
 import { PreviewEvents, previewFramesStream, type PreviewInputEvent } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { MousePointer2Icon } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+
+import { createTouchGestures, type TouchAction, type TouchGestures } from "./touch.ts";
 
 interface Frame {
   readonly data: string;
@@ -15,7 +18,6 @@ interface Frame {
 const RESIZE_THROTTLE_MS = 150;
 const MULTI_CLICK_MS = 500;
 const MULTI_CLICK_PX = 4;
-
 /** Alt 1, ctrl 2, meta 4, shift 8: T3's (and CDP's) modifier bits. */
 function modifiersOf(event: {
   altKey: boolean;
@@ -237,20 +239,132 @@ export function BrowserSurface(props: SurfaceProps) {
   };
 
   const lastClick = useRef({ at: 0, x: 0, y: 0, count: 0 });
+  const countClick = (point: { x: number; y: number }, at: number) => {
+    const previous = lastClick.current;
+    const again =
+      at - previous.at < MULTI_CLICK_MS &&
+      Math.abs(point.x - previous.x) < MULTI_CLICK_PX &&
+      Math.abs(point.y - previous.y) < MULTI_CLICK_PX;
+    const count = again ? Math.min(previous.count + 1, 3) : 1;
+    lastClick.current = { at, ...point, count };
+    return count;
+  };
+
+  // --- Touch: a tap clicks, a pan scrolls, and a tap on text raises the keyboard (T3's) ---
+  const touch = useRef<TouchGestures | null>(null);
+  touch.current ??= createTouchGestures();
+  useEffect(() => {
+    if (!canOperate) touch.current?.reset();
+  }, [canOperate]);
+  /** Page CSS pixels per client pixel on the canvas. */
+  const pageScale = () => {
+    const canvas = canvasRef.current;
+    if (canvas === null || canvas.width === 0) return 1;
+    const rect = canvas.getBoundingClientRect();
+    const fit = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+    return viewport.current.width / (canvas.width * fit);
+  };
+  const run = (actions: readonly TouchAction[], timeStamp: number) => {
+    for (const action of actions) {
+      switch (action.type) {
+        case "focus":
+          inputRef.current?.focus({ preventScroll: true });
+          break;
+        case "blur":
+          inputRef.current?.blur();
+          break;
+        case "wheel":
+          send({
+            type: "wheel",
+            ...action.point,
+            deltaX: action.deltaX,
+            deltaY: action.deltaY,
+            modifiers: 0,
+          });
+          break;
+        case "tap": {
+          const { point } = action;
+          const clickCount = countClick(point, timeStamp);
+          send({
+            type: "mouse",
+            action: "move",
+            ...point,
+            button: "none",
+            buttons: 0,
+            modifiers: 0,
+          });
+          send({
+            type: "mouse",
+            action: "down",
+            ...point,
+            button: "left",
+            buttons: 1,
+            clickCount,
+            modifiers: 0,
+          });
+          send({
+            type: "mouse",
+            action: "up",
+            ...point,
+            button: "left",
+            buttons: 0,
+            clickCount,
+            modifiers: 0,
+          });
+          break;
+        }
+        case "probe":
+          void client
+            .call<{ x: number; y: number; editable: boolean }>("preview.tab.probe", {
+              threadId,
+              tabId,
+              viewer,
+              ...action.point,
+            })
+            .then(
+              (result) => {
+                if (canOperateRef.current) run(touch.current!.answered(result), performance.now());
+              },
+              // Without an answer the tap still clicks; only the keyboard stays down.
+              () => touch.current!.failed(action.point),
+            );
+          break;
+      }
+    }
+  };
+  /** Handles a touch pointer; false for a mouse or a pen. */
+  const onTouch = (event: PointerEvent<HTMLCanvasElement>): boolean => {
+    if (event.pointerType !== "touch") return false;
+    const gestures = touch.current!;
+    if (event.type === "pointercancel") {
+      gestures.cancel(event.pointerId);
+      return true;
+    }
+    const pointer = {
+      pointerId: event.pointerId,
+      isPrimary: event.isPrimary,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      point: pagePoint(event.clientX, event.clientY),
+    };
+    if (event.type === "pointerdown") {
+      if (event.isPrimary) event.preventDefault();
+      run(gestures.down(pointer), event.timeStamp);
+    } else if (event.type === "pointermove")
+      run(gestures.move(pointer, pageScale()), event.timeStamp);
+    else run(gestures.up(pointer), event.timeStamp);
+    return true;
+  };
+
   const onPointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!canOperate) return;
+    if (onTouch(event)) return;
     const point = pagePoint(event.clientX, event.clientY);
     if (point === undefined) return;
     event.preventDefault();
     inputRef.current?.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
-    const previous = lastClick.current;
-    const again =
-      event.timeStamp - previous.at < MULTI_CLICK_MS &&
-      Math.abs(point.x - previous.x) < MULTI_CLICK_PX &&
-      Math.abs(point.y - previous.y) < MULTI_CLICK_PX;
-    const count = again ? Math.min(previous.count + 1, 3) : 1;
-    lastClick.current = { at: event.timeStamp, ...point, count };
+    const count = countClick(point, event.timeStamp);
     send({
       type: "mouse",
       action: "down",
@@ -263,6 +377,7 @@ export function BrowserSurface(props: SurfaceProps) {
   };
   const onPointerUp = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!canOperate) return;
+    if (onTouch(event)) return;
     const point = pagePoint(event.clientX, event.clientY) ?? lastClick.current;
     send({
       type: "mouse",
@@ -277,6 +392,7 @@ export function BrowserSurface(props: SurfaceProps) {
   };
   const onPointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!canOperate) return;
+    if (onTouch(event)) return;
     const point = pagePoint(event.clientX, event.clientY);
     if (point === undefined) return;
     send({
@@ -386,6 +502,9 @@ export function BrowserSurface(props: SurfaceProps) {
         onContextMenu={(event) => event.preventDefault()}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
+        onPointerCancel={(event) => {
+          if (canOperate) onTouch(event);
+        }}
         onPointerUp={onPointerUp}
         ref={canvasRef}
       />

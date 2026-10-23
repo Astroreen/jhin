@@ -6,6 +6,8 @@
 // browser/ServerBrowserSurface.tsx with packages/client-runtime/src/preview/serverBrowserStream.ts.
 import type { NodeTarget } from "@jhin/client-api";
 import {
+  PREVIEW_UPLOAD_MAX_BYTES,
+  PREVIEW_UPLOAD_MAX_FILES,
   PREVIEW_VIEWPORT_MAX_AREA,
   PREVIEW_VIEWPORT_PRESETS,
   PREVIEW_ZOOM_LEVELS,
@@ -980,6 +982,72 @@ function Unreachable(props: { url: string; description: string; onReload: () => 
   );
 }
 
+/** A file's name as the node takes it: 255 characters at most, its extension kept. */
+function uploadName(name: string): string {
+  if (name === "") return "file";
+  if (name.length <= 255) return name;
+  const dot = name.lastIndexOf(".");
+  const extension = dot > 0 && name.length - dot <= 16 ? name.slice(dot) : "";
+  return name.slice(0, 255 - extension.length) + extension;
+}
+
+/** A file's bytes in base64, converted in chunks so a large file fits the call stack. */
+async function base64Of(file: Blob): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let start = 0; start < bytes.length; start += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(start, start + 0x8000));
+  }
+  return btoa(binary);
+}
+
+/** T3's prompt when the page asks for files: the viewer holding control picks or cancels. */
+function FileChooserDialog(props: {
+  multiple: boolean;
+  accept: string;
+  onAnswer: (files: readonly File[]) => Promise<void>;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  // One answer at a time: a second click while the first is sent would find no picker.
+  const [sending, setSending] = useState(false);
+  const answer = (files: readonly File[]) => {
+    setSending(true);
+    void props.onAnswer(files).finally(() => setSending(false));
+  };
+  return (
+    <div
+      aria-label="Choose files for the page"
+      className="absolute inset-x-2 top-2 z-10 flex flex-col gap-2 rounded-lg border border-border bg-background p-3 shadow-lg"
+      role="dialog"
+    >
+      <p className="text-sm">The page asks for {props.multiple ? "files" : "a file"}.</p>
+      <input
+        accept={props.accept}
+        aria-hidden="true"
+        className="hidden"
+        data-preview-file-input=""
+        multiple={props.multiple}
+        onChange={(event) => {
+          const files = [...(event.currentTarget.files ?? [])];
+          event.currentTarget.value = "";
+          if (files.length > 0) answer(files);
+        }}
+        ref={input}
+        tabIndex={-1}
+        type="file"
+      />
+      <div className="flex justify-end gap-2">
+        <Button disabled={sending} onClick={() => answer([])} size="sm" variant="outline">
+          Cancel
+        </Button>
+        <Button disabled={sending} onClick={() => input.current?.click()} size="sm">
+          Choose {props.multiple ? "files" : "file"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TabView(props: {
   client: RpcClient;
   threadId: string;
@@ -1120,6 +1188,29 @@ function TabView(props: {
     </Menu>
   );
 
+  /** Answers the page's file picker with the chosen files, or cancels it with none (D1203). */
+  const uploadFiles = async (files: readonly File[]) => {
+    if (files.length > PREVIEW_UPLOAD_MAX_FILES) {
+      throw new Error(`The page takes at most ${PREVIEW_UPLOAD_MAX_FILES} files at once.`);
+    }
+    const total = files.reduce((sum, file) => sum + file.size, 0);
+    if (total > PREVIEW_UPLOAD_MAX_BYTES) {
+      throw new Error(
+        `The page takes at most ${PREVIEW_UPLOAD_MAX_BYTES / 1024 / 1024} MiB of files at once.`,
+      );
+    }
+    // One file at a time, so only one file's copies are in memory while it converts.
+    const encoded = [];
+    for (const file of files) {
+      encoded.push({
+        name: uploadName(file.name),
+        ...(file.type === "" ? {} : { mimeType: file.type }),
+        data: await base64Of(file),
+      });
+    }
+    await services.call("preview.tab.upload", { ...ids, viewer, files: encoded });
+  };
+
   const loading = status.state === "loading" || (status.state !== "idle" && !painted);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background" data-preview-tab={tab.tabId}>
@@ -1204,6 +1295,17 @@ function TabView(props: {
             description={status.description}
             onReload={() => navigate({ reload: {} })}
             url={status.url}
+          />
+        ) : null}
+        {tab.fileChooser !== null && youControl ? (
+          <FileChooserDialog
+            accept={tab.fileChooser.accept}
+            multiple={tab.fileChooser.multiple}
+            onAnswer={(files) =>
+              uploadFiles(files).catch((error: unknown) =>
+                services.onError("Could not send the files to the page", error),
+              )
+            }
           />
         ) : null}
         {tab.dialog !== null ? (

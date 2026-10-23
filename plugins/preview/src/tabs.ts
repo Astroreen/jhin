@@ -77,6 +77,57 @@ const FRAME_ACK_MS = 100;
 const FRAME_QUALITY = 70;
 const READ_OPERATIONS = new Set(["status", "snapshot", "waitFor"]);
 const VIEWER_NAVIGATION = { waitUntil: "commit", timeout: Ops.DEFAULT_TIMEOUT_MS } as const;
+/** How long a probe waits for the page before it answers "not text" (D1203). */
+const PROBE_TIMEOUT_MS = 2_000;
+
+/** The few DOM shapes `editableAtPoint` reads; the plugin has no DOM types. */
+interface PageElement {
+  readonly tagName: string;
+  readonly shadowRoot: { elementFromPoint(x: number, y: number): PageElement | null } | null;
+  readonly control?: PageElement | null;
+  readonly isContentEditable?: boolean;
+  readonly disabled?: boolean;
+  readonly readOnly?: boolean;
+  readonly type?: string;
+}
+
+/**
+ * T3's EDITABLE_AT_POINT_SCRIPT, run in the page: whether a tap there should raise a soft
+ * keyboard (D1203). The point comes in as an argument, never as source.
+ */
+function editableAtPoint(point: { x: number; y: number }): boolean {
+  const { x, y } = point;
+  const document = (
+    globalThis as unknown as {
+      document: { elementFromPoint(x: number, y: number): PageElement | null };
+    }
+  ).document;
+  let element = document.elementFromPoint(x, y);
+  while (element && element.shadowRoot) {
+    const inner = element.shadowRoot.elementFromPoint(x, y);
+    if (!inner || inner === element) break;
+    element = inner;
+  }
+  if (element && element.tagName === "LABEL" && element.control) element = element.control;
+  if (!element) return false;
+  if (element.tagName === "IFRAME" || element.tagName === "FRAME") return true;
+  if (element.isContentEditable) return true;
+  if (element.tagName === "TEXTAREA") return !element.disabled && !element.readOnly;
+  if (element.tagName !== "INPUT") return false;
+  const nonText = [
+    "button",
+    "checkbox",
+    "color",
+    "file",
+    "hidden",
+    "image",
+    "radio",
+    "range",
+    "reset",
+    "submit",
+  ];
+  return !nonText.includes(element.type ?? "") && !element.disabled && !element.readOnly;
+}
 
 interface Recording {
   readonly encoder: Page;
@@ -402,8 +453,14 @@ export function createTabs(options: TabsOptions) {
       void reportLoaded(tab);
     });
     page.on("framenavigated", (frame) => {
+      if (frame !== page.mainFrame()) return;
+      // A new document has no picker the old one opened (D1203).
+      if (tab.fileChooser !== null) {
+        tab.fileChooser = null;
+        changed(tab);
+      }
       // Same-document navigations (single-page routes) fire no load event.
-      if (frame === page.mainFrame() && !tab.loading) void reportLoaded(tab);
+      if (!tab.loading) void reportLoaded(tab);
     });
     page.on("requestfailed", (request) => {
       const errorText = request.failure()?.errorText ?? "";
@@ -1460,6 +1517,92 @@ export function createTabs(options: TabsOptions) {
         }
         await answerDialog(tab, input.accept, input.promptText);
         return summary(tab);
+      });
+    },
+
+    /**
+     * The files the viewer holding control chose for the page's open file picker, or none to
+     * cancel it (T3's upload, D1203).
+     */
+    async uploadAsHuman(input: {
+      threadId: string;
+      tabId: string;
+      viewer: string;
+      files: readonly { name: string; mimeType?: string | undefined; data: string }[];
+    }): Promise<PreviewTab> {
+      return withErrors(async () => {
+        const tab = humanTab(input.threadId, input.tabId);
+        if (tab.control.controller !== input.viewer) {
+          throw new PreviewError("PREVIEW_CONTROL", "Take control to choose files.", {
+            reason: "humanControl",
+          });
+        }
+        const chooser = tab.fileChooser;
+        if (chooser === null) {
+          throw new PreviewError("PREVIEW_EXECUTION", "The page's file picker is no longer open.");
+        }
+        if (!chooser.isMultiple() && input.files.length > 1) {
+          throw new PreviewError("PREVIEW_EXECUTION", "This file picker accepts one file.");
+        }
+        // Taken at once, so a second upload meanwhile finds no picker. Cancelling sets no
+        // files, as T3's does: the picker just closes.
+        tab.fileChooser = null;
+        changed(tab);
+        if (input.files.length === 0) return summary(tab);
+        try {
+          await chooser.setFiles(
+            input.files.map((file) => ({
+              name: file.name,
+              mimeType: file.mimeType || "application/octet-stream",
+              buffer: Buffer.from(file.data, "base64"),
+            })),
+          );
+        } catch (error) {
+          // Given back only while its input is still on the page, so a retry can work; a stale
+          // picker (the page navigated, the input went) stays closed and the dialog with it.
+          const attached = await chooser
+            .element()
+            .evaluate((element) => element.isConnected)
+            .catch(() => false);
+          if (attached && tab.fileChooser === null && !tab.page.isClosed()) {
+            tab.fileChooser = chooser;
+            changed(tab);
+          }
+          throw error;
+        }
+        // The page may retitle itself on the files, as after a viewer's click.
+        void refreshTitle(tab).catch(() => undefined);
+        return summary(tab);
+      });
+    },
+
+    /** Whether the viewer holding control tapped something editable (T3's probe, D1203). */
+    async probe(input: {
+      threadId: string;
+      tabId: string;
+      viewer: string;
+      x: number;
+      y: number;
+    }): Promise<{ x: number; y: number; editable: boolean }> {
+      return withErrors(async () => {
+        const tab = humanTab(input.threadId, input.tabId);
+        if (tab.control.controller !== input.viewer) {
+          throw new PreviewError("PREVIEW_CONTROL", "Take control to use the page.", {
+            reason: "humanControl",
+          });
+        }
+        // A page with a dialog open runs no script until it is answered: nothing to type into.
+        if (tab.dialog !== null) return { x: input.x, y: input.y, editable: false };
+        // A busy or navigating page answers "not text" after a moment: the tap still clicks,
+        // only the keyboard stays down.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const editable = await Promise.race([
+          tab.page.evaluate(editableAtPoint, { x: input.x, y: input.y }).catch(() => false),
+          new Promise<false>((resolve) => {
+            timer = setTimeout(() => resolve(false), PROBE_TIMEOUT_MS);
+          }),
+        ]).finally(() => clearTimeout(timer));
+        return { x: input.x, y: input.y, editable };
       });
     },
 

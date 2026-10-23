@@ -17,6 +17,10 @@ const PAGES: Record<string, string> = {
     <button onclick="document.title='Agent clicked'">Agent button</button>
     <a href="/second">Second</a>`,
   "/second": `<!doctype html><title>Second page</title><h1>Second</h1>`,
+  "/pick": `<!doctype html><title>Pick page</title>
+    <style>body{margin:0} input{display:block;box-sizing:border-box;width:100%;height:50vh;font-size:32px}</style>
+    <input type="file" aria-label="File" onchange="document.title = 'got ' + [...this.files].map((f) => f.name).join(',')">
+    <input aria-label="Field" oninput="document.title = 'typed ' + this.value">`,
   "/dialog": `<!doctype html><title>Dialog page</title><style>body{margin:0}</style>
     <button style="width:100%;height:100vh" onclick="document.title = confirm('Leave this page?') ? 'Confirmed' : 'Kept'">Ask</button>`,
 };
@@ -426,4 +430,42 @@ test("D1202: a tab floats over the chat, moves, and goes back to the right panel
     .call<{ tabs: { tabId: string }[] }>("preview.list", { threadId });
   await node.client().call("preview.tab.close", { threadId, tabId: tabs[0]!.tabId });
   await expect(player).toBeHidden();
+});
+
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("D1203: the page's file picker takes the user's files, and a tap on text raises the keyboard", async ({
+    page,
+  }, info) => {
+    await startThread(page, "pick please");
+    await page.getByRole("button", { name: "Toggle right panel" }).click();
+    const panel = page.getByRole("complementary", { name: "Right panel" });
+    const address = panel.getByRole("textbox", { name: "Address" });
+    await address.fill(`${origin}/pick`);
+    await address.press("Enter");
+    await expect(panel.getByRole("tab", { name: "Pick page" })).toBeVisible();
+    const canvas = panel.locator("[data-preview-canvas]");
+    await expect(canvas).toHaveAttribute("data-painted", "true");
+    const box = (await canvas.boundingBox())!;
+
+    // A tap on the file input clicks it: the page asks for a file, as T3 shows.
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 4);
+    const chooser = panel.getByRole("dialog", { name: "Choose files for the page" });
+    await expect(chooser).toContainText("The page asks for a file.");
+    await shot(page, info, "file-chooser");
+    await chooser.locator("[data-preview-file-input]").setInputFiles({
+      name: "notes.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("hello"),
+    });
+    await expect(panel.getByRole("tab", { name: "got notes.txt" })).toBeVisible();
+    await expect(chooser).toBeHidden();
+
+    // A tap on the text field focuses the page's input, so typing reaches the field.
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + (box.height * 3) / 4);
+    await expect(panel.getByRole("textbox", { name: "Browser page" })).toBeFocused();
+    await page.keyboard.type("hi");
+    await expect(panel.getByRole("tab", { name: "typed hi" })).toBeVisible();
+  });
 });

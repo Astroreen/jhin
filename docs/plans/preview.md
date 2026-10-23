@@ -540,6 +540,42 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   (`profileLimitReached`). The Full Disk Access step cannot open the
   node's System Settings, so "Continue" checks the node again.
 
+### Touch and uploads (W34)
+
+Workstream W34 continues this plan with decisions from D1201–D1220. The
+reference is T3 Code `eb7b35ac`: the touch handling and the file chooser of
+`apps/web/src/browser/ServerBrowserSurface.tsx`, `uploadPreviewStreamFiles`
+of `packages/client-runtime/src/preview/serverBrowserStream.ts`, and
+`receiveUpload` of `apps/server/src/preview/ServerBrowserStream.ts` with the
+probe of `ServerBrowser.ts`.
+
+- **D1203. Touch and the page's file picker, as in T3.** On a touch
+  screen a tap on the page clicks it (a move, a press and a release of the
+  left button), a pan scrolls it by wheel deltas in page pixels, and a tap
+  first asks the node whether the point is editable (`preview.tab.probe`,
+  T3's `EDITABLE_AT_POINT_SCRIPT`): the page's hidden input takes the focus
+  during the tap when the answer is in (iOS needs that), or as soon as it
+  comes (Android), so a soft keyboard comes up only for text; an answer is
+  reused within 24 px and 10 s. When a page opens its file picker, the
+  viewer holding control sees T3's "The page asks for a file." ("files"
+  when it takes several) with "Cancel" and "Choose file(s)", which opens
+  this device's picker with the page's `accept`; the chosen files go to
+  the node in `preview.tab.upload` (base64, T3's 20 files at most) and
+  answer the picker, and Cancel answers it with none. T3 posts up to 100
+  MB over HTTP; here an upload is one RPC message, which the WebSocket
+  transport takes up to 100 MiB of, so it carries at most 64 MiB. A page
+  that retitles itself on the files gets its new title in the tab, as
+  after a click. Both commands need the viewer to hold control. The picker
+  is taken when an upload starts, so a second one finds none, and given
+  back when the files do not reach the page while its input is still
+  there, so the user can try again; Cancel sets no files and just closes
+  it, as T3's does, and a new document closes the old one's. File data
+  that is not base64 is refused. The client converts the files one at a
+  time, keeps a name to 255 characters with its extension, and disables
+  the dialog while its answer is sent. The gestures are a pure state
+  machine (`apps/web/src/plugins/preview/touch.ts`, unit tested) the
+  surface runs.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -588,9 +624,8 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   moving and resizing the player from the keyboard (T3's are pointer only
   too); dropping a deleted thread's floating entry, which stays in the
   plugin's memory for the session (one small record per thread).
-- Touch input and the editable-at-point probe for soft keyboards; human
-  uploads through the file chooser (the panel can only cancel it) and saving
-  downloads to the client.
+- Saving a page's downloads to the client (T3's `onDownload`), and uploads
+  above 64 MiB (D1203): a binary channel or an HTTP route for them.
 - T3's work-log presentation of preview tools ("Used browser N times").
 - Reading password values in isolated worlds of out-of-process frames: Jhin
   reads them in each frame's own world.

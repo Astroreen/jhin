@@ -39,6 +39,9 @@ import {
   PreviewTabCloseInput,
   PreviewTabControlInput,
   PreviewTabDialogInput,
+  PreviewTabProbeInput,
+  PreviewTabProbeResult,
+  PreviewTabUploadInput,
   PreviewTabInputInput,
   PreviewTabNavigateInput,
   PreviewProfileClearInput,
@@ -613,6 +616,26 @@ export default definePlugin({
       output: PreviewTab,
       permissions: control,
       handler: (input) => tabs.dialogAsHuman(input),
+    });
+    context.commands.register({
+      name: "preview.tab.upload",
+      title: "Choose files for a browser page",
+      description:
+        "Answers the open file picker of a tab with files of the viewer holding control (base64, at most 20 files and 64 MiB), or cancels it with none.",
+      input: PreviewTabUploadInput,
+      output: PreviewTab,
+      permissions: control,
+      handler: (input) => tabs.uploadAsHuman(input),
+    });
+    context.commands.register({
+      name: "preview.tab.probe",
+      title: "Probe a point of a browser page",
+      description:
+        "Tells the viewer holding control whether a page point (CSS pixels) is editable, so a tap there raises a soft keyboard.",
+      input: PreviewTabProbeInput,
+      output: PreviewTabProbeResult,
+      permissions: control,
+      handler: (input) => tabs.probe(input),
     });
     context.commands.register({
       name: "preview.tab.input",
