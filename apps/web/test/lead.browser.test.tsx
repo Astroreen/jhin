@@ -165,6 +165,37 @@ describe("the conversation with the lead (C1)", () => {
     await expect.element(log.getByText("The lead is working on an answer…")).toBeVisible();
   });
 
+  it("tells the lead without waiting: agents.send, no pending state, captioned as told (D1282)", async () => {
+    let entries: ConversationEntry[] = [];
+    const node = nodeOf((method) => {
+      if (method === "teams.list") return { head: 1, teams: [team("2026-10-22T09:00:00Z")] };
+      if (method === "agents.conversation") return { head: 1, owner: OWNER, with: LEAD, entries };
+      if (method === "agents.send") return new Promise(() => {});
+      throw new Error(method);
+    });
+    await render(<LeadConsole services={node.services} />);
+    const box = page.getByRole("textbox", { name: "Message to the lead" });
+    await userEvent.type(box, "FYI: the deploy is frozen");
+    await page.getByRole("button", { name: "Tell without waiting" }).click();
+    const sent = node.calls.filter(([method]) => method === "agents.send");
+    expect(sent).toMatchObject([
+      ["agents.send", { to: "lead@workshop", body: "FYI: the deploy is frozen" }],
+    ]);
+    expect(node.calls.some(([method]) => method === "agents.ask")).toBe(false);
+    await expect.element(box).toHaveValue("");
+    const messageId = (sent[0]![1] as { messageId: string }).messageId;
+    entries = [
+      { message: message(messageId, OWNER, LEAD, "message", "FYI: the deploy is frozen") },
+    ];
+    await node.push();
+    const log = page.getByRole("log", { name: "Conversation with the lead" });
+    await expect.element(log.getByText("Told, not asked")).toBeVisible();
+    await expect
+      .element(log.getByText("The lead is working on an answer…"))
+      .not.toBeInTheDocument();
+    await expect.element(log.getByText("No answer from the lead.")).not.toBeInTheDocument();
+  });
+
   it("shows the answer the ask brought back, even when the stream has not caught up", async () => {
     let entries: ConversationEntry[] = [];
     let answer: (value: unknown) => void = () => {};

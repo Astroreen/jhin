@@ -140,6 +140,24 @@ function Conversation(props: {
     }
   };
 
+  /** Tells the lead without waiting for an answer (D1282): no pending entry, no spinner. */
+  const tell = () => {
+    const body = draft.trim();
+    if (client === undefined || body === "" || !up) return;
+    setDraft("");
+    client
+      .call("agents.send", { to: lead, body, messageId: crypto.randomUUID() })
+      .catch((error: unknown) => {
+        // Nothing was recorded for a send that failed: the text comes back, if the composer is still empty.
+        setDraft((now) => (now === "" ? body : now));
+        services.toasts?.show({
+          type: "error",
+          title: "Couldn't reach the lead",
+          description: errorText(error),
+        });
+      });
+  };
+
   const send = () => {
     const question = draft.trim();
     if (client === undefined || question === "" || !up) return;
@@ -299,6 +317,15 @@ function Conversation(props: {
             value={draft}
           />
           <Button
+            disabled={!up || draft.trim() === ""}
+            onClick={tell}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Tell without waiting
+          </Button>
+          <Button
             aria-label="Send to the lead"
             className="rounded-full"
             disabled={!up || draft.trim() === ""}
@@ -351,7 +378,13 @@ function Entry(props: {
     return (
       <>
         <OwnerBubble
-          caption={message.kind === "answer" ? "Your answer to the lead" : undefined}
+          caption={
+            message.kind === "answer"
+              ? "Your answer to the lead"
+              : message.kind === "message"
+                ? "Told, not asked"
+                : undefined
+          }
           text={message.body}
         />
         {entry.answer !== undefined ? (

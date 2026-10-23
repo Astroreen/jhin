@@ -1370,6 +1370,15 @@ Decisions (C1):
   the team page's Start and Stop (D691) and the Lead view's Start team
   (D1062) bring either up or down: no command was missing. Writing a team
   spec from the client is left ([Deferred](#deferred)).
+- **D1282. The Lead view can tell the lead without asking.** Asking stays the
+  composer's default (D1063). Beside "Send to the lead" a secondary **Tell
+  without waiting** sends the text with `agents.send { to, body, messageId }`:
+  a note, not an ask. The page keeps no pending entry and shows no spinner for
+  it; the answer the lead's turn may give comes back as D1221 already folds it
+  (`agents.conversation`), no server change. The owner's bubble of a note is
+  captioned "Told, not asked". A delivery that fails gives the text back to an
+  empty composer for both; the "ended without an answer" warning is only an
+  ask's.
 
 ### C2. Missions from the client (D1081–D1100)
 
@@ -1847,9 +1856,9 @@ Decisions (L2):
   stays with `notifications.tsx`).
 - C1: `agents.conversation` folds the node's whole `agents/messages` stream
   on each call (D1061); an index of messages by party once it grows.
-- C1: telling the lead something without waiting for an answer
+- ~~C1: telling the lead something without waiting for an answer
   (`agents.send`) from the Lead view: it asks (D1063); a message's answer
-  comes back too (D1221), but the composer has no way to send one.
+  comes back too (D1221), but the composer has no way to send one.~~ C1, D1282.
 - C1: a lead's message (not an ask) to the owner stays an open inbox item
   until it is answered there; the Lead view shows it without closing it
   (dismissing an item is A2's, done: D1274).
