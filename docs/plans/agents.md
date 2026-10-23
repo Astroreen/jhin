@@ -318,6 +318,14 @@ types and the schemas of the `agents.*` commands) is
   dot, and its accessible name is `<title>, <status>`. Stop and resume are
   the page's buttons (`agents.stop`, `agents.resume`) and a failure shows as
   a toast; there is no composer anywhere in it.
+- **D1272. The page's list of generations shows each one's status.** The page
+  reads `agents.generations` when it opens and again whenever its agent's
+  record or the turns of its generations' threads change (the `agents` and
+  `threads` feeds the store already follows; no polling), and each row shows
+  its own status (the roster's dot and `STATUS_LABELS`) beside the mark of the
+  current one. While the next answer is read the last one stands; when the call
+  fails the list shows as before, without statuses, and says they are
+  unavailable.
 
 ### A2. Messaging between agents, and the owner (D621–D640)
 
@@ -1821,8 +1829,8 @@ Decisions (L2):
   as D747 does.
 - A1: starting the agents feed of a node over again with backoff when its
   stream breaks; today the roster shows the error with a Retry button.
-- A1: a generation's own status in the page's list of generations
-  (`agents.generations` has it); the list marks the current one only.
+- ~~A1: a generation's own status in the page's list of generations
+  (`agents.generations` has it); the list marks the current one only.~~ A1, D1272.
 - A3: the Projects section (`civilization.sidebar.projects`) with a
   project's intent of its own; the Missions section groups by project and a
   mission shows its project's intent (D654, D656).
