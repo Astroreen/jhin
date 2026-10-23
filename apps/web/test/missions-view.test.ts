@@ -27,6 +27,7 @@ import {
 import {
   intentChanges,
   missionChanges,
+  newMissionProcess,
   sliceChanges,
   sliceStatusOptions,
 } from "../src/plugins/missions/changes.ts";
@@ -154,6 +155,19 @@ describe("what an edit dialog sends (D1083, D1085)", () => {
       dependsOn: [],
       wave: 2,
     });
+  });
+
+  it("a new mission keeps the default steps' review (L3, D1264)", () => {
+    expect(
+      newMissionProcess({ sliceProcess: "spec → build → test", missionProcess: "merge" }),
+    ).toEqual({
+      slice: [{ id: "spec" }, { id: "build" }, { id: "test" }],
+      mission: [{ id: "merge", review: true }],
+    });
+    // A step of the owner's own has no review unless the process says so.
+    expect(
+      newMissionProcess({ sliceProcess: "build", missionProcess: "demo merge" }).mission,
+    ).toEqual([{ id: "demo" }, { id: "merge", review: true }]);
   });
 
   it("a mission sends its process only when its steps changed", () => {

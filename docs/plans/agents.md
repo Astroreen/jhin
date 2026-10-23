@@ -1784,6 +1784,14 @@ Decisions (L3):
   for there. In the L3 run one review slice covered two builders' work, and
   the reviewer sent a change request for builder2's slice to builder, who
   forwarded it.
+- **D1264. A mission planned from the client keeps the default steps'
+  fields.** The mission dialog (C2, D1083) parsed its process text into
+  bare steps, so a mission it created had `merge` without `review: true`
+  (D648): the default process lost its own guard, and only the
+  orchestrator's `reviewSteps` (D1241) still held the step. A new mission's
+  steps now take their fields from `DEFAULT_MISSION_PROCESS` by id
+  (`newMissionProcess`), and the dialog starts from that process's text.
+  Found by the L3 run's reviewer while it reviewed D1288.
 
 ## Deferred
 
