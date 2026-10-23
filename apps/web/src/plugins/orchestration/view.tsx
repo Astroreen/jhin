@@ -137,6 +137,7 @@ export function subagentMember(
         : {
             startedAt: child?.createdAt ?? turn.at,
             ...(turn.status === "running" || turn.status === "waiting" ? {} : { endedAt: turn.at }),
+            ...(turn.progress === undefined ? {} : { progress: turn.progress }),
           },
     onOpen: () => context.open(childThreadId),
     details: childDetails(child, context.parent),

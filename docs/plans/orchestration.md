@@ -247,8 +247,6 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 - A scratch launch in a fresh folder of its own (T3's) waits for per-thread
   working directories.
 - Custom `agentType`s of a workflow agent.
-- A subagent's text is shown whole, not streamed; T3's progress line of a
-  background subagent (`task_progress.summary`) is not shown (D1165).
 - The model label of a provider subagent from its alias (`sonnet`) rather
   than the alias itself.
 - A background subagent's work that Claude Code sends while the node
@@ -576,16 +574,41 @@ runs in the background as a live child (`ClaudeAdapterV2.ts`: its
   subagent that answers "Echo: <task>" after its turn ended and runs until
   it is stopped.
 
+### A subagent's progress (W38)
+
+Round 4 of `t3-roadmap.md` (D1341–D1360), at T3 Code `eb7b35ac`.
+
+- **D1343. A runtime reports a running subagent's progress**
+  (`agent.runtime@1` 1.12, additive): the item `subagent.progress
+  { subagentId, progress }`, in the turn or, for a subagent in the
+  background, through `afterwards` (D1164). Claude Code's is T3's: the
+  `description` of a `task_progress` frame (trimmed; an empty one says
+  nothing) of a task this turn's subagent call started, in the foreground
+  and in the background alike. The fake agent's `/subagent-bg` reports
+  "Working on <task>" before it answers.
+- **D1344. The progress lives on the child's latest turn**
+  (`agent.registry` 1.6, additive): the threads plugin writes it to the
+  subagent thread's record as `lastTurn.progress` while that turn runs; the
+  turn's end replaces `lastTurn` and so drops it. The hover card of a
+  subagent row (D1162) shows T3's detail line: a running subagent its
+  progress, else its result; an ended one its result, else its last
+  progress (T3's `settled ? result || progress : progress || result`),
+  on one line of at most 280 characters.
+- **D1345. A subagent's text is not streamed, as in T3:** T3 projects only
+  the frames without a `parent_tool_use_id` from Claude Code's stream
+  (`ClaudeAdapterV2.ts`), so a subagent's messages come whole, as here
+  (D878). The Deferred item asking for streamed text is closed by that.
+
 ### Deferred
 
 - Saved workflows of the node (outside a project) and a command listing
   them; today they are read from the project only.
 - A thread whose Lineage section is hidden (no rows) still counts as having
   details, so the panel does not say "No details for this thread" then.
-- The progress line of a running subagent's hover card (D1162): a task
-  carries no progress, and T3's comes from its runtime's subagent updates.
-  The card names a model by its id, not T3's catalog label, and shows no
-  branch (the catalog does not know a thread's branch).
+- A delegated task's progress in its hover card: a task carries none (a
+  runtime's subagent does, D1343). The card names a model by its id, not
+  T3's catalog label, and shows no branch (the catalog does not know a
+  thread's branch).
 - A workflow's member rows have no hover card; T3's opening block has none
   either, but its Lineage rows do.
 - A subagent thread that waits for the user (an approval or an answer) is

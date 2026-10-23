@@ -189,6 +189,7 @@ describe("a subagent's hover card (D1162)", () => {
             status: "running",
             at: "2026-10-22T10:00:01.000Z",
             agentId: "jhin.agent-claude",
+            progress: "Reading the map",
           },
         }),
       ],
@@ -206,7 +207,8 @@ describe("a subagent's hover card (D1162)", () => {
     expect(sub).toMatchObject({
       title: "survey",
       status: "running",
-      run: { startedAt: "2026-10-22T10:00:00.000Z" },
+      // Its runtime's progress line (D1344).
+      run: { startedAt: "2026-10-22T10:00:00.000Z", progress: "Reading the map" },
       details: { agentId: "jhin.agent-claude" },
     });
     sub.onOpen?.();

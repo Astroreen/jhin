@@ -9,7 +9,7 @@ interface Thread {
   parentThreadId?: string;
   relationshipToParent?: string;
   subagentOrigin?: string;
-  lastTurn?: { status: string };
+  lastTurn?: { status: string; progress?: string };
 }
 
 /** A runtime whose turn starts two subagents, works in one, ends it and leaves the other open. */
@@ -118,8 +118,9 @@ function backgroundRuntime() {
         yield { kind: "message.completed", itemId: `${request.turnId}:1`, text: "started" };
       }
       async function* afterwards(): AsyncGenerator<
-        Extract<AgentItem, { kind: "subagent.item" | "subagent.ended" }>
+        Extract<AgentItem, { kind: "subagent.item" | "subagent.progress" | "subagent.ended" }>
       > {
+        yield { kind: "subagent.progress", subagentId: "b1", progress: "  Digging  " };
         yield {
           kind: "subagent.item",
           subagentId: "b1",
@@ -150,7 +151,8 @@ describe("jhin.threads: subagents in the background (D1164, D1166)", () => {
     const digEvents = watch(client, dig!);
     expect((await digEvents.until("agent.item.completed")).payload).toMatchObject({ text: "dug" });
     const running = await client.call<{ thread: Thread }>("threads.get", { threadId: dig });
-    expect(running.thread.lastTurn).toMatchObject({ status: "running" });
+    // What it is doing now is on its running turn (D1344).
+    expect(running.thread.lastTurn).toMatchObject({ status: "running", progress: "Digging" });
 
     // One its runtime no longer knows (it ended meanwhile), a thread that is no subagent.
     await expect(client.call("threads.subagent.stop", { threadId: wait })).rejects.toMatchObject({
@@ -167,6 +169,10 @@ describe("jhin.threads: subagents in the background (D1164, D1166)", () => {
     await digEvents.until("agent.turn.interrupted");
     // The runtime followed them no further: the one still open ends with that.
     await watch(client, wait!).until("agent.turn.interrupted");
+    // Its end (recorded before the other's) drops the progress with the turn that had it.
+    const ended = await client.call<{ thread: Thread }>("threads.get", { threadId: dig });
+    expect(ended.thread.lastTurn).toMatchObject({ status: "interrupted" });
+    expect(ended.thread.lastTurn?.progress).toBeUndefined();
     await expect(client.call("threads.subagent.stop", { threadId: dig })).rejects.toMatchObject({
       code: "SUBAGENT_NOT_RUNNING",
     });

@@ -43,8 +43,8 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/compact" compacts its context, then holds like "/hold";
  * - "/subagent <task>" runs a subagent titled after the task that answers "Echo: <task>" (D876);
  *   "/subagent <a>; <b>" runs one after another (D1161);
- * - "/subagent-bg <task>" starts one in the background: it answers "Echo: <task>" once the
- *   turn ended and runs until it is stopped (D1164, D1166);
+ * - "/subagent-bg <task>" starts one in the background: it reports "Working on <task>" (D1343)
+ *   and answers "Echo: <task>" once the turn ended, and runs until it is stopped (D1164, D1166);
  * - a title prompt (D1174) is answered with the title "About <the thread's first message>";
  * - anything else is answered "Echo: <text>", one word per delta.
  * A message steered into a turn (D204) is answered "Echo: <text>" before the
@@ -385,10 +385,12 @@ export function fakeTurn(
   }
 
   async function* afterwards(): AsyncGenerator<
-    Extract<AgentItem, { kind: "subagent.item" | "subagent.ended" }>
+    Extract<AgentItem, { kind: "subagent.item" | "subagent.progress" | "subagent.ended" }>
   > {
     await turnEnded.wait();
     for (const { subagentId, task } of background) {
+      // What it is doing now, as Claude Code's `task_progress` says it (D1343).
+      yield { kind: "subagent.progress", subagentId, progress: `Working on ${task}` };
       yield {
         kind: "subagent.item",
         subagentId,

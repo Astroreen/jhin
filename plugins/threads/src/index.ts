@@ -95,6 +95,8 @@ const STATUS_TTL_MS = 30_000;
 /** The title a thread gets until its first message names it. */
 export const DEFAULT_THREAD_TITLE = "New thread";
 const MAX_TITLE_LENGTH = 60;
+/** A subagent's progress line on its record (D1344): one line, as T3 shows it. */
+const MAX_PROGRESS_LENGTH = 280;
 /** What a subagent's thread shows of its items (D877). */
 const SUBAGENT_WORK: ReadonlySet<string> = new Set(SUBAGENT_WORK_KINDS);
 /** Per image sent as a data URL (D54; base64 adds a third). */
@@ -253,6 +255,8 @@ const Thread = z.object({
       failure: z
         .object({ class: z.literal("usage_limit"), resetAt: z.string().optional() })
         .optional(),
+      /** What a running subagent's turn is doing now (orchestration.md D1344). */
+      progress: z.string().optional(),
     })
     .optional(),
   /** The status of the goal the thread's agent pursues (D1306); absent without one. */
@@ -1382,6 +1386,7 @@ export default definePlugin({
         case "subagent.started":
         case "subagent.backgrounded":
         case "subagent.item":
+        case "subagent.progress":
         case "subagent.ended":
           // Projected into the subagent's own thread (D877), never into the turn's.
           throw new Error(`${item.kind} is not an event of the turn`);
@@ -1719,6 +1724,18 @@ export default definePlugin({
         } else if (item.kind === "subagent.backgrounded") {
           const child = subagents.get(item.subagentId);
           if (child?.open === true) child.background = true;
+        } else if (item.kind === "subagent.progress") {
+          const child = subagents.get(item.subagentId);
+          const progress = item.progress.trim().slice(0, MAX_PROGRESS_LENGTH);
+          if (child === undefined || !child.open || progress === "") return;
+          // On its running turn only: the turn's end replaces `lastTurn` and drops it (D1344).
+          await updateThread(child.threadId, (record) =>
+            record.lastTurn?.turnId === child.turnId &&
+            record.lastTurn.status === "running" &&
+            record.lastTurn.progress !== progress
+              ? { ...record, lastTurn: { ...record.lastTurn, progress } }
+              : record,
+          );
         } else if (item.kind === "subagent.item") {
           const child = subagents.get(item.subagentId);
           // Only its work items (D877): a runtime's others have no place in its thread.
@@ -1901,6 +1918,7 @@ export default definePlugin({
               item.kind === "subagent.started" ||
               item.kind === "subagent.backgrounded" ||
               item.kind === "subagent.item" ||
+              item.kind === "subagent.progress" ||
               item.kind === "subagent.ended"
             ) {
               // Shown apart, in the subagent's thread: a failure there never fails this turn.

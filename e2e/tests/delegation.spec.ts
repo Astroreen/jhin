@@ -182,6 +182,14 @@ test("D1164–D1167: a subagent in the background works past its turn and stops 
   // The turn ended; its subagent still runs.
   const row = page.getByRole("button", { name: "Open dig deep", exact: true });
   await expect(row).toContainText("Running");
+  // D1343, D1344: its hover card tells what it is doing now.
+  await row.hover();
+  const card = page.getByRole("group", { name: "Subagent details" });
+  await expect(card).toContainText("running");
+  await expect(card).toContainText("Working on dig deep");
+  await shot(page, info, "subagent-progress");
+  await page.mouse.move(0, 0);
+  await expect(card).toBeHidden();
 
   await page.getByRole("button", { name: "Toggle thread details panel" }).click();
   const details = page.getByRole("region", { name: "Thread details" });
