@@ -74,7 +74,7 @@ import {
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
-import { registerThreadDetails } from "./thread-details.tsx";
+import { createDetailsVisibility, registerThreadDetails } from "./thread-details.tsx";
 import type { FilePanelProps } from "./file-panel.tsx";
 import { FILE_PANEL } from "./file-panel-route.ts";
 import { armPasteAsText, consumeArmedPasteAsText } from "../../lib/attachment-files.ts";
@@ -372,6 +372,7 @@ export const chatPlugin = builtin(
         unconfirmed: createUnconfirmed(),
         composer,
         threadFind: { current: undefined },
+        threadDetails: createDetailsVisibility(),
       };
 
       function Routed() {
@@ -885,7 +886,13 @@ export const chatPlugin = builtin(
         dialogs,
         toasts,
       });
-      registerThreadDetails(context, { threads, navigation, slots, keybindings });
+      registerThreadDetails(context, {
+        threads,
+        navigation,
+        slots,
+        keybindings,
+        visibility: services.threadDetails,
+      });
     },
   }),
 );

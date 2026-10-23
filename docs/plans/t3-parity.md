@@ -1587,8 +1587,9 @@ Reference: T3 Code at `eb7b35ac` (D53).
   open) with T3's `mod+shift+b` (`threadPanel.toggle`,
   `when: "!terminalFocus"`) opens and closes it. The panel is T3's popover
   presentation of the card (`dropdown-glass`, rounded, scrolling), labelled
-  "Thread details"; T3's inline presentation beside a wide chat is
-  Deferred. Its sections are the new slot `chat.thread.details` (props
+  "Thread details"; T3's inline presentation beside a wide chat, and
+  each thread's visibility, are D1350. Its sections are the new slot
+  `chat.thread.details` (props
   `ChatThreadDetailsProps`: target, thread, project), each a
   `ThreadDetailsSection` from `@jhin/ui` (T3's heading row with its
   actions), so other plugins add theirs (T3's Workspace, Version Control
@@ -2250,6 +2251,27 @@ says. The other W38 decisions land in their own pull requests.
   it). D843's Deferred
   item asked for one T3 does not have; it is closed by porting T3's
   behaviour as it is.
+- **D1350. The thread details card beside a wide chat,** T3's inline
+  presentation (`ThreadDetailsCard.tsx`, `threadDetailsCardLayout.ts`):
+  where the chat keeps T3's 40rem lane (with its padding, `ps-3 sm:ps-12`)
+  beside a 280px card, 12px from the edges and 32px from the lane, and the
+  card gets at least 160px of height, the card sits at the top right of the
+  thread's view, below the find bar while that is open; elsewhere it stays
+  D802's popover. As in T3 each thread keeps whether each presentation
+  shows (`threadPanelVisibilityByThreadKey`: the inline card open until it
+  is closed, the popover closed until it is opened; room for the card
+  closes the popover), for the page's life, and the header's toggle, its
+  shortcut and `chat.thread-details.toggle` work the presentation the
+  thread has room for. The toggle names it (`data-details-presentation`)
+  once the view has measured. Unlike T3's card, which always holds its
+  workspace, a card with no section to show (no text in it: a section may
+  render an empty element) stays out of the way inline,
+  and until it has one the toggle works the popover, which says "No details
+  for this thread"; the card is mounted wherever there is room, open or
+  not, to know. While the card
+  shows, the chat's lane (messages and composer) moves left to end 32px
+  before it, only as far as it must (T3's `resolveChatCanvasLayout` with
+  its `detailsCard`). The card is in the details panel's chunk (D440).
 - **D1351. Find opens a finished turn's folded work,** as T3's find opens
   the work its match is in. While the find bar is open, a finished turn
   renders the work it folds as well, hidden (`hidden`,
@@ -2344,9 +2366,13 @@ says. The other W38 decisions land in their own pull requests.
   and pull request are `source-control.md`'s D117 and its terminal
   indicator `terminal.md`'s D148, all in the `sidebar.thread.indicators`
   slot.
-- The thread details panel (D802): T3's inline presentation, a card beside
-  the chat when it is wide enough (here it is always the popover), and the
-  heights T3 measures to drop rows on a short window.
+- The thread details panel (D802, D1350): the heights T3 measures to drop
+  rows on a short window (its densities), and the inline card making room
+  for the floating preview (T3 shortens it above the mini player). The
+  card stays mounted wherever there is room, closed too, to know whether it
+  has a section, so its sections run (and follow their data) while it is
+  closed; a way for a section to say whether it shows without rendering
+  would avoid that.
 - Find in a thread (D801, D1351): a work group's own fold and a tool's
   output are not searched until they are expanded; and while the bar is
   open every finished turn renders its folded work hidden, which costs a
