@@ -101,6 +101,14 @@ export function registerMessaging(
     },
   });
 
+  /** Turns followed for their answer (D624, D1221): they stop following with the plugin. */
+  const following = new Set<() => void>();
+  context.subscriptions.add({
+    dispose: () => {
+      for (const stop of following) stop();
+    },
+  });
+
   /** One delivery at a time: a first message rotates an agent once, a retry finds the record. */
   let tail: Promise<unknown> = Promise.resolve();
   const serial = <T>(task: () => Promise<T>): Promise<T> => {
@@ -232,8 +240,11 @@ export function registerMessaging(
     return { threadId: generation.threadId, generation: generation.number };
   }
 
-  /** Delivers a message to its recipient on this node, once per id (D623, D626, D627). */
-  const deliverHere = (message: AgentMessage): Promise<Delivered> =>
+  /**
+   * Delivers a message to its recipient on this node, once per id (D623,
+   * D626, D627); `fresh` when this call delivered it, not a retry.
+   */
+  const deliverHere = (message: AgentMessage): Promise<Delivered & { fresh?: boolean }> =>
     serial(async () => {
       const key = `message/${message.messageId}`;
       const seen = (await kv.get(NAMESPACE, key)) as Delivered | undefined;
@@ -277,7 +288,7 @@ export function registerMessaging(
       await log.append(MESSAGES_STREAM, [
         { type: MessageEvents.delivered, payload: delivered as unknown as Json },
       ]);
-      return delivered;
+      return { ...delivered, fresh: true };
     });
 
   /**
@@ -318,10 +329,14 @@ export function registerMessaging(
         else pending.push(event);
       });
       const finish = (answer: string | undefined) => {
+        if (done) return;
         done = true;
+        following.delete(stop);
         subscription.dispose();
         resolve(answer);
       };
+      const stop = () => finish(undefined);
+      following.add(stop);
       void log.read(stream).then(
         (read) => {
           for (const event of read) consider(event);
@@ -373,7 +388,7 @@ export function registerMessaging(
           invocation,
         );
       }
-      const { message, delivery } = await deliverHere({
+      const { message, delivery, fresh } = await deliverHere({
         messageId: id,
         kind: inReplyTo === undefined ? "message" : "answer",
         from: sender,
@@ -383,6 +398,26 @@ export function registerMessaging(
         sentAt: now(),
         ...(inReplyTo === undefined ? {} : { inReplyTo }),
       });
+      // What an agent answers the owner's message is meant for the owner: it is
+      // recorded with the message, as an ask's answer is, so it never stays
+      // only in the agent's thread (D1221). Nobody waits for it.
+      if (
+        fresh === true &&
+        message.kind === "message" &&
+        message.from === ownerAddress(nodeId) &&
+        delivery?.agentId !== undefined
+      ) {
+        void answerIn(delivery.threadId, message.messageId)
+          .then((answer) =>
+            answer === undefined ? undefined : answered(message, message.to, answer),
+          )
+          .catch((error: unknown) => {
+            context.log.warn("no answer recorded for the owner's message", {
+              messageId: message.messageId,
+              error: String(error),
+            });
+          });
+      }
       return { message, ...(delivery === undefined ? {} : { delivery }) };
     },
   });
@@ -503,7 +538,10 @@ export function registerMessaging(
             (message.from === other && message.to === owner);
           if (!between) continue;
           const item = message.to === owner ? items.get(message.messageId) : undefined;
-          if (message.kind === "ask") asks.set(message.messageId, entries.length);
+          // An ask's answer, and the agent's answer to the owner's message (D1221).
+          if (message.kind === "ask" || (message.kind === "message" && message.from === owner)) {
+            asks.set(message.messageId, entries.length);
+          }
           entries.push({
             message,
             ...(item === undefined ? {} : { inbox: item.status }),

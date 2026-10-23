@@ -250,7 +250,7 @@ describe("messages between agents (A2)", () => {
     ).rejects.toMatchObject({ code: "ASK_NOT_FOUND" });
   });
 
-  it("keeps the owner's conversation with an agent, answers included (C1, D1061)", async () => {
+  it("keeps the owner's conversation with an agent, answers included (C1, D1061, D1221)", async () => {
     const { client, kernel } = await node({
       agents: { builder, lead },
       capture: { answer: (request) => `answer to: ${request.input.text.split("\n\n")[1]}` },
@@ -259,7 +259,14 @@ describe("messages between agents (A2)", () => {
       to: address("lead"),
       question: "Where are we?",
     });
+    const messages = watch(client, MESSAGES_STREAM);
     const sent = await client.call<Sent>("agents.send", { to: address("lead"), body: "Go on." });
+    // The turn the owner's message started answers the owner (D1221).
+    await messages.untilMatch(
+      (event) =>
+        event.type === MessageEvents.answered &&
+        (event.payload as { messageId?: string }).messageId === sent.message.messageId,
+    );
     const { generation } = await client.call<{ generation: { threadId: string } }>(
       "agents.rotate",
       { agentId: "lead" },
@@ -294,6 +301,10 @@ describe("messages between agents (A2)", () => {
       answer: "answer to: Where are we?",
       answeredBy: address("lead"),
     });
+    expect(before.entries[1]).toMatchObject({
+      answer: "answer to: Go on.",
+      answeredBy: address("lead"),
+    });
     expect(before.entries[2]).toMatchObject({ inbox: "open" });
     expect(before.entries[2]!.answer).toBeUndefined();
 
@@ -326,6 +337,48 @@ describe("messages between agents (A2)", () => {
       limit: 1,
     });
     expect(last.entries.map((entry) => entry.message.messageId)).toEqual([reply.message.messageId]);
+  });
+
+  it("records an answer to the owner's message once, and none for a silent turn (D1221)", async () => {
+    const { client } = await node({
+      agents: { lead },
+      capture: {
+        answer: (request) => {
+          const text = request.input.text.split("\n\n")[1] ?? "";
+          return text === "Quiet." ? "" : `answer to: ${text}`;
+        },
+      },
+    });
+    const messages = watch(client, MESSAGES_STREAM);
+    const answeredFor = (messageId: string) =>
+      messages.untilMatch(
+        (event) =>
+          event.type === MessageEvents.answered &&
+          (event.payload as { messageId?: string }).messageId === messageId,
+      );
+    const send = (body: string, messageId?: string) =>
+      client.call<Sent>("agents.send", {
+        to: address("lead"),
+        body,
+        ...(messageId === undefined ? {} : { messageId }),
+      });
+    const first = await send("Go on.");
+    expect((await answeredFor(first.message.messageId)).payload).toMatchObject({
+      answer: "answer to: Go on.",
+      answeredBy: address("lead"),
+    });
+    // A retry of the same message is delivered once and followed once.
+    await send("Go on.", first.message.messageId);
+    const quiet = await send("Quiet.");
+    // Turns run one after another: once the last one's answer is recorded, the
+    // silent turn before it has ended, and so has anything the retry followed.
+    const last = await send("Last.");
+    await answeredFor(last.message.messageId);
+    const answered = messages.events
+      .filter((event) => event.type === MessageEvents.answered)
+      .map((event) => (event.payload as { messageId: string }).messageId);
+    expect(answered).toEqual([first.message.messageId, last.message.messageId]);
+    expect(answered).not.toContain(quiet.message.messageId);
   });
 
   it("lets a caller send only as who it is (D622) and refuses what cannot take messages", async () => {
