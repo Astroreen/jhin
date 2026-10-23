@@ -5,7 +5,7 @@ import * as Path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { materializeShadowHome } from "../src/accounts.ts";
-import { CODEX_AGENT_ID } from "../src/index.ts";
+import { CODEX_AGENT_ID, Config } from "../src/index.ts";
 import { fakeCodex, node, payloads, stopAll, until } from "./support.ts";
 
 afterEach(stopAll);
@@ -48,6 +48,11 @@ describe("jhin.agent-codex: a shadow home (D1319)", () => {
     expect(Fs.readFileSync(Path.join(shadow, "auth.json"), "utf8")).toBe('{"work":true}');
     expect(Fs.existsSync(Path.join(shadow, "models_cache.json"))).toBe(false);
     expect(Fs.existsSync(Path.join(shadow, "log"))).toBe(false);
+    // An entry the main home lost leaves no dangling link behind.
+    Fs.rmSync(Path.join(shared, "config.toml"));
+    materializeShadowHome(shared, shadow);
+    expect(Fs.existsSync(Path.join(shadow, "config.toml"))).toBe(false);
+    expect(() => Fs.readlinkSync(Path.join(shadow, "config.toml"))).toThrow();
     // Run again: nothing changes, and an entry the main home gained is linked.
     Fs.writeFileSync(Path.join(shared, "AGENTS.md"), "# notes\n");
     materializeShadowHome(shared, shadow);
@@ -59,6 +64,11 @@ describe("jhin.agent-codex: a shadow home (D1319)", () => {
     const shared = Path.join(root, "codex");
     Fs.mkdirSync(shared);
     expect(() => materializeShadowHome(shared, shared)).toThrow(/must be different/);
+    // Inside the main home, or holding it: a home linked into itself.
+    expect(() => materializeShadowHome(shared, Path.join(shared, "work"))).toThrow(/inside/);
+    expect(() =>
+      materializeShadowHome(Path.join(root, "outer", "codex"), Path.join(root, "outer")),
+    ).toThrow(/inside/);
     const shadow = Path.join(root, "work");
     Fs.mkdirSync(shadow);
     Fs.writeFileSync(Path.join(shared, "config.toml"), "");
@@ -102,9 +112,43 @@ describe("jhin.agent-codex: more accounts (D1319)", () => {
     expect(started.map((entry) => entry["home"])).toContain(workHome);
     expect(Fs.readlinkSync(Path.join(workHome, "sessions"))).toBe(Path.join(shared, "sessions"));
 
+    // Its running Codex is one of the node's, and goes with its thread.
+    const listed = await client.call<{ threadId: string }[]>("codex.sessions.list", {});
+    expect(listed.map((entry) => entry.threadId)).toContain(thread.id);
+    await client.call("threads.delete", { threadId: thread.id });
+    const after = await client.call<{ threadId: string }[]>("codex.sessions.list", {});
+    expect(after.map((entry) => entry.threadId)).not.toContain(thread.id);
+
     // Removed from the config, the account's agent goes.
     kernel.config.setLayer("node", { "jhin.agent-codex": { ...fake.config, homePath: shared } });
-    const after = await client.call<{ agentId: string }[]>("agents.list");
-    expect(after.map((agent) => agent.agentId)).not.toContain(`${CODEX_AGENT_ID}:work`);
+    const listedAgents = await client.call<{ agentId: string }[]>("agents.list");
+    expect(listedAgents.map((agent) => agent.agentId)).not.toContain(`${CODEX_AGENT_ID}:work`);
+  });
+
+  it("refuses two accounts with one id or one home, and fails a turn whose home cannot be made", async () => {
+    const root = tempDir();
+    const shared = Path.join(root, "codex");
+    expect(
+      Config.safeParse({
+        accounts: [
+          { id: "a", name: "A", homePath: Path.join(root, "a") },
+          { id: "a", name: "B", homePath: Path.join(root, "a") },
+        ],
+      }).error?.issues.map((issue) => issue.message),
+    ).toEqual(["Another account has this id", "Another account has this home"]);
+    // A home inside the main one: the turn fails saying why.
+    const fake = fakeCodex({});
+    const { client } = await node(fake, {
+      homePath: shared,
+      accounts: [{ id: "bad", name: "Bad", homePath: Path.join(shared, "bad") }],
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: `${CODEX_AGENT_ID}:bad`,
+    });
+    const failed = until(client, thread.id, "agent.turn.failed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    expect(String(payloads(await failed, "agent.turn.failed")[0]?.["error"])).toContain(
+      "must not be inside the shared home path",
+    );
   });
 });

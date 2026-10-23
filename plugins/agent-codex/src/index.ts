@@ -186,6 +186,30 @@ export const Config = z
         }),
       )
       .default([])
+      // Each its own id and its own home: two sharing one would sign in as one account.
+      .superRefine((accounts, issues) => {
+        const ids = new Set<string>();
+        const homes = new Set<string>();
+        for (const [index, account] of accounts.entries()) {
+          const home = Path.resolve(expandHome(account.homePath) ?? account.homePath);
+          if (ids.has(account.id)) {
+            issues.addIssue({
+              code: "custom",
+              path: [index, "id"],
+              message: "Another account has this id",
+            });
+          }
+          if (homes.has(home)) {
+            issues.addIssue({
+              code: "custom",
+              path: [index, "homePath"],
+              message: "Another account has this home",
+            });
+          }
+          ids.add(account.id);
+          homes.add(home);
+        }
+      })
       .meta({
         title: "More accounts",
         description:
@@ -956,7 +980,9 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
       const allRuntimes = () => [runtime, ...[...accounts.values()].map((entry) => entry.runtime)];
       // Another idle time: the app-servers already idle count it from their last turn.
       context.subscriptions.add(
-        context.config.onDidChange(CONFIG_SECTION, () => runtime.sessions.rearmIdle()),
+        context.config.onDidChange(CONFIG_SECTION, () => {
+          for (const each of allRuntimes()) each.sessions.rearmIdle();
+        }),
       );
 
       // A deleted or archived thread takes no more turns: its Codex exits. A deleted
@@ -967,12 +993,20 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
           if (typeof payload?.id !== "string") return;
           if (event.type === ThreadEvents.threadDeleted) {
             for (const each of allRuntimes()) each.sessions.close(payload.id, true);
-            void threads.forget(payload.id, runtime.settled(payload.id)).catch((error: unknown) =>
-              context.log.warn("could not forget the codex thread", {
-                threadId: payload.id,
-                error: String(error),
-              }),
-            );
+            // Every account's turns of the thread end first: none writes the record back.
+            const threadId = payload.id;
+            const settled = Promise.all(allRuntimes().map((each) => each.settled(threadId)));
+            void threads
+              .forget(
+                payload.id,
+                settled.then(() => undefined),
+              )
+              .catch((error: unknown) =>
+                context.log.warn("could not forget the codex thread", {
+                  threadId: payload.id,
+                  error: String(error),
+                }),
+              );
           } else if (
             event.type === ThreadEvents.threadUpdated &&
             typeof payload.archivedAt === "string"

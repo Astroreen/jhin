@@ -53,6 +53,16 @@ export function materializeShadowHome(sharedHome: string, shadowHome: string): v
       `Codex shadow home path '${shadow}' must be different from the shared home path '${shared}'.`,
     );
   }
+  // One inside the other would link a home into itself.
+  const inside = (outer: string, inner: string) => {
+    const relative = Path.relative(outer, inner);
+    return relative !== "" && !relative.startsWith("..") && !Path.isAbsolute(relative);
+  };
+  if (inside(shared, shadow) || inside(shadow, shared)) {
+    throw new Error(
+      `Codex shadow home path '${shadow}' must not be inside the shared home path '${shared}', nor contain it.`,
+    );
+  }
   Fs.mkdirSync(shared, { recursive: true });
   Fs.mkdirSync(shadow, { recursive: true });
   for (const name of KNOWN_SHARED_DIRECTORIES) {
@@ -85,6 +95,17 @@ export function materializeShadowHome(sharedHome: string, shadowHome: string): v
     } else if (Path.resolve(Path.dirname(link), state.target) !== target) {
       Fs.rmSync(link);
       Fs.symlinkSync(target, link);
+    }
+  }
+  // A link to an entry the main home no longer has goes.
+  for (const name of Fs.readdirSync(shadow)) {
+    if (entries.has(name) || PRIVATE_ENTRY_NAMES.has(name)) continue;
+    const state = linkState(Path.join(shadow, name));
+    if (
+      typeof state === "object" &&
+      Path.resolve(shadow, state.target).startsWith(`${shared}${Path.sep}`)
+    ) {
+      Fs.rmSync(Path.join(shadow, name));
     }
   }
   // The account's sign-in is its own file: a link would sign every account in as one.

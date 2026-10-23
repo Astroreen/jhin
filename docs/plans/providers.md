@@ -1355,11 +1355,16 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   folders (`sessions`, `skills`, `plugins`, …) are links, so threads, skills
   and config are shared, while `auth.json` and `models_cache.json` stay the
   account's own and `log`, `memories` and `tmp` stay apart; a file in a
-  link's place (but Codex's own locks), the main home itself or a linked
-  `auth.json` are refused. Each account signs in on its own (D1151: the
+  link's place (but Codex's own locks), the main home itself, a home inside
+  the other or a linked `auth.json` are refused, as a failed turn saying
+  why; a link to an entry the main home no longer has goes. Two accounts
+  with one id or one home are refused by the config. Each account signs in on its own (D1151: the
   settings page's "Sign in" per agent), reports its own usage limits and
   takes its own turns; its turns are recorded with its agent id. Accounts
-  added, changed or removed in the config register and go at once. Jhin
+  added, changed or removed in the config register and go at once (a
+  changed one starts again, also its running turn); their running Codex
+  are listed and closed with the main one's, a deleted thread waits for
+  every account's turns, and a changed idle time reaches them all. Jhin
   keeps no token of its own for them: each account's sign-in is Codex's
   `auth.json` in its shadow home.
 
