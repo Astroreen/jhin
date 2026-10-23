@@ -2291,8 +2291,6 @@ says. The other W38 decisions land in their own pull requests.
   `lazy-chunk.browser.test.tsx` covers the helper only. Placeholders of a
   banner's height or the palette's input while their chunk loads (they
   show nothing for that moment).
-- Applying Fast Mode and Ultracode to a live Claude Code session through
-  `applyFlagSettings` (T3 does): a change of them starts it again (D298).
 - The editor's parts T3 has and this port left out (D303):
   - visible marks at the caret;
   - T3's citations (D1010–D1012) as T3 has them besides: the comment

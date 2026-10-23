@@ -661,6 +661,29 @@ test("asks for an app's access as T3's App access approval, without a session al
   ).toHaveText("GitHub allowed");
 });
 
+test("offers an app's own allowances and T3's Always allow", async ({ page }, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/access-always Drive");
+  await message.press("Enter");
+  await expect(page.getByRole("group", { name: "App access approval" })).toContainText("Drive");
+  await page.getByRole("button", { name: "More approval options" }).click();
+  // The labels the app gives its allowances (providers.md D1316).
+  await expect(page.getByRole("menuitem")).toHaveText([
+    "Allow for this chat",
+    "Always allow Drive",
+    "Cancel",
+  ]);
+  const shot = info.outputPath("always-allow.png");
+  await page.screenshot({ path: shot });
+  await info.attach("always allow", { path: shot, contentType: "image/png" });
+  await page.getByRole("menuitem", { name: "Always allow Drive" }).click();
+  await expect(
+    page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "Agent" }),
+  ).toHaveText("Drive always allowed");
+});
+
 test("shows the thread's goal above the composer, and resumes and clears it", async ({
   page,
 }, info) => {

@@ -174,6 +174,69 @@ describe("jhin.threads: thread management", () => {
     ]);
   });
 
+  it("refuses an approval decision the agent does not offer (D1316)", async () => {
+    // An approval that names its decisions, and one that names none.
+    const asking: AgentRuntime = {
+      agentId: "acme.asking",
+      status: async () => ({ available: true }),
+      startTurn: () => {
+        const answers: string[] = [];
+        let answered!: () => void;
+        const both = new Promise<void>((resolve) => (answered = resolve));
+        return {
+          interrupt: () => answered(),
+          respond: (_requestId, response) => {
+            if (response.kind === "approval") answers.push(response.decision);
+            if (answers.length === 2) answered();
+          },
+          items: (async function* () {
+            yield {
+              kind: "request.opened" as const,
+              requestId: "named",
+              request: {
+                kind: "approval" as const,
+                tool: { name: "app", kind: "mcp" as const, title: "App" },
+                decisions: ["decline", "accept"] as const,
+              },
+            };
+            yield {
+              kind: "request.opened" as const,
+              requestId: "unnamed",
+              request: {
+                kind: "approval" as const,
+                tool: { name: "Bash", kind: "command" as const, title: "Run" },
+              },
+            };
+            await both;
+            yield { kind: "message.completed" as const, itemId: "m", text: answers.join(",") };
+          })(),
+        };
+      },
+    };
+    const { client } = await node({ agent: false, plugins: [registering(asking)] });
+    const thread = await client.call<Thread>("threads.create", { agentId: "acme.asking" });
+    const { until } = watch(client, thread.id);
+    await client.call("threads.send", { threadId: thread.id, text: "go" });
+    await until("agent.request.opened", 1);
+    const respond = (requestId: string, decision: string) =>
+      client.call("threads.respond", {
+        threadId: thread.id,
+        requestId,
+        response: { kind: "approval", decision },
+      });
+    // Outside the named list, and "Always allow" where nothing names it: refused.
+    await expect(respond("named", "accept-for-session")).rejects.toMatchObject({
+      code: "RESPONSE_MISMATCH",
+    });
+    await expect(respond("unnamed", "accept-always")).rejects.toMatchObject({
+      code: "RESPONSE_MISMATCH",
+    });
+    await respond("named", "accept");
+    await respond("unnamed", "accept-for-session");
+    const done = await until("agent.item.completed");
+    expect(done.payload).toMatchObject({ text: "accept,accept-for-session" });
+  });
+
   it("shortens long titles at a word", () => {
     expect(titleFromText("   \n  short ")).toBe("short");
     expect(titleFromText("")).toBe("New thread");

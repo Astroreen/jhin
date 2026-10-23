@@ -800,7 +800,8 @@ export function workEntryLabel(entry: WorkEntry): string {
           ? "Unanswered"
           : entry.response?.kind === "approval" &&
               (entry.response.decision === "accept" ||
-                entry.response.decision === "accept-for-session")
+                entry.response.decision === "accept-for-session" ||
+                entry.response.decision === "accept-always")
             ? "Approved"
             : "Declined";
       return `${verdict}: ${entry.request.tool.detail ?? entry.request.tool.title}`;

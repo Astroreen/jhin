@@ -33,6 +33,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/approve <command>" asks for approval before running it;
  * - "/goal <objective>" sets a paused goal, "/goal resume" completes it, "/goal clear" clears it;
  * - "/access <app>" asks for an app's access (T3's MCP elicitation, no session allowance);
+ *   "/access-always <app>" also offers "Allow for this chat" and "Always allow <app>" (D1316);
  * - "/ask" asks a question and answers with the choice;
  * - "/edit" asks for an answer prefilled with two lines (`initialAnswer`) and quotes it back;
  * - "/plan" publishes a three-step plan and completes it;
@@ -247,8 +248,9 @@ export function fakeTurn(
       return;
     }
     if (text.startsWith("/access")) {
-      // An app asking for access, as Codex's MCP elicitation (providers.md D1146).
-      const app = text.replace(/^\/access\s*/, "").trim() || "GitHub";
+      // An app asking for access, as Codex's MCP elicitation (providers.md D1146, D1316).
+      const always = text.startsWith("/access-always");
+      const app = text.replace(/^\/access(-always)?\s*/, "").trim() || "GitHub";
       const requestId = nextId();
       const answered = awaitAnswer(requestId);
       yield {
@@ -263,13 +265,31 @@ export function fakeTurn(
             detail: `Allow ChatGPT to use ${app}?`,
           },
           access: { app },
-          decisions: ["cancel", "decline", "accept"],
+          decisions: always
+            ? ["cancel", "decline", "accept-for-session", "accept-always", "accept"]
+            : ["cancel", "decline", "accept"],
+          ...(always
+            ? {
+                labels: {
+                  "accept-for-session": "Allow for this chat",
+                  "accept-always": `Always allow ${app}`,
+                },
+              }
+            : {}),
         },
       };
       const response = await answered;
       if (interrupted || response === undefined) return;
       const decision = response.kind === "approval" ? response.decision : "decline";
-      yield* say(decision === "accept" ? `${app} allowed` : `${app} not allowed`);
+      yield* say(
+        decision === "accept"
+          ? `${app} allowed`
+          : decision === "accept-for-session"
+            ? `${app} allowed for this chat`
+            : decision === "accept-always"
+              ? `${app} always allowed`
+              : `${app} not allowed`,
+      );
       return;
     }
     if (text.startsWith("/edit")) {
