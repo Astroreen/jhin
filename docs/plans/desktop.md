@@ -427,7 +427,9 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   process attaches only a webview guest of the app's window whose embedder
   is the asking page, and refuses one DevTools or another debugger holds;
   the endpoint closes with the guest, and the debugger is let go when the
-  node disconnects.
+  node disconnects. A dropped connection is final: the node drops the tab
+  with it (D1321), so nothing reconnects to the endpoint; the app's page
+  removes the webview, and a new tab attaches anew.
 
 - **D1323. Webviews are T3's hardened guests, one partition per profile.**
   The window enables the `<webview>` tag and gates `will-attach-webview` as
