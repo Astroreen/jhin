@@ -2171,8 +2171,8 @@ Code at `eb7b35ac` (D53).
   auto-resume" once armed) and "Snooze until reset" (gone once snoozed, off
   once the reset passed). Both go through the node command
   `threads.limit-recovery.set` (`{ threadId, turnId, resetAt, autoResume?,
-  snooze? }`, `threads.write`), which checks that turn is the thread's
-  latest, stopped on that limit, with that reset, later than the stop
+  snooze? }`, `threads.write`), which checks that turn is the thread's latest,
+  stopped on that limit, with that reset, later than the stop
   (`NOT_LIMITED` otherwise), and keeps the thread's `limitRecovery` (`{
   turnId, resetAt, autoResume, snooze }`). A snooze hides the thread until
   the reset (`snoozedUntil`, as `threads.snooze`; "The reset time has
@@ -2180,10 +2180,10 @@ Code at `eb7b35ac` (D53).
   thread when it still sleeps until that reset. An armed resume waits for
   the reset (or a snooze that outlasts it, also one set after it was armed)
   on a timer of the node, armed again when the node starts (for a recovery
-  still of the thread's latest turn) and when the thread is unarchived
-  before its reset or the end of a snooze that outlasts it (one whose reset
-  passed while archived is not sent by unarchiving: its resume is turned off
-  and the banner offers it again); then, if the thread's latest turn is
+  still of the thread's latest turn) and, disarmed while the thread is
+  archived, when it is unarchived before its reset or the end of a snooze
+  that outlasts it (one whose reset passed while archived is not sent by
+  unarchiving: its resume is turned off and the banner offers it again); then, if the thread's latest turn is
   still that one and the thread is neither archived nor settled by hand (a
   thread the node settled by itself is still resumed, as T3 checks only the
   hand), it sends "Continue where you left off." as the user's message and

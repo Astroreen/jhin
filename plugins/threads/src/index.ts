@@ -3489,11 +3489,14 @@ export default definePlugin({
       const thread = await getThread(threadId);
       if (thread.archivedAt !== undefined) return thread;
       await stopTurn(threadId);
-      return updateThread(threadId, (latest) => ({
+      const archived = await updateThread(threadId, (latest) => ({
         ...latest,
         archivedAt: now(),
         updatedAt: now(),
       }));
+      // An archived thread's armed resume waits for it to come back (D1312).
+      armRecovery(archived);
+      return archived;
     }
 
     context.commands.register({
@@ -3516,12 +3519,7 @@ export default definePlugin({
           // whose reset passed while archived is not sent by unarchiving: the banner offers it.
           const recovery = thread.limitRecovery;
           if (recovery?.autoResume !== true) return thread;
-          // What it waits for: the reset, or a snooze that outlasts it.
-          const until = Math.max(
-            Date.parse(recovery.resetAt),
-            thread.snoozedUntil === undefined ? 0 : Date.parse(thread.snoozedUntil),
-          );
-          if (until > Date.now()) {
+          if (recoveryDueAt(thread, recovery) > Date.now()) {
             armRecovery(thread);
             return thread;
           }
@@ -3763,13 +3761,18 @@ export default definePlugin({
      * Arms the thread's continuation at its reset (or the end of a snooze that outlasts it),
      * or disarms it. The timer is what says the time came: it is not asked of the clock again.
      */
+    /** When an armed resume is sent: at the reset, or the end of a snooze that outlasts it. */
+    const recoveryDueAt = (thread: Thread, recovery: NonNullable<Thread["limitRecovery"]>) =>
+      Math.max(
+        Date.parse(recovery.resetAt),
+        thread.snoozedUntil === undefined ? 0 : Date.parse(thread.snoozedUntil),
+      );
     const armRecovery = (thread: Thread) => {
       clearTimeout(recoveryTimers.get(thread.id));
       recoveryTimers.delete(thread.id);
       const recovery = thread.limitRecovery;
       if (recovery === undefined || !recovery.autoResume || thread.archivedAt !== undefined) return;
-      const snoozed = thread.snoozedUntil === undefined ? 0 : Date.parse(thread.snoozedUntil);
-      const wait = Math.max(0, Math.max(Date.parse(recovery.resetAt), snoozed) - Date.now());
+      const wait = Math.max(0, recoveryDueAt(thread, recovery) - Date.now());
       const timer = setTimeout(
         () => {
           recoveryTimers.delete(thread.id);
