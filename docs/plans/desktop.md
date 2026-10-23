@@ -369,6 +369,111 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
   merged feeds. Signing is unchanged (D944): the arm64 Windows and the x64
   macOS builds sign with the same secrets once the owner adds them.
 
+### The preview in the app (W37)
+
+Workstream W37 of `t3-roadmap.md` continues this plan and `preview.md` with
+the decision range D1321–D1340. The reference stays T3 Code `eb7b35ac`:
+`apps/desktop/src/preview/{CdpRelay,GuestInput,DesktopBrowserHost,BrowserSession}.ts`,
+the `will-attach-webview` gate of `window/DesktopWindow.ts`,
+`apps/server/src/preview/DesktopBrowserChannel.ts` and the desktop parts of
+`ServerBrowser.ts`, and in `apps/web` `browser/ElectronBrowserHost.tsx`,
+`HostedBrowserWebview.tsx`, `hostedBrowserWebviewStyle.ts` and
+`previewRuntime.ts` (`rendersServerTabNatively`).
+
+- **D1321. The app shows its own node's browser tabs in a `<webview>`, as
+  T3 renders a server tab natively.** T3's desktop shows the tabs of its
+  primary environment in Electron webviews that the server's Playwright
+  drives over CDP; Jhin's app does the same for its local node (the node
+  the page was loaded from), and every other node's tabs keep D403's
+  frames. The node learns of the app from the live stream
+  `preview-desktop` (`preview.control`): while the app's page subscribes to
+  it, a new tab, a human's (`preview.tab.open`) or an agent's
+  (`preview.open`), is announced there (`preview.desktop.tabs`: the tabs the
+  app should host, with their partition, D1323) and waits up to T3's 10 s for
+  the app to attach its webview with `preview.desktop.attach { threadId,
+  tabId, endpoint }` (`preview.control`). The node then connects Playwright
+  to the endpoint (`connectOverCDP`), and the tab is the node's as before:
+  the agent's tools, the control model (D397), dialogs, the file chooser,
+  downloads and recordings act on the webview's page. Without an attach in
+  time (no app, a page that does not host, an attach that fails) the tab
+  opens in the headless Chromium (D394), as T3 falls back. A popup of a
+  headless tab stays headless. The endpoint must be a loopback `ws://` URL;
+  it is the app's, so a client of another machine cannot attach.
+  `PreviewTab` gets `desktop: true` for such a tab (additive). The node does
+  not size, zoom or screencast a desktop page: the webview's size is the
+  page's viewport, so `fill` follows the panel by itself, and a preset or a
+  zoom is applied by the page (D1324); the frames stream still carries the
+  agent's pointer. "Clear cookies" and "Clear cache" go through the page's
+  own CDP session. The user types into the page without the node, so a
+  desktop page reports a new title itself (a binding its documents call),
+  and the tab's title follows as after the node's own actions. Closing the tab disconnects Playwright (the webview's
+  page is the app's to close) and drops the tab from the stream, so the app
+  removes the webview; a webview that goes away (closed, crashed, a reload of
+  the window) drops its tab, where T3 reconnects (Deferred).
+
+- **D1322. The relay is T3's, in the app's main process.** Electron allows
+  one debugger per `webContents`, and Playwright speaks to a browser, so the
+  main process attaches the guest's `debugger` (protocol 1.3) and serves a
+  browser of one page on a loopback WebSocket with a random 24-byte path,
+  one connection at a time: T3's `CdpRelay.ts` (the browser target, the
+  page session and its child sessions, `Runtime.runIfWaitingForDebugger`,
+  downloads) and `GuestInput.ts` (key and text input kept inside the guest
+  while the app has focus), with T3's tests. T3 relays through file
+  descriptors to a WebSocket the server opens; here the app opens it and the
+  node connects, since the attach is a command and the node already runs on
+  the same machine. The bridge gets the optional `preview` part
+  (`attachWebview(webContentsId)` → `{ endpoint }`, `onOpenLink`,
+  `clearPartition`), and `desktop.shell@1` gets it too (1.1). The main
+  process attaches only a webview guest of the app's window whose embedder
+  is the asking page, and refuses one DevTools or another debugger holds;
+  the endpoint closes with the guest, and the debugger is let go when the
+  node disconnects.
+
+- **D1323. Webviews are T3's hardened guests, one partition per profile.**
+  The window enables the `<webview>` tag and gates `will-attach-webview` as
+  T3 does: only a partition of the preview (`persist:jhin-preview-<profile>`
+  for a human's profile, D952; `jhin-preview-incognito-<tab>` and an agent's
+  isolated `jhin-preview-agent-<tab>` in memory, as D394 isolates an agent's
+  tab), no preload, sandboxed, no Node, HTML full screen kept inside the
+  webview; any other attach is refused. A guest's sessions grant T3's preview
+  permissions (clipboard, notifications, geolocation, full screen) and
+  nothing else. A page that opens a window gets none: an http(s) URL opens as
+  a new tab of the same thread and profile (T3's `onOpenLink`), anything else
+  is dropped. A profile's cookies in the app are its partition's: removing a
+  profile in Settings → Browser also clears the partition in the app
+  (`clearPartition`), and D1204's import still fills the node's headless
+  profile only (Deferred).
+
+- **D1324. The page hosts every webview, the panel places them.**
+  `jhin.preview-panel` contributes `jhin.preview.desktop-host` to
+  `app.global`; when `desktop.shell@1` has `preview`, it subscribes to its
+  node's `preview-desktop`, keeps one webview per announced tab mounted for
+  as long as the tab lives (switching threads or closing the panel does not
+  reload a page), and attaches each one. The panel's surface and the mini
+  player's report the rectangle a native tab's page takes, every animation
+  frame, and the host lays the webview over it (T3's
+  `hostedBrowserWebviewStyle`); a tab nobody shows is parked outside the
+  window at its last size. A preset gives the webview the preset's size,
+  scaled down to fit (T3's `viewportScale`), and the tab's zoom is the
+  webview's zoom factor. In the panel the webview lies over the page area;
+  in the mini player it lies under the player, whose page area lets the
+  pointer through, so the pill and the resize handles stay on top. The
+  panel's surface hides the webview while it shows a dialog, the file
+  picker's prompt or an error page. The user's input reaches the page
+  natively, except while the agent or another viewer holds the tab and this
+  viewer does not: then the webview takes no pointer, so "Take control"
+  (D403) is what lets the user in. The agent's cursor is drawn over the
+  webview from the frames stream, which the host watches while the tab is
+  shown.
+
+- **D1325. Devices in the app are the web client's.** T3's desktop shows
+  its devices with the web view its browser client has
+  (`components/device/*`); nothing of its Electron runtime is for devices.
+  So the app adds nothing either: the Device panel reaches its node's hub
+  through `/device-hub` on the page's own origin (D1208) and decodes with
+  Chromium's WebCodecs. The desktop e2e opens a simulator from D409's fake
+  hub in the app and sends it a touch and Home.
+
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
@@ -415,7 +520,19 @@ the decision range D1201–D1220. The reference stays T3 Code `eb7b35ac`.
   origin stable, so the choice must be kept).
 - The trackpad
   scroll-end and window-fullscreen events beyond macOS's controls inset.
-- The browser preview and devices in the app (W12), WSL and SSH backends,
+- Around the preview in the app (D1321–D1324): a desktop tab that outlives
+  its webview (T3 reconnects a tab after a reload of the window or once its
+  DevTools close; here the tab closes); T3's DevTools, element annotation,
+  passkeys, favicon capture and context menu of a guest; T3's desktop-only
+  tabs (`runtime: "desktop"`) of a remote environment; importing cookies
+  into the app's partitions (D1204 fills the node's headless profiles); a
+  recording of a desktop tab nobody shows (Electron stops compositing a
+  parked guest, T3 keeps it inside the window behind the app); input that
+  reaches a webview through the window system in the e2e (xvfb has no window
+  manager, so the test gives the guest its input); the keyboard and focus
+  routing of `GuestInput.ts` proven against a real guest (its unit cases
+  are T3's).
+- WSL and SSH backends,
   screen captures, telemetry, the CLI shim, importing browser cookies,
   T3 Connect, Clerk and passkeys (D510).
 - A `.wco` class for an installed web app (PWA) with a window controls

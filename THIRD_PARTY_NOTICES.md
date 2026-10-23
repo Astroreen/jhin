@@ -115,7 +115,8 @@ store's shape, secret requests and their card, one-use secretRefs, their
 statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/desktop`,
 `packages/desktop-api`: the window and its chrome, the application and context
 menus, the notification badge, the update flow, its state machine and its
-controls, the nightly release notes, the quit hold and its hint;
+controls, the nightly release notes, the quit hold and its hint, the preview's
+webviews: their CDP relay, guest input, hardening and placement;
 `scripts/desktop-release.ts` and `.github/workflows/release-desktop.yml`: the
 packaging configuration, signing and the release workflow), and the devices
 (`plugins/devices`, `packages/preview-api/src/devices.ts`,

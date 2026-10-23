@@ -17,10 +17,13 @@
   },
   "devDependencies": {
     "@jhin/desktop-api": "workspace:*",
+    "@jhin/preview-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@types/node": "catalog:",
+    "@types/ws": "catalog:",
     "electron": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "ws": "catalog:"
   },
   "productName": "Jhin"
 }

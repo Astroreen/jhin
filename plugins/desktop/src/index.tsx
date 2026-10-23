@@ -13,6 +13,7 @@ import {
   DesktopUpdateState,
   QuitConfirmationMode,
   type DesktopBridge,
+  type DesktopPreviewBridge,
   type DesktopShell,
 } from "@jhin/desktop-api";
 import { definePlugin, toDisposable, z, type Disposable } from "@jhin/sdk";
@@ -232,6 +233,18 @@ export default definePlugin({
       appVersion: bridge.appVersion,
       updates: { state: updates.get, subscribe: updates.subscribe },
       menu,
+      // The preview's webviews (D1322), for `jhin.preview-panel`.
+      ...(bridge.preview === undefined
+        ? {}
+        : {
+            preview: {
+              attachWebview: (webContentsId: number) =>
+                bridge.preview!.attachWebview(webContentsId),
+              onOpenLink: (listener: Parameters<DesktopPreviewBridge["onOpenLink"]>[0]) =>
+                toDisposable(bridge.preview!.onOpenLink(listener)),
+              clearPartition: (partition: string) => bridge.preview!.clearPartition(partition),
+            },
+          }),
     };
     context.services.provide(DESKTOP_SHELL_CAPABILITY, shell);
 

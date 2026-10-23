@@ -24,6 +24,7 @@
     "@jhin/agent-api": "workspace:*",
     "@jhin/auth-api": "workspace:*",
     "@jhin/client-api": "workspace:*",
+    "@jhin/desktop-api": "workspace:*",
     "@jhin/health-api": "workspace:*",
     "@jhin/host-api": "workspace:*",
     "@jhin/kernel": "workspace:*",

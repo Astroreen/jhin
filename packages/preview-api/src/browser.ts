@@ -24,6 +24,12 @@ export const previewTabsStream = (threadId: string): string =>
 export const previewFramesStream = (threadId: string, tabId: string): string =>
   `${PREVIEW_STREAM_PREFIX}${threadId}/${tabId}`;
 
+/**
+ * The desktop app's own node announces the tabs its webviews host here, while
+ * the app's page subscribes (docs/plans/desktop.md, D1321).
+ */
+export const PREVIEW_DESKTOP_STREAM = "preview-desktop";
+
 export const PreviewEvents = {
   /** `{ tabs }`: every tab of the thread after a change. */
   tabs: "preview.tabs",
@@ -33,6 +39,8 @@ export const PreviewEvents = {
   pointer: "preview.pointer",
   /** `{ id, fileName, sizeBytes }`: the page downloaded a file the user may save (D1331). */
   download: "preview.download",
+  /** `{ tabs }`: every tab the desktop app hosts or should host (`PreviewDesktopTab`, D1321). */
+  desktopTabs: "preview.desktop.tabs",
 } as const;
 
 /** Error codes of the browser commands, one per error tag of T3's. */
@@ -747,6 +755,8 @@ export const PreviewTab = z.object({
   profileId: BrowserProfileId.optional(),
   openedAt: z.string(),
   updatedAt: z.string(),
+  /** The page runs in the desktop app's webview, not in the node's headless browser (D1321). */
+  desktop: z.literal(true).optional(),
 });
 export type PreviewTab = z.infer<typeof PreviewTab>;
 
@@ -778,6 +788,60 @@ export const PreviewTabOpenInput = z.object({
   profileId: BrowserProfileId.optional(),
 });
 export const PreviewTabCloseInput = z.object(TabFields);
+
+/**
+ * An Electron partition of the preview (D1323): `persist:jhin-preview-<profile>`
+ * for a profile (its id as base64url), `jhin-preview-incognito-<tab>` or
+ * `jhin-preview-agent-<tab>` in memory.
+ */
+export const PREVIEW_PARTITION_PATTERN =
+  /^(persist:jhin-preview-[A-Za-z0-9_-]{1,344}|jhin-preview-(incognito|agent)-[A-Za-z0-9._:-]{1,128})$/;
+
+/** The partition a profile's tabs browse with in the desktop app (D1323). */
+export function previewProfilePartition(profileId: string): string {
+  // UTF-8, then base64url without padding (no TextEncoder or btoa in every runtime's types).
+  const bytes = encodeURIComponent(profileId)
+    .replace(/%([0-9A-F]{2})|./gs, (match, hex?: string) =>
+      String.fromCharCode(hex === undefined ? match.charCodeAt(0) : Number.parseInt(hex, 16)),
+    )
+    .split("")
+    .map((char) => char.charCodeAt(0));
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  let encoded = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const [a = 0, b = 0, c = 0] = bytes.slice(index, index + 3);
+    const chunk = (a << 16) | (b << 8) | c;
+    const length = Math.min(3, bytes.length - index) + 1;
+    for (let char = 0; char < length; char += 1) {
+      encoded += alphabet[(chunk >> (18 - char * 6)) & 63];
+    }
+  }
+  return `persist:jhin-preview-${encoded}`;
+}
+
+/** A tab the desktop app should host in a webview (D1321). */
+export const PreviewDesktopTab = z.object({
+  threadId: z.string(),
+  tabId: PreviewTabId,
+  partition: z.string().regex(PREVIEW_PARTITION_PATTERN),
+  /** A human's tab: its profile, which links its page opens keep (D1323). */
+  profileId: BrowserProfileId.optional(),
+  /** The node connected to its webview. */
+  attached: z.boolean(),
+});
+export type PreviewDesktopTab = z.infer<typeof PreviewDesktopTab>;
+
+/** A loopback WebSocket of the app's relay (D1322). */
+export const PREVIEW_DESKTOP_ENDPOINT_PATTERN = /^ws:\/\/127\.0\.0\.1:\d{1,5}\/[A-Za-z0-9_-]{32}$/;
+
+export const PreviewDesktopAttachInput = z.object({
+  ...TabFields,
+  endpoint: z
+    .string()
+    .regex(PREVIEW_DESKTOP_ENDPOINT_PATTERN)
+    .describe("The app's loopback CDP endpoint of the tab's webview."),
+});
+export type PreviewDesktopAttachInput = z.infer<typeof PreviewDesktopAttachInput>;
 export const PreviewTabAdjustInput = z.object({
   ...TabFields,
   viewport: PreviewViewportSetting.optional(),

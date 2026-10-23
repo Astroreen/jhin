@@ -45,7 +45,9 @@
   "devDependencies": {
     "@jhin/testing": "workspace:*",
     "@types/node": "catalog:",
-    "@types/yauzl": "catalog:"
+    "@types/ws": "catalog:",
+    "@types/yauzl": "catalog:",
+    "ws": "catalog:"
   },
   "jhin": {
     "id": "jhin.preview",

@@ -92,6 +92,15 @@ export interface MainWindowOptions {
   node(): { readonly url: string; readonly token: string };
   readonly settings: SettingsStore;
   log(message: string, fields?: Record<string, unknown>): void;
+  /** The preview's webviews (D1322, D1323). */
+  readonly webviews?: {
+    willAttach(
+      event: Electron.Event,
+      preferences: Electron.WebPreferences,
+      params: Record<string, string>,
+    ): void;
+    didAttach(guest: Electron.WebContents): void;
+  };
 }
 
 /** The main window: T3's chrome, kept bounds, context menu, links and recovery. */
@@ -124,6 +133,8 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // The preview's pages, hardened as they attach (D1323).
+      webviewTag: options.webviews !== undefined,
     },
   });
 
@@ -204,6 +215,15 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     );
     Menu.buildFromTemplate(template).popup({ window });
   });
+
+  // --- The preview's webviews: only its partitions, hardened (D1323). ---
+  const webviews = options.webviews;
+  if (webviews !== undefined) {
+    contents.on("will-attach-webview", (event, preferences, params) =>
+      webviews.willAttach(event, preferences, params as unknown as Record<string, string>),
+    );
+    contents.on("did-attach-webview", (_event, guest) => webviews.didAttach(guest));
+  }
 
   // --- Links: off-origin pages open in the system browser (D517). ---
   contents.setWindowOpenHandler(({ url }) => {
