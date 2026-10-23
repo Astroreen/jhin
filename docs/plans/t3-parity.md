@@ -2155,8 +2155,9 @@ Code at `eb7b35ac` (D53).
   ("{agent}: Could not read limits.", or its reason) or reported no windows,
   named by node when there are several, and a node whose agents cannot be
   listed. An account without subscription limits is left out, as T3 does;
-  with nothing to show the page says T3's "No provider on the selected
-  environments reports subscription limits.".
+  with nothing to show the page says "No agent on the connected nodes
+  reports subscription limits." (T3's "No provider on the selected
+  environments …", without its environment filter, which is deferred).
 
 ### The composer, thread panels and subagents (W38, `t3-roadmap.md`)
 

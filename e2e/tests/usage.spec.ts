@@ -31,4 +31,12 @@ test("opens T3's Usage page from the sidebar with every agent's limits", async (
   await expect(agent.getByRole("group", { name: "Session: 75% left" })).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Usage" })).toHaveCount(0);
+  // Escape closes it too, as the settings page.
+  await page
+    .getByRole("navigation", { name: "Sidebar" })
+    .getByRole("button", { name: "Usage" })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: "Usage" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { level: 1, name: "Usage" })).toHaveCount(0);
 });

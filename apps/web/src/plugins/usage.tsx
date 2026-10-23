@@ -274,15 +274,24 @@ export const usagePlugin = builtin(
         useEffect(() => {
           if (showing) load();
         }, [showing, nodesKey, load]);
-        // Closed: a read still running is not shown when the page opens again.
+        // Closed: a read still running is not shown, nor the last one (its times are old),
+        // when the page opens again.
         useEffect(() => {
-          if (!showing) latest.current.request++;
+          if (showing) return;
+          latest.current.request++;
+          setRead(undefined);
+          setRefreshing(false);
         }, [showing]);
         useEffect(() => {
           if (!showing) return;
           const onKeyDown = (event: KeyboardEvent) => {
             if (event.key !== "Escape" || event.defaultPrevented) return;
-            if ((event.target as HTMLElement | null)?.closest("input, textarea, [role=dialog]"))
+            // Escape that closes a field, dialog, menu, list or tooltip first is theirs.
+            if (
+              (event.target as HTMLElement | null)?.closest(
+                "input, textarea, [role=dialog], [role=menu], [role=listbox], [role=tooltip]",
+              )
+            )
               return;
             close();
           };
@@ -331,7 +340,7 @@ export const usagePlugin = builtin(
                   <>
                     {pools.length === 0 && notices.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        No provider on the selected environments reports subscription limits.
+                        No agent on the connected nodes reports subscription limits.
                       </p>
                     ) : null}
                     {pools.map((pool) => (

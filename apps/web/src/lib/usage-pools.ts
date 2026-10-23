@@ -194,6 +194,8 @@ export async function readUsage(
   threads: ThreadsCatalog,
   nodes: readonly ShownNode[],
 ): Promise<UsageRead> {
+  // One clock for the read: when it was asked, and what its bars are as of.
+  const now = Date.now();
   const open = nodes.filter((node) => node.state === "open");
   const failures: string[] = [];
   const perNode = await Promise.all(
@@ -229,7 +231,7 @@ export async function readUsage(
                 agentName: agent.name,
                 nodeLabel: node.label,
                 limits: {
-                  checkedAt: new Date().toISOString(),
+                  checkedAt: new Date(now).toISOString(),
                   windows: [],
                   unavailable: { reason: "probeFailed", message: (error as Error).message },
                 },
@@ -244,7 +246,7 @@ export async function readUsage(
     accounts: perNode.flat(),
     severalNodes: open.length > 1,
     nodes: open.length,
-    now: Date.now(),
+    now,
     failures,
   };
 }
