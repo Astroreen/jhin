@@ -678,10 +678,11 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Background terminals Codex keeps after a turn.
-- An MCP app shown in the timeline (T3's `McpAppFrame` and its host
-  bridge): D1401–D1402 keep and serve it, the web client does not show it
-  yet; T3's model context of an app (`ui/update-model-context`), an app of a
-  thread's other accounts (D1319) and of Claude Code. An MCP elicitation that needs a form filled in or a URL
+- From T3's MCP apps (D1401–D1403): an app's model context
+  (`ui/update-model-context`), its downloads (`ui/download-file`), its
+  full-screen and picture-in-picture modes, asking only before a tool that
+  writes (T3 reads the tool's annotations), an app of a thread's other
+  Codex accounts (D1319) and of Claude Code. An MCP elicitation that needs a form filled in or a URL
   opened (declined, as T3 does). "Always allow" is D1316.
 - Asking before Codex's writing calls to the node's tools (D889), as
   Claude's are asked for (D340), so a supervised thread's Codex can write
@@ -1443,6 +1444,30 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   (a client holding `threads.write`), confirmed in the client before it
   goes, and not the agent's, so it asks no approval of the thread's
   approval policy (T3 asks none either).
+
+- **D1403. An MCP app in the timeline**, T3's `McpAppFrame.tsx` and its
+  host (`packages/client-runtime/src/mcpApps/host.ts`, ported as
+  `apps/web/src/lib/mcp-app-host.ts` and `plugins/chat/mcp-app-frame.tsx`): a
+  tool call with an `app` (D1401) is followed in its turn by the app, never
+  folded away, in a frame of its document (`agents.mcp-app.document`) that
+  runs scripts in an opaque origin (`sandbox="allow-scripts allow-forms"`,
+  `srcdoc`), with the features it asked for (`allow`) and a border unless it
+  prefers none, 320 px high until it reports its size (80 to 2000 px). The
+  host speaks T3's bridge over `postMessage`, taking messages from the
+  frame's window only: `ui/initialize` (protocol `2026-01-26`, host "jhin",
+  the app's sandbox, T3's host context: theme, style variables, inline
+  display, width, locale, time zone), `ping`, `tools/call` and
+  `resources/read` through D1402, `ui/open-link` (http(s) only, from a click
+  in the app), `ui/message` (text from the user role, sent to the thread),
+  `ui/request-display-mode` (inline only), the app's `initialized`,
+  `size-changed` and `request-teardown`, at most 16 requests in flight and
+  256 KiB a message; it sends the call's input and result once the app is
+  initialized, the theme when it changes, and `ui/resource-teardown` when
+  the frame goes. Every tool call and message of the app is the user's to
+  allow first ("Allow <server> to run <tool>?", "Send this message from
+  <server>?"), where T3 asks only for tools that write. A frame that loads
+  another page stops the app ("The app left its page and was stopped.").
+  The fake agent's `/app` returns one, for the end-to-end test.
 
 ### Deferred
 

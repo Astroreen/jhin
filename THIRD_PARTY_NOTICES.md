@@ -76,7 +76,8 @@ preferred defaults, usage limits and their windows in
 `plugins/agent-codex/src/usage-limits.ts`, MCP elicitations in
 `plugins/agent-codex/src/elicitation.ts`, shadow homes of more accounts in
 `plugins/agent-codex/src/accounts.ts`, MCP apps' documents and policy in
-`plugins/agent-codex/src/mcp-apps.ts`, thread goals, `/goal` and `/feedback` in
+`plugins/agent-codex/src/mcp-apps.ts`, an MCP app's frame and host bridge in
+`apps/web/src/lib/mcp-app-host.ts` and `apps/web/src/plugins/chat/mcp-app-frame.tsx`, thread goals, `/goal` and `/feedback` in
 `plugins/agent-codex/src/goal.ts`), `/feedback` in the composer
 (`apps/web/src/lib/feedback.ts`), the goal banner
 (`apps/web/src/lib/goal.ts`), an agent's usage limits and the composer's

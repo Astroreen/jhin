@@ -717,6 +717,29 @@ test("sends /feedback to the agent's maker and shows T3's banner", async ({ page
   );
 });
 
+test("shows an MCP app a tool call returned, and asks before the app calls a tool", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/app board");
+  await message.press("Enter");
+  // The app in its sandboxed frame, under the call (providers.md D1403).
+  const app = page.getByRole("group", { name: "board app" });
+  const frame = page.frameLocator('iframe[title="board: show_board"]');
+  await expect(frame.getByText("Tool said: Board shown")).toBeVisible();
+  await expect(app.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts allow-forms");
+  await frame.getByRole("button", { name: "Move card" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Allow board to run move_card?");
+  const shot = info.outputPath("mcp-app.png");
+  await page.screenshot({ path: shot });
+  await info.attach("mcp app", { path: shot, contentType: "image/png" });
+  await dialog.getByRole("button", { name: "Allow" }).click();
+  await expect(frame.getByText('Moved: move_card done with {"card":3}')).toBeVisible();
+});
+
 test("shows the thread's goal above the composer, and resumes and clears it", async ({
   page,
 }, info) => {
