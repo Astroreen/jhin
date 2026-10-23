@@ -36,6 +36,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { Chromium } from "../src/chromium.ts";
 import preview from "../src/index.ts";
+import { createDesktopHost } from "../src/desktop-host.ts";
 import { createTabs } from "../src/tabs.ts";
 
 const manifest = JSON.parse(
@@ -1254,5 +1255,48 @@ describe("jhin.preview in the desktop app (D1321)", () => {
       }),
     );
     expect(remote.code).not.toBe("PREVIEW_TAB_NOT_FOUND");
+  });
+
+  it("lets go of a desktop page it could not set up (D1321)", async () => {
+    const streams = createMemoryStreams({});
+    const desktop = createDesktopHost(streams);
+    let closed = 0;
+    const tabs = createTabs({
+      chromium: new Chromium(),
+      streams,
+      dataDir: Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-preview-")),
+      log: { info() {}, warn() {}, error() {}, debug() {} } as unknown as Logger,
+      desktop,
+      connectDesktop: async () =>
+        ({
+          page: {},
+          context: { newCDPSession: () => Promise.reject(new Error("the webview went")) },
+          close: async () => {
+            closed += 1;
+          },
+        }) as never,
+    });
+    const announced: { tabId: string; attached: boolean }[][] = [];
+    const host = desktop.source.subscribe(PREVIEW_DESKTOP_STREAM, (event) => {
+      const list = (
+        event.payload as { tabs: { threadId: string; tabId: string; attached: boolean }[] }
+      ).tabs;
+      announced.push(list);
+      const waiting = list.find((tab) => !tab.attached);
+      if (waiting !== undefined) {
+        desktop.attach({ ...waiting, endpoint: "ws://127.0.0.1:1/x" });
+      }
+    });
+    try {
+      const error = await rejection(tabs.open("agent", { threadId: "t", open: false }));
+      expect(error.message).toContain("the webview went");
+      expect(closed).toBe(1);
+      // The app was told to drop the tab, so it removes its webview and relay.
+      expect(announced.at(-1)).toEqual([]);
+    } finally {
+      host.dispose();
+      await tabs.dispose();
+      desktop.dispose();
+    }
   });
 });

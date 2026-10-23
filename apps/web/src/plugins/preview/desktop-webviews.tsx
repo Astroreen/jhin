@@ -89,7 +89,15 @@ function Host(
   },
 ) {
   const { client, preview, surfaces } = props;
-  const tabs = useDesktopTabs(client);
+  const announced = useDesktopTabs(client);
+  // A tab another page (or this page before a reload) attached has its webview there: this
+  // page hosts the tabs it was asked for while they waited, and keeps them.
+  const mine = useRef(new Set<string>());
+  const tabs = announced.filter((tab) => {
+    const key = `${tab.threadId}\u0000${tab.tabId}`;
+    if (!tab.attached) mine.current.add(key);
+    return mine.current.has(key);
+  });
   useEffect(() => {
     const hosting = surfaces.host(client);
     return () => hosting.dispose();

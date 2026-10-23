@@ -441,7 +441,15 @@ export function createTabs(options: TabsOptions) {
       ? { page: input.adopted.page, context: input.adopted.page.context() }
       : (desktop ?? (await chromium.newPage(isolated, profileId)));
     const { page, context } = opened;
-    const cdp = await context.newCDPSession(page);
+    // Until the tab is registered (below, with no other await that can fail), a desktop page
+    // that cannot be set up is let go here: the app removes its webview and relay.
+    const cdp = await context.newCDPSession(page).catch(async (error: unknown) => {
+      if (desktop !== null) {
+        await desktop.close().catch(() => undefined);
+        options.desktop?.forget(input.threadId, tabId);
+      }
+      throw error;
+    });
     // The app's webview is already a normal browser.
     if (desktop === null) await presentAsChrome(cdp).catch(() => undefined);
     page.setDefaultTimeout(Ops.DEFAULT_TIMEOUT_MS);
