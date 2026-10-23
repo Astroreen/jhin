@@ -24,7 +24,7 @@ import {
   MCP_SERVER_NAME,
   type McpServer,
 } from "@jhin/mcp-api";
-import { definePlugin, z } from "@jhin/sdk";
+import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -52,6 +52,7 @@ import {
   type AppServerConnection,
 } from "./rpc.ts";
 import { GOAL_COMMAND } from "./goal.ts";
+import { materializeShadowHome } from "./accounts.ts";
 import { createSessions, type Launcher, type Sessions } from "./session.ts";
 import {
   CODEX_AGENT_ID,
@@ -161,6 +162,35 @@ export const Config = z
       description:
         "Give Codex this node's MCP server, so it can work with Jhin's threads and projects when asked",
     }),
+    // T3's several Codex provider instances with shadow homes (D1319).
+    accounts: z
+      .array(
+        z.object({
+          id: z
+            .string()
+            .regex(/^[a-z0-9][a-z0-9-]{0,31}$/, "lowercase letters, digits and dashes")
+            .meta({
+              title: "Id",
+              description: "Part of the account's agent id: jhin.agent-codex:<id>",
+            }),
+          name: z
+            .string()
+            .trim()
+            .min(1)
+            .meta({ title: "Name", description: "Shown in the agent picker" }),
+          homePath: z.string().trim().min(1).meta({
+            title: "Shadow home",
+            description:
+              "The account's own CODEX_HOME: its sign-in stays here, everything else is linked from the main home",
+          }),
+        }),
+      )
+      .default([])
+      .meta({
+        title: "More accounts",
+        description:
+          "Other Codex accounts on this node, each an agent of its own that shares the main home's threads, skills and config but signs in apart",
+      }),
     sessionIdleMinutes: z.number().int().nonnegative().default(10).meta({
       title: "Idle minutes",
       description:
@@ -410,6 +440,9 @@ export async function probeSkills(
 export function createCodexRuntime(options: {
   readonly threads: ThreadStore;
   readonly config: () => Config;
+  /** Another account's runtime (D1319): its own id and name; Codex's when absent. */
+  readonly agentId?: string;
+  readonly name?: string;
   readonly launch?: Launcher;
   /** The node's MCP server, given to each app-server unless the config's `mcp` is off (D889). */
   readonly mcp?: McpServer;
@@ -681,8 +714,8 @@ export function createCodexRuntime(options: {
 
   return {
     sessions,
-    agentId: CODEX_AGENT_ID,
-    name: "Codex",
+    agentId: options.agentId ?? CODEX_AGENT_ID,
+    name: options.name ?? "Codex",
     get models() {
       return models();
     },
@@ -722,6 +755,7 @@ export function createCodexRuntime(options: {
     startTurn(request) {
       const config = options.config();
       const turn = codexTurn(request, {
+        ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
         sessions,
         threads: options.threads,
         settings: config,
@@ -862,6 +896,64 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
       });
       context.subscriptions.add(registry.register(runtime));
       context.onDeactivate(() => runtime.dispose());
+
+      // Each further account is a runtime of its own over a shadow home (D1319).
+      const accounts = new Map<
+        string,
+        { key: string; runtime: ReturnType<typeof createCodexRuntime>; registration: Disposable }
+      >();
+      const syncAccounts = () => {
+        const config = context.config.get<Config>(CONFIG_SECTION);
+        const wanted = new Map(config.accounts.map((account) => [account.id, account]));
+        for (const [id, entry] of accounts) {
+          const account = wanted.get(id);
+          if (account !== undefined && JSON.stringify(account) === entry.key) continue;
+          entry.registration.dispose();
+          entry.runtime.dispose();
+          accounts.delete(id);
+        }
+        for (const account of wanted.values()) {
+          if (accounts.has(account.id)) continue;
+          const shadowHome = expandHome(account.homePath)!;
+          const accountRuntime = createCodexRuntime({
+            threads,
+            agentId: `${CODEX_AGENT_ID}:${account.id}`,
+            name: `Codex · ${account.name}`,
+            // Its home is linked over the main one before each Codex of it starts.
+            launch: (launchOptions) => {
+              const base = context.config.get<Config>(CONFIG_SECTION);
+              materializeShadowHome(
+                expandHome(base.homePath) ?? Path.join(Os.homedir(), ".codex"),
+                shadowHome,
+              );
+              return launch(launchOptions);
+            },
+            ...(mcp === undefined ? {} : { mcp }),
+            config: () => ({
+              ...context.config.get<Config>(CONFIG_SECTION),
+              homePath: shadowHome,
+              accounts: [],
+            }),
+            log: (message, data) => context.log.warn(message, { account: account.id, ...data }),
+          });
+          accounts.set(account.id, {
+            key: JSON.stringify(account),
+            runtime: accountRuntime,
+            registration: registry.register(accountRuntime),
+          });
+        }
+      };
+      syncAccounts();
+      context.subscriptions.add(context.config.onDidChange(CONFIG_SECTION, syncAccounts));
+      context.onDeactivate(() => {
+        for (const entry of accounts.values()) {
+          entry.registration.dispose();
+          entry.runtime.dispose();
+        }
+        accounts.clear();
+      });
+      /** The runtimes of every account: the main one first. */
+      const allRuntimes = () => [runtime, ...[...accounts.values()].map((entry) => entry.runtime)];
       // Another idle time: the app-servers already idle count it from their last turn.
       context.subscriptions.add(
         context.config.onDidChange(CONFIG_SECTION, () => runtime.sessions.rearmIdle()),
@@ -874,7 +966,7 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
           const payload = event.payload as { id?: unknown; archivedAt?: unknown } | null;
           if (typeof payload?.id !== "string") return;
           if (event.type === ThreadEvents.threadDeleted) {
-            runtime.sessions.close(payload.id, true);
+            for (const each of allRuntimes()) each.sessions.close(payload.id, true);
             void threads.forget(payload.id, runtime.settled(payload.id)).catch((error: unknown) =>
               context.log.warn("could not forget the codex thread", {
                 threadId: payload.id,
@@ -885,7 +977,7 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
             event.type === ThreadEvents.threadUpdated &&
             typeof payload.archivedAt === "string"
           ) {
-            runtime.sessions.close(payload.id, true);
+            for (const each of allRuntimes()) each.sessions.close(payload.id, true);
           }
         }),
       );
@@ -896,7 +988,7 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
         input: z.object({}),
         output: z.array(RunningCodex),
         permissions: ["threads.read"],
-        handler: () => runtime.sessions.list(),
+        handler: () => allRuntimes().flatMap((each) => each.sessions.list()),
       });
       context.commands.register({
         name: "codex.sessions.close",
@@ -912,11 +1004,12 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
         output: z.object({ closed: z.number().int() }),
         permissions: ["threads.write"],
         handler: ({ threadId, force }) => {
-          if (threadId !== undefined) {
-            return { closed: runtime.sessions.close(threadId, force) ? 1 : 0 };
+          let closed = 0;
+          for (const each of allRuntimes()) {
+            if (threadId !== undefined) closed += each.sessions.close(threadId, force) ? 1 : 0;
+            else closed += force ? each.sessions.closeAll() : each.sessions.closeIdle();
           }
-          if (!force) return { closed: runtime.sessions.closeIdle() };
-          return { closed: runtime.sessions.closeAll() };
+          return { closed };
         },
       });
     },
