@@ -98,17 +98,34 @@ export const formatSteps = (steps: readonly Step[]): string =>
  * The steps of an edited line: ids split at arrows, commas and spaces, each
  * keeping the description it had (D1084). The command checks the ids.
  */
-export function parseSteps(text: string, previous: readonly Step[] = []): Step[] {
+export function parseSteps(
+  text: string,
+  previous: readonly Step[] = [],
+  /** Descriptions the owner typed, by step id; empty clears one (D1388). */
+  edited: Readonly<Record<string, string>> = {},
+): Step[] {
   const described = new Map(previous.map((step) => [step.id, step]));
   return text
     .split(/(?:->|→|,|\s)+/u)
     .filter((id) => id !== "")
-    .map((id) => described.get(id) ?? { id });
+    .map((id) => {
+      const kept = described.get(id) ?? { id };
+      const typed = edited[id]?.trim();
+      if (typed === undefined) return kept;
+      const { description: _dropped, ...rest } = kept;
+      return typed === "" ? rest : { ...rest, description: typed };
+    });
 }
 
-/** Whether two processes have the same steps in the same order. */
+/** Whether two processes have the same steps, descriptions and review flags in the same order. */
 export const sameSteps = (a: readonly Step[], b: readonly Step[]): boolean =>
-  a.length === b.length && a.every((step, index) => step.id === b[index]?.id);
+  a.length === b.length &&
+  a.every(
+    (step, index) =>
+      step.id === b[index]?.id &&
+      step.description === b[index]?.description &&
+      (step.review ?? false) === (b[index]?.review ?? false),
+  );
 
 export const STATUS_LABELS: Readonly<Record<MissionStatus | SliceStatus, string>> = {
   planned: "Planned",

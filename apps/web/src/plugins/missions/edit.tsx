@@ -10,6 +10,7 @@ import {
   type ProjectIntent,
   type Slice,
   type SliceStatus,
+  type Step,
 } from "@jhin/missions-api";
 import {
   Button,
@@ -41,7 +42,7 @@ import {
   sliceChanges,
   sliceStatusOptions,
 } from "./changes.ts";
-import { assigneeLabel, formatSteps, STATUS_LABELS } from "./route.ts";
+import { assigneeLabel, formatSteps, parseSteps, STATUS_LABELS } from "./route.ts";
 
 /** Runs a command on the view's node and returns its output. */
 export type Call = <T = unknown>(method: string, input: unknown) => Promise<T>;
@@ -190,6 +191,29 @@ function SelectField<V extends string>(props: {
   );
 }
 
+/** One field per step of an edited process line, for its description (D1388). */
+function StepDescriptions(props: {
+  line: string;
+  previous: readonly Step[] | undefined;
+  edited: Readonly<Record<string, string>>;
+  onChange: (edited: Record<string, string>) => void;
+}) {
+  const steps = parseSteps(props.line, props.previous);
+  if (steps.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      {steps.map((step) => (
+        <TextField
+          key={step.id}
+          label={`Description of ${step.id}`}
+          onChange={(value) => props.onChange({ ...props.edited, [step.id]: value })}
+          value={props.edited[step.id] ?? step.description ?? ""}
+        />
+      ))}
+    </div>
+  );
+}
+
 const STEPS_HINT = "Step ids in order, e.g. spec → build → test.";
 
 /** The project's intent and its process between missions (`missions.intent.set`, D643). */
@@ -203,12 +227,13 @@ export function IntentDialog(props: {
   const { projectId, project, intent, call, onClose } = props;
   const [text, setText] = useState(intent?.intent ?? "");
   const [process, setProcess] = useState(formatSteps(intent?.process ?? []));
+  const [descriptions, setDescriptions] = useState<Record<string, string>>({});
   return (
     <EditDialog
       description={`What ${project} is for, in one paragraph; every mission serves it.`}
       onClose={onClose}
       submit={async () => {
-        const changes = intentChanges(intent, { intent: text, process });
+        const changes = intentChanges(intent, { intent: text, process, descriptions });
         if (Object.keys(changes).length > 0) {
           await call("missions.intent.set", { projectId, ...changes });
         }
@@ -222,6 +247,12 @@ export function IntentDialog(props: {
         label="Process between missions"
         onChange={setProcess}
         value={process}
+      />
+      <StepDescriptions
+        edited={descriptions}
+        line={process}
+        onChange={setDescriptions}
+        previous={intent?.process}
       />
     </EditDialog>
   );
@@ -249,6 +280,8 @@ export function MissionDialog(props: {
   const [missionProcess, setMissionProcess] = useState(
     formatSteps(mission?.process.mission ?? DEFAULT_MISSION_PROCESS.mission),
   );
+  const [sliceDescriptions, setSliceDescriptions] = useState<Record<string, string>>({});
+  const [missionDescriptions, setMissionDescriptions] = useState<Record<string, string>>({});
   return (
     <EditDialog
       description={
@@ -264,7 +297,12 @@ export function MissionDialog(props: {
             title,
             outcome,
             status,
-            process: newMissionProcess({ sliceProcess, missionProcess }),
+            process: newMissionProcess({
+              sliceProcess,
+              missionProcess,
+              sliceDescriptions,
+              missionDescriptions,
+            }),
           });
           onCreated?.(created);
           return;
@@ -275,6 +313,8 @@ export function MissionDialog(props: {
           status,
           sliceProcess,
           missionProcess,
+          sliceDescriptions,
+          missionDescriptions,
         });
         if (Object.keys(changes).length > 0) {
           await call("missions.update", { missionId: mission.id, ...changes });
@@ -317,6 +357,20 @@ export function MissionDialog(props: {
           label="Mission process"
           onChange={setMissionProcess}
           value={missionProcess}
+        />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <StepDescriptions
+          edited={sliceDescriptions}
+          line={sliceProcess}
+          onChange={setSliceDescriptions}
+          previous={mission?.process.slice}
+        />
+        <StepDescriptions
+          edited={missionDescriptions}
+          line={missionProcess}
+          onChange={setMissionDescriptions}
+          previous={mission?.process.mission}
         />
       </div>
     </EditDialog>

@@ -391,7 +391,7 @@ function Steps({
   steps,
   current,
 }: {
-  steps: readonly { id: string }[];
+  steps: readonly { id: string; description?: string | undefined }[];
   current?: string | undefined;
 }) {
   if (steps.length === 0) return <span className="text-xs text-muted-foreground">none</span>;
@@ -404,6 +404,10 @@ function Steps({
           ) : null}
           <Badge
             aria-current={current === step.id ? "step" : undefined}
+            // A step's description (D1388) is its tooltip and part of its accessible name.
+            {...(step.description === undefined
+              ? {}
+              : { "aria-label": `${step.id}: ${step.description}`, title: step.description })}
             size="sm"
             variant={current === step.id ? "info" : "outline"}
           >
