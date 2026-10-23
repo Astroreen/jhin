@@ -25,7 +25,8 @@ const PAGES: Record<string, string> = {
     <button style="width:100%;height:100vh" onclick="document.title = confirm('Leave this page?') ? 'Confirmed' : 'Kept'">Ask</button>`,
 };
 
-const LARGE = Buffer.from(Array.from({ length: 6 * 1024 * 1024 }, (_, index) => index % 251));
+const LARGE = Buffer.alloc(6 * 1024 * 1024);
+for (let index = 0; index < LARGE.length; index += 1) LARGE[index] = index % 251;
 let node: RunningNode;
 let server: Http.Server;
 let origin = "";
@@ -374,6 +375,7 @@ test("D403: the user opens a page from the address bar and sizes it like a devic
 test("D1202: a tab floats over the chat, moves, and goes back to the right panel", async ({
   page,
 }, info) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
   const threadId = await startThread(page, "float please");
   await page.getByRole("button", { name: "Toggle right panel" }).click();
   const panel = page.getByRole("complementary", { name: "Right panel" });
@@ -388,10 +390,14 @@ test("D1202: a tab floats over the chat, moves, and goes back to the right panel
   const player = page.getByRole("region", { name: "Floating browser preview" });
   await expect(player).toBeVisible();
   await expect(player.locator("[data-preview-canvas]")).toHaveAttribute("data-painted", "true");
-  // It sits above the composer, in the chat's bottom corner.
+  // At 1400 × 900 it sits in the chat's bottom-right corner, T3's 12 px from its edges, beside
+  // the composer's lane (T3's chat canvas, D1326).
   const composer = (await page.getByRole("textbox", { name: "Message" }).boundingBox())!;
   const before = (await player.boundingBox())!;
-  expect(before.y + before.height).toBeLessThanOrEqual(composer.y);
+  // T3's 12 px from the window's right and bottom edges, whatever the fonts make of the rest.
+  expect(before.x + before.width).toBe(1400 - 12);
+  expect(before.y + before.height).toBe(900 - 12);
+  expect(before.x).toBeGreaterThanOrEqual(composer.x + composer.width);
   await shot(page, info, "mini-player");
 
   // Hovering its handle shows T3's pill, whose background drags it.
@@ -404,8 +410,18 @@ test("D1202: a tab floats over the chat, moves, and goes back to the right panel
   await page.mouse.move(grip.x - 200, grip.y - 100, { steps: 4 });
   await page.mouse.up();
   const moved = (await player.boundingBox())!;
-  expect(moved.x).toBeLessThan(before.x - 150);
-  expect(moved.y).toBeLessThan(before.y - 50);
+  // Up by the whole drag; left only as far as the chat's lane, at its least width, allows
+  // (T3's chat canvas, D1326): at this size it stops short of the whole 200 px, T3's 12 px
+  // beside the lane.
+  expect(moved.y).toBe(before.y - 100);
+  expect({ width: moved.width, height: moved.height }).toEqual({
+    width: before.width,
+    height: before.height,
+  });
+  const lane = (await page.getByRole("textbox", { name: "Message" }).boundingBox())!;
+  expect(moved.x).toBeLessThan(before.x);
+  expect(moved.x).toBeGreaterThan(before.x - 200);
+  expect(moved.x).toBeGreaterThanOrEqual(lane.x + lane.width + 12);
 
   // Back in the right panel, the tab no longer floats.
   await handle.hover();
@@ -488,6 +504,74 @@ test("D1331: a page's download is offered to the user, who saves it to this devi
   const largeDownload = await savedLarge;
   expect(Fs.readFileSync(await largeDownload.path()).equals(LARGE)).toBe(true);
   await expect(large).toHaveCount(0);
+});
+
+/**
+ * The element in the browser's picture-in-picture window, once it is there: the player shows
+ * its state as the window starts opening, and the browser enters it a moment later.
+ */
+const floated = (page: Page) =>
+  page.evaluate(
+    () =>
+      document.pictureInPictureElement?.tagName ??
+      new Promise<string>((resolve) =>
+        document
+          .querySelector("video[data-preview-picture-in-picture]")!
+          .addEventListener("enterpictureinpicture", () => resolve("VIDEO"), { once: true }),
+      ),
+  );
+
+test("D1326–D1327: the chat makes room beside a floating tab, which pops into its own window", async ({
+  page,
+}, info) => {
+  // Wide enough for a readable chat lane beside the player, too narrow for the lane to stay centred.
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await startThread(page, "canvas please");
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  const panel = page.getByRole("complementary", { name: "Right panel" });
+  const address = panel.getByRole("textbox", { name: "Address" });
+  await address.fill(`${origin}/second`);
+  await address.press("Enter");
+  await expect(panel.getByRole("tab", { name: "Second page" })).toBeVisible();
+  await panel.getByRole("button", { name: "Float preview over chat" }).click();
+  const player = page.getByRole("region", { name: "Floating browser preview" });
+  await expect(player).toBeVisible();
+
+  // The player sits in the bottom corner beside the composer, and the lane moved aside for it.
+  const composer = page.getByRole("textbox", { name: "Message" });
+  await expect(page.locator("[data-chat-canvas]")).toHaveAttribute(
+    "style",
+    /--chat-lane-inset-end: [1-9]/,
+  );
+  const lane = (await composer.boundingBox())!;
+  const box = (await player.boundingBox())!;
+  expect(lane.x + lane.width).toBeLessThanOrEqual(box.x - 12);
+  expect(box.y + box.height).toBeGreaterThan(lane.y);
+  await shot(page, info, "chat-canvas");
+
+  // T3's "Pop into separate window": the browser's picture-in-picture window shows the tab.
+  await player.locator("[data-preview-mini-player-handle]").hover();
+  await player.getByRole("button", { name: "Pop preview into separate window" }).click();
+  await expect(player.getByRole("button", { name: "Close popped-out preview" })).toBeVisible();
+  await shot(page, info, "chat-canvas-popped-out");
+  expect(await floated(page)).toBe("VIDEO");
+  await player.getByRole("button", { name: "Close popped-out preview" }).click();
+  await expect(page.locator("video[data-preview-picture-in-picture]")).toHaveCount(0);
+
+  // The same as commands, from the palette (a user's gesture, as the browser asks):
+  // `preview.pop-out` ("Pop into separate window") and `preview.pop-out.close`.
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const runCommand = async (title: string) => {
+    await page.getByRole("button", { name: "Command palette", exact: true }).click();
+    await palette.getByRole("combobox", { name: "Search commands" }).fill(title);
+    await palette.getByRole("option", { name: title }).first().click();
+    await expect(palette).toBeHidden();
+  };
+  await runCommand("Pop into separate window");
+  await expect(player.getByRole("button", { name: "Close popped-out preview" })).toBeAttached();
+  expect(await floated(page)).toBe("VIDEO");
+  await runCommand("Close separate window");
+  await expect(page.locator("video[data-preview-picture-in-picture]")).toHaveCount(0);
 });
 
 test.describe("on a touch screen", () => {

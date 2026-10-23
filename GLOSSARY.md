@@ -357,6 +357,13 @@ Words about Jhin:
   one through the app's **relay**, a loopback WebSocket that serves the
   guest's debugger as a browser of one page (`docs/plans/desktop.md`
   D1321–D1324).
+- **Mini player** — a preview tab floating over its thread's chat, outside
+  the right panel; it may **pop out** into the browser's picture-in-picture
+  window (`docs/plans/preview.md` D1202, D1327).
+- **Chat canvas** — the area of a thread's messages and composer, where a
+  floating player is laid out and the chat's **lane** (the column the
+  messages and the composer share) moves aside for it (T3 Code's term,
+  D1326).
 - **Viewer** — a client panel watching a preview tab, named by an id the
   client picks; the one **holding control** sends the page its input.
 - **Device hub** — T3 Code's `expo-device-hub`, which the node installs on

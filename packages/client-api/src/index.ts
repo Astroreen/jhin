@@ -679,6 +679,47 @@ export interface ChatThreadOverlayProps {
   readonly thread: ThreadRecord;
   /** The composer's height at the bottom of the layer, in CSS pixels. */
   readonly composerHeight: number;
+  /**
+   * T3's chat canvas (docs/plans/preview.md, D1326): a floating player
+   * reports itself, and the chat's lane makes room beside it. Absent in a
+   * thread view without one.
+   */
+  readonly canvas?: ChatCanvas;
+}
+
+/** A floating player over a thread's chat, as it asks to be laid out (T3's `ChatCanvasPreview`). */
+export interface ChatCanvasPreview {
+  /** The player's source, e.g. its tab. */
+  readonly key: string;
+  /** Its width as the user left it, or null for the default. */
+  readonly width: number | null;
+  /** Where the user moved it, or null for the chat's bottom corner. */
+  readonly position: { readonly x: number; readonly y: number } | null;
+  /** The aspect of what it shows. */
+  readonly source: { readonly width: number; readonly height: number };
+  readonly lastInteraction?: "drag" | "resize";
+}
+
+/**
+ * The chat's area that players float over (D1326). It lays out one player at a time, as T3's
+ * does: the last to `report` is the one placed, and another overlay's player gets no `frame`
+ * until that one is `clear`ed.
+ */
+export interface ChatCanvas {
+  /** The area's size, in CSS pixels. */
+  readonly container: { readonly width: number; readonly height: number };
+  /** The key of the player laid out now. */
+  readonly previewKey: string | null;
+  /** Where that player goes, clear of the chat's lane, the composer and the find bar. */
+  readonly frame: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  } | null;
+  report(preview: ChatCanvasPreview): void;
+  /** The player of `key` went. */
+  clear(key: string): void;
 }
 
 /**

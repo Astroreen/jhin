@@ -56,6 +56,11 @@ import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
 import { DesktopWebviews } from "./desktop-webviews.tsx";
 import { createNativeSurfaces } from "./native-surfaces.ts";
+import {
+  createPictureInPicture,
+  pictureInPictureKey,
+  supportsPictureInPicture,
+} from "./picture-in-picture.ts";
 
 /**
  * Base64 decoded a megabyte at a time (D1331): no `data:` URL for the page's CSP to refuse, and
@@ -153,6 +158,9 @@ export const previewPanelPlugin = builtin(
       const desktopShell = () => context.services.tryGet<DesktopShell>(DESKTOP_SHELL_CAPABILITY);
       // Where the panel and the mini player show the desktop app's webviews (D1324).
       const surfaces = createNativeSurfaces();
+      // The one tab popped out into the browser's picture-in-picture window (D1327).
+      const pictureInPicture = createPictureInPicture();
+      context.subscriptions.add({ dispose: () => pictureInPicture.dispose() });
       // T3's browser profiles, kept on this device (D953).
       context.config.define(PREVIEW_BROWSER_SECTION, PreviewBrowserSettings);
       const deviceSettings = context.services.tryGet<DeviceSettings>(SETTINGS_CAPABILITY);
@@ -235,6 +243,16 @@ export const previewPanelPlugin = builtin(
         const chosen = active.get(key);
         return (tabs.find((tab) => tab.tabId === chosen) ?? tabs.at(-1))?.tabId;
       };
+      /**
+       * Whether the right panel shows this tab, which then does not float as well (T3's
+       * `shouldRenderPreviewMiniPlayer`): one rule for the player and `preview.pop-out`.
+       */
+      const panelShows = (
+        route: ReturnType<Navigation["current"]>,
+        key: string,
+        tabs: readonly PreviewTab[],
+        tabId: string,
+      ) => route.panel === BROWSER_PANEL && shownTab(key, tabs) === tabId;
       /** The route without the right panel (and the section it showed). */
       const withoutPanel = (route: ReturnType<Navigation["current"]>) => {
         const { panel: _panel, section: _section, ...rest } = route;
@@ -440,6 +458,86 @@ export const previewPanelPlugin = builtin(
           if (shown === undefined || players.get(shown.key) === undefined) return { closed: false };
           players.close(shown.key);
           return { closed: true };
+        },
+      });
+      // T3's "Pop into separate window" as commands too (D1327): the browser opens the window
+      // only during a user's gesture, so they work from the palette or a keybinding, not RPC.
+      /** What the thread on screen floats, or why nothing can pop out. */
+      const floatingOnScreen = () => {
+        const shown = threadOnScreen();
+        const state = shown === undefined ? undefined : players.get(shown.key);
+        if (shown === undefined || state === undefined) return "nothing-floats" as const;
+        const connection = connections.get(shown.route.node!);
+        if (connection === undefined) return "nothing-floats" as const;
+        // As the player's button: a tab the app hosts in a webview has no frames to float
+        // (Deferred), and a browser without picture-in-picture has no window.
+        // The right panel shows this tab: nothing floats (T3's shouldRenderPreviewMiniPlayer).
+        const tabs = shown.feed.tabs();
+        if (panelShows(shown.route, shown.key, tabs, state.tabId)) return "in-panel" as const;
+        const tab = tabs.find((each) => each.tabId === state.tabId);
+        if (tab?.desktop === true && surfaces.hosts(connection.client)) return "app-tab" as const;
+        if (!supportsPictureInPicture()) return "unsupported" as const;
+        return { shown, state, client: connection.client };
+      };
+      context.commands.register({
+        name: "preview.pop-out",
+        title: "Pop into separate window",
+        description:
+          "Pops the browser tab that floats over the chat of the thread on screen into the browser's picture-in-picture window; needs a user's gesture (the palette, a keybinding)",
+        input: z.object({}),
+        output: z.object({
+          poppedOut: z.boolean(),
+          /**
+           * Why nothing popped out: no user's gesture to open a window with (RPC, the CLI,
+           * MCP), no player floats on screen, the right panel shows its tab, the app hosts the
+           * tab in a webview, the browser has no picture-in-picture, or it closed while it
+           * opened (`superseded`: the user closed it, another open replaced it, or its tab went).
+           */
+          reason: z
+            .enum([
+              "needs-gesture",
+              "nothing-floats",
+              "in-panel",
+              "app-tab",
+              "unsupported",
+              "superseded",
+            ])
+            .optional(),
+        }),
+        handler: async () => {
+          // Only a user's gesture opens the window: over RPC, the CLI or MCP it says so, as an
+          // answer rather than the browser's own error.
+          if (navigator.userActivation?.isActive === false) {
+            return { poppedOut: false, reason: "needs-gesture" as const };
+          }
+          const floating = floatingOnScreen();
+          if (typeof floating === "string") return { poppedOut: false, reason: floating };
+          const { shown, state, client } = floating;
+          const threadId = shown.route.thread!;
+          await pictureInPicture.open({
+            client,
+            threadId,
+            tabId: state.tabId,
+            seed: document.querySelector<HTMLCanvasElement>(
+              `[data-preview-mini-player="${CSS.escape(state.tabId)}"] [data-preview-canvas]`,
+            ),
+            tabs: shown.feed,
+            onStreamError: (error) => onError("Unable to pop out preview", error),
+          });
+          const poppedOut = pictureInPicture.key() === pictureInPictureKey(threadId, state.tabId);
+          return poppedOut ? { poppedOut } : { poppedOut, reason: "superseded" as const };
+        },
+      });
+      context.commands.register({
+        name: "preview.pop-out.close",
+        title: "Close separate window",
+        description: "Closes the browser's picture-in-picture window of a preview tab",
+        input: z.object({}),
+        output: z.object({ closed: z.boolean() }),
+        handler: () => {
+          const open = pictureInPicture.key() !== null;
+          pictureInPicture.close();
+          return { closed: open };
         },
       });
       context.commands.register({
@@ -663,7 +761,7 @@ export const previewPanelPlugin = builtin(
         }),
       );
       /** T3's floating preview over the chat of its thread (D1202). */
-      function Floating({ target, thread, composerHeight }: ChatThreadOverlayProps) {
+      function Floating({ target, thread, composerHeight, canvas }: ChatThreadOverlayProps) {
         const route = useExternal(navigation, navigation.current);
         const key = `${targetKey(target)}|${thread.id}`;
         const state = useExternal(players, () => players.get(key));
@@ -677,14 +775,21 @@ export const previewPanelPlugin = builtin(
         const loaded = useExternal(feed ?? emptyFeed, () => feed?.loaded() ?? false);
         // A floating tab that closed takes its player with it (T3's ChatView).
         useEffect(() => {
-          if (state !== undefined && loaded && tab === undefined) players.close(key);
+          if (state !== undefined && loaded && tab === undefined) {
+            players.close(key);
+            pictureInPicture.forget(thread.id, state.tabId);
+          }
         }, [state, loaded, tab, key]);
         if (state === undefined || tab === undefined || connection === undefined) return null;
         // The right panel shows this tab: it does not float as well (T3's shouldRenderPreviewMiniPlayer).
-        if (route.panel === BROWSER_PANEL && shownTab(key, tabs) === tab.tabId) return null;
+        if (panelShows(route, key, tabs, tab.tabId)) return null;
         return (
           <MiniPlayer
+            canvas={canvas}
             client={connection.client}
+            onPopOutError={(error) => onError("Unable to pop out preview", error)}
+            pictureInPicture={pictureInPicture}
+            tabs={feed}
             composerHeight={composerHeight}
             key={tab.tabId}
             onDownload={(download) =>

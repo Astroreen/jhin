@@ -118,6 +118,9 @@ statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/d
 menus, the notification badge, the update flow, its state machine and its
 controls, the nightly release notes, the quit hold and its hint, the preview's
 webviews: their CDP relay, guest input, hardening and placement;
+the chat canvas beside a floating preview and the preview's picture-in-picture
+window (`apps/web/src/lib/chat-canvas-layout.ts`, `apps/web/src/plugins/chat/chat-canvas.ts`,
+`apps/web/src/plugins/preview/picture-in-picture.ts`);
 `scripts/desktop-release.ts` and `.github/workflows/release-desktop.yml`: the
 packaging configuration, signing and the release workflow), and the devices
 (`plugins/devices`, `packages/preview-api/src/devices.ts`,

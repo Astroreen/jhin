@@ -3,7 +3,7 @@
 // gestures that outlive their tab ignored), for browser tabs only (docs/plans/preview.md, D1202).
 import type { Disposable } from "@jhin/sdk";
 
-import type { PreviewMiniPlayerPosition } from "./mini-player-layout.ts";
+import type { PreviewMiniPlayerPosition } from "../../lib/mini-player-layout.ts";
 
 export interface MiniPlayerState {
   /** The browser tab that floats. */

@@ -1,12 +1,18 @@
+import type { ChatCanvas, ChatCanvasPreview } from "@jhin/client-api";
 import type { PreviewTab } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { MiniPlayer } from "../src/plugins/preview/mini-player.tsx";
 import { createNativeSurfaces } from "../src/plugins/preview/native-surfaces.ts";
 import { createMiniPlayers, type MiniPlayers } from "../src/plugins/preview/mini-player-store.ts";
+import {
+  createPictureInPicture,
+  supportsPictureInPicture,
+} from "../src/plugins/preview/picture-in-picture.ts";
 
 const THREAD = "node-1|thread-1";
 
@@ -36,7 +42,11 @@ afterEach(() => {
 });
 
 /** The player of `tabId` in a 1000 × 700 chat whose composer is 150 high. */
-async function mount(players: MiniPlayers, tabId = "tab-a") {
+async function mount(
+  players: MiniPlayers,
+  tabId = "tab-a",
+  extra: Partial<Parameters<typeof MiniPlayer>[0]> = {},
+) {
   const container = document.createElement("div");
   Object.assign(container.style, { position: "relative", width: "1000px", height: "700px" });
   document.body.append(container);
@@ -56,6 +66,7 @@ async function mount(players: MiniPlayers, tabId = "tab-a") {
           threadId="thread-1"
           threadKey={THREAD}
           viewer="v1"
+          {...extra}
         />,
       ),
     );
@@ -152,5 +163,49 @@ describe("the floating mini player (D1202)", () => {
       width: null,
       lastInteraction: "drag",
     });
+  });
+
+  it("goes where the chat's canvas lays it out, and tells the canvas about itself (D1326)", async () => {
+    const players = createMiniPlayers();
+    players.open(THREAD, "tab-a");
+    const reported: ChatCanvasPreview[] = [];
+    const canvas: ChatCanvas = {
+      container: { width: 1000, height: 700 },
+      previewKey: "tab-a",
+      frame: { x: 100, y: 40, width: 240, height: 150 },
+      report: (preview) => reported.push(preview),
+      clear: () => undefined,
+    };
+    const { section } = await mount(players, "tab-a", { canvas });
+    const box = section().getBoundingClientRect();
+    const chat = section().parentElement!.getBoundingClientRect();
+    expect([box.left - chat.left, box.top - chat.top, box.width, box.height]).toEqual([
+      100, 40, 240, 150,
+    ]);
+    expect(reported.at(-1)).toEqual({
+      key: "tab-a",
+      width: null,
+      position: null,
+      lastInteraction: "drag",
+      source: { width: 1280, height: 800 },
+    });
+  });
+
+  it("pops its tab into the browser's picture-in-picture window and closes it again (D1327)", async () => {
+    expect(supportsPictureInPicture()).toBe(true);
+    const players = createMiniPlayers();
+    players.open(THREAD, "tab-a");
+    const pictureInPicture = createPictureInPicture();
+    await mount(players, "tab-a", { pictureInPicture });
+    await userEvent.click(page.getByRole("button", { name: "Pop preview into separate window" }));
+    await expect
+      .element(page.getByRole("button", { name: "Close popped-out preview" }))
+      .toBeVisible();
+    expect(pictureInPicture.key()).toBe(JSON.stringify(["thread-1", "tab-a"]));
+    await userEvent.click(page.getByRole("button", { name: "Close popped-out preview" }));
+    await expect
+      .element(page.getByRole("button", { name: "Pop preview into separate window" }))
+      .toBeVisible();
+    expect(document.querySelector("video[data-preview-picture-in-picture]")).toBeNull();
   });
 });

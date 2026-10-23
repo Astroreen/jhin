@@ -23,7 +23,16 @@ import {
 } from "@jhin/client-api";
 import { Alert, AlertAction, AlertDescription, Button, Slot } from "@jhin/ui";
 import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from "react";
 
 import { buildPromptHistory, newThreadDraftKey, threadDraftKey } from "../../lib/composer.ts";
 import type { LimitRecoveryState } from "./composer-banners.tsx";
@@ -45,6 +54,7 @@ import {
 import { ChatHeader } from "./header.tsx";
 import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
 import { useChat } from "./services.ts";
+import { useChatCanvas } from "./chat-canvas.ts";
 import { useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
@@ -208,6 +218,25 @@ export function ThreadView(props: {
   };
   // T3's find in the thread (D801): mod+f opens its bar over the messages.
   const find = useThreadFind(scroller, `${targetKey(target)}|${threadId}`);
+  // T3's chat canvas: a floating player and the chat's lane make room for each other (D1326).
+  const [canvasElement, setCanvasElement] = useState<HTMLDivElement | null>(null);
+  const [laneProbe, setLaneProbe] = useState<HTMLDivElement | null>(null);
+  // The messages' scroller as state too, so the canvas measures its gutter once it exists.
+  const [timelineElement, setTimelineElement] = useState<HTMLDivElement | null>(null);
+  const attachTimeline = useCallback(
+    (node: HTMLDivElement | null) => {
+      scroller.current = node;
+      setTimelineElement(node);
+    },
+    [scroller],
+  );
+  const chatCanvas = useChatCanvas({
+    element: canvasElement,
+    probe: laneProbe,
+    timeline: timelineElement,
+    composerHeight: composer.height,
+    findOpen: find.bar.open,
+  });
   useEffect(() => {
     chat.threadFind.current = { open: find.open };
     const subscription = chat.keybindings?.setContext("threadOpen", true);
@@ -499,6 +528,11 @@ export function ThreadView(props: {
   const shownError = openError ?? error;
   // The lane moves left of the inline details card while it shows (T3's chat canvas, D1350).
   const canvas = useRef<HTMLDivElement>(null);
+  // Stable, so React does not detach and attach the canvas on every render.
+  const attachCanvas = useCallback((node: HTMLDivElement | null) => {
+    canvas.current = node;
+    setCanvasElement(node);
+  }, []);
   const cardKey = detailsKey(target, threadId);
   const cardShown = useSyncExternalStore(chat.threadDetails.subscribe, () =>
     chat.threadDetails.shown(cardKey),
@@ -525,7 +559,7 @@ export function ThreadView(props: {
       const maxWidth = max.endsWith("px") ? Number.parseFloat(max) : Number.POSITIVE_INFINITY;
       const padding = lanePadding();
       const inset = laneInsetBesideCard(element.clientWidth, maxWidth, padding);
-      setLaneInset(inset > 0 ? padding + inset : 0);
+      setLaneInset(inset > 0 ? inset : 0);
     };
     const observer = new ResizeObserver(() => measure());
     // Only until the lane is there: after that its own size is observed, and the streamed text
@@ -545,7 +579,11 @@ export function ThreadView(props: {
       wide.removeEventListener("change", measure);
     };
   }, [cardShown]);
-  const laneStyle = laneInset > 0 ? { paddingInlineEnd: laneInset } : undefined;
+  // The lane keeps clear of both the card and a floating player (D1326, D1350).
+  const laneStyle =
+    laneInset > chatCanvas.insetEnd
+      ? ({ ...chatCanvas.style, "--chat-lane-inset-end": `${laneInset}px` } as CSSProperties)
+      : chatCanvas.style;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
       <ChatHeader
@@ -556,7 +594,19 @@ export function ThreadView(props: {
         title={thread?.title ?? "Thread"}
       />
       <div className="relative flex min-h-0 min-w-0 flex-1">
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" ref={canvas}>
+        <div
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+          data-chat-canvas=""
+          data-preview-overlaps-chat={chatCanvas.overlapsChat || undefined}
+          ref={attachCanvas}
+          style={laneStyle}
+        >
+          {/* The lane's padding and widths, as the layout reads them (T3's width probe). */}
+          <div
+            aria-hidden
+            className="chat-lane-probe pointer-events-none invisible absolute"
+            ref={setLaneProbe}
+          />
           <ThreadFindBar
             {...find.bar}
             // Focus goes back to the composer, so its shortcuts work again.
@@ -640,11 +690,10 @@ export function ThreadView(props: {
             // Where a quote's message is looked for (D1011).
             data-assistant-citation-node={nodeId}
             data-assistant-citation-viewport=""
-            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] sm:px-12"
+            className="messages-timeline-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [overflow-anchor:none] [scrollbar-gutter:stable_both-edges]"
             onScroll={onScroll}
-            ref={scroller}
+            ref={attachTimeline}
             role="log"
-            style={laneStyle}
             // Scrollable by keyboard too.
             tabIndex={0}
           >
@@ -763,6 +812,7 @@ export function ThreadView(props: {
                     target,
                     thread,
                     composerHeight: composer.height,
+                    canvas: chatCanvas.canvas,
                   } satisfies ChatThreadOverlayProps
                 }
               />
@@ -790,10 +840,7 @@ export function ThreadView(props: {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
             ref={composer.ref}
           >
-            <div
-              className="w-full px-[calc(env(safe-area-inset-left)+0.75rem)] sm:px-12"
-              style={laneStyle}
-            >
+            <div className="chat-composer-lane w-full">
               <div className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)">
                 {timeline.deleted ? null : thread?.archivedAt !== undefined ? (
                   <ArchivedNotice
