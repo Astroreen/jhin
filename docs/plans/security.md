@@ -1027,6 +1027,13 @@ A slice a PR, in the order of D1361's risks:
   to its code (RFC 9449 has no such claim): a replayed one binds a token
   to its author's key. A device whose clock lags the node's is refused
   tickets for that long after each start of the node.
+- A node (or a middlebox) that drops the `dpop` header pairs the web
+  client with a bearer token, as an older node does (D1368); the node list
+  does not say a node is unbound (`auth.clients.list`'s `bound` does, on
+  the node). Failed proofs at `/auth/ws-ticket` count against the client
+  address's attempts (D420), so a thief with a stolen bound token locks
+  out only its own address, unless both share a proxy the node does not
+  know (`jhin.http.trustProxy`).
 - The web client's DPoP fallbacks for a page without WebCrypto and for
   a same-origin older node's bearer answer have no test of their own
   (`pair-dpop.test.ts` covers an older node's refused preflight;
