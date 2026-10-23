@@ -42,7 +42,7 @@ export const CAPTURE = "capture";
 export interface CaptureControl {
   answer?: (request: TurnRequest) => string;
   /** Awaited before the turn answers, so a test holds the agent busy. */
-  gate?: () => Promise<void>;
+  gate?: (request: TurnRequest) => Promise<void>;
 }
 
 /**
@@ -67,7 +67,7 @@ export function captureRuntime(requests: TurnRequest[], control: CaptureControl 
               requests.push(request);
               return {
                 items: (async function* (): AsyncGenerator<AgentItem> {
-                  await control.gate?.();
+                  await control.gate?.(request);
                   yield {
                     kind: "message.completed",
                     itemId: `${request.turnId}:1`,
