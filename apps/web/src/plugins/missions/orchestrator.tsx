@@ -19,6 +19,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 
 import { useExternal } from "../../lib/hooks.ts";
 import { useDirectory } from "./directory.ts";
+import { DirectoryNotices } from "./notice.tsx";
 import {
   assigneeLabel,
   runLabel,
@@ -295,6 +296,7 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
         <p className="text-xs text-destructive-foreground">Couldn't read the run: {view.error}</p>
       ) : (
         <>
+          <DirectoryNotices notices={directory.notices} />
           <Part title="Next">
             {progress.wave === null ? (
               <p className="text-xs text-muted-foreground">
