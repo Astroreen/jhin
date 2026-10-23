@@ -186,6 +186,20 @@ const COMPONENTS: Components = {
       </li>
     );
   },
+  td({ children, node: _node, ...props }) {
+    return (
+      <td {...props}>
+        <SkillChips>{children}</SkillChips>
+      </td>
+    );
+  },
+  th({ children, node: _node, ...props }) {
+    return (
+      <th {...props}>
+        <SkillChips>{children}</SkillChips>
+      </th>
+    );
+  },
   h1: heading("h1"),
   h2: heading("h2"),
   h3: heading("h3"),

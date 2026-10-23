@@ -39,7 +39,7 @@ describe("a sent message's file and skill chips (D1341)", () => {
   it("shows a file link as its chip that opens the preview, and a known skill as its chip", async () => {
     const opened: string[] = [];
     render(
-      "check [app.ts](src/app.ts) and [](src/) with $deploy then, not $gone\n\n- also $deploy\n\n`$deploy` [docs](https://example.com/$deploy)",
+      "check [app.ts](src/app.ts) and [](src/) with $deploy then, not $gone\n\n- also $deploy\n\n| step |\n| --- |\n| $deploy now |\n\n`$deploy` [docs](https://example.com/$deploy)",
       {
         records: new Map(),
         actions: {},
@@ -52,8 +52,9 @@ describe("a sent message's file and skill chips (D1341)", () => {
     // A folder's chip opens nothing.
     await expect.element(page.getByText("src", { exact: true })).toBeVisible();
     expect(page.getByRole("button", { name: "Preview src/" }).elements()).toHaveLength(0);
-    // Known skills are chips in a paragraph and a list item; an unknown one, code and a link stay text.
-    expect(page.getByText("Deploy", { exact: true }).elements()).toHaveLength(2);
+    // Known skills are chips in a paragraph, a list item and a table cell; an unknown one, code
+    // and a link stay text.
+    expect(page.getByText("Deploy", { exact: true }).elements()).toHaveLength(3);
     await expect.element(page.getByText(/not \$gone/)).toBeVisible();
     await expect.element(page.getByRole("code")).toHaveTextContent("$deploy");
     await expect

@@ -2207,7 +2207,8 @@ says. The other W38 decisions land in their own pull requests.
   nothing. A `$name` of one of the thread agent's skills is T3's skill chip
   (lucide's box and the display name, D1004's `skillDisplayName`), which
   only shows, as in T3, and an unknown `$name` stays text. The chips are in
-  paragraphs, list items and headings, never in code or in a link. The
+  paragraphs, list items, headings and table cells, never in code or in a
+  link. The
   skills come from `agents.commands` of the thread's project and agent,
   asked only while the thread shows a user message with a `$name`. A copy
   of the message keeps its text, links and `$name`s as before.
