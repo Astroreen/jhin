@@ -483,10 +483,12 @@ async function readAndroid(host: ActionHost, serial: string) {
   ]);
   const scale = fontScale && fontScale !== "null" ? Number(fontScale) : Number.NaN;
   const focused = focus?.match(/m(?:CurrentFocus|FocusedApp)=\w+\{[^ ]+ u\d+ ([^/ ]+)\//);
+  // `Night mode: yes` or `no`; `auto` and `custom` follow the clock, so neither is shown.
+  const mode = night?.match(/^Night mode: (yes|no)$/m)?.[1];
   const settings: DeviceSettings = {
-    ...(night?.includes("yes")
+    ...(mode === "yes"
       ? { appearance: "dark" as const }
-      : night?.includes("no")
+      : mode === "no"
         ? { appearance: "light" as const }
         : {}),
     ...(Number.isFinite(scale) ? { textSize: textSizeFromAndroid(scale) } : {}),

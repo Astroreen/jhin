@@ -108,14 +108,22 @@ function useDeviceControls(props: {
       current = false;
     };
   }, [props.threadId, props.device.id]);
-  const act = async (action: DeviceAction) => {
+  // The device the panel shows now: an answer for another one is dropped.
+  const shown = useRef("");
+  shown.current = `${props.threadId}\u0000${props.device.id}`;
+  /** Runs an action; whether it succeeded, for a field to keep what was typed when not. */
+  const act = async (action: DeviceAction): Promise<boolean> => {
+    const asked = shown.current;
     setPending(true);
     setError(null);
     try {
       // The node answers with the settings read back after the change.
-      setDetail((await call.current("device.action", { ...target, action })) as DeviceDetail);
+      const next = (await call.current("device.action", { ...target, action })) as DeviceDetail;
+      if (shown.current === asked) setDetail(next);
+      return true;
     } catch (failure) {
-      setError(errorMessage(failure));
+      if (shown.current === asked) setError(errorMessage(failure));
+      return false;
     } finally {
       setPending(false);
     }
@@ -216,7 +224,8 @@ export function DeviceToolsPanel(props: {
           <Row label="Appearance">
             <ToggleGroup
               aria-label="Appearance"
-              disabled={disabled}
+              // Not read from the device: nothing to switch from (D1333).
+              disabled={disabled || settings?.appearance === undefined}
               onValueChange={(value) => {
                 const next = value[0];
                 if (next === "light" || next === "dark") {
@@ -232,7 +241,7 @@ export function DeviceToolsPanel(props: {
           <Row label="Text size">
             <ChoiceSelect
               ariaLabel="Text size"
-              disabled={disabled}
+              disabled={disabled || settings?.textSize === undefined}
               onChange={(value) => act({ type: "setTextSize", value })}
               options={TEXT_SIZES}
               value={settings?.textSize ?? null}
@@ -259,7 +268,7 @@ export function DeviceToolsPanel(props: {
               <Row label="Color filter">
                 <ChoiceSelect
                   ariaLabel="Color filter"
-                  disabled={disabled}
+                  disabled={disabled || settings?.colorFilter === undefined}
                   onChange={(value) => act({ type: "setColorFilter", value })}
                   options={COLOR_FILTERS}
                   value={settings?.colorFilter ?? null}
@@ -348,7 +357,7 @@ export function DeviceToolsPanel(props: {
               onSubmit={(payload) =>
                 foregroundApp
                   ? act({ type: "sendPush", appId: foregroundApp.id, payload })
-                  : Promise.resolve()
+                  : Promise.resolve(false)
               }
               placeholder="Alert text"
             />
@@ -387,7 +396,7 @@ function SwitchRow(props: {
   readonly label: string;
   readonly checked: boolean | undefined;
   readonly disabled: boolean;
-  readonly onChange: (value: boolean) => Promise<void>;
+  readonly onChange: (value: boolean) => Promise<unknown>;
 }) {
   return (
     <Row label={props.label}>
@@ -407,7 +416,7 @@ function ChoiceSelect<V extends string>(props: {
   readonly options: ReadonlyArray<{ readonly value: V; readonly label: string }>;
   readonly disabled: boolean;
   readonly placeholder?: string;
-  readonly onChange: (value: V) => Promise<void>;
+  readonly onChange: (value: V) => Promise<unknown>;
 }) {
   const current = props.options.find((option) => option.value === props.value);
   return (
@@ -442,13 +451,14 @@ function SubmitRow(props: {
   readonly placeholder: string;
   readonly action: string;
   readonly disabled: boolean;
-  readonly onSubmit: (value: string) => Promise<void>;
+  readonly onSubmit: (value: string) => Promise<boolean>;
 }) {
   const [value, setValue] = useState("");
   const submit = () => {
     const trimmed = value.trim();
     if (!trimmed) return;
-    void props.onSubmit(trimmed).then(() => setValue(""));
+    // A failed action keeps the text, to be corrected and sent again.
+    void props.onSubmit(trimmed).then((done) => done && setValue(""));
   };
   return (
     <form
@@ -483,8 +493,8 @@ function SubmitRow(props: {
 function LocationSection(props: {
   readonly disabled: boolean;
   readonly canClear: boolean;
-  readonly onSet: (latitude: number, longitude: number) => Promise<void>;
-  readonly onClear: () => Promise<void>;
+  readonly onSet: (latitude: number, longitude: number) => Promise<unknown>;
+  readonly onClear: () => Promise<unknown>;
 }) {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
@@ -581,7 +591,7 @@ function PermissionsSection(props: {
     appId: string,
     permission: DevicePermission,
     decision: "grant" | "revoke" | "reset",
-  ) => Promise<void>;
+  ) => Promise<unknown>;
 }) {
   const [appId, setAppId] = useState("");
   const [permission, setPermission] = useState<DevicePermission>("camera");

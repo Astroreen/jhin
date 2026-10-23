@@ -1,6 +1,6 @@
 // Cases follow T3 Code's apps/server/src/device/DeviceActions.test.ts (MIT, see
 // THIRD_PARTY_NOTICES.md), without Effect. docs/plans/preview.md, D1332.
-import type { DeviceAction, DeviceError } from "@jhin/preview-api";
+import { DeviceAction, type DeviceError } from "@jhin/preview-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -391,5 +391,27 @@ describe("readDeviceDetail", () => {
       networkEnabled: true,
     });
     expect(detail.foregroundApp).toEqual({ id: "com.example.app" });
+  });
+
+  it("reads Android's appearance only from a definite night mode", async () => {
+    const appearance = async (reply: string) => {
+      const { host } = makeHost((call) =>
+        call.args.join(" ").endsWith("cmd uimode night") ? { stdout: reply } : { code: 1 },
+      );
+      return (await readDeviceDetail(host, "android", "emulator-5554")).settings.appearance;
+    };
+    expect(await appearance("Night mode: no\n")).toBe("light");
+    expect(await appearance("Night mode: yes\n")).toBe("dark");
+    // Following the clock, or a reply that only contains "no": neither is shown.
+    expect(await appearance("Night mode: auto\n")).toBeUndefined();
+    expect(await appearance("Unknown command\n")).toBeUndefined();
+  });
+
+  it("bounds a push payload given as JSON, as one given as text", () => {
+    const push = (payload: unknown) =>
+      DeviceAction.safeParse({ type: "sendPush", appId: "com.example.app", payload }).success;
+    expect(push({ aps: { alert: "hi" } })).toBe(true);
+    expect(push({ aps: { alert: "x".repeat(4096) } })).toBe(false);
+    expect(push("x".repeat(4097))).toBe(false);
   });
 });

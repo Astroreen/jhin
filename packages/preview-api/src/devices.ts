@@ -367,7 +367,13 @@ export const DeviceAction = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("sendPush"),
     appId: AppId,
-    payload: z.union([z.string().max(4096), z.record(z.string(), z.unknown())]),
+    // As text or as JSON, at most 4096 characters, as APNs bounds a push.
+    payload: z.union([
+      z.string().max(4096),
+      z.record(z.string(), z.unknown()).refine((value) => JSON.stringify(value).length <= 4096, {
+        message: "A push payload is at most 4096 characters as JSON.",
+      }),
+    ]),
   }),
 ]);
 export type DeviceAction = z.infer<typeof DeviceAction>;
