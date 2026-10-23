@@ -353,6 +353,13 @@ Words about Jhin:
   lead: it hands off ready slices, waits for their proofs and ends at every
   decision (`missions.orchestrate`). Not the same as `jhin.orchestration`,
   the plugin of delegated tasks and workflows it runs on.
+- **Mission report** — what the owner gets from a mission's lead when the
+  mission closes (done or dropped) or its orchestrator fails or is stopped:
+  the mission, its slices with their proof and what the lead says was
+  committed or merged (`missions.close`), in the inbox and the Lead view.
+- **Escalation** — an ask from a lead to the owner (`agents.ask` to the
+  owner's address): a decision only the owner may take. While it is open the
+  lead's mission is **held**: the orchestrator hands out no slice.
 - **Refocus** — handing an agent the intent chain of the slice it works on,
   after a compaction, every few turns or on request, with the moonbase
   question (`refocus.send`). A **compaction** is an agent replacing its

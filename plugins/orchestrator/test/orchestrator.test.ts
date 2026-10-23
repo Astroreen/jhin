@@ -1,6 +1,7 @@
 import * as Fs from "node:fs";
 
 import {
+  INBOX_STREAM,
   MESSAGES_STREAM,
   MessageEvents,
   ThreadEvents,
@@ -345,6 +346,125 @@ describe("missions.orchestrate (D706, D707)", () => {
         { caller: AGENT, threadId: "t" },
       ),
     ).rejects.toMatchObject({ code: "MISSION_CLOSED" });
+  });
+});
+
+describe("the lead reports to the owner (L1: D1222, D1223)", () => {
+  /** A lead's thread that has run the mission's orchestrator once. */
+  async function led(fields: Record<string, unknown>[]) {
+    const started = await node();
+    const { client, slice, mission } = started;
+    const lead = await client.call<{ id: string }>("threads.create", {
+      title: "Lead",
+      runtimeMode: "full-access",
+    });
+    const slices: Slice[] = [];
+    for (const item of fields) slices.push(await slice(item));
+    const workflows = watch(client, "orchestration");
+    const inbox = watch(client, INBOX_STREAM);
+    const orchestrate = () =>
+      client.call<{ workflowId: string }>("missions.orchestrate", {
+        missionId: mission.id,
+        parentThreadId: lead.id,
+      });
+    const reportOf = (end: string) =>
+      inbox
+        .untilMatch(
+          (event) =>
+            event.type === MessageEvents.received &&
+            String(payloadOf(event).message.messageId).startsWith(`report-${mission.id}-${end}`),
+        )
+        .then((event) => payloadOf(event).message as { from: string; to: string; body: string });
+    return { ...started, lead, slices, workflows, inbox, orchestrate, reportOf };
+  }
+
+  it("sends the owner the lead's report when the lead closes the mission", async () => {
+    const { client, mission, lead, slices, workflows, orchestrate, reportOf } = await led([
+      { title: "Walls", assignee: BUILDER },
+    ]);
+    const missionsFeed = watch(client, MISSIONS_STREAM);
+    const run = await orchestrate();
+    await sliceBecomes(missionsFeed, slices[0]!.id, "active");
+    await prove(client, slices[0]!.id);
+    expect(await workflowEnds(workflows, run.workflowId)).toMatchObject({
+      result: { outcome: "slices-done", note: expect.stringContaining("missions.close") },
+    });
+    await client.call("missions.close", {
+      missionId: mission.id,
+      status: "done",
+      summary: "Committed as abc1234 on main.",
+    });
+    const report = await reportOf("done");
+    // From the lead's thread to the owner's inbox, so the Lead view shows it too.
+    expect(report).toMatchObject({ from: threadAddress("node-a", lead.id), to: OWNER });
+    expect(report.body).toContain("Mission report: Doghouse, done");
+    expect(report.body).toContain("Committed as abc1234 on main.");
+    expect(report.body).toContain("#### Walls");
+    expect(report.body).toContain("$ look\nit stands");
+    await expect(
+      client.call("missions.close", { missionId: mission.id, status: "dropped" }),
+    ).rejects.toMatchObject({ code: "MISSION_CLOSED" });
+  });
+
+  it("reports a closed mission without the lead's word, and a run that was stopped", async () => {
+    const { client, mission, lead, slices, workflows, orchestrate, reportOf } = await led([
+      { title: "Walls", assignee: BUILDER },
+    ]);
+    const missionsFeed = watch(client, MISSIONS_STREAM);
+    const run = await orchestrate();
+    await sliceBecomes(missionsFeed, slices[0]!.id, "active");
+    await client.call("workflows.stop", { workflowId: run.workflowId, parentThreadId: lead.id });
+    expect(await workflowEnds(workflows, run.workflowId)).toMatchObject({ status: "stopped" });
+    const stopped = await reportOf(`${run.workflowId}`);
+    expect(stopped.body).toContain("Doghouse, its orchestrator was stopped");
+    expect(stopped.body).toContain("The mission is still open");
+
+    await client.call("missions.update", { missionId: mission.id, status: "dropped" });
+    const dropped = await reportOf("dropped");
+    expect(dropped.body).toContain("Doghouse, dropped");
+    expect(dropped.body).toContain("The lead said nothing about it");
+  });
+
+  it("holds the mission while the lead's ask to the owner is open", async () => {
+    const { client, kernel, mission, lead, slices, workflows, orchestrate } = await led([
+      { title: "Door" },
+    ]);
+    const door = slices[0]!;
+    // The first run finds the door unassigned: the thread it ran from is the lead.
+    const first = await orchestrate();
+    expect(await workflowEnds(workflows, first.workflowId)).toMatchObject({
+      result: { outcome: "decide" },
+    });
+    const asked = (await kernel.commands.execute(
+      "agents.ask",
+      { to: OWNER, question: "May the door face north?" },
+      { caller: AGENT, threadId: lead.id },
+    )) as { status: string; message: { messageId: string } };
+    expect(asked.status).toBe("pending");
+    await client.call("slices.update", { sliceId: door.id, assignee: BUILDER });
+    expect(await client.call("missions.next", { missionId: mission.id })).toMatchObject({
+      ready: [door.id],
+      escalations: [asked.message.messageId],
+    });
+    await expect(client.call("slices.handoff", { sliceId: door.id })).rejects.toMatchObject({
+      code: "ESCALATION_OPEN",
+    });
+    const second = await orchestrate();
+    expect(await workflowEnds(workflows, second.workflowId)).toMatchObject({
+      result: { outcome: "waiting", escalations: [asked.message.messageId], handed: [] },
+    });
+
+    // The owner answers: the team goes on.
+    await client.call("agents.inbox.answer", {
+      messageId: asked.message.messageId,
+      answer: "North.",
+    });
+    expect(await client.call("missions.next", { missionId: mission.id })).toMatchObject({
+      escalations: [],
+    });
+    await orchestrate();
+    const missionsFeed = watch(client, MISSIONS_STREAM);
+    await sliceBecomes(missionsFeed, door.id, "active");
   });
 });
 
