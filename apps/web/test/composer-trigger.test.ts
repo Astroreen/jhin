@@ -109,7 +109,11 @@ describe("a sent message's file links and skills (D1341)", () => {
       "docs/my file (1).md",
     );
     expect(fileLinkPath("", "src/")).toBe("src/");
-    expect(fileLinkPath("x.ts", "C:/x.ts")).toBe("C:/x.ts");
+    // Only paths inside the project: no absolute, drive or leading-out one.
+    expect(fileLinkPath("x.ts", "C:/x.ts")).toBeUndefined();
+    expect(fileLinkPath("passwd", "/etc/passwd")).toBeUndefined();
+    expect(fileLinkPath("x.ts", "../../x.ts")).toBeUndefined();
+    expect(fileLinkPath("x.ts", "src/../x.ts")).toBeUndefined();
     // A link the user wrote, or one with a scheme, is no file.
     expect(fileLinkPath("the code", "src/a.ts")).toBeUndefined();
     expect(fileLinkPath("a.ts", "https://example.com/a.ts")).toBeUndefined();

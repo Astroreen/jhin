@@ -2201,7 +2201,8 @@ says. The other W38 decisions land in their own pull requests.
 - **D1341. A sent message shows its file and skill chips,** as T3's
   `ChatMarkdown` (its file-link chip) and `SkillInlineText`: in a user
   message, a file link the composer writes (`[name](path)`, its label the
-  path's basename, D303) is T3's mention chip, the file's Pierre icon and
+  path's basename, D303, a path inside the project: no absolute one nor one
+  leading out) is T3's mention chip, the file's Pierre icon and
   basename with its path in a tooltip, and pressed ("Preview <path>") it
   opens the file in the thread's file panel (D1342); a folder's chip opens
   nothing. A `$name` of one of the thread agent's skills is T3's skill chip

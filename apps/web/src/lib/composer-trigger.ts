@@ -274,6 +274,15 @@ export function fileLinkPath(label: string, href: string): string | undefined {
   }
   // A link within the page or to another host (`#install`, `?q`, `//host/a`) names no file.
   if (/^(?:#|\?|\/\/)/.test(href)) return undefined;
+  // The composer writes paths inside the project: an absolute one, or one leading out of it
+  // (`../`), is a link the user wrote (the node would refuse to read it anyway, D1003).
+  if (
+    /^[\\/]/.test(path) ||
+    WINDOWS_DRIVE_PATH_REGEX.test(path) ||
+    path.split(/[\\/]/).includes("..")
+  ) {
+    return undefined;
+  }
   return label === basename(path) ? path : undefined;
 }
 
