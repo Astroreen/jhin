@@ -261,6 +261,46 @@ function collectInlineTokens(text: string): InlineToken[] {
 }
 
 /**
+ * The file a rendered link of a sent message names (D1341): the composer's `[name](path)`, its
+ * label the path's basename; any other link, or one with a scheme, names none.
+ */
+export function fileLinkPath(label: string, href: string): string | undefined {
+  let path = href;
+  try {
+    path = decodeURIComponent(href);
+  } catch {}
+  if (!path || (URI_SCHEME_REGEX.test(path) && !WINDOWS_DRIVE_PATH_REGEX.test(path))) {
+    return undefined;
+  }
+  // A link within the page or to another host (`#install`, `?q`, `//host/a`) names no file.
+  if (/^(?:#|\?|\/\/)/.test(href)) return undefined;
+  // The composer writes paths inside the project: an absolute one, or one leading out of it
+  // (`../`), is a link the user wrote (the node would refuse to read it anyway, D1003).
+  if (
+    /^[\\/]/.test(path) ||
+    WINDOWS_DRIVE_PATH_REGEX.test(path) ||
+    path.split(/[\\/]/).includes("..")
+  ) {
+    return undefined;
+  }
+  return label === basename(path) ? path : undefined;
+}
+
+/** The `$name`s of a text, as T3's `matchInlineSkills` finds them (D1341). */
+export function inlineSkillTokens(
+  text: string,
+): { readonly name: string; readonly start: number; readonly end: number }[] {
+  const tokens: { name: string; start: number; end: number }[] = [];
+  for (const match of text.matchAll(SKILL_TOKEN_REGEX)) {
+    const name = match[2] ?? "";
+    if (!name) continue;
+    const start = (match.index ?? 0) + (match[1]?.length ?? 0);
+    tokens.push({ name, start, end: (match.index ?? 0) + match[0].length });
+  }
+  return tokens;
+}
+
+/**
  * The prompt as text and chips: a file link `[name](path)` or a legacy `@path` is a mention, a
  * `$name` a skill, a `[#12](url)` or `[title](jhin://node/threads/id)` link a reference. Joining
  * every segment's text or source gives the prompt back unchanged.

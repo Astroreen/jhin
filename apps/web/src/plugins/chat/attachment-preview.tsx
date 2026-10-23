@@ -33,7 +33,7 @@ import {
   WrapTextIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import { formatAttachmentSize } from "../../lib/attachment-files.ts";
 import {
@@ -141,7 +141,7 @@ function FileSurfaceNotice(props: { readonly children: ReactNode }) {
   );
 }
 
-function FileSurfaceLoading(props: { readonly className?: string }) {
+export function FileSurfaceLoading(props: { readonly className?: string }) {
   return (
     <div
       aria-label="Loading file"
@@ -156,7 +156,10 @@ function FileSurfaceLoading(props: { readonly className?: string }) {
   );
 }
 
-function FileSurfaceFailure(props: { readonly message: string; readonly onRetry?: () => void }) {
+export function FileSurfaceFailure(props: {
+  readonly message: string;
+  readonly onRetry?: () => void;
+}) {
   return (
     <div
       className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-xs leading-relaxed"
@@ -278,6 +281,8 @@ export function AttachmentFilePreview(
   props: AttachmentPreviewSource & {
     /** Where it is: "Draft" in the composer, "Attachment" in a message (T3's breadcrumb). */
     readonly origin?: string;
+    /** In place of `origin`: the project's name and each folder down to the file (D1342). */
+    readonly trail?: readonly string[];
     readonly onRemove?: () => void;
     readonly onClose?: () => void;
   },
@@ -432,11 +437,15 @@ export function AttachmentFilePreview(
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <div className={FILE_SURFACE_SUBHEADER_CLASS} data-surface-subheader>
-        <div className="flex min-w-0 flex-1 items-center text-xs">
-          <span className="shrink-0 px-0.5 text-muted-foreground">
-            {props.origin ?? "Attachment"}
-          </span>
-          <ChevronRightIcon className="mx-1 size-3.5 shrink-0 text-muted-foreground/60" />
+        <div className="flex min-w-0 flex-1 items-center overflow-hidden text-xs">
+          {(props.trail ?? [props.origin ?? "Attachment"]).map((crumb, index) => (
+            <Fragment key={index}>
+              <span className="min-w-0 max-w-40 truncate px-0.5 text-muted-foreground">
+                {crumb}
+              </span>
+              <ChevronRightIcon className="mx-1 size-3.5 shrink-0 text-muted-foreground/60" />
+            </Fragment>
+          ))}
           <span aria-current="page" className="min-w-0 truncate px-0.5 font-medium text-foreground">
             {props.name}
           </span>

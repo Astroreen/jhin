@@ -47,6 +47,9 @@ import { useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
 import { AttachmentLoaderContext, useAttachmentLoader } from "./attachment-media.tsx";
+import { inlineSkillTokens } from "../../lib/composer-trigger.ts";
+import { useAgentSkills } from "./agent-skills.ts";
+import { FILE_PANEL, openFilePanel } from "./file-panel-route.ts";
 import { TimelineView } from "./timeline.tsx";
 
 /** T3's ProviderSubagentBar, a chunk of its own: few threads show it (D440, D880). */
@@ -421,6 +424,32 @@ export function ThreadView(props: {
             contents,
           });
 
+  // A sent message's file and skill chips (D1341): skills asked only while a message names one.
+  const namesSkill = useMemo(() => {
+    const naming = timeline.turns.filter((turn) => inlineSkillTokens(turn.text).length > 0);
+    return naming.length === 0 ? undefined : naming.map((turn) => turn.turnId).join(" ");
+  }, [timeline]);
+  const skills = useAgentSkills(
+    chat.threads,
+    target,
+    props.project?.id,
+    thread?.agentId,
+    namesSkill,
+  );
+  const hasProject = props.project !== undefined;
+  const fileChips = useMemo(
+    () => ({
+      skills,
+      ...(hasProject
+        ? {
+            previewFile: (path: string) =>
+              openFilePanel(chat.navigation, { target, threadId }, path),
+          }
+        : {}),
+    }),
+    [skills, hasProject, chat.navigation, target, threadId],
+  );
+
   // Attachments of sent messages, read back from the node once each.
   const loadAttachment = useAttachmentLoader(target);
 
@@ -595,6 +624,7 @@ export function ThreadView(props: {
                           )
                     }
                     findOpen={find.bar.open}
+                    fileChips={fileChips}
                     format={settings.timestampFormat}
                     onRetry={(turn) =>
                       chat.context.commands
@@ -831,12 +861,16 @@ export function DraftView(props: {
         route.remote === target.remote &&
         route.project === project.id &&
         route.thread === undefined &&
-        route.panel === undefined
+        (route.panel === undefined || route.panel === FILE_PANEL)
       ) {
         chat.navigation.navigate({
           node: target.node,
           ...(target.remote === undefined ? {} : { remote: target.remote }),
           thread: threadId,
+          // A file previewed beside the draft stays beside its thread (D1342).
+          ...(route.panel === FILE_PANEL && route.section !== undefined
+            ? { panel: FILE_PANEL, section: route.section }
+            : {}),
         });
       }
       return true;
