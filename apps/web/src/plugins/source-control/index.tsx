@@ -13,6 +13,7 @@ import {
   type ChatComposerContextProps,
   type ChatHeaderActionProps,
   type ChatTurnFooterProps,
+  type ChatThreadDetailsProps,
   type ChatTurnHeaderProps,
   type Connections,
   type DeviceSettings,
@@ -59,8 +60,13 @@ import {
   registerWorktreeCleanup,
 } from "./workspace.tsx";
 import { createCardIndicators } from "./indicators.tsx";
-import { createLinkActions } from "./links.tsx";
-import { DIFF_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
+import { createLinkActions, createLinkPrompt } from "./links.tsx";
+import {
+  DIFF_PANEL,
+  PULL_REQUESTS_PANEL,
+  useSourceControl,
+  type SourceControlServices,
+} from "./services.ts";
 import { createSourceControlStore } from "./store.ts";
 
 /**
@@ -430,6 +436,69 @@ export const sourceControlPlugin = builtin(
         slots.contribute("app.panel", {
           id: "jhin.source-control.diff-panel",
           component: DiffPanelSlot,
+        }),
+      );
+
+      // A thread's pull requests (D1281–D1283): the right panel, a chunk of its own (D440), and
+      // the rows of the thread details panel, loaded with it.
+      const linkPrompt = dialogs === undefined ? undefined : createLinkPrompt(services, dialogs);
+      const PullRequestsPanel = lazyChunk(
+        () =>
+          import("./pull-requests-panel.tsx").then((module) =>
+            module.createPullRequestsPanel(services, linkPrompt),
+          ),
+        {
+          loading: () => null,
+          failed: (_props, retry) => (
+            <ChunkFailed retry={retry}>Couldn't load the pull requests panel.</ChunkFailed>
+          ),
+        },
+      );
+      function PullRequestsPanelSlot() {
+        const route = useExternal(navigation, navigation.current);
+        return route.panel === PULL_REQUESTS_PANEL ? <PullRequestsPanel /> : null;
+      }
+      context.subscriptions.add(
+        slots.contribute("app.panel", {
+          id: "jhin.source-control.pull-requests-panel",
+          component: PullRequestsPanelSlot,
+        }),
+      );
+      context.commands.register({
+        name: "pull-requests.show",
+        title: "Show linked pull requests",
+        description:
+          "Opens the panel of the pull requests linked to the thread on screen; `shown` is false when no thread is on screen or it has none linked",
+        input: z.object({}),
+        output: z.object({ shown: z.boolean() }),
+        handler: () => {
+          const route = navigation.current();
+          if (route.node === undefined || route.thread === undefined) return { shown: false };
+          const target = {
+            node: route.node,
+            ...(route.remote === undefined ? {} : { remote: route.remote }),
+          };
+          if ((store.view(target).links.get(route.thread) ?? []).length === 0) {
+            return { shown: false };
+          }
+          if (route.panel !== PULL_REQUESTS_PANEL) {
+            const { section: _section, ...rest } = route;
+            navigation.navigate({ ...rest, panel: PULL_REQUESTS_PANEL });
+          }
+          return { shown: true };
+        },
+      });
+      context.subscriptions.add(
+        slots.contribute<ChatThreadDetailsProps>("chat.thread.details", {
+          id: "jhin.source-control.pull-requests",
+          order: 20,
+          component: lazyChunk<ChatThreadDetailsProps>(
+            () =>
+              import("./pull-request-rows.tsx").then((module) =>
+                module.createPullRequestRows(services),
+              ),
+            { loading: () => null, failed: () => null },
+          ),
         }),
       );
     },

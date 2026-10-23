@@ -21,6 +21,9 @@ import type { SourceControlStore, SourceControlView } from "./store.ts";
 /** The route's panel name of the diff panel. */
 export const DIFF_PANEL = "diff";
 
+/** The route's panel name of a thread's pull requests (D1281). */
+export const PULL_REQUESTS_PANEL = "pull-requests";
+
 /** What the source control components use, handed over by the plugin. */
 export interface SourceControlServices {
   readonly context: PluginContext;

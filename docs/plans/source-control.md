@@ -1289,6 +1289,54 @@ failed pipeline, a fork's newer one left out, creating one with "Created MR
 Forgejo with a fake `tea` and its statuses; Bitbucket against a local server
 with the node's token, and without one).
 
+### The pull request panel and the thread details rows (W35, D1281–D1283)
+
+- **D1281. A thread's pull requests get T3's right panel** (T3 Code's
+  `ThreadPullRequestsPanel.tsx` and `PullRequestListRow.tsx` at D53): the
+  route's panel `pull-requests`, contributed to `app.panel` as
+  `jhin.source-control.pull-requests-panel`, a chunk of its own (D440). Its
+  rows are the links by chain, newest chain first, a layer indented by its
+  depth (three at most): the state glyph ("Waiting for host state" until
+  read), `#N` with who linked it and when as its tooltip ("Linked by you",
+  "Created from this thread", "Linked by the agent"), the title (the
+  repository until read), the eye of a watched one and the checks glyph while
+  open, then the repository and head → base, a stack's "N pull requests
+  chained by base branch." on its first layer, and when it was updated. A
+  row opens the pull request; its "Actions for #N" menu (also on a right
+  click) has "Copy link", "Open", "Watch for changes" or "Stop watching"
+  while open, and "Unlink from thread". Without links it shows T3's "No
+  linked pull requests" with its text and "Link pull request" (D270's
+  dialog); with links its footer reads "{open} open · {linked} linked ·
+  synced …" with "Link". The panel's header names it "Pull requests" with a
+  close button, as Jhin's other right panels have one each. Not ported (Deferred):
+  the author, diff stat and review decision of a row (Jhin's snapshot has
+  none), T3's speed actions under Shift, dragging a row into the composer,
+  the virtualized list, and native stacks (D270).
+- **D1282. Ways in, as T3 opens it**: the client command `pull-requests.show`
+  ("Show linked pull requests", T3's command palette action; `{ shown }`,
+  false with no thread on screen or nothing linked, where T3 disables it)
+  and the card's badge of a stack or of several linked pull requests, which
+  opens the panel for its thread instead of the current one's page (T3's
+  `opensList`). T3's tab strip of right panels and its proactive opening of
+  the panel when a thread links more than one are not ported (Deferred).
+- **D1283. The thread details panel gets T3's pull request rows**
+  (`ThreadDetailsPrRows.tsx`, `ThreadDetailsPrRow.tsx`): the section
+  `jhin.source-control.pull-requests` of `chat.thread.details` (labelled
+  "Version Control", heading hidden, as T3's) shows the current pull request
+  (D270's `currentPullRequest`, else the branch's): its state icon and
+  "#N: title", opening it, with T3's tooltip (title and number, state,
+  base ← head, the checks while open); a watched one is a split row whose eye
+  is "Stop watching #N". The other links follow behind "Show N more" /
+  "Show less". T3's row actions (Merge, Ready, Fix, Resolve), its checks
+  popover and files count read T3's pull request detail queries, which Jhin
+  has not (Deferred).
+
+The proof: `apps/web/test/pull-requests-panel.browser.test.tsx` (the rows by
+chain with their glyphs, tooltips and footer, the empty state, the menu's
+commands, the details rows and "Show N more"); Playwright
+`e2e/tests/git-actions.spec.ts` (the stack's badge opens the panel, the
+details panel lists the links, with screenshots).
+
 ## Deferred
 
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
@@ -1356,9 +1404,13 @@ with the node's token, and without one).
   forges other than GitHub (D908), read fingerprints, rate limit pauses;
   T3's hover list of a waiting thread's background tasks, and "Waiting" for
   a thread on a mesh member (D1131 follows the client's own connections).
-- T3's right panel of a thread's pull requests, its chat header rows, native
-  stacks of a forge (and their "Dismiss from thread") and the instructions
-  that tell agents to link what they open.
+- The pull request panel and rows (D1281–D1283): a row's author, diff stat
+  and review decision, T3's speed actions under Shift, dragging a row into
+  the composer, the virtualized list, T3's tab strip of right panels and its
+  proactive opening of the panel; the details rows' Merge, Ready, Fix and
+  Resolve, checks popover and files count (T3's pull request detail
+  queries); native stacks of a forge (and their "Dismiss from thread") and
+  the instructions that tell agents to link what they open.
 - Git actions (D266): T3's "Publish repository", writing style settings, the
   thread details panel and opening a file from the commit dialog. Writer
   turns go through `agent.runtime@1`'s `startTurn` under a throwaway thread

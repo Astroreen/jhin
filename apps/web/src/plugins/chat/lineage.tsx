@@ -23,22 +23,30 @@ import { useState, type ComponentType, type ReactNode } from "react";
 
 import { useCatalog } from "../../lib/hooks.ts";
 import { forkRan } from "../../lib/forks.ts";
+import {
+  ROW,
+  ROW_CONTENT,
+  SPLIT_GROUP,
+  SPLIT_PRIMARY,
+  SPLIT_SECONDARY,
+  SPLIT_SEPARATOR,
+} from "../../lib/thread-details-styles.ts";
 
 const LINEAGE_INITIAL_COUNT = 6;
 const LINEAGE_PAGE_COUNT = 12;
 
-// T3's threadDetailsPanelStyles.ts.
-export const HOVER_SURFACE =
-  "hover:!bg-black/[0.035] data-pressed:!bg-black/[0.035] dark:hover:!bg-white/[0.08] dark:data-pressed:!bg-white/[0.08]";
-export const ROW_CONTENT = "gap-2.5 px-2.5 text-left";
-export const CONTROL = `h-8 min-w-0 rounded-lg border-transparent ${ROW_CONTENT} text-[13px] font-medium text-foreground/80`;
-export const CONTROL_BASE =
-  "relative inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border outline-none transition-[box-shadow,scale] [&:active]:scale-[0.97] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 disabled:pointer-events-none disabled:opacity-64 aria-disabled:cursor-default aria-disabled:opacity-64";
-export const ROW = `${CONTROL_BASE} ${CONTROL} w-full justify-start bg-transparent shadow-none ${HOVER_SURFACE}`;
-export const SPLIT_GROUP = `flex w-full items-center rounded-lg ${HOVER_SURFACE}`;
-export const SPLIT_PRIMARY = `${CONTROL_BASE} ${CONTROL} flex-1 justify-start rounded-e-none bg-transparent shadow-none ${HOVER_SURFACE}`;
-export const SPLIT_SECONDARY = `${CONTROL_BASE} ${CONTROL} w-8 justify-center rounded-s-none px-0 bg-transparent shadow-none ${HOVER_SURFACE}`;
-export const SPLIT_SEPARATOR = "h-4 w-px shrink-0 bg-border/65";
+// T3's threadDetailsPanelStyles.ts, shared with other plugins' sections.
+export {
+  CONTROL,
+  CONTROL_BASE,
+  HOVER_SURFACE,
+  ROW,
+  ROW_CONTENT,
+  SPLIT_GROUP,
+  SPLIT_PRIMARY,
+  SPLIT_SECONDARY,
+  SPLIT_SEPARATOR,
+} from "../../lib/thread-details-styles.ts";
 
 /** T3's threadRelationshipStatusLabel, for the status of a thread's latest turn. */
 export function lineageStatusLabel(thread: ThreadRecord | undefined): string {
