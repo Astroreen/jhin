@@ -3512,7 +3512,12 @@ export default definePlugin({
           // whose reset passed while archived is not sent by unarchiving: the banner offers it.
           const recovery = thread.limitRecovery;
           if (recovery?.autoResume !== true) return thread;
-          if (Date.parse(recovery.resetAt) > Date.now()) {
+          // What it waits for: the reset, or a snooze that outlasts it.
+          const until = Math.max(
+            Date.parse(recovery.resetAt),
+            thread.snoozedUntil === undefined ? 0 : Date.parse(thread.snoozedUntil),
+          );
+          if (until > Date.now()) {
             armRecovery(thread);
             return thread;
           }

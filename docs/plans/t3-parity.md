@@ -2181,18 +2181,18 @@ Code at `eb7b35ac` (D53).
   the reset (or a snooze that outlasts it, also one set after it was armed)
   on a timer of the node, armed again when the node starts (for a recovery
   still of the thread's latest turn) and when the thread is unarchived
-  before its reset (one whose reset passed while archived is not sent by
-  unarchiving: its resume is turned off and the banner offers it again);
-  then, if the thread's latest
-  turn is still that one and the thread is neither archived nor settled by
-  hand (a thread the node settled by itself is still resumed, as T3 checks
-  only the hand), it sends "Continue where you left off." as the user's
-  message and drops `limitRecovery` once it is sent (a send that fails turns
-  its resume off, so the banner offers it again). A snooze for the reset
-  leaves a snooze of the user's that ends later as it is, taking no snooze
-  of its own (the answer's `limitRecovery.snooze` is then false). A change
-  that fails is said under the timeline, T3's toast titles ("Could not
-  change auto-resume: …", "Could not snooze thread: …").
+  before its reset or the end of a snooze that outlasts it (one whose reset
+  passed while archived is not sent by unarchiving: its resume is turned off
+  and the banner offers it again); then, if the thread's latest turn is
+  still that one and the thread is neither archived nor settled by hand (a
+  thread the node settled by itself is still resumed, as T3 checks only the
+  hand), it sends "Continue where you left off." as the user's message and
+  drops `limitRecovery` once it is sent (a send that fails turns its resume
+  off, so the banner offers it again). A snooze for the reset leaves a
+  snooze of the user's that ends later as it is, taking no snooze of its own
+  (the answer's `limitRecovery.snooze` is then false). A change that fails
+  is said under the timeline, T3's toast titles ("Could not change
+  auto-resume: …", "Could not snooze thread: …").
 - **D1313. T3's settings "Auto-resume limited threads" and "Snooze limited
   threads"**: `autoResumeLimitedThreads` and `snoozeLimitedThreads` of the
   `jhin.threads` config (off by default, with T3's descriptions, on the Node
