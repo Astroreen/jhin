@@ -851,6 +851,26 @@ export default definePlugin({
         }),
     });
 
+    /**
+     * An idle previous generation goes to the Settled shelf (D1297). One that is
+     * running or waiting, or any other refusal, is left to the threads' own
+     * auto-settle sweep: the rotation stands either way.
+     */
+    const settlePrevious = async (agentId: string, previous: AgentGeneration) => {
+      try {
+        if (!context.config.get<AgentsConfig>(AGENTS_CONFIG_SECTION).settlePreviousGeneration) {
+          return;
+        }
+        await run("threads.settle", { threadId: previous.threadId });
+      } catch (error) {
+        context.log.info("left the previous generation unsettled", {
+          agentId,
+          generation: previous.number,
+          error: String(error),
+        });
+      }
+    };
+
     context.commands.register({
       name: "agents.rotate",
       description:
@@ -904,6 +924,7 @@ export default definePlugin({
             ...(previous === undefined ? {} : { previous }),
           });
           await append(AgentEvents.updated, await recordOf(agentId, definition));
+          if (previous !== undefined) await settlePrevious(agentId, previous);
           return { generation, ...(previous === undefined ? {} : { previous }) };
         });
       },

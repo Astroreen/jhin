@@ -149,6 +149,8 @@ interface Restart {
 export async function node(
   options: {
     agents?: Record<string, unknown>;
+    /** `settlePreviousGeneration` of the section; unset keeps the default (D1297). */
+    settlePrevious?: boolean;
     /** The pinned default agent; `null` leaves the node to pick one. */
     defaultAgent?: string | null;
     /** To start a node again on the data, storage and config files of a stopped one. */
@@ -170,7 +172,16 @@ export async function node(
       ...(options.defaultAgent === null
         ? {}
         : { "jhin.threads": { defaultAgent: options.defaultAgent ?? "jhin.agent-fake" } }),
-      ...(options.agents === undefined ? {} : { "jhin.agents": { agents: options.agents } }),
+      ...(options.agents === undefined
+        ? {}
+        : {
+            "jhin.agents": {
+              agents: options.agents,
+              ...(options.settlePrevious === undefined
+                ? {}
+                : { settlePreviousGeneration: options.settlePrevious }),
+            },
+          }),
     },
   };
   let kernel: TestKernel | undefined;

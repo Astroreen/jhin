@@ -182,6 +182,11 @@ describe("messages between agents (A2)", () => {
       threadId: side,
     });
     expect(thread.generationOf).toBe("builder");
+    // Rotating settled generation 1 (D1297); the side turn forked it and left it on the shelf.
+    const dormant = await client.call<{ thread: { settledOverride?: string } }>("threads.get", {
+      threadId: first.delivery!.threadId,
+    });
+    expect(dormant.thread.settledOverride).toBe("settled");
     const listed = await client.call<{ id: string }[]>("threads.list", {});
     expect(listed.some((item) => item.id === side)).toBe(false);
 

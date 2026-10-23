@@ -176,11 +176,75 @@ describe("defined agents", () => {
         { number: 2, current: true, status: "idle" },
       ],
     );
-    // The previous generation is untouched: not archived.
-    const { thread } = await client.call<{ thread: { archivedAt?: string } }>("threads.get", {
-      threadId: one.generation.threadId,
-    });
+    // The previous generation is not archived, and settled: it is idle (D1297).
+    const { thread } = await client.call<{
+      thread: { archivedAt?: string; settledOverride?: string };
+    }>("threads.get", { threadId: one.generation.threadId });
     expect(thread.archivedAt).toBeUndefined();
+    expect(thread.settledOverride).toBe("settled");
+    // The new generation stays where it is.
+    const current = await client.call<{ thread: { settledOverride?: string } }>("threads.get", {
+      threadId: two.generation.threadId,
+    });
+    expect(current.thread.settledOverride).toBeUndefined();
+  });
+
+  it("settles the previous generation only when idle, and only if asked to (D1297)", async () => {
+    // A generation running a turn is left: the rotation still stands.
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const busy = await node({ agents: { builder }, capture: { gate: () => gate } });
+    const first = await busy.client.call<{ generation: { threadId: string } }>("agents.rotate", {
+      agentId: "builder",
+    });
+    const running = watch(busy.client, threadStream(first.generation.threadId));
+    await busy.client.call("threads.send", { threadId: first.generation.threadId, text: "Go" });
+    await running.until(ThreadEvents.turnStarted);
+    const second = await busy.client.call<{ generation: { number: number } }>("agents.rotate", {
+      agentId: "builder",
+    });
+    expect(second.generation.number).toBe(2);
+    const left = await busy.client.call<{ thread: { settledOverride?: string } }>("threads.get", {
+      threadId: first.generation.threadId,
+    });
+    expect(left.thread.settledOverride).toBeUndefined();
+    open();
+
+    // With the option off the idle one stays as it was.
+    const kept = await node({ agents: { builder }, settlePrevious: false });
+    const old = await kept.client.call<{ generation: { threadId: string } }>("agents.rotate", {
+      agentId: "builder",
+    });
+    await kept.client.call("agents.rotate", { agentId: "builder" });
+    const unsettled = await kept.client.call<{ thread: { settledOverride?: string } }>(
+      "threads.get",
+      {
+        threadId: old.generation.threadId,
+      },
+    );
+    expect(unsettled.thread.settledOverride).toBeUndefined();
+  });
+
+  it("brings a settled generation back with its next turn (D1297)", async () => {
+    const { client } = await node({ agents: { builder } });
+    const one = await client.call<{ generation: { threadId: string } }>("agents.rotate", {
+      agentId: "builder",
+    });
+    await client.call("agents.rotate", { agentId: "builder" });
+    const read = async () =>
+      (
+        await client.call<{
+          thread: { settledOverride?: string; unsettledAt?: string };
+        }>("threads.get", { threadId: one.generation.threadId })
+      ).thread;
+    expect((await read()).settledOverride).toBe("settled");
+    const events = watch(client, threadStream(one.generation.threadId));
+    await client.call("threads.send", { threadId: one.generation.threadId, text: "Still there?" });
+    await events.until(ThreadEvents.turnCompleted);
+    // A turn sent to it takes it off the shelf (threads.settle).
+    const back = await read();
+    expect(back.settledOverride).toBeUndefined();
+    expect(back.unsettledAt).toBeDefined();
   });
 
   it("stops and resumes an agent", async () => {
