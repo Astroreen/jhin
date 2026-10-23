@@ -10,7 +10,7 @@ import * as Path from "node:path";
 import { DeviceError, type DeviceInput, type DeviceSummary } from "@jhin/preview-api";
 
 import type { AgentDeviceEndpoint } from "./hub-host.ts";
-import { runProgram } from "./toolchain.ts";
+import { runProgram, toolEnvironment } from "./toolchain.ts";
 
 const COMMAND_TIMEOUT_MS = 60_000;
 
@@ -86,7 +86,7 @@ export async function runAgentDeviceInput(options: {
   const config = agentDeviceConfigPath(options.stateDir, device.hostId);
   writeAgentDeviceConfig(config, endpoint);
   const env: NodeJS.ProcessEnv = {
-    ...(options.env ?? process.env),
+    ...toolEnvironment(options.env ?? process.env),
     AGENT_DEVICE_NO_UPDATE_NOTIFIER: "1",
   };
   // The endpoint comes from --config only, as T3's launcher clears these.

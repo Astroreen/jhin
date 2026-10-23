@@ -10,6 +10,7 @@ import {
   HUB_SPEC,
   createToolchain,
   installEnvironment,
+  toolEnvironment,
   installMessage,
   installedVersions,
   toolPaths,
@@ -90,6 +91,12 @@ describe("the device toolchain", () => {
     expect(installMessage(tools.home, "device hub", HUB_SPEC)).toBe(
       `Installing device hub ${HUB_SPEC.version}…`,
     );
+  });
+
+  it("gives the running tools the SDK's variables, and still no secrets", () => {
+    expect(
+      toolEnvironment({ PATH: "/bin", ANDROID_HOME: "/sdk", ANTHROPIC_API_KEY: "sk-secret" }),
+    ).toEqual({ PATH: "/bin", ANDROID_HOME: "/sdk" });
   });
 
   it("gives npm and the install scripts no secrets of the node", () => {

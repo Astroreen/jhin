@@ -283,7 +283,10 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
       if (size <= MAX_REQUEST_BODY) return;
       request.unpipe(outgoing);
       outgoing.destroy();
+      response.setHeader("connection", "close");
       text(response, 413, "Payload Too Large");
+      // Nothing more of the upload is read.
+      request.destroy();
     });
     // A client that aborts its upload ends the hub's side too.
     request.once("error", () => outgoing.destroy());

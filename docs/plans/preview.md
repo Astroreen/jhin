@@ -577,7 +577,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   scripts (the hub's `node-datachannel` fetches its native build there), so
   npm gets a reduced environment: PATH, home and temp folders, proxies,
   certificates and npm's own settings, never the node's other variables
-  (keys and tokens); the setting's description says the scripts run.
+  (keys and tokens); the setting's description says the scripts run. The
+  hub, the agent-device daemon and its CLI run with the same environment
+  plus the Android SDK's and Xcode's variables, the display and the user.
 
 - **D1207. The hub and its daemon run for the node, D408 is the fallback.**
   As T3's `LocalDeviceHost.ts` does, the node starts the hub with its own
@@ -637,7 +639,9 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
 - **D1209. Input as node commands, through agent-device.** `device.tap`
   (`x`, `y`), `device.swipe` (`from`, `to`), `device.type` (`text`) and
   `device.button` (`home`, `back`, `appSwitcher`) take a thread and a device
-  as `device.screenshot` does (`devices.write`), so agents reach them over
+  as `device.screenshot` does (`devices.write`): a named device may be any
+  booted one of the node, open in the thread or not, as T3's device tools
+  pick it; without a name, the thread's latest. Agents reach them over
   RPC, CLI and MCP. Each runs agent-device's own command (`press x y`,
   `swipe x1 y1 x2 y2`, `type`, `home`, `back`, `app-switcher`), pinned as
   T3 pins it (`--platform ios --udid` / `--platform android --serial`)

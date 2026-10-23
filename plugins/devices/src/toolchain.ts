@@ -141,6 +141,19 @@ export function installEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([name]) => kept.test(name)));
 }
 
+/**
+ * What the hub, the agent-device daemon and its CLI see while they run: the install
+ * environment plus what the device tools need (the Android SDK's variables, Xcode's, the
+ * display and user), still without the node's keys and tokens.
+ */
+export function toolEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const tools = /^(ANDROID_\w+|DEVELOPER_DIR|DISPLAY|WAYLAND_DISPLAY|USER|LOGNAME|JAVA_HOME)$/;
+  return {
+    ...installEnvironment(env),
+    ...Object.fromEntries(Object.entries(env).filter(([name]) => tools.test(name))),
+  };
+}
+
 export interface ToolchainOptions {
   readonly home: string;
   /** The npm to run, read for each install; `npm` on PATH by default, then pnpm's `dlx npm`. */

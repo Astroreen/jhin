@@ -13,6 +13,7 @@ import {
   HUB_SPEC,
   installMessage,
   runProgram,
+  toolEnvironment,
   type Toolchain,
 } from "./toolchain.ts";
 
@@ -216,7 +217,7 @@ interface HubProcess {
 export function createHubHost(options: HubHostOptions) {
   const platform = options.platform ?? process.platform;
   const environment = () =>
-    hostEnvironment(options.env ?? process.env, options.androidSdk?.(), platform);
+    hostEnvironment(toolEnvironment(options.env ?? process.env), options.androidSdk?.(), platform);
   const hubState = Path.join(options.stateDir, "hub.json");
   const daemonState = Path.join(options.stateDir, "daemon.json");
   const log = options.log ?? (() => undefined);

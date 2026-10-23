@@ -212,6 +212,20 @@ describe("the device hub", () => {
       { method: "POST", body: "{}" },
     );
     expect(shot.status).toBe(200);
+    // An upload past 1 MiB is refused and no longer read.
+    const tooLarge = await new Promise<number>((resolve, reject) => {
+      const upload = Http.request(
+        `${node.url}/device-hub/vendor/serve-emu/api/screenshot?wsTicket=${reader.query.wsTicket}`,
+        { method: "POST" },
+        (answer) => {
+          answer.resume();
+          resolve(answer.statusCode ?? 0);
+        },
+      );
+      upload.once("error", reject);
+      upload.write(Buffer.alloc(2 * 1024 * 1024));
+    });
+    expect(tooLarge).toBe(413);
 
     // The hub decodes before it routes: an encoded path is checked as it will be read.
     const raw = (path: string) =>
