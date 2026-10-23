@@ -101,6 +101,8 @@ export interface Sessions {
   list(): SessionInfo[];
   /** Ends every app-server of the node, busy or not; how many there were. */
   closeAll(): number;
+  /** The thread's running app-server and its Codex thread, busy or not (D1402). */
+  running(threadId: string): Pick<Session, "connection" | "codexThreadId"> | undefined;
   dispose(): void;
 }
 
@@ -333,6 +335,10 @@ export function createSessions(options: {
         busy: live.busy,
         ...(live.idleSince === undefined ? {} : { idleSince: live.idleSince.toISOString() }),
       })),
+    running(threadId) {
+      const live = sessions.get(threadId);
+      return live === undefined || live.closed ? undefined : live;
+    },
     closeAll() {
       let closed = 0;
       for (const live of sessions.values()) {

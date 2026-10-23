@@ -121,6 +121,28 @@ export interface ToolCall {
   readonly input?: unknown;
 }
 
+/**
+ * An MCP app a tool call returned (T3's `McpAppReference`, the MCP Apps extension's `ui://`
+ * resource): its document, kept by the agent's runtime under `documentId`, is shown in a
+ * sandboxed frame that may call the server's tools through the runtime (D1401, D1402).
+ */
+export interface AgentMcpApp {
+  readonly server: string;
+  readonly tool: string;
+  readonly resourceUri: string;
+  readonly documentId: string;
+  /** The origins the document may reach, as its server declared them. */
+  readonly csp?: {
+    readonly connectDomains?: readonly string[];
+    readonly resourceDomains?: readonly string[];
+    readonly frameDomains?: readonly string[];
+    readonly baseUriDomains?: readonly string[];
+  };
+  /** The browser features it asked for (`camera`, `microphone`, `geolocation`, `clipboardWrite`). */
+  readonly permissions?: readonly ("camera" | "microphone" | "geolocation" | "clipboardWrite")[];
+  readonly prefersBorder?: boolean;
+}
+
 /** One step of an agent's plan (a todo list). */
 export interface PlanStep {
   readonly text: string;
@@ -222,6 +244,8 @@ export type AgentItem =
       readonly status: "completed" | "failed" | "declined";
       readonly output?: string;
       readonly error?: string;
+      /** Since 1.15: the MCP app the call returned, to show in its place (providers.md D1401). */
+      readonly app?: AgentMcpApp;
     }
   /** The turn waits until `AgentTurn.respond` answers it (or the turn is interrupted). */
   | { readonly kind: "request.opened"; readonly requestId: string; readonly request: AgentRequest }
@@ -483,7 +507,7 @@ export interface AgentAuth {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`, 1.15 MCP apps: a tool call's `app` and `mcpApps`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -542,7 +566,52 @@ export interface AgentRuntime {
     readonly threadId: string;
     readonly reason?: string;
   }): Promise<{ readonly feedbackId: string }>;
+  /**
+   * Since 1.15: the MCP apps its tool calls returned (D1401, D1402): an app's document, and
+   * its calls on the thread's running agent, each named by the app's `documentId`: it goes to
+   * the app's own server, and only to a tool the server lets apps call. One that cannot
+   * throws an `McpAppRequestError`.
+   */
+  readonly mcpApps?: {
+    document(request: {
+      readonly threadId: string;
+      readonly documentId: string;
+    }): Promise<string | undefined>;
+    callTool(request: {
+      readonly threadId: string;
+      readonly documentId: string;
+      readonly tool: string;
+      readonly arguments: Readonly<Record<string, unknown>>;
+    }): Promise<unknown>;
+    readResource(request: {
+      readonly threadId: string;
+      readonly documentId: string;
+      readonly uri: string;
+    }): Promise<unknown>;
+  };
   startTurn(request: TurnRequest): AgentTurn;
+}
+
+/** Why an MCP app's call was refused (T3's `McpAppRequestError` reasons, D1402). */
+export type McpAppRequestReason = "not-an-app" | "tool-not-callable" | "session-stopped";
+
+/** An MCP app's call the runtime refused: not an app of the thread, a tool apps may not call, or no running agent. */
+export class McpAppRequestError extends Error {
+  readonly reason: McpAppRequestReason;
+  constructor(reason: McpAppRequestReason, message: string) {
+    super(message);
+    this.name = "McpAppRequestError";
+    this.reason = reason;
+  }
+}
+
+/** The reason an error an app's call threw carries, if any (also across copies of this package). */
+export function mcpAppRequestReasonOf(error: unknown): McpAppRequestReason | undefined {
+  if ((error as { name?: unknown } | null)?.name !== "McpAppRequestError") return undefined;
+  const reason = (error as { reason?: unknown }).reason;
+  return reason === "not-an-app" || reason === "tool-not-callable" || reason === "session-stopped"
+    ? reason
+    : undefined;
 }
 
 /** `agent.registry@1`: the agent runtimes of a node. */

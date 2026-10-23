@@ -11,6 +11,7 @@ import {
   historyTranscript,
   type AgentGoal,
   type AgentItem,
+  type AgentMcpApp,
   type AgentRequest,
   type AgentResponse,
   type AgentTurn,
@@ -47,6 +48,7 @@ import { SessionTakenOver, type Lease, type McpAttachment, type Sessions } from 
 import { codexErrorInfoCode, isUsageLimitCode } from "./usage-limits.ts";
 import { describeElicitation, readElicitation, toElicitationResponse } from "./elicitation.ts";
 import { describeGoal, goalFromCodex, parseGoalCommand } from "./goal.ts";
+import { mcpAppResourceUri, snapshotMcpApp } from "./mcp-apps.ts";
 
 /** The turn ended while it still waited on Codex (a stop's grace ran out). */
 class TurnEnded extends Error {}
@@ -102,6 +104,11 @@ export interface CodexTurnDependencies {
    * the credential may run writing commands too (full access only).
    */
   readonly mcp?: (threadId: string, writes: boolean) => McpAttachment;
+  /** Keeps an MCP app's document for the thread, answering its id (D1401). */
+  readonly keepMcpApp?: (
+    threadId: string,
+    document: { readonly html: string; readonly server: string; readonly tool: string },
+  ) => Promise<string>;
   /** What a turn can choose for `model`, as `model/list` described it (D881). */
   readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** Sent in `initialize`. */
@@ -226,6 +233,8 @@ type Frame =
 
 /** Items `afterwards` holds unread before it gives up on its reader (D1318, as Claude's D1165). */
 const MAX_UNREAD_LATER = 10_000;
+/** A read of an MCP app's document that takes longer is given up (T3's 20 s). */
+const MCP_APP_READ_TIMEOUT_MS = 20_000;
 
 /** Runs one turn of a thread on its Codex app-server; `done` settles once it let go of it. */
 export function codexTurn(
@@ -522,6 +531,19 @@ export function codexTurn(
         if (toolCall(item) === undefined) return;
         startTool(item);
         const outcome = toolOutcome(item);
+        // A tool call that returned an MCP app shows it once its document is read (D1401).
+        const appUri = item.type === "mcpToolCall" ? mcpAppResourceUri(item) : undefined;
+        if (
+          appUri !== undefined &&
+          outcome.status === "completed" &&
+          child === undefined &&
+          deps.keepMcpApp !== undefined &&
+          lease !== undefined &&
+          codexThreadId !== undefined
+        ) {
+          captures.push(captureApp(lease, item, appUri, outcome));
+          return;
+        }
         emit({
           kind: "tool.completed",
           itemId: item.id,
@@ -539,6 +561,63 @@ export function codexTurn(
         }
       }
     }
+  };
+
+  // --- MCP apps (D1401) ----------------------------------------------------------------
+  /** Reads of apps' documents still running: the turn ends after them. */
+  const captures: Promise<void>[] = [];
+  /** Given up once the turn is interrupted or failed: its calls complete without their apps. */
+  let abandonCaptures!: () => void;
+  const capturesAbandoned = new Promise<never>((_, reject) => {
+    abandonCaptures = () => reject(new Error("the turn ended"));
+  });
+  capturesAbandoned.catch(() => undefined);
+  /** Whether the turn ended as Codex ended it, its apps' reads still awaited. */
+  let appsRead = false;
+  /** T3's snapshot of an app: its resource read from the server, within 20 s. */
+  const captureApp = async (
+    current: Lease,
+    item: CodexItem,
+    resourceUri: string,
+    outcome: ReturnType<typeof toolOutcome>,
+  ) => {
+    const server = String(item["server"] ?? "");
+    const tool = String(item["tool"] ?? "");
+    let app: AgentMcpApp | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const read = (await Promise.race([
+        current.session.connection.request("mcpServer/resource/read", {
+          threadId: codexThreadId,
+          server,
+          uri: resourceUri,
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("the server did not answer in time")),
+            MCP_APP_READ_TIMEOUT_MS,
+          );
+        }),
+        capturesAbandoned,
+      ])) as { contents?: unknown } | null;
+      app = await snapshotMcpApp({
+        server,
+        tool,
+        resourceUri,
+        contents: Array.isArray(read?.contents) ? read.contents : [],
+        keep: (html) => deps.keepMcpApp!(request.threadId, { html, server, tool }),
+      });
+    } catch (error) {
+      deps.log?.("codex could not read an MCP app", { server, resourceUri, error: String(error) });
+    } finally {
+      clearTimeout(timer);
+    }
+    emit({
+      kind: "tool.completed",
+      itemId: item.id,
+      ...outcome,
+      ...(app === undefined ? {} : { app }),
+    });
   };
 
   // --- Retries -------------------------------------------------------------------------
@@ -1361,9 +1440,14 @@ export function codexTurn(
       for (const input of steers.splice(0)) sendSteer(current, input);
       if (stopRequested) sendInterrupt(current);
       const outcome = await finished;
+      appsRead = outcome.error === undefined;
       keep = outcome.ended === true;
       if (outcome.error !== undefined) throw outcome.error;
     } finally {
+      // The apps its tool calls returned are read before the turn ends (D1401), so no call
+      // completes after it; a turn that failed gives up the reads still running.
+      if (!appsRead) abandonCaptures();
+      await Promise.allSettled(captures);
       // Subagents still working when Codex ended the turn go on in the background (T3 follows
       // a child past its parent's turn, D1318): their app-server's later frames are read.
       const open = [...subagents.entries()].filter(([, subagent]) => subagent.open);
@@ -1423,6 +1507,8 @@ export function codexTurn(
       if (interrupted) return;
       interrupted = true;
       stopRequested = true;
+      // An app's document still being read is not waited for (D1401).
+      abandonCaptures();
       // A Codex that takes the interrupt but never ends the turn: the turn ends anyway, and
       // its app-server with it, so the thread is free for its next turn.
       const grace = setTimeout(() => finish({}), INTERRUPT_GRACE_MS);

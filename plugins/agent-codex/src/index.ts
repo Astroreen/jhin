@@ -2,11 +2,13 @@
 // (https://github.com/pingdotgg/t3code), apps/server/src/provider/CodexProvider.ts at
 // eb7b35ac (probeCodexAppServerProvider, checkCodexProviderStatus): the account, the model
 // catalog and T3's messages for a Codex that does not start, is signed out or hangs.
+import * as Crypto from "node:crypto";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
+  McpAppRequestError,
   THREADS_STREAM,
   ThreadEvents,
   type AgentAuth,
@@ -52,6 +54,7 @@ import {
   type AppServerConnection,
 } from "./rpc.ts";
 import { materializeShadowHome } from "./accounts.ts";
+import { mcpAppToolCallableByApp } from "./mcp-apps.ts";
 import { FEEDBACK_COMMAND, GOAL_COMMAND } from "./goal.ts";
 import { createSessions, type Launcher, type Sessions } from "./session.ts";
 import {
@@ -462,6 +465,57 @@ export async function probeSkills(
   }
 }
 
+/** An MCP app's document, with the server and tool whose call returned it (D1401). */
+export interface AppDocument {
+  readonly html: string;
+  readonly server: string;
+  readonly tool: string;
+}
+
+/** The documents of MCP apps, kept per thread (D1401). */
+export interface AppDocuments {
+  keep(threadId: string, document: AppDocument): Promise<string>;
+  get(threadId: string, documentId: string): Promise<AppDocument | undefined>;
+  forget(threadId: string): Promise<void>;
+}
+
+/**
+ * MCP apps' documents in `storage.kv`, under `mcp-app/<thread>/<id>`. The id is the hash of
+ * the document with its server and tool: an app a thread's calls return again and again is
+ * kept once.
+ */
+export function appDocuments(kv: KeyValueStore): AppDocuments {
+  const prefix = (threadId: string) => `mcp-app/${threadId}/`;
+  return {
+    async keep(threadId, document) {
+      const documentId = Crypto.createHash("sha256")
+        .update(JSON.stringify([document.server, document.tool, document.html]))
+        .digest("hex");
+      const key = `${prefix(threadId)}${documentId}`;
+      if ((await kv.get(NAMESPACE, key)) === undefined)
+        await kv.set(NAMESPACE, key, { ...document });
+      return documentId;
+    },
+    async get(threadId, documentId) {
+      // An id names a document of this thread only.
+      if (!/^[0-9a-f]{64}$/.test(documentId)) return undefined;
+      const value = (await kv.get(NAMESPACE, `${prefix(threadId)}${documentId}`)) as
+        | Partial<AppDocument>
+        | undefined;
+      return typeof value?.html === "string" &&
+        typeof value.server === "string" &&
+        typeof value.tool === "string"
+        ? { html: value.html, server: value.server, tool: value.tool }
+        : undefined;
+    },
+    async forget(threadId) {
+      for (const entry of await kv.list(NAMESPACE, { prefix: prefix(threadId) })) {
+        await kv.delete(NAMESPACE, entry.key);
+      }
+    },
+  };
+}
+
 /** The Codex runtime; `launch` starts the real `codex app-server` unless a test replaces it. */
 export function createCodexRuntime(options: {
   readonly threads: ThreadStore;
@@ -469,6 +523,8 @@ export function createCodexRuntime(options: {
   /** Another account's runtime (D1319): its own id and name; Codex's when absent. */
   readonly agentId?: string;
   readonly name?: string;
+  /** Where the documents of MCP apps its tool calls return are kept (D1401). */
+  readonly appDocuments?: AppDocuments;
   readonly launch?: Launcher;
   /** The node's MCP server, given to each app-server unless the config's `mcp` is off (D889). */
   readonly mcp?: McpServer;
@@ -687,6 +743,29 @@ export function createCodexRuntime(options: {
     },
   };
 
+  /** The thread's running Codex, which an app's calls go to (T3 asks its provider session). */
+  const runningCodex = (threadId: string) => {
+    const running = sessions.running(threadId);
+    if (running?.codexThreadId === undefined) {
+      throw new McpAppRequestError(
+        "session-stopped",
+        "The thread's Codex is not running. Send a message first.",
+      );
+    }
+    return { connection: running.connection, codexThreadId: running.codexThreadId };
+  };
+  /**
+   * An app's call goes to the server of the app the thread showed (T3's McpAppRequests
+   * resolve), on its running Codex: never to a server a caller names.
+   */
+  const appCall = async (threadId: string, documentId: string) => {
+    const document = await options.appDocuments?.get(threadId, documentId);
+    if (document === undefined) {
+      throw new McpAppRequestError("not-an-app", "The thread showed no such MCP app.");
+    }
+    return { server: document.server, ...runningCodex(threadId) };
+  };
+
   /** The latest snapshot: the updates since the last probe, else the probe's. */
   const rateLimits = () => live()?.snapshot ?? current()?.rateLimits;
   /** The usage limits as Codex last reported them (D1142): the probe's, then its updates. */
@@ -778,6 +857,59 @@ export function createCodexRuntime(options: {
     status,
     usageLimits,
     auth,
+    // MCP apps (D1401, D1402): their documents, and their calls on the thread's running Codex.
+    ...(options.appDocuments === undefined
+      ? {}
+      : {
+          mcpApps: {
+            document: async ({ threadId, documentId }) =>
+              (await options.appDocuments!.get(threadId, documentId))?.html,
+            callTool: async ({ threadId, documentId, tool, arguments: args }) => {
+              const { connection, codexThreadId, server } = await appCall(threadId, documentId);
+              // The spec forbids an app calling a tool hidden from apps; checked here, as T3
+              // does, since the client's check is only a courtesy to its user.
+              const status = (await connection.request("mcpServerStatus/list", {
+                threadId: codexThreadId,
+                serverName: server,
+                detail: "toolsAndAuthOnly",
+              })) as { data?: { name?: unknown; tools?: Record<string, unknown> }[] } | null;
+              const listed = status?.data?.find((entry) => entry.name === server)?.tools ?? {};
+              const found = Object.values(listed).find(
+                (entry) => (entry as { name?: unknown } | null)?.name === tool,
+              ) as { _meta?: unknown } | undefined;
+              if (found === undefined || !mcpAppToolCallableByApp(found._meta)) {
+                throw new McpAppRequestError(
+                  "tool-not-callable",
+                  `The app may not call the tool ${tool} of ${server}.`,
+                );
+              }
+              const response = (await connection.request("mcpServer/tool/call", {
+                threadId: codexThreadId,
+                server,
+                tool,
+                arguments: args,
+              })) as Record<string, unknown> | null;
+              // T3's shape of the result: what the app reads.
+              return {
+                content: response?.["content"] ?? [],
+                ...(response?.["structuredContent"] === undefined
+                  ? {}
+                  : { structuredContent: response["structuredContent"] }),
+                ...(response?.["isError"] === true ? { isError: true } : {}),
+                ...(response?.["_meta"] === undefined ? {} : { _meta: response["_meta"] }),
+              };
+            },
+            readResource: async ({ threadId, documentId, uri }) => {
+              const { connection, codexThreadId, server } = await appCall(threadId, documentId);
+              const response = (await connection.request("mcpServer/resource/read", {
+                threadId: codexThreadId,
+                server,
+                uri,
+              })) as { contents?: unknown } | null;
+              return { contents: response?.contents ?? [] };
+            },
+          },
+        }),
     // T3's uploadFeedback (D1317): Codex reads the thread's rollout and its logs from its home,
     // so an app-server of its own sends them, as the status probe asks on one.
     async uploadFeedback({ threadId, reason }) {
@@ -832,6 +964,12 @@ export function createCodexRuntime(options: {
       const turn = codexTurn(request, {
         ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
         sessions,
+        ...(options.appDocuments === undefined
+          ? {}
+          : {
+              keepMcpApp: (threadId: string, document: AppDocument) =>
+                options.appDocuments!.keep(threadId, document),
+            }),
         threads: options.threads,
         settings: config,
         // A turn that names no model before Codex was asked for its own waits for that
@@ -961,9 +1099,11 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
       const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
       const registry = context.services.get<AgentRegistry>(AGENT_REGISTRY_CAPABILITY);
       const threads = threadRecords(kv);
+      const documents = appDocuments(kv);
       const mcp = context.services.tryGet<McpServer>(MCP_SERVER_CAPABILITY);
       const runtime = createCodexRuntime({
         threads,
+        appDocuments: documents,
         launch,
         ...(mcp === undefined ? {} : { mcp }),
         config: () => context.config.get<Config>(CONFIG_SECTION),
@@ -992,6 +1132,7 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
           const shadowHome = expandHome(account.homePath)!;
           const accountRuntime = createCodexRuntime({
             threads,
+            appDocuments: documents,
             agentId: `${CODEX_AGENT_ID}:${account.id}`,
             name: `Codex · ${account.name}`,
             // Its home is linked over the main one before each Codex of it starts.
@@ -1047,6 +1188,15 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
             // Every account's turns of the thread end first: none writes the record back.
             const threadId = payload.id;
             const settled = Promise.all(allRuntimes().map((each) => each.settled(threadId)));
+            // Its apps' documents go with it (D1401), after its turns: none keeps one later.
+            void settled
+              .then(() => documents.forget(threadId))
+              .catch((error: unknown) =>
+                context.log.warn("could not forget the thread's MCP apps", {
+                  threadId,
+                  error: String(error),
+                }),
+              );
             void threads
               .forget(
                 payload.id,
