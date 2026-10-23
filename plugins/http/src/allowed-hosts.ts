@@ -64,11 +64,18 @@ export function hostPolicy(options: {
   };
 }
 
-/** A browser sends one of these with every request that could reach a node by a rebound name. */
+/**
+ * Whether a request carries a browser's marks: `Origin`, `Sec-Fetch-Site`, or
+ * a `User-Agent` that starts with `Mozilla/`, as every browser's does. The
+ * last one counts because a page on plain `http:` gets no `Sec-Fetch-*`
+ * headers and sends no `Origin` with a same-origin GET.
+ */
 export function fromBrowser(headers: {
   readonly origin?: string | undefined;
   readonly [header: string]: string | string[] | undefined;
 }): boolean {
   // Not `Sec-Fetch-Mode`: Node's `fetch` sends it too, and Node is no browser.
-  return headers.origin !== undefined || headers["sec-fetch-site"] !== undefined;
+  if (headers.origin !== undefined || headers["sec-fetch-site"] !== undefined) return true;
+  const agent = headers["user-agent"];
+  return typeof agent === "string" && agent.startsWith("Mozilla/");
 }

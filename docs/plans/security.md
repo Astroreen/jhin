@@ -697,8 +697,9 @@ Connect stays out of scope.
 
 - **D1362. The node answers only to its own names: a `Host` allowlist for
   browsers.** `jhin.http` refuses, before any route or upgrade handler,
-  a request that carries a browser's marks (an `Origin` or a
-  `Sec-Fetch-Site` header; not `Sec-Fetch-Mode`, which Node's `fetch` sends
+  a request that carries a browser's marks (an `Origin`, a
+  `Sec-Fetch-Site` header, or a `User-Agent` starting with `Mozilla/`, as
+  every browser's does; not `Sec-Fetch-Mode`, which Node's `fetch` sends
   too) when the host it asked for
   (`requestedHost`, D418) is a name the node does not answer to: `403`
   with "Blocked request: this node does not answer to the host <host>. Add
@@ -725,10 +726,13 @@ Connect stays out of scope.
   (a config change reactivates it). Requests without a browser's marks (the CLI, nodes,
   MCP clients, `curl`) are not checked: they choose their `Host` freely
   anyway, so a check would only break a node reached by a name nobody
-  listed. Every browser in use sends `Sec-Fetch-Site` on every request
-  (Chromium 76, Firefox 90, Safari 16.4) and `Origin` on every `POST` and
-  WebSocket upgrade; an older browser's same-origin `GET` without either
-  reaches only what is public anyway (D1361). This is a change in
+  listed (a program that calls itself `Mozilla/` is checked, and its name
+  has to be listed). Browsers send `Sec-Fetch-Site` only to trustworthy
+  origins (HTTPS, loopback) and `Origin` on every `POST` and WebSocket
+  upgrade, but a page on plain `http:` makes same-origin `GET`s with
+  neither; its `User-Agent` marks it. Tailscale names are allowed for any
+  tailnet, not only the owner's: a page needs a tailnet name that
+  resolves to the node, which only the tailnet's own members can give it. This is a change in
   behaviour: a browser that opens the node by a name outside the list (a
   LAN name such as `nas.lan`, or a reverse proxy's public name passed on
   as `Host` or `X-Forwarded-Host`) is refused until the owner lists it;

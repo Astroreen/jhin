@@ -108,8 +108,18 @@ describe("the names a node answers to (security.md D1362)", () => {
     expect(refused.body).toBe(
       `Blocked request: this node does not answer to the host ${evil}. Add it to jhin.http.allowedHosts.`,
     );
-    // Sec-Fetch-Site marks a browser's GET without Origin.
+    // Sec-Fetch-Site marks a browser's GET without Origin,
     expect((await get(port, { host: evil, "sec-fetch-site": "same-origin" })).status).toBe(403);
+    // and a page on plain http: gets no Sec-Fetch-* and sends no Origin with a
+    // same-origin GET: its User-Agent still says it is a browser.
+    expect(
+      (
+        await get(port, {
+          host: evil,
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0",
+        })
+      ).status,
+    ).toBe(403);
     expect(await upgrade(port, { host: evil, origin: `http://${evil}` })).toBe(403);
 
     // Not a browser: the CLI, nodes and MCP clients choose their Host freely.
@@ -210,5 +220,8 @@ describe("the names a node answers to (security.md D1362)", () => {
     expect(fromBrowser({})).toBe(false);
     expect(fromBrowser({ "sec-fetch-mode": "cors" })).toBe(false);
     expect(fromBrowser({ "sec-fetch-site": "cross-site" })).toBe(true);
+    expect(fromBrowser({ "user-agent": "Mozilla/5.0 (Macintosh)" })).toBe(true);
+    expect(fromBrowser({ "user-agent": "claude-code/2.0" })).toBe(false);
+    expect(fromBrowser({ "user-agent": "node" })).toBe(false);
   });
 });
