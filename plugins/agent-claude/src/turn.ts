@@ -81,7 +81,23 @@ export interface SessionRecord {
   readonly sessionId: string;
   /** Absent in records older than rollbacks. */
   readonly turnId?: string;
+  /**
+   * The session's turns, each with the last entry Claude Code wrote for it, where a rollback
+   * resumes and a fork forks (providers.md D1314, D1315); absent in older records.
+   */
+  readonly turns?: readonly SessionTurn[];
+  /** The folder Claude Code ran the session in: a fork in another folder cannot find it. */
+  readonly cwd?: string;
 }
+
+/** A turn of a Claude session and the uuid of its last top-level entry. */
+interface SessionTurn {
+  readonly turnId: string;
+  readonly head: string;
+}
+
+/** The most turns a session record keeps (the oldest go first), as Codex's (D1147). */
+const MAX_RECORDED_TURNS = 500;
 
 /** Which threads already have a Claude session. */
 export interface SessionStore {
@@ -111,6 +127,14 @@ export interface ClaudeTurnDependencies {
   /** The skills a `$name` in the message can invoke (D301). */
   readonly skills?: () => Promise<ReadonlySet<string>>;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
+  /**
+   * The SDK's `forkSession`, which copies a session up to an entry into a new one (D1315);
+   * without it a fork's first turn starts a new session with the transcript.
+   */
+  readonly forkSession?: (
+    sessionId: string,
+    options: { upToMessageId: string; dir: string },
+  ) => Promise<{ sessionId: string }>;
   /** Takes each `rate_limit_event` the turn reads (D1302). */
   readonly rateLimit?: (info: SDKRateLimitInfo) => void;
   /** The node's MCP server for a Claude Code started for the thread (D340); none when unset. */
@@ -797,8 +821,27 @@ export function claudeTurn(
       ),
     ),
   ];
+  /** Where a rollback resumes the session: the last entry of the last turn it keeps (D1314). */
+  let resumeAt: string | undefined;
+  /** The session's turns before this one, kept in its record. */
+  let earlierTurns: readonly SessionTurn[] = [];
+  /** The last top-level entry of this turn, where a later rollback or fork may resume. */
+  let head: string | undefined;
+  const record = () => {
+    const turns = [
+      ...earlierTurns.filter((turn) => turn.turnId !== request.turnId),
+      ...(head === undefined ? [] : [{ turnId: request.turnId, head }]),
+    ].slice(-MAX_RECORDED_TURNS);
+    return {
+      sessionId,
+      turnId: request.turnId,
+      ...(turns.length === 0 ? {} : { turns }),
+      cwd: request.cwd,
+    };
+  };
   const options = (resume: boolean): Options => ({
     cwd: request.cwd,
+    ...(resume && resumeAt !== undefined ? { resumeSessionAt: resumeAt } : {}),
     ...(attachmentFolders.length === 0 ? {} : { additionalDirectories: attachmentFolders }),
     model,
     ...(resume ? { resume: sessionId } : { sessionId }),
@@ -923,14 +966,12 @@ export function claudeTurn(
           started = true;
           // A record that could not be written costs one retry on the next turn (D91),
           // never this turn.
-          await deps.sessions
-            .set(request.threadId, { sessionId, turnId: request.turnId })
-            .catch((error: unknown) =>
-              deps.log?.("could not record the claude session", {
-                threadId: request.threadId,
-                error: String(error),
-              }),
-            );
+          await deps.sessions.set(request.threadId, record()).catch((error: unknown) =>
+            deps.log?.("could not record the claude session", {
+              threadId: request.threadId,
+              error: String(error),
+            }),
+          );
           continue;
         }
         if (message.type === "result") {
@@ -945,6 +986,14 @@ export function claudeTurn(
         }
         if (message.type === "assistant" && !message.parent_tool_use_id) {
           limits.assistantRateLimited = message.error === "rate_limit";
+        }
+        // The turn's last entry of the session's own chain (a subagent's are not in it).
+        if (
+          (message.type === "assistant" || message.type === "user") &&
+          !message.parent_tool_use_id &&
+          typeof message.uuid === "string"
+        ) {
+          head = message.uuid;
         }
         project(message);
       }
@@ -978,6 +1027,69 @@ export function claudeTurn(
     void lease.interrupt().catch(() => lease.release(false));
   };
 
+  /**
+   * Whether the entries name every Claude turn the history shows from the first of them on:
+   * a turn without one (stopped or failed before it was recorded) would be dropped from the
+   * session by resuming at an earlier entry, so the transcript goes instead (D1314).
+   */
+  const coversClaudeTurns = (entries: readonly SessionTurn[], from?: number) => {
+    const named = new Set(entries.map((turn) => turn.turnId));
+    const claudeTurns = request.history.flatMap((event) => {
+      const payload = event.payload as { turnId?: unknown; agentId?: unknown } | null;
+      return event.type === ThreadEvents.turnStarted &&
+        payload?.agentId === CLAUDE_AGENT_ID &&
+        typeof payload.turnId === "string"
+        ? [payload.turnId]
+        : [];
+    });
+    const start = from ?? claudeTurns.findIndex((turnId) => named.has(turnId));
+    return start >= 0 && claudeTurns.slice(start).every((turnId) => named.has(turnId));
+  };
+
+  /**
+   * The fork's session, forked from its parent's at the last Claude turn the fork inherited
+   * (D1315); `undefined` when there is nothing to fork from or the fork fails.
+   */
+  const forkParent = async (visible: ReadonlySet<string>): Promise<SessionRecord | undefined> => {
+    const marker = request.history.findLast((event) => event.type === ThreadEvents.threadForked);
+    const parentId = (marker?.payload as { threadId?: unknown } | null)?.threadId;
+    if (typeof parentId !== "string") return undefined;
+    const parent = await deps.sessions.get(parentId);
+    const inherited = (parent?.turns ?? []).filter((turn) => visible.has(turn.turnId));
+    const last = inherited.at(-1);
+    // Claude Code keeps a session under its folder: one forked from another folder would not
+    // be found from the fork's.
+    if (parent === undefined || last === undefined || parent.cwd !== request.cwd) return undefined;
+    // A Claude turn the fork inherited without an entry would be lost from the copy.
+    if (!coversClaudeTurns(inherited, 0)) return undefined;
+    try {
+      const forked = await deps.forkSession!(parent.sessionId, {
+        upToMessageId: last.head,
+        dir: request.cwd,
+      });
+      const record = {
+        sessionId: forked.sessionId,
+        turnId: last.turnId,
+        turns: inherited,
+        cwd: request.cwd,
+      };
+      // Kept at once: a turn stopped before it starts leaves the fork, not a stray copy.
+      await deps.sessions.set(request.threadId, record).catch((error: unknown) =>
+        deps.log?.("could not record the forked claude session", {
+          threadId: request.threadId,
+          error: String(error),
+        }),
+      );
+      return record;
+    } catch (error) {
+      deps.log?.("claude could not fork the session, starting one", {
+        threadId: request.threadId,
+        error: String(error),
+      });
+      return undefined;
+    }
+  };
+
   /** The limits the turn ran into (D1303). */
   const limits = new TurnLimits();
 
@@ -988,28 +1100,53 @@ export function claudeTurn(
     if (/\p{Sc}/u.test(request.input.text)) {
       skills = (await deps.skills?.().catch(() => undefined)) ?? new Set();
     }
-    const record = await deps.sessions.get(request.threadId);
-    // The session holds a turn the thread no longer shows (a rollback dropped it): it
-    // cannot forget it, so the thread starts a new one with its transcript (D222).
-    const stale =
-      record?.turnId !== undefined &&
-      !request.history.some(
-        (event) =>
-          event.type === ThreadEvents.turnStarted &&
-          (event.payload as { turnId?: unknown } | null)?.turnId === record.turnId,
-      );
-    const hasSession = record !== undefined && !stale;
+    let kept = await deps.sessions.get(request.threadId);
+    /** The turns the thread still shows. */
+    const visible = new Set(
+      request.history.flatMap((event) => {
+        const id = (event.payload as { turnId?: unknown } | null)?.turnId;
+        return event.type === ThreadEvents.turnStarted && typeof id === "string" ? [id] : [];
+      }),
+    );
+    // A fork's first turn forks its parent's session at the last Claude turn the fork
+    // inherited (D1315), as T3's forkThread does.
+    if (kept === undefined && deps.forkSession !== undefined) {
+      kept = await forkParent(visible);
+      if (interrupted) return;
+    }
+    // The session holds a turn the thread no longer shows (a rollback dropped it).
+    const stale = kept?.turnId !== undefined && !visible.has(kept.turnId);
+    const keptTurns = (kept?.turns ?? []).filter((turn) => visible.has(turn.turnId));
+    // A record with the turns' entries resumes the session at the last turn it keeps
+    // (D1314, T3's rollbackThread); an older one, or nothing kept, starts a new session
+    // with the transcript (D222).
+    const rewound = stale && keptTurns.length > 0 && coversClaudeTurns(keptTurns);
+    const hasSession = kept !== undefined && (!stale || rewound);
     // Stopped before Claude Code started: it never starts, and its process stays.
     if (interrupted) return;
     if (stale) {
+      // The process kept for the thread runs the session as it was: it ends.
+      deps.live?.close(request.threadId);
+    }
+    if (rewound) {
+      deps.log?.("claude session holds dropped turns, resuming before them", {
+        threadId: request.threadId,
+      });
+      // The same session resumes: the process that ran it has exited first, so its last
+      // writes to the session file are not interleaved with the resumed one's.
+      await deps.live?.ended(request.threadId);
+      if (interrupted) return;
+      sessionId = kept!.sessionId;
+      resumeAt = keptTurns.at(-1)!.head;
+      earlierTurns = keptTurns;
+    } else if (stale) {
       deps.log?.("claude session holds dropped turns, starting a new one", {
         threadId: request.threadId,
       });
-      // The process kept for the thread runs the old session: it ends.
-      deps.live?.close(request.threadId);
       sessionId = randomUUID();
-    } else if (record !== undefined) {
-      sessionId = record.sessionId;
+    } else if (kept !== undefined) {
+      sessionId = kept.sessionId;
+      earlierTurns = keptTurns;
     }
     // A thread Claude has a session of may have gone on with another agent since.
     const preface = transcript(request.history, hasSession ? CLAUDE_AGENT_ID : undefined);
@@ -1023,6 +1160,9 @@ export function claudeTurn(
       // first turn stopped before it was recorded): try the other way once.
       deps.log?.("claude session mismatch, retrying", { threadId: request.threadId });
       if (error.resume) await deps.sessions.delete(request.threadId);
+      // Another session: what the record knew of its turns does not hold for it.
+      resumeAt = undefined;
+      earlierTurns = [];
       // A stop that came meanwhile ends the turn: no second query starts.
       if (interrupted) return;
       const retryText =
@@ -1030,6 +1170,15 @@ export function claudeTurn(
           ? `${transcript(request.history)}${messageText}`
           : messageText;
       result = await attempt(!error.resume, retryText);
+    }
+    // The turn's last entry, where a later rollback or fork resumes (D1314).
+    if (result !== undefined && head !== undefined) {
+      await deps.sessions.set(request.threadId, record()).catch((error: unknown) =>
+        deps.log?.("could not record the claude session", {
+          threadId: request.threadId,
+          error: String(error),
+        }),
+      );
     }
     if (interrupted) return;
     // Claude Code exited (or its stream closed) mid-turn without a result: not an answer.
