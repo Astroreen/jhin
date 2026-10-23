@@ -153,6 +153,7 @@ export function createLiveStreams(): LiveStreams {
       if (fixed !== undefined) fixedGuards.set(entry, fixed);
       return toDisposable(() => {
         if (guards.get(name) === entry) guards.delete(name);
+        fixedGuards.delete(entry);
       });
     },
     guardOf: (stream) => lookup(guards, stream)?.(stream),

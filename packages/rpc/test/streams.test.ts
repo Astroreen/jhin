@@ -384,3 +384,21 @@ describe("followed sources (rpc.streams@1.2, D500)", () => {
     expect(seen).toEqual([1]);
   });
 });
+
+describe("the permissions streams need (security.md D1371)", () => {
+  it("lists fixed ones of served and guarded streams, leaves functions out, and forgets disposed ones", () => {
+    const live = createLiveStreams();
+    const memory = createMemoryStreams({ firstSequence: 1 });
+    const served = live.serve("live/", memory, { permissions: ["app.read"] });
+    live.serve("dynamic/", memory, { permissions: () => ["app.read"] });
+    const guarded = live.guard("feed", ["app.watch"]);
+    live.guard("mirror/", () => ["app.read"]);
+    expect(live.permissions!()).toEqual([
+      { stream: "live/", permissions: ["app.read"] },
+      { stream: "feed", permissions: ["app.watch"] },
+    ]);
+    served.dispose();
+    guarded.dispose();
+    expect(live.permissions!()).toEqual([]);
+  });
+});

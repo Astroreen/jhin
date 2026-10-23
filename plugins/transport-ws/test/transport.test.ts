@@ -447,10 +447,19 @@ describe("device tokens (security.md D411–D414)", () => {
           context.subscriptions.add(live.guard("app/feed/", ["app.watch"]));
           context.subscriptions.add(live.guard("app/echoes", ["app.write"]));
           describePermissions(context, { "app.watch": { title: "Watch the feed" } });
-          // A hook may name streams, never offer a pattern.
+          // A hook may name streams, never offer a pattern or `*`; only non-empty names count.
           context.hooks.after<unknown, PermissionEntry[]>(PERMISSIONS_DESCRIBE_HOOK, (entries) => [
-            ...entries,
+            ...entries.map((entry) =>
+              entry.permission === "app.write"
+                ? ({
+                    ...entry,
+                    streams: [...(entry.streams ?? []), "app/echoes", "", 7],
+                  } as unknown as PermissionEntry)
+                : entry,
+            ),
             { permission: "app.*", commands: [], streams: ["app/feed/"] },
+            { permission: "*", commands: [], streams: ["app/feed/"] },
+            { permission: "", commands: [], streams: ["app/feed/"] },
           ]);
         },
       }),
@@ -474,6 +483,8 @@ describe("device tokens (security.md D411–D414)", () => {
       "auth/clients",
     ]);
     expect(permissions.map((entry) => entry.permission)).not.toContain("app.*");
+    expect(permissions.map((entry) => entry.permission)).not.toContain("*");
+    expect(permissions.map((entry) => entry.permission)).not.toContain("");
   });
 
   it("lists the permissions without titles when a description hook throws (D961)", async () => {

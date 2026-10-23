@@ -618,8 +618,11 @@ export default definePlugin({
               unknown
             >;
             if (typeof permission !== "string") continue;
+            // Names only, non-empty, and a bounded few: a hook offers names, nothing more.
             const named = Array.isArray(streams)
-              ? streams.filter((stream): stream is string => typeof stream === "string")
+              ? streams
+                  .filter((stream): stream is string => typeof stream === "string" && stream !== "")
+                  .slice(0, 100)
               : [];
             const plain = permission !== "*" && !permission.endsWith(".*") && isGrant(permission);
             if (named.length > 0 && plain) guarded.set(permission, named);
