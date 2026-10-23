@@ -78,6 +78,14 @@ interface SteerItem {
   readonly at: string;
 }
 
+/** The agent compacted its context in this turn (`agent.context.compacted`, D1271). */
+export interface CompactionItem {
+  readonly kind: "compaction";
+  readonly sequence: number;
+  readonly trigger?: "auto" | "manual";
+  readonly at: string;
+}
+
 /**
  * An event another plugin put into the thread (`preview.html.rendered`): it
  * stays where it came among the agent's output and is rendered through the
@@ -103,7 +111,8 @@ type TimelineItem =
   | RequestItem
   | PlanItem
   | ProposedPlanItem
-  | SteerItem;
+  | SteerItem
+  | CompactionItem;
 
 /** A message waiting in the thread's queue on its node (D201), as the stream announces it. */
 interface QueuedMessage {
@@ -204,6 +213,7 @@ interface Payload {
   readonly messageId?: string;
   readonly messages?: readonly QueuedMessage[];
   readonly held?: ThreadQueue["held"];
+  readonly trigger?: "auto" | "manual";
   /** The turns a rollback dropped. */
   readonly turnIds?: readonly string[];
   /** A fork's parent; the time of an event copied into a fork. */
@@ -367,6 +377,15 @@ export function createTimeline() {
             text: payload.input?.text ?? "",
             attachments: payload.input?.attachments ?? [],
             ...(payload.input?.context === undefined ? {} : { context: payload.input.context }),
+            at: event.at,
+          });
+          break;
+        }
+        case ThreadEvents.contextCompacted: {
+          put(turn, `compaction:${event.sequence}`, {
+            kind: "compaction",
+            sequence: event.sequence,
+            ...(payload.trigger === undefined ? {} : { trigger: payload.trigger }),
             at: event.at,
           });
           break;
@@ -581,6 +600,7 @@ export type TurnBlock =
   | { readonly kind: "plan"; readonly item: PlanItem }
   | { readonly kind: "proposed-plan"; readonly item: ProposedPlanItem }
   | { readonly kind: "steer"; readonly item: SteerItem }
+  | { readonly kind: "compaction"; readonly item: CompactionItem }
   | { readonly kind: "extension"; readonly item: ExtensionItem };
 
 /**
@@ -613,6 +633,9 @@ export function turnBlocks(turn: TimelineTurn): TurnBlock[] {
     } else if (item.kind === "steer") {
       flush();
       blocks.push({ kind: "steer", item });
+    } else if (item.kind === "compaction") {
+      flush();
+      blocks.push({ kind: "compaction", item });
     } else if (item.kind === "extension") {
       flush();
       blocks.push({ kind: "extension", item });

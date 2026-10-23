@@ -937,6 +937,12 @@ Decisions:
 - **D712. No UI of its own yet.** The orchestrator is a workflow, which
   W20 already shows in the lead's chat (phases per wave, its log of
   handoffs, its result); its Civilization-mode view waits (Deferred).
+- **D1271. The chat shows a compaction as a quiet row.** `createTimeline`
+  turns `agent.context.compacted` into a `compaction` item of its turn, in
+  the order of the stream, and the chat renders it as a separator reading
+  "Context compacted", with "automatic" or "manual" when the event names its
+  trigger (D709). It stays visible when a finished turn folds its work, as a
+  steered message does.
 
 ### A7. Health: ceremony against progress (D721–D740)
 
@@ -1932,7 +1938,7 @@ Decisions (L2):
 - A6: refocusing threads of other nodes linked to a slice; only this node's
   threads are followed (D710).
 - A6: a refocus interval in minutes for long turns (D711 counts turns).
-- A6: a row in the chat for `agent.context.compacted` (D709).
+- ~~A6: a row in the chat for `agent.context.compacted` (D709).~~ A6, D1271.
 - ~~A6: the orchestrator in Civilization mode, beside A3's mission view (D712).~~
   C2, D1086–D1090.
 - C2: a real pause in W10 (a run that stops between steps and continues
