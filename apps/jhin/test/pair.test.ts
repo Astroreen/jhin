@@ -17,6 +17,8 @@ import {
   pairingNotes,
   parsePairFlags,
   reachableBaseUrl,
+  shellAccessNotes,
+  shellAccessUnknown,
 } from "../src/pair.ts";
 import { seedToken } from "./support/token.ts";
 
@@ -127,6 +129,8 @@ describe("jhin pair against a running node", () => {
     const expires = Date.parse(/^Expires: (\S+)$/m.exec(output.stdout)![1]!);
     expect(expires).toBeGreaterThan(Date.now() + 9 * 60_000);
     expect(output.stdout).toContain("Note: This URL is only reachable from this machine.");
+    // Its grants hold no shell access (D1364).
+    expect(output.stdout).not.toContain("shell access");
   });
 
   it("gives a code that pairs once, with the grants asked for", async () => {
@@ -149,6 +153,10 @@ describe("jhin pair against a running node", () => {
       label: "jhin pair",
       permissions: ["*"],
       url: expect.stringMatching(/\/pair#token=/),
+      // Every grant covers the terminal's (security.md D1364).
+      notes: expect.arrayContaining([
+        "This link grants shell access (terminals.write): the device can run commands on this machine as the node's user. Narrow it with --permission.",
+      ]),
     });
   });
 
@@ -270,6 +278,30 @@ describe("finding the running node (security.md D1184)", () => {
     expect(localUrl("http://0.0.0.0:7777")).toBe("http://127.0.0.1:7777");
     expect(localUrl("http://[::]:7777")).toBe("http://127.0.0.1:7777");
     expect(localUrl("http://100.64.0.5:7777")).toBe("http://100.64.0.5:7777");
+  });
+});
+
+describe("the shell access note (security.md D1364)", () => {
+  it("names the permissions with shell access the grants cover", () => {
+    const entries = [
+      { permission: "terminals.write", shellAccess: true },
+      { permission: "terminals.read" },
+      { permission: "runner.exec", shellAccess: true },
+    ];
+    expect(shellAccessNotes(["threads.read", "terminals.read"], entries)).toEqual([]);
+    expect(shellAccessNotes(["terminals.*"], entries)).toEqual([
+      "This link grants shell access (terminals.write): the device can run commands on this machine as the node's user. Narrow it with --permission.",
+    ]);
+    expect(shellAccessNotes(["*"], entries)[0]).toContain("(terminals.write, runner.exec)");
+  });
+
+  it("says so when it could not check, never staying silent", () => {
+    expect(
+      shellAccessUnknown(Object.assign(new Error("denied"), { code: "PERMISSION_DENIED" })),
+    ).toContain("cannot tell whether the link grants shell access");
+    expect(shellAccessUnknown(new Error("socket closed"))).toBe(
+      "Could not check whether this link grants shell access: socket closed",
+    );
   });
 });
 

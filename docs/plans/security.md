@@ -749,6 +749,42 @@ Connect stays out of scope.
   proxy). A header from any other peer no longer counts. Without 1.3 only
   a TLS socket does.
 
+- **D1364. Shell access is named wherever it is granted.** `terminals.write`
+  runs input in a shell as the node's OS user (terminal.md D140), so
+  holding it is holding the machine as that user; it stays one permission
+  (a narrower "run only these commands" grant is not a shell). What
+  changes is that nobody grants it unknowingly. A permission's
+  description (D961) may say `shellAccess: true`
+  (`PermissionDescription`, `@jhin/sdk`, additive); `jhin.terminal` says
+  it of `terminals.write`, and `auth.permissions.list` returns it. Where a
+  grant is chosen, a permission with shell access says so in the words
+  "Shell access: runs commands on this machine as the node's user.": the
+  pairing dialog (D424) under its title, and the MCP approval page (D1193)
+  in its list item. `jhin pair` adds the note "This link grants shell
+  access (terminals.write): the device can run commands on this machine as
+  the node's user. Narrow it with --permission." when the code's grants
+  cover one. The defaults stay: a code still defaults to its creator's
+  grants (D419), so pairing one's own device keeps its terminals, and an
+  MCP client asking for no scope still gets `AGENT_PERMISSIONS`, which has
+  no shell access.
+- **D1365. A connection holds at most 32 MiB of waiting events.** D470
+  bounds each windowed subscription at 16 MiB; a connection now also
+  bounds the sum over its windowed subscriptions (the events waiting
+  beyond their windows, and those buffered while a backlog is read) at
+  `MAX_CONNECTION_WAITING_CHARACTERS`, 32 MiB of JSON. The subscription
+  whose event takes the sum past it ends as D470's do
+  (`rpc.subscription.ended`, `SUBSCRIPTION_OVERFLOW`), or its
+  `rpc.subscribe` fails with that code while its backlog is read, and its
+  waiting events are freed; the client reads a snapshot again. So one
+  connection opening many subscriptions it never acknowledges holds at
+  most 32 MiB instead of 16 MiB each (characters of JSON, as D470 counts:
+  up to about twice as many bytes). The subscription that crosses the
+  bound ends, not the one holding the most: a small new one (a terminal)
+  may end while an old one keeps its share, a choice kept for its
+  simplicity (the client reads a snapshot again either way).
+  Subscriptions without a window are unchanged (the socket's own buffer
+  holds them, as before D470).
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -844,6 +880,13 @@ A slice a PR, in the order of D1361's risks:
   tells it (a TLS socket, a forwarded `https` from a trusted or loopback
   peer, never from another one, and only TLS without `requestOrigin`).
 
+- **PR 6b — shell access and connection bounds** (D1364, D1365).
+  **Done when:** `auth.permissions.list` marks `terminals.write`, the
+  pairing dialog and the approval page say "Shell access", `jhin pair`
+  notes it for a code that grants it, and a test opening many windowed
+  subscriptions on one connection ends the one that takes it past 32 MiB
+  while the others go on.
+
 ## Deferred
 
 - A secret whose real value starts with the marker and `#`
@@ -919,6 +962,11 @@ A slice a PR, in the order of D1361's risks:
   permission no command needs is not offered (the token plugin cannot
   depend on `rpc.streams`: the transport that provides it depends on
   `auth.verifier`, D1188).
+- Shell access (D1364) marks `terminals.write` only. Other permissions
+  that end in commands run as the node's user are not marked yet:
+  `projects.write` with project scripts needs `terminals.write` already,
+  but `threads.write` (an agent in full access runs commands),
+  `git.write` (hooks) and `editors.open` are not described as such.
 - An unreadable `clients.json` is moved aside to `clients.json.corrupt` and
   no device token works until new ones are issued; nothing repairs it.
 - `lastSeenAt` is kept in memory and written with the next change of

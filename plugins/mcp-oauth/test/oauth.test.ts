@@ -4,7 +4,7 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import { AGENT_PERMISSIONS } from "@jhin/mcp-api";
-import { definePlugin, z } from "@jhin/sdk";
+import { definePlugin, describePermissions, z } from "@jhin/sdk";
 import { createTestKernel, mockCapability, testManifest, type TestKernel } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
@@ -44,6 +44,18 @@ const threads = {
         output: z.object({}),
         permissions: ["threads.read"],
         handler: () => ({}),
+      });
+      // A permission with shell access (security.md D1364).
+      context.commands.register({
+        name: "app.shell.run",
+        description: "Runs a command",
+        input: z.object({}),
+        output: z.object({}),
+        permissions: ["app.shell.run"],
+        handler: () => ({}),
+      });
+      describePermissions(context, {
+        "app.shell.run": { title: "Run commands", shellAccess: true },
       });
     },
   }),
@@ -333,6 +345,19 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     });
     expect(after.status).toBe(401);
     expect(token).not.toBe(issued.access_token);
+  });
+
+  it("says a pattern that covers shell access grants it (security.md D1364)", async () => {
+    const { base } = await startNode();
+    const { client_id: clientId } = (await (await register(base)).json()) as {
+      client_id: string;
+    };
+    const page = async (scope: string) =>
+      (await fetch(authorizeUrl(base, clientId, { scope }))).text();
+    const shellLine = "Shell access: runs commands on this machine as the node's user.";
+    expect(await page("app.shell.*")).toContain(shellLine);
+    expect(await page("app.shell.run")).toContain(shellLine);
+    expect(await page("threads.read")).not.toContain(shellLine);
   });
 
   it("never lets a session approve more than it holds, nor without auth.write", async () => {

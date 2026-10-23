@@ -63,6 +63,11 @@ export function intersectPermissions(a: readonly string[], b: readonly string[])
 export interface PermissionDescription {
   readonly title: string;
   readonly description?: string;
+  /**
+   * Holding it runs commands on the node's machine as the node's user
+   * (security.md D1364), so the UI says so wherever it is granted.
+   */
+  readonly shellAccess?: boolean;
 }
 
 /** An entry of `auth.permissions.list`. */

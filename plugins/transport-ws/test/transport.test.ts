@@ -386,6 +386,52 @@ describe("device tokens (security.md D411–D414)", () => {
     ]);
   });
 
+  it("marks a permission with shell access, and nothing else (security.md D1364)", async () => {
+    const shell = {
+      manifest: testManifest("app.shell"),
+      definition: definePlugin({
+        activate(context) {
+          for (const name of ["app.shell", "app.maybe"]) {
+            context.commands.register({
+              name,
+              description: "A test command",
+              input: z.object({}),
+              output: z.object({}),
+              permissions: [name],
+              handler: () => ({}),
+            });
+          }
+          describePermissions(context, {
+            "app.shell": { title: "Run things", shellAccess: true },
+          });
+          // Only `true` counts: anything else a hook answers is dropped.
+          context.hooks.after<unknown, PermissionEntry[]>(PERMISSIONS_DESCRIBE_HOOK, (entries) =>
+            entries.map((entry) =>
+              entry.permission === "app.maybe"
+                ? ({ ...entry, title: "Maybe", shellAccess: "yes" } as unknown as PermissionEntry)
+                : entry,
+            ),
+          );
+        },
+      }),
+    };
+    const node = await startNode({ plugins: [shell] });
+    const { permissions } = (await node.kernel.commands.execute("auth.permissions.list", {})) as {
+      permissions: PermissionEntry[];
+    };
+    expect(permissions).toContainEqual({
+      permission: "app.shell",
+      commands: ["app.shell"],
+      title: "Run things",
+      shellAccess: true,
+    });
+    expect(permissions).toContainEqual({
+      permission: "app.maybe",
+      commands: ["app.maybe"],
+      title: "Maybe",
+    });
+  });
+
   it("lists the permissions without titles when a description hook throws (D961)", async () => {
     const broken = {
       manifest: testManifest("app.broken"),

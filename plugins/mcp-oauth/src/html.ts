@@ -22,6 +22,7 @@ const STYLES = `
   li { padding: 8px 12px; border-top: 1px solid #d9dce3; font-size: 13px; }
   li:first-child { border-top: 0; }
   li span { display: block; color: #4b5060; font-size: 12px; }
+  li .shell { display: block; color: #b42318; font-size: 12px; font-weight: 600; }
   code { font-size: 11px; color: #4b5060; }
   label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
   input[type=text] { box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #c4c8d2; border-radius: 6px; font: inherit; margin-bottom: 6px; }
@@ -32,6 +33,7 @@ const STYLES = `
   @media (prefers-color-scheme: dark) {
     body { background: #0f1115; color: #e6e8ee; }
     p, li span, code { color: #a0a6b4; }
+    li .shell { color: #ff8787; }
     ul, li { border-color: #2a2e38; }
     input[type=text] { background: #171a21; border-color: #2a2e38; color: inherit; }
   }
@@ -87,7 +89,13 @@ export interface ApprovalPage {
     readonly permission: string;
     readonly title?: string;
     readonly description?: string;
+    readonly shellAccess?: boolean;
   }[];
+  /**
+   * The node could not describe the permissions (D1364): the page says it
+   * cannot tell which of them run commands, rather than showing none.
+   */
+  readonly permissionsUnknown?: boolean;
   /** Set when the page's session may approve: its anti-forgery value. */
   readonly csrf?: string;
   /** Why the session cannot approve, when it has one. */
@@ -111,6 +119,11 @@ export function renderApprovalPage(page: ApprovalPage): string {
       (entry) =>
         `<li>${escapeHtml(entry.title ?? entry.permission)}${
           entry.description === undefined ? "" : `<span>${escapeHtml(entry.description)}</span>`
+        }${
+          // security.md D1364: whoever holds it holds the machine as the node's user.
+          entry.shellAccess === true
+            ? `<strong class="shell">Shell access: runs commands on this machine as the node's user.</strong>`
+            : ""
         }${entry.title === undefined ? "" : `<code>${escapeHtml(entry.permission)}</code>`}</li>`,
     )
     .join("");
@@ -157,7 +170,11 @@ export function renderApprovalPage(page: ApprovalPage): string {
     `<p class="eyebrow">Agent sign-in</p>
     <h1>Connect ${escapeHtml(page.clientName)}</h1>
     <p>This agent wants to use <strong>${escapeHtml(page.nodeHost)}</strong> with these permissions:</p>
-    <ul aria-label="Permissions asked for">${permissions}</ul>
+    <ul aria-label="Permissions asked for">${permissions}</ul>${
+      page.permissionsUnknown === true
+        ? `\n    <p role="alert">This node could not describe these permissions, so it cannot tell which of them run commands on this machine. Approve only what you would give shell access.</p>`
+        : ""
+    }
     <p class="note">${note}</p>
     ${decide}`,
     page.nonce,

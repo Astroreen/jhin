@@ -169,6 +169,7 @@ export default definePlugin({
       "terminals.write": {
         title: "Use terminals",
         description: "Create terminals and send input to running shells.",
+        shellAccess: true,
       },
     });
     context.commands.register({

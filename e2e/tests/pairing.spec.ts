@@ -59,6 +59,13 @@ test("pairs a second browser by its pairing link, keeps tokens away from scripts
     "View terminals Read existing terminal output and status. terminals.read",
   );
   await page.screenshot({ path: info.outputPath("pairing-permissions.png") });
+  // A permission with shell access says so where it is granted (security.md D1364).
+  const shell = dialog.getByRole("checkbox", { name: /^Use terminals/ });
+  await expect(shell).toHaveAccessibleName(
+    "Use terminals Create terminals and send input to running shells. Shell access: runs commands on this machine as the node's user. terminals.write",
+  );
+  await shell.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("pairing-shell-access.png") });
   await dialog.getByRole("button", { name: "Create link" }).click();
   await expect(
     dialog.getByRole("heading", { name: "Pairing link — scan to open on another device" }),

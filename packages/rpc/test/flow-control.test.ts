@@ -14,7 +14,7 @@ import {
   type Peer,
   type RpcError,
 } from "../src/index.ts";
-import { MAX_WAITING_CHARACTERS } from "../src/server.ts";
+import { MAX_CONNECTION_WAITING_CHARACTERS, MAX_WAITING_CHARACTERS } from "../src/server.ts";
 
 /** A node serving `live/` from memory, and the raw client end of one connection. */
 function rawConnection() {
@@ -268,5 +268,100 @@ describe("flow control (D470)", () => {
     await arrived(5);
     expect(seen).toEqual([1, 2, 3, 4, 5]);
     client.close();
+  });
+});
+
+describe("a connection's bound on waiting events (security.md D1365)", () => {
+  const ended = (messages: ReturnType<typeof rawConnection>["messages"]) =>
+    messages
+      .filter((message) => message.method === RPC_SUBSCRIPTION_ENDED)
+      .map((message) => (message.params as unknown as { subscription: string }).subscription);
+
+  it("ends the subscription that takes the connection past its bound, and lets the rest go on", async () => {
+    const { memory, request, notify, events, messages } = rawConnection();
+    // Each holds less than its own bound; together they pass the connection's.
+    const piece = "z".repeat(MAX_CONNECTION_WAITING_CHARACTERS / 4 - 1024);
+    for (const name of ["a", "b", "c", "d", "e"]) {
+      await request("rpc.subscribe", {
+        subscription: name,
+        stream: `live/${name}`,
+        window: { events: 1, bytes: 1024 },
+      });
+      memory.append(`live/${name}`, "app.n", "first");
+      memory.append(`live/${name}`, "app.n", piece);
+    }
+    await request("rpc.hello", {});
+    expect(piece.length).toBeLessThan(MAX_WAITING_CHARACTERS);
+    expect(ended(messages)).toEqual(["e"]);
+
+    // The others still flow: a's piece goes once its first event is acknowledged.
+    const first = events().find((event) => event.stream === "live/a")!;
+    notify(RPC_ACK, { subscription: "a", sequence: first.sequence });
+    await request("rpc.hello", {});
+    expect(events().filter((event) => event.stream === "live/a")).toHaveLength(2);
+    // The ended one gave its share back: another piece fits beside b, c and d
+    // (it would not if e's were still counted).
+    await request("rpc.subscribe", {
+      subscription: "f",
+      stream: "live/f",
+      window: { events: 1, bytes: 1024 },
+    });
+    memory.append("live/f", "app.n", "first");
+    memory.append("live/f", "app.n", piece);
+    await request("rpc.hello", {});
+    expect(ended(messages)).toEqual(["e"]);
+  });
+
+  it("frees an unsubscribed subscription's waiting events", async () => {
+    const { memory, request, messages } = rawConnection();
+    // Two of these fit with a third of the bound to spare; four would not.
+    const piece = "z".repeat(Math.floor(MAX_CONNECTION_WAITING_CHARACTERS / 3));
+    expect(piece.length).toBeLessThan(MAX_WAITING_CHARACTERS);
+    for (const round of [1, 2, 3]) {
+      for (const name of ["a", "b"]) {
+        const id = `${name}${round}`;
+        await request("rpc.subscribe", {
+          subscription: id,
+          stream: `live/${id}`,
+          window: { events: 1, bytes: 1024 },
+        });
+        memory.append(`live/${id}`, "app.n", "first");
+        memory.append(`live/${id}`, "app.n", piece);
+      }
+      await request("rpc.unsubscribe", { subscription: `a${round}` });
+      await request("rpc.unsubscribe", { subscription: `b${round}` });
+    }
+    await request("rpc.hello", {});
+    expect(ended(messages)).toEqual([]);
+  });
+
+  it("fails a subscription whose backlog would take the connection past its bound", async () => {
+    const { memory, request, messages } = rawConnection();
+    const piece = "z".repeat(MAX_WAITING_CHARACTERS - 1024);
+    await request("rpc.subscribe", {
+      subscription: "a",
+      stream: "live/a",
+      window: { events: 1, bytes: 1024 },
+    });
+    memory.append("live/a", "app.n", "first");
+    memory.append("live/a", "app.n", piece);
+    await request("rpc.subscribe", {
+      subscription: "b",
+      stream: "live/b",
+      window: { events: 1, bytes: 1024 },
+    });
+    memory.append("live/b", "app.n", "first");
+    memory.append("live/b", "app.n", piece);
+    for (const n of [1, 2]) memory.append("live/c", "app.n", `${n}${piece}`);
+    await request("rpc.subscribe", {
+      subscription: "c",
+      stream: "live/c",
+      window: { events: 1, bytes: 1024 },
+    });
+    const reply = messages.findLast((message) => message.id !== undefined) as {
+      error?: { data?: { code?: string } };
+    };
+    expect(reply.error?.data?.code).toBe("SUBSCRIPTION_OVERFLOW");
+    expect(ended(messages)).toEqual([]);
   });
 });

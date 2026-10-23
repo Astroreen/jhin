@@ -6,6 +6,7 @@ import * as Path from "node:path";
 
 import { resolveHome } from "@jhin/node-host";
 import { renderTerminalQrCode } from "@jhin/qr-code";
+import { holdsPermission, type PermissionEntry } from "@jhin/sdk";
 
 import type { Args } from "./args.ts";
 
@@ -165,6 +166,31 @@ export function pairingNotes(pairingUrl: string): string[] {
     ];
   }
   return [];
+}
+
+/**
+ * A note when the code's grants cover a permission with shell access
+ * (security.md D1364), as `auth.permissions.list` marks them.
+ */
+export function shellAccessNotes(
+  granted: readonly string[],
+  entries: readonly Pick<PermissionEntry, "permission" | "shellAccess">[],
+): string[] {
+  const shell = entries
+    .filter((entry) => entry.shellAccess === true && holdsPermission(granted, entry.permission))
+    .map((entry) => entry.permission);
+  if (shell.length === 0) return [];
+  return [
+    `This link grants shell access (${shell.join(", ")}): the device can run commands on this machine as the node's user. Narrow it with --permission.`,
+  ];
+}
+
+/** What `jhin pair` says when it could not tell whether a link grants shell access (D1364). */
+export function shellAccessUnknown(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === "PERMISSION_DENIED"
+    ? "This token cannot read the node's permissions (auth.read), so it cannot tell whether the link grants shell access (terminals.write). Pass --permission to be sure."
+    : `Could not check whether this link grants shell access: ${error instanceof Error ? error.message : String(error)}`;
 }
 
 /** T3's `formatPairOutput`, with Jhin's `Code:` for T3's `Token:`. */

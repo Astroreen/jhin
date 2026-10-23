@@ -199,11 +199,20 @@ export default definePlugin({
     const titles = async () => {
       try {
         const { permissions } = (await context.commands.execute("auth.permissions.list", {})) as {
-          permissions: { permission: string; title?: string; description?: string }[];
+          permissions: {
+            permission: string;
+            title?: string;
+            description?: string;
+            shellAccess?: boolean;
+          }[];
         };
         return new Map(permissions.map((entry) => [entry.permission, entry]));
-      } catch {
-        return new Map<string, { permission: string; title?: string; description?: string }>();
+      } catch (error) {
+        // The page then says it could not tell which permissions run commands (D1364).
+        context.log.warn("could not read the permissions for the approval page", {
+          error: String(error),
+        });
+        return undefined;
       }
     };
 
@@ -280,7 +289,8 @@ export default definePlugin({
       }
       const authorization = validated.request;
       const approver = await approverOf(request, authorization);
-      const known = await titles();
+      const described = await titles();
+      const known = described ?? new Map<string, { permission: string; shellAccess?: boolean }>();
       const nonce = Crypto.randomBytes(16).toString("base64url");
       const kept = Object.fromEntries(
         AUTHORIZE_PARAMS.flatMap((name) =>
@@ -293,9 +303,16 @@ export default definePlugin({
           redirectHost: new URL(authorization.redirectUri).host,
           nodeHost: new URL(urls.issuer).host,
           params: kept,
-          permissions: authorization.scopes.map(
-            (scope) => known.get(scope) ?? { permission: scope },
-          ),
+          ...(described === undefined ? { permissionsUnknown: true } : {}),
+          permissions: authorization.scopes.map((scope) => {
+            const entry = known.get(scope) ?? { permission: scope };
+            // A pattern (`terminals.*`) grants shell access when it covers a permission
+            // that has it (security.md D1364).
+            const shell = [...known.values()].some(
+              (other) => other.shellAccess === true && holdsPermission([scope], other.permission),
+            );
+            return shell ? { ...entry, shellAccess: true } : entry;
+          }),
           ...(approver.kind === "ok" ? { csrf: oauth.csrf(approver.session, authorization) } : {}),
           ...(approver.kind === "short"
             ? {
