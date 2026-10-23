@@ -713,6 +713,83 @@ function activateScheduler(context: PluginContext): void {
     };
   };
 
+  // --- The calling thread's ceiling (D1352) -----------------------------------
+
+  type RuntimeModeName = NonNullable<CreateTaskInput["runtimeMode"]>;
+  type InteractionModeName = NonNullable<CreateTaskInput["interactionMode"]>;
+  /** T3's ranks; a mode left out runs at the node's default, the broadest. */
+  const RUNTIME_RANK: Record<RuntimeModeName, number> = {
+    "approval-required": 0,
+    "auto-accept-edits": 1,
+    "full-access": 2,
+  };
+  const INTERACTION_RANK: Record<InteractionModeName, number> = { plan: 0, default: 1 };
+  interface Modes {
+    readonly runtimeMode?: RuntimeModeName | undefined;
+    readonly interactionMode?: InteractionModeName | undefined;
+  }
+  const runtimeRank = (mode: RuntimeModeName | undefined) =>
+    mode === undefined ? RUNTIME_RANK["full-access"] : RUNTIME_RANK[mode];
+  const interactionRank = (mode: InteractionModeName | undefined) =>
+    mode === undefined ? INTERACTION_RANK.default : INTERACTION_RANK[mode];
+
+  /** The modes of the thread an agent calls from: no task of its may run broader. */
+  const callerLimits = async (callerThreadId: string | undefined): Promise<Modes | undefined> =>
+    callerThreadId === undefined ? undefined : await callingThread(callerThreadId);
+
+  /** What a task's runs execute at: its own modes, and its bound thread's (T3's run modes). */
+  const runModes = async (task: Modes & { readonly threadId: string | null }) => {
+    const modes: Modes[] = [task];
+    if (task.threadId !== null) {
+      const bound = await callingThread(task.threadId).catch(() => undefined);
+      if (bound !== undefined) modes.push(bound);
+    }
+    return modes;
+  };
+
+  /**
+   * Refuses modes broader than the calling thread's, as T3's `resolveRuntimeMode` and
+   * `resolveInteractionMode` do for its MCP caller's limits.
+   */
+  const assertWithin = (limits: Modes | undefined, modes: readonly Modes[]) => {
+    if (limits === undefined) return;
+    for (const mode of modes) {
+      if (runtimeRank(mode.runtimeMode) > runtimeRank(limits.runtimeMode)) {
+        const requested = mode.runtimeMode ?? "full-access";
+        const limit = limits.runtimeMode ?? "full-access";
+        throw new SchedulerError(
+          "RUNTIME_MODE_ESCALATION_DENIED",
+          `Scheduled task runtime mode ${requested} is broader than this thread's mode ${limit}.`,
+          { requested, limit },
+        );
+      }
+      if (interactionRank(mode.interactionMode) > interactionRank(limits.interactionMode)) {
+        const requested = mode.interactionMode ?? "default";
+        const limit = limits.interactionMode ?? "default";
+        throw new SchedulerError(
+          "INTERACTION_MODE_ESCALATION_DENIED",
+          `Scheduled task interaction mode ${requested} is broader than this thread's mode ${limit}.`,
+          { requested, limit },
+        );
+      }
+    }
+  };
+  const within = (limits: Modes | undefined, modes: readonly Modes[]) => {
+    try {
+      assertWithin(limits, modes);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** A task the calling thread may change, run or delete: one that runs no broader than it. */
+  const taskWithin = async (id: string, callerThreadId: string | undefined) => {
+    const limits = await callerLimits(callerThreadId);
+    if (limits === undefined) return;
+    assertWithin(limits, await runModes(await getTask(id)));
+  };
+
   const threadProject = async (threadId: string): Promise<string> => {
     const { thread } = await execute<{ thread: { projectId: string } }>("threads.get", {
       threadId,
@@ -744,6 +821,8 @@ function activateScheduler(context: PluginContext): void {
   ): Promise<ScheduledTask> => {
     const bound = await bindToCaller(CreateTaskInput.parse(raw), raw, callerThreadId);
     const input = { ...bound, threadId: bound.threadId ?? null };
+    // From a thread, no wider than that thread runs (D1352).
+    assertWithin(await callerLimits(callerThreadId), await runModes(input));
     // A retried create names the task it made: its id comes from the caller
     // and the request's id, so another caller's id never finds it.
     const id =
@@ -817,6 +896,21 @@ function activateScheduler(context: PluginContext): void {
     callerThreadId?: string,
   ): Promise<ScheduledTask> => {
     let parsed = UpdateTaskInput.parse(raw);
+    // From a thread: only a task no broader than it, into modes no broader (D1352).
+    const limits = await callerLimits(callerThreadId);
+    if (limits !== undefined) {
+      const existing = await getTask(parsed.id);
+      assertWithin(limits, await runModes(existing));
+      assertWithin(limits, [
+        {
+          runtimeMode: parsed.runtimeMode ?? existing.runtimeMode,
+          interactionMode: parsed.interactionMode ?? existing.interactionMode,
+        },
+      ]);
+      if (typeof parsed.threadId === "string") {
+        assertWithin(limits, [await callingThread(parsed.threadId)]);
+      }
+    }
     // Moved into the calling thread, or out of any, with T3's workspace (D1177).
     if (parsed.bindToCurrentThread !== undefined) {
       if (parsed.threadId !== undefined) {
@@ -1355,14 +1449,22 @@ function activateScheduler(context: PluginContext): void {
     handler: async ({ projectId }, invocation) => {
       const head = await log.head(SCHEDULER_STREAM);
       const withToken = mayWrite(invocation);
-      return {
-        tasks: (await list(projectId)).map((task) =>
-          withToken || task.webhook === undefined
+      // Its URL starts runs: a thread sees it only for tasks no broader than it (D1352).
+      const limits = await callerLimits(invocation.threadId);
+      const tasks: ScheduledTask[] = [];
+      for (const task of await list(projectId)) {
+        const shown =
+          withToken &&
+          (limits === undefined ||
+            task.webhook === undefined ||
+            within(limits, await runModes(task)));
+        tasks.push(
+          shown || task.webhook === undefined
             ? task
             : { ...task, webhook: { ...task.webhook, path: null, url: null } },
-        ),
-        head,
-      };
+        );
+      }
+      return { tasks, head };
     },
   });
 
@@ -1372,7 +1474,14 @@ function activateScheduler(context: PluginContext): void {
     input: withId,
     output: ScheduledTask,
     permissions: read,
-    handler: async ({ id }, invocation) => toPublic(await getTask(id), mayWrite(invocation)),
+    handler: async ({ id }, invocation) => {
+      const task = await getTask(id);
+      const limits = await callerLimits(invocation.threadId);
+      return toPublic(
+        task,
+        mayWrite(invocation) && (limits === undefined || within(limits, await runModes(task))),
+      );
+    },
   });
 
   context.commands.register({
@@ -1405,7 +1514,10 @@ function activateScheduler(context: PluginContext): void {
     input: withId,
     output: z.object({ id: z.string(), deleted: z.boolean() }),
     permissions: ["scheduler.write"],
-    handler: async ({ id }) => ({ id, deleted: await removeTask(id) }),
+    handler: async ({ id }, invocation) => {
+      await taskWithin(id, invocation.threadId);
+      return { id, deleted: await removeTask(id) };
+    },
   });
 
   context.commands.register({
@@ -1416,7 +1528,10 @@ function activateScheduler(context: PluginContext): void {
     input: withId,
     output: z.object({ task: ScheduledTask, threadId: z.string().nullable() }),
     permissions: write,
-    handler: ({ id }) => runNow(id),
+    handler: async ({ id }, invocation) => {
+      await taskWithin(id, invocation.threadId);
+      return runNow(id);
+    },
   });
 
   context.commands.register({
@@ -1426,7 +1541,10 @@ function activateScheduler(context: PluginContext): void {
     input: withId,
     output: ScheduledTask,
     permissions: write,
-    handler: ({ id }) => rotateWebhookToken(id),
+    handler: async ({ id }, invocation) => {
+      await taskWithin(id, invocation.threadId);
+      return rotateWebhookToken(id);
+    },
   });
 
   context.commands.register({
