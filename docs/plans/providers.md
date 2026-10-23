@@ -1451,6 +1451,9 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   turn is tested), and a read given up is not cancelled in Codex
   (`mcpServer/resource/read` has no cancel): the app-server answers it later,
   to nobody.
+- `/feedback` (D1317): the 120 s limit of a Codex upload has no test of its
+  own (it would need a timeout to wait for); Codex's error and an answer
+  naming no thread are tested.
 - T3's mid-turn notice of a Claude usage limit ("Claude usage limit reached.
   This turn is paused until the Session limit resets in 2h.") while Claude
   Code waits on it: the turn shows nothing until it fails.

@@ -38,6 +38,8 @@ export interface Scenario {
   readonly resources?: Readonly<Record<string, readonly unknown[]>>;
   /** `mcpServerStatus/list`'s tools, by server (D1402). */
   readonly mcpTools?: Readonly<Record<string, readonly unknown[]>>;
+  /** `feedback/upload`'s answer; the thread it was asked for, as `feedback-<id>`, when absent. */
+  readonly feedback?: unknown;
   /** `skills/list`'s entries, one per folder. */
   readonly skills?: readonly unknown[];
   /** Pages of `model/list`. */
@@ -272,7 +274,9 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
       // Codex answers the thread it sent (T3's feedbackId).
       send({
         id,
-        result: { threadId: `feedback-${(params as { threadId?: string } | null)?.threadId}` },
+        result: scenario.feedback ?? {
+          threadId: `feedback-${(params as { threadId?: string } | null)?.threadId}`,
+        },
       });
       return;
     case "model/list": {

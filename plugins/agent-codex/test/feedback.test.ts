@@ -38,4 +38,25 @@ describe("jhin.agent-codex: /feedback (D1317)", () => {
     const agents = await client.call<{ agentId: string; feedback?: boolean }[]>("agents.list");
     expect(agents.find((agent) => agent.agentId === CODEX_AGENT_ID)?.feedback).toBe(true);
   });
+  it("says why an upload failed: Codex's error, or an answer that names no thread", async () => {
+    const upload = async (scenario: Parameters<typeof fakeCodex>[0]) => {
+      const fake = fakeCodex({ turns: [[{ complete: "completed" }]], ...scenario });
+      const { client } = await node(fake);
+      const thread = await client.call<{ id: string }>("threads.create", {
+        agentId: CODEX_AGENT_ID,
+      });
+      const done = until(client, thread.id, "agent.turn.completed");
+      await client.call("threads.send", { threadId: thread.id, text: "hello" });
+      await done;
+      return client.call("agents.feedback.upload", { threadId: thread.id });
+    };
+    await expect(
+      upload({ errors: { "feedback/upload": [{ message: "upload rejected" }] } }),
+    ).rejects.toMatchObject({
+      message: "Failed to upload Codex thread feedback: upload rejected",
+    });
+    await expect(upload({ feedback: {} })).rejects.toMatchObject({
+      message: "Failed to upload Codex thread feedback: Codex did not say which thread it sent.",
+    });
+  });
 });
