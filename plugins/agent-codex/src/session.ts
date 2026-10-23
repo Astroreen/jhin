@@ -55,7 +55,7 @@ interface Session {
 }
 
 /** Reads what an app-server sends past a turn: its subagents in the background (D1318). */
-export interface Follower {
+interface Follower {
   notification(method: string, params: unknown): void;
   /** The app-server ended: nothing more comes. */
   end(): void;
