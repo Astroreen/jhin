@@ -2188,7 +2188,7 @@ Code at `eb7b35ac` (D53).
   only the hand), it sends "Continue where you left off." as the user's
   message and drops `limitRecovery` once it is sent (a send that fails turns
   its resume off, so the banner offers it again). A snooze for the reset
-  leaves a snooze of the user's that ends later as it is. A change that
+  leaves a snooze of the user's that ends later as it is, taking no snooze of its own. A change that
   fails is said under the timeline, T3's toast titles ("Could not change
   auto-resume: …", "Could not snooze thread: …").
 - **D1313. T3's settings "Auto-resume limited threads" and "Snooze limited

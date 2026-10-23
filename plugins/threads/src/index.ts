@@ -3860,7 +3860,10 @@ export default definePlugin({
           // A snooze of the user's that ends later stays: it is not woken early.
           const later =
             thread.snoozedUntil !== undefined && Date.parse(thread.snoozedUntil) > resetMs;
-          if (!later) next = { ...next, snoozedUntil: limited.resetAt, snoozedAt: at };
+          if (later) {
+            // The user's own snooze stands: the recovery's snooze is not taken.
+            next = { ...next, limitRecovery: { ...recovery, snooze: false } };
+          } else next = { ...next, snoozedUntil: limited.resetAt, snoozedAt: at };
         } else if (
           !recovery.snooze &&
           previous?.snooze === true &&
