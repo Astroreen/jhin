@@ -750,9 +750,15 @@ The reference is T3 Code `eb7b35ac`: `apps/web/src/components/device/{DeviceSetu
   with `jhin.devices.agentAccess` left unset: turning the hub on that way
   grants agents too, as D1206's hub did, and whoever writes it sets
   `agentAccess: false` alongside to keep agents out. The wizard shows such a
-  node once, its switch on, and Done records the choice. Agents cannot grant it to themselves: it is written with
-  `host.config.patch`, whose `host.config.write` an agent's credential never
-  holds (`AGENT_PERMISSIONS`, providers.md D341).
+  node once, its switch on, and Done records the choice. Agents cannot grant
+  it to themselves: it is written with `host.config.patch`, whose
+  `host.config.write` an agent's credential never holds (`AGENT_PERMISSIONS`,
+  providers.md D341). What the setting withholds is T3's: the agent tools
+  (agent-device and its daemon), not input itself. With it off, `device.tap`
+  and the other input commands, which any caller with `devices.write` may
+  run, still reach an Android device through adb as D1207's do, and only iOS,
+  which has no adb, has none. "Agent tools are ready" means their daemon was
+  started; one that died since is started again by the next input.
 
 ### The device tools (W37)
 
