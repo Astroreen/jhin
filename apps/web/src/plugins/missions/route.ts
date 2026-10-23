@@ -2,6 +2,7 @@ import type { NodeTarget, Route } from "@jhin/client-api";
 import type {
   Mission,
   MissionStatus,
+  ReviewCheck,
   Slice,
   SliceStatus,
   SliceThread,
@@ -251,3 +252,70 @@ export function waitsFor(
       return "The lead.";
   }
 }
+
+// --- Reviews (L2: D1241–D1243, shown by D1278) -------------------------------------
+
+/** Why a done slice keeps a step that needs a review from being taken. */
+const UNREVIEWED_LABELS: Readonly<Record<string, string>> = {
+  unreviewed: "never reviewed",
+  "changes-requested": "its review asked for changes",
+  "changed-after-review": "changed after its last review",
+  "work-unknown": "the files its review saw cannot be read",
+};
+
+/** What the mission page knows of `missions.review.check` (D1278). */
+export type ReviewCheckView =
+  | { readonly status: "loading" }
+  | { readonly status: "unavailable" }
+  | { readonly status: "error"; readonly error: string }
+  | ({ readonly status: "ready" } & ReviewCheck);
+
+/** Answers that are final: the node has no orchestrator, or this client may not read the check. */
+const CHECK_UNAVAILABLE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_DENIED"]);
+
+/** The check's view of a failed call: no such command or no permission is `unavailable`. */
+export function reviewCheckFailed(error: unknown): ReviewCheckView {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" && CHECK_UNAVAILABLE.has(code)
+    ? { status: "unavailable" }
+    : { status: "error", error: error instanceof Error ? error.message : String(error) };
+}
+
+/** The check as the mission page words it: a headline, and a line per unreviewed slice. */
+export function reviewCheckLines(
+  view: ReviewCheckView,
+  titleOf: (sliceId: string) => string,
+): { readonly headline: string; readonly unreviewed: readonly string[] } {
+  switch (view.status) {
+    case "loading":
+      return { headline: "Checking reviews…", unreviewed: [] };
+    case "unavailable":
+      return {
+        headline:
+          "Not known: this node has no orchestrator, or this client may not ask it to check reviews.",
+        unreviewed: [],
+      };
+    case "error":
+      return { headline: `Couldn't check reviews: ${view.error}`, unreviewed: [] };
+    case "ready":
+      return view.clear
+        ? {
+            headline: "Clear: every done slice was reviewed after its last change.",
+            unreviewed: [],
+          }
+        : {
+            headline:
+              "A step that needs a review waits: these slices were not reviewed after their last change.",
+            unreviewed: view.unreviewed.map(
+              (item) =>
+                `${titleOf(item.sliceId)}: ${UNREVIEWED_LABELS[item.reason] ?? item.reason}`,
+            ),
+          };
+  }
+}
+
+/** A review's verdict as a short label. */
+export const VERDICT_LABELS = {
+  approved: "Approved",
+  "changes-requested": "Changes requested",
+} as const;
