@@ -64,6 +64,8 @@ export function createCdpRelayConnection(
    */
   const sessions = new Map<string, "browser" | "page">([[PAGE_SESSION_ID, "page"]]);
   let sessionSequence = 0;
+  /** Sessions this relay invented and then detached: never the page's child sessions. */
+  const detached = new Set<string>();
   const newSession = (kind: "browser" | "page") => {
     const sessionId = `jhin-preview-${kind}-${++sessionSequence}`;
     sessions.set(sessionId, kind);
@@ -122,8 +124,9 @@ export function createCdpRelayConnection(
       }
       case "Target.detachFromTarget": {
         const sessionId = command.params?.["sessionId"];
-        if (typeof sessionId === "string" && sessionId !== PAGE_SESSION_ID)
-          sessions.delete(sessionId);
+        if (typeof sessionId === "string" && sessionId !== PAGE_SESSION_ID) {
+          if (sessions.delete(sessionId)) detached.add(sessionId);
+        }
         return {};
       }
       case "Target.setAutoAttach": {
@@ -164,9 +167,11 @@ export function createCdpRelayConnection(
       }
       if (!isCommand(command)) return;
       const result =
-        command.sessionId === undefined || sessions.get(command.sessionId) === "browser"
-          ? browserCommand(command)
-          : pageCommand(command);
+        command.sessionId !== undefined && detached.has(command.sessionId)
+          ? Promise.reject(new Error(`Session with given id not found: ${command.sessionId}`))
+          : command.sessionId === undefined || sessions.get(command.sessionId) === "browser"
+            ? browserCommand(command)
+            : pageCommand(command);
       const route = command.sessionId === undefined ? {} : { sessionId: command.sessionId };
       // Replies leave as commands finish, as Chromium's do, so a slow command
       // such as a screenshot never holds up the ones behind it.

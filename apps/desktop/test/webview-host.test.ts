@@ -141,4 +141,20 @@ describe("the app's webview relay (D1322)", () => {
     expect(second.endpoint).not.toBe(first.endpoint);
     await connect(second.endpoint);
   });
+
+  it("lets go of a guest whose relay no node connects to", async () => {
+    const webviews = createWebviewHost({
+      openLink: () => undefined,
+      log: () => undefined,
+      unclaimedMs: 0,
+    });
+    const webview = guest(9);
+    const released = new Promise<void>((resolve) =>
+      webview.debugger.once("detach", () => resolve()),
+    );
+    const { endpoint } = await webviews.attach(page as never, 9);
+    await released;
+    expect(webview.debugger.isAttached()).toBe(false);
+    expect(await refused(endpoint)).toBe("refused");
+  });
 });

@@ -30,6 +30,8 @@ interface Attached {
 }
 
 export interface WebviewHostOptions {
+  /** How long a relay waits for the node before it lets go of the guest; tests give their own. */
+  readonly unclaimedMs?: number;
   /** A guest's page opened a window at an http(s) URL. */
   readonly openLink: (link: { webContentsId: number; url: string }) => void;
   readonly log: (message: string, fields?: Record<string, unknown>) => void;
@@ -161,7 +163,7 @@ export function createWebviewHost(options: WebviewHostOptions) {
     // guest's debugger and the relay: they go once the node's own wait is long over.
     const unclaimed = setTimeout(() => {
       if (connection === null) close();
-    }, UNCLAIMED_RELAY_MS);
+    }, options.unclaimedMs ?? UNCLAIMED_RELAY_MS);
     guest.debugger.on("message", onMessage);
     // DevTools took the debugger, or the guest went: the node's tab ends.
     guest.debugger.on("detach", close);

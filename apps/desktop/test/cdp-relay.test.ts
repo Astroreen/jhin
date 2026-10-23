@@ -155,6 +155,30 @@ describe("CDP relay extra sessions", () => {
   });
 });
 
+describe("CDP relay detached sessions", () => {
+  // Jhin's own case (D1322): a session the relay invented and then detached is gone.
+  it("answers a detached session's commands as not found, without reaching the page", async () => {
+    const send = vi.fn(async () => ({}));
+    const written: Array<Record<string, unknown>> = [];
+    const relay = createCdpRelayConnection(makeTarget(send), (raw) =>
+      written.push(JSON.parse(raw)),
+    );
+    relay.receive(JSON.stringify({ id: 1, method: "Target.attachToBrowserTarget" }));
+    await settle();
+    const browser = (written.find((m) => m["id"] === 1)!["result"] as { sessionId: string })
+      .sessionId;
+    relay.receive(
+      JSON.stringify({ id: 2, method: "Target.detachFromTarget", params: { sessionId: browser } }),
+    );
+    relay.receive(JSON.stringify({ id: 3, method: "Runtime.evaluate", sessionId: browser }));
+    await settle();
+    expect(written.find((m) => m["id"] === 3)).toMatchObject({
+      error: { message: `Session with given id not found: ${browser}` },
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
 describe("CDP relay downloads", () => {
   it("applies the server's download directory and reports downloads on the root session", async () => {
     const send = vi.fn(async () => ({}));
