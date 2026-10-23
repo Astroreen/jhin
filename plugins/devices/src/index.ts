@@ -516,7 +516,6 @@ export default definePlugin({
         },
       };
     };
-    /** Runs work for a device after the work queued for it before. */
     /** One action or settings read at a time per device (D1332). */
     const actionQueue = createKeyedQueue();
     const runningDevice = async (input: { threadId: string; deviceId?: string | undefined }) => {

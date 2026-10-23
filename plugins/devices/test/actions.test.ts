@@ -493,4 +493,31 @@ describe("readDeviceDetail", () => {
     expect(calls[0]!.args.slice(-2)).toEqual(["0", "59.3"]);
     expect(calls[1]!.args.at(-1)).toBe("0.000001,18.1");
   });
+
+  it("fails a URL nothing on an Android device opens, though am exits 0", async () => {
+    const { host } = makeHost((call) =>
+      call.args.includes("start")
+        ? {
+            stdout:
+              "Error: Activity not started, unable to resolve Intent { act=android.intent.action.VIEW }\n",
+          }
+        : {},
+    );
+    const failed = await failure(
+      runDeviceAction(host, "android", "emulator-5554", { type: "openUrl", url: "nope://x" }),
+    );
+    expect(failed.code).toBe("DEVICE_OPERATION_FAILED");
+  });
+
+  it("fails a settings read when the device tool cannot run at all", async () => {
+    const host: ActionHost = {
+      helpers: { serveSimAxSettings: "", serveSimCli: "" },
+      run: async () => {
+        throw new DeviceError("DEVICE_OPERATION_FAILED", "Device adb could not be run: missing");
+      },
+    };
+    await expect(readDeviceDetail(host, "android", "emulator-5554")).rejects.toThrow(
+      "could not be run",
+    );
+  });
 });

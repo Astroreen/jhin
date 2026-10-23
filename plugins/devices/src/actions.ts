@@ -400,12 +400,21 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
       if (!changed) throw failure;
       return;
     }
-    case "openUrl":
-      await shell(
+    case "openUrl": {
+      const out = await shell(
         ["am", "start", "-a", "android.intent.action.VIEW", "-d", shellQuote(input.url)],
         "open url",
       );
+      // `am start` exits 0 when nothing on the device opens the URL.
+      if (/Error: Activity not started|unable to resolve Intent/i.test(out)) {
+        throw new DeviceError(
+          "DEVICE_OPERATION_FAILED",
+          `Device action open url failed: nothing on the device opens ${input.url}.`,
+          { operation: "open url" },
+        );
+      }
       return;
+    }
     case "launchApp": {
       const out = await shell(
         ["monkey", "-p", shellQuote(input.appId), "-c", "android.intent.category.LAUNCHER", "1"],
@@ -440,7 +449,21 @@ export async function readDeviceDetail(
   return platform === "ios" ? readIos(host, deviceId) : readAndroid(host, deviceId);
 }
 
-const quiet = <A>(work: Promise<A>): Promise<A | undefined> => work.catch(() => undefined);
+/**
+ * A value the device would not give (the tool ran and refused, or the hub's helper is not
+ * there) reads as unknown; a tool that cannot run at all fails the read, so the caller learns
+ * why instead of getting empty settings.
+ */
+const quiet = <A>(work: Promise<A>): Promise<A | undefined> =>
+  work.catch((error: unknown) => {
+    const unknown =
+      error instanceof DeviceError &&
+      ((error.code === "DEVICE_OPERATION_FAILED" &&
+        typeof error.details["exitCode"] === "number") ||
+        error.code === "DEVICE_ACTION_UNAVAILABLE");
+    if (unknown) return undefined;
+    throw error;
+  });
 
 async function readIos(host: ActionHost, udid: string) {
   const uiValue = (option: string) =>
