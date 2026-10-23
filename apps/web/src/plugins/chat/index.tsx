@@ -375,8 +375,9 @@ export const chatPlugin = builtin(
             : { node: node.id, ...(route.remote === undefined ? {} : { remote: route.remote }) };
         const catalog = useCatalog(threads, target);
 
-        // Any other panel is a page of its own over the main area (settings, usage, D1308).
-        if (route.panel !== undefined && route.panel !== "connect") return null;
+        // A page of its own over the main area (settings, the Usage page of D1308); the
+        // right panel's views (preview, diff, terminals) are panels too and keep the chat.
+        if (route.panel === "settings" || route.panel === "usage") return null;
         if (nodes.length === 0 || route.panel === "connect")
           return <Connect cancellable={nodes.length > 0} />;
         if (node?.state === "open" && route.remote !== undefined && members === undefined) {
