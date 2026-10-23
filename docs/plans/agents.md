@@ -498,7 +498,18 @@ the message, the inbox, events and the schemas of `agents.send`,
   node or of one of its mesh members opens in Threads mode; the owner, and a
   sender no open connection reaches, have no link. The chat knows no agents
   plugin: it runs a command (rules 3 and 4). The header line D621 writes into
-  the text stays, since the agent's runtime reads it.
+  the text stays, since the agent's runtime reads it; the chat hides it
+  (D1396).
+- **D1396. The transcript hides a delivered message's header line.** With the
+  sender shown (D1381) the header `[Message from …]`, `[Question from …]` or
+  `[Answer from …]` and, for a question, the trailer telling the runtime how
+  to answer are noise to the reader. `messageBody(text)` in `agent-api`, beside
+  `messageText` that writes them, takes them off: only a prefix of the known
+  shape and, for a question, its exact trailer; any other text comes back
+  unchanged. The trailer goes too because it is routing for the runtime, no
+  part of what was asked. The chat applies it only to a turn with an `origin`,
+  and what it shows, folds (`isLong`), makes context chips of and copies is
+  the body. The stored turn text, search and the runtime keep the whole text.
 
 ### A3. Missions and slices (D641–D660)
 
@@ -2155,8 +2166,8 @@ three agents, and otherwise read the streams.
 - ~~A2: the transcript showing a message as from its sender, with a link back.
   The turn carries `origin` (D623); until a view renders it, the header line
   of the message names the sender and the trace.~~ A2, D1381.
-- A2: hiding the header line of a delivered message in the transcript, now the
-  sender shows (D1381).
+- ~~A2: hiding the header line of a delivered message in the transcript, now the
+  sender shows (D1381).~~ A2, D1396.
 - ~~A2: a count of open inbox items on the mode switcher or the page title
   (D630 notifies once per item).~~ A2, D1273 (the mode switcher; the title
   stays with `notifications.tsx`).
