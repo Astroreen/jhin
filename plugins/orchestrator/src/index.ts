@@ -28,6 +28,7 @@ import {
   applyMissionEvent,
   intentChain,
   missionProgress,
+  REVIEW_TREE_EXCLUDE,
   reviewCheck,
   reviewedWork,
   slicesOf,
@@ -654,8 +655,8 @@ export default definePlugin({
           const now = await run<{ tree: string }>(
             "git.tree",
             work.threadId === undefined
-              ? { projectId: work.projectId }
-              : { threadId: work.threadId },
+              ? { projectId: work.projectId, exclude: REVIEW_TREE_EXCLUDE }
+              : { threadId: work.threadId, exclude: REVIEW_TREE_EXCLUDE },
           );
           trees.set(work.path, now.tree);
         } catch (error) {

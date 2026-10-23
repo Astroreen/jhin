@@ -49,8 +49,11 @@ const AGENT = {
  */
 function fakeGit() {
   const files = { tree: "tree-1" };
+  /** The `exclude` of every call, so a test sees what the review leaves out (D1261). */
+  const excluded: (string[] | undefined)[] = [];
   return {
     files,
+    excluded,
     plugin: {
       manifest: {
         id: "test.git",
@@ -64,13 +67,20 @@ function fakeGit() {
           context.commands.register({
             name: "git.tree",
             description: "The fake files' tree",
-            input: z.object({ projectId: z.string().optional(), threadId: z.string().optional() }),
-            output: z.object({ projectId: z.string(), path: z.string(), tree: z.string() }),
-            handler: ({ projectId, threadId }) => ({
-              projectId: projectId ?? "p",
-              path: threadId === undefined ? "/project" : `/worktrees/${threadId}`,
-              tree: files.tree,
+            input: z.object({
+              projectId: z.string().optional(),
+              threadId: z.string().optional(),
+              exclude: z.array(z.string()).optional(),
             }),
+            output: z.object({ projectId: z.string(), path: z.string(), tree: z.string() }),
+            handler: ({ projectId, threadId, exclude }) => {
+              excluded.push(exclude);
+              return {
+                projectId: projectId ?? "p",
+                path: threadId === undefined ? "/project" : `/worktrees/${threadId}`,
+                tree: files.tree,
+              };
+            },
           });
         },
       }),
@@ -402,6 +412,9 @@ describe("review after the last change (D1241–D1243)", () => {
     });
     await prove(client, review.id);
     expect(await merge()).toMatchObject({ step: "merge" });
+    // The review and the check leave the agents' knowledge out of the tree (D1261).
+    expect(git.excluded.length).toBeGreaterThan(1);
+    expect(git.excluded.every((exclude) => exclude?.join() === ".jhin/agents")).toBe(true);
 
     // The lead changes the files after the review: taking the step again is refused.
     git.files.tree = "tree-2";
