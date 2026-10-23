@@ -291,7 +291,6 @@ async function runIos(host: ActionHost, udid: string, input: DeviceAction): Prom
       );
       return;
     }
-    case "shake":
     case "setOrientation":
       throw unavailable(input.type, "ios", "unsupported");
   }
@@ -322,8 +321,13 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
       if (input.setting === "networkEnabled") {
         const state = input.value ? "enable" : "disable";
         await shell(["svc", "wifi", state], "network");
-        // Mobile data only where there is telephony (most emulators have none): Wi-Fi took.
-        await shell(["svc", "data", state], "network").catch(() => undefined);
+        // Mobile data only where there is telephony (most emulators have none): Wi-Fi took,
+        // so a device that refuses it is no failure. adb itself failing still is.
+        await shell(["svc", "data", state], "network").catch((error: unknown) => {
+          if (!(error instanceof DeviceError && error.code === "DEVICE_OPERATION_FAILED")) {
+            throw error;
+          }
+        });
         return;
       }
       if (input.setting === "reduceMotion") {
@@ -401,7 +405,6 @@ async function runAndroid(host: ActionHost, serial: string, input: DeviceAction)
       return;
     case "setLiquidGlass":
     case "setColorFilter":
-    case "shake":
     case "sendPush":
       throw unavailable(input.type, "android", "unsupported");
   }

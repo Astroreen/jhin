@@ -512,6 +512,22 @@ export default definePlugin({
         },
       };
     };
+    /** Runs work for a device after the work queued for it before. */
+    const actionQueue = (() => {
+      const tails = new Map<string, Promise<unknown>>();
+      return {
+        run<T>(deviceId: string, work: () => Promise<T>): Promise<T> {
+          const previous = tails.get(deviceId) ?? Promise.resolve();
+          const next = previous.then(work, work);
+          const tail = next.catch(() => undefined);
+          tails.set(deviceId, tail);
+          void tail.then(() => {
+            if (tails.get(deviceId) === tail) tails.delete(deviceId);
+          });
+          return next;
+        },
+      };
+    })();
     const runningDevice = async (input: { threadId: string; deviceId?: string | undefined }) => {
       const device = await target(input);
       if (!device.booted) {
@@ -551,11 +567,15 @@ export default definePlugin({
       permissions: ["devices.write"],
       handler: async (input) => {
         const device = await runningDevice(input);
-        const actions = actionHost();
-        await runDeviceAction(actions, device.platform, device.id, input.action);
-        // The settings read back after the change, as T3's panel shows them.
-        const read = await readDeviceDetail(actions, device.platform, device.id);
-        return { hostId: device.hostId, deviceId: device.id, ...read, readAt: now() };
+        // One action at a time per device, its read-back included: an agent's and the panel's
+        // steps (three settings, a permission group) do not interleave.
+        return actionQueue.run(device.id, async () => {
+          const actions = actionHost();
+          await runDeviceAction(actions, device.platform, device.id, input.action);
+          // The settings read back after the change, as T3's panel shows them.
+          const read = await readDeviceDetail(actions, device.platform, device.id);
+          return { hostId: device.hostId, deviceId: device.id, ...read, readAt: now() };
+        });
       },
     });
 

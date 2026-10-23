@@ -90,6 +90,7 @@ function useDeviceControls(props: {
 }) {
   const [detail, setDetail] = useState<DeviceDetail | null>(null);
   const [pending, setPending] = useState(false);
+  const [reading, setReading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const call = useRef(props.call);
   call.current = props.call;
@@ -98,12 +99,14 @@ function useDeviceControls(props: {
     let current = true;
     setDetail(null);
     setError(null);
+    setReading(true);
     void call
       .current("device.detail", { threadId: props.threadId, deviceId: props.device.id })
       .then(
         (result) => current && setDetail(result as DeviceDetail),
         (failure: unknown) => current && setError(errorMessage(failure)),
-      );
+      )
+      .finally(() => current && setReading(false));
     return () => {
       current = false;
     };
@@ -133,7 +136,8 @@ function useDeviceControls(props: {
     pending,
     error,
     foregroundApp: detail?.foregroundApp ?? null,
-    disabled: pending,
+    // While the first read runs, an action's read-back could be overwritten by it.
+    disabled: pending || reading,
     act,
   };
 }

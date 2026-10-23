@@ -363,7 +363,6 @@ export const DeviceAction = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("launchApp"), appId: AppId }),
   z.object({ type: z.literal("terminateApp"), appId: AppId }),
-  z.object({ type: z.literal("shake") }),
   z.object({
     type: z.literal("sendPush"),
     appId: AppId,

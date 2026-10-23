@@ -726,6 +726,9 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   so is clearing an emulator's location, which T3 answers with nothing. A
   URL to open must carry its scheme. Turning the network off on Android
   takes when Wi-Fi did: mobile data is turned with it where there is one.
+  The node runs one action at a time per device, its read-back included,
+  so an agent's and the panel's steps do not interleave; the panel's
+  controls wait for its first read.
   Android's appearance is read from a definite `Night mode: yes` or `no`
   (`auto` follows the clock, so it is not shown). A push payload, as text
   or as JSON, carries at most 4096 characters, as agents send it too.
@@ -893,6 +896,10 @@ probe of `ServerBrowser.ts`.
   - Of T3's device tools (D1332, D1333): the accessibility frames overlay
     and the event log (they read the hub's own routes), and the device
     tools' versions popover.
+  - Proving `simctl location set` with a negative latitude on macOS
+    (D1332): the argument is T3's `<lat>,<lon>`, and CI has no simulator to
+    show simctl does not read a leading `-` as an option. Shaking a device,
+    which T3's panel has no tool for, is not offered.
   - The tool versions view and updating tools from the panel
     (`deviceToolMaintenance`), and `device.open` pointing agents at the
     `agent-device` shim with `--config` and `--session` (T3's
