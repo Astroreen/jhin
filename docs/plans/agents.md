@@ -1881,6 +1881,10 @@ Decisions (L2):
 - Fixes go into small PRs, new failure stories into `docs/lore/`, the rest
   into [Deferred](#deferred); an "L3 run" note records the run like the C3
   run.
+- The run's crew numbered the decisions of the items it closed D1271–D1278
+  and D1381–D1399. The owner had handed it D1281–D1300, which the roadmap
+  gives W35 ([t3-roadmap](t3-roadmap.md)); they were renumbered by +100
+  when they landed.
 
 Decisions (L3):
 
