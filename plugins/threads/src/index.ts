@@ -3502,12 +3502,16 @@ export default definePlugin({
       input: z.object({ threadId: z.string() }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId }) =>
-        updateThread(threadId, (thread) => {
+      handler: ({ threadId }) => {
+        let unarchived = false;
+        return updateThread(threadId, (thread) => {
           if (thread.archivedAt === undefined) return thread;
+          unarchived = true;
           const { archivedAt: _archivedAt, ...rest } = thread;
           return { ...rest, updatedAt: now() };
         }).then(async (thread) => {
+          // A thread that was not archived keeps its recovery as it is.
+          if (!unarchived) return thread;
           // A continuation armed before it was archived waits for its reset again (D1312); one
           // whose reset passed while archived is not sent by unarchiving: the banner offers it.
           const recovery = thread.limitRecovery;
@@ -3527,7 +3531,8 @@ export default definePlugin({
               ? { ...current, limitRecovery: { ...current.limitRecovery, autoResume: false } }
               : current,
           );
-        }),
+        });
+      },
     });
 
     // --- Arrangement (D75–D78) --------------------------------------------------
