@@ -975,6 +975,10 @@ probe of `ServerBrowser.ts`.
     model of its own, with the hub and its tickets on another machine.
   - Pinning what the install scripts download (the hub's `node-datachannel`
     native build): `npm ci` pins the npm tree only (D1330).
+  - T3's `canConfigure` in the setup wizard (D1328): its switches disabled
+    for a client without the settings-write scope. The web client cannot
+    read its own permissions yet, so such a client sees the wizard and gets
+    the node's refusal of `host.config.patch` in a toast.
   - Of T3's device tools (D1332, D1333): the accessibility frames overlay
     and the event log (they read the hub's own routes), and the device
     tools' versions popover.

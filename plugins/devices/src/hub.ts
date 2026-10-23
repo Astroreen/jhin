@@ -42,6 +42,8 @@ export interface DeviceHubOptions {
   readonly http: HttpServer | undefined;
   readonly verifier: AuthVerifier | undefined;
   readonly onStatus: (status: DeviceHostStatus) => void;
+  /** The agent tools stopped being ready outside a status change (their daemon died). */
+  readonly onAgentGone?: () => void;
   readonly log: (message: string, fields?: Record<string, unknown>) => void;
   readonly env?: NodeJS.ProcessEnv;
 }
@@ -202,7 +204,10 @@ export function createDeviceHub(options: DeviceHubOptions) {
           } catch (error) {
             // A daemon that died is started again by the next input; this one may have run.
             if (error instanceof DeviceError && error.code === "DEVICE_OPERATION_FAILED") {
-              if (!(await host.agentAlive(endpoint))) host.forgetAgent();
+              if (!(await host.agentAlive(endpoint))) {
+                host.forgetAgent();
+                options.onAgentGone?.();
+              }
             }
             throw error;
           }

@@ -193,6 +193,8 @@ export default definePlugin({
         hubStatus = next;
         publish();
       },
+      // A daemon that died: the setup no longer says its tools are ready.
+      onAgentGone: () => publish(),
       log: (message, fields) => context.log.debug(message, fields),
     });
     agentToolsReady = () => hub.agentReady();

@@ -454,6 +454,10 @@ describe("the device hub", () => {
       "Device agent-device type failed",
     );
     expect(tools.adbInputs()).toEqual(["shell input tap 2 2"]);
+    // The setup says so at once: the tools are no longer ready.
+    expect(
+      (await node.until((state) => state.setup?.agentToolsReady === false)).setup,
+    ).toMatchObject({ agentAccessEnabled: true });
     const after = await node.call<{ via: string }>("device.tap", { threadId: "t1", x: 4, y: 4 });
     expect(after.via).toBe("adb");
     expect(tools.adbInputs()).toEqual(["shell input tap 2 2", "shell input tap 4 4"]);
