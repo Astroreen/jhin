@@ -2,7 +2,7 @@ import type { Connections, NodeConnection } from "@jhin/client-api";
 import { toDisposable } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
-import { MAX_FAILURES_IN_A_ROW, createNodeFeeds, type NodeFeeds } from "../src/lib/node-feeds.ts";
+import { createNodeFeeds, retryGap, type NodeFeeds } from "../src/lib/node-feeds.ts";
 
 type Event = { type: string; payload: unknown };
 
@@ -488,16 +488,18 @@ describe("node feeds (D630, D731)", () => {
     feeds.dispose();
   });
 
-  it("gives a feed up after failing ten times in a row", async () => {
+  /** A feed whose every read fails with `code`; `failures` lets a test wait for the next one. */
+  function failingFeed(code: string | undefined) {
     let time = 0;
-    const waiting: (() => void)[] = [];
-    let reads = 0;
+    const waiting: { ms: number; run: () => void }[] = [];
+    const reads = { count: 0 };
     let failedRead!: () => void;
     const client = {
       call: () => {
-        reads += 1;
-        // Every read fails the same way: an error that will not pass.
-        const read = Promise.reject(Object.assign(new Error("bad answer"), { code: "INTERNAL" }));
+        reads.count += 1;
+        const read = Promise.reject(
+          Object.assign(new Error("bad answer"), code === undefined ? {} : { code }),
+        );
         void read.catch(() => queueMicrotask(() => failedRead()));
         return read;
       },
@@ -505,33 +507,68 @@ describe("node feeds (D630, D731)", () => {
     };
     const { connections } = fakeConnections(client as never);
     const nextFailure = () => new Promise<void>((resolve) => (failedRead = resolve));
-    let failure = nextFailure();
+    const first = nextFailure();
     const feeds = createNodeFeeds(connections, quiet, source, {
       clock: () => time,
-      later: (_ms, run) => {
-        waiting.push(run);
+      later: (ms, run) => {
+        waiting.push({ ms, run });
         return toDisposable(() => {});
       },
     });
-    // The first failure is retried at once, the rest once a minute each.
-    await failure;
-    failure = nextFailure();
-    await failure;
-    while (waiting.length > 0 && reads <= MAX_FAILURES_IN_A_ROW) {
-      failure = nextFailure();
-      time += 60_000;
-      waiting.shift()!();
-      await failure;
+    return {
+      feeds,
+      waiting,
+      reads,
+      first,
+      nextFailure,
+      /** Lets the pause pass and waits for the retry's failure. */
+      async retry() {
+        const failure = nextFailure();
+        const next = waiting.shift()!;
+        time += next.ms;
+        next.run();
+        await failure;
+      },
+    };
+  }
+
+  it("retries a feed that keeps failing with a pause that grows to fifteen minutes, with no give-up (D1290)", async () => {
+    expect(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((failures) => retryGap(failures) / 60_000),
+    ).toEqual([1, 1, 2, 4, 8, 15, 15, 15, 15, 15, 15]);
+    const { feeds, waiting, reads, first, nextFailure, retry } = failingFeed("UNAVAILABLE");
+    // The first failure is retried at once; the others wait 1, 2, 4, 8, 15, 15 … minutes.
+    await first;
+    await nextFailure();
+    expect(reads.count).toBe(2);
+    const pauses: number[] = [];
+    for (let step = 0; step < 10; step++) {
+      pauses.push(waiting[0]!.ms / 60_000);
+      await retry();
     }
-    expect(reads).toBe(MAX_FAILURES_IN_A_ROW);
-    expect(feeds.snapshot().get("a")).toEqual({
-      status: "error",
-      value: [],
-      retrying: false,
-      error: `given up after ${MAX_FAILURES_IN_A_ROW} failures in a row (bad answer)`,
-    });
+    expect(pauses).toEqual([1, 2, 4, 8, 15, 15, 15, 15, 15, 15]);
+    // Still retrying after more than ten failures.
+    expect(reads.count).toBeGreaterThan(10);
+    expect(feeds.snapshot().get("a")).toMatchObject({ status: "error", retrying: true });
     feeds.dispose();
   });
+
+  it.each(["COMMAND_INPUT_INVALID", "COMMAND_OUTPUT_INVALID"])(
+    "does not retry a feed whose request or answer the node finds invalid: %s (D1290)",
+    async (code) => {
+      const { feeds, waiting, reads, first } = failingFeed(code);
+      await first;
+      expect(reads.count).toBe(1);
+      expect(waiting).toEqual([]);
+      expect(feeds.snapshot().get("a")).toEqual({
+        status: "error",
+        value: [],
+        retrying: false,
+        error: "given up, the node finds it invalid (bad answer)",
+      });
+      feeds.dispose();
+    },
+  );
 
   it("tries a first load that failed again, telling nothing of it as new", async () => {
     const reads: (() => Promise<unknown>)[] = [
