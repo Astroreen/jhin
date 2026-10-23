@@ -381,6 +381,50 @@ describe("messages between agents (A2)", () => {
     expect(answered).not.toContain(quiet.message.messageId);
   });
 
+  it("records no turn answer when the agent answered the owner's message itself (D1262)", async () => {
+    // The lead answers "Reply." itself, with agents.send, before its turn ends.
+    let answerItself: ((threadId: string) => Promise<unknown>) | undefined;
+    const { client, kernel } = await node({
+      agents: { lead },
+      capture: {
+        answer: (request) => `answer to: ${request.input.text.split("\n\n")[1] ?? ""}`,
+        gate: async (request) => {
+          if (request.input.text.includes("Reply.")) await answerItself?.(request.threadId);
+        },
+      },
+    });
+    answerItself = (threadId) =>
+      kernel.commands.execute(
+        "agents.send",
+        { to: owner, body: "My own answer", inReplyTo: "owner-reply" },
+        { caller: { id: "jhin.agent-claude:x", permissions: ["agents.message"] }, threadId },
+      );
+    const messages = watch(client, MESSAGES_STREAM);
+    await client.call<Sent>("agents.send", {
+      to: address("lead"),
+      body: "Reply.",
+      messageId: "owner-reply",
+    });
+    const last = await client.call<Sent>("agents.send", { to: address("lead"), body: "Last." });
+    await messages.untilMatch(
+      (event) =>
+        event.type === MessageEvents.answered &&
+        (event.payload as { messageId?: string }).messageId === last.message.messageId,
+    );
+    const answered = messages.events
+      .filter((event) => event.type === MessageEvents.answered)
+      .map((event) => (event.payload as { messageId: string }).messageId);
+    expect(answered).toEqual([last.message.messageId]);
+    const reply = messages.events.find(
+      (event) =>
+        event.type === MessageEvents.delivered &&
+        (event.payload as { message: { inReplyTo?: string } }).message.inReplyTo === "owner-reply",
+    );
+    expect(reply?.payload).toMatchObject({
+      message: { kind: "answer", from: address("lead"), to: owner, body: "My own answer" },
+    });
+  });
+
   it("lets a caller send only as who it is (D622) and refuses what cannot take messages", async () => {
     const { client, kernel } = await node({ agents: { builder, lead } });
     const { generation } = await client.call<{ generation: { threadId: string } }>(

@@ -347,6 +347,14 @@ export function registerMessaging(
       );
     });
 
+  /** Whether the recipient of `message` sent an answer to it (D1262). */
+  const repliedTo = async (message: AgentMessage): Promise<boolean> =>
+    (await log.read(MESSAGES_STREAM)).some((event) => {
+      if (event.type !== MessageEvents.delivered) return false;
+      const reply = (event.payload as unknown as Delivered).message;
+      return reply.inReplyTo === message.messageId && reply.from === message.to;
+    });
+
   const answered = (message: AgentMessage, answeredBy: string, answer: string) =>
     log.append(MESSAGES_STREAM, [
       {
@@ -408,9 +416,13 @@ export function registerMessaging(
         delivery?.agentId !== undefined
       ) {
         void answerIn(delivery.threadId, message.messageId)
-          .then((answer) =>
-            answer === undefined ? undefined : answered(message, message.to, answer),
-          )
+          .then(async (answer) => {
+            if (answer === undefined) return;
+            // An agent that answered the message itself (`agents.send` with
+            // `inReplyTo`) has said what it meant for the owner (D1262).
+            if (await repliedTo(message)) return;
+            await answered(message, message.to, answer);
+          })
           .catch((error: unknown) => {
             context.log.warn("no answer recorded for the owner's message", {
               messageId: message.messageId,
