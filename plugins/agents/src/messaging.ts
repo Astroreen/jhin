@@ -508,6 +508,13 @@ export function registerMessaging(
         const item = items.get(messageId);
         if (item !== undefined)
           items.set(messageId, { ...item, status: "answered", answer, answeredAt });
+      } else if (event.type === MessageEvents.inboxDismissed) {
+        const { messageId, dismissedAt } = event.payload as {
+          messageId: string;
+          dismissedAt: string;
+        };
+        const item = items.get(messageId);
+        if (item !== undefined) items.set(messageId, { ...item, status: "dismissed", dismissedAt });
       }
     }
     return { head, items };
@@ -604,6 +611,12 @@ export function registerMessaging(
             messageId,
           });
         }
+        if (item.status === "dismissed") {
+          throw new AgentsError("ITEM_CLOSED", `The message ${messageId} is dismissed`, {
+            messageId,
+            status: item.status,
+          });
+        }
         if (item.status === "answered") {
           throw new AgentsError("ASK_ANSWERED", `The message ${messageId} is answered already`, {
             messageId,
@@ -631,6 +644,65 @@ export function registerMessaging(
           item: { ...item, status: "answered" as const, answer, answeredAt },
           message: sent.message,
           ...(sent.delivery === undefined ? {} : { delivery: sent.delivery }),
+        };
+      };
+      const result = answering.then(task, task);
+      answering = result.catch(() => undefined);
+      return result;
+    },
+  });
+
+  context.commands.register({
+    name: "agents.inbox.dismiss",
+    description:
+      "Closes an open message or ask in the owner's inbox without an answer (D1274): an ask's sender is told, which wakes it; a message's is not",
+    ...MessageCommands["agents.inbox.dismiss"],
+    permissions: [INBOX_PERMISSION],
+    handler: (input, invocation) => {
+      const task = async () => {
+        const { messageId } = input;
+        const item = (await inbox()).items.get(messageId);
+        if (item === undefined) {
+          throw new AgentsError("ASK_NOT_FOUND", `The inbox has no message ${messageId}`, {
+            messageId,
+          });
+        }
+        if (item.status !== "open") {
+          throw new AgentsError("ITEM_CLOSED", `The message ${messageId} is closed already`, {
+            messageId,
+            status: item.status,
+          });
+        }
+        let sent: { message: AgentMessage; delivery?: MessageDelivery } | undefined;
+        if (item.message.kind === "ask") {
+          sent = (await context.commands.execute(
+            "agents.send",
+            {
+              to: item.message.from,
+              body: "The owner dismissed your question without an answer.",
+              from: item.message.to,
+              inReplyTo: messageId,
+              // One notice per item: a retry after a failed append is delivered once (D1274).
+              messageId: `dismissed-${messageId}`,
+            },
+            invocation.traceId === undefined ? {} : { traceId: invocation.traceId },
+          )) as { message: AgentMessage; delivery?: MessageDelivery };
+        }
+        const dismissedAt = now();
+        await log.append(INBOX_STREAM, [
+          {
+            type: MessageEvents.inboxDismissed,
+            payload: {
+              messageId,
+              dismissedAt,
+              ...(sent?.delivery === undefined ? {} : { delivery: sent.delivery }),
+            } as unknown as Json,
+          },
+        ]);
+        return {
+          item: { ...item, status: "dismissed" as const, dismissedAt },
+          ...(sent === undefined ? {} : { message: sent.message }),
+          ...(sent?.delivery === undefined ? {} : { delivery: sent.delivery }),
         };
       };
       const result = answering.then(task, task);

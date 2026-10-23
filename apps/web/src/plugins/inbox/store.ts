@@ -27,7 +27,7 @@ export function applyInboxEvent(
     if (items.some((known) => known.message.messageId === id)) return items;
     return [...items, item!];
   }
-  if (event.type === MessageEvents.inboxAnswered) {
+  if (event.type === MessageEvents.inboxAnswered || event.type === MessageEvents.inboxDismissed) {
     const id = (event.payload as { messageId?: unknown } | null)?.messageId;
     if (!items.some((item) => item.message.messageId === id)) return items;
     return items.filter((item) => item.message.messageId !== id);

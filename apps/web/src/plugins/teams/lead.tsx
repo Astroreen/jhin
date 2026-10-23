@@ -366,6 +366,7 @@ function Entry(props: {
   // An escalation: the lead asks what only the owner can decide (D688); it is
   // answered in the inbox, which tells the lead (D626).
   const open = entry.inbox === "open";
+  const dismissed = entry.inbox === "dismissed";
   return (
     <article
       aria-label="The lead asks you"
@@ -378,7 +379,7 @@ function Entry(props: {
         <MessageCircleQuestionIcon aria-hidden className="size-3.5 text-warning" />
         <span className="font-medium">The lead asks you</span>
         <Badge size="sm" variant={open ? "warning" : "secondary"}>
-          {open ? "Waiting for you" : "Answered"}
+          {open ? "Waiting for you" : dismissed ? "Dismissed" : "Answered"}
         </Badge>
         {open ? (
           <Button
