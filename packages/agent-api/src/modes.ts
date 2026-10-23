@@ -28,6 +28,7 @@ export const RUNTIME_MODE_GRANT_PREFIX = "threads.mode.";
  */
 export function ceilingOf(grants: readonly string[] | undefined): RuntimeMode | undefined {
   if (grants === undefined) return undefined;
+  // RUNTIME_MODES runs from the narrowest to the broadest (modes.test.ts pins it).
   const named = RUNTIME_MODES.filter((mode) =>
     grants.includes(`${RUNTIME_MODE_GRANT_PREFIX}${mode}`),
   );

@@ -911,7 +911,12 @@ Connect stays out of scope.
   refuses a held caller's "accept" of a permission request
   (`APPROVAL_NOT_ALLOWED`, T3's "This cannot approve a permission
   request."): the mode asks a person for it; declining and answering
-  questions stay open to it. A request that asks for nothing readable
+  questions stay open to it. This holds at every level, "Full access"
+  included, as T3's MCP clients never approve: a full-access turn asks
+  for nothing, and an approval asked by a turn someone else started is a
+  person's to give. The ceiling is applied in the commands, not where a
+  turn starts, because a queued turn starts after its caller is gone; a
+  new command that takes a mode applies it the same way. A request that asks for nothing readable
   offers "Read only" disabled and chooses "Supervised" first. Like any grant it
   travels with mesh calls (D416); a member that narrows
   `memberPermissions` below the mode grants drops them, and the ceiling
