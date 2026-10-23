@@ -2198,6 +2198,35 @@ Code at `eb7b35ac` (D53).
 Round 4 of `t3-roadmap.md` (D1341–D1360), at T3 Code `eb7b35ac` as D290
 says. The other W38 decisions land in their own pull requests.
 
+- **D1341. A sent message shows its file and skill chips,** as T3's
+  `ChatMarkdown` (its file-link chip) and `SkillInlineText`: in a user
+  message, a file link the composer writes (`[name](path)`, its label the
+  path's basename, D303) is T3's mention chip, the file's Pierre icon and
+  basename with its path in a tooltip, and pressed ("Preview <path>") it
+  opens the file in the thread's file panel (D1342); a folder's chip opens
+  nothing. A `$name` of one of the thread agent's skills is T3's skill chip
+  (lucide's box and the display name, D1004's `skillDisplayName`), which
+  only shows, as in T3, and an unknown `$name` stays text. The chips are in
+  paragraphs, list items and headings, never in code or in a link. The
+  skills come from `agents.commands` of the thread's project and agent,
+  asked only while the thread shows a user message with a `$name`. A copy
+  of the message keeps its text, links and `$name`s as before.
+- **D1342. A mentioned file opens in a panel beside the thread,** as T3's
+  right-hand file panel (`FilePreviewPanel`), where D1003 opened a dialog.
+  The chat plugin contributes `app.panel` `jhin.chat.file-panel`, shown
+  while the route's panel is `file` and its section the path (so a
+  preview is a place in the URL, as T3's right panel surface is). Its head
+  is T3's tab of the file (its icon and basename, "Close <name>"),
+  its subheader T3's breadcrumbs (the project's name, then each folder)
+  with the actions of D854's preview (rendered or source for markdown and
+  HTML, word wrap, copy, save), and its body D854's preview of the file
+  read through `projects.read-file` (D1003's limits: text by its first MiB
+  with T3's notice, media whole up to 50 MB, else T3's "too large to
+  preview"); a failed read is T3's failure with "Try again". A chip of
+  the composer or of a message opens the panel in place of whatever panel
+  showed; closing it leaves the thread as it was. The panel is a chunk of
+  its own (D440), loaded when it first opens. A skill's "View
+  instructions" keeps D1004's dialog: T3 has no surface for it.
 - **D1346. The language picker shows each language's file icon,** as T3's
   `LanguageIcon`: the header's button and every option draw the Pierre icon
   of a file in that language (T3's `syntheticFileNameForLanguageId`, in
@@ -2268,10 +2297,12 @@ says. The other W38 decisions land in their own pull requests.
     editor opening at the quote's place in the message right after "Cite",
     "Save and send" (Mod+Enter), the quote highlighted after its thread
     opens from another one, and the legacy text for a node from before D1010;
-  - the file and skill chips of a sent message (T3 shows them as in the
-    prompt; a sent message shows its links and `$name`s);
-  - a preview of a mentioned file in a panel beside the thread (D1003
-    opens a dialog, T3 its right-hand file panel);
+  - T3's file panel beyond D1342: several files as tabs beside the other
+    surfaces, editing and saving, the file explorer, "Open in" an editor,
+    a link's line revealed, and file chips in an agent's message;
+  - a sent message's skills (D1341) are asked once per thread view, on any
+    `$word` (a `$HOME` too), and not asked again when the agent's skills
+    change while the thread shows (T3 keeps its providers' skills current);
   - T3's legacy send for a node from before D1006 (`composerContextLegacySend.ts`,
     which T3 picks by the server's `inlineMessageContext`): such a node drops
     `context`, so its agent reads the references as links;

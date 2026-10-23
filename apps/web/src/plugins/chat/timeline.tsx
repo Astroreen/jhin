@@ -75,9 +75,14 @@ import {
 } from "../../lib/timeline.ts";
 import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { usageLimitFailureLabel } from "../../lib/usage-limits.ts";
-import { type MessageContextChips, MessageContextChipsContext } from "./message-context.ts";
+import {
+  type MessageContextChips,
+  MessageContextChipsContext,
+  type MessageFileChips,
+} from "./message-context.ts";
 import { ChatContext } from "./services.ts";
 import { THREAD_FIND_UNFOLD_EVENT } from "./thread-find.tsx";
+import { splitPromptIntoSegments } from "../../lib/composer-trigger.ts";
 import { MessageText } from "./message-text.tsx";
 import type { SavePlan } from "./proposed-plan-card.tsx";
 
@@ -141,6 +146,9 @@ function MessageActions(props: {
   );
 }
 
+/** The thread view's file preview and its agent's skills, for a message's chips (D1341). */
+const FileChipsContext = createContext<MessageFileChips | undefined>(undefined);
+
 /**
  * A user message's context records for its chips (D1007): a thread opens when this node has it,
  * a pull request in the browser.
@@ -151,6 +159,18 @@ function useMessageContextChips(
 ): MessageContextChips | undefined {
   const where = useContext(MessageActionsContext);
   const chat = useContext(ChatContext);
+  const files = useContext(FileChipsContext);
+  // A file link or a `$name` is a chip too (D1341).
+  const fileOrSkill = useMemo(
+    () =>
+      // A legacy `@path` stays text in a message: only links and `$name`s become chips.
+      splitPromptIntoSegments(text).some(
+        (segment) =>
+          (segment.type === "mention" && segment.source.startsWith("[")) ||
+          segment.type === "skill",
+      ),
+    [text],
+  );
   // The mesh's members, to reach a thread chip's node: followed only for a message with one.
   const threads = context?.records.some((record) => record.kind === "thread") === true;
   // A message with quotes needs the chips too, records or not (D1011).
@@ -162,7 +182,7 @@ function useMessageContextChips(
   );
   const selfNodeId = members?.find((member) => member.self)?.nodeId;
   return useMemo(() => {
-    if (context === undefined && !citations) return undefined;
+    if (context === undefined && !citations && !fileOrSkill) return undefined;
     const links =
       where === undefined || chat === undefined
         ? undefined
@@ -176,6 +196,8 @@ function useMessageContextChips(
             (route) => chat.navigation.navigate(route),
           );
     return {
+      skills: files?.skills,
+      previewFile: files?.previewFile,
       records: knownRecordsById(context?.records),
       actions: {
         ...links,
@@ -188,7 +210,7 @@ function useMessageContextChips(
         },
       },
     };
-  }, [context, citations, where, chat, selfNodeId]);
+  }, [context, citations, fileOrSkill, files, where, chat, selfNodeId]);
 }
 
 /** Whether the thread's find bar is open: folded work is then there to be found (D1351). */
@@ -908,6 +930,8 @@ export function TimelineView(props: {
   thread?: { target: NodeTarget; threadId: string };
   /** The find bar is open: folded work renders hidden so its text is found (D1351). */
   findOpen?: boolean;
+  /** What a user message's file and skill chips do (D1341); without it they only show. */
+  fileChips?: MessageFileChips;
   /** Runs a failed turn's message again (D224). */
   onRetry?(turn: TimelineTurn): Promise<unknown>;
   /** The thread's project folder, where "Save to workspace" writes. */
@@ -949,52 +973,54 @@ export function TimelineView(props: {
   return (
     <NowContext.Provider value={now}>
       <FindOpenContext value={props.findOpen === true}>
-        <MessageActionsContext.Provider value={where}>
-          {turns.map((turn, index) => (
-            <Fragment key={turn.turnId}>
-              {turn.handoff === undefined ? null : (
-                <SystemDivider
-                  detail={props.titleOf?.(turn.handoff.threadId)}
-                  icon={GitMergeIcon}
-                  label="Merged back from fork"
-                  {...(props.onOpenThread === undefined
-                    ? {}
-                    : {
-                        actionLabel: "Open fork",
-                        onAction: () => props.onOpenThread!(turn.handoff!.threadId),
-                      })}
+        <FileChipsContext value={props.fileChips}>
+          <MessageActionsContext.Provider value={where}>
+            {turns.map((turn, index) => (
+              <Fragment key={turn.turnId}>
+                {turn.handoff === undefined ? null : (
+                  <SystemDivider
+                    detail={props.titleOf?.(turn.handoff.threadId)}
+                    icon={GitMergeIcon}
+                    label="Merged back from fork"
+                    {...(props.onOpenThread === undefined
+                      ? {}
+                      : {
+                          actionLabel: "Open fork",
+                          onAction: () => props.onOpenThread!(turn.handoff!.threadId),
+                        })}
+                  />
+                )}
+                <TurnView
+                  format={props.format}
+                  latest={index === turns.length - 1}
+                  turn={turn}
+                  {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
+                  {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
+                  header={props.header?.(turn, index === 0)}
+                  footer={props.footer?.(turn, index === turns.length - 1)}
+                  extension={
+                    props.extension === undefined
+                      ? undefined
+                      : (event, adjacent) => props.extension?.(turn, event, adjacent)
+                  }
+                  {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
                 />
-              )}
-              <TurnView
-                format={props.format}
-                latest={index === turns.length - 1}
-                turn={turn}
-                {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
-                {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
-                header={props.header?.(turn, index === 0)}
-                footer={props.footer?.(turn, index === turns.length - 1)}
-                extension={
-                  props.extension === undefined
-                    ? undefined
-                    : (event, adjacent) => props.extension?.(turn, event, adjacent)
-                }
-                {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
-              />
-              {forkedFrom?.turnId === turn.turnId ? (
-                <SystemDivider
-                  icon={GitForkIcon}
-                  label="Forked from conversation"
-                  {...(props.onOpenThread === undefined
-                    ? {}
-                    : {
-                        actionLabel: "Open source conversation",
-                        onAction: () => props.onOpenThread!(forkedFrom.threadId),
-                      })}
-                />
-              ) : null}
-            </Fragment>
-          ))}
-        </MessageActionsContext.Provider>
+                {forkedFrom?.turnId === turn.turnId ? (
+                  <SystemDivider
+                    icon={GitForkIcon}
+                    label="Forked from conversation"
+                    {...(props.onOpenThread === undefined
+                      ? {}
+                      : {
+                          actionLabel: "Open source conversation",
+                          onAction: () => props.onOpenThread!(forkedFrom.threadId),
+                        })}
+                  />
+                ) : null}
+              </Fragment>
+            ))}
+          </MessageActionsContext.Provider>
+        </FileChipsContext>
       </FindOpenContext>
     </NowContext.Provider>
   );

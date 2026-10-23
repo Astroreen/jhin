@@ -152,7 +152,8 @@ A config field asks for a control a plugin contributes with
 The `chat` plugin also has T3's "Resume thread" for a stopped turn
 (`chat.thread.resume`), its find in a thread (`chat.find`, mod+f) and the
 thread details panel (`chat.thread-details.toggle`, slot `chat.thread.details`)
-with its Lineage section. → `plans/t3-parity.md#steering-and-history-leftovers-w19`
+with its Lineage section, and the file panel of a mentioned file (`app.panel`
+`jhin.chat.file-panel`, route panel `file`, `plans/t3-parity.md` D1342). → `plans/t3-parity.md#steering-and-history-leftovers-w19`
 
 The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 (built, served only by the app's node): window chrome, native menu items

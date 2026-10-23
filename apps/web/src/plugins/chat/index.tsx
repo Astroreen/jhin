@@ -75,6 +75,8 @@ import {
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { registerThreadDetails } from "./thread-details.tsx";
+import type { FilePanelProps } from "./file-panel.tsx";
+import { FILE_PANEL } from "./file-panel-route.ts";
 import { armPasteAsText, consumeArmedPasteAsText } from "../../lib/attachment-files.ts";
 import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
@@ -273,6 +275,18 @@ const Transcript = lazyChunk(
     ),
   },
 );
+
+/** A mentioned file beside the thread (D1342), a chunk of its own loaded when it first opens. */
+const FilePanel = lazyChunk<FilePanelProps>(
+  () => import("./file-panel.tsx").then((module) => module.FilePanel),
+  {
+    loading: () => null,
+    failed: (_props, retry) => (
+      <ChunkFailed retry={retry}>Couldn't load the file preview.</ChunkFailed>
+    ),
+  },
+);
+
 export const chatPlugin = builtin(
   "jhin.chat",
   {
@@ -822,6 +836,34 @@ export const chatPlugin = builtin(
 
       context.subscriptions.add(
         slots.contribute("app.main", { id: "jhin.chat.view", component: Main }),
+      );
+      // T3's right-hand file panel (D1342): while the route's panel is `file`, its section the path.
+      context.subscriptions.add(
+        slots.contribute("app.panel", {
+          id: "jhin.chat.file-panel",
+          component: function FilePanelSlot() {
+            const route = useExternal(navigation, navigation.current);
+            if (route.panel !== FILE_PANEL || !route.section || route.node === undefined) {
+              return null;
+            }
+            const { panel: _panel, section: _section, ...rest } = route;
+            return (
+              <ChatContext.Provider value={services}>
+                <FilePanel
+                  key={`${route.node}|${route.remote ?? ""}|${route.thread ?? route.project ?? ""}`}
+                  onClose={() => navigation.navigate(rest)}
+                  path={route.section}
+                  projectId={route.thread === undefined ? route.project : undefined}
+                  target={{
+                    node: route.node,
+                    ...(route.remote === undefined ? {} : { remote: route.remote }),
+                  }}
+                  threadId={route.thread}
+                />
+              </ChatContext.Provider>
+            );
+          },
+        }),
       );
       // A thread read without a composer, for views such as an agent's page (D614).
       context.subscriptions.add(

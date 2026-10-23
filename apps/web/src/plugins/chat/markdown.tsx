@@ -1,5 +1,6 @@
 // The rendering follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/ChatMarkdown.tsx.
 import {
+  type AgentSkill,
   type AssistantCitation,
   parseAssistantCitationHref,
   parseContextHref,
@@ -8,6 +9,7 @@ import { Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import { CheckIcon, CopyIcon, WrapTextIcon } from "lucide-react";
 import {
   Children,
+  cloneElement,
   isValidElement,
   use,
   useEffect,
@@ -20,10 +22,13 @@ import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markd
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
+import { fileLinkPath, inlineSkillTokens } from "../../lib/composer-trigger.ts";
+import { skillDisplayName } from "../../lib/composer-menu.ts";
 import { highlight, languageOf } from "../../lib/highlight.ts";
 import { useCopy } from "../../lib/hooks.ts";
 import { MessageCitationChip } from "./citation-chips.tsx";
 import { ContextRecordChip } from "./context-chips.tsx";
+import { FileMentionChip, MessageSkillChip } from "./file-chips.tsx";
 import { CHAT_MARKDOWN_CLASS, type ChatMarkdownProps } from "./markdown-style.ts";
 import { MessageContextChipsContext } from "./message-context.ts";
 
@@ -125,6 +130,21 @@ function CodeBlock({ code, fence }: { code: string; fence: string | undefined })
   );
 }
 
+/** A heading whose text may hold skill chips (D1341). */
+function heading(Tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+  return function Heading({
+    children,
+    node: _node,
+    ...props
+  }: ComponentProps<"h1"> & { node?: unknown }) {
+    return (
+      <Tag {...props}>
+        <SkillChips>{children}</SkillChips>
+      </Tag>
+    );
+  };
+}
+
 const COMPONENTS: Components = {
   pre({ children }) {
     const child = Children.toArray(children)[0];
@@ -144,12 +164,34 @@ const COMPONENTS: Components = {
         ? parseAssistantCitationHref(href)
         : null;
     if (citation !== null) return <CitationReference citation={citation} />;
-    return (
+    const link = (
       <a {...props} href={href} rel="noopener noreferrer" target="_blank">
         {children}
       </a>
     );
+    const path = typeof href === "string" ? fileLinkPath(textOf(children), href) : undefined;
+    return path === undefined ? link : <FileReference fallback={link} path={path} />;
   },
+  p({ children, node: _node, ...props }) {
+    return (
+      <p {...props}>
+        <SkillChips>{children}</SkillChips>
+      </p>
+    );
+  },
+  li({ children, node: _node, ...props }) {
+    return (
+      <li {...props}>
+        <SkillChips>{children}</SkillChips>
+      </li>
+    );
+  },
+  h1: heading("h1"),
+  h2: heading("h2"),
+  h3: heading("h3"),
+  h4: heading("h4"),
+  h5: heading("h5"),
+  h6: heading("h6"),
   table({ children, node: _node, ...props }) {
     return (
       <div className="chat-markdown-table-container">
@@ -210,6 +252,51 @@ function ContextReference(props: { href: string; label: string }) {
       unavailable="This context is no longer available."
     />
   );
+}
+
+/** A file link of a user message (D1341): its chip; elsewhere, the link as before. */
+function FileReference(props: { path: string; fallback: ReactNode }) {
+  const chips = use(MessageContextChipsContext);
+  if (chips === undefined) return props.fallback;
+  return <FileMentionChip onPreview={chips.previewFile} path={props.path} />;
+}
+
+/** The `$name`s of the agent's skills in a user message's text, as T3's `SkillInlineText`. */
+function skillChipsOf(text: string, skills: readonly AgentSkill[]): ReactNode {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  for (const token of inlineSkillTokens(text)) {
+    const skill = skills.find((candidate) => candidate.name === token.name);
+    if (skill === undefined) continue;
+    if (token.start > cursor) nodes.push(text.slice(cursor, token.start));
+    nodes.push(<MessageSkillChip key={token.start} label={skillDisplayName(skill)} />);
+    cursor = token.end;
+  }
+  if (cursor === 0) return text;
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
+/**
+ * T3's `renderSkillInlineMarkdownChildren`: the text of a block and of its inline marks, never of
+ * code or of a link.
+ */
+function withSkillChips(children: ReactNode, skills: readonly AgentSkill[]): ReactNode {
+  return Children.map(children, (child) => {
+    if (typeof child === "string") return skillChipsOf(child, skills);
+    if (!isValidElement<{ children?: ReactNode; node?: { tagName?: string } }>(child)) {
+      return child;
+    }
+    const tag = typeof child.type === "string" ? child.type : child.props.node?.tagName;
+    if (tag === "code" || tag === "a" || !("children" in child.props)) return child;
+    return cloneElement(child, undefined, withSkillChips(child.props.children, skills));
+  });
+}
+
+function SkillChips(props: { children: ReactNode }) {
+  const skills = use(MessageContextChipsContext)?.skills;
+  if (skills === undefined || skills.length === 0) return props.children;
+  return withSkillChips(props.children, skills);
 }
 
 const PLUGINS = [remarkGfm];

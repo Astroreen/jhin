@@ -381,11 +381,11 @@ test("shows T3's chips with their details: a file's preview and a skill's instru
   ]);
   await message.press("Enter");
 
-  // A file chip shows its file in the preview dialog (D1003).
+  // A file chip shows its file in the panel beside the thread (D1342).
   await page.getByRole("button", { name: "Preview src/app.ts" }).click();
-  const preview = page.getByRole("dialog", { name: "app.ts" });
+  const preview = page.getByRole("complementary", { name: "File preview" });
   await expect(preview).toContainText("export const port = 8080;");
-  await page.keyboard.press("Escape");
+  await preview.getByRole("button", { name: "Close app.ts" }).click();
   await expect(preview).toBeHidden();
 
   // A skill chip: its description, and its SKILL.md behind "View instructions" (D1004).
@@ -401,6 +401,57 @@ test("shows T3's chips with their details: a file's preview and a skill's instru
   const dialogShot = info.outputPath("skill-instructions.png");
   await page.screenshot({ path: dialogShot });
   await info.attach("skill instructions", { path: dialogShot, contentType: "image/png" });
+  await page.keyboard.press("Escape");
+  await expect(instructions).toBeHidden();
+
+  // Sending the draft with its file beside it opens the new thread with the file still there.
+  await page.getByRole("button", { name: "Preview src/app.ts" }).click();
+  await expect(preview).toContainText("export const port = 8080;");
+  await message.press("End");
+  await message.press("Enter");
+  await expect(
+    page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "You" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/[#&]t=/);
+  await expect(preview).toContainText("export const port = 8080;");
+});
+
+test("shows a sent message's file and skill chips, and its file beside the thread", async ({
+  page,
+}, info) => {
+  const scratch = Path.join(node.home, "data", "jhin.threads", "scratch");
+  Fs.mkdirSync(Path.join(scratch, "docs"), { recursive: true });
+  Fs.writeFileSync(Path.join(scratch, "docs", "plan.md"), "# The plan\n\nShip **on Friday**.\n");
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  // The fake agent offers `deploy` (and no `ship`, which stays text).
+  await message.fill("read [plan.md](docs/plan.md) then $deploy it, not $ship");
+  await message.press("Enter");
+  const log = page.getByRole("log", { name: "Messages" });
+  const sent = log.getByRole("article", { name: "You" });
+  // The file and the skill as T3 shows them in a sent message (D1341).
+  await expect(sent.getByRole("button", { name: "Preview docs/plan.md" })).toBeVisible();
+  await expect(sent.getByText("Deploy", { exact: true })).toBeVisible();
+  await expect(sent).not.toContainText("$deploy");
+  await expect(sent).toContainText("not $ship");
+
+  await sent.getByRole("button", { name: "Preview docs/plan.md" }).click();
+  const preview = page.getByRole("complementary", { name: "File preview" });
+  await expect(preview.getByRole("heading", { name: "The plan" })).toBeVisible();
+  await expect(preview).toContainText("docs");
+  const shot = info.outputPath("file-panel.png");
+  await page.screenshot({ path: shot });
+  await info.attach("sent message chips and the file panel", {
+    path: shot,
+    contentType: "image/png",
+  });
+  // The panel is a place in the URL: it is there after a reload.
+  await page.reload();
+  await expect(preview.getByRole("heading", { name: "The plan" })).toBeVisible();
+  await preview.getByRole("button", { name: "Close plan.md" }).click();
+  await expect(preview).toBeHidden();
+  await expect(sent.getByRole("button", { name: "Preview docs/plan.md" })).toBeVisible();
 });
 
 test("spaces a heading as T3 does, and shows a code block's language with its icon", async ({

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   detectComposerTrigger,
+  fileLinkPath,
+  inlineSkillTokens,
   isPathWord,
   parseStandaloneComposerSlashCommand,
   serializeComposerFileLink,
@@ -97,6 +99,28 @@ describe("a picked file in the prompt", () => {
       { type: "mention", path: "docs/my file (1).md", source: link },
       { type: "text", text: " now" },
     ]);
+  });
+});
+
+describe("a sent message's file links and skills (D1341)", () => {
+  it("names the file of a link labelled with its basename, decoded", () => {
+    expect(fileLinkPath("a.ts", "src/a.ts")).toBe("src/a.ts");
+    expect(fileLinkPath("my file (1).md", "docs/my%20file%20%281%29.md")).toBe(
+      "docs/my file (1).md",
+    );
+    expect(fileLinkPath("", "src/")).toBe("src/");
+    expect(fileLinkPath("x.ts", "C:/x.ts")).toBe("C:/x.ts");
+    // A link the user wrote, or one with a scheme, is no file.
+    expect(fileLinkPath("the code", "src/a.ts")).toBeUndefined();
+    expect(fileLinkPath("a.ts", "https://example.com/a.ts")).toBeUndefined();
+  });
+
+  it("finds `$name`s as T3's matchInlineSkills, not prices", () => {
+    expect(inlineSkillTokens("use $deploy then $2 and $5k, $ship-it")).toEqual([
+      { name: "deploy", start: 4, end: 11 },
+      { name: "ship-it", start: 29, end: 37 },
+    ]);
+    expect(inlineSkillTokens("a$deploy")).toEqual([]);
   });
 });
 

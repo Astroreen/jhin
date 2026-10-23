@@ -129,6 +129,9 @@ Words about Jhin:
   details panel" opens (T3 Code's thread details card): sections that
   plugins contribute to the `chat.thread.details` slot, among them
   **Lineage**, a thread's parent and forks.
+- **File panel** — the panel right of a thread that previews a file a
+  message or the prompt mentions (T3 Code's right-hand file panel): the
+  route's panel `file`, its section the file's path (t3-parity.md D1342).
 - **Delegated task** — child work a thread hands to an agent of any runtime
   and model (`tasks.delegate`, T3 Code's `delegate_task`): a **child thread**
   (`relationshipToParent: "subagent"`) runs the task prompt, and the parent

@@ -28,19 +28,19 @@ import {
   TooltipTrigger,
 } from "@jhin/ui";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import { BoxIcon, GitPullRequestIcon, MessagesSquareIcon } from "lucide-react";
+import { GitPullRequestIcon, MessagesSquareIcon } from "lucide-react";
 import { createContext, type ReactNode, use, useRef, useState } from "react";
 
 import { revealAssistantCitation } from "../../lib/assistant-text-selection.ts";
 import { citationSource, threadLinks } from "../../lib/composer-context.ts";
 import { skillDisplayName } from "../../lib/composer-menu.ts";
-import { FILE_TEXT_PREVIEW_MAX_BYTES, filePreviewKind } from "../../lib/file-preview.ts";
 import { AttachmentPreviewDialog } from "./attachment-media.tsx";
 import { ComposerCitationChip } from "./citation-chips.tsx";
 import { type ContextChipActions, ContextRecordChip } from "./context-chips.tsx";
+import { openFilePanel } from "./file-panel-route.ts";
+import { basename, FileMentionChip, SkillChipIcon } from "./file-chips.tsx";
+import { isTooLarge, readPreviewFile } from "./preview-file.ts";
 import { useChat } from "./services.ts";
-import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
-import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 
 /** What the composer lets its chips do; without it they only show. */
 export interface ComposerChipActions extends ContextChipActions {
@@ -60,53 +60,16 @@ export const ComposerChipsContext = createContext<ComposerChipActions>({ skills:
 const CHIP_NODE_SELECTION_CLASS_NAME =
   "relative inline-flex select-none items-center align-middle leading-none [.ProseMirror-selectednode>&]:after:pointer-events-none [.ProseMirror-selectednode>&]:after:absolute [.ProseMirror-selectednode>&]:after:inset-0 [.ProseMirror-selectednode>&]:after:rounded-sm [.ProseMirror-selectednode>&]:after:bg-[Highlight] [.ProseMirror-selectednode>&]:after:opacity-30 [.ProseMirror-selectednode>&]:after:content-['']";
 
-function basename(path: string): string {
-  const trimmed = path.replace(/[\\/]+$/, "");
-  const separator = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
-  return separator >= 0 ? trimmed.slice(separator + 1) : trimmed;
-}
-
-/** T3's SkillChipIcon: lucide's box, a little bolder. */
-function SkillChipIcon() {
-  return <BoxIcon aria-hidden strokeWidth={1.85} />;
-}
-
 /** A file or folder: its Pierre icon and basename; pressed, its preview (T3's mention chip). */
 export function MentionNodeView({ node }: NodeViewProps) {
   const actions = use(ComposerChipsContext);
-  const theme = useResolvedTheme();
-  const path = String(node.attrs["path"] ?? "");
-  const folder = /[\\/]$/.test(path);
-  const content = (
-    <>
-      <PierreEntryIcon kind={folder ? "directory" : "file"} pathValue={path} theme={theme} />
-      <ContextChipLabel>{basename(path)}</ContextChipLabel>
-    </>
-  );
-  const preview = folder ? undefined : actions.previewFile;
-  const chip =
-    preview === undefined ? (
-      <ContextChip contentEditable={false} kind="mention" spellCheck={false} tabIndex={0}>
-        {content}
-      </ContextChip>
-    ) : (
-      <ContextChip
-        aria-label={`Preview ${path}`}
-        contentEditable={false}
-        kind="mention"
-        onClick={() => preview(path)}
-        render={<button type="button" />}
-        spellCheck={false}
-      >
-        {content}
-      </ContextChip>
-    );
   return (
     <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME}>
-      <Tooltip>
-        <TooltipTrigger render={chip} />
-        <TooltipPopup side="top">{path}</TooltipPopup>
-      </Tooltip>
+      <FileMentionChip
+        contentEditable={false}
+        onPreview={actions.previewFile}
+        path={String(node.attrs["path"] ?? "")}
+      />
     </NodeViewWrapper>
   );
 }
@@ -239,24 +202,14 @@ export function ReferenceNodeView({ node, editor, getPos }: NodeViewProps) {
   );
 }
 
-/** What `projects.read-file` and `agents.skill.read` answer. */
-interface FileHead {
-  readonly path: string;
-  readonly sizeBytes: number;
-  readonly data: string;
-  readonly truncated: boolean;
-}
-
-/** Media is shown whole, up to a video's 50 MB (D855); text only its first MiB, as D854. */
-const MEDIA_PREVIEW_MAX_BYTES = 50 * 1024 * 1024;
-
 /**
- * The composer's chip actions on its node: a file previewed in D854's dialog (T3 opens it in its
- * file panel), a skill's SKILL.md the same way, a thread opened, a pull request in the browser.
+ * The composer's chip actions on its node: a file previewed in the file panel (D1342), a skill's
+ * SKILL.md in D854's dialog, a thread opened, a pull request in the browser.
  */
 export function useComposerChipActions(options: {
   readonly target: NodeTarget;
   readonly projectId: string | undefined;
+  /** The composer's thread; without it, a draft of the project. */
   readonly threadId: string | undefined;
   readonly agentId: string | undefined;
   /** The id of the composer's node, which a thread's `jhin://` address names. */
@@ -273,28 +226,17 @@ export function useComposerChipActions(options: {
   /** The latest preview asked for: an earlier one that answers late is not shown over it. */
   const latest = useRef(0);
   const { target, projectId } = options;
-  const open = (origin: string, name: string, method: string, input: Record<string, unknown>) => {
-    const media = ["image", "video", "audio", "pdf"].includes(filePreviewKind({ name }));
-    // Media whole or not at all, refused on the node before it is read; text its first MiB, one
-    // byte past it telling the dialog the text was cut.
-    const limit = media
-      ? { maxBytes: MEDIA_PREVIEW_MAX_BYTES, whole: true }
-      : { maxBytes: FILE_TEXT_PREVIEW_MAX_BYTES + 1 };
+  const open = (origin: string, name: string, input: Record<string, unknown>) => {
     const request = ++latest.current;
-    chat.threads.call<FileHead>(target, method, { ...input, ...limit }).then(
-      (head) => {
+    readPreviewFile(chat.threads, target, name, "agents.skill.read", input).then(
+      (read) => {
         if (request !== latest.current) return;
-        setShown({
-          name,
-          sizeBytes: head.sizeBytes,
-          file: new Blob([decodeBase64(head.data)]),
-          origin,
-        });
+        setShown({ name, ...read, origin });
       },
       (error: unknown) => {
         if (request !== latest.current) return;
         chat.toasts?.show(
-          (error as { code?: unknown } | null)?.code === "FILE_TOO_LARGE"
+          isTooLarge(error)
             ? { type: "error", title: `${name} is too large to preview` }
             : {
                 type: "error",
@@ -317,20 +259,26 @@ export function useComposerChipActions(options: {
     showCitationSource: citationSource(links, (citation) =>
       revealAssistantCitation(document, citation),
     ),
+    // T3's right-hand file panel (D1342), beside the thread or draft on screen.
     previewFile:
       projectId === undefined
         ? undefined
         : (path) =>
-            open("Workspace", basename(path), "projects.read-file", {
-              projectId,
-              ...(options.threadId === undefined ? {} : { threadId: options.threadId }),
+            openFilePanel(
+              chat.navigation,
+              {
+                target,
+                ...(options.threadId === undefined
+                  ? { projectId }
+                  : { threadId: options.threadId }),
+              },
               path,
-            }),
+            ),
     viewInstructions:
       projectId === undefined
         ? undefined
         : (skill) =>
-            open("Skill", basename(skill.path) || "SKILL.md", "agents.skill.read", {
+            open("Skill", basename(skill.path) || "SKILL.md", {
               projectId,
               ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
               name: skill.name,
@@ -355,15 +303,4 @@ export function useComposerChipActions(options: {
       />
     );
   return { actions, dialog };
-}
-
-/** Base64 to bytes: the browser's own decoder where it has one, else in one pass. */
-function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
-  const native = (Uint8Array as { fromBase64?: (text: string) => Uint8Array<ArrayBuffer> })
-    .fromBase64;
-  if (native !== undefined) return native(data);
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
 }
