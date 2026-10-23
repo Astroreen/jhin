@@ -8,7 +8,7 @@ import {
   type Navigation,
   type ThreadsCatalog,
 } from "@jhin/client-api";
-import { definePlugin } from "@jhin/sdk";
+import { definePlugin, z } from "@jhin/sdk";
 import {
   UI_DIALOGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
@@ -18,7 +18,8 @@ import {
 
 import { builtin } from "../../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
-import { MISSION_ASIDE_SLOT, type MissionAsideProps } from "./route.ts";
+import { CIVILIZATION_MODE } from "../../lib/modes.ts";
+import { MISSION_ASIDE_SLOT, routeOf, type MissionAsideProps } from "./route.ts";
 import type { MissionsStore } from "./store.ts";
 import type { MissionsServices } from "./view.tsx";
 
@@ -90,6 +91,26 @@ export const missionsViewPlugin = builtin(
         slots.contribute("civilization.views", {
           id: "jhin.missions.view",
           component: Main,
+        }),
+      );
+      // Opening a mission is a command, so the palette, CLI, MCP and the Lead
+      // view's report card reach it (rule 6, D1293).
+      context.subscriptions.add(
+        context.commands.register({
+          name: "civilization.mission.open",
+          title: "Open mission",
+          description: "Opens a mission in Civilization mode's mission view (D1293)",
+          input: z.object({
+            node: z.string().min(1).meta({ description: "The connection the mission is on" }),
+            missionId: z.string().min(1),
+          }),
+          output: z.object({}),
+          handler: ({ node, missionId }) => {
+            shared.navigation.navigate(
+              routeOf({ node, mode: CIVILIZATION_MODE }, { kind: "mission", missionId }),
+            );
+            return {};
+          },
         }),
       );
       // The orchestrator beside a mission (C2: D1087), a chunk of its own.

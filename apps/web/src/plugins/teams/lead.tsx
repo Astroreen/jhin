@@ -19,7 +19,7 @@ import {
   Spinner,
   cn,
 } from "@jhin/ui";
-import { ArrowUpIcon, CrownIcon, MessageCircleQuestionIcon } from "lucide-react";
+import { ArrowUpIcon, ClipboardListIcon, CrownIcon, MessageCircleQuestionIcon } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
@@ -274,6 +274,7 @@ function Conversation(props: {
               <Entry
                 entry={entry}
                 key={entry.message.messageId}
+                lead={view.lead}
                 owner={view.owner}
                 pending={pending.has(entry.message.messageId)}
                 services={services}
@@ -364,9 +365,79 @@ function LeadText({ text }: { text: string }) {
   );
 }
 
+/**
+ * A mission report (D1222) is the lead's message with the id
+ * `report-<missionId>-<…>` and a first line `Mission report: <title>, <end>`.
+ * Only the lead's counts: the same id from another sender is text (D1293).
+ */
+function reportOf(
+  message: ConversationEntry["message"],
+  lead: string | undefined,
+): { missionId: string; headline: string } | undefined {
+  const missionId = /^report-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-/.exec(
+    message.messageId,
+  )?.[1];
+  if (missionId === undefined || lead === undefined || message.from !== lead) return undefined;
+  const first = message.body.split("\n", 1)[0] ?? "";
+  if (!first.startsWith(REPORT_PREFIX)) return undefined;
+  return { missionId, headline: first.slice(REPORT_PREFIX.length) };
+}
+const REPORT_PREFIX = "Mission report: ";
+
+/** The lead's report on a mission, a card of its own like the lead's ask (D1293). */
+function ReportCard(props: {
+  body: string;
+  headline: string;
+  missionId: string;
+  connection: string;
+  services: TeamsServices;
+}) {
+  return (
+    <article
+      aria-label="Mission report"
+      className="mb-4 flex flex-col gap-2 rounded-xl border border-border p-3"
+    >
+      <div className="flex items-center gap-2 text-xs">
+        <ClipboardListIcon aria-hidden className="size-3.5 text-muted-foreground" />
+        <span className="font-medium">Mission report</span>
+        <Button
+          className="ml-auto"
+          onClick={() =>
+            void props.services.commands
+              .execute("civilization.mission.open", {
+                node: props.connection,
+                missionId: props.missionId,
+              })
+              .catch((error: unknown) =>
+                props.services.toasts?.show({
+                  type: "error",
+                  title: "Couldn't open the mission",
+                  description: errorText(error),
+                }),
+              )
+          }
+          size="xs"
+          variant="outline"
+        >
+          Open mission
+        </Button>
+      </div>
+      <p className="text-sm font-medium">{props.headline}</p>
+      <details className="text-sm">
+        <summary className="cursor-pointer text-xs text-muted-foreground">Full report</summary>
+        <div className="pt-2">
+          <MessageText text={props.body} />
+        </div>
+      </details>
+    </article>
+  );
+}
+
 function Entry(props: {
   entry: ConversationEntry;
   owner: string | undefined;
+  /** The lead's address, as the node resolved it. */
+  lead: string | undefined;
   /** Whether this page waits on its answer. */
   pending: boolean;
   services: TeamsServices;
@@ -395,7 +466,20 @@ function Entry(props: {
       </>
     );
   }
-  if (message.kind !== "ask") return <LeadText text={message.body} />;
+  if (message.kind !== "ask") {
+    const report = reportOf(message, props.lead);
+    return report === undefined ? (
+      <LeadText text={message.body} />
+    ) : (
+      <ReportCard
+        body={message.body}
+        connection={props.connection}
+        headline={report.headline}
+        missionId={report.missionId}
+        services={props.services}
+      />
+    );
+  }
   // An escalation: the lead asks what only the owner can decide (D688); it is
   // answered in the inbox, which tells the lead (D626).
   const open = entry.inbox === "open";

@@ -1789,6 +1789,18 @@ Decisions (L1):
   `status` (additive). The orchestrator's escalations (D1223) ask for
   `{status: "open", from: <lead>}` and keep the asks, so `missions.next` and
   `slices.handoff` no longer read every open item of the inbox.
+- **D1293. The mission report is a card of its own in the Lead view.** The
+  report (D1222) stays the lead's message, with no contract change; the view
+  tells it by its id `report-<missionId>-<…>` (the 36 characters of a mission
+  UUID after `report-`), a first line `Mission report: <title>, <end>` and its
+  sender being the lead the node resolved for the conversation. Such a message
+  renders as a card like the lead's ask: the headline (title and how it
+  ended, as the first line says it), **Open mission** and the whole report
+  under a collapsible **Full report**. A `report-` id from another sender, or
+  without that first line, is plain text. Open mission is the new client
+  command `civilization.mission.open { node, missionId }` of
+  `jhin.missions-view` (rule 6), so the Lead view needs no import of the
+  missions plugin.
 
 ### L2. Guards in the process (D1241–D1260)
 
@@ -2141,8 +2153,8 @@ Decisions (L2):
 - ~~L1: `missions.next` and `slices.handoff` read the open inbox to find the
   lead's escalations (D1223); a filter by sender on `agents.inbox.list`
   once inboxes grow.~~ L1, D1275.
-- L1: the report as a card of its own in the Lead view (today the lead's
-  Markdown text). ~~A way to clear a report from the inbox without an
+- ~~L1: the report as a card of its own in the Lead view (today the lead's
+  Markdown text).~~ L1, D1293. ~~A way to clear a report from the inbox without an
   answer~~ A2, D1274.
 - L2: a commit made in a shell is not refused: the guard holds the mission's
   step (D1241), not git itself. A `pre-commit` hook in the node's managed
