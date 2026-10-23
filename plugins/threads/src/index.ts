@@ -3757,16 +3757,16 @@ export default definePlugin({
       if (resetAt === undefined || !(Date.parse(resetAt) > Date.parse(turn.at))) return undefined;
       return { turnId: turn.turnId, resetAt };
     };
-    /**
-     * Arms the thread's continuation at its reset (or the end of a snooze that outlasts it),
-     * or disarms it. The timer is what says the time came: it is not asked of the clock again.
-     */
     /** When an armed resume is sent: at the reset, or the end of a snooze that outlasts it. */
     const recoveryDueAt = (thread: Thread, recovery: NonNullable<Thread["limitRecovery"]>) =>
       Math.max(
         Date.parse(recovery.resetAt),
         thread.snoozedUntil === undefined ? 0 : Date.parse(thread.snoozedUntil),
       );
+    /**
+     * Arms the thread's continuation at its reset (or the end of a snooze that outlasts it),
+     * or disarms it. The timer is what says the time came: it is not asked of the clock again.
+     */
     const armRecovery = (thread: Thread) => {
       clearTimeout(recoveryTimers.get(thread.id));
       recoveryTimers.delete(thread.id);
