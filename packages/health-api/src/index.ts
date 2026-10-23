@@ -80,6 +80,7 @@ export const CEREMONY_KINDS = [
   "approval",
   "proof-edit",
   "queue",
+  "review",
 ] as const;
 /** Progress: the work moving (D722). */
 export const PROGRESS_KINDS = ["slice-done", "commit", "merge"] as const;

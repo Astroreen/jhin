@@ -954,7 +954,8 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   start the plugin reads the streams again and keeps the window in memory.
 - **D722. Ceremony and progress are read from the streams that hold them.**
   Ceremony: a message, ask or answer delivered (`agents/messages`, D627), a
-  proof recorded again on a done slice (`missions`, D642/D646), and, on the
+  proof recorded again on a done slice (`missions`, D642/D646), a review
+  recorded on a slice (`missions.slice.reviewed`, D1242; L3 D1265), and, on the
   threads slices link (D647), an approval asked (`agent.request.opened` of
   kind `approval`) and a queue change (`threads.queue.updated`). Progress: a
   slice becoming done (`missions`), a linked thread's pull request merging
@@ -1758,6 +1759,15 @@ Decisions (L3):
   message ("an open ask of mine would hold the whole mission, including the
   seven items that don't need you") and set the item blocked itself. The
   guard made the honest escalation the costly one, so it was routed around.
+- **D1265. A recorded review is ceremony.** Health counts every
+  `missions.slice.reviewed` (D1242) as the ceremony kind `review` for the
+  slice's missions, its project and the node, the first review as much as
+  one recorded again: a review is a check, which D722 counts, and the
+  ratio's threshold leaves room for one per slice. L2 added reviews after A7
+  wrote D722, so health did not see them: in the L3 run the reviewer
+  re-recorded every done slice of a mission on the new tree before each
+  commit step (the shared checkout's guard, L2 Deferred), dozens of reviews
+  of unchanged work per mission, and health counted none of it.
 
 ## Deferred
 
