@@ -157,7 +157,8 @@ export function McpAppFrame(props: {
         if (!allowed) throw new Error("Declined by the user.");
         await call("threads.queue.add", { text });
       },
-      onRequestTeardown: () => setClosed(true),
+      // As T3: the app wraps up (its answer to `ui/resource-teardown`) before its frame goes.
+      onRequestTeardown: () => void host.teardown().then(() => setClosed(true)),
       onSizeChanged: ({ height: next }) => {
         if (next !== undefined) setHeight(clampMcpAppHeight(next));
       },
