@@ -853,7 +853,8 @@ Connect stays out of scope.
   tried again like a network error. Without WebCrypto the page pairs as before.
   A node on another origin from before D1366 refuses the `dpop` header in
   its CORS preflight; the page then pairs again without a proof (the code
-  was never sent) and keeps a bearer token. Nodes saved before keep their
+  was never sent) and keeps a bearer token, but only when the node answers
+  a request that needs no preflight: a network error stays an error. Nodes saved before keep their
   bearer tokens; pairing again binds. A
   saved key that no longer reads as a `CryptoKey` keeps its node in the
   list: its bound token is refused, and the node is paired again.
@@ -1019,9 +1020,10 @@ A slice a PR, in the order of D1361's risks:
   mapping another home made is refused, not repaired. When `jhin pair
   --tailscale` fails after `auth.pairing.create` succeeded (printing, an
   unreachable node mid-run), the mapping's notes are not repeated.
-- The web client's DPoP fallbacks (D1368: an older node's bearer answer,
-  a page without WebCrypto) have no test of their own; Playwright covers
-  the bound path.
+- The web client's DPoP fallbacks for a page without WebCrypto and for
+  a same-origin older node's bearer answer have no test of their own
+  (`pair-dpop.test.ts` covers an older node's refused preflight;
+  Playwright the bound path).
 - DPoP (D1366–D1368) binds what the web client pairs by a code. Tokens
   from `auth.tokens.issue`, `jhin pair` used by other programs, the
   owner token and page sessions stay bearer tokens; the CLI has no key of

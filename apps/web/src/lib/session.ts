@@ -89,12 +89,24 @@ export async function pairWithCode(
     response = await send(key);
   } catch (error) {
     // A node on another origin from before D1366 refuses the `dpop` header in
-    // its preflight: the request never left, so its code is unspent. Pair as before.
-    if (key === undefined) throw error;
+    // its preflight: the request never left, so its code is unspent. A browser
+    // tells that apart from a network error only by asking again without the
+    // header: a request needing no preflight that reaches the node.
+    if (key === undefined || !(await reachable(endpoint))) throw error;
     response = await send(undefined);
   }
   if (!response.ok) throw await failure(response);
   return (await response.json()) as { token: string; tokenType?: "DPoP" | "Bearer" };
+}
+
+/** Whether the node answers at all: a request that needs no CORS preflight. */
+async function reachable(endpoint: string): Promise<boolean> {
+  try {
+    await fetch(new URL("/.well-known/jhin", endpoint), { mode: "no-cors" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
