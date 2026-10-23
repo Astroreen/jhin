@@ -556,7 +556,8 @@ The reference is T3 Code at `eb7b35ac`: `apps/desktop/src/preview/BrowserImport/
   `device.hub.access` install the hub, the first input command installs
   `agent-device`. As in T3, `npm install --prefix <staging> --no-fund
   --no-audit <package>@<version>` runs into a `.staging-*` folder beside the
-  version (pnpm's `dlx npm` when there is no npm), the entry point is
+  version (pnpm's `dlx npm@11` when there is no npm, itself an unpinned
+  download of npm 11, as in T3), the entry point is
   checked, a `.install-complete` sentinel with the version is written, and
   the folder is renamed into place; an entry without its sentinel or with
   another version installs again, installs run one at a time, a failed one

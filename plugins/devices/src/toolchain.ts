@@ -16,6 +16,8 @@ const INSTALL_TIMEOUT_MS = 10 * 60_000;
 /** A staging folder untouched this long is a dead install (another node of the home may run one). */
 const STAGING_STALE_AFTER_MS = 60 * 60_000;
 const SENTINEL = ".install-complete";
+/** How long a program asked to stop gets before it is killed. */
+const KILL_AFTER_MS = 5_000;
 /** How much of a program's stdout and stderr is kept, each. */
 const OUTPUT_LIMIT = 1024 * 1024;
 
@@ -114,18 +116,25 @@ export function runProgram(
       shell: false,
       detached: group,
     });
-    const end = () => {
+    const signal = (name: NodeJS.Signals) => {
       try {
-        if (group && child.pid !== undefined) process.kill(-child.pid, "SIGTERM");
-        else child.kill("SIGTERM");
+        if (group && child.pid !== undefined) process.kill(-child.pid, name);
+        else child.kill(name);
       } catch {
         // Already gone.
       }
+    };
+    // Asked to stop, then made to: a child that ignores SIGTERM must not hold the queue.
+    let kill: ReturnType<typeof setTimeout> | undefined;
+    const end = () => {
+      signal("SIGTERM");
+      kill ??= setTimeout(() => signal("SIGKILL"), KILL_AFTER_MS);
     };
     const timer = options.timeoutMs === undefined ? undefined : setTimeout(end, options.timeoutMs);
     options.signal?.addEventListener("abort", end, { once: true });
     const settled = () => {
       if (timer !== undefined) clearTimeout(timer);
+      if (kill !== undefined) clearTimeout(kill);
       options.signal?.removeEventListener("abort", end);
     };
     // A noisy program keeps only its last output: the callers read a JSON line or an exit code.
