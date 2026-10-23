@@ -2200,7 +2200,9 @@ says. The other W38 decisions land in their own pull requests.
   - a draft's records on the owner's other devices (D486 shares the text, so
     a reference there shows as unavailable), and in the prompt history a
     recalled message's records;
-  - listing pull requests on forges other than GitHub (D849);
+  - listing pull requests on Bitbucket and Forgejo (D849; GitLab and Azure
+    DevOps list since `source-control.md` D1287, D1288), and a typed number
+    found off GitHub (`git.pr.resolve` reads GitHub only);
   - `aria-activedescendant` from the editor to the menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,

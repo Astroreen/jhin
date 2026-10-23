@@ -9,10 +9,12 @@ import {
   ForgeUnavailable,
   PULL_REQUEST,
   matchesHead,
+  viewerOf,
   type CheckoutTarget,
   type Forge,
   type ForgePullRequest,
   type HeadContext,
+  type Viewers,
 } from "./forge.ts";
 import { run, SpawnError } from "./git.ts";
 import type { Remark, WatchRead } from "./pr-watch.ts";
@@ -419,34 +421,13 @@ const login = (actor: RawActor | null | undefined) => text(actor?.login) ?? null
 const hostOf = (url: string) =>
   /^https?:\/\/([^/:]+)/i.exec(url)?.[1]?.toLowerCase() ?? "github.com";
 
-/** How long the node's GitHub account is taken as known: a `gh auth switch` shows within it. */
-const VIEWER_TTL_MS = 10 * 60_000;
-
-/** The plugin's answers of `gh api user`, by `gh`; kept by whoever reads watches. */
-export type Viewers = Map<string, { readonly at: number; readonly login: Promise<string | null> }>;
-
-/** The node's GitHub account (`gh api user`), asked again once its answer is old. */
-function viewerOf(
-  viewers: Viewers,
-  ghPath: string,
-  cwd: string,
-  host: string,
-): Promise<string | null> {
-  // Per host: the node may be signed in to github.com and an Enterprise host as different people.
-  const key = `${ghPath}\u0000${host}`;
-  const known = viewers.get(key);
-  if (known !== undefined && Date.now() - known.at < VIEWER_TTL_MS) return known.login;
-  const asked = ghJson(ghPath, cwd, ["api", "--hostname", host, "user"]).then(
-    (answer) => text((answer as RawActor | null)?.login) ?? null,
-    () => null,
+/** The node's GitHub account (`gh api user`), per host: github.com and an Enterprise host may differ. */
+const githubViewer = (viewers: Viewers, ghPath: string, cwd: string, host: string) =>
+  viewerOf(viewers, `${ghPath}\u0000${host}`, () =>
+    ghJson(ghPath, cwd, ["api", "--hostname", host, "user"]).then(
+      (answer) => text((answer as RawActor | null)?.login) ?? null,
+    ),
   );
-  viewers.set(key, { at: Date.now(), login: asked });
-  // A failed answer is asked again next time.
-  void asked.then((value) => {
-    if (value === null && viewers.get(key)?.login === asked) viewers.delete(key);
-  });
-  return asked;
-}
 
 const WATCH_FIELDS =
   "number,url,state,headRefOid,mergeable,baseRefName,statusCheckRollup,comments,reviews,author";
@@ -497,7 +478,7 @@ async function readWatch(
 ): Promise<WatchRead> {
   const [answer, viewer, required] = await Promise.all([
     ghJson(ghPath, cwd, ["pr", "view", url, "--json", WATCH_FIELDS]),
-    viewerOf(viewers, ghPath, cwd, hostOf(url)),
+    githubViewer(viewers, ghPath, cwd, hostOf(url)),
     requiredChecks(ghPath, cwd, url),
   ]);
   const raw = (answer ?? {}) as Record<string, unknown>;

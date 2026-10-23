@@ -1277,7 +1277,8 @@ marks the badge's list, with a screenshot).
   node's environment (`JHIN_BITBUCKET_ACCESS_TOKEN`, or `JHIN_BITBUCKET_EMAIL`
   and `JHIN_BITBUCKET_API_TOKEN`; `JHIN_BITBUCKET_API_BASE_URL` for another
   base), "Bitbucket needs a token on this node: …" without one. Watching
-  (D272) reads GitHub only; `git.pr.watch` on another forge says so.
+  (D272) reads GitHub only; `git.pr.watch` on another forge says so (GitLab
+  and Azure DevOps are watched since D1287, D1288).
 
 The proof: `plugins/source-control/test/forges.test.ts` (which host is which
 forge, configured hosts first; matching forks; a GitHub Enterprise host; a
@@ -1371,6 +1372,39 @@ comment" removes it); Playwright `e2e/tests/source-control.spec.ts` (the
 chip in the message, the comment on its line, deleting it takes the chip
 out, with a screenshot).
 
+### Listing and watching on GitLab and Azure DevOps (W35, D1287–D1288)
+
+- **D1287. GitLab's merge requests are listed and watched**, as T3 Code's
+  `GitLabPullRequestCli.ts` reads them at D53. `git.pr.search` (D849) asks
+  `glab api --hostname <host> projects/<path>/merge_requests?state=all&search=…&order_by=updated_at&sort=desc&per_page=N`
+  (any state, newest first, the words searched on GitLab). A watch (D271–D274)
+  reads the merge request (`projects/<path>/merge_requests/<iid>`): its head
+  `sha`, its head pipeline as the one check named "Pipeline" with its URL
+  (T3's `toChecks`), and a conflict from `has_conflicts` or `merge_status`
+  (T3's `toMergeability`). It reads the notes (the newest hundred, `…/notes?per_page=100&order_by=created_at&sort=desc`,
+  without system or empty notes, a diff note with its path; T3's
+  `decodeNotesJson`) and the node's account (`glab api user`, asked again
+  after ten minutes as D272's). `git.pr.watch` no longer refuses GitLab.
+- **D1288. Azure DevOps's pull requests are listed and watched**, as T3's
+  `AzureDevOpsPullRequestCli.ts`. `git.pr.search` is `az repos pr list
+  --status all --top N` in the remote's repository. `az` searches no text,
+  so words are matched in the client's way here: a title holding them, or the
+  number (`13`, `#13`), from the latest 100. A watch reads `az repos pr show`
+  (the head commit from `lastMergeSourceCommit`, a conflict from
+  `mergeStatus` as T3's `toMergeability`, the author's `uniqueName`) and the
+  comments of the pull request's threads through `az devops invoke --area
+  git --resource pullRequestThreads` (no system, deleted or empty comments,
+  a file thread's path; T3's `decodeThreadsJson`). The node's account comes
+  from `az account show --query user`. Azure DevOps has no checks here, as in
+  T3, so a watch there wakes on comments and conflicts only.
+
+The proof: `plugins/source-control/test/forges.test.ts` (fake `glab` and
+`az`: listing with words on each, a watch that stays quiet on its first read
+and then wakes the thread with T3's message for a failed pipeline, a
+reviewer's note and a conflict on GitLab, and for a file thread's comment
+and a conflict on Azure DevOps; the node's own and system comments wake
+nothing).
+
 ## Deferred
 
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
@@ -1415,7 +1449,11 @@ out, with a screenshot).
   question (T3 keeps it too; `git.worktree.remove` takes `deleteBranch`), the
   `branch` of a `root` workspace, and worktree folders that tell two
   repositories of one name apart.
-- Forges (D275–D279): watching a pull request on forges other than GitHub,
+- Forges (D275–D279): watching and listing pull requests on Bitbucket and
+  Forgejo (GitLab and Azure DevOps: D1287, D1288), the checks of an Azure
+  DevOps pull request's policies, Azure DevOps words matched past its latest
+  100 pull requests (`az` searches no text), notes of a merge request past
+  its newest hundred,
   Bitbucket Server and Data Center, forges' names in the client (T3's
   `providerName`: D904 brings their marks only),
   tokens kept as the node's secrets instead of its environment, creating a

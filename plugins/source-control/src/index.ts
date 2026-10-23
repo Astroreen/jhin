@@ -94,7 +94,7 @@ import {
 import { FORGE_KINDS, ForgeUnavailable, forgeKindOf, type Forge, type ForgeKind } from "./forge.ts";
 import { azureForge, bitbucketForge, forgejoForge, gitlabForge, siteOf } from "./forges.ts";
 import { githubForge, remoteHost } from "./github.ts";
-import type { Viewers } from "./github.ts";
+import type { Viewers } from "./forge.ts";
 import { createLinks, type LinkTarget } from "./links.ts";
 import { createWatcher } from "./watcher.ts";
 import {
@@ -2209,8 +2209,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     const site =
       remoteUrl === undefined ? { cwd, host: "", repository: "" } : siteOf(cwd, remoteUrl);
     if (site === undefined) return undefined;
-    if (kind === "azure-devops") return azureForge(tool("azPath"), site);
-    if (kind === "gitlab") return gitlabForge(tool("glabPath"), site);
+    if (kind === "azure-devops") return azureForge(tool("azPath"), site, viewers);
+    if (kind === "gitlab") return gitlabForge(tool("glabPath"), site, viewers);
     if (kind === "bitbucket") return bitbucketForge(site);
     return forgejoForge(tool("teaPath"), site);
   }

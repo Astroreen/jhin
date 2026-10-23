@@ -5,6 +5,9 @@
 // create`; states), packages/source-control-bitbucket (BitbucketApi.ts: the REST API, its
 // credentials, statuses as checks) and packages/source-control-forgejo (ForgejoCli.ts:
 // `tea api`; forgejoPullRequests.ts: states, drafts, statuses as checks), with their messages.
+// Listing and watching follow GitLabPullRequestCli.ts and gitLabMergeRequestJson.ts (the merge
+// request list, its notes, toChecks, toMergeability) and AzureDevOpsPullRequestCli.ts and
+// azureDevOpsPullRequestJson.ts (the list, the threads' comments, toMergeability).
 import * as Fs from "node:fs/promises";
 
 import {
@@ -22,11 +25,14 @@ import {
   rollup,
   runCli,
   text,
+  viewerOf,
   type CheckWord,
   type Forge,
   type ForgePullRequest,
   type HeadContext,
+  type Viewers,
 } from "./forge.ts";
+import type { Remark, WatchRead } from "./pr-watch.ts";
 
 /** Where a forge's driver works: the repository's folder and its `origin`. */
 export interface ForgeSite {
@@ -52,6 +58,12 @@ const stamp = (value: unknown) => {
   const at = text(value);
   return at === undefined || at === "" ? {} : { value: at };
 };
+
+/** T3's query helper: `key=value` pairs, the values encoded. */
+const queryString = (params: readonly (readonly [string, string])[]) =>
+  params.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+
+const watchState = (pr: PullRequest): WatchRead["state"] => pr.state;
 
 // --- GitLab (glab) ------------------------------------------------------------------------------
 
@@ -114,7 +126,45 @@ function gitlabRequest(raw: Record<string, unknown>): ForgePullRequest | undefin
   };
 }
 
-export function gitlabForge(glabPath: () => string, site: ForgeSite): Forge {
+/** A note of a merge request, as T3's decodeNotesJson keeps it: no system notes, none empty. */
+function gitlabRemark(raw: Record<string, unknown>): Remark | undefined {
+  if (raw["system"] === true) return undefined;
+  const body = text(raw["body"]) ?? "";
+  const createdAt = text(raw["created_at"]);
+  const id = raw["id"];
+  if (
+    body.trim() === "" ||
+    createdAt === undefined ||
+    (typeof id !== "number" && typeof id !== "string")
+  ) {
+    return undefined;
+  }
+  const author = raw["author"] as { username?: unknown } | null | undefined;
+  const position = raw["position"] as { new_path?: unknown; old_path?: unknown } | null | undefined;
+  const path = text(position?.new_path) ?? text(position?.old_path);
+  const edited = text(raw["updated_at"]);
+  return {
+    id: String(id),
+    author: text(author?.username) ?? null,
+    body,
+    createdAt,
+    ...(edited !== undefined && edited !== createdAt ? { editedAt: edited } : {}),
+    ...(path === undefined ? {} : { path }),
+  };
+}
+
+/** T3's toMergeability for GitLab: `has_conflicts`, else `merge_status`. */
+function gitlabMergeability(raw: Record<string, unknown>): WatchRead["mergeability"] {
+  if (raw["has_conflicts"] === true) return "conflicting";
+  const status = text(raw["merge_status"])?.trim().toLowerCase();
+  return status === "can_be_merged"
+    ? "mergeable"
+    : status === "cannot_be_merged"
+      ? "conflicting"
+      : "unknown";
+}
+
+export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Viewers): Forge {
   const glab = async (args: readonly string[]) =>
     json(
       await runCli(glabPath(), args, {
@@ -196,6 +246,85 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite): Forge {
         throw new ForgeUnavailable("failed", "glab created no merge request");
       return found.pr;
     },
+    // T3's listMergeRequests: any state, most recently updated first, `search` on GitLab.
+    list: async ({ query: words, limit }) => {
+      if (site.repository === "") throw new ForgeUnavailable("failed", "No GitLab project to list");
+      const trimmed = words?.trim() ?? "";
+      const raw = await glab([
+        "api",
+        "--hostname",
+        site.host,
+        `${project(site.repository)}/merge_requests?${queryString([
+          ["state", "all"],
+          ...(trimmed === "" ? [] : ([["search", trimmed]] as const)),
+          ["order_by", "updated_at"],
+          ["sort", "desc"],
+          ["per_page", String(limit)],
+        ])}`,
+      ]);
+      if (!Array.isArray(raw)) throw new ForgeUnavailable("failed", "glab answered no list");
+      return raw
+        .map((item) => gitlabRequest(item as Record<string, unknown>)?.pr)
+        .filter((item) => item !== undefined);
+    },
+    // What a watch reads (D1287): the merge request, its notes and the node's account.
+    watch: async (url) => {
+      const { host, repository, number } = reference(url);
+      const path = `${project(repository)}/merge_requests/${number}`;
+      const [raw, notes, viewer] = await Promise.all([
+        glab(["api", "--hostname", host, path]),
+        glab([
+          "api",
+          "--hostname",
+          host,
+          `${path}/notes?${queryString([
+            // The newest hundred: what a watch has not told yet is among them.
+            ["per_page", "100"],
+            ["order_by", "created_at"],
+            ["sort", "desc"],
+          ])}`,
+        ]),
+        viewerOf(viewers, `glab\u0000${host}`, async () => {
+          const user = (await glab(["api", "--hostname", host, "user"])) as {
+            username?: unknown;
+          } | null;
+          return text(user?.username) ?? null;
+        }),
+      ]);
+      const request = (raw ?? {}) as Record<string, unknown>;
+      const found = gitlabRequest(request);
+      if (found === undefined)
+        throw new ForgeUnavailable("failed", "glab answered no merge request");
+      const pipeline = request["head_pipeline"] as
+        | { status?: unknown; web_url?: unknown }
+        | null
+        | undefined;
+      const pipelineUrl = text(pipeline?.web_url);
+      const author = request["author"] as { username?: unknown } | null | undefined;
+      return {
+        state: watchState(found.pr),
+        headSha: found.pr.headSha ?? null,
+        baseBranch: found.pr.baseBranch,
+        // T3's toChecks: the head pipeline is the one check.
+        checks:
+          pipeline == null
+            ? []
+            : [
+                {
+                  name: "Pipeline",
+                  status: pipelineWord(text(pipeline.status)),
+                  ...(pipelineUrl === undefined ? {} : { url: pipelineUrl }),
+                },
+              ],
+        mergeability: gitlabMergeability(request),
+        author: text(author?.username) ?? null,
+        viewer,
+        remarks: (Array.isArray(notes) ? notes : [])
+          .map((item) => gitlabRemark(item as Record<string, unknown>))
+          .filter((item) => item !== undefined)
+          .toReversed(),
+      };
+    },
     templatePaths: [
       ".gitlab/merge_request_templates/Default.md",
       ".gitlab/merge_request_templates/default.md",
@@ -241,14 +370,96 @@ function azureRequest(raw: Record<string, unknown>): ForgePullRequest | undefine
  * the folder's (`--detect`).
  */
 function azureWhere(site: ForgeSite): string[] {
-  const match = /^(?:([^/]+)\/)?([^/]+)\/_git\/([^/]+)$/.exec(site.repository);
-  if (match === null) return ["--detect", "true"];
-  const organization =
-    site.host === "dev.azure.com" ? `https://dev.azure.com/${match[1]}` : `https://${site.host}`;
-  return ["--organization", organization, "--project", match[2]!, "--repository", match[3]!];
+  const location = azureLocation(site.host, site.repository);
+  if (location === undefined) return ["--detect", "true"];
+  return [
+    "--organization",
+    location.organization,
+    "--project",
+    location.project,
+    "--repository",
+    location.repository,
+  ];
 }
 
-export function azureForge(azPath: () => string, site: ForgeSite): Forge {
+/** T3's toMergeability for Azure DevOps. */
+function azureMergeability(status: string | undefined): WatchRead["mergeability"] {
+  switch (status?.trim().toLowerCase()) {
+    case "succeeded":
+      return "mergeable";
+    case "conflicts":
+    case "failure":
+    case "rejectedbypolicy":
+      return "conflicting";
+    default:
+      return "unknown";
+  }
+}
+
+/** The comments of a pull request's threads, as T3's decodeThreadsJson keeps them. */
+function azureRemarks(raw: unknown): Remark[] {
+  const threads = (raw as { value?: unknown } | null)?.value;
+  const remarks: Remark[] = [];
+  for (const thread of Array.isArray(threads) ? threads : []) {
+    const entry = thread as {
+      id?: unknown;
+      isDeleted?: unknown;
+      threadContext?: { filePath?: unknown } | null;
+      comments?: unknown;
+    };
+    if (entry.isDeleted === true) continue;
+    const path = text(entry.threadContext?.filePath);
+    for (const comment of Array.isArray(entry.comments) ? entry.comments : []) {
+      const item = comment as {
+        id?: unknown;
+        isDeleted?: unknown;
+        commentType?: unknown;
+        content?: unknown;
+        publishedDate?: unknown;
+        lastUpdatedDate?: unknown;
+        author?: { uniqueName?: unknown; displayName?: unknown } | null;
+      };
+      const body = text(item.content) ?? "";
+      const createdAt = text(item.publishedDate);
+      if (
+        item.isDeleted === true ||
+        text(item.commentType)?.toLowerCase() === "system" ||
+        body.trim() === "" ||
+        createdAt === undefined
+      ) {
+        continue;
+      }
+      const edited = text(item.lastUpdatedDate);
+      remarks.push({
+        id: `${String(entry.id ?? 0)}:${String(item.id ?? 0)}`,
+        author: text(item.author?.uniqueName) ?? text(item.author?.displayName) ?? null,
+        body,
+        createdAt,
+        ...(edited !== undefined && edited !== createdAt ? { editedAt: edited } : {}),
+        ...(path === undefined ? {} : { path }),
+      });
+    }
+  }
+  return remarks.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
+}
+
+/**
+ * The organization (with its collection on a server), project and repository of an Azure
+ * DevOps repository path: `org/project/_git/repo` on dev.azure.com, `project/_git/repo` on
+ * `<org>.visualstudio.com`, `collection/project/_git/repo` on a server.
+ */
+function azureLocation(host: string, repository: string) {
+  const match = /^(?:(.+)\/)?([^/]+)\/_git\/([^/]+)$/.exec(repository);
+  if (match === null) return undefined;
+  const prefix = match[1];
+  const organization =
+    host === "dev.azure.com"
+      ? `https://dev.azure.com/${prefix ?? ""}`
+      : `https://${host}${prefix === undefined ? "" : `/${prefix}`}`;
+  return { organization, project: match[2]!, repository: match[3]! };
+}
+
+export function azureForge(azPath: () => string, site: ForgeSite, viewers: Viewers): Forge {
   const where = azureWhere(site);
   const az = async (args: readonly string[]) =>
     json(
@@ -327,6 +538,88 @@ export function azureForge(azPath: () => string, site: ForgeSite): Forge {
         ]),
         "created",
       );
+    },
+    // T3's listPullRequests: any state, newest first. `az` searches no text, so words are
+    // matched here against the title and number, as the composer ranks them anyway.
+    list: async ({ query: words, limit }) => {
+      const trimmed = words?.trim().toLowerCase() ?? "";
+      const raw = await az([
+        "repos",
+        "pr",
+        "list",
+        ...where,
+        "--status",
+        "all",
+        "--top",
+        String(trimmed === "" ? limit : Math.max(limit, 100)),
+      ]);
+      if (!Array.isArray(raw)) throw new ForgeUnavailable("failed", "az answered no list");
+      return raw
+        .map((item) => azureRequest(item as Record<string, unknown>)?.pr)
+        .filter((item) => item !== undefined)
+        .filter(
+          (pr) =>
+            trimmed === "" ||
+            pr.title.toLowerCase().includes(trimmed) ||
+            String(pr.number) === trimmed.replace(/^#/, ""),
+        )
+        .slice(0, limit);
+    },
+    // What a watch reads (D1288): the pull request, its threads' comments and the node's
+    // account; Azure DevOps has no checks here, as in T3.
+    watch: async (url) => {
+      const { host, repository, number } = reference(url);
+      const location = azureLocation(host, repository);
+      if (location === undefined) {
+        throw new ForgeUnavailable("failed", `${url} names no Azure DevOps repository`);
+      }
+      const [raw, threads, viewer] = await Promise.all([
+        az([
+          "repos",
+          "pr",
+          "show",
+          "--id",
+          String(number),
+          "--organization",
+          location.organization,
+        ]),
+        az([
+          "devops",
+          "invoke",
+          "--organization",
+          location.organization,
+          "--area",
+          "git",
+          "--resource",
+          "pullRequestThreads",
+          "--api-version",
+          "7.1",
+          "--route-parameters",
+          `project=${location.project}`,
+          `repositoryId=${location.repository}`,
+          `pullRequestId=${number}`,
+        ]),
+        viewerOf(viewers, `az\u0000${location.organization}`, async () => {
+          const user = (await az(["account", "show", "--query", "user"])) as {
+            name?: unknown;
+          } | null;
+          return text(user?.name) ?? null;
+        }),
+      ]);
+      const request = (raw ?? {}) as Record<string, unknown>;
+      const pr = one(request, "answered");
+      const source = request["lastMergeSourceCommit"] as { commitId?: unknown } | null | undefined;
+      const author = request["createdBy"] as { uniqueName?: unknown } | null | undefined;
+      return {
+        state: watchState(pr),
+        headSha: text(source?.commitId) ?? null,
+        baseBranch: pr.baseBranch,
+        checks: [],
+        mergeability: azureMergeability(text(request["mergeStatus"])),
+        author: text(author?.uniqueName) ?? null,
+        viewer,
+        remarks: azureRemarks(threads),
+      };
     },
     templatePaths: [
       ".azuredevops/pull_request_template.md",
