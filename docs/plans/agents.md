@@ -785,6 +785,13 @@ Decisions:
   second route as a mention. The lore index (`lore.list`) reads its own
   `[name](story.md)` rows for names and lessons, not routes, so it keeps its
   parser.
+- **D1292. A generation's first turn waits for its lore brief at most 30
+  seconds.** `lore.brief` reads local files, so it ends, but a stuck one held
+  the turn for good (D671). `loreBrief` races the command against
+  `LORE_BRIEF_TIMEOUT_MS` (30 s, a constant, no config field): past it the
+  brief is none, a warning is logged like the failure path's, and the turn
+  starts without it. The timer is cleared when the brief comes first; one that
+  arrives after the bound is ignored. `deferredTurn` is unchanged.
 
 D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
 
@@ -1992,8 +1999,8 @@ Decisions (L2):
 - A4: reading the library off the event loop (`fs/promises`, or a cache
   kept by file watching). `context.map` and the lore commands read the
   library synchronously, which is quick for a docs tree of this size.
-- A4: a bound on how long a generation's first turn waits for its lore
-  brief (D671); `lore.brief` reads local files, so it ends.
+- ~~A4: a bound on how long a generation's first turn waits for its lore
+  brief (D671); `lore.brief` reads local files, so it ends.~~ A4, D1292.
 - ~~A4: reference-style links (`[x][ref]`) and HTML links as routes;~~ A4,
   D1286.
 - A4: events when pages change (pages are re-read when their mtime changes).

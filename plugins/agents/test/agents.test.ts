@@ -4,9 +4,9 @@ import * as Path from "node:path";
 import { AGENTS_STREAM, AgentEvents, ThreadEvents, threadStream } from "@jhin/agent-api";
 import { definePlugin, z } from "@jhin/sdk";
 import { testManifest } from "@jhin/testing";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { MAX_KNOWLEDGE_CHARS, deferredTurn } from "../src/index.ts";
+import { LORE_BRIEF_TIMEOUT_MS, MAX_KNOWLEDGE_CHARS, deferredTurn } from "../src/index.ts";
 import { CAPTURE, NODE_ID, node, watch } from "./support.ts";
 
 const builder = { role: "Builds slices and proves them", runtime: CAPTURE, model: "m1" };
@@ -392,6 +392,45 @@ describe("defined agents", () => {
     const events = watch(client, threadStream(generation.threadId));
     await client.call("threads.send", { threadId: generation.threadId, text: "Go" });
     await events.until(ThreadEvents.turnCompleted);
+    expect(requests[0]?.input.text).toBe("Go");
+  });
+
+  it("starts a generation without lore when lore.brief outlasts its bound (D1292)", async () => {
+    let asked!: () => void;
+    const reached = new Promise<void>((resolve) => (asked = resolve));
+    const stuck = {
+      manifest: testManifest("test.lore", { side: "server" }),
+      definition: definePlugin({
+        activate(context) {
+          context.commands.register({
+            name: "lore.brief",
+            description: "test",
+            input: z.unknown(),
+            output: z.unknown(),
+            handler: () => {
+              asked();
+              return new Promise<never>(() => {});
+            },
+          });
+        },
+      }),
+    };
+    const { client, requests } = await node({ agents: { builder }, plugins: [stuck] });
+    const { generation } = await client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      { agentId: "builder", reason: "first" },
+    );
+    const events = watch(client, threadStream(generation.threadId));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await client.call("threads.send", { threadId: generation.threadId, text: "Go" });
+      await reached;
+      expect(requests).toHaveLength(0);
+      vi.advanceTimersByTime(LORE_BRIEF_TIMEOUT_MS);
+      await events.until(ThreadEvents.turnCompleted);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(requests[0]?.input.text).toBe("Go");
   });
 

@@ -138,6 +138,9 @@ export function knowledgePreface(dir: string): string | undefined {
   return `${head}${parts.join("")}${note}${tail}`;
 }
 
+/** How long a generation's first turn waits for its lore brief (D1292). */
+export const LORE_BRIEF_TIMEOUT_MS = 30_000;
+
 /**
  * A turn whose runtime starts once `before` resolves: what a generation's
  * first turn needs, since its lore brief is a command (A4, D671). An
@@ -225,18 +228,33 @@ export default definePlugin({
     const loreBrief = async (agentId: string): Promise<string> => {
       const home = homes.get(agentId);
       if (home === undefined) return "";
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        const brief = await run<{ markdown: string; stories: string[] }>("lore.brief", {
-          projectId: home.id,
-          agent: agentId,
-          reason: "start",
-        });
+        // The brief reads local files, so it ends; a bound keeps a stuck one
+        // from holding the first turn for good (D1292). One that comes after
+        // the bound is ignored.
+        const brief = await Promise.race([
+          run<{ markdown: string; stories: string[] }>("lore.brief", {
+            projectId: home.id,
+            agent: agentId,
+            reason: "start",
+          }),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(new Error(`no lore brief within ${LORE_BRIEF_TIMEOUT_MS / 1000} seconds`)),
+              LORE_BRIEF_TIMEOUT_MS,
+            );
+          }),
+        ]);
         return brief.stories.length === 0 ? "" : `${brief.markdown}\n---\n\n`;
       } catch (error) {
         if ((error as { code?: unknown }).code !== "COMMAND_NOT_FOUND") {
           context.log.warn("no lore brief for a generation", { agentId, error: String(error) });
         }
         return "";
+      } finally {
+        clearTimeout(timer);
       }
     };
 
