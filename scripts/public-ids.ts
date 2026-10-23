@@ -9,8 +9,10 @@
 //   node scripts/public-ids.ts --list       print the ids found in HEAD's files
 //
 // Ids are read from the source, not from a running node: string literals in the
-// places they are declared (see PATTERNS). An id built at run time (a template
-// literal) is not seen, so neither its removal.
+// places they are declared (see PATTERNS). A template literal with `${…}` is a
+// pattern id (D1394): each `${…}` reads as `*`, so `sidebar.thread.jump.${n}`
+// is `sidebar.thread.jump.*`, kept and compared like any id. An id built any
+// other way at run time is not seen, so neither its removal.
 
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
@@ -41,7 +43,16 @@ export interface SourceFile {
 export const DEPRECATIONS_FILE = "deprecations.json";
 const ROOT = Path.resolve(import.meta.dirname, "..");
 const SOURCE_DIRS = ["packages/", "plugins/", "apps/"];
-const ID = String.raw`"([a-z][\w.@/-]*)"`;
+const NAME = String.raw`[a-z][\w.@/-]*`;
+/** A double-quoted id (group 1), or a template literal (group 2): `${…}` parts allowed. */
+const ID = String.raw`(?:"(${NAME})"|\`(${NAME}(?:\$\{[^}]*\}[\w.@/-]*)*)\`)`;
+
+/** The id a match of `ID` reads: a template literal's `${…}` become `*` (D1394). */
+const idOf = (first: string | undefined, template: string | undefined): string =>
+  first ?? template!.replace(/(?:\$\{[^}]*\})+/g, "*");
+
+/** Whether an id is a pattern, written as a template literal with `${…}`. */
+export const isPattern = (id: string): boolean => id.includes("*");
 
 /** Where each kind of id is declared in the source, as string literals. */
 const PATTERNS: Record<Exclude<Kind, "event">, readonly RegExp[]> = {
@@ -62,11 +73,12 @@ const PATTERNS: Record<Exclude<Kind, "event">, readonly RegExp[]> = {
     ),
   ],
 };
-const COMMAND_DEFINITION = /\bname:\s*"([a-z][\w-]*(?:\.[\w-]+)+)",\s*description:/g;
+const COMMAND_DEFINITION =
+  /\bname:\s*(?:"([a-z][\w-]*(?:\.[\w-]+)+)"|`([a-z][\w-]*\.(?:[\w.-]|\$\{[^}]*\})*)`),\s*description:/g;
 /** `export const FooEvents = { … }`: every string value is an event type. */
 const EVENTS_OBJECT = /\b[A-Z]\w*Events\s*=\s*\{([^}]*)\}/g;
 const EMIT = new RegExp(String.raw`\.events\.emit\(\s*${ID}`, "g");
-const STRING = /"([a-z][\w.@/-]*)"/g;
+const STRING = new RegExp(ID, "g");
 
 /** Source files whose ids are public: not tests, fixtures or builds. */
 export const isSource = (path: string): boolean =>
@@ -95,19 +107,21 @@ export function extractIds(files: Iterable<SourceFile>): Ids {
     }
     // A command written as a definition object and registered elsewhere.
     if (text.includes("CommandDefinition")) {
-      for (const match of text.matchAll(COMMAND_DEFINITION)) ids.command.add(match[1]!);
+      for (const match of text.matchAll(COMMAND_DEFINITION)) {
+        ids.command.add(idOf(match[1], match[2]));
+      }
     }
     for (const [kind, patterns] of Object.entries(PATTERNS) as [Kind, RegExp[]][]) {
       for (const pattern of patterns) {
-        for (const match of text.matchAll(pattern)) ids[kind].add(match[1]!);
+        for (const match of text.matchAll(pattern)) ids[kind].add(idOf(match[1], match[2]));
       }
     }
     // Comments in an events object name payloads in braces: they are not its end.
     const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     for (const block of code.matchAll(EVENTS_OBJECT)) {
-      for (const match of block[1]!.matchAll(STRING)) ids.event.add(match[1]!);
+      for (const match of block[1]!.matchAll(STRING)) ids.event.add(idOf(match[1], match[2]));
     }
-    for (const match of text.matchAll(EMIT)) ids.event.add(match[1]!);
+    for (const match of text.matchAll(EMIT)) ids.event.add(idOf(match[1], match[2]));
   }
   return ids;
 }
@@ -253,7 +267,10 @@ function main(argv: readonly string[]): number {
     ),
     new Date().toISOString().slice(0, 10),
   );
-  const counts = KINDS.map((kind) => `${kind} ${head[kind].size}`).join(", ");
+  const counts = KINDS.map((kind) => {
+    const patterns = [...head[kind]].filter(isPattern).length;
+    return `${kind} ${head[kind].size - patterns}${patterns === 0 ? "" : ` + ${patterns} pattern${patterns === 1 ? "" : "s"}`}`;
+  }).join(", ");
   if (removals.length === 0) {
     console.log(`public-ids: no public id removed since ${base.slice(0, 12)} (${counts})`);
     return 0;

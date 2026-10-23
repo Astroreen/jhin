@@ -133,4 +133,8 @@ with `origin/main` and in the change, and fails on an id that is gone and
 not deprecated on main, deprecated only in the same change, or removed
 before its `removeAfter`. It runs as CI's "Public ids" job and in
 `pnpm verify`. `node scripts/public-ids.ts --list` prints the ids it sees.
-An id built at run time (a template literal) is invisible to it.
+An id written as a template literal is a pattern, each `${…}` read as `*`
+(`sidebar.thread.jump.*`): it is kept and deprecated like an id, with the
+pattern as the entry's `id`
+([D1394](plans/agents.md#l2-guards-in-the-process-d1241d1260)). An id built
+any other way at run time is invisible to it.
