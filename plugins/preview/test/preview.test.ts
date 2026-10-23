@@ -1113,6 +1113,8 @@ async function standInApp() {
       // Without these, Linux's keyring holds the first request back for half a minute.
       "--password-store=basic",
       "--use-mock-keychain",
+      // CI's runners keep the user namespaces Chromium's sandbox needs.
+      ...(process.env["CI"] === undefined ? [] : ["--no-sandbox"]),
       "about:blank",
     ],
     { stdio: ["ignore", "ignore", "pipe"] },
