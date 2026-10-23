@@ -15,7 +15,7 @@ import {
 } from "@jhin/http-api";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
 
-import { fromBrowser, hostPolicy } from "./allowed-hosts.ts";
+import { fromBrowser, hostName, hostPolicy } from "./allowed-hosts.ts";
 import { clientAddress, trustList, trusted } from "./client-address.ts";
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
@@ -117,10 +117,12 @@ export default definePlugin({
       const named = [request.headers.host?.toLowerCase(), api.requestedHost(request)];
       const host = named.find((name) => name !== undefined && !hosts.allows(name));
       if (host === undefined) return undefined;
-      if (!warned.has(host) && warned.size < 64) {
-        warned.add(host);
+      const name = hostName(host) ?? host;
+      if (!warned.has(name) && warned.size < 64) {
+        warned.add(name);
         context.log.warn("refused a browser request for a host this node does not answer to", {
-          host,
+          // The header is the client's: logged short, never whole.
+          host: name.slice(0, 200),
           setting: "jhin.http.allowedHosts",
         });
       }
@@ -246,6 +248,8 @@ export default definePlugin({
         });
       },
       allowHost(name) {
+        // Turning the check off is the owner's choice (jhin.http.allowedHosts), never a plugin's.
+        if (name.trim() === "*") throw new Error("allowHost takes a name, not *");
         return toDisposable(hosts.add(name));
       },
       requestedHost(request) {

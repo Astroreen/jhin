@@ -48,7 +48,7 @@ export interface HttpServer {
   /**
    * Since 1.4 (security.md D1362): browsers may reach the node by `host`
    * (a name, or `.example.com` for every name under it) until the
-   * disposable is disposed. A browser's request for a name the node does
+   * disposable is disposed. `*` is refused: only the owner turns the check off. A browser's request for a name the node does
    * not answer to is refused with 403 before any route: a DNS rebinding page.
    */
   allowHost?(host: string): Disposable;

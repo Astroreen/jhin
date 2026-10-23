@@ -711,7 +711,7 @@ Connect stays out of scope.
   answers, never a page's author: Tailscale Serve keeps them as `Host`,
   D1189), the hosts of `jhin.mesh.advertise` (the mesh plugin adds them
   through `http.server` 1.4 `allowHost(host)`, which returns a
-  disposable), and `jhin.http.allowedHosts`: exact names, or `.example.com`
+  disposable and refuses `*`), and `jhin.http.allowedHosts`: exact names, or `.example.com`
   for that name and every name under it, or `*` to turn the check off.
   Names are compared without their port and case.
   Every name a request gives is checked, never skipped: its `Host`, and

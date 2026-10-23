@@ -154,6 +154,8 @@ describe("the names a node answers to (security.md D1362)", () => {
     expect(await status(`mesh.example.org:${port}`)).toBe(200);
     allowed.dispose();
     expect(await status("mesh.example.org")).toBe(403);
+    // Only the owner turns the check off.
+    expect(() => server.allowHost!("*")).toThrow("allowHost takes a name, not *");
   });
 
   it("turns the check off with *", async () => {
