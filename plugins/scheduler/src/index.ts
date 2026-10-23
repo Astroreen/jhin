@@ -809,6 +809,17 @@ function activateScheduler(context: PluginContext): void {
     }
   };
 
+  /**
+   * Whether the calling thread sees a task's webhook URL (D1352): not when the task runs
+   * broader, nor when its bound thread cannot be read, so one failed read hides one URL instead
+   * of failing the whole list.
+   */
+  const urlShown = async (limits: Modes | undefined, task: Modes & { threadId: string | null }) => {
+    if (limits === undefined) return true;
+    const modes = await runModes(task).catch(() => undefined);
+    return modes !== undefined && within(limits, modes);
+  };
+
   /** Checks a task as it is under its lock, before what changes, runs or deletes it. */
   type Guard = (task: StoredTask) => Promise<void>;
   /**
@@ -1488,11 +1499,7 @@ function activateScheduler(context: PluginContext): void {
       const limits = await callerLimits(invocation.threadId);
       const tasks: ScheduledTask[] = [];
       for (const task of await list(projectId)) {
-        const shown =
-          withToken &&
-          (limits === undefined ||
-            task.webhook === undefined ||
-            within(limits, await runModes(task)));
+        const shown = withToken && (task.webhook === undefined || (await urlShown(limits, task)));
         tasks.push(
           shown || task.webhook === undefined
             ? task
@@ -1512,10 +1519,7 @@ function activateScheduler(context: PluginContext): void {
     handler: async ({ id }, invocation) => {
       const task = await getTask(id);
       const limits = await callerLimits(invocation.threadId);
-      return toPublic(
-        task,
-        mayWrite(invocation) && (limits === undefined || within(limits, await runModes(task))),
-      );
+      return toPublic(task, mayWrite(invocation) && (await urlShown(limits, task)));
     },
   });
 

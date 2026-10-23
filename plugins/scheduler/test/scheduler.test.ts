@@ -659,6 +659,27 @@ describe("jhin.scheduler: the calling thread's ceiling on a task's modes (D1352)
       asThread(kernel, narrow.id)("scheduler.tasks.run", { id: task.id }),
     ).rejects.toMatchObject({ code: "RUNTIME_MODE_ESCALATION_DENIED" });
 
+    // The interaction mode is a ceiling for the same commands.
+    const planner = await client.call<{ id: string }>("threads.create", {
+      runtimeMode: "full-access",
+      interactionMode: "plan",
+    });
+    const asPlanner = asThread(kernel, planner.id);
+    const defaultTask = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "d",
+      schedule,
+      interactionMode: "default",
+    });
+    for (const [name, input] of [
+      ["scheduler.tasks.update", { id: defaultTask.id, prompt: "e" }],
+      ["scheduler.tasks.run", { id: defaultTask.id }],
+      ["scheduler.tasks.delete", { id: defaultTask.id }],
+    ] as const) {
+      await expect(asPlanner(name, input)).rejects.toMatchObject({
+        code: "INTERACTION_MODE_ESCALATION_DENIED",
+      });
+    }
+
     // Its own task may not be moved into a broader thread either.
     const call = asThread(kernel, narrow.id);
     const own = await call("scheduler.tasks.create", { prompt: "y", schedule });
