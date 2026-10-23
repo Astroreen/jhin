@@ -87,10 +87,13 @@ describe("agent contract", () => {
   });
 
   it("defaults the section and refuses ids that are no agent ids", () => {
-    expect(AgentsConfig.parse({})).toEqual({ agents: {} });
+    expect(AgentsConfig.parse({})).toEqual({ agents: {}, settlePreviousGeneration: true });
     expect(
       AgentsConfig.parse({ agents: { builder: { role: "Builds", runtime: "jhin.agent-fake" } } }),
-    ).toEqual({ agents: { builder: { role: "Builds", runtime: "jhin.agent-fake" } } });
+    ).toEqual({
+      agents: { builder: { role: "Builds", runtime: "jhin.agent-fake" } },
+      settlePreviousGeneration: true,
+    });
     expect(
       AgentsConfig.safeParse({ agents: { "jhin.agent-fake": { role: "x", runtime: "y" } } })
         .success,

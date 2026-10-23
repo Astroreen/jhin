@@ -335,6 +335,21 @@ types and the schemas of the `agents.*` commands) is
   last showed, with the error; the Retry button means now and resets the
   pause. A closed connection or the end of the store stops the retrying. The
   feeds of `node-feeds` (inbox, health) keep their own retry (D731).
+- **D1397. Rotating settles the previous generation when it is idle.**
+  After `agents.rotate` records the new generation, the agents plugin runs
+  `threads.settle` on the previous generation's thread, so the Settled shelf
+  holds the old generations and the active list the current one. Settling,
+  not archiving: nothing stops, and the thread stays readable. A generation
+  running a turn or waiting for an answer (`TURN_IN_PROGRESS`), or any other
+  refusal, is left as it was for the threads' own auto-settle sweep after N
+  idle days, logged at info; the rotation succeeds either way. The section
+  option `settlePreviousGeneration` (default true) turns it off. A settled
+  generation still answers. A side turn (`agents.ask` with `generation`) is
+  a fork of the dormant generation, which stays as it is (D625), so it stays
+  settled, and a delivered message goes to the current generation. Only a
+  turn sent to the settled thread itself (`threads.send`) takes it off the
+  shelf (the thread's next turn revives it, `threads.settle`), so no code
+  has to unsettle it.
 
 ### A2. Messaging between agents, and the owner (D621–D640)
 
@@ -2155,7 +2170,8 @@ three agents, and otherwise read the streams.
   (D613).
 - An `agent.directory@1` service for plugins that read agents in process;
   the `agents.*` commands serve them for now.
-- Archiving or settling earlier generations automatically on rotate (D606).
+- ~~Archiving or settling earlier generations automatically on rotate (D606).~~
+  A1, D1397: settling, when idle. Archiving stays out: it stops turns.
 - A2: asks to an agent that outlive the caller's call. An ask waits for its
   answer inside the call (D624); an agent that cannot wait asks with
   `agents.send` and gets the reply as a message.

@@ -124,6 +124,11 @@ export const AgentsConfig = z
       .record(AgentId, AgentDefinition)
       .default({})
       .meta({ title: "Agents", description: "Defined agents of this node, by id." }),
+    settlePreviousGeneration: z.boolean().default(true).meta({
+      title: "Settle the previous generation on rotate",
+      description:
+        "When an agent rotates, move its previous generation's thread to the Settled shelf if it is idle; it comes back with its next turn (D1397).",
+    }),
   })
   .meta({
     title: "Agents",
