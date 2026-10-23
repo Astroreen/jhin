@@ -549,6 +549,11 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   T3 does).
 - Telling the app's page from other subscribers of `preview-desktop`
   (D1321): any subscriber holds new tabs for the 10 s wait.
+- A reload of the window whose new page subscribes to `preview-desktop`
+  before the old one leaves (D1321): the stream keeps the old page's tabs
+  as attached, the new page does not host them, and each ends on the node
+  as the old page's webview goes and its relay drops (D1322), rather than
+  moving to the new page.
 - Around the preview in the app (D1321–D1324): a desktop tab that outlives
   its webview (T3 reconnects a tab after a reload of the window or once its
   DevTools close; here the tab closes); T3's DevTools, element annotation,
