@@ -123,7 +123,14 @@ function useDeviceControls(props: {
     try {
       // The node answers with the settings read back after the change.
       const next = (await call.current("device.action", { ...target, action })) as DeviceDetail;
-      if (shown.current === asked) setDetail(next);
+      if (shown.current === asked) {
+        // Took, but not read back: the panel keeps what it last read, and says so.
+        if (next.readError !== undefined) {
+          setError(`The settings could not be read back: ${next.readError}`);
+        } else {
+          setDetail(next);
+        }
+      }
       return true;
     } catch (failure) {
       if (shown.current === asked) setError(errorMessage(failure));

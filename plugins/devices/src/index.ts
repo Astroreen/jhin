@@ -578,7 +578,7 @@ export default definePlugin({
                 deviceId: device.id,
                 error: String(error),
               });
-              return { settings: {}, foregroundApp: null };
+              return { settings: {}, foregroundApp: null, readError: String(error) };
             },
           );
           return { hostId: device.hostId, deviceId: device.id, ...read, readAt: now() };

@@ -294,6 +294,11 @@ export const DeviceDetail = z.object({
   settings: DeviceSettings,
   foregroundApp: DeviceForegroundApp.nullable(),
   readAt: z.string(),
+  /**
+   * `device.action` took, but the settings could not be read back after it (D1332): `settings`
+   * is then empty and says nothing of the device; a client keeps what it last read.
+   */
+  readError: z.string().optional(),
 });
 export type DeviceDetail = z.infer<typeof DeviceDetail>;
 

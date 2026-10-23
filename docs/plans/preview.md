@@ -727,7 +727,10 @@ The reference is T3 Code `eb7b35ac`: `apps/server/src/device/DeviceActions.ts`
   setting a phone's, which only an emulator's console places. Wi-Fi and
   mobile data are two commands, not one: a mobile-data step the device
   refuses leaves Wi-Fi as set, and Wi-Fi failing after data took leaves
-  data as set. iOS's `extra-small` text reads back as small (T3 reads it
+  data as set; likewise Reduce Motion on Android is three settings, and one
+  failing leaves those before it applied. An action that took but whose
+  settings could not be read back answers `readError` (additive) with empty
+  settings, and the panel keeps what it last read. iOS's `extra-small` text reads back as small (T3 reads it
   as large). `devices.write` is enough for every action, opening a URL and
   sending a push included, as it is for a tap: they act on the owner's
   simulator or emulator through the host's own tools, which the node
