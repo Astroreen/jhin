@@ -13,8 +13,8 @@ import type { SourceControlStore } from "./store.ts";
  * keeps its thread waiting between turns, as T3's pending background work.
  * Every connected node is followed while it is connected, outside any render:
  * a node's view is empty until something follows it. A mesh member's threads
- * (D1289) are followed through their connection from the first time one is
- * asked about, until that connection goes.
+ * (D1289) are followed through their connection from just after the first
+ * time one is asked about, until that connection goes.
  */
 export function createWatchedWork(
   store: Pick<SourceControlStore, "view" | "subscribe">,
@@ -85,23 +85,31 @@ export function createWatchedWork(
     // A node that went away waits on nothing any more: its threads are told so.
     if (dropped) tell();
   };
+  /**
+   * Follows a mesh member asked about (D1289), after the render that asked: its view as it is
+   * then is what its threads were told, so a later change of it is news.
+   */
+  const followMember = (node: string, remote: string) => {
+    const member: NodeTarget = { node, remote };
+    const key = targetKey(member);
+    if (members.has(key) || pending.has(key)) return;
+    pending.add(key);
+    queueMicrotask(() => {
+      pending.delete(key);
+      if (disposed || members.has(key) || !followed.has(node)) return;
+      members.set(key, { node, subscription: store.subscribe(member, () => notify(member)) });
+      watchedOf.set(key, watchedNow(member));
+    });
+  };
+  const pending = new Set<string>();
+  let disposed = false;
   follow();
   const following = connections.subscribe(follow);
   return {
     tasks: (target, threadId) => {
       // Only a node followed now: a disconnected one's last view is not news.
       if (!followed.has(target.node)) return [];
-      if (target.remote !== undefined) {
-        const key = targetKey(target);
-        if (!members.has(key)) {
-          // Its view is empty until followed: nothing is told until its links come.
-          const member: NodeTarget = { node: target.node, remote: target.remote };
-          members.set(key, {
-            node: target.node,
-            subscription: store.subscribe(member, () => notify(member)),
-          });
-        }
-      }
+      if (target.remote !== undefined) followMember(target.node, target.remote);
       return (store.view(target).links.get(threadId) ?? []).flatMap((link) =>
         link.watch === undefined
           ? []
@@ -119,6 +127,7 @@ export function createWatchedWork(
       return { dispose: () => listeners.delete(listener) };
     },
     dispose() {
+      disposed = true;
       following.dispose();
       for (const subscription of followed.values()) subscription.dispose();
       followed.clear();
