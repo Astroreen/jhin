@@ -15,18 +15,33 @@ const makeTarget = (
   setDownloadDirectory,
 });
 
-// Each relay reply resolves after a few microtasks; one macrotask lets them all land.
-const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+/** What the relay writes to the node, and waits until something it expects is written. */
+function recorder() {
+  const written: Array<Record<string, unknown>> = [];
+  const waiters: Array<{ test: () => boolean; resolve: () => void }> = [];
+  const write = (raw: string) => {
+    written.push(JSON.parse(raw));
+    for (const waiter of waiters.filter((each) => each.test())) {
+      waiters.splice(waiters.indexOf(waiter), 1);
+      waiter.resolve();
+    }
+  };
+  const until = (test: () => boolean) =>
+    test() ? Promise.resolve() : new Promise<void>((resolve) => waiters.push({ test, resolve }));
+  /** Resolves once the replies to `ids` are written. */
+  const answered = (...ids: number[]) =>
+    until(() => ids.every((id) => written.some((message) => message["id"] === id)));
+  return { written, write, until, answered };
+}
 
 describe("CDP relay", () => {
   it("announces only the tab's page, under its real target id", async () => {
-    const written: Array<Record<string, unknown>> = [];
-    const relay = createCdpRelayConnection(makeTarget(vi.fn()), (raw) =>
-      written.push(JSON.parse(raw)),
-    );
+    const { written, write, until, answered } = recorder();
+    const relay = createCdpRelayConnection(makeTarget(vi.fn()), write);
     relay.receive(JSON.stringify({ id: 1, method: "Target.setAutoAttach", params: {} }));
     relay.receive(JSON.stringify({ id: 2, method: "Target.createTarget", params: {} }));
-    await settle();
+    await answered(1, 2);
+    await until(() => written.some((m) => m["method"] === "Target.attachedToTarget"));
     const attach = written.findIndex((message) => message["id"] === 1);
     expect(written.slice(attach, attach + 2)).toEqual([
       { id: 1, result: {} },
@@ -50,21 +65,19 @@ describe("CDP relay", () => {
       (method: string) =>
         new Promise<unknown>((resolve) => pending.push(() => resolve({ method }))),
     );
-    const written: Array<Record<string, unknown>> = [];
-    const relay = createCdpRelayConnection(makeTarget(send), (raw) =>
-      written.push(JSON.parse(raw)),
-    );
+    const { written, write, answered } = recorder();
+    const relay = createCdpRelayConnection(makeTarget(send), write);
     relay.receive(
       JSON.stringify({ id: 5, method: "Page.captureScreenshot", sessionId: "jhin-preview-page" }),
     );
     relay.receive(JSON.stringify({ id: 6, method: "DOM.enable", sessionId: "iframe-session" }));
     pending[1]!();
-    await settle();
+    await answered(6);
     expect(written).toEqual([
       { id: 6, result: { method: "DOM.enable" }, sessionId: "iframe-session" },
     ]);
     pending[0]!();
-    await settle();
+    await answered(5);
     expect(send).toHaveBeenNthCalledWith(1, "Page.captureScreenshot", {}, undefined);
     expect(send).toHaveBeenNthCalledWith(2, "DOM.enable", {}, "iframe-session");
     expect(written.at(-1)).toEqual({
@@ -76,7 +89,8 @@ describe("CDP relay", () => {
 
   it("resumes paused child frames, so cross-site iframes run", async () => {
     const send = vi.fn(async () => ({}));
-    const relay = createCdpRelayConnection(makeTarget(send), () => {});
+    const { write, answered } = recorder();
+    const relay = createCdpRelayConnection(makeTarget(send), write);
     relay.receive(
       JSON.stringify({
         id: 1,
@@ -91,19 +105,17 @@ describe("CDP relay", () => {
         sessionId: "iframe-session",
       }),
     );
-    await settle();
+    await answered(1, 2);
     expect(send.mock.calls).toEqual([["Runtime.runIfWaitingForDebugger", {}, "iframe-session"]]);
   });
 
   it("routes tab events to the page session once the page is announced", async () => {
-    const written: Array<Record<string, unknown>> = [];
-    const relay = createCdpRelayConnection(makeTarget(vi.fn()), (raw) =>
-      written.push(JSON.parse(raw)),
-    );
+    const { written, write, until } = recorder();
+    const relay = createCdpRelayConnection(makeTarget(vi.fn()), write);
     relay.event("Page.loadEventFired", {}, undefined);
     expect(written).toEqual([]);
     relay.receive(JSON.stringify({ id: 1, method: "Target.setAutoAttach", params: {} }));
-    await settle();
+    await until(() => written.some((m) => m["method"] === "Target.attachedToTarget"));
     // Electron passes an empty session id for the page's own events.
     relay.event("Page.loadEventFired", { timestamp: 1 }, "");
     relay.event("Runtime.consoleAPICalled", {}, "iframe-session");
@@ -117,13 +129,12 @@ describe("CDP relay", () => {
 describe("CDP relay extra sessions", () => {
   it("gives a second page session the page's commands and events", async () => {
     const send = vi.fn(async () => ({}));
-    const written: Array<Record<string, unknown>> = [];
-    const relay = createCdpRelayConnection(makeTarget(send), (raw) =>
-      written.push(JSON.parse(raw)),
-    );
+    const { written, write, until, answered } = recorder();
+    const relay = createCdpRelayConnection(makeTarget(send), write);
     relay.receive(JSON.stringify({ id: 1, method: "Target.setAutoAttach", params: {} }));
     relay.receive(JSON.stringify({ id: 2, method: "Target.attachToBrowserTarget" }));
-    await settle();
+    await answered(1, 2);
+    await until(() => written.some((m) => m["method"] === "Target.attachedToTarget"));
     const browserSession = (written.find((m) => m["id"] === 2)!["result"] as { sessionId: string })
       .sessionId;
     relay.receive(
@@ -142,12 +153,12 @@ describe("CDP relay extra sessions", () => {
         sessionId: browserSession,
       }),
     );
-    await settle();
+    await answered(3, 4);
     const extra = (written.find((m) => m["id"] === 3)!["result"] as { sessionId: string })
       .sessionId;
     expect(written.find((m) => m["id"] === 4)).toHaveProperty("error");
     relay.receive(JSON.stringify({ id: 5, method: "Page.startScreencast", sessionId: extra }));
-    await settle();
+    await answered(5);
     expect(send).toHaveBeenLastCalledWith("Page.startScreencast", {}, undefined);
     written.length = 0;
     relay.event("Page.screencastFrame", { data: "x" }, undefined);
@@ -159,19 +170,17 @@ describe("CDP relay detached sessions", () => {
   // Jhin's own case (D1322): a session the relay invented and then detached is gone.
   it("answers a detached session's commands as not found, without reaching the page", async () => {
     const send = vi.fn(async () => ({}));
-    const written: Array<Record<string, unknown>> = [];
-    const relay = createCdpRelayConnection(makeTarget(send), (raw) =>
-      written.push(JSON.parse(raw)),
-    );
+    const { written, write, answered } = recorder();
+    const relay = createCdpRelayConnection(makeTarget(send), write);
     relay.receive(JSON.stringify({ id: 1, method: "Target.attachToBrowserTarget" }));
-    await settle();
+    await answered(1);
     const browser = (written.find((m) => m["id"] === 1)!["result"] as { sessionId: string })
       .sessionId;
     relay.receive(
       JSON.stringify({ id: 2, method: "Target.detachFromTarget", params: { sessionId: browser } }),
     );
     relay.receive(JSON.stringify({ id: 3, method: "Runtime.evaluate", sessionId: browser }));
-    await settle();
+    await answered(2, 3);
     expect(written.find((m) => m["id"] === 3)).toMatchObject({
       error: { message: `Session with given id not found: ${browser}` },
     });
@@ -183,10 +192,10 @@ describe("CDP relay downloads", () => {
   it("applies the server's download directory and reports downloads on the root session", async () => {
     const send = vi.fn(async () => ({}));
     const directories: Array<string | null> = [];
-    const written: Array<Record<string, unknown>> = [];
+    const { written, write, until, answered } = recorder();
     const relay = createCdpRelayConnection(
       makeTarget(send, (directory) => directories.push(directory)),
-      (raw) => written.push(JSON.parse(raw)),
+      write,
     );
     relay.receive(JSON.stringify({ id: 1, method: "Target.setAutoAttach", params: {} }));
     relay.receive(
@@ -201,7 +210,8 @@ describe("CDP relay downloads", () => {
         },
       }),
     );
-    await settle();
+    await answered(1, 2);
+    await until(() => written.some((m) => m["method"] === "Target.attachedToTarget"));
     expect(directories).toEqual(["/srv/artifacts"]);
     expect(send).toHaveBeenCalledWith(
       "Browser.setDownloadBehavior",
