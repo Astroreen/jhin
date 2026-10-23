@@ -1409,6 +1409,23 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   before (kernel-scoped state still serves a reload of the plugin within the
   page, and is the newer of the two). A place on a node that is gone falls
   back as it did. A mode per window or per node stays deferred.
+- **D1398. A node without agents is asked again when its `agents` stream
+  moves.** For every open connection whose agents are not known to exist,
+  Civilization mode's offer (D747) follows the node's `agents` stream and
+  asks `agents.catalog` again at once when an event arrives, as a node
+  whose agents plugin activates late (or whose first agent is defined) emits
+  one. The stream is followed after the answer, from the head the catalog
+  was read at (from its start when there is no catalog), so nothing between
+  the two is missed and the backlog is not replayed; an event that arrives
+  while a new question is awaited makes it be asked once more. A client can subscribe to
+  `agents` on a node where nothing writes it yet: it is a stream of the
+  event log that reads as empty, and a subscription needs only the right to
+  read events. The follower is dropped when the node has agents, when its
+  token may not read them (`PERMISSION_DENIED` stays final for the opening),
+  when the connection closes and with the plugin; an answer of an earlier
+  opening is still dropped. A failure that is not known (a timeout) is asked
+  again on an event too, but otherwise still on the next change of the
+  connections, at most three times: a timer would be polling.
 
 ## Phase 2: a Civilization the owner can run
 
@@ -2323,12 +2340,11 @@ three agents, and otherwise read the streams.
 - A8: one footer for both modes' sidebars: Civilization contributes its own
   Settings and palette buttons (D749) beside the Threads sidebar's, which
   `sidebar` still renders itself.
-- A8: asking a node for its agents again when what was missing arrives (an
-  `agents` event, the agents plugin activating) rather than on the next
-  change of the connections: today an unknown answer on a connection that
-  stays open is asked again only when some connection changes (D747), and a
-  node still activating its plugins answers `COMMAND_NOT_FOUND`, taken as
-  none until it reopens.
+- ~~A8: asking a node for its agents again when what was missing arrives (an
+  `agents` event, the agents plugin activating).~~ A8, D1398.
+- A8: asking again a node whose answer was not known (a timeout) and that
+  emits no `agents` event: it is asked on the next change of the connections
+  only, at most three times per opening (D747).
 - A8: Civilization mode per node: the route's node without agents opens the
   shell with its empty states today (D747); the views A1 and A3 contribute
   choose their node.
