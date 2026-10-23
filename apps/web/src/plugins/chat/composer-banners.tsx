@@ -750,6 +750,114 @@ export function UsageLimitsBanner(props: {
   );
 }
 
+/** What the usage-limit recovery banner offers and does (t3-parity.md D1312). */
+export interface LimitRecoveryState {
+  readonly turnId: string;
+  /** When the limit resets, when the agent knows it. */
+  readonly resetAt?: string;
+  /** When the turn stopped. */
+  readonly stoppedAt: string;
+  readonly recovery?: {
+    readonly turnId: string;
+    readonly resetAt: string;
+    readonly autoResume: boolean;
+    readonly snooze: boolean;
+  };
+  readonly snoozedUntil?: string;
+  change(update: { autoResume?: boolean; snooze?: boolean }): Promise<void>;
+  /** A change that failed, T3's toast: its title and why. */
+  failed(title: string, message: string): void;
+}
+
+/**
+ * T3's usageLimitRecoveryBannerItem (UsageLimitRecoveryBanner.tsx): "Usage limit reached",
+ * when it resets, and "Resume at reset" / "Snooze until reset" when the reset is known.
+ */
+export function LimitRecoveryBanner(props: { readonly state: LimitRecoveryState }) {
+  const { state } = props;
+  const [pending, setPending] = useState(false);
+  const resetAt = state.resetAt;
+  const canSchedule = resetAt !== undefined && Date.parse(resetAt) > Date.parse(state.stoppedAt);
+  const same =
+    state.recovery?.turnId === state.turnId &&
+    resetAt !== undefined &&
+    Date.parse(state.recovery.resetAt) === Date.parse(resetAt);
+  const scheduled = same && state.recovery?.autoResume === true;
+  const snoozed =
+    same &&
+    state.recovery?.snooze === true &&
+    state.snoozedUntil !== undefined &&
+    Date.parse(state.snoozedUntil) === Date.parse(resetAt!);
+  const toggle = async (action: "resume" | "snooze") => {
+    if (resetAt === undefined) return;
+    if (action === "snooze" && !snoozed && Date.parse(resetAt) <= Date.now()) {
+      state.failed(
+        "Could not snooze thread",
+        "The reset time has passed. Retry the thread manually.",
+      );
+      return;
+    }
+    setPending(true);
+    try {
+      await state.change(action === "resume" ? { autoResume: !scheduled } : { snooze: !snoozed });
+    } catch (cause) {
+      state.failed(
+        action === "resume" ? "Could not change auto-resume" : "Could not snooze thread",
+        cause instanceof Error ? cause.message : "An error occurred.",
+      );
+    }
+    setPending(false);
+  };
+  return (
+    <ComposerBanner.Attachment>
+      <ComposerBanner.Root
+        aria-label="Usage limit reached"
+        density="comfortable"
+        role="region"
+        variant="warning"
+      >
+        <ComposerBanner.Row layout="wrap-actions">
+          <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
+            <GaugeIcon />
+          </ComposerBanner.Icon>
+          <ComposerBanner.Content>
+            <span className="min-w-0 truncate font-medium leading-7 sm:leading-6">
+              Usage limit reached
+            </span>
+            <span className="min-w-0 truncate text-muted-foreground">
+              {resetAt !== undefined
+                ? `Resets ${new Date(resetAt).toLocaleString()}`
+                : "Reset time unavailable; retry manually"}
+            </span>
+          </ComposerBanner.Content>
+          {canSchedule ? (
+            <ComposerBanner.Actions>
+              <Button
+                disabled={pending}
+                onClick={() => void toggle("resume")}
+                size="xs"
+                variant="ghost"
+              >
+                {pending ? "Saving..." : scheduled ? "Cancel auto-resume" : "Resume at reset"}
+              </Button>
+              {!snoozed ? (
+                <Button
+                  disabled={pending || Date.parse(resetAt!) <= Date.now()}
+                  onClick={() => void toggle("snooze")}
+                  size="xs"
+                  variant="ghost"
+                >
+                  {pending ? "Saving..." : "Snooze until reset"}
+                </Button>
+              ) : null}
+            </ComposerBanner.Actions>
+          ) : null}
+        </ComposerBanner.Row>
+      </ComposerBanner.Root>
+    </ComposerBanner.Attachment>
+  );
+}
+
 /** The thread's goal (D1150), T3's goalBannerItem: Resume and Clear send `/goal …`. */
 export function GoalBanner(props: {
   readonly goal: AgentGoal;

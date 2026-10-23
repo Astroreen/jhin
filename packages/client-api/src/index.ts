@@ -266,6 +266,13 @@ export interface ThreadRecord {
     /** Why a failed turn failed, when its agent classed it (t3-parity.md D1306). */
     readonly failure?: { readonly class: "usage_limit"; readonly resetAt?: string };
   };
+  /** What happens at the reset of the usage limit its latest turn hit (t3-parity.md D1312). */
+  readonly limitRecovery?: {
+    readonly turnId: string;
+    readonly resetAt: string;
+    readonly autoResume: boolean;
+    readonly snooze: boolean;
+  };
   /** The status of the goal its agent pursues (D1306); absent without one. */
   readonly goalStatus?: AgentGoal["status"];
   // Where the sidebar keeps the thread, kept on its node (D75–D78).

@@ -521,9 +521,24 @@ test("shows the agent's usage limits on /usage-limits, and a usage-limit failure
   const sidebar = page.getByRole("navigation", { name: "Sidebar" });
   await expect(sidebar.getByRole("button", { name: /, Limited(, |$)/ })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: /, Failed(, |$)/ })).toHaveCount(0);
+  // T3's recovery banner (t3-parity.md D1312): resume at the reset, or snooze until then.
+  const recovery = page.getByRole("region", { name: "Usage limit reached" });
+  await expect(recovery).toContainText(/^Usage limit reached.*Resets /);
+  await recovery.getByRole("button", { name: "Resume at reset" }).click();
+  await expect(recovery.getByRole("button", { name: "Cancel auto-resume" })).toBeVisible();
+  await recovery.getByRole("button", { name: "Snooze until reset" }).click();
+  await expect(recovery.getByRole("button", { name: "Snooze until reset" })).toHaveCount(0);
   const failed = info.outputPath("usage-limit-failure.png");
   await page.screenshot({ path: failed });
   await info.attach("usage limit failure", { path: failed, contentType: "image/png" });
+  // "Resume thread" goes on now (D1311): T3's continuation is the next turn.
+  await page.getByRole("button", { name: "Resume thread" }).click();
+  await expect(
+    page
+      .getByRole("log", { name: "Messages" })
+      .getByText("Continue where you left off.", { exact: true }),
+  ).toBeVisible();
+  await expect(recovery).toBeHidden();
 });
 
 test("asks for an app's access as T3's App access approval, without a session allowance", async ({

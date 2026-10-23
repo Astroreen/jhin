@@ -1488,7 +1488,7 @@ Reference: T3 Code at `eb7b35ac` (D53).
   client command `chat.thread.resume` ("Resume thread") does the same for
   the open thread and answers `{ resumed }`, false when there was nothing to
   resume or text is typed. T3 also resumes a turn that failed on a usage limit
-  (`providers.md` D1143 records them now; resuming them is Deferred).
+  (`providers.md` D1143 records them now; D1311 resumes them).
 - **D801. Find in a thread**, T3's `chat.find` (`ThreadFindBar.tsx`,
   `threadFindHighlights.ts`). The client command `chat.find` ("Find in
   thread") opens a find bar over the open thread's messages; `mod+f` runs it
@@ -2110,7 +2110,7 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   chunk's response held until the selection was made failed 3 of 5 runs
   before and none of 5 after.
 
-### Usage limits and goals in the sidebar (W36, `t3-roadmap.md`)
+### Usage limits, the Usage page and resuming after a limit (W36, `t3-roadmap.md`)
 
 Round 4's W36 (its agents' side is `providers.md` D1301–D1305). Reference: T3
 Code at `eb7b35ac` (D53).
@@ -2158,6 +2158,40 @@ Code at `eb7b35ac` (D53).
   with nothing to show the page says "No agent on the connected nodes
   reports subscription limits." (T3's "No provider on the selected
   environments …", without its environment filter, which is deferred).
+- **D1311. "Resume thread" after a usage limit**, T3's `resumableRunId`: a
+  thread whose latest turn failed on a usage limit (D1306) offers D800's
+  "Resume thread" too, as an interrupted one does: it sends T3's "Continue
+  where you left off." and lets a held queue go on.
+- **D1312. T3's usage-limit recovery**, `UsageLimitRecoveryBanner.tsx` and
+  `UsageLimitRecoveryWorker.ts`. While the latest turn is stopped on a usage
+  limit the composer shows T3's warning banner "Usage limit reached" with
+  "Resets {date and time}" (or "Reset time unavailable; retry manually");
+  when the reset is later than the stop it offers "Resume at reset" ("Cancel
+  auto-resume" once armed) and "Snooze until reset" (gone once snoozed, off
+  once the reset passed). Both go through the node command
+  `threads.limit-recovery.set` (`{ threadId, turnId, resetAt, autoResume?,
+  snooze? }`, `threads.write`), which checks that turn is the thread's latest,
+  stopped on that limit, with that reset, later than the stop
+  (`NOT_LIMITED` otherwise), and keeps the thread's `limitRecovery` (`{
+  turnId, resetAt, autoResume, snooze }`). A snooze hides the thread until
+  the reset (`snoozedUntil`, as `threads.snooze`; "The reset time has
+  passed. Retry the thread manually." once it has); undoing it wakes the
+  thread when it still sleeps until that reset. An armed resume waits for
+  the reset (or a snooze that outlasts it, also one set after it was
+  armed) on a timer of the node, armed again when the node starts and when
+  the thread is unarchived; then, if the thread's latest turn is still that
+  one and the thread is neither archived nor settled by hand (a thread the
+  node settled by itself is still resumed, as T3 checks only the hand), it
+  sends "Continue where you left off." as the user's message and drops
+  `limitRecovery` once it is sent (a send that fails leaves it, and the
+  banner still offers it). A change that fails is said under the timeline, T3's toast titles
+  ("Could not change auto-resume: …", "Could not snooze thread: …").
+- **D1313. T3's settings "Auto-resume limited threads" and "Snooze limited
+  threads"**: `autoResumeLimitedThreads` and `snoozeLimitedThreads` of the
+  `jhin.threads` config (off by default, with T3's descriptions, on the Node
+  config page) arm both for every turn that stops on a usage limit with a
+  later reset, unless the thread is settled by hand; the banner can still
+  cancel them.
 
 ### The composer, thread panels and subagents (W38, `t3-roadmap.md`)
 
@@ -2264,16 +2298,6 @@ says. The other W38 decisions land in their own pull requests.
   and pull request are `source-control.md`'s D117 and its terminal
   indicator `terminal.md`'s D148, all in the `sidebar.thread.indicators`
   slot.
-- "Resume thread" (D800) for a turn that failed on a usage limit, as T3
-  offers, with its "Usage limit reached" recovery banner (resume at the reset
-  time, snooze): `providers.md` D1143 tells such a failure apart now.
-- The Usage page (D1308–D1310): T3's token and cost metrics, their charts,
-  periods, breakdowns and price overrides (Jhin keeps no usage history to
-  read them from), its environment and provider filters, redeeming a reset
-  credit ("Use reset", T3's `consumeResetCredit`; no runtime redeems one),
-  usage-limit sources such as CLIProxy, the links to manage usage elsewhere
-  (ChatGPT) and pooling one account seen on several nodes (by its email or
-  T3's credential fingerprint).
 - The thread details panel (D802): T3's inline presentation, a card beside
   the chat when it is wide enough (here it is always the popover), and the
   heights T3 measures to drop rows on a short window.

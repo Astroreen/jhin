@@ -154,6 +154,7 @@ import { dispatchMode } from "./send.ts";
 import { type ContextInsertion, useAgents, useChat } from "./services.ts";
 import { ComposerSurface } from "./surface.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import type { LimitRecoveryState } from "./composer-banners.tsx";
 
 /**
  * What shows above the composer only on occasion is a chunk of its own (D440,
@@ -190,6 +191,10 @@ const PlanFollowUpBanner = lazyChunk(
   quiet,
 );
 const GoalBanner = lazyChunk(() => bannersChunk().then((module) => module.GoalBanner), quiet);
+const LimitRecoveryBanner = lazyChunk(
+  () => bannersChunk().then((module) => module.LimitRecoveryBanner),
+  quiet,
+);
 const UsageLimitsBanner = lazyChunk(
   () => bannersChunk().then((module) => module.UsageLimitsBanner),
   said("the usage limits"),
@@ -722,6 +727,8 @@ export interface ComposerProps {
    * stopped, or its queue is held. An empty composer offers "Resume thread".
    */
   onResume?: (() => Promise<void>) | undefined;
+  /** The latest turn stopped on a usage limit: T3's recovery banner (t3-parity.md D1312). */
+  limitRecovery?: LimitRecoveryState | undefined;
   /** False when the answer was not delivered: what was typed stays. */
   onRespond(requestId: string, response: AgentResponse): Promise<boolean>;
   readonly handleRef?: Ref<ComposerHandleApi>;
@@ -1595,6 +1602,8 @@ export function Composer(props: ComposerProps) {
           />
         ) : planFollowUp !== undefined ? (
           <PlanFollowUpBanner planTitle={planFollowUp.title} />
+        ) : props.limitRecovery !== undefined ? (
+          <LimitRecoveryBanner state={props.limitRecovery} />
         ) : usagePanel !== undefined ? (
           <UsageLimitsBanner
             agentName={usagePanel.agentName}
