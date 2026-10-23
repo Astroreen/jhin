@@ -491,6 +491,17 @@ describe("jhin.threads: answering requests", () => {
         { caller: { id: "client:agent", permissions: ["*", "threads.mode.approval-required"] } },
       ),
     ).rejects.toMatchObject({ code: "APPROVAL_NOT_ALLOWED" });
+    await expect(
+      kernel.commands.execute(
+        "threads.respond",
+        {
+          threadId: thread.id,
+          requestId,
+          response: { kind: "approval", decision: "accept-always" },
+        },
+        { caller: { id: "client:agent", permissions: ["*", "threads.mode.approval-required"] } },
+      ),
+    ).rejects.toMatchObject({ code: "APPROVAL_NOT_ALLOWED" });
     expect(
       await client.call("threads.respond", {
         threadId: thread.id,

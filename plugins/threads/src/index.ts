@@ -5743,7 +5743,8 @@ export default definePlugin({
         // asks a person for; as T3's MCP tool, "This cannot approve a permission request."
         if (
           response.kind === "approval" &&
-          (response.decision === "accept" || response.decision === "accept-for-session") &&
+          response.decision !== "decline" &&
+          response.decision !== "cancel" &&
           ceilingOf(invocation.caller?.permissions) !== undefined
         ) {
           throw new ThreadsError(
