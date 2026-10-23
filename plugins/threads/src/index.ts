@@ -117,6 +117,9 @@ const SEARCH_READS = 8;
 export const SCRATCH_PROJECT = "scratch";
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
+/** T3's continuation of a stopped thread (D800, D1312). */
+const RESUME_TEXT = "Continue where you left off.";
+
 const Config = z
   .object({
     defaultAgent: z
@@ -165,6 +168,17 @@ const Config = z
       title: "Keep threads with a PR",
       description:
         "Inactivity does not settle threads with a pull request. Merge and close still do.",
+    }),
+    // T3's autoResumeLimitedThreads and snoozeLimitedThreads (t3-parity.md D1313).
+    autoResumeLimitedThreads: z.boolean().default(false).meta({
+      title: "Auto-resume limited threads",
+      description:
+        "Resume usage-limit stops at the reported reset time. Each thread can cancel its scheduled continuation.",
+    }),
+    snoozeLimitedThreads: z.boolean().default(false).meta({
+      title: "Snooze limited threads",
+      description:
+        "Snooze usage-limit stops until the reported reset time. Combine with auto-resume to continue when they wake.",
     }),
     // T3's projectSettingsOverrides of the settle settings (D1173).
     projects: z
@@ -253,6 +267,18 @@ const Thread = z.object({
       failure: z
         .object({ class: z.literal("usage_limit"), resetAt: z.string().optional() })
         .optional(),
+    })
+    .optional(),
+  /**
+   * What happens at the reset of the usage limit its latest turn hit (D1312): `autoResume`
+   * sends T3's "Continue where you left off." then, `snooze` hid the thread until then.
+   */
+  limitRecovery: z
+    .object({
+      turnId: z.string(),
+      resetAt: z.string(),
+      autoResume: z.boolean(),
+      snooze: z.boolean(),
     })
     .optional(),
   /** The status of the goal the thread's agent pursues (D1306); absent without one. */
@@ -1857,6 +1883,14 @@ export default definePlugin({
           );
         } finally {
           finish();
+        }
+        if (ending.failure?.class === "usage_limit") {
+          void recoverByConfig(thread.id).catch((error: unknown) =>
+            context.log.warn("could not arm a limited thread's recovery", {
+              threadId: thread.id,
+              error: String(error),
+            }),
+          );
         }
         // Its subagents in the background go on, their work read from the runtime (D1164).
         if ([...subagents.values()].some((child) => child.open)) void followAfterwards();
@@ -3482,6 +3516,179 @@ export default definePlugin({
           // means "seen, not now".
           return { ...thread, snoozedUntil: new Date(wakeMs).toISOString(), snoozedAt: at };
         }),
+    });
+
+    // --- Usage-limit recovery (t3-parity.md D1312–D1313) ------------------------------
+    // T3's limitRecovery and UsageLimitRecoveryWorker: at the reset of the usage limit a
+    // thread's latest turn hit, "Continue where you left off." is sent, if asked for.
+    /** The longest a timer can wait; a later reset is waited for in steps. */
+    const MAX_TIMER_MS = 2_147_483_647;
+    const recoveryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    context.subscriptions.add({
+      dispose: () => {
+        for (const timer of recoveryTimers.values()) clearTimeout(timer);
+        recoveryTimers.clear();
+      },
+    });
+    /** The failure of the thread's latest turn, when it is a usage limit with a later reset. */
+    const limitedTurn = (thread: Thread) => {
+      const turn = thread.lastTurn;
+      if (turn?.status !== "failed" || turn.failure?.class !== "usage_limit") return undefined;
+      const resetAt = turn.failure.resetAt;
+      // A reset already past when the turn failed cannot start a retry loop (T3's rule).
+      if (resetAt === undefined || !(Date.parse(resetAt) > Date.parse(turn.at))) return undefined;
+      return { turnId: turn.turnId, resetAt };
+    };
+    /**
+     * Arms the thread's continuation at its reset (or the end of a snooze that outlasts it),
+     * or disarms it. The timer is what says the time came: it is not asked of the clock again.
+     */
+    const armRecovery = (thread: Thread) => {
+      clearTimeout(recoveryTimers.get(thread.id));
+      recoveryTimers.delete(thread.id);
+      const recovery = thread.limitRecovery;
+      if (recovery === undefined || !recovery.autoResume || thread.archivedAt !== undefined) return;
+      const snoozed = thread.snoozedUntil === undefined ? 0 : Date.parse(thread.snoozedUntil);
+      const wait = Math.max(0, Math.max(Date.parse(recovery.resetAt), snoozed) - Date.now());
+      const timer = setTimeout(
+        () => {
+          recoveryTimers.delete(thread.id);
+          // A reset past the longest timer is waited for in steps.
+          const step =
+            wait > MAX_TIMER_MS
+              ? getThread(thread.id).then(armRecovery)
+              : recover(thread.id, recovery);
+          void step.catch((error: unknown) =>
+            context.log.warn("could not resume a limited thread", {
+              threadId: thread.id,
+              error: String(error),
+            }),
+          );
+        },
+        Math.min(wait, MAX_TIMER_MS),
+      );
+      timer.unref?.();
+      recoveryTimers.set(thread.id, timer);
+    };
+    /** Sends the continuation, when the thread is still where its recovery was armed. */
+    const recover = async (threadId: string, armed: NonNullable<Thread["limitRecovery"]>) => {
+      const thread = await getThread(threadId).catch(() => undefined);
+      const recovery = thread?.limitRecovery;
+      const limited = thread === undefined ? undefined : limitedTurn(thread);
+      // Moved on since (another turn, archived, settled by hand, cancelled): nothing to do.
+      if (
+        thread === undefined ||
+        recovery === undefined ||
+        !recovery.autoResume ||
+        recovery.turnId !== armed.turnId ||
+        recovery.resetAt !== armed.resetAt ||
+        limited?.turnId !== recovery.turnId ||
+        thread.archivedAt !== undefined ||
+        thread.settledOverride === "settled"
+      ) {
+        return;
+      }
+      await updateThread(threadId, (current) => {
+        const { limitRecovery: _done, ...rest } = current;
+        return rest;
+      });
+      // As the user's message, as T3's continuation is.
+      await startTurn(threadId, { text: RESUME_TEXT });
+    };
+    /** Sets what the reset brings (D1312): checked against the thread's latest turn. */
+    const setRecovery = (
+      threadId: string,
+      wanted: {
+        turnId: string;
+        resetAt: string;
+        autoResume?: boolean | undefined;
+        snooze?: boolean | undefined;
+      },
+    ) =>
+      arrange(threadId, (thread, at) => {
+        const limited = limitedTurn(thread);
+        if (
+          limited === undefined ||
+          limited.turnId !== wanted.turnId ||
+          Date.parse(limited.resetAt) !== Date.parse(wanted.resetAt)
+        ) {
+          throw new ThreadsError(
+            "NOT_LIMITED",
+            "The thread's latest turn did not stop on this usage limit, or its reset time is unknown",
+            { threadId, turnId: wanted.turnId },
+          );
+        }
+        const previous =
+          thread.limitRecovery?.turnId === limited.turnId ? thread.limitRecovery : undefined;
+        const recovery = {
+          turnId: limited.turnId,
+          resetAt: limited.resetAt,
+          autoResume: wanted.autoResume ?? previous?.autoResume ?? false,
+          snooze: wanted.snooze ?? previous?.snooze ?? false,
+        };
+        const resetMs = Date.parse(limited.resetAt);
+        let next: Thread = { ...thread, limitRecovery: recovery };
+        if (recovery.snooze && previous?.snooze !== true) {
+          if (!(resetMs > Date.parse(at))) {
+            throw new ThreadsError(
+              "SNOOZE_IN_PAST",
+              "The reset time has passed. Retry the thread manually.",
+              { threadId },
+            );
+          }
+          next = { ...next, snoozedUntil: limited.resetAt, snoozedAt: at };
+        } else if (
+          !recovery.snooze &&
+          previous?.snooze === true &&
+          thread.snoozedUntil !== undefined &&
+          Date.parse(thread.snoozedUntil) === resetMs
+        ) {
+          const { snoozedUntil: _until, snoozedAt: _at, ...rest } = next;
+          next = rest;
+        }
+        return next;
+      }).then((thread) => {
+        armRecovery(thread);
+        return thread;
+      });
+    /** A turn that failed on a usage limit takes the node's recovery settings (D1313). */
+    const recoverByConfig = async (threadId: string) => {
+      const config = context.config.get<Config>(CONFIG_SECTION);
+      if (!config.autoResumeLimitedThreads && !config.snoozeLimitedThreads) return;
+      const thread = await getThread(threadId);
+      const limited = limitedTurn(thread);
+      if (limited === undefined || thread.settledOverride === "settled") return;
+      const future = Date.parse(limited.resetAt) > Date.now();
+      await setRecovery(threadId, {
+        ...limited,
+        autoResume: config.autoResumeLimitedThreads,
+        snooze: config.snoozeLimitedThreads && future,
+      });
+    };
+    // The continuations armed before the node stopped are armed again.
+    void listThreads()
+      .then((all) => {
+        for (const thread of all) if (thread.limitRecovery?.autoResume) armRecovery(thread);
+      })
+      .catch((error: unknown) =>
+        context.log.warn("could not arm the limited threads' continuations", {
+          error: String(error),
+        }),
+      );
+
+    context.commands.register({
+      name: "threads.limit-recovery.set",
+      description:
+        "What happens when the usage limit the thread's latest turn stopped on resets: `autoResume` sends \"Continue where you left off.\" then, `snooze` hides the thread until then. `turnId` and `resetAt` must be the latest turn's",
+      input: ThreadId.extend({
+        turnId: z.string(),
+        resetAt: z.iso.datetime({ offset: true }),
+        autoResume: z.boolean().optional(),
+        snooze: z.boolean().optional(),
+      }),
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId, ...wanted }) => setRecovery(threadId, wanted),
     });
 
     context.commands.register({

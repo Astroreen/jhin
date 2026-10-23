@@ -25,6 +25,7 @@ import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "luc
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { buildPromptHistory, newThreadDraftKey, threadDraftKey } from "../../lib/composer.ts";
+import type { LimitRecoveryState } from "./composer-banners.tsx";
 import { useCatalog } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
@@ -258,7 +259,31 @@ export function ThreadView(props: {
   // T3's "Resume thread" (D800): a stopped turn goes on with T3's message,
   // and a held queue goes on after it.
   const held = timeline.queue?.held !== undefined && timeline.queue.messages.length > 0;
-  const stopped = lastTurn?.state === "interrupted";
+  // A turn that stopped on a usage limit goes on too (t3-parity.md D1311), as in T3.
+  const limited = lastTurn?.state === "failed" && lastTurn.failure?.class === "usage_limit";
+  const stopped = lastTurn?.state === "interrupted" || limited;
+  /** T3's recovery banner of a turn that stopped on a usage limit (D1312). */
+  const recordTurn = thread?.lastTurn;
+  const limitRecovery: LimitRecoveryState | undefined =
+    limited && lastTurn !== undefined && !running
+      ? {
+          turnId: lastTurn.turnId,
+          ...(lastTurn.failure?.resetAt === undefined ? {} : { resetAt: lastTurn.failure.resetAt }),
+          stoppedAt:
+            recordTurn?.turnId === lastTurn.turnId ? recordTurn.at : new Date().toISOString(),
+          ...(thread?.limitRecovery === undefined ? {} : { recovery: thread.limitRecovery }),
+          ...(thread?.snoozedUntil === undefined ? {} : { snoozedUntil: thread.snoozedUntil }),
+          change: async (update) => {
+            await chat.threads.call(target, "threads.limit-recovery.set", {
+              threadId,
+              turnId: lastTurn.turnId,
+              resetAt: lastTurn.failure!.resetAt,
+              ...update,
+            });
+          },
+          failed: (title, message) => setError(`${title}: ${message}`),
+        }
+      : undefined;
   const resume = async (): Promise<void> => {
     setError(undefined);
     const outcome = await resumeThread(chat.threads, target, threadId, {
@@ -669,6 +694,7 @@ export function ThreadView(props: {
                     onSelectionChange={changeSelection}
                     onSend={send}
                     {...(!running && (stopped || held) ? { onResume: resume } : {})}
+                    limitRecovery={limitRecovery}
                     {...(planFollowUp === undefined ? {} : { planFollowUp })}
                     onStop={() =>
                       void chat.threads
