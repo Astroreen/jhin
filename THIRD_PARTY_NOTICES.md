@@ -64,7 +64,7 @@ Code agent runtime (`plugins/agent-claude`: query options, permission modes,
 tool, question and plan mapping, result errors, the model catalog, live
 sessions kept between turns, the node's MCP server attached to Claude Code,
 usage limits and a turn a usage limit stopped in
-`plugins/agent-claude/src/usage-limits.ts`),
+`plugins/agent-claude/src/usage-limits.ts`, rewinding and forking a session),
 the agent credentials of the MCP server plugin (`plugins/mcp-server`), the
 Codex agent runtime (`plugins/agent-codex`: the app-server protocol and
 handshake, runtime and interaction modes, approval, question, plan, tool and

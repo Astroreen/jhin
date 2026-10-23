@@ -325,8 +325,8 @@ Done since: steering a running turn (`t3-parity.md` D204–D206).
 
 ## Not ported
 
-- T3's usage-limit and reset-credit probes, rollback and fork of a session,
-  workflow and goal tracking, background-task rosters, the `$skill` dispatch,
+- T3's reset-credit probes (usage limits are W36's D1301; rollback and
+  fork of a session D1314, D1315), workflow and goal tracking, background-task rosters, the `$skill` dispatch,
   and the per-model option descriptors (effort, fast mode, context size) of
   its model picker.
 
@@ -1276,6 +1276,32 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   read past 5 s, is `probeFailed` ("OpenCode Go could not read usage."). It
   is read again as D1304 says; looks while a read runs share it.
 
+- **D1314. A rollback rewinds Claude Code's own session**, T3's
+  `rollbackThread` (`resumeSessionAt`): the session record (D222) keeps each
+  turn with the uuid of the last entry Claude Code wrote for it (its last
+  top-level assistant or user frame, never a subagent's; at most 500 turns,
+  the oldest dropped first). A turn whose history no longer shows the
+  session's last turn resumes the same session with `resumeSessionAt` the
+  last entry of the latest turn it still shows, so Claude Code forgets the
+  dropped turns and gets no transcript; the kept process of the thread
+  closes first. A rollback that keeps none of Claude's turns, or a record
+  from before this (no entries), starts a new session with the transcript
+  as D222 does; so does a session Claude Code no longer has (D91's retry).
+  `resumeDropsTurn` is not passed: Jhin does not know the dropped turn's
+  prompt uuid, so the truncation is T3's unvalidated one.
+- **D1315. A fork forks Claude Code's session**, T3's `forkThread`
+  (`forkSession` with `upToMessageId`): a fork's first Claude turn, on a
+  thread with no session record, finds the fork's marker
+  (`threads.thread.forked`) and the parent's record, and copies the parent's
+  session up to the last entry of the last Claude turn the fork inherited
+  (`dir` the turn's folder) into a new session, which the turn resumes; the
+  fork's record starts with the inherited turns, so a rollback in the fork
+  rewinds into them (D1314). Only what came after Claude's last inherited
+  turn goes as a transcript. A parent without entries, or a fork Claude Code
+  refuses, starts a new session with the whole transcript, as before. The
+  plugin passes the SDK's `forkSession`; `claudePlugin(query, forkSession?)`
+  takes it as a second argument.
+
 ### Deferred
 
 - T3's mid-turn notice of a Claude usage limit ("Claude usage limit reached.
@@ -1285,5 +1311,9 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   retries.
 - A `rate_limit_event` outside a turn (a background task's): only a turn's
   frames are read.
+- A manual check of D1314 and D1315 against a signed-in Claude Code: the
+  scripted query proves the options Jhin passes (`resume`,
+  `resumeSessionAt`, `forkSession`'s `upToMessageId`), not what Claude Code
+  does with them.
 - T3's account fingerprint for OpenCode Go (`credentialFingerprint`, which
   pools one account seen from several environments on the Usage page).

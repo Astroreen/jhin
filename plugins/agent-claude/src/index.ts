@@ -23,6 +23,7 @@ import {
   type KeyValueStore,
 } from "@jhin/storage-api";
 import {
+  forkSession as sdkForkSession,
   query as sdkQuery,
   type SDKRateLimitInfo,
   type SDKUserMessage,
@@ -54,6 +55,7 @@ import {
   MCP_SERVER_NAME,
   claudeEnvironment,
   claudeTurn,
+  type ClaudeTurnDependencies,
   type SessionStore,
 } from "./turn.ts";
 
@@ -373,6 +375,8 @@ export function createClaudeRuntime(options: {
   readonly probes?: ProbeStore;
   /** The node's MCP server, when it runs one (D340). */
   readonly mcp?: McpServer;
+  /** The SDK's `forkSession`, for a fork's first turn (D1315). */
+  readonly forkSession?: ClaudeTurnDependencies["forkSession"];
   /** Whether a tool of the node's MCP server only reads: every permission it needs does. */
   readonly readOnlyTool?: (tool: string) => boolean;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
@@ -587,6 +591,7 @@ export function createClaudeRuntime(options: {
         defaultModel: model,
         contextWindow: (name) => windows.get(name) ?? manifestContextWindow(name),
         rateLimit,
+        ...(options.forkSession === undefined ? {} : { forkSession: options.forkSession }),
         skills: async () =>
           new Set(
             (await discoverSkills(claudeConfigDir(config.env, config.inheritEnv), request.cwd)).map(
@@ -663,18 +668,33 @@ export function sessionRecords(kv: KeyValueStore): SessionStore & {
       const value = (await kv.get(NAMESPACE, key(threadId))) as {
         sessionId?: unknown;
         turnId?: unknown;
+        turns?: unknown;
       } | null;
       if (value === undefined) return undefined;
+      // The turns' entries (D1314); a record older than them has none.
+      const turns = Array.isArray(value?.turns)
+        ? value.turns.filter(
+            (turn): turn is { turnId: string; head: string } =>
+              typeof (turn as { turnId?: unknown } | null)?.turnId === "string" &&
+              typeof (turn as { head?: unknown } | null)?.head === "string",
+          )
+        : undefined;
       // Records older than rollbacks hold only a time: the session is named after the thread.
       return {
         sessionId: typeof value?.sessionId === "string" ? value.sessionId : threadId,
         ...(typeof value?.turnId === "string" ? { turnId: value.turnId } : {}),
+        ...(turns === undefined
+          ? {}
+          : { turns: turns.map(({ turnId, head }) => ({ turnId, head })) }),
       };
     },
     set: (threadId, record) =>
       write(threadId, async () => {
         if (forgotten.has(threadId)) return;
-        await kv.set(NAMESPACE, key(threadId), { at: new Date().toISOString(), ...record });
+        await kv.set(NAMESPACE, key(threadId), {
+          at: new Date().toISOString(),
+          ...record,
+        } as unknown as Json);
       }),
     delete: (threadId) => write(threadId, () => kv.delete(NAMESPACE, key(threadId))),
     forget: (threadId, settled = Promise.resolve()) => {
@@ -730,7 +750,11 @@ const LiveSession = z.object({
  * The plugin, running Claude Code through `query` (the SDK's in the distribution).
  * Nothing starts Claude Code at activation: a one-shot CLI command boots the same plugins.
  */
-export function claudePlugin(query: QueryFunction) {
+export function claudePlugin(
+  query: QueryFunction,
+  /** The SDK's `forkSession` (D1315); a plugin without it forks with a transcript. */
+  forkSession?: ClaudeTurnDependencies["forkSession"],
+) {
   return definePlugin({
     activate(context) {
       context.config.define(CONFIG_SECTION, Config);
@@ -741,6 +765,7 @@ export function claudePlugin(query: QueryFunction) {
       const sessions = sessionRecords(kv);
       const runtime = createClaudeRuntime({
         query,
+        ...(forkSession === undefined ? {} : { forkSession }),
         sessions,
         probes: probeRecords(kv),
         ...(mcp === undefined ? {} : { mcp }),
@@ -851,4 +876,6 @@ export function claudePlugin(query: QueryFunction) {
   });
 }
 
-export default claudePlugin(sdkQuery as unknown as QueryFunction);
+export default claudePlugin(sdkQuery as unknown as QueryFunction, (sessionId, options) =>
+  sdkForkSession(sessionId, options),
+);

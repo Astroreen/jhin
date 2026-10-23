@@ -46,7 +46,11 @@ const answering = (...answers: string[]): Script =>
     await player.nextPrompt();
   };
 
-function node(scripts: Script[], config: z.input<typeof Config> = {}) {
+function node(
+  scripts: Script[],
+  config: z.input<typeof Config> = {},
+  forkSession?: Parameters<typeof createClaudeRuntime>[0]["forkSession"],
+) {
   const scripted = scriptedQuery(...scripts);
   const settings = { config: Config.parse(config) };
   const sessions = memorySessions();
@@ -54,6 +58,7 @@ function node(scripts: Script[], config: z.input<typeof Config> = {}) {
     query: scripted.query,
     sessions,
     config: () => settings.config,
+    ...(forkSession === undefined ? {} : { forkSession }),
   });
   let turns = 0;
   const turn = (overrides: Partial<TurnRequest> = {}) =>
@@ -842,6 +847,156 @@ describe("jhin.agent-claude: sessions after a rollback (D222)", () => {
     sessions.ids.add(THREAD);
     await turn({ history: turnOf("t0", "jhin.agent-claude", "old", "reply") });
     expect(calls[0]!.options).toMatchObject({ resume: THREAD });
+  });
+});
+
+describe("jhin.agent-claude: Claude Code's native rewind and fork (D1314, D1315)", () => {
+  const PARENT = "0b6c5e5e-0000-4000-8000-0000000000aa";
+  /** Answers each turn with an answer whose entry is `heads[n]`, as Claude Code marks it. */
+  const answeringAt = (...turns: [answer: string, head: string][]): Script =>
+    async function* (player) {
+      for (const [index, [answer, head]] of turns.entries()) {
+        if (index > 0 && (await player.nextPrompt()) === undefined) return;
+        yield init();
+        for (const frame of streamedBlock(`m${head}`, 0, "text", [answer])) {
+          yield frame.type === "assistant" ? ({ ...frame, uuid: head } as SDKMessage) : frame;
+        }
+        yield result();
+      }
+      await player.nextPrompt();
+    };
+  const turnOf = (turnId: string, text: string, answer: string): StoredEvent[] => [
+    {
+      stream: `thread/${THREAD}`,
+      sequence: 0,
+      type: "agent.turn.started",
+      payload: { turnId, agentId: "jhin.agent-claude", input: { text } },
+      at: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      stream: `thread/${THREAD}`,
+      sequence: 0,
+      type: "agent.item.completed",
+      payload: { turnId, itemId: `${turnId}:1`, kind: "message", text: answer },
+      at: "2026-01-01T00:00:00.000Z",
+    },
+  ];
+  const forked = (turnId: string): StoredEvent => ({
+    stream: `thread/${THREAD}`,
+    sequence: 0,
+    type: "threads.thread.forked",
+    payload: { threadId: PARENT, turnId },
+    at: "2026-01-01T00:00:00.000Z",
+  });
+
+  it("resumes the session before the dropped turns instead of starting over", async () => {
+    const { turn, calls, sessions } = node([
+      answeringAt(["one", "h1"], ["two", "h2"]),
+      answeringAt(["again", "h3"]),
+    ]);
+    await turn({ turnId: "t1", input: { text: "first" } });
+    await turn({ turnId: "t2", input: { text: "second" }, history: turnOf("t1", "first", "one") });
+    expect(sessions.records.get(THREAD)).toEqual({
+      sessionId: THREAD,
+      turnId: "t2",
+      turns: [
+        { turnId: "t1", head: "h1" },
+        { turnId: "t2", head: "h2" },
+      ],
+    });
+
+    // Rolled back to t1: Claude Code resumes its own session at t1's last entry.
+    expect(
+      answers(
+        await turn({
+          turnId: "t3",
+          input: { text: "instead" },
+          history: turnOf("t1", "first", "one"),
+        }),
+      ),
+    ).toEqual(["again"]);
+    expect(calls[0]!.closed).toBe(true);
+    expect(calls[1]!.options).toMatchObject({ resume: THREAD, resumeSessionAt: "h1" });
+    // No transcript: the session still holds t1.
+    expect(prompts(calls[1]!)).toEqual(["instead"]);
+    expect(sessions.records.get(THREAD)).toEqual({
+      sessionId: THREAD,
+      turnId: "t3",
+      turns: [
+        { turnId: "t1", head: "h1" },
+        { turnId: "t3", head: "h3" },
+      ],
+    });
+  });
+
+  it("starts a new session when the rollback keeps none of Claude's turns", async () => {
+    const { turn, calls, sessions } = node([
+      answeringAt(["one", "h1"]),
+      answeringAt(["fresh", "h2"]),
+    ]);
+    await turn({ turnId: "t1", input: { text: "first" } });
+    await turn({ turnId: "t2", input: { text: "over" }, history: [] });
+    expect(calls[1]!.options.resume).toBeUndefined();
+    expect(calls[1]!.options.sessionId).not.toBe(THREAD);
+    expect(sessions.records.get(THREAD)?.turns).toEqual([{ turnId: "t2", head: "h2" }]);
+  });
+
+  it("forks the parent's session at the last turn the fork inherited", async () => {
+    const asked: unknown[] = [];
+    const { turn, calls, sessions } = node(
+      [answeringAt(["forked answer", "f1"])],
+      {},
+      async (sessionId, options) => {
+        asked.push({ sessionId, ...options });
+        return { sessionId: "forked-session" };
+      },
+    );
+    await sessions.set(PARENT, {
+      sessionId: "parent-session",
+      turnId: "p2",
+      turns: [
+        { turnId: "p1", head: "ph1" },
+        { turnId: "p2", head: "ph2" },
+      ],
+    });
+    await turn({
+      turnId: "f1",
+      input: { text: "in the fork" },
+      history: [...turnOf("p1", "first", "one"), forked("p1")],
+    });
+    expect(asked).toEqual([{ sessionId: "parent-session", upToMessageId: "ph1", dir: "/work" }]);
+    expect(calls[0]!.options).toMatchObject({ resume: "forked-session" });
+    expect(calls[0]!.options.resumeSessionAt).toBeUndefined();
+    expect(prompts(calls[0]!)).toEqual(["in the fork"]);
+    expect(sessions.records.get(THREAD)).toEqual({
+      sessionId: "forked-session",
+      turnId: "f1",
+      turns: [
+        { turnId: "p1", head: "ph1" },
+        { turnId: "f1", head: "f1" },
+      ],
+    });
+  });
+
+  it("starts the fork a session of its own with the transcript when forking fails", async () => {
+    let tried = 0;
+    const { turn, calls, sessions } = node([answeringAt(["anyway", "x1"])], {}, async () => {
+      tried++;
+      throw new Error("No conversation found");
+    });
+    await sessions.set(PARENT, {
+      sessionId: "parent-session",
+      turnId: "p1",
+      turns: [{ turnId: "p1", head: "ph1" }],
+    });
+    await turn({
+      turnId: "f1",
+      input: { text: "in the fork" },
+      history: [...turnOf("p1", "first", "one"), forked("p1")],
+    });
+    expect(tried).toBe(1);
+    expect(calls[0]!.options.resume).toBeUndefined();
+    expect(prompts(calls[0]!)[0]).toContain("User: first\nAssistant: one");
   });
 });
 

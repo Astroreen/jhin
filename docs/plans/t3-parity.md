@@ -2165,12 +2165,11 @@ W29 of `t3-roadmap.md` (round 2), D1041–D1060.
   preview of CSV and TSV, and its virtualized preview of text past 1 MiB; a bound on the page's cache
   of attachment bytes (a video is read whole to show its first frame, D855). A live Claude Code session starts again
   when a turn's attachments add their folder to `additionalDirectories`.
-- Thread history (W2, D220–D228): Claude Code's native rewind and fork (`resumeSessionAt` and
-  `forkSession` instead of a new session with the transcript, D222, D225;
-  until then a Claude session record that could not be written, or one
-  from before D222, lets the next turn resume a session that still holds
-  the dropped turns, D222; and the Claude Code session a new one replaces is
-  left on disk),
+- Thread history (W2, D220–D228): Claude Code rewinds and forks its own
+  session now (`providers.md` D1314, D1315), but a Claude session record that
+  could not be written, or one from before D222, still lets the next turn
+  resume a session that holds the dropped turns (D222), and the Claude Code
+  session a new one replaces is left on disk;
   a budget for a merge-back's handoff (each line is cut at 240 characters,
   but a long fork gives many lines; T3's summary text is unbounded too),
   a merge-back's handoff in an agent's history (it reaches the agent as the
