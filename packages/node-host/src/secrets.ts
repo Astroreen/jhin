@@ -485,13 +485,18 @@ export function sealSecrets(
     rootOf(schema),
     [],
     (secret, path) =>
-      mapScalars(secret, placeOf(values, path), (scalar, place) =>
-        scalar === "" ||
-        (typeof scalar === "string" &&
-          (isConfigSecretReference(scalar) || isRedactedSecret(scalar)))
-          ? scalar
-          : seal(storedText(scalar)!, place),
-      ),
+      mapScalars(secret, placeOf(values, path), (scalar, place) => {
+        if (
+          scalar === "" ||
+          (typeof scalar === "string" &&
+            (isConfigSecretReference(scalar) || isRedactedSecret(scalar)))
+        ) {
+          return scalar;
+        }
+        // Always text for a scalar; narrowed rather than asserted.
+        const text = storedText(scalar);
+        return text === undefined ? scalar : seal(text, place);
+      }),
     false,
     true,
   ) as Record<string, unknown>;

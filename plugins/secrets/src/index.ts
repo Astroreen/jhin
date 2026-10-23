@@ -63,6 +63,13 @@ export default definePlugin({
           : findKeychain(`jhin.secrets:${nodeId}`, {
               dpapiFile: Path.join(dir, DPAPI_KEY_FILE),
             }),
+      onKeychainRefused: (kind) =>
+        context.log.warn(
+          "the OS keychain did not keep the secret store's key; it is in a key file",
+          {
+            keychain: kind,
+          },
+        ),
     });
     if (!store.readable) {
       context.log.error(

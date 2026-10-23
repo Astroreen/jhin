@@ -121,7 +121,8 @@ describe("the Windows keychain (security.md D1372)", () => {
     const blob = Fs.readFileSync(file, "utf8");
     expect(blob).not.toContain(KEY);
     expect(blob).toMatch(/^dpapi:/);
-    expect(Fs.statSync(file).mode & 0o777).toBe(0o600);
+    // Modes are POSIX's; on Windows the user's profile directory guards it.
+    if (process.platform !== "win32") expect(Fs.statSync(file).mode & 0o777).toBe(0o600);
     for (const call of calls) {
       expect(call.command).toBe("powershell.exe");
       expect(call.args.slice(0, 3)).toEqual(["-NoProfile", "-NonInteractive", "-Command"]);
@@ -153,5 +154,15 @@ describe("the Windows keychain (security.md D1372)", () => {
       stdout: "",
     }));
     expect((await openStore({ dir, keychain: stranger })).readable).toBe(false);
+    // A keychain that does not keep a new store's key is said, not hidden.
+    const refused: string[] = [];
+    const fresh = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-dpapi-"));
+    await openStore({
+      dir: fresh,
+      keychain: stranger,
+      onKeychainRefused: (kind) => refused.push(kind),
+    });
+    expect(refused).toEqual(["windows"]);
+    expect(Fs.existsSync(Path.join(fresh, "store.key"))).toBe(true);
   });
 });

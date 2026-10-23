@@ -956,8 +956,10 @@ Connect stays out of scope.
   key with `ProtectedData.Protect` (scope `CurrentUser`) in
   `powershell.exe -NoProfile -NonInteractive`, the key and the blob going
   through standard input and output only (the script on the command line
-  holds no secret), and keeps the blob in `store.key.dpapi` (0600) beside
-  the store. Only the same Windows user on the same machine unwraps it. The
+  holds no secret), and keeps the blob in `store.key.dpapi` beside the
+  store (0600 where the file system has modes). A keychain that does not
+  keep a new store's key (a PowerShell that fails) leaves it in the key
+  file, with a warning in the log. Only the same Windows user on the same machine unwraps it. The
   store records `key: "keychain"` as for the other keychains, so a store
   made before keeps its key file (D1023), and `secrets.status` names the
   keychain `windows` (an added value). `jhin.secrets.keychain: "off"` keeps
