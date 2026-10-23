@@ -1,5 +1,5 @@
 // The find in a thread (docs/plans/t3-parity.md, D801).
-import { act, useEffect, useRef } from "react";
+import { act, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -9,6 +9,7 @@ import {
   findRanges,
   formatCount,
   stepIndex,
+  THREAD_FIND_UNFOLD_EVENT,
   useThreadFind,
 } from "../src/plugins/chat/thread-find.tsx";
 import { ThreadFindBar } from "../src/plugins/chat/thread-find-bar.tsx";
@@ -140,6 +141,59 @@ describe("useThreadFind", () => {
     await expect
       .element(page.getByRole("searchbox", { name: "Find in thread" }))
       .not.toBeInTheDocument();
+    await act(async () => root.unmount());
+  });
+
+  it("asks a fold to open once the current match is in it, and scrolls to it there (D1351)", async () => {
+    /** A turn whose work folds: shown hidden while the bar is open, opened by the find's event. */
+    function Turn() {
+      const [unfolded, setUnfolded] = useState(false);
+      const turn = useRef<HTMLDivElement>(null);
+      useEffect(() => {
+        const element = turn.current!;
+        const unfold = () => setUnfolded(true);
+        element.addEventListener(THREAD_FIND_UNFOLD_EVENT, unfold);
+        return () => element.removeEventListener(THREAD_FIND_UNFOLD_EVENT, unfold);
+      }, []);
+      return (
+        <div data-testid="turn" data-unfolded={unfolded} ref={turn}>
+          <p>first pear</p>
+          <div data-thread-find-fold={unfolded ? undefined : ""} hidden={!unfolded}>
+            <p>folded pear</p>
+          </div>
+          <p>last pear</p>
+        </div>
+      );
+    }
+    function Log() {
+      const log = useRef<HTMLDivElement>(null);
+      const find = useThreadFind(log, "t");
+      useEffect(() => find.open(), [find.open]);
+      return (
+        <div>
+          <ThreadFindBar {...find.bar} />
+          <div ref={log}>
+            <Turn />
+          </div>
+        </div>
+      );
+    }
+    const host = document.createElement("div");
+    document.body.append(host);
+    containers.push(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<Log />));
+    await userEvent.fill(page.getByRole("searchbox", { name: "Find in thread" }), "pear");
+    const count = page.getByRole("search").getByText(/^\d+\/\d+$/);
+    await expect.element(count).toHaveTextContent("1/3");
+    const turn = host.querySelector("[data-testid=turn]")!;
+    expect(turn.getAttribute("data-unfolded")).toBe("false");
+    await page.getByRole("button", { name: "Next match" }).click();
+    await expect.element(count).toHaveTextContent("2/3");
+    // The turn opened its work, where the match is found again: the same count.
+    await expect.element(page.getByText("folded pear")).toBeVisible();
+    expect(turn.getAttribute("data-unfolded")).toBe("true");
+    await expect.element(count).toHaveTextContent("2/3");
     await act(async () => root.unmount());
   });
 });

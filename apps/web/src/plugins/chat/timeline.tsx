@@ -696,14 +696,16 @@ function TurnView(props: {
   const finalIndex = blocks.findIndex((block) => block.kind === "message" && block.final);
   // A proposed plan is never folded away (it is what the turn is for), nor a
   // message the user steered in.
-  const shownFolded = (block: (typeof blocks)[number], index: number) =>
-    !folds ||
-    unfolded ||
-    index >= finalIndex ||
-    block.kind === "proposed-plan" ||
-    block.kind === "steer" ||
+  /** A block the finished turn folds away: before its answer, and none of what always shows. */
+  const foldable = (block: (typeof blocks)[number], index: number) =>
+    folds &&
+    index < finalIndex &&
+    block.kind !== "proposed-plan" &&
+    block.kind !== "steer" &&
     // What a plugin put into the turn (a rendered page) is part of the answer.
-    block.kind === "extension";
+    block.kind !== "extension";
+  const shownFolded = (block: (typeof blocks)[number], index: number) =>
+    unfolded || !foldable(block, index);
   // While the find bar is open the folded work is there too, hidden, so its text is found; the
   // fold opens once the current match is in it (T3's find opens it, D1351).
   const findOpen = useContext(FindOpenContext);
@@ -828,12 +830,21 @@ function TurnView(props: {
       ) : null}
       <div className="pt-2">
         {blocks.map((block, index) => {
-          if (shownFolded(block, index)) return renderBlock(block, index);
-          return findOpen ? (
-            <div data-thread-find-fold="" hidden key={`folded-${index}`}>
+          // What never folds renders as before; what can fold keeps one wrapper, open or not, so
+          // opening the fold keeps the block (and the find's place in it) where it was.
+          if (!foldable(block, index)) return renderBlock(block, index);
+          const folded = !shownFolded(block, index);
+          if (folded && !findOpen) return null;
+          return (
+            <div
+              className={folded ? undefined : "contents"}
+              data-thread-find-fold={folded ? "" : undefined}
+              hidden={folded}
+              key={`foldable-${index}`}
+            >
               {renderBlock(block, index)}
             </div>
-          ) : null;
+          );
         })}
       </div>
       {props.footer}

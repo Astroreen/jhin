@@ -2141,7 +2141,11 @@ says. The other W38 decisions land in their own pull requests.
   renders the work it folds as well, hidden (`hidden`,
   `data-thread-find-fold`), in its place among the turn's blocks, so the
   same text the unfolded turn shows is found and counted in document
-  order; nothing else that is hidden is searched. When the current match
+  order. Whatever else is `hidden` is not searched any more, inside such
+  work too, as the browser does not show it (D801 counted it); the hidden
+  copy and the opened work so count alike. A foldable block keeps one
+  wrapper, open or folded (`display: contents` when open), so opening the
+  fold keeps the block and its state. When the current match
   is in such work, its turn opens the fold (the event
   `jhin-thread-find-unfold` from the find to the turn), and the match,
   found again in the opened work, is scrolled to. A work row folded inside
@@ -2238,7 +2242,10 @@ says. The other W38 decisions land in their own pull requests.
   the chat when it is wide enough (here it is always the popover), and the
   heights T3 measures to drop rows on a short window.
 - Find in a thread (D801, D1351): a work group's own fold and a tool's
-  output are not searched until they are expanded.
+  output are not searched until they are expanded; and while the bar is
+  open every finished turn renders its folded work hidden, which costs a
+  long thread the whole of it at once (T3 searches its projection on the
+  server instead).
   While the bar is open, each change of the thread's text (every streamed
   token, once a frame) walks the whole thread again; finding again only in
   the turns that changed would keep a long streaming thread cheap. And white
