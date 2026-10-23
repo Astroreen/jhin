@@ -12,6 +12,8 @@ export interface ConversationView {
   readonly entries: readonly ConversationEntry[];
   /** The owner's address on the node, once read. */
   readonly owner?: string;
+  /** The lead's address, as the node resolved it, once read (D1393). */
+  readonly lead?: string;
   readonly error?: string;
 }
 
@@ -49,10 +51,16 @@ export function followConversation(
       const answer = await client.call<{
         head: number;
         owner: string;
+        with?: string;
         entries: ConversationEntry[];
       }>("agents.conversation", { with: address });
       if (stopped || ask !== asked) return undefined;
-      set({ status: "ready", entries: answer.entries, owner: answer.owner });
+      set({
+        status: "ready",
+        entries: answer.entries,
+        owner: answer.owner,
+        ...(answer.with === undefined ? {} : { lead: answer.with }),
+      });
       return answer.head;
     } catch (error) {
       if (!stopped && ask === asked) failed(error);
