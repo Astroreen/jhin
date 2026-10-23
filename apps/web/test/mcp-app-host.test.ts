@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   MCP_APP_PROTOCOL_VERSION,
@@ -147,6 +147,91 @@ describe("an MCP app's host bridge (D1403)", () => {
     expect(sizes).toEqual([{ height: 9000 }]);
     expect(clampMcpAppHeight(9000)).toBe(2000);
     expect(clampMcpAppHeight(10)).toBe(80);
+  });
+
+  it("refuses a 17th request in flight, and takes requests again once they settle", async () => {
+    const release: (() => void)[] = [];
+    const { instance, answer } = host({
+      callTool: () =>
+        new Promise((resolve) => release.push(() => resolve({ content: [], _meta: null }))),
+    });
+    for (let id = 1; id <= 17; id++) {
+      instance.receive({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "x" } });
+    }
+    expect(await answer(17)).toMatchObject({
+      error: { code: -32000, message: "Too many requests in flight." },
+    });
+    for (const done of release) done();
+    expect(await answer(16)).toMatchObject({ result: { content: [] } });
+    instance.receive({ jsonrpc: "2.0", id: 18, method: "tools/call", params: { name: "x" } });
+    release.at(-1)!();
+    expect(await answer(18)).toMatchObject({ result: { content: [] } });
+  });
+
+  it("tells an initialized app what changed, and asks it to wrap up before it goes", async () => {
+    let theme: "dark" | "light" = "dark";
+    const posted: Record<string, unknown>[] = [];
+    const { instance } = host({
+      post: (message) => posted.push(message as Record<string, unknown>),
+      hostContext: () => ({
+        theme,
+        styles: { variables: {} },
+        displayMode: "inline",
+        availableDisplayModes: ["inline"],
+        containerDimensions: { width: 600, maxHeight: 2000 },
+        platform: "web",
+      }),
+    });
+    // Before it initialized, the app gets nothing: it reads the context from its answer.
+    theme = "light";
+    instance.updateHostContext();
+    expect(posted).toHaveLength(0);
+    instance.receive({ jsonrpc: "2.0", id: 1, method: "ui/initialize", params: {} });
+    instance.receive({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
+    theme = "dark";
+    instance.updateHostContext();
+    expect(posted.at(-1)).toEqual({
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: { theme: "dark" },
+    });
+    // Only inline here.
+    instance.receive({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "ui/request-display-mode",
+      params: { mode: "fullscreen" },
+    });
+    expect(posted.at(-1)).toMatchObject({ id: 2, result: { mode: "inline" } });
+    // Teardown waits for the app's answer, then the host sends nothing more.
+    const gone = instance.teardown();
+    const request = posted.at(-1)!;
+    expect(request).toMatchObject({ method: "ui/resource-teardown" });
+    instance.receive({ jsonrpc: "2.0", id: request["id"], result: {} });
+    await gone;
+    const count = posted.length;
+    instance.receive({ jsonrpc: "2.0", id: 3, method: "ping", params: {} });
+    expect(posted).toHaveLength(count);
+  });
+
+  it("goes after two seconds when the app does not answer its teardown", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { instance, posted } = host();
+      instance.receive({ jsonrpc: "2.0", id: 1, method: "ui/initialize", params: {} });
+      instance.receive({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
+      let gone = false;
+      const teardown = instance.teardown().then(() => (gone = true));
+      expect(posted.at(-1)).toMatchObject({ method: "ui/resource-teardown" });
+      vi.advanceTimersByTime(1999);
+      await Promise.resolve();
+      expect(gone).toBe(false);
+      vi.advanceTimersByTime(1);
+      await teardown;
+      expect(gone).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("names the frame's features and keeps results the SDK takes", () => {

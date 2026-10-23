@@ -131,16 +131,17 @@ export function McpAppFrame(props: {
           JSON.stringify(args, null, 2),
         );
         if (!allowed) throw new Error("Declined by the user.");
+        // The node sends it to the app's own server only, and only a tool apps may call.
         const { result } = await call<{ result: McpAppCallToolResult }>(
           "agents.mcp-app.call-tool",
-          { server: app.server, tool: name, arguments: args },
+          { documentId: app.documentId, tool: name, arguments: args },
         );
         return result;
       },
       readResource: async ({ uri }) =>
         (
           await call<{ result: unknown }>("agents.mcp-app.read-resource", {
-            server: app.server,
+            documentId: app.documentId,
             uri,
           })
         ).result,
@@ -178,7 +179,9 @@ export function McpAppFrame(props: {
       void host.teardown();
       hostRef.current = null;
     };
-  }, [html, closed, app]);
+    // The host belongs to the app's document, not to the item object carrying it: a
+    // timeline projected again keeps the app running.
+  }, [html, closed, app.documentId]);
 
   useEffect(() => hostRef.current?.updateHostContext(), [theme]);
 

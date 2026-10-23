@@ -1465,8 +1465,16 @@ history. The reference is T3 Code `eb7b35ac` (D53).
   initialized, the theme when it changes, and `ui/resource-teardown` when
   the frame goes. Every tool call and message of the app is the user's to
   allow first ("Allow <server> to run <tool>?", "Send this message from
-  <server>?"), where T3 asks only for tools that write. A frame that loads
-  another page stops the app ("The app left its page and was stopped.").
+  <server>?"), where T3 asks only for tools that write; a resource read is
+  asked of nobody, as in T3 (it reaches only the app's own server, D1402).
+  The rest is T3's too: a link opens only while the frame has focus and the
+  page a user activation (`navigator.userActivation`, page-wide), the host
+  answers an app's requests before it said it is initialized (only the
+  call's input and result wait for that), and a frame that goes stops
+  listening before it asks the app to wrap up, so its teardown ends on the
+  2 s limit. The host is the app document's (`documentId`): the item's object
+  projected again keeps it. A frame that loads another page stops the app
+  ("The app left its page and was stopped.").
   The fake agent's `/app` returns one, for the end-to-end test.
 
 ### Deferred
