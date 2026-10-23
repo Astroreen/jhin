@@ -694,6 +694,22 @@ Decisions:
   Delete slice with a confirmation (and none without a dialog host), shows
   the command's refusal, and a link to a deleted record reads "Not found:
   it may have been deleted".
+- **D1299. The missions of a deleted project stay, and are told apart.** The
+  owner's answer (2026-10-23, option b): nothing of the owner's is deleted as
+  a side effect of another command, so `projects.delete` leaves a project's
+  missions, slices and intent in the stream and the state. They stay
+  reachable, and the owner deletes them with `missions.delete` (D1295), which
+  closes D1295's half about a deleted project. `missions.list` (without a
+  project), `missions.get` and `missions.catalog` already answered for them;
+  they now carry `projectDeleted: true` on the `Mission`, derived at read time
+  from `projects.list` and never stored (absent where the node has no
+  `projects.list`, or the project exists). Asking by the gone project
+  (`missions.list {projectId}`, the intent, Markdown of the project) and
+  planning a mission in it stay refused with `PROJECT_NOT_FOUND`. The client
+  fold does not carry the mark: the Missions section puts missions whose
+  project is not in the node's catalog into one last group, "Of a deleted
+  project", where they open and delete as any (while the catalog is unread,
+  nothing is moved).
 
 ### A4. Context library and lore (D661–D680)
 
@@ -2092,8 +2108,8 @@ Decisions (L2):
 - ~~A3: an agent's title for an assignee (`agents.catalog`); the view shows
   the agent id from the address (D645).~~ C2, D1082.
 - ~~A3: deleting missions and slices (D651 drops them).~~ A3, D1295.
-- A3: what happens to the missions of a deleted project (they stay in the
-  stream, unseen).
+- ~~A3: what happens to the missions of a deleted project (they stay in the
+  stream, unseen).~~ A3, D1299.
 - ~~A3: editing intent, missions and slices from the client; the view reads
   (D656), the commands edit.~~ C2, D1081–D1085.
 - ~~C2: editing a step's description (D1084 keeps it by id).~~ C2, D1288.
