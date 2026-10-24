@@ -73,6 +73,8 @@ const SAVED_NAME = /^[\w][\w.-]*$/;
 const SAVED_DIR = Path.join(".jhin", "workflows");
 /** The node's own saved workflows, under its home (D1505). */
 const NODE_SAVED_DIR = "workflows";
+/** How many forks back `orchestration.thread` follows a fork's sources (D1510). */
+const MAX_FORK_SOURCES = 10;
 /** How long a finished record stays (D1503). */
 const DEFAULT_RETENTION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -124,6 +126,9 @@ const ThreadRecord = z
     runtimeMode: z.enum(RUNTIME_MODES).optional(),
     interactionMode: z.enum(INTERACTION_MODES).optional(),
     parentThreadId: z.string().optional(),
+    createdAt: z.string().optional(),
+    /** The thread it was forked from (D225, D1510). */
+    forkedFrom: z.object({ threadId: z.string() }).loose().optional(),
     modelOptions: z
       .array(z.object({ id: z.string(), value: z.union([z.string(), z.boolean()]) }))
       .optional(),
@@ -2679,21 +2684,42 @@ export default definePlugin({
       description:
         "The delegated tasks and workflows of a thread as records of the orchestration stream, with the stream's head to follow them from. Unlike tasks_status and workflows_status, reading acknowledges no result.",
       input: z.object({ threadId: z.string().min(1).optional() }),
-      output: z.object({ tasks: z.array(Task), workflows: z.array(Workflow), head: z.number() }),
+      output: z.object({
+        tasks: z.array(Task),
+        workflows: z.array(Workflow),
+        head: z.number(),
+        /** The threads it was forked from, whose records it lists too (D1510). */
+        inherited: z.array(z.string()),
+      }),
       permissions: ["threads.read"],
       handler: async ({ threadId: named }, invocation) => {
         const threadId = requireThread(callerThread(named, invocation), "orchestration.thread");
         // A thread that does not exist is no thread without delegated work.
-        await getThread(threadId, invocation);
+        const { thread } = await getThread(threadId, invocation);
+        // A fork's marks are its sources' (D1510): their records made before each fork.
+        const before = new Map<string, string>([[threadId, "\uffff"]]);
+        let fork: ThreadRecord | undefined = thread;
+        while (fork?.forkedFrom !== undefined && before.size <= MAX_FORK_SOURCES) {
+          const source: string = fork.forkedFrom.threadId;
+          if (before.has(source)) break;
+          before.set(source, fork.createdAt ?? "");
+          fork = await getThread(source, invocation).then(
+            (got) => got.thread,
+            () => undefined,
+          );
+        }
+        const owned = (entry: { parentThreadId: string; createdAt: string }) => {
+          const cutoff = before.get(entry.parentThreadId);
+          return cutoff !== undefined && entry.createdAt <= cutoff;
+        };
         // The head first: whatever changes after it comes on the stream, and a record read twice
         // is the same record.
         const head = await log.head(ORCHESTRATION_STREAM);
         return {
-          tasks: [...tasks.values()].filter((task) => task.parentThreadId === threadId),
-          workflows: [...workflows.values()].filter(
-            (workflow) => workflow.parentThreadId === threadId,
-          ),
+          tasks: [...tasks.values()].filter(owned),
+          workflows: [...workflows.values()].filter(owned),
           head,
+          inherited: [...before.keys()].filter((id) => id !== threadId),
         };
       },
     });

@@ -280,16 +280,17 @@ export function DelegationLineage({ target, thread, services, view }: Props) {
   const parentId = thread.relationshipToParent === "subagent" ? thread.parentThreadId : undefined;
   const parent =
     parentId === undefined ? undefined : catalog?.threads.find((item) => item.id === parentId);
+  // A fork's view holds its source's records too (D1510): it lists, and stops, its own.
   const tasks = [...view.tasks.values()]
-    .filter((task) => task.workflowId === undefined)
+    .filter((task) => task.workflowId === undefined && task.parentThreadId === thread.id)
     .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));
   // The subagents the agent ran itself (D879): threads, not tasks.
   const providerSubagents = (catalog?.threads ?? [])
     .filter((item) => item.parentThreadId === thread.id && item.subagentOrigin === "provider")
     .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));
-  const workflows = [...view.workflows.values()].toSorted((left, right) =>
-    right.createdAt.localeCompare(left.createdAt),
-  );
+  const workflows = [...view.workflows.values()]
+    .filter((workflow) => workflow.parentThreadId === thread.id)
+    .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));
   return (
     <>
       {parentId === undefined ? null : (

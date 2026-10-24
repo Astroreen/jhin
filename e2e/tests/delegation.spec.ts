@@ -230,3 +230,24 @@ test("D1161: subagents started one after another are one row", async ({ page }, 
   await page.getByRole("button", { name: "Open south", exact: true }).click();
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: south");
 });
+
+test("D1508–D1509: a subagent that waits for approval is its parent's, in the sidebar and the composer", async ({
+  page,
+}, info) => {
+  const parentId = await startThread(page, "lead the work");
+  const task = (await node.client().call("tasks.delegate", {
+    task: "/approve ls",
+    title: "careful step",
+    parentThreadId: parentId,
+  })) as { childThreadId: string };
+  // The parent's card says what its subagent waits for; the subagent stays hidden.
+  await expect(threadRow(page, "lead the work")).toHaveAccessibleName(/^lead the work, Approval/);
+  await expect(threadRow(page, "careful step")).toHaveCount(0);
+  const banner = page.getByRole("region", { name: "Subagent needs approval" });
+  await expect(banner).toContainText("careful step");
+  await shot(page, info, "subagent-needs-approval");
+
+  await banner.getByRole("button", { name: "Open approval" }).click();
+  await expect(page).toHaveURL(new RegExp(`t=${task.childThreadId}`));
+  await expect(page.getByRole("group", { name: "Command approval" })).toBeVisible();
+});

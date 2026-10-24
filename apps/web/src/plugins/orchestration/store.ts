@@ -80,14 +80,20 @@ function put<R extends { updatedAt: string }>(
   return new Map(records).set(id, record);
 }
 
-/** Applies one event of the `orchestration` stream to a thread's view. */
+/**
+ * Applies one event of the `orchestration` stream to a thread's view: the
+ * thread's own records, and with a set those of the threads it was forked
+ * from as well (D1510).
+ */
 export function applyOrchestrationEvent(
   view: DelegationView,
-  threadId: string,
+  threadId: string | ReadonlySet<string>,
   event: { type: string; payload: unknown },
 ): DelegationView {
   const record = event.payload as { parentThreadId?: unknown } | null;
-  if (record?.parentThreadId !== threadId) return view;
+  const parent = record?.parentThreadId;
+  if (typeof parent !== "string") return view;
+  if (typeof threadId === "string" ? parent !== threadId : !threadId.has(parent)) return view;
   if (event.type === OrchestrationEvents.taskUpdated) {
     const task = record as TaskRecord;
     const tasks = put(view.tasks, task.taskId, task);
@@ -128,18 +134,25 @@ interface ThreadSnapshot {
   readonly tasks: readonly TaskRecord[];
   readonly workflows: readonly WorkflowRecord[];
   readonly head: number;
+  /** The threads it was forked from (D1510); absent from an older node. */
+  readonly inherited?: readonly string[];
 }
 
+/** The parents whose records a thread's view holds: its own, and its fork sources' (D1510). */
+const parentsOf = (threadId: string, snapshot: ThreadSnapshot): ReadonlySet<string> =>
+  new Set([threadId, ...(snapshot.inherited ?? [])]);
+
 function snapshotView(view: DelegationView, threadId: string, snapshot: ThreadSnapshot) {
+  const parents = parentsOf(threadId, snapshot);
   let next: DelegationView = { ...view, status: "ready" };
   for (const task of snapshot.tasks) {
-    next = applyOrchestrationEvent(next, threadId, {
+    next = applyOrchestrationEvent(next, parents, {
       type: OrchestrationEvents.taskUpdated,
       payload: task,
     });
   }
   for (const workflow of snapshot.workflows) {
-    next = applyOrchestrationEvent(next, threadId, {
+    next = applyOrchestrationEvent(next, parents, {
       type: OrchestrationEvents.workflowUpdated,
       payload: workflow,
     });
@@ -261,6 +274,7 @@ export function createDelegationStore(
           memberThreads = threads.subscribe(feed.target, reread);
           return;
         }
+        const parents = parentsOf(feed.threadId, snapshot);
         subscription = client.subscribe(
           ORCHESTRATION_STREAM,
           { after: snapshot.head, onError: failed },
@@ -269,7 +283,7 @@ export function createDelegationStore(
             // Only an event proves the stream works: a read that answers does not, so a stream
             // refused right after it keeps backing off.
             feed.retries = 0;
-            set(feed, applyOrchestrationEvent(feed.view, feed.threadId, event));
+            set(feed, applyOrchestrationEvent(feed.view, parents, event));
           },
         );
       })
