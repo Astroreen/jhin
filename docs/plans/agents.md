@@ -2304,11 +2304,14 @@ Decisions (M1):
   node is attributed with the missions as they are when it arrives. Its
   evidence names the stream the way this node relays it,
   `relay/<node>/<stream>` (`relayStream`), so heads, dismissals (D724) and
-  references never mix two nodes' sequences; `health.warnings.get` reads
+  references never mix two nodes' sequences; a dismissal cuts another node's
+  stream at the last event that reached this node, not at that node's head,
+  so an event in flight then counts after it; `health.warnings.get` reads
   such a record through the same relay, with what the stream takes here
   (D502, D730). A member that cannot be reached or does not share a stream
   is followed again on the next change of the members; what it said before
-  stays counted.
+  stays counted. A member's stream that starts below where this node was (its
+  data wiped) is read again from its start.
 - **D1527. Civilization reads every node the client shows.** The roster,
   the missions view, the inbox, health and the offer of the mode follow each
   open connection and each reachable member of its mesh (`shownNodes`, D47),
@@ -2628,6 +2631,10 @@ Decisions:
 - ~~A7: health for a mesh: each node counts its own streams; a team across
   nodes needs the counts of every node, through `mesh.call` or shared
   streams.~~ M1, D1525, D1526.
+- M1: each start of health reads every member's `agents/messages`,
+  `source-control`, `health` and `missions` from their start (D1526), however
+  long they are; a cursor kept across restarts, or a window's worth only,
+  would bound it.
 - M1: another node's events count with the missions as they are when they
   arrive (D1526): on a restart they are not replayed in time order with this
   node's streams, so a message sent before a slice was assigned can count

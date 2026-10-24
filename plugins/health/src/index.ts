@@ -766,7 +766,14 @@ export default definePlugin({
         // mix two nodes' sequences (D1526).
         const name = relayStream(node, stream);
         if (remote.has(name)) return;
-        const followed = follower.follow!(
+        /** Ended or refused before `follow` returned: nothing to keep then. */
+        let over = false;
+        let followed: Disposable | undefined;
+        const forget = () => {
+          over = true;
+          if (followed !== undefined && remote.get(name) === followed) remote.delete(name);
+        };
+        const following = follower.follow!(
           node,
           stream,
           remoteHeads.get(name) ?? 0,
@@ -786,19 +793,31 @@ export default definePlugin({
           },
           (error) => {
             // Refused later: followed again on the next change of the members.
-            if (remote.get(name) === followed) remote.delete(name);
+            forget();
             context.log.info("another node's stream ended", { stream: name, error: String(error) });
           },
         );
-        remote.set(name, followed);
-        followed.ready.catch((error: unknown) => {
-          // Out of reach, or not shared there: tried again on the next change of the members.
-          if (remote.get(name) === followed) remote.delete(name);
-          context.log.info("another node's stream could not be followed", {
-            stream: name,
-            error: String(error),
-          });
-        });
+        followed = following;
+        if (!over) remote.set(name, following);
+        following.ready.then(
+          (head) => {
+            // A stream that starts below where this node was (the member's data
+            // was wiped): read again from its start, not from a sequence it never reaches.
+            if (head >= (remoteHeads.get(name) ?? 0) || remote.get(name) !== following) return;
+            following.dispose();
+            remote.delete(name);
+            remoteHeads.delete(name);
+            followOne(node, stream, handle);
+          },
+          (error: unknown) => {
+            // Out of reach, or not shared there: tried again on the next change of the members.
+            forget();
+            context.log.info("another node's stream could not be followed", {
+              stream: name,
+              error: String(error),
+            });
+          },
+        );
       };
       /** Health's own asks and their replies on another node are no ceremony there either. */
       const healthsOwn = (event: StoredEvent) => {

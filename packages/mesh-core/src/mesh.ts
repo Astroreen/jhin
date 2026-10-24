@@ -894,6 +894,7 @@ export function createMesh(options: MeshOptions): Mesh {
       // The link is used once the dialer has spoken on it: until then its side
       // may not serve requests yet, and one sent the moment the member became
       // reachable (a relay a plugin starts then, agents.md D1522) would be lost.
+      // A dialer always speaks: its `addLink` gossips as soon as its link opens.
       const waiting = quiet.get(nodeId) ?? new Set<Peer>();
       waiting.add(peer);
       quiet.set(nodeId, waiting);

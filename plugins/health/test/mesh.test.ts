@@ -4,7 +4,7 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { MESSAGES_STREAM, MessageEvents, ThreadHooks } from "@jhin/agent-api";
+import { MESSAGES_STREAM, MessageEvents, ThreadEvents, ThreadHooks } from "@jhin/agent-api";
 import {
   COMMITS_COUNTED_EVENT,
   HEALTH_STREAM,
@@ -14,6 +14,7 @@ import {
 } from "@jhin/health-api";
 import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import type { Mission, Slice } from "@jhin/missions-api";
+import { SOURCE_CONTROL_STREAM, SourceControlEvents } from "@jhin/source-control-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z, type PluginContext } from "@jhin/sdk";
 import type { EventLog, Json, StoredEvent } from "@jhin/storage-api";
@@ -74,9 +75,10 @@ async function meshNode(network: ReturnType<typeof createMemoryNetwork>, id: str
                 .get<LiveStreams>(LIVE_STREAMS_CAPABILITY)
                 .guard(MESSAGES_STREAM, ["agents.read"]),
             );
-            context.subscriptions.add(
-              context.services.get<MeshStreams>(MESH_STREAMS_CAPABILITY).share(MESSAGES_STREAM),
-            );
+            const shared = context.services.get<MeshStreams>(MESH_STREAMS_CAPABILITY);
+            context.subscriptions.add(shared.share(MESSAGES_STREAM));
+            // As jhin.source-control shares its stream (D501).
+            context.subscriptions.add(shared.share(SOURCE_CONTROL_STREAM));
             context.commands.register({
               name: "host.identity",
               description: "This node's id",
@@ -148,14 +150,14 @@ describe("health across the mesh (M1)", () => {
       assignee: BUILDER_B,
     });
 
-    // b's health followed a's missions when they met (D1525); a follower started
-    // after it on the same link hears a's next event after it does.
-    const seenOnB: StoredEvent[] = [];
+    // b's health followed a's missions when they met (D1525), through b's relay
+    // of them. A follower attached after it on the same relay path is told a's
+    // next event after it: a's log tells its subscribers in the order they came,
+    // and a link delivers in order. So once ours has the link, b's health has.
     let linkSeen!: () => void;
     const linked = new Promise<void>((resolve) => (linkSeen = resolve));
     const streams = b.probe().services.get<MeshStreams>(MESH_STREAMS_CAPABILITY);
     const watching = streams.follow!("a", "missions", 0, (event) => {
-      seenOnB.push(event as StoredEvent);
       if ((event.payload as { slice?: Slice }).slice?.threads.length === 1) linkSeen();
     });
     await watching.ready;
@@ -246,6 +248,97 @@ describe("health across the mesh (M1)", () => {
     // b raises nothing about a's mission: it counts no group of another node's.
     const onB = await b.node.connect().client.call<{ groups: GroupStatus[] }>("health.status", {});
     expect(onB.groups.map((group) => group.group.kind)).toEqual(["node"]);
-    expect(seenOnB.length).toBeGreaterThan(0);
+  });
+
+  it("counts queue activity and merges of a linked thread on another node, cuts a dismissal there, and follows it again after the member was away (D1526)", async () => {
+    const network = createMemoryNetwork();
+    const a = await meshNode(network, "a");
+    const b = await meshNode(network, "b");
+    await b.node.join(a.node);
+    const { client } = a.node.connect();
+    const mission = await client.call<Mission>("missions.create", {
+      projectId: "p1",
+      title: "Doghouse",
+      outcome: "The dog sleeps dry.",
+    });
+    const slice = await client.call<Slice>("slices.create", {
+      missionId: mission.id,
+      title: "Floor",
+      spec: "The floor holds the dog.",
+      assignee: BUILDER_B,
+    });
+    await client.call("slices.link", { sliceId: slice.id, threadId: "tb", nodeId: "b" });
+    const queue = () =>
+      b.node.log.append("thread/tb", [{ type: ThreadEvents.queueUpdated, payload: {} as Json }]);
+    const merged = (number: number) =>
+      b.node.log.append(SOURCE_CONTROL_STREAM, [
+        {
+          type: SourceControlEvents.pullRequestUpdated,
+          payload: {
+            threadId: "tb",
+            pullRequest: { key: `gh:o/r#${number}`, number, snapshot: { state: "merged" } },
+          } as unknown as Json,
+        },
+      ]);
+
+    // Queue activity of the slice's thread on b is the mission's ceremony on a.
+    let raised = nextEvent(a.node.kernel, HealthEvents.warningRaised);
+    for (let index = 0; index < 3; index += 1) await queue();
+    const first = ((await raised) as { warning: Warning }).warning;
+    expect(first.group).toMatchObject({ kind: "mission", missionId: mission.id });
+    expect(first.evidence.map((ref) => [ref.stream, ref.sequence])).toEqual([
+      ["relay/b/thread/tb", 1],
+      ["relay/b/thread/tb", 2],
+      ["relay/b/thread/tb", 3],
+    ]);
+
+    // Two pull requests of that thread merge on b, one of them told twice:
+    // two pieces of progress, which clear the warning (D1383).
+    const cleared = nextAppended(a.node.log, HEALTH_STREAM, HealthEvents.warningCleared);
+    await merged(7);
+    await merged(7);
+    await merged(8);
+    expect((await cleared).payload).toMatchObject({ warningId: first.warningId });
+    const status = await client.call<{ groups: GroupStatus[] }>("health.status", {});
+    expect(status.groups.find((group) => group.group.kind === "mission")?.byKind).toEqual({
+      queue: 3,
+      merge: 2,
+    });
+
+    // A dismissal cuts b's stream at the last event that reached a.
+    raised = nextEvent(a.node.kernel, HealthEvents.warningRaised);
+    for (let index = 0; index < 3; index += 1) await queue();
+    const second = ((await raised) as { warning: Warning }).warning;
+    const dismissed = nextAppended(a.node.log, HEALTH_STREAM, HealthEvents.warningDismissed);
+    await client.call("health.warnings.dismiss", { warningId: second.warningId });
+    expect(
+      ((await dismissed).payload as { dismissedAfter: Record<string, number> }).dismissedAfter,
+    ).toMatchObject({ "relay/b/thread/tb": 6 });
+
+    // b goes away and comes back: its thread is followed again, from where a was.
+    await new Promise<void>((resolve) => {
+      const away = () =>
+        a.node.mesh.members().some((member) => member.record.nodeId === "b" && !member.reachable);
+      const watching = a.node.mesh.onChange(() => {
+        if (!away()) return;
+        watching.dispose();
+        resolve();
+      });
+      network.down(b.node.address);
+    });
+    await new Promise<void>((resolve) => {
+      const back = () =>
+        a.node.mesh.members().some((member) => member.record.nodeId === "b" && member.reachable);
+      const watching = a.node.mesh.onChange(() => {
+        if (!back()) return;
+        watching.dispose();
+        resolve();
+      });
+      network.up(b.node.address);
+    });
+    raised = nextEvent(a.node.kernel, HealthEvents.warningRaised);
+    for (let index = 0; index < 3; index += 1) await queue();
+    const third = ((await raised) as { warning: Warning }).warning;
+    expect(third.evidence.map((ref) => ref.sequence)).toEqual([7, 8, 9]);
   });
 });

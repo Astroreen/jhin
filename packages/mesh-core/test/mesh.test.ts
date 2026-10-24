@@ -326,6 +326,27 @@ describe("mesh", () => {
     await expect(a.mesh.call("b", "app.never", {})).rejects.toMatchObject({ code: "MESH_TIMEOUT" });
   });
 
+  it("uses an inbound link once its dialer has spoken on it (agents.md D1522)", async () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a", { advertise: false });
+    const b = startNode(network, "b", { advertise: false });
+    a.mesh.acceptJoin({ code: a.mesh.invite().code, record: b.mesh.self() });
+    const [mine, theirs] = createPeerPair();
+    a.mesh.accept(theirs, "b");
+    // b has not spoken: a has no link to it yet, so nothing is sent where nobody serves it.
+    expect(view(a, b)?.linked).toBe(false);
+    serveRpc(mine, {
+      caller: { id: "a", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async () => ({ via: "b" }),
+    });
+    // Its first word (here the hello of the side it serves) makes the link.
+    await until([a], () => view(a, b)?.linked === true);
+    expect(await a.mesh.call("b", "app.which", {})).toEqual({ via: "b" });
+  });
+
   it("lets a new inbound link from a node supersede its older one", async () => {
     const network = createMemoryNetwork();
     const a = startNode(network, "a", { advertise: false });
