@@ -64,29 +64,140 @@ export interface ClientStore {
   remove(ids: readonly string[]): ClientRecord[];
 }
 
+/** What repairing an unreadable `clients.json` did (security.md D1518). */
+export interface ClientRepair {
+  /** Where the unreadable file was kept: `<file>.corrupt-<time>`. */
+  readonly moved: string;
+  /** Why the file did not read whole. */
+  readonly error: string;
+  /** Records that read on their own and were still valid. */
+  readonly kept: number;
+  /** Records that did not read (or not as a record), dropped. */
+  readonly unreadable: number;
+  /** Records that read but had expired, dropped. */
+  readonly expired: number;
+}
+
 /**
- * Reads the tokens kept in `file`. A file that does not parse gives no
- * access: it is moved aside to `<file>.corrupt` (and `onCorrupt` told), so
- * the node still starts and the next write does not silently replace it.
+ * The end (exclusive) of the JSON object that starts at `start` (a `{`),
+ * or -1 when the text ends before it closes. Braces in strings do not count.
+ */
+function objectEnd(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (character === "\\") index += 1;
+      else if (character === '"') inString = false;
+    } else if (character === '"') inString = true;
+    else if (character === "{") depth += 1;
+    else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Every record an unreadable file still proves (security.md D1518): the
+ * entries of its `clients` list when it is JSON, else every JSON object in
+ * its text that reads as a record. Each is checked against the schema on
+ * its own; expired ones are dropped, and an id is kept once.
+ */
+function salvageClients(
+  text: string,
+  now: number,
+): { kept: ClientRecord[]; unreadable: number; expired: number } {
+  let candidates: unknown[] | undefined;
+  try {
+    const parsed = JSON.parse(text) as { clients?: unknown } | null;
+    if (Array.isArray(parsed?.clients)) candidates = parsed.clients;
+  } catch {
+    // Not JSON: its objects are read one by one below.
+  }
+  const kept: ClientRecord[] = [];
+  let expired = 0;
+  let unreadable = 0;
+  const take = (candidate: unknown): boolean => {
+    const record = ClientRecord.safeParse(candidate);
+    if (!record.success) return false;
+    if (record.data.expiresAt !== undefined && record.data.expiresAt <= now) expired += 1;
+    else if (!kept.some((other) => other.id === record.data.id)) kept.push(record.data);
+    return true;
+  };
+  if (candidates !== undefined) {
+    for (const candidate of candidates) if (!take(candidate)) unreadable += 1;
+    return { kept, unreadable, expired };
+  }
+  let read = 0;
+  let index = text.indexOf("{");
+  while (index >= 0) {
+    const end = objectEnd(text, index);
+    let next = index + 1;
+    if (end > 0) {
+      try {
+        // A record read whole: the search goes on after it, not inside it.
+        if (take(JSON.parse(text.slice(index, end)))) {
+          read += 1;
+          next = end;
+        }
+      } catch {
+        // Not an object on its own: one inside it may be.
+      }
+    }
+    index = text.indexOf("{", next);
+  }
+  // Every record names its secret's hash: those not read whole did not read.
+  const named = text.split('"secretHash"').length - 1;
+  unreadable = Math.max(0, named - read);
+  return { kept, unreadable, expired };
+}
+
+/** `<file>.corrupt-<time>`, never one that exists already. */
+function corruptName(file: string, now: number): string {
+  const time = new Date(now).toISOString().replace(/[:.]/g, "-");
+  for (let attempt = 0; ; attempt += 1) {
+    const name = `${file}.corrupt-${time}${attempt === 0 ? "" : `-${attempt}`}`;
+    if (!Fs.existsSync(name)) return name;
+  }
+}
+
+/**
+ * Reads the tokens kept in `file`. A file that does not read whole is
+ * repaired from itself (security.md D1518): the records it still proves
+ * are written as the new file, the unreadable one is kept beside it as
+ * `<file>.corrupt-<time>`, and `onRepaired` is told once. No older copy is
+ * ever read, so a revoked token (whose record a revoke removed) cannot
+ * come back.
  */
 export function createClientStore(
   file: string,
-  onCorrupt: (moved: string, error: string) => void = () => {},
+  onRepaired: (repair: ClientRepair) => void = () => {},
+  clock: () => number = Date.now,
 ): ClientStore {
   let records: ClientRecord[] = [];
+  let repair: Omit<ClientRepair, "moved"> | undefined;
   if (Fs.existsSync(file)) {
+    const text = Fs.readFileSync(file, "utf8");
     let error: string | undefined;
     try {
-      const parsed = File.safeParse(JSON.parse(Fs.readFileSync(file, "utf8")));
+      const parsed = File.safeParse(JSON.parse(text));
       if (parsed.success) records = parsed.data.clients;
       else error = parsed.error.message;
     } catch (thrown) {
       error = String(thrown);
     }
     if (error !== undefined) {
-      const moved = `${file}.corrupt`;
-      Fs.renameSync(file, moved);
-      onCorrupt(moved, error);
+      const salvaged = salvageClients(text, clock());
+      records = salvaged.kept;
+      repair = {
+        error,
+        kept: salvaged.kept.length,
+        unreadable: salvaged.unreadable,
+        expired: salvaged.expired,
+      };
     }
   }
   /**
@@ -102,6 +213,15 @@ export function createClientStore(
     Fs.renameSync(temporary, file);
     records = next;
   };
+  if (repair !== undefined) {
+    // The unreadable file stays beside the new one, as it was; a copy, so the
+    // name never replaces one an earlier repair kept.
+    const moved = corruptName(file, clock());
+    Fs.copyFileSync(file, moved, Fs.constants.COPYFILE_EXCL);
+    Fs.chmodSync(moved, 0o600);
+    commit(records);
+    onRepaired({ moved, ...repair });
+  }
 
   return {
     list: () => records,

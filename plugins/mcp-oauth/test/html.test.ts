@@ -13,14 +13,24 @@ describe("the approval page (security.md D1193)", () => {
       permissions: [
         { permission: "threads.read", title: "View threads" },
         { permission: "terminals.write", title: "Use terminals", shellAccess: true },
+        {
+          permission: "editor.open",
+          title: "Open in editor",
+          shellAccess: true,
+          shellAccessReason: "it starts programs on this machine as the node's user",
+        },
       ],
       nonce: "n",
     });
     const items = page.match(/<li>.*?<\/li>/gs) ?? [];
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(3);
     expect(items[0]).not.toContain("Shell access");
     expect(items[1]).toContain(
-      `<strong class="shell">Shell access: runs commands on this machine as the node's user.</strong>`,
+      `<strong class="shell">Shell access: runs commands on this machine as the node&#39;s user.</strong>`,
+    );
+    // Its reason instead of D1364's sentence (D1517).
+    expect(items[2]).toContain(
+      `<strong class="shell">Shell access: it starts programs on this machine as the node&#39;s user.</strong>`,
     );
   });
 });

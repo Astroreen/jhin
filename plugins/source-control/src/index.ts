@@ -2670,6 +2670,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     "git.write": {
       title: "Change source control",
       description: "Commit, push, manage branches and repositories, and change pull requests.",
+      // A repository's hooks run on commit, checkout and push (security.md D1517).
+      shellAccess: true,
+      shellAccessReason: "a repository's hooks run on this machine as the node's user",
     },
   });
   context.commands.register({

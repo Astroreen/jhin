@@ -66,6 +66,10 @@ test("pairs a second browser by its pairing link, keeps tokens away from scripts
   );
   await shell.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("pairing-shell-access.png") });
+  // One with a reason says it instead of D1364's sentence (security.md D1517).
+  await expect(dialog.getByRole("checkbox", { name: /^Operate threads/ })).toHaveAccessibleName(
+    "Operate threads Start, update, and stop threads and their turns. Shell access: an agent it starts in full access runs commands on this machine as the node's user. threads.write",
+  );
   await dialog.getByRole("button", { name: "Create link" }).click();
   await expect(
     dialog.getByRole("heading", { name: "Pairing link — scan to open on another device" }),
