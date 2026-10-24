@@ -414,4 +414,3 @@ export function resolveMarkdownFileLinkTarget(
   if (!baseDir) return null;
   return resolvePathLinkTarget(pathWithPosition, baseDir);
 }
-

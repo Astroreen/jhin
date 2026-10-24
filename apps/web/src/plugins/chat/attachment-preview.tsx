@@ -296,7 +296,9 @@ export function AttachmentFilePreview(
     /** A line of its text to show (D1430). */
     readonly reveal?: { readonly line: number; readonly id: number } | undefined;
     /** In place of the read-only source of a whole text: the file panel's editor (D1438). */
-    readonly renderSource?: ((source: { text: string; wordWrap: boolean }) => ReactNode) | undefined;
+    readonly renderSource?:
+      | ((source: { text: string; wordWrap: boolean }) => ReactNode)
+      | undefined;
   },
 ) {
   const chat = useChat();
@@ -397,17 +399,15 @@ export function AttachmentFilePreview(
       <ScrollArea className="min-h-0 flex-1">
         <MessageText className="mx-auto max-w-4xl px-6 py-5" text={content.text} />
       </ScrollArea>
+    ) : props.renderSource !== undefined && !content.truncated ? (
+      props.renderSource({ text: content.text, wordWrap })
     ) : (
-      props.renderSource !== undefined && !content.truncated ? (
-        props.renderSource({ text: content.text, wordWrap })
-      ) : (
-        <SourcePreview
-          name={props.name}
-          reveal={props.reveal}
-          text={content.text}
-          wordWrap={wordWrap}
-        />
-      )
+      <SourcePreview
+        name={props.name}
+        reveal={props.reveal}
+        text={content.text}
+        wordWrap={wordWrap}
+      />
     )
   ) : kind === "unsupported" ? (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center">

@@ -102,8 +102,7 @@ const terminalSurfaceKey = (threadKey: string, resource: string): string =>
 function panelTerminalFocused(): boolean {
   const active = document.activeElement;
   return (
-    active instanceof HTMLElement &&
-    active.closest('[data-terminal-owner="right-panel"]') !== null
+    active instanceof HTMLElement && active.closest('[data-terminal-owner="right-panel"]') !== null
   );
 }
 

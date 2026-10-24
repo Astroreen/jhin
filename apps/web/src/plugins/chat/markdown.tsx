@@ -325,7 +325,11 @@ function AgentFileLink(props: { href: string; fallback: ReactNode }) {
     resolveMarkdownFileLinkTarget(props.href, links.workspaceRoot),
     links.workspaceRoot,
   );
-  return target === undefined ? props.fallback : <AgentFileChip open={links.open} target={target} />;
+  return target === undefined ? (
+    props.fallback
+  ) : (
+    <AgentFileChip open={links.open} target={target} />
+  );
 }
 
 function AgentFileCode(props: { code: string; fallback: ReactNode }) {
@@ -337,7 +341,11 @@ function AgentFileCode(props: { code: string; fallback: ReactNode }) {
     resolvePathLinkTarget(candidate, links.workspaceRoot),
     links.workspaceRoot,
   );
-  return target === undefined ? props.fallback : <AgentFileChip open={links.open} target={target} />;
+  return target === undefined ? (
+    props.fallback
+  ) : (
+    <AgentFileChip open={links.open} target={target} />
+  );
 }
 
 /** The `$name`s of the agent's skills in a user message's text, as T3's `SkillInlineText`. */

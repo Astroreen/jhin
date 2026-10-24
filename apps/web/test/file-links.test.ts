@@ -12,7 +12,11 @@ import {
 
 describe("file links", () => {
   it("reads a path's line and column, from a suffix or a hash", () => {
-    expect(splitFilePathPosition("src/a.ts:12:3")).toEqual({ path: "src/a.ts", line: 12, column: 3 });
+    expect(splitFilePathPosition("src/a.ts:12:3")).toEqual({
+      path: "src/a.ts",
+      line: 12,
+      column: 3,
+    });
     expect(splitFilePathPosition("src/a.ts", "#L7")).toEqual({ path: "src/a.ts", line: 7 });
     expect(splitFilePathPosition("src/a.ts")).toEqual({ path: "src/a.ts" });
   });

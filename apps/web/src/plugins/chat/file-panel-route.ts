@@ -65,8 +65,7 @@ export interface FileReveals {
 export const revealKey = (
   place: { readonly target: NodeTarget; readonly threadId?: string; readonly projectId?: string },
   path: string,
-): string =>
-  `${targetKey(place.target)}|${place.threadId ?? `p:${place.projectId ?? ""}`}|${path}`;
+): string => `${targetKey(place.target)}|${place.threadId ?? `p:${place.projectId ?? ""}`}|${path}`;
 
 export function createFileReveals(): FileReveals {
   const reveals = new Map<string, FileReveal>();

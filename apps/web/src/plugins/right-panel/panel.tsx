@@ -896,27 +896,27 @@ export function RightPanelView(props: RightPanelViewProps) {
           </div>
         ) : null}
         {sheet ? null : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                aria-label={maximizeLabel}
-                className="shrink-0"
-                onPressedChange={props.onToggleMaximized}
-                pressed={state.maximized}
-                size="sm"
-                variant="ghost"
-              />
-            }
-          >
-            {state.maximized ? (
-              <Minimize2Icon className="size-4" />
-            ) : (
-              <Maximize2Icon className="size-4" />
-            )}
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">{maximizeLabel}</TooltipPopup>
-        </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  aria-label={maximizeLabel}
+                  className="shrink-0"
+                  onPressedChange={props.onToggleMaximized}
+                  pressed={state.maximized}
+                  size="sm"
+                  variant="ghost"
+                />
+              }
+            >
+              {state.maximized ? (
+                <Minimize2Icon className="size-4" />
+              ) : (
+                <Maximize2Icon className="size-4" />
+              )}
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">{maximizeLabel}</TooltipPopup>
+          </Tooltip>
         )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col" data-right-panel-surface-content="">

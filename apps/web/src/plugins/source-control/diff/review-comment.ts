@@ -368,7 +368,6 @@ export function annotationAnchor(
   };
 }
 
-
 function selectionPoint(line: DiffReviewLine): { lineNumber: number; side: SelectionSide } | null {
   if (line.change === "delete" && line.oldLineNumber !== null) {
     return { lineNumber: line.oldLineNumber, side: "deletions" };

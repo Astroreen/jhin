@@ -916,7 +916,9 @@ export const chatPlugin = builtin(
                     embedded
                     key={`${place.target.node}|${place.target.remote ?? ""}|${place.threadId ?? place.projectId ?? ""}`}
                     onClose={() => void rightPanel.close(place, surface.id)}
-                    onOpenFile={(path) => rightPanel.open(place, { kind: FILE_PANEL, resource: path })}
+                    onOpenFile={(path) =>
+                      rightPanel.open(place, { kind: FILE_PANEL, resource: path })
+                    }
                     path={surface.resource}
                     projectId={place.threadId === undefined ? place.projectId : undefined}
                     target={place.target}

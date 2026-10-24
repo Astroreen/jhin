@@ -1,7 +1,10 @@
 // T3's CSV and TSV table (t3-parity.md D1436): its delimiter and its parse, quotes and limits.
 import { describe, expect, it } from "vite-plus/test";
 
-import { filePreviewDelimiter, parseDelimitedPreview } from "../src/plugins/chat/delimited-table.tsx";
+import {
+  filePreviewDelimiter,
+  parseDelimitedPreview,
+} from "../src/plugins/chat/delimited-table.tsx";
 
 describe("delimited tables", () => {
   it("knows a CSV or TSV by its type, else its name", () => {

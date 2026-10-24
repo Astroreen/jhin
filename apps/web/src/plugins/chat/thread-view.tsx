@@ -753,81 +753,85 @@ export function ThreadView(props: {
               ) : (
                 <AttachmentLoaderContext.Provider value={loadAttachment}>
                   <AttachmentPanelContext value={openAttachment}>
-                  <TimelineView
-                    extension={
-                      thread === undefined
-                        ? undefined
-                        : (turn, event, adjacent) => (
-                            <Slot
-                              name="chat.turn.item"
-                              props={
-                                {
-                                  target,
-                                  thread,
-                                  turnId: turn.turnId,
-                                  event,
-                                  adjacent,
-                                } satisfies ChatTurnItemProps
-                              }
-                            />
-                          )
-                    }
-                    header={
-                      thread === undefined
-                        ? undefined
-                        : (turn, first) => (
-                            <Slot
-                              name="chat.turn.header"
-                              props={
-                                {
-                                  target,
-                                  thread,
-                                  turnId: turn.turnId,
-                                  state: turn.state,
-                                  first,
-                                } satisfies ChatTurnHeaderProps
-                              }
-                            />
-                          )
-                    }
-                    footer={
-                      thread === undefined
-                        ? undefined
-                        : (turn, latest) => (
-                            <Slot
-                              name="chat.turn.footer"
-                              props={
-                                {
-                                  target,
-                                  thread,
-                                  turnId: turn.turnId,
-                                  state: turn.state,
-                                  latest,
-                                } satisfies ChatTurnFooterProps
-                              }
-                            />
-                          )
-                    }
-                    findOpen={find.bar.open}
-                    fileChips={fileChips}
-                    format={settings.timestampFormat}
-                    onRetry={(turn) =>
-                      chat.context.commands
-                        .execute("thread.regenerate", { ...target, threadId, turnId: turn.turnId })
-                        // The command shows its own toast.
-                        .catch(() => undefined)
-                    }
-                    onOpenThread={(id) => chat.navigation.navigate({ ...target, thread: id })}
-                    onOpenSender={openSender}
-                    thread={{ target, threadId }}
-                    timeline={timeline}
-                    {...(savePlan === undefined || props.project === undefined
-                      ? {}
-                      : { onSavePlan: savePlan, projectPath: props.project.path })}
-                    titleOf={(id) =>
-                      catalog?.threads.find((candidate) => candidate.id === id)?.title
-                    }
-                  />
+                    <TimelineView
+                      extension={
+                        thread === undefined
+                          ? undefined
+                          : (turn, event, adjacent) => (
+                              <Slot
+                                name="chat.turn.item"
+                                props={
+                                  {
+                                    target,
+                                    thread,
+                                    turnId: turn.turnId,
+                                    event,
+                                    adjacent,
+                                  } satisfies ChatTurnItemProps
+                                }
+                              />
+                            )
+                      }
+                      header={
+                        thread === undefined
+                          ? undefined
+                          : (turn, first) => (
+                              <Slot
+                                name="chat.turn.header"
+                                props={
+                                  {
+                                    target,
+                                    thread,
+                                    turnId: turn.turnId,
+                                    state: turn.state,
+                                    first,
+                                  } satisfies ChatTurnHeaderProps
+                                }
+                              />
+                            )
+                      }
+                      footer={
+                        thread === undefined
+                          ? undefined
+                          : (turn, latest) => (
+                              <Slot
+                                name="chat.turn.footer"
+                                props={
+                                  {
+                                    target,
+                                    thread,
+                                    turnId: turn.turnId,
+                                    state: turn.state,
+                                    latest,
+                                  } satisfies ChatTurnFooterProps
+                                }
+                              />
+                            )
+                      }
+                      findOpen={find.bar.open}
+                      fileChips={fileChips}
+                      format={settings.timestampFormat}
+                      onRetry={(turn) =>
+                        chat.context.commands
+                          .execute("thread.regenerate", {
+                            ...target,
+                            threadId,
+                            turnId: turn.turnId,
+                          })
+                          // The command shows its own toast.
+                          .catch(() => undefined)
+                      }
+                      onOpenThread={(id) => chat.navigation.navigate({ ...target, thread: id })}
+                      onOpenSender={openSender}
+                      thread={{ target, threadId }}
+                      timeline={timeline}
+                      {...(savePlan === undefined || props.project === undefined
+                        ? {}
+                        : { onSavePlan: savePlan, projectPath: props.project.path })}
+                      titleOf={(id) =>
+                        catalog?.threads.find((candidate) => candidate.id === id)?.title
+                      }
+                    />
                   </AttachmentPanelContext>
                 </AttachmentLoaderContext.Provider>
               )}

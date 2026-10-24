@@ -39,7 +39,10 @@ export function buildFileReviewComment(input: {
     endIndex: endLine - 1,
     rangeLabel: startLine === endLine ? `L${startLine}` : `L${startLine} to L${endLine}`,
     text: input.text.trim(),
-    diff: input.contents.split("\n").slice(startLine - 1, endLine).join("\n"),
+    diff: input.contents
+      .split("\n")
+      .slice(startLine - 1, endLine)
+      .join("\n"),
   };
 }
 

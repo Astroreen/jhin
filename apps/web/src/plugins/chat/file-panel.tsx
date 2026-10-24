@@ -19,12 +19,7 @@ import {
   TooltipPopup,
   TooltipTrigger,
 } from "@jhin/ui";
-import {
-  ChevronDownIcon,
-  FolderTreeIcon,
-  SquareArrowOutUpRightIcon,
-  XIcon,
-} from "lucide-react";
+import { ChevronDownIcon, FolderTreeIcon, SquareArrowOutUpRightIcon, XIcon } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { useCatalog } from "../../lib/hooks.ts";
@@ -131,9 +126,7 @@ function OpenInEditor(props: { target: NodeTarget; projectId: string; path: stri
         <TooltipPopup side="bottom">Open in {preferred?.label ?? "editor"}</TooltipPopup>
       </Tooltip>
       <Menu>
-        <MenuTrigger
-          render={<Button aria-label="Choose editor" size="icon-xs" variant="ghost" />}
-        >
+        <MenuTrigger render={<Button aria-label="Choose editor" size="icon-xs" variant="ghost" />}>
           <ChevronDownIcon className="size-3" />
         </MenuTrigger>
         <MenuPopup align="end">

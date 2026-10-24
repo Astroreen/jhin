@@ -137,7 +137,10 @@ export function FileEditor(props: {
   );
   useEffect(() => () => coordinator.dispose(), [coordinator]);
 
-  const onEditChange = ({ file: edited, lineAnnotations }: EditorChangeEvent<"file", CommentGroup, undefined>) => {
+  const onEditChange = ({
+    file: edited,
+    lineAnnotations,
+  }: EditorChangeEvent<"file", CommentGroup, undefined>) => {
     if (edited.contents === latest.current) return;
     latest.current = edited.contents;
     coordinator.change(edited.contents);

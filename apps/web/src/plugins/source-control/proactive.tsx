@@ -4,18 +4,19 @@
 // shouldOpenProactivePullRequest, resolveProactiveTurnDiffAction).
 //
 // The right panel opening itself on what is new for the thread on screen (source-control.md D1426).
-import {
-  rightPanelPlaceKey,
-  type ChatHeaderActionProps,
-  type RightPanel,
-} from "@jhin/client-api";
+import { rightPanelPlaceKey, type ChatHeaderActionProps, type RightPanel } from "@jhin/client-api";
 import type { TurnCheckpoint } from "@jhin/source-control-api";
 import { useEffect, useRef } from "react";
 
 import { useConfig } from "../../lib/hooks.ts";
 import { DIFF_SECTION, type DiffSettings } from "../../lib/settings.ts";
 import { selectionKey } from "./diff/scopes.ts";
-import { DIFF_PANEL, PULL_REQUESTS_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
+import {
+  DIFF_PANEL,
+  PULL_REQUESTS_PANEL,
+  useSourceControl,
+  type SourceControlServices,
+} from "./services.ts";
 
 /** T3's `resolveProactiveTurnDiffAction`: a turn's changes worth showing. */
 export function turnDiffWorthOpening(checkpoint: TurnCheckpoint): boolean {
@@ -42,7 +43,10 @@ export function createProactivePanels(services: SourceControlServices, panel: Ri
     const observation = useRef<Observation | undefined>(undefined);
     const threadId = thread?.id;
     const links = threadId === undefined ? [] : (view.links.get(threadId) ?? []);
-    const linksKey = links.map((link) => link.key).toSorted().join(" ");
+    const linksKey = links
+      .map((link) => link.key)
+      .toSorted()
+      .join(" ");
     const checkpoint = threadId === undefined ? undefined : view.checkpoints.get(threadId);
     const running = thread?.lastTurn?.status === "running";
     const projectId = thread?.projectId;

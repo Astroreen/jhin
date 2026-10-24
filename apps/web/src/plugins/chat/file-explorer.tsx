@@ -9,7 +9,14 @@ import type { NodeTarget, ThreadsCatalog } from "@jhin/client-api";
 import { useStableCallback } from "@pierre/diffs/react";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch, useFileTreeSelector } from "@pierre/trees/react";
-import { Button, InputGroup, InputGroupInput, Tooltip, TooltipPopup, TooltipTrigger } from "@jhin/ui";
+import {
+  Button,
+  InputGroup,
+  InputGroupInput,
+  Tooltip,
+  TooltipPopup,
+  TooltipTrigger,
+} from "@jhin/ui";
 import { ChevronsDownUpIcon, ChevronsUpDownIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
@@ -42,7 +49,8 @@ const PIERRE_TREE_UNSAFE_CSS = `
   button[data-type='item'], button[data-type='item']::before { border-radius: var(--radius-md); }
 `;
 
-const treePath = (entry: ExplorerEntry) => (entry.kind === "directory" ? `${entry.path}/` : entry.path);
+const treePath = (entry: ExplorerEntry) =>
+  entry.kind === "directory" ? `${entry.path}/` : entry.path;
 
 const depth = (path: string) => path.split("/").filter(Boolean).length;
 
@@ -218,7 +226,12 @@ function usePathSearch(source: ExplorerSource, query: string) {
         .then(
           (found) =>
             current &&
-            setResult({ query: trimmed, entries: found.entries, truncated: found.truncated, error: null }),
+            setResult({
+              query: trimmed,
+              entries: found.entries,
+              truncated: found.truncated,
+              error: null,
+            }),
           (error: unknown) =>
             current &&
             setResult({
@@ -253,8 +266,15 @@ export function FileExplorer(props: {
   onOpenFile(path: string): void;
 }) {
   const theme = useResolvedTheme();
-  const { entries: folderEntries, load, refresh, pending, loading, ready, error } =
-    useDirectoryEntries(props.source);
+  const {
+    entries: folderEntries,
+    load,
+    refresh,
+    pending,
+    loading,
+    ready,
+    error,
+  } = useDirectoryEntries(props.source);
   const [query, setQuery] = useState("");
   const [expandAll, setExpandAll] = useState(false);
   const search = usePathSearch(props.source, query);

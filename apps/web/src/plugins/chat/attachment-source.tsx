@@ -62,11 +62,7 @@ export function useLineReveal(
   const line = reveal === undefined ? undefined : clampLine(text, reveal.line);
   // T3's updateFileLinkReveal, after each render of the file: the line is marked, and scrolled to
   // once per request, by where the virtualizer puts it while its row is not in the page.
-  const onPostRender = (
-    container: HTMLElement,
-    instance: unknown,
-    phase: PostRenderPhase,
-  ) => {
+  const onPostRender = (container: HTMLElement, instance: unknown, phase: PostRenderPhase) => {
     if (phase === "unmount") return;
     const root = container.shadowRoot ?? container;
     for (const element of root.querySelectorAll<HTMLElement>(`[${REVEAL_ATTRIBUTE}]`)) {
@@ -81,7 +77,8 @@ export function useLineReveal(
     if (handled.current === reveal.id) return;
     const scroller = container.closest<HTMLElement>(".file-preview-virtualizer");
     if (scroller === null) return;
-    const position = instance instanceof VirtualizedFile ? instance.getLinePosition(line) : undefined;
+    const position =
+      instance instanceof VirtualizedFile ? instance.getLinePosition(line) : undefined;
     if (row === null && position === undefined) return;
     handled.current = reveal.id;
     // T3's resolveCenteredFileLineScrollTop: the line in the middle of the view.

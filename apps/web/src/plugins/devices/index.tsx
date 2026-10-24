@@ -241,7 +241,9 @@ export const devicePanelPlugin = builtin(
             DISMISSED_KEY,
             JSON.stringify(
               Object.fromEntries(
-                [...dismissed].filter(([, ids]) => ids.size > 0).map(([key, ids]) => [key, [...ids]]),
+                [...dismissed]
+                  .filter(([, ids]) => ids.size > 0)
+                  .map(([key, ids]) => [key, [...ids]]),
               ),
             ),
           );
