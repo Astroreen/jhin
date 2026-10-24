@@ -980,6 +980,94 @@ Connect stays out of scope.
   the tag and a JSON scalar would now read back as that scalar; no
   config value starts with U+0000 in practice.
 
+### Leftovers of the hardening (W44)
+
+Round 5 of `t3-roadmap.md` (D1501–D1520). The threat model comes first; the
+decisions after it implement it. T3 at D53 (and at its latest nightly,
+`v0.1.3-nightly.20261024.3630`) has no tailnet setting, no named shell
+access beyond its scopes, no token file to repair and no refresh tokens
+(`McpOAuth.ts`: `grant_types_supported: ["authorization_code"]`), so these
+follow the standards they name.
+
+- **D1515. What W44 closes, against whom.** D1361's list stands; these
+  are the gaps its Deferred list left, ordered by what an attacker gains:
+  (1) _A shared tailnet_: D1362 answers every `*.ts.net` name, so a
+  member of a tailnet the node is on, whom the owner does not trust, can
+  give a page a name of that tailnet that resolves to the node and pass
+  the `Host` allowlist (DNS rebinding through a tailnet name). The owner
+  can now name the one tailnet the node answers for (D1516). (2) _Shell
+  access granted unknowingly_: `threads.write` (an agent in full access
+  runs commands), `git.write` (a repository's hooks run) and
+  `editors.open` (it starts a program) reach the node's OS user as
+  `terminals.write` does, but nothing said so where they are granted
+  (D1517). (3) _An unreadable `clients.json`_ locks every device out, and
+  a repair that trusted a stale copy could bring a revoked token back; the
+  repair keeps only what the file itself still proves (D1518). (4) _A
+  stolen refresh token_ lives longer than the access token it renews:
+  refresh tokens are one use, rotated, bound to their client and to the
+  approver's standing, kept only as hashes, and a reused one ends its
+  sign-in (D1519). Not defended, as in D1181: whoever controls the node's
+  machine or the owner's account on it.
+- **D1516. `jhin.http.tailnet` narrows the Tailscale names.** The owner's
+  tailnet name (`tail1a2b3c.ts.net`, the part of a MagicDNS name after
+  the machine's label; a leading `.` is ignored, case is not compared).
+  Set, a `.ts.net` host is answered only when it is under that name
+  (`machine.tail1a2b3c.ts.net`); any other `.ts.net` name is refused like
+  an unknown name (D1362), unless `jhin.http.allowedHosts` lists it.
+  Unset (the default), every `.ts.net` name is answered, as before. A
+  value that is not a `.ts.net` name is refused by the config's schema.
+  `jhin pair --tailscale` reads the tailnet from `tailscale status` and,
+  when the setting is unset, adds the note "To answer only your
+  tailnet's names, set jhin.http.tailnet to <name>."; it never sets it
+  itself.
+- **D1517. Shell access is named on `threads.write`, `git.write` and
+  `editors.open`.** Their plugins describe them with `shellAccess: true`
+  (D1364) and a reason, `shellAccessReason` (`PermissionDescription`,
+  `@jhin/sdk`, additive; `auth.permissions.list` returns it):
+  `threads.write` "an agent it starts in full access runs commands on
+  this machine as the node's user", `git.write` "a repository's hooks
+  run on this machine as the node's user", `editors.open` "it starts
+  programs on this machine as the node's user". Wherever a grant is
+  chosen (the pairing dialog, the MCP approval page, `jhin pair`'s note)
+  a permission with a reason says "Shell access: <reason>." instead of
+  D1364's sentence, which stays for one without. Nothing is granted or
+  refused differently: `AGENT_PERMISSIONS` keeps `threads.write` and
+  `git.write`, so an MCP client's approval page now names its shell
+  access, which it always had.
+- **D1518. An unreadable `clients.json` is repaired from itself.**
+  Instead of giving no access until new tokens are issued, the node
+  keeps every record of the file that still reads on its own: the
+  entries of its `clients` list when the file is JSON, else every JSON
+  object found in its text, each checked against the record's schema;
+  expired records are dropped. It writes those as the new `clients.json`
+  (mode 0600, renamed into place), keeps the unreadable file beside it
+  as `clients.json.corrupt-<time>` (never overwriting an earlier one),
+  and warns once in the log with how many records it kept and how many
+  it could not read. A revoked token cannot come back: revoking removes
+  its record from the file (D412), so every record the repair keeps was
+  live at the last write; a record it cannot read fails closed. No older
+  copy is ever read.
+- **D1519. MCP OAuth refresh tokens.** The token endpoint answers every
+  `authorization_code` grant with a `refresh_token` too, and takes
+  `grant_type=refresh_token` (`grant_types_supported` lists both;
+  RFC 6749 §6, OAuth 2.1 §4.3). A refresh token is 32 random bytes,
+  bound to its client id, the resource, the granted scope, the approver's
+  principal and the device token it renews; the node keeps its SHA-256,
+  in `refresh.json` in the plugin's data directory (mode 0600, written
+  whole and renamed into place). It is valid 90 days from its issue and
+  used once: a refresh issues a new access token through
+  `auth.tokens.issue` (D1195's label, method and metadata) with the
+  granted scope (narrowed by a `scope` in the request; a wider one is
+  `invalid_scope`) as far as the approver still holds it, never past the
+  approver's own expiry, revokes the token it renews and returns a new
+  refresh token. It is refused (`invalid_grant`) once the token it renews
+  was revoked (so revoking under Authorized clients ends the sign-in),
+  once the approver was revoked or expired, for another client id, and
+  when spent: a spent token presented again revokes the sign-in's
+  current access token and refresh token (RFC 9700 §4.14.2), since one
+  of the two holders stole it. Without refreshing, a client signs in
+  again after 30 days, as before.
+
 ## PR plan
 
 A stack, each layer branched from the one before.

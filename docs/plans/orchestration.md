@@ -242,6 +242,106 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   the node stops is recorded `failed` on the next start ("The node stopped
   while the workflow ran.").
 
+#### Across the mesh and over time (W44)
+
+Round 5 of `t3-roadmap.md` (D1501–D1520), at T3 Code `eb7b35ac` (D53). T3
+runs every child on its own server, so delegating to another node has no
+T3 reference; it follows T3's task contract and Jhin's mesh. agents.md's
+phase 4 (M2) acts across nodes for missions and teams; it reuses what this
+section lands rather than a second path.
+
+- **D1501. A command may be told its caller went away.** `Invocation`
+  (`@jhin/sdk`) gains `signal?: AbortSignal`, additive. The kernel passes
+  the invocation through untouched, so it learns nothing about callers,
+  transports or threads; `AbortSignal` is a global of every runtime the
+  kernel runs on. A surface aborts the signal when nobody is left to take
+  the answer: `serveRpc` (`@jhin/rpc`) for every call of a connection
+  when the connection closes (the WebSocket transport, and a mesh link's
+  inbound calls), the MCP endpoint (`jhin.mcp-server`) for a request
+  whose HTTP response closes before it was answered. A caller in process
+  passes its own. A command that ignores the signal runs as it did; one
+  that honours it stops waiting, never undoes what it already did. The
+  error of an aborted command reaches nobody, so a command need not throw.
+- **D1502. A waited delegation ends with its caller.** `tasks.delegate`
+  with `mode: "wait"` stops waiting when its invocation's signal aborts
+  (an agent's MCP request dropped, the CLI interrupted, a client
+  disconnected), as it stops at `timeoutMs`: the task goes on, and its end
+  wakes the parent as an async task's does (D366, D368). A wait whose
+  signal is already aborted when the task has started does not wait at
+  all.
+- **D1503. Old records are pruned.** A task or workflow that ended more
+  than `jhin.orchestration.retentionDays` ago (default 30; `0` keeps them
+  for good) and whose result is no longer waiting to be delivered
+  (`delivery` not `pending`) is deleted: its key in `storage.kv`, a
+  workflow's journal (D872), its retry key (`clientRequestId`) and its
+  place in memory. A workflow's agents go with their workflow, never
+  before it. Each deletion appends `orchestration.task.removed
+  { taskId }` or `orchestration.workflow.removed { workflowId }` to the
+  `orchestration` stream, so a client following it drops the record.
+  The plugin prunes when it activates and then once a day (one timer).
+  The marks in the parent's stream stay; their rows say "Status
+  unavailable" (D864), as for any task without a record.
+- **D1504. A running workflow appends what changed, not the record.**
+  `orchestration.workflow.updated` (the whole record) is appended when a
+  run starts, ends, is stopped or resumed, and when its delivery changes;
+  every other change appends `orchestration.workflow.patched
+  { workflowId, updatedAt, set?, unset?, agents?, logs? }`: `set` the
+  changed top-level fields other than `agents` and `logs`, `unset` the
+  names of fields that went away, `agents` the agents that are new or
+  changed (by `index`), `logs` the lines appended (the record keeps the
+  last 200). `@jhin/agent-api` exports `applyWorkflowPatch(record,
+  patch)`, the one fold the plugin and its clients share. A client that
+  starts reading mid-run reads the records first (`orchestration.thread`,
+  `workflows.status`) and folds the patches after the stream's head.
+- **D1505. The node's saved workflows.** Besides a project's
+  `.jhin/workflows/<name>.js` (D875), a name is found in the node's own
+  folder `<home>/workflows/<name>.js`, after the project's (a project's
+  workflow of the same name wins, as a project's config layer wins over
+  the home's). A caller outside a thread, or a thread with no folder,
+  finds the node's only. `workflows.saved { threadId? }` (`threads.read`)
+  lists both: per workflow its `name`, the `source` (`project` or
+  `node`), the file and its meta (`description`, `whenToUse`, `phases`),
+  read as D372 reads it without running the body; a file whose meta does
+  not parse is listed with its `error`. Names are `[A-Za-z0-9_-]+`, so a
+  name never leaves its folder.
+- **D1506. `target.node`: a child on another node of the mesh.**
+  `tasks.delegate`'s `target` takes `node` (a member's node id) and
+  `projectId` (a project of that node; default its scratch project,
+  since the parent's project is this node's). The parent stays here and
+  so does the task's record, its wake-up and its delivery (D365, D368);
+  only the child thread lives on the member. The plugin calls the
+  member through `mesh.call` (no second transport): `agents.list` to
+  resolve the agent, model and modes as D364 does against the member's
+  agents (the parent's agent and model when the member has them, else
+  the member's default agent), then `threads.create` and `threads.send`
+  as for a local child, with `parentThreadId` and `relationshipToParent:
+  "subagent"`. The call carries the caller's grants (security.md D416)
+  narrowed to what delegating needs (`mesh.call`, `threads.read`,
+  `threads.write` and the caller's `threads.mode.*`), so a ceiling
+  (D1370) travels with it and the member applies its own
+  `memberPermissions`. `target.node` naming this node is a local
+  delegation; an unknown node answers `NODE_NOT_FOUND`, an unreachable
+  one `NODE_UNREACHABLE` before anything is created; `isolation:
+  "worktree"` is refused there (`WORKSPACE_UNSUPPORTED`). A workflow's
+  `agent()` takes `node` too. `orchestration.capabilities` lists the
+  mesh's other members (`nodes`: `nodeId`, `name`, `reachable`), and
+  `{ node }` lists that node's agents instead of this one's.
+- **D1507. Following a child on another node.** The task records `node`;
+  its mark (`orchestration.task.delegated`, D862) carries it too, so the
+  chat's row, hover card and Lineage open the child on its node. Its
+  status follows the member's `threads` index, kept here as a mirror
+  (`mesh.open`, D26), with the same rules as a local child (D365); its
+  summary is read from the child's events through `mesh.call`
+  (`threads.events`) once its turn ended. Cancelling interrupts the child
+  through `mesh.call` (`threads.interrupt`); deleting the parent does the
+  same. A member that cannot be reached leaves the task as it was: it
+  goes on there, and its record catches up when the member returns (on
+  the next change of its index, or the next start of this node's
+  plugin, which reconciles through `mesh.call`). A cancel the member
+  could not take is still recorded `cancelled` here, its `cancelReason`
+  saying the node could not be reached; the child goes on there until
+  someone stops it on its node.
+
 ### Deferred
 
 - A scratch launch in a fresh folder of its own (T3's) waits for per-thread
@@ -600,6 +700,42 @@ Round 4 of `t3-roadmap.md` (D1341–D1360), at T3 Code `eb7b35ac`.
   (`ClaudeAdapterV2.ts`), so a subagent's messages come whole, as here
   (D878). The Deferred item asking for streamed text is closed by that.
 
+### Waiting subagents and forks (W44)
+
+Round 5 of `t3-roadmap.md` (D1501–D1520). The reference is D861's tag:
+`client-runtime/src/state/threadShell.ts` (`pendingSubagentRequestsByThread`,
+`childThreadInputsTitle`), `Sidebar.logic.ts` (`resolveSidebarThreadStatus`,
+`resolveThreadStatusPill`), `ThreadNotificationCoordinator.tsx` and the
+child input banner of `ChatView.tsx`.
+
+- **D1508. A subagent that waits for the user is its parent's, in the
+  sidebar.** As T3's `pendingSubagentRequestsByThread`: a subagent thread
+  (`relationshipToParent: "subagent"`, not a runtime's own subagent,
+  `subagentOrigin: "provider"`, which asks on its parent) whose turn waits
+  for an approval or an answer gives that request to its parent, and to
+  each ancestor above it while they are subagents too; an approval wins
+  over an answer. The parent's card then shows "Approval" or "Input"
+  (`sidebarThreadStatus`) as for its own request, and the parent raises
+  the notification its own request would (`jhin.notifications`), once per
+  request. The sidebar still hides the subagent itself (D865).
+- **D1509. The parent's composer names the waiting subagents.** T3's child
+  input banner: while a thread's subagents wait for the user and the
+  thread itself asks for nothing, the composer shows an info banner with
+  the shield icon for an approval (else the message icon), T3's title
+  ("Subagent needs approval", "Subagent needs input", "2 subagents need
+  you", …), each waiting subagent's title as a button opening it, and
+  "Open approval" or "Open question" opening the first. It reads the
+  node's thread catalog (`client.threads@1`), so it needs no record of
+  the orchestration plugin and works for a thread on a mesh member.
+- **D1510. A fork's rows are live.** A fork copies its source's turns,
+  and with them the marks of delegated work (D862), whose records belong
+  to the source. `orchestration.thread` therefore also returns the
+  records of the threads the thread was forked from (`forkedFrom`,
+  followed up to ten forks), made before the fork, and lists those
+  threads' ids as `inherited` (additive); the client follows the stream
+  for the thread and those ids. The fork's Lineage section still lists
+  only its own tasks and workflows (it cannot stop its source's).
+
 ### Deferred
 
 - Saved workflows of the node (outside a project) and a command listing
@@ -818,6 +954,52 @@ Round 4 of `t3-roadmap.md` (D1341–D1360), at T3 Code `eb7b35ac`.
   `summarizeScheduledTask`): it starts runs. Without a calling thread (the
   settings page, the CLI) nothing changes; a caller outside a thread has no
   ceiling until W13's scoped tokens give it one (W10's Deferred).
+
+### A stuck run, the signing secret and one workspace contract (W44)
+
+Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
+`ScheduledTaskService.ts` (`releaseStuckRun`).
+
+- **D1511. A run whose end cannot be recorded is released (T3's
+  `releaseStuckRun`).** When anything fails between marking a run
+  `running` and recording its end (the end's write to `storage.kv`
+  included), the scheduler writes T3's escape hatch once: the task as
+  `failed` with that error, its next run computed from now and the
+  attempt counted (`runCount + 1`), only if it is still marked running
+  from this run's start. The dispatch may already have gone out, so the
+  run is never fired again at once. A release that fails too is logged
+  ("Could not release a stuck scheduled task run"), as T3 does, and the
+  next start's recovery (D382) frees the task.
+- **D1512. A webhook's signing secret lives in `secrets.store@1`.**
+  `secrets.store` 1.2 adds a plugin's own named secrets (additive):
+  `putSecret(name, value)`, `getSecret(name)` and `deleteSecret(name)`,
+  `name` being a plugin id, `/` and a name, as `getOrCreateRandom`'s
+  (D1192); values are sealed in the store like any other, and no command
+  returns one (D1022). `jhin.scheduler` takes the store as optional
+  (`secrets.store@^1.2`): a signing secret given on create or update (in
+  clear or from a `secretRef`, D1034) is kept as `jhin.scheduler/webhook/
+  <taskId>`, and `storage.kv` keeps only that the task has one
+  (`webhook.hasSecret` as before). Deleting the task, or a signature
+  removed, deletes it. On activation, the secrets `storage.kv` still holds
+  move into the store, each removed from `storage.kv` only once the store
+  kept it. A node without the store, or whose store cannot be read, keeps
+  them in `storage.kv` as before (D386). A signed delivery whose secret
+  cannot be read answers 503 ("The webhook's signing secret cannot be
+  read.") before its body is read, and is not logged as a delivery.
+- **D1513. One `WorkspaceStrategy`.** T3's three launch strategies
+  (`root`, `worktree`, `existing_worktree`) are one schema in
+  `@jhin/agent-api`, which `jhin.threads` (`threads.create`'s
+  `workspace`), `jhin.orchestration` (`orchestration.launch`) and
+  `@jhin/scheduler-api` use; `@jhin/scheduler-api` still exports it under
+  the same name. The commands' inputs keep their shape.
+- **D1514. The settings page has component tests.** Vitest browser mode
+  (`apps/web/test/*.browser.test.tsx`) renders the Scheduled tasks page
+  and the editor over fake node connections: a webhook's signature and
+  its write-only secret (kept by a save that leaves it empty), Rotate
+  and its confirmation, the Deliveries dialog with one delivery opened,
+  the tasks of two nodes in their own sections, a node without the
+  scheduler, and a save that keeps the task's model options while its
+  model stays (D1178).
 
 ### Deferred
 
