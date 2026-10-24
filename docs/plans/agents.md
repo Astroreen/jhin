@@ -2488,9 +2488,9 @@ Decisions:
   the lead reaches the inbox. D688 tells members, it does not enforce it.
 - A5: removing a team's agents. `teams.down` stops them (D689); removing
   each member is `agents.remove` on its node.
-- A5: a member moved to another node: `teams.up` puts it on the new node and
+- ~~A5: a member moved to another node: `teams.up` puts it on the new node and
   rewrites the rosters, but its agent on the old node stays defined (stop it
-  with `teams.down` before the move).
+  with `teams.down` before the move).~~ M2, D1546.
 - A5: installing a plugin, and so a bundle, from npm with a command. Today the
   unpacked package goes into a plugin location (D686).
 - A5: a bundle's skills installed for its members; skills stay names (D613).
