@@ -58,7 +58,7 @@ import { useCatalog, useCommands, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
 import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
-import { DiffComment, DiffCommentAnnotation } from "./diff/comment-annotation.tsx";
+import { DiffComment, DiffCommentAnnotation } from "../../lib/comment-annotation.tsx";
 import {
   annotationAnchor,
   restoreReviewCommentRange,

@@ -12,7 +12,8 @@ import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 
 const REVEAL_ATTRIBUTE = "data-file-link-reveal";
 
-const SOURCE_UNSAFE_CSS = `
+/** The text's colours and the revealed line's tint (D1430). */
+export const SOURCE_UNSAFE_CSS = `
 [data-file] {
   --diffs-font-family: var(--font-mono) !important;
   --diffs-bg: var(--code-background, var(--background)) !important;
@@ -48,17 +49,17 @@ function clampLine(text: string, line: number): number {
   return Math.min(Math.max(1, line), lines);
 }
 
-export function ReadOnlySourcePreview(props: {
-  readonly name: string;
-  readonly text: string;
-  readonly wordWrap: boolean;
-  /** A line to show, centred and tinted, and the request it is (bumped to show it again). */
-  readonly reveal?: { readonly line: number; readonly id: number } | undefined;
-}) {
-  const theme = useResolvedTheme();
+/**
+ * T3's useFileLineReveal for a file of `text`: after each render the asked line is marked, and
+ * scrolled to the middle once per request (D1430), the editor's too (D1438).
+ */
+export function useLineReveal(
+  text: string,
+  revealed: { readonly line: number; readonly id: number } | undefined,
+) {
   const handled = useRef<number | undefined>(undefined);
-  const reveal = props.reveal;
-  const line = reveal === undefined ? undefined : clampLine(props.text, reveal.line);
+  const reveal = revealed;
+  const line = reveal === undefined ? undefined : clampLine(text, reveal.line);
   // T3's updateFileLinkReveal, after each render of the file: the line is marked, and scrolled to
   // once per request, by where the virtualizer puts it while its row is not in the page.
   const onPostRender = (
@@ -94,6 +95,18 @@ export function ReadOnlySourcePreview(props: {
     const height = rect !== undefined && rect.height > 0 ? rect.height : (position?.height ?? 0);
     scroller.scrollTop = Math.max(0, top - Math.max(0, (scroller.clientHeight - height) / 2));
   };
+  return onPostRender;
+}
+
+export function ReadOnlySourcePreview(props: {
+  readonly name: string;
+  readonly text: string;
+  readonly wordWrap: boolean;
+  /** A line to show, centred and tinted, and the request it is (bumped to show it again). */
+  readonly reveal?: { readonly line: number; readonly id: number } | undefined;
+}) {
+  const theme = useResolvedTheme();
+  const onPostRender = useLineReveal(props.text, props.reveal);
   return (
     <Virtualizer
       className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"

@@ -38,6 +38,7 @@ import {
   FileSurfaceLoading,
 } from "./attachment-preview.tsx";
 import { FileExplorer } from "./file-explorer.tsx";
+import { FileEditor } from "./file-editor.tsx";
 import { useAttachmentLoader } from "./attachment-media.tsx";
 import { basename } from "./file-chips.tsx";
 import { revealKey } from "./file-panel-route.ts";
@@ -257,6 +258,8 @@ export function FilePanel(props: FilePanelProps) {
   const folders = props.path.split(/[\\/]/).slice(0, -1).filter(Boolean);
   const trail = [project?.name ?? "Workspace", ...folders];
   const [explorerOpen, setExplorerOpen] = useState(readExplorerOpen);
+  // T3 edits a project's file in place, in the right panel (D1438).
+  const editable = props.embedded === true && projectId !== undefined;
   // A line asked for by a link to it (D1430).
   const reveal = useSyncExternalStore(chat.fileReveals.subscribe, () =>
     chat.fileReveals.get(
@@ -350,6 +353,38 @@ export function FilePanel(props: FilePanelProps) {
         }
         aside={explorer}
         file={shown.file.file}
+        renderSource={
+          editable
+            ? (source) => (
+                <FileEditor
+                  comment={(record) => chat.composer.current?.insertContext(record) === "inserted"}
+                  name={name}
+                  onSaveError={(error) =>
+                    chat.toasts?.show({
+                      type: "error",
+                      title: "Unable to save file",
+                      description: error instanceof Error ? error.message : String(error),
+                    })
+                  }
+                  path={props.path}
+                  reveal={reveal}
+                  save={(contents) =>
+                    chat.threads
+                      .call(props.target, "projects.write-file", {
+                        projectId,
+                        ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
+                        path: props.path,
+                        contents,
+                      })
+                      .then(() => undefined)
+                  }
+                  text={source.text}
+                  uncomment={(contextId) => void chat.composer.current?.removeContext(contextId)}
+                  wordWrap={source.wordWrap}
+                />
+              )
+            : undefined
+        }
         reveal={reveal}
         key={key}
         mimeType=""

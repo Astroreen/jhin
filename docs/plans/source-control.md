@@ -1722,9 +1722,8 @@ W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
   D53 and at `v0.1.2-nightly.20261021.3457`), so W21 leaves it until T3 does.
 - What D1284–D1286 leave of T3's review comments: a comment's chip opens
   no popover with its lines and text (T3's `ReviewCommentChip` details),
-  several comments on one line show apart rather than as T3's grouped
-  annotation, and comments on a file's own contents (T3's file panel,
-  `buildFileReviewComment`) wait for that panel.
+  and several comments on one line show apart rather than as T3's grouped
+  annotation (comments on a file's own contents are `t3-parity.md` D1439).
 - What W5 leaves of T3's diff panel (its in-app file preview and pop-out
   mode are D1433, D1434): loading the patches of a truncated diff file by file
   (`useReviewFilePatches`), refusing to expand a file whose working tree copy

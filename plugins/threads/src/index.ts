@@ -2330,14 +2330,22 @@ export default definePlugin({
         "Writes a text file inside a project's directory (a path relative to it), creating its folders; T3 Code's 'Save to workspace'",
       input: z.object({
         projectId: z.string(),
+        /** Its worktree, when it has one, is the folder written in (the file panel's save, D1438). */
+        threadId: z.string().optional(),
         path: z.string().trim().min(1).max(1024),
         contents: z.string().max(MAX_WRITTEN_FILE_CHARS),
       }),
       output: z.object({ path: z.string(), relativePath: z.string() }),
       permissions: ["projects.write"],
-      handler: async ({ projectId, path, contents }) => {
+      handler: async ({ projectId, threadId, path, contents }) => {
         const project = await getProject(projectId);
-        const root = Path.resolve(project.path);
+        const thread = threadId === undefined ? undefined : await getThread(threadId);
+        if (thread !== undefined && thread.projectId !== projectId) {
+          throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId} in this project`, {
+            threadId,
+          });
+        }
+        const root = Path.resolve(thread?.worktreePath ?? project.path);
         const target = Path.resolve(root, path);
         const relativePath = Path.relative(root, target);
         const outside = (relative: string) =>

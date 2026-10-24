@@ -2482,6 +2482,27 @@ panel and devices are in `terminal.md`, `source-control.md` and
   a larger file as before (D1003's notice); a revealed line far down
   (D1430) is scrolled to by where the virtualizer puts it.
 
+- **D1438. A project's file is edited and saved in place,** as T3's
+  `EditableFileSurface`: in the right panel a file's whole text (not one cut
+  at its first MiB) opens in Pierre's editor (`@pierre/diffs/edit`, in T3's
+  virtualizer), and each change is written half a second after the last
+  one, one write at a time and the newest winning, what is left written when
+  the file closes (T3's `FileSaveCoordinator`), through `projects.write-file`,
+  which now writes into a thread's worktree too (`threadId`). A failed
+  write says so ("Unable to save file") and the next change writes again.
+  Rendered markdown and HTML stay previews, as T3's (it ticks markdown's
+  task boxes, which waits); T3's pending dot on the tab, its "Read-only
+  connection" notice and its merge of a change made on disk meanwhile wait
+  (Deferred).
+- **D1439. Comments on a file's own contents,** T3's
+  `buildFileReviewComment`: in the editor, the gutter's "+" or a selection of
+  lines opens D285's comment form under them; "Comment" puts a
+  `review-comment` record into the open thread's composer, its section
+  "File comment" (`file:<path>`), its range `L3` or `L3 to L5` and its "diff"
+  the lines themselves, as D1284's chips show it, and the comment stays
+  under its lines, following them as the text is edited; "Delete comment"
+  takes it out of the composer again (D1286).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -2518,10 +2539,12 @@ panel and devices are in `terminal.md`, `source-control.md` and
     editor opening at the quote's place in the message right after "Cite",
     "Save and send" (Mod+Enter), the quote highlighted after its thread
     opens from another one, and the legacy text for a node from before D1010;
-  - T3's file panel beyond D1342 and D1428–D1431: editing and saving, the
+  - T3's file panel beyond D1342 and D1428–D1439: the
     explorer's context menu and dragging its rows into the composer, "Open
     in" for a file of a thread's worktree, an agent's file chip's menu,
-    ⌘-click and parent folder suffix;
+    ⌘-click and parent folder suffix, the editor's pending dot on its tab,
+    its "Read-only connection" notice, a change made on disk while it is
+    edited, and ticking a rendered markdown's task boxes;
   - a sent message's skills (D1341) are asked once per thread view, on any
     `$word` (a `$HOME` too), and not asked again when the agent's skills
     change while the thread shows (T3 keeps its providers' skills current);
