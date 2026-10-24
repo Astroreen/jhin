@@ -30,7 +30,14 @@ import { MessageCitationChip } from "./citation-chips.tsx";
 import { ContextRecordChip } from "./context-chips.tsx";
 import { FileMentionChip, MessageSkillChip } from "./file-chips.tsx";
 import { CHAT_MARKDOWN_CLASS, type ChatMarkdownProps } from "./markdown-style.ts";
-import { MessageContextChipsContext } from "./message-context.ts";
+import { AgentFileLinksContext, MessageContextChipsContext } from "./message-context.ts";
+import {
+  inlineCodeFilePathCandidate,
+  resolveMarkdownFileLinkTarget,
+  resolvePathLinkTarget,
+  splitFilePathPosition,
+  workspaceRelativeFilePath,
+} from "../../lib/file-links.ts";
 
 /** The text of a React subtree (a code element's children). */
 function textOf(node: ReactNode): string {
@@ -170,7 +177,13 @@ const COMPONENTS: Components = {
       </a>
     );
     const path = typeof href === "string" ? fileLinkPath(textOf(children), href) : undefined;
-    return path === undefined ? link : <FileReference fallback={link} path={path} />;
+    if (path !== undefined) return <FileReference fallback={link} path={path} />;
+    return typeof href === "string" ? <AgentFileLink fallback={link} href={href} /> : link;
+  },
+  code({ children, node: _node, ...props }) {
+    // Inline code only: a fenced block is the `pre`'s, which renders it itself.
+    const code = <code {...props}>{children}</code>;
+    return typeof children === "string" ? <AgentFileCode code={children} fallback={code} /> : code;
   },
   p({ children, node: _node, ...props }) {
     return (
@@ -273,6 +286,58 @@ function FileReference(props: { path: string; fallback: ReactNode }) {
   const chips = use(MessageContextChipsContext);
   if (chips === undefined) return props.fallback;
   return <FileMentionChip onPreview={chips.previewFile} path={props.path} />;
+}
+
+/**
+ * Where an agent's link or inline code names a file of the thread's folder: its path there and
+ * its line (T3's `resolveMarkdownFileLinkMeta`); undefined for anything else.
+ */
+function agentFileTarget(
+  absolute: string | null,
+  root: string,
+): { path: string; line?: number } | undefined {
+  if (absolute === null) return undefined;
+  const { path, line } = splitFilePathPosition(absolute);
+  const relative = workspaceRelativeFilePath(path, root);
+  if (relative === null || relative === ".") return undefined;
+  return { path: relative, ...(line === undefined ? {} : { line }) };
+}
+
+/** T3's MarkdownFileLink in an agent's message (D1431): its chip opens the file at its line. */
+function AgentFileChip(props: { target: { path: string; line?: number }; open: AgentOpen }) {
+  const { path, line } = props.target;
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return (
+    <FileMentionChip
+      label={line === undefined ? name : `${name} · L${line}`}
+      onPreview={() => props.open(path, line)}
+      path={path}
+    />
+  );
+}
+
+type AgentOpen = (path: string, line?: number) => void;
+
+function AgentFileLink(props: { href: string; fallback: ReactNode }) {
+  const links = use(AgentFileLinksContext);
+  if (links === undefined) return props.fallback;
+  const target = agentFileTarget(
+    resolveMarkdownFileLinkTarget(props.href, links.workspaceRoot),
+    links.workspaceRoot,
+  );
+  return target === undefined ? props.fallback : <AgentFileChip open={links.open} target={target} />;
+}
+
+function AgentFileCode(props: { code: string; fallback: ReactNode }) {
+  const links = use(AgentFileLinksContext);
+  if (links === undefined) return props.fallback;
+  const candidate = inlineCodeFilePathCandidate(props.code);
+  if (candidate === null) return props.fallback;
+  const target = agentFileTarget(
+    resolvePathLinkTarget(candidate, links.workspaceRoot),
+    links.workspaceRoot,
+  );
+  return target === undefined ? props.fallback : <AgentFileChip open={links.open} target={target} />;
 }
 
 /** The `$name`s of the agent's skills in a user message's text, as T3's `SkillInlineText`. */

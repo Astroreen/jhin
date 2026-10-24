@@ -509,17 +509,25 @@ export function ThreadView(props: {
     namesSkill,
   );
   const hasProject = props.project !== undefined;
+  // The folder an agent's links are read against: the thread's worktree, else its project's.
+  const workspaceRoot = thread?.worktreePath ?? props.project?.path;
   const fileChips = useMemo(
     () => ({
       skills,
       ...(hasProject
         ? {
-            previewFile: (path: string) =>
-              openFilePanel(chat.navigation, { target, threadId }, path),
+            previewFile: (path: string, line?: number) =>
+              openFilePanel(
+                chat.navigation,
+                { target, threadId },
+                path,
+                line === undefined ? undefined : { reveals: chat.fileReveals, line },
+              ),
+            workspaceRoot,
           }
         : {}),
     }),
-    [skills, hasProject, chat.navigation, target, threadId],
+    [skills, hasProject, chat.navigation, target, threadId, workspaceRoot],
   );
 
   // Attachments of sent messages, read back from the node once each.

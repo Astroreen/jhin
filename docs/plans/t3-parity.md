@@ -2437,6 +2437,24 @@ panel and devices are in `terminal.md`, `source-control.md` and
   file of a thread's worktree has no such action yet: editors open a
   project folder's files only (`terminal.md`'s Deferred, D965).
 
+- **D1430. A link's line is revealed,** as T3's `revealLine`: a file opened
+  at a line (an agent's `src/a.ts:12`, `src/a.ts#L12` or `a.ts:12:3`) shows
+  its source with that line centred and tinted (T3's `useFileLineReveal`,
+  `data-file-link-reveal` and its tint), the line past a file's end being
+  its last (T3's `clampFileLine`). The request goes beside the route, kept
+  for the page by the chat plugin, so opening the same line again shows it
+  again; rendered markdown and media show from their top.
+- **D1431. File chips in an agent's message,** as T3's `ChatMarkdown`: a link
+  (`[a.ts](src/a.ts:12)`, a `file:` URL, an absolute path) or inline code
+  (`` `src/a.ts` ``, T3's `inlineCodeFilePathCandidate`) that names a file
+  inside the thread's folder (its worktree, else its project's), read with
+  T3's `markdownLinks.ts` and `fileLinks.ts` (`lib/file-links.ts`), is T3's
+  file chip: the file's icon and name, "· L12" with a line, the path in its
+  tooltip, and pressed it opens the file in the right panel at that line.
+  A path outside the folder stays a link or code. T3's chip menu (Copy
+  relative path, Copy full path, Open in editor, ⌘-click to the editor) and
+  its parent folder suffix for names that collide wait (Deferred).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -2473,10 +2491,10 @@ panel and devices are in `terminal.md`, `source-control.md` and
     editor opening at the quote's place in the message right after "Cite",
     "Save and send" (Mod+Enter), the quote highlighted after its thread
     opens from another one, and the legacy text for a node from before D1010;
-  - T3's file panel beyond D1342 and D1428–D1429: editing and saving, a
-    link's line revealed, file chips in an agent's message, the explorer's
-    context menu and dragging its rows into the composer, and "Open in" for
-    a file of a thread's worktree;
+  - T3's file panel beyond D1342 and D1428–D1431: editing and saving, the
+    explorer's context menu and dragging its rows into the composer, "Open
+    in" for a file of a thread's worktree, an agent's file chip's menu,
+    ⌘-click and parent folder suffix;
   - a sent message's skills (D1341) are asked once per thread view, on any
     `$word` (a `$HOME` too), and not asked again when the agent's skills
     change while the thread shows (T3 keeps its providers' skills current);

@@ -24,7 +24,7 @@ import {
   SquareArrowOutUpRightIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { useCatalog } from "../../lib/hooks.ts";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
@@ -38,6 +38,7 @@ import {
 } from "./attachment-preview.tsx";
 import { FileExplorer } from "./file-explorer.tsx";
 import { basename } from "./file-chips.tsx";
+import { revealKey } from "./file-panel-route.ts";
 import { isTooLarge, type PreviewFile, readPreviewFile } from "./preview-file.ts";
 import { useChat } from "./services.ts";
 
@@ -234,6 +235,19 @@ export function FilePanel(props: FilePanelProps) {
   const folders = props.path.split(/[\\/]/).slice(0, -1).filter(Boolean);
   const trail = [project?.name ?? "Workspace", ...folders];
   const [explorerOpen, setExplorerOpen] = useState(readExplorerOpen);
+  // A line asked for by a link to it (D1430).
+  const reveal = useSyncExternalStore(chat.fileReveals.subscribe, () =>
+    chat.fileReveals.get(
+      revealKey(
+        {
+          target: props.target,
+          ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
+          ...(props.projectId === undefined ? {} : { projectId: props.projectId }),
+        },
+        props.path,
+      ),
+    ),
+  );
   const showExplorer =
     props.embedded === true &&
     props.onOpenFile !== undefined &&
@@ -314,6 +328,7 @@ export function FilePanel(props: FilePanelProps) {
         }
         aside={explorer}
         file={shown.file.file}
+        reveal={reveal}
         key={key}
         mimeType=""
         name={name}

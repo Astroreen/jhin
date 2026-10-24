@@ -79,7 +79,7 @@ import { DraftView, ThreadView } from "./thread-view.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createDetailsVisibility, registerThreadDetails } from "./thread-details.tsx";
 import type { FilePanelProps, FilesPanel as FilesPanelComponent } from "./file-panel.tsx";
-import { FILE_PANEL, FILES_PANEL } from "./file-panel-route.ts";
+import { createFileReveals, FILE_PANEL, FILES_PANEL } from "./file-panel-route.ts";
 import { basename } from "./file-chips.tsx";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
@@ -370,6 +370,7 @@ export const chatPlugin = builtin(
       const attachmentUrls = createAttachmentUrls();
       context.subscriptions.add({ dispose: () => attachmentUrls.dispose() });
       const services: ChatServices = {
+        fileReveals: createFileReveals(),
         context,
         connections,
         navigation,

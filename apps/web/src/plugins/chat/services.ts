@@ -1,3 +1,4 @@
+import type { FileReveals } from "./file-panel-route.ts";
 import type {
   AssistantCitation,
   MessageContextRecord,
@@ -133,6 +134,8 @@ export interface ChatServices {
   readonly unconfirmed: Unconfirmed;
   /** What commands can do to the composer on screen. */
   readonly composer: ComposerHandle;
+  /** Lines of files the file panel is asked to show (D1430). */
+  readonly fileReveals: FileReveals;
   /** The open thread's find bar (D801), for `chat.find`. */
   readonly threadFind: { current: { open(): void } | undefined };
   /** Whether each thread's details show, inline or in the header's popover (D1350). */
