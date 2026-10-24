@@ -4,7 +4,7 @@ import * as Path from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { createClientStore } from "../src/clients.ts";
+import { createClientStore, type ClientRepair } from "../src/clients.ts";
 
 const tempFile = () =>
   Path.join(Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-clients-")), "clients.json");
@@ -59,19 +59,31 @@ describe("device token store (security.md D411)", () => {
     expect(store.verify(token, 2)).toBeUndefined();
   });
 
-  it("moves a file it cannot read aside instead of overwriting it, and accepts no token from it", () => {
-    for (const content of ["{ truncated", '{ "clients": [{ "id": 1 }] }']) {
+  it("keeps a file it cannot read beside the repaired one, and accepts no token it cannot read", () => {
+    // Text with no record in it, and a JSON list whose one record does not read.
+    for (const [content, unreadable] of [
+      ["{ truncated", 0],
+      ['{ "clients": [{ "id": 1 }] }', 1],
+    ] as const) {
       const file = tempFile();
       Fs.writeFileSync(file, content);
-      const reported: string[] = [];
-      const store = createClientStore(file, (moved) => reported.push(moved));
+      const reported: ClientRepair[] = [];
+      const store = createClientStore(
+        file,
+        (repair) => reported.push(repair),
+        () => NOW,
+      );
 
-      expect(reported).toEqual([`${file}.corrupt`]);
-      expect(Fs.readFileSync(`${file}.corrupt`, "utf8")).toBe(content);
+      const moved = `${file}.corrupt-2026-10-24T12-00-00-000Z`;
+      expect(reported).toEqual([
+        { moved, error: expect.any(String), kept: 0, unreadable, expired: 0 },
+      ]);
+      expect(Fs.readFileSync(moved, "utf8")).toBe(content);
+      expect(Fs.statSync(moved).mode & 0o777).toBe(0o600);
       expect(store.list()).toEqual([]);
-      // A new token starts a new file; the old one stays where it was moved.
+      // A new token goes to the repaired file; the unreadable one stays where it was kept.
       store.issue({ label: "x", permissions: ["*"], method: "issued", now: 1 });
-      expect(Fs.readFileSync(`${file}.corrupt`, "utf8")).toBe(content);
+      expect(Fs.readFileSync(moved, "utf8")).toBe(content);
     }
   });
 
@@ -113,5 +125,108 @@ describe("device token store (security.md D411)", () => {
       store.issue({ label: "y", permissions: ["*"], method: "issued", now: 3 }),
     ).toThrow();
     expect(store.list().map((entry) => entry.label)).toEqual(["x"]);
+  });
+});
+
+const NOW = Date.UTC(2026, 9, 24, 12);
+
+/** Three tokens in a file of their own; returns the file's text and the tokens. */
+function threeTokens() {
+  const file = tempFile();
+  const store = createClientStore(file);
+  const issue = (label: string, expiresAt?: number) =>
+    store.issue({
+      label,
+      permissions: ["threads.read"],
+      method: "pairing",
+      now: NOW - 1000,
+      ...(expiresAt === undefined ? {} : { expiresAt }),
+      metadata: { deviceType: "mobile", os: "iOS" },
+    });
+  const phone = issue("phone");
+  const laptop = issue("laptop", NOW + 60_000);
+  const old = issue("old", NOW - 1);
+  return { file, text: Fs.readFileSync(file, "utf8"), phone, laptop, old };
+}
+
+describe("repairing an unreadable clients.json from itself (security.md D1518)", () => {
+  it("keeps the records of a JSON file that still read on their own, and drops the expired", () => {
+    const { file, text, phone, laptop, old } = threeTokens();
+    const parsed = JSON.parse(text) as { clients: Record<string, unknown>[] };
+    // One record broken: the whole file no longer reads.
+    parsed.clients[1] = { ...parsed.clients[1], permissions: "threads.read" };
+    const broken = JSON.stringify(parsed);
+    Fs.writeFileSync(file, broken);
+
+    const reported: ClientRepair[] = [];
+    const store = createClientStore(
+      file,
+      (repair) => reported.push(repair),
+      () => NOW,
+    );
+    expect(reported).toEqual([
+      {
+        moved: `${file}.corrupt-2026-10-24T12-00-00-000Z`,
+        error: expect.any(String),
+        kept: 1,
+        unreadable: 1,
+        expired: 1,
+      },
+    ]);
+    expect(store.verify(phone.token, NOW)?.id).toBe(phone.record.id);
+    expect(store.verify(laptop.token, NOW)).toBeUndefined();
+    expect(store.verify(old.token, NOW)).toBeUndefined();
+    // Written whole, 0600, and read again as it is, without another repair.
+    expect(Fs.statSync(file).mode & 0o777).toBe(0o600);
+    const again: ClientRepair[] = [];
+    expect(
+      createClientStore(
+        file,
+        (repair) => again.push(repair),
+        () => NOW,
+      )
+        .list()
+        .map((record) => record.label),
+    ).toEqual(["phone"]);
+    expect(again).toEqual([]);
+    expect(Fs.readFileSync(reported[0]!.moved, "utf8")).toBe(broken);
+  });
+
+  it("finds the records in text that is not JSON any more", () => {
+    const { file, text, phone, laptop } = threeTokens();
+    // Truncated in the middle of the last record, with junk before it.
+    const broken = `\u0000garbage ${text.slice(0, text.lastIndexOf('"secretHash"') + 20)}`;
+    Fs.writeFileSync(file, broken);
+
+    const reported: ClientRepair[] = [];
+    const store = createClientStore(
+      file,
+      (repair) => reported.push(repair),
+      () => NOW,
+    );
+    expect(reported).toMatchObject([{ kept: 2, unreadable: 1, expired: 0 }]);
+    expect(store.verify(phone.token, NOW)?.id).toBe(phone.record.id);
+    expect(store.verify(laptop.token, NOW)?.id).toBe(laptop.record.id);
+    expect(store.get(phone.record.id)?.metadata).toEqual({ deviceType: "mobile", os: "iOS" });
+  });
+
+  it("never overwrites an earlier unreadable file, and reads no older copy", () => {
+    const { file, text, phone } = threeTokens();
+    // A copy an earlier repair kept still holds every token; it is never read.
+    const earlier = `${file}.corrupt-2026-10-24T12-00-00-000Z`;
+    Fs.writeFileSync(earlier, text);
+    Fs.writeFileSync(file, "{ nothing left");
+
+    const reported: ClientRepair[] = [];
+    const store = createClientStore(
+      file,
+      (repair) => reported.push(repair),
+      () => NOW,
+    );
+    expect(reported).toMatchObject([{ moved: `${earlier}-1`, kept: 0, unreadable: 0 }]);
+    expect(Fs.readFileSync(earlier, "utf8")).toBe(text);
+    expect(Fs.readFileSync(`${earlier}-1`, "utf8")).toBe("{ nothing left");
+    expect(store.verify(phone.token, NOW)).toBeUndefined();
+    expect(JSON.parse(Fs.readFileSync(file, "utf8"))).toEqual({ clients: [] });
   });
 });

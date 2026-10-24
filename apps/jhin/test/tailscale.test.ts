@@ -12,6 +12,8 @@ import {
   parseMagicDnsName,
   publishOverTailscale,
   replaceable,
+  tailnetNotes,
+  tailnetOf,
   tailscaleBaseUrl,
   type TailscaleRunner,
 } from "../src/tailscale.ts";
@@ -118,6 +120,7 @@ describe("Tailscale Serve for jhin pair", () => {
       pause,
     });
     expect(published.baseUrl).toBe("https://studio.tail1234.ts.net:8443");
+    expect(published.tailnet).toBe("tail1234.ts.net");
     expect(published.notes).toEqual([expect.stringContaining("jhin.http.trustProxy")]);
     expect(tailscale.calls).toEqual([
       ["status", "--json", "--peers=false"],
@@ -204,6 +207,21 @@ describe("Tailscale Serve for jhin pair", () => {
       pause,
     });
     expect(published.notes.at(-1)).toContain("The HTTPS endpoint has not answered yet.");
+  });
+});
+
+describe("the tailnet note (security.md D1516)", () => {
+  it("names the tailnet of the MagicDNS name while jhin.http.tailnet is unset", () => {
+    expect(tailnetOf("Studio.Tail1234.ts.net")).toBe("tail1234.ts.net");
+    expect(tailnetOf("studio.example.com")).toBeUndefined();
+    expect(tailnetOf("studio")).toBeUndefined();
+    expect(tailnetNotes("tail1234.ts.net", undefined)).toEqual([
+      "To answer only your tailnet's names, set jhin.http.tailnet to tail1234.ts.net.",
+    ]);
+    expect(tailnetNotes("tail1234.ts.net", "tail1234.ts.net")).toEqual([]);
+    // A tailnet already set, even another one, is the owner's choice: no note.
+    expect(tailnetNotes("tail1234.ts.net", "tailfeed.ts.net")).toEqual([]);
+    expect(tailnetNotes(undefined, undefined)).toEqual([]);
   });
 });
 

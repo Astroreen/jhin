@@ -3,6 +3,8 @@
 // apps/web/src/components/auth/ConnectAgentSurface.tsx (the approval page).
 // Rendered by the node itself, so a node without the web client approves too (security.md D1193).
 
+import { shellAccessText } from "@jhin/sdk";
+
 const escapeHtml = (value: string): string =>
   value.replace(
     /[&<>"']/gu,
@@ -95,6 +97,7 @@ export interface ApprovalPage {
     readonly title?: string;
     readonly description?: string;
     readonly shellAccess?: boolean;
+    readonly shellAccessReason?: string;
   }[];
   /**
    * The node could not describe the permissions (D1364): the page says it
@@ -158,9 +161,9 @@ export function renderApprovalPage(page: ApprovalPage): string {
         `<li>${escapeHtml(entry.title ?? entry.permission)}${
           entry.description === undefined ? "" : `<span>${escapeHtml(entry.description)}</span>`
         }${
-          // security.md D1364: whoever holds it holds the machine as the node's user.
+          // security.md D1364, D1517: whoever holds it holds the machine as the node's user.
           entry.shellAccess === true
-            ? `<strong class="shell">Shell access: runs commands on this machine as the node's user.</strong>`
+            ? `<strong class="shell">${escapeHtml(shellAccessText(entry) ?? "")}</strong>`
             : ""
         }${entry.title === undefined ? "" : `<code>${escapeHtml(entry.permission)}</code>`}</li>`,
     )

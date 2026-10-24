@@ -108,11 +108,14 @@ export default definePlugin({
       .get<HostPaths>(HOST_PATHS_CAPABILITY)
       .dataDir(context.plugin.id);
     const file = Path.join(dataDir, "token");
-    const clients = createClientStore(Path.join(dataDir, "clients.json"), (moved, error) =>
-      context.log.error("device tokens unreadable; none are accepted until they are issued again", {
-        moved,
-        error,
-      }),
+    // Warned once, with what was kept (security.md D1518).
+    const clients = createClientStore(
+      Path.join(dataDir, "clients.json"),
+      ({ moved, error, kept, unreadable, expired }) =>
+        context.log.warn(
+          `device tokens were unreadable; repaired from the file itself: kept ${kept}, could not read ${unreadable}`,
+          { moved, error, kept, unreadable, expired },
+        ),
     );
     const existing = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8").trim() : "";
     let token: string;
@@ -582,6 +585,8 @@ export default definePlugin({
             description: z.string().min(1).optional(),
             /** Runs commands on this machine as the node's user (security.md D1364). */
             shellAccess: z.boolean().optional(),
+            /** Since security.md D1517: why it reaches the node's user, for "Shell access: <reason>." */
+            shellAccessReason: z.string().min(1).optional(),
             /** The streams a subscriber needs it for (security.md D1371). */
             streams: z.array(z.string()).optional(),
           }),
@@ -613,10 +618,8 @@ export default definePlugin({
             () => entries,
           );
           for (const item of Array.isArray(output) ? (output as unknown[]) : []) {
-            const { permission, title, description, shellAccess, streams } = (item ?? {}) as Record<
-              string,
-              unknown
-            >;
+            const { permission, title, description, shellAccess, shellAccessReason, streams } =
+              (item ?? {}) as Record<string, unknown>;
             if (typeof permission !== "string") continue;
             // Names only, non-empty, and a bounded few: a hook offers names, nothing more.
             const named = Array.isArray(streams)
@@ -634,6 +637,12 @@ export default definePlugin({
               title,
               ...(typeof description === "string" && description !== "" ? { description } : {}),
               ...(shellAccess === true ? { shellAccess } : {}),
+              // A reason only with shell access, and short: it ends a sentence the UI shows.
+              ...(shellAccess === true &&
+              typeof shellAccessReason === "string" &&
+              shellAccessReason.trim() !== ""
+                ? { shellAccessReason: shellAccessReason.trim().slice(0, 200) }
+                : {}),
             });
           }
         } catch (error) {

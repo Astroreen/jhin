@@ -387,12 +387,12 @@ describe("device tokens (security.md D411–D414)", () => {
     ]);
   });
 
-  it("marks a permission with shell access, and nothing else (security.md D1364)", async () => {
+  it("marks a permission with shell access and its reason, and nothing else (security.md D1364, D1517)", async () => {
     const shell = {
       manifest: testManifest("app.shell"),
       definition: definePlugin({
         activate(context) {
-          for (const name of ["app.shell", "app.maybe"]) {
+          for (const name of ["app.shell", "app.maybe", "app.hooks", "app.quiet"]) {
             context.commands.register({
               name,
               description: "A test command",
@@ -404,6 +404,13 @@ describe("device tokens (security.md D411–D414)", () => {
           }
           describePermissions(context, {
             "app.shell": { title: "Run things", shellAccess: true },
+            "app.hooks": {
+              title: "Run hooks",
+              shellAccess: true,
+              shellAccessReason: "a repository's hooks run on this machine as the node's user",
+            },
+            // A reason without shell access says nothing.
+            "app.quiet": { title: "Quiet", shellAccessReason: "never shown" },
           });
           // Only `true` counts: anything else a hook answers is dropped.
           context.hooks.after<unknown, PermissionEntry[]>(PERMISSIONS_DESCRIBE_HOOK, (entries) =>
@@ -425,6 +432,18 @@ describe("device tokens (security.md D411–D414)", () => {
       commands: ["app.shell"],
       title: "Run things",
       shellAccess: true,
+    });
+    expect(permissions).toContainEqual({
+      permission: "app.hooks",
+      commands: ["app.hooks"],
+      title: "Run hooks",
+      shellAccess: true,
+      shellAccessReason: "a repository's hooks run on this machine as the node's user",
+    });
+    expect(permissions).toContainEqual({
+      permission: "app.quiet",
+      commands: ["app.quiet"],
+      title: "Quiet",
     });
     expect(permissions).toContainEqual({
       permission: "app.maybe",

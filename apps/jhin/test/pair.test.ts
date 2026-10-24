@@ -156,6 +156,9 @@ describe("jhin pair against a running node", () => {
       // Every grant covers the terminal's (security.md D1364).
       notes: expect.arrayContaining([
         "This link grants shell access (terminals.write): the device can run commands on this machine as the node's user. Narrow it with --permission.",
+        // With their reasons (security.md D1517).
+        "This link grants shell access (threads.write): an agent it starts in full access runs commands on this machine as the node's user. Narrow it with --permission.",
+        "This link grants shell access (git.write): a repository's hooks run on this machine as the node's user. Narrow it with --permission.",
       ]),
     });
   });
@@ -293,6 +296,26 @@ describe("the shell access note (security.md D1364)", () => {
       "This link grants shell access (terminals.write): the device can run commands on this machine as the node's user. Narrow it with --permission.",
     ]);
     expect(shellAccessNotes(["*"], entries)[0]).toContain("(terminals.write, runner.exec)");
+  });
+
+  it("names a permission's reason instead of D1364's sentence (security.md D1517)", () => {
+    const entries = [
+      { permission: "terminals.write", shellAccess: true },
+      {
+        permission: "git.write",
+        shellAccess: true,
+        shellAccessReason: "a repository's hooks run on this machine as the node's user",
+      },
+      // A reason without shell access says nothing.
+      { permission: "git.read", shellAccessReason: "never shown" },
+    ];
+    expect(shellAccessNotes(["git.*"], entries)).toEqual([
+      "This link grants shell access (git.write): a repository's hooks run on this machine as the node's user. Narrow it with --permission.",
+    ]);
+    expect(shellAccessNotes(["*"], entries)).toEqual([
+      "This link grants shell access (terminals.write): the device can run commands on this machine as the node's user. Narrow it with --permission.",
+      "This link grants shell access (git.write): a repository's hooks run on this machine as the node's user. Narrow it with --permission.",
+    ]);
   });
 
   it("says so when it could not check, never staying silent", () => {

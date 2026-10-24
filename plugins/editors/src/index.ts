@@ -87,6 +87,9 @@ export function createEditorsPlugin(
         "editor.open": {
           title: "Open in editor",
           description: "Open files in an editor on this machine.",
+          // Opening starts a program (security.md D1517).
+          shellAccess: true,
+          shellAccessReason: "it starts programs on this machine as the node's user",
         },
       });
       context.commands.register({
