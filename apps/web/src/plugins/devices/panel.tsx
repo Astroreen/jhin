@@ -29,6 +29,13 @@ export interface DevicePanelProps {
   readonly call: (method: string, params: unknown) => Promise<unknown>;
   readonly onError: (title: string, error: unknown) => void;
   readonly onClose: () => void;
+  /**
+   * As a surface of the right panel (D1427): its device list, or one device. Without it, the
+   * thread's latest open device, else the list.
+   */
+  readonly shows?: "list" | { readonly hostId: string; readonly deviceId: string };
+  /** A device opened from the list, which the list's surface becomes (T3's `openDevice`). */
+  readonly onOpened?: (device: DeviceSummary) => void;
 }
 
 /** A device's newest screen from its stream, while the panel shows it. */
@@ -269,8 +276,15 @@ export function DevicePanel(props: DevicePanelProps) {
       </div>
     ) : null;
   const session = state?.sessions.findLast((each) => each.threadId === threadId);
+  const shows = props.shows;
   const open =
-    session === undefined ? undefined : state?.devices.find((each) => each.id === session.deviceId);
+    shows === "list"
+      ? undefined
+      : shows !== undefined
+        ? state?.devices.find((each) => each.hostId === shows.hostId && each.id === shows.deviceId)
+        : session === undefined
+          ? undefined
+          : state?.devices.find((each) => each.id === session.deviceId);
   const host = state?.hosts[0];
   const booting = (state?.booting ?? []).filter((each) => each.threadId === threadId);
 
@@ -285,6 +299,7 @@ export function DevicePanel(props: DevicePanelProps) {
     setOpening(device.id);
     void props
       .call("device.open", { threadId, deviceId: device.id })
+      .then(() => props.onOpened?.(device))
       .catch((error: unknown) => props.onError("Couldn't open the device", error))
       .finally(() => setOpening(undefined));
   };
