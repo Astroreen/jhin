@@ -167,7 +167,9 @@ export type MessageErrorCode =
   /** `agents.inbox.answer` of an ask already answered. */
   | "ASK_ANSWERED"
   /** `agents.inbox.dismiss` of an item that is not open, or `agents.inbox.answer` of a dismissed one (D1274). */
-  | "ITEM_CLOSED";
+  | "ITEM_CLOSED"
+  /** `agents.conversation` of another node's owner, asked by anyone but that node (M1, D1523). */
+  | "OWNER_MISMATCH";
 
 /** Permission to send and ask (D628); agents hold it through their node's MCP server. */
 export const MESSAGE_PERMISSION = "agents.message";

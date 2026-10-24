@@ -88,14 +88,17 @@ export function registerMessaging(
 
   // Following the streams takes what reading through the commands takes (security.md D415).
   const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
+  // The agents stream takes what `agents.catalog` takes (M1, D1521).
+  const guarded = live?.guard !== undefined;
   if (live?.guard !== undefined) {
+    context.subscriptions.add(live.guard(AGENTS_STREAM, ["agents.read"]));
     context.subscriptions.add(live.guard(MESSAGES_STREAM, ["agents.read"]));
     context.subscriptions.add(live.guard(INBOX_STREAM, [INBOX_PERMISSION]));
   }
   // Members read the agents, messages and inbox through relays, within their
-  // grants and those guards (M1, D1521).
+  // grants and those guards (M1, D1521): never shared without them.
   const shared = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
-  if (shared !== undefined) {
+  if (shared !== undefined && guarded) {
     for (const stream of [AGENTS_STREAM, MESSAGES_STREAM, INBOX_STREAM]) {
       context.subscriptions.add(shared.share(stream));
     }
@@ -370,6 +373,8 @@ export function registerMessaging(
     const forwarded = (await kv.get(NAMESPACE, repliedKey(message.messageId))) as
       | { from?: string; to?: string }
       | undefined;
+    // Asked once, at the end of the message's turn: the record has served then.
+    if (forwarded !== undefined) await kv.delete(NAMESPACE, repliedKey(message.messageId));
     if (forwarded?.from === message.to && forwarded.to === message.from) return true;
     return (await log.read(MESSAGES_STREAM)).some((event) => {
       if (event.type !== MessageEvents.delivered) return false;
@@ -422,7 +427,8 @@ export function registerMessaging(
           },
           invocation,
         );
-        if (inReplyTo !== undefined) {
+        // Only a reply to an owner can stand for a turn's answer (D1221, D1262).
+        if (inReplyTo !== undefined && target.kind === "owner") {
           await rememberReply(inReplyTo, sender, to).catch((error: unknown) =>
             context.log.warn("a forwarded reply could not be remembered", {
               inReplyTo,
@@ -638,8 +644,23 @@ export function registerMessaging(
       const other = await addressOf(given);
       const party = partyOf(other, "to");
       const owner = asked ?? ownerAddress(nodeId);
-      if (partyOf(owner, "from").kind !== "owner") {
+      const ownerParty = partyOf(owner, "from");
+      if (ownerParty.kind !== "owner") {
         throw new AgentsError("ADDRESS_INVALID", `${owner} is not an owner's address`, { owner });
+      }
+      // Another owner's half is read only by that owner's node, through the
+      // mesh, or by this node's own code (D1523).
+      const caller = invocation.caller;
+      if (
+        owner !== ownerAddress(nodeId) &&
+        caller !== undefined &&
+        caller.id !== `node:${ownerParty.nodeId}`
+      ) {
+        throw new AgentsError(
+          "OWNER_MISMATCH",
+          `Only node ${ownerParty.nodeId} reads the conversation of ${owner} here`,
+          { owner },
+        );
       }
       const here = await conversationHere(owner, other);
       const keep = limit ?? 200;
@@ -661,8 +682,10 @@ export function registerMessaging(
           },
           {
             ...(invocation.traceId === undefined ? {} : { traceId: invocation.traceId }),
-            caller: {
-              id: invocation.caller?.id ?? context.plugin.id,
+            // The caller's own grants go along (D416); this node's own code
+            // asks with what reading the conversation takes.
+            caller: caller ?? {
+              id: context.plugin.id,
               permissions: ["mesh.call", INBOX_PERMISSION, "agents.read"],
             },
           },
@@ -683,7 +706,11 @@ export function registerMessaging(
       const entries = [
         ...here.entries,
         ...there.filter((entry) => !seen.has(entry.message.messageId)),
-      ].toSorted((a, b) => a.message.sentAt.localeCompare(b.message.sentAt));
+        // By the time each node stamped (ISO strings compare as text); two
+        // nodes' clocks may differ by a little (D1523).
+      ].toSorted((a, b) =>
+        a.message.sentAt < b.message.sentAt ? -1 : a.message.sentAt > b.message.sentAt ? 1 : 0,
+      );
       return { head: here.head, owner, with: other, entries: entries.slice(-keep), elsewhere };
     },
   });

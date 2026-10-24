@@ -591,10 +591,12 @@ describe("messages across the mesh (D623)", () => {
     network: ReturnType<typeof createMemoryNetwork>,
     id: string,
     gate?: (request: TurnRequest) => Promise<void>,
+    memberPermissions?: readonly string[],
   ) => {
     const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), `jhin-messages-${id}-`));
     const requests: TurnRequest[] = [];
     const started = await startMeshNode(network, id, {
+      ...(memberPermissions === undefined ? {} : { memberPermissions }),
       config: {
         node: {
           "jhin.threads": { defaultAgent: CAPTURE },
@@ -792,6 +794,14 @@ describe("messages across the mesh (D623)", () => {
       last.message.messageId,
     ]);
     expect(half.elsewhere).toBeUndefined();
+    // Nobody but node a, through the mesh, reads a's owner's half on b.
+    await expect(
+      b.node.kernel.commands.execute(
+        "agents.conversation",
+        { with: address("builder", "b"), owner: "jhin://a/owner" },
+        { caller: { id: "client:phone", permissions: ["agents.inbox", "agents.read"] } },
+      ),
+    ).rejects.toMatchObject({ code: "OWNER_MISMATCH" });
 
     // b out of reach: a's half comes alone, and says why.
     await new Promise<void>((resolve) => {
@@ -813,5 +823,29 @@ describe("messages across the mesh (D623)", () => {
     ]);
     expect(alone.elsewhere).toMatchObject({ nodeId: "b" });
     expect(alone.elsewhere!.error).toBeDefined();
+  });
+  it("lets a member read the agents and messages it may, and refuses the inbox it may not (M1, D1521)", async () => {
+    const network = createMemoryNetwork();
+    const a = await meshNode(network, "a");
+    // b lets other nodes read agents, never the owner's inbox.
+    const b = await meshNode(network, "b", undefined, ["mesh.call", "agents.read"]);
+    await b.node.join(a.node);
+    const { client } = a.node.connect();
+    await b.node.kernel.commands.execute("agents.rotate", { agentId: "builder" });
+    const relayed = async (stream: string) =>
+      (await client.call<{ stream: string }>("mesh.relay", { node: "b", stream })).stream;
+    const roster = watch(client, await relayed("agents"));
+    await roster.untilMatch(
+      (event) => (event.payload as { agentId?: string } | null)?.agentId === "builder",
+    );
+    const refused = await new Promise<unknown>((resolve) => {
+      void relayed("agents/inbox").then((stream) =>
+        client.subscribe(stream, { onError: resolve }, () => {}),
+      );
+    });
+    expect(refused).toMatchObject({
+      code: "PERMISSION_DENIED",
+      details: { stream: "agents/inbox" },
+    });
   });
 });
