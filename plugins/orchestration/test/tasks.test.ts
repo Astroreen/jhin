@@ -118,6 +118,42 @@ describe("delegated tasks", () => {
     ).toEqual({ taskId: held.taskId, status: "cancelled" });
   });
 
+  it("stops waiting when its caller goes away; the task goes on and wakes the parent (D1502)", async () => {
+    const { client, kernel } = await node();
+    const feed = orchestrationFeed(client);
+    const records = watch(client, "stream:orchestration");
+    const parent = await parentThread(client);
+    const parentEvents = watch(client, parent.id);
+    const gone = new AbortController();
+
+    const waiting = kernel.commands.execute(
+      "tasks.delegate",
+      { task: "/hold on", mode: "wait", parentThreadId: parent.id },
+      { signal: gone.signal },
+    ) as Promise<TaskView>;
+    const started = (
+      await records.untilMatch(
+        (event) =>
+          event.type === "orchestration.task.updated" &&
+          (event.payload as { childTurnId?: string }).childTurnId !== undefined,
+      )
+    ).payload as { taskId: string; childThreadId: string };
+    gone.abort();
+    const returned = await waiting;
+    expect(returned).toMatchObject({
+      taskId: started.taskId,
+      status: "running",
+      waitTimedOut: false,
+    });
+
+    // The task goes on: a message steered into the held turn ends it, and its end wakes the parent.
+    await client.call("threads.steer", { threadId: started.childThreadId, text: "finish" });
+    const delivered = await feed.task(started.taskId, (record) => record.delivery === "delivered");
+    expect(delivered).toMatchObject({ status: "completed" });
+    const wake = await parentEvents.until("agent.turn.started");
+    expect((wake.payload as { input: { text: string } }).input.text).toContain(started.taskId);
+  });
+
   it("reports a pending question to a waiting caller", async () => {
     const { client } = await node();
     const parent = await parentThread(client);

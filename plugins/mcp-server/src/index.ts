@@ -160,6 +160,8 @@ export default definePlugin({
         const threadId =
           authenticated.threadId ??
           (typeof named === "string" && THREAD_ID.test(named) ? named : undefined);
+        // Aborted when the client goes away before its answer (D1501).
+        const gone = new AbortController();
         const server = createMcpServer({
           list: async () =>
             context.commands.list().filter((command) => allowed(caller, command.permissions)),
@@ -168,11 +170,13 @@ export default definePlugin({
               traceId,
               caller,
               ...(threadId === undefined ? {} : { threadId }),
+              signal: gone.signal,
             }),
         });
         // No session id generator: stateless mode.
         const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
         response.on("close", () => {
+          if (!response.writableFinished) gone.abort();
           void transport.close();
           void server.close();
         });

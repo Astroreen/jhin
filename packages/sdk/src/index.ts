@@ -1,5 +1,6 @@
 export { z } from "zod";
 
+export { createCancelSignal, type CancelSignal } from "./cancel.ts";
 export { DisposableStore, toDisposable, type Disposable } from "./disposable.ts";
 export {
   CapabilityId,

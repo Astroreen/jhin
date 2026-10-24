@@ -1,3 +1,4 @@
+import type { CancelSignal } from "./cancel.ts";
 import type { z } from "zod";
 
 import type { Disposable } from "./disposable.ts";
@@ -37,6 +38,12 @@ export interface Invocation {
    * to it (docs/plans/orchestration.md, D362).
    */
   readonly threadId?: string;
+  /**
+   * Aborted when nobody is left to take the answer: the connection closed, the
+   * HTTP request went away (docs/plans/orchestration.md, D1501). A command
+   * that waits may stop waiting; it never undoes what it already did.
+   */
+  readonly signal?: CancelSignal;
 }
 
 export interface CommandDefinition<I extends z.ZodType, O extends z.ZodType> {
