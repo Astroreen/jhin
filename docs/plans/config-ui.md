@@ -311,12 +311,17 @@ checked-in `t3.json` and the scripts are `source-control.md`'s
   environment axis, D20) with a search. With a project chosen, a section
   with project settings shows every field, and only those its `projects`
   value has edit that project's entry (`projects.<id>.<key>` of the node
-  file, saved as any change, D84); the others are inert, with T3's words
-  for them ("Node-wide setting. Choose All projects to change it.", T3's
-  "Environment-wide setting. Select an environment to change it."). A
+  file, saved as any change, D84); the others follow, inert, under
+  "Node-wide settings" with T3's words for them ("Node-wide setting. Choose
+  All projects to change it.", T3's "Environment-wide setting. Select an
+  environment to change it."). A choice the project has no value for, and
+  nothing to inherit as its default, offers T3's "Inherit" (worktree
+  cleanup's mode); what a reset leaves empty goes, up to the record. A
   project field shows the value it inherits as its default and T3's layers
   button (`SettingInheritance`): Project, Node, `t3.json` for a key it
-  backs (`source-control.md` D1467), Default, the one in effect checked;
+  backs (`.meta({ t3File: "<field>" })` on the project's key,
+  `source-control.md` D1467), Default (the node key's default, else the
+  project key's `builtIn`, T3's), the one in effect checked;
   "Reset to inherited value" removes the project's key, and an entry left
   empty goes. A section without project settings says so ("This section
   has no project settings."). With All projects chosen, the `projects`
