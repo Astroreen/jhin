@@ -701,7 +701,13 @@ export function RightPanelView(props: RightPanelViewProps) {
             className="flex h-full w-max min-w-full items-center gap-1"
             role="tablist"
           >
-            <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd} sensors={sensors}>
+            <DndContext
+              // dnd-kit's announcements live in the page's body, not among the panel's statuses.
+              accessibility={{ container: document.body }}
+              collisionDetection={closestCenter}
+              onDragEnd={onDragEnd}
+              sensors={sensors}
+            >
               <SortableContext
                 items={surfaces.map((surface) => surface.id)}
                 strategy={horizontalListSortingStrategy}
