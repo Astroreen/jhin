@@ -978,7 +978,7 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
   `secrets.store` 1.2 adds a plugin's own named secrets (additive):
   `putSecret(name, value)`, `getSecret(name)` and `deleteSecret(name)`,
   `name` being a plugin id, `/` and a name, as `getOrCreateRandom`'s
-  (D1192); values are sealed in the store like any other, and no command
+  (D1192), the name holding further `/` where it needs them; values are sealed in the store like any other, and no command
   returns one (D1022). `jhin.scheduler` takes the store as optional
   (`secrets.store@^1.2`): a signing secret given on create or update (in
   clear or from a `secretRef`, D1034) is kept as `jhin.scheduler/webhook/
@@ -1007,18 +1007,10 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
 
 ### Deferred
 
-- One shared `WorkspaceStrategy` contract: threads, orchestration and
-  `@jhin/scheduler-api` each define T3's three strategies.
 - "Edit" of the thread's automations opening that task's editor (the route
   has no task yet).
 - Tasks of mesh members on the settings page: it shows the nodes the client
   is connected to.
-- Releasing a run in-process when its completion cannot be recorded (T3's
-  `releaseStuckRun`): today a storage failure at that write leaves the task
-  marked running until the next start's recovery.
-- The webhook signing secret a save takes (in clear or from a `secretRef`)
-  is kept in `storage.kv` as before (D386), not in `secrets.store@1`
-  (security.md D1021).
 - A public webhook URL through a relay, held deliveries while the node is
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.

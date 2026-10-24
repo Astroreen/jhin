@@ -59,6 +59,7 @@ import {
   type TurnEndHookInput,
   type TurnHookInput,
   visibleThreadEvents,
+  WorkspaceStrategy,
 } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
@@ -492,22 +493,6 @@ const ModelOptionSelectionSchema = z.object({
   id: z.string().min(1).max(100),
   value: z.union([z.string().max(100), z.boolean()]),
 });
-
-/** T3's workspace strategy of a new thread (ThreadLaunchService, D252). */
-const Workspace = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("root"), branch: z.string().min(1).optional() }),
-  z.object({
-    type: z.literal("worktree"),
-    baseRef: z.string().min(1),
-    branch: z.string().min(1).optional(),
-    startFromOrigin: z.boolean().optional(),
-  }),
-  z.object({
-    type: z.literal("existing_worktree"),
-    worktreePath: z.string().min(1),
-    branch: z.string().min(1).optional(),
-  }),
-]);
 
 const AgentSettings = {
   agentId: z.string().min(1).optional(),
@@ -3056,7 +3041,8 @@ export default definePlugin({
           description:
             "The thread's own working directory (a git worktree of the project); its turns run there",
         }),
-        workspace: Workspace.optional().meta({
+        // T3's workspace strategy of a new thread (ThreadLaunchService, D252), shared (D1513).
+        workspace: WorkspaceStrategy.optional().meta({
           description:
             "Where the thread works (T3's workspace strategy): the project's checkout (root), a new worktree made from baseRef, or an existing worktree",
         }),
