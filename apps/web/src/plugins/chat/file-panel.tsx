@@ -31,6 +31,11 @@ export interface FilePanelProps {
   readonly projectId: string | undefined;
   /** The file, relative to the project's folder (or the thread's worktree). */
   readonly path: string;
+  /**
+   * A surface of the right panel (t3-parity.md D1424): its strip has the file's tab, so the
+   * panel's own head goes.
+   */
+  readonly embedded?: boolean;
   onClose(): void;
 }
 
@@ -82,6 +87,48 @@ export function FilePanel(props: FilePanelProps) {
   // T3's breadcrumbs: the project, then each folder down to the file.
   const folders = props.path.split(/[\\/]/).slice(0, -1).filter(Boolean);
   const trail = [project?.name ?? "Workspace", ...folders];
+  const body =
+    projectId === undefined ? (
+      catalog === undefined ? (
+        <FileSurfaceLoading />
+      ) : (
+        // The node's catalog has no such thread (it was deleted, or the link is old); should
+        // it come, the file is read then.
+        <FileSurfaceFailure
+          message={
+            props.threadId === undefined
+              ? "This file's project is not available."
+              : "This file's thread is not available."
+          }
+        />
+      )
+    ) : shown === undefined ? (
+      <FileSurfaceLoading />
+    ) : "error" in shown ? (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <FileSurfaceFailure message={shown.error} onRetry={() => setRevision((n) => n + 1)} />
+        <p className="px-6 pb-6 text-center text-xs text-muted-foreground">
+          Attempted path
+          <code className="block break-all font-mono text-foreground select-all">{props.path}</code>
+        </p>
+      </div>
+    ) : (
+      <AttachmentFilePreview
+        file={shown.file.file}
+        key={key}
+        mimeType=""
+        name={name}
+        sizeBytes={shown.file.sizeBytes}
+        trail={trail}
+      />
+    );
+  if (props.embedded === true) {
+    return (
+      <section aria-label="File preview" className="flex min-h-0 flex-1 flex-col" data-file-panel>
+        {body}
+      </section>
+    );
+  }
   return (
     <aside
       aria-label="File preview"
@@ -112,42 +159,7 @@ export function FilePanel(props: FilePanelProps) {
           </Tooltip>
         </div>
       </div>
-      {projectId === undefined ? (
-        catalog === undefined ? (
-          <FileSurfaceLoading />
-        ) : (
-          // The node's catalog has no such thread (it was deleted, or the link is old); should
-          // it come, the file is read then.
-          <FileSurfaceFailure
-            message={
-              props.threadId === undefined
-                ? "This file's project is not available."
-                : "This file's thread is not available."
-            }
-          />
-        )
-      ) : shown === undefined ? (
-        <FileSurfaceLoading />
-      ) : "error" in shown ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <FileSurfaceFailure message={shown.error} onRetry={() => setRevision((n) => n + 1)} />
-          <p className="px-6 pb-6 text-center text-xs text-muted-foreground">
-            Attempted path
-            <code className="block break-all font-mono text-foreground select-all">
-              {props.path}
-            </code>
-          </p>
-        </div>
-      ) : (
-        <AttachmentFilePreview
-          file={shown.file.file}
-          key={key}
-          mimeType=""
-          name={name}
-          sizeBytes={shown.file.sizeBytes}
-          trail={trail}
-        />
-      )}
+      {body}
     </aside>
   );
 }

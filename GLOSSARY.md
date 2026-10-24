@@ -154,7 +154,15 @@ Words about Jhin:
   **Lineage**, a thread's parent and forks.
 - **File panel** — the panel right of a thread that previews a file a
   message or the prompt mentions (T3 Code's right-hand file panel): the
-  route's panel `file`, its section the file's path (t3-parity.md D1342).
+  route's panel `file`, its section the file's path (t3-parity.md D1342);
+  since D1424 a **surface** `file:<path>` of the right panel.
+- **Right panel** — T3 Code's panel right of the chat whose tabs are
+  **surfaces**, kept per thread (`ui.right-panel@1`, t3-parity.md D1421).
+- **Surface** — one tab of the right panel: a **surface kind** a plugin
+  registers (`browser`, `diff`, `file`, `terminal`, `devices`,
+  `pull-requests`) and what it shows, its id `kind` or `kind:resource`
+  (`browser:<tabId>`, `file:<path>`); the route's panel and section name the
+  one on screen.
 - **Delegated task** — child work a thread hands to an agent of any runtime
   and model (`tasks.delegate`, T3 Code's `delegate_task`): a **child thread**
   (`relationshipToParent: "subagent"`) runs the task prompt, and the parent

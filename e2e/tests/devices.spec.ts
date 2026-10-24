@@ -6,6 +6,7 @@ import * as Zlib from "node:zlib";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
+import { openSurface } from "./support/ui.ts";
 
 // A device screen: a 360 × 720 PNG with a header bar and a card, so the panel draws something.
 function screenPng(): Buffer {
@@ -132,8 +133,8 @@ test("D408: the Device panel lists the node's devices and shows the one an agent
   page,
 }, info) => {
   const threadId = await startThread(page, "devices please");
-  await page.getByRole("button", { name: "Toggle device panel" }).click();
-  const panel = page.getByRole("complementary", { name: "Device panel" });
+  // T3's right panel (t3-parity.md D1424): its "Device" surface.
+  const panel = (await openSurface(page, "Device")).getByRole("region", { name: "Device panel" });
   const ios = panel.getByRole("region", { name: "iOS Simulators" });
   await expect(ios).toContainText("iPhone 15");
   await expect(ios).toContainText("This node · iOS 17.2 · Stopped");

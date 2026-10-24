@@ -3,7 +3,7 @@
 // (the inline panel and its loading skeleton), DiffFilePathCopyButton.tsx, lib/diffCollapse.ts,
 // diffs/useCodeViewFileReveal.ts and chat/DiffStatLabel.tsx.
 import type { MessageContextRecord, ReviewCommentContextRecord } from "@jhin/agent-api";
-import type { ChatDrafts, NodeTarget } from "@jhin/client-api";
+import type { ChatDrafts, NodeTarget, RightPanelSurfaceProps } from "@jhin/client-api";
 import type { DiffScopeContext, DiffScopeResult, ProjectStatus } from "@jhin/source-control-api";
 import type {
   CodeViewDiffItem,
@@ -156,8 +156,32 @@ function EmptyState({ children }: { children: string }) {
   );
 }
 
-/** T3's inline DiffPanelShell. */
-function DiffPanelShell(props: { header?: React.ReactNode; children: React.ReactNode }) {
+/**
+ * T3's DiffPanelShell: inline right of the chat, or `embedded` as a surface of the right panel
+ * (t3-parity.md D1424), its header a subheader below the panel's strip.
+ */
+function DiffPanelShell(props: {
+  header?: React.ReactNode;
+  children: React.ReactNode;
+  embedded: boolean;
+}) {
+  if (props.embedded) {
+    return (
+      <section
+        aria-label="Diff panel"
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+        data-diff-panel
+      >
+        <div
+          className="mb-3 flex h-7 min-h-7 shrink-0 items-center justify-between gap-2 px-2"
+          data-surface-subheader=""
+        >
+          {props.header}
+        </div>
+        {props.children}
+      </section>
+    );
+  }
   return (
     <aside
       aria-label="Diff panel"
@@ -435,6 +459,7 @@ export function createDiffPanel(services: SourceControlServices) {
   const { store, threads, navigation, scopes, selections } = services;
 
   function Panel(props: {
+    embedded: boolean;
     target: NodeTarget;
     projectId: string;
     threadId: string | undefined;
@@ -1261,7 +1286,11 @@ export function createDiffPanel(services: SourceControlServices) {
       );
     }
 
-    return <DiffPanelShell header={header}>{body}</DiffPanelShell>;
+    return (
+      <DiffPanelShell embedded={props.embedded} header={header}>
+        {body}
+      </DiffPanelShell>
+    );
   }
 
   /** The panel docked right of the chat (`app.panel`), open while the route's panel is `diff`. */
@@ -1272,10 +1301,20 @@ export function createDiffPanel(services: SourceControlServices) {
       node: route.node,
       ...(route.remote === undefined ? {} : { remote: route.remote }),
     };
-    return <PanelFor project={route.project} target={target} thread={route.thread} />;
+    return (
+      <PanelFor embedded={false} project={route.project} target={target} thread={route.thread} />
+    );
+  }
+
+  /** The right panel's `diff` surface (t3-parity.md D1424). */
+  function DiffSurface({ place }: RightPanelSurfaceProps) {
+    return (
+      <PanelFor embedded project={place.projectId} target={place.target} thread={place.threadId} />
+    );
   }
 
   function PanelFor(props: {
+    embedded: boolean;
     target: NodeTarget;
     thread?: string | undefined;
     project?: string | undefined;
@@ -1286,13 +1325,14 @@ export function createDiffPanel(services: SourceControlServices) {
     const projectId = props.project ?? record?.projectId;
     if (projectId === undefined) {
       return (
-        <DiffPanelShell>
+        <DiffPanelShell embedded={props.embedded}>
           <EmptyState>Select a thread to inspect turn diffs.</EmptyState>
         </DiffPanelShell>
       );
     }
     return (
       <Panel
+        embedded={props.embedded}
         key={`${JSON.stringify(props.target)}|${projectId}|${props.thread ?? ""}`}
         projectId={projectId}
         // A worktree thread's files are its worktree's (D251).
@@ -1307,5 +1347,5 @@ export function createDiffPanel(services: SourceControlServices) {
     );
   }
 
-  return DiffPanel;
+  return { DiffPanel, DiffSurface };
 }
