@@ -1,5 +1,6 @@
-// The defined agents of each connected node, kept current for Civilization
-// mode's roster and agent page (docs/plans/agents.md, D614–D616).
+// The defined agents of each node the client shows, members of a connection's
+// mesh too, kept current for Civilization mode's roster and agent page
+// (docs/plans/agents.md, D614–D616; M1, D1527, D1528).
 import {
   AGENTS_STREAM,
   AgentEvents,
@@ -11,8 +12,10 @@ import {
   type AgentStatus,
   type TurnStatus,
 } from "@jhin/agent-api";
-import type { Connections, NodeConnection } from "@jhin/client-api";
+import type { Connections, MeshMembership } from "@jhin/client-api";
 import { toDisposable, type Disposable } from "@jhin/sdk";
+
+import { createMeshTargets, type MeshTarget, type MeshTargets } from "../../lib/mesh-targets.ts";
 
 /** One node's agents, and what their status is made of (D616). */
 export interface NodeAgents {
@@ -149,12 +152,14 @@ export function generationsKey(agent: AgentRecord, state: NodeAgents): string {
 }
 
 export interface AgentsStore extends Disposable {
-  /** Every followed node's agents, by connection id: the same map until one changes. */
+  /** Every followed node's agents, by its key (`targetKey`): the same map until one changes. */
   snapshot(): ReadonlyMap<string, NodeAgents>;
-  /** Follows the open connections while subscribed. */
+  /** The nodes followed, in the roster's order (D1527). */
+  nodes(): readonly MeshTarget[];
+  /** Follows the open connections, and their members, while subscribed. */
   subscribe(listener: () => void): Disposable;
   /** Reads a node again from the start, now: the Retry button, which also resets the pause (D1387). */
-  refresh(connection: string): void;
+  refresh(node: string): void;
 }
 
 /**
@@ -171,9 +176,12 @@ export function createAgentsStore(
     const timer = setTimeout(run, ms);
     return () => clearTimeout(timer);
   },
+  /** With it, the reachable members of each connection's mesh too (D1527). */
+  mesh?: MeshMembership,
 ): AgentsStore {
   const states = new Map<string, NodeAgents>();
-  const feeds = new Map<string, { client: NodeConnection["client"]; stop: () => void }>();
+  const feeds = new Map<string, { node: MeshTarget; stop: () => void }>();
+  let targets: MeshTargets | undefined;
   /** Failures in a row per node since its feed last delivered; the pause grows with it (D1387). */
   const failures = new Map<string, number>();
   const listeners = new Set<() => void>();
@@ -198,14 +206,14 @@ export function createAgentsStore(
   };
 
   /** `previous`: what the node showed before this attempt, which stays until the attempt reads. */
-  const start = (connection: NodeConnection, previous?: NodeAgents) => {
-    const { id, client } = connection;
+  const start = (node: MeshTarget, previous?: NodeAgents) => {
+    const { key: id, channel: client } = node;
     const subscriptions: Disposable[] = [];
     let stopped = false;
     let cancelRetry: (() => void) | undefined;
     let failedOnce = false;
     feeds.set(id, {
-      client,
+      node,
       stop: () => {
         stopped = true;
         cancelRetry?.();
@@ -230,9 +238,8 @@ export function createAgentsStore(
       cancelRetry = delay(
         () => {
           const feed = feeds.get(id);
-          const current = connections.get(id);
-          if (stopped || feed?.client !== client || current?.client !== client) return;
-          if (current.state !== "open") return;
+          const current = targets?.snapshot().find((item) => item.key === id);
+          if (stopped || feed?.node.channel !== client || current?.channel !== client) return;
           feed.stop();
           start(current, states.get(id));
         },
@@ -300,23 +307,28 @@ export function createAgentsStore(
   };
 
   const sync = () => {
-    const open = connections.list().filter((connection) => connection.state === "open");
+    const shown = targets?.snapshot() ?? [];
     for (const [id, feed] of feeds) {
-      const connection = open.find((item) => item.id === id);
-      // What a closed or replaced connection showed is not live any more.
-      if (connection === undefined || connection.client !== feed.client) stop(id);
+      const node = shown.find((item) => item.key === id);
+      // What a closed or replaced connection, or a member gone, showed is not live any more.
+      if (node === undefined || node.channel !== feed.node.channel) stop(id);
     }
-    for (const connection of open) if (!feeds.has(connection.id)) start(connection);
+    for (const node of shown) if (!feeds.has(node.key)) start(node);
+    // The order of the nodes may change without a feed changing.
+    changed();
   };
 
   let watching: Disposable | undefined;
   const stopAll = () => {
     watching?.dispose();
     watching = undefined;
+    targets?.dispose();
+    targets = undefined;
     for (const id of Array.from(feeds.keys())) stop(id);
   };
   return {
     snapshot: () => snapshot,
+    nodes: () => targets?.snapshot() ?? [],
     refresh(id) {
       if (watching === undefined) return;
       stop(id);
@@ -325,7 +337,8 @@ export function createAgentsStore(
     subscribe(listener) {
       listeners.add(listener);
       if (watching === undefined) {
-        watching = connections.subscribe(sync);
+        targets = createMeshTargets(connections, mesh);
+        watching = targets.subscribe(sync);
         sync();
       }
       return toDisposable(() => {

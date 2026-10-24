@@ -1,4 +1,5 @@
-import type { Route } from "@jhin/client-api";
+import type { NodeTarget, Route } from "@jhin/client-api";
+import { targetFields } from "../../lib/mesh-targets.ts";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 
 /** The route panel of an agent's page (D615). */
@@ -9,9 +10,9 @@ export const AGENT_PANEL = "agent";
  * `section` (`<agentId>` for the current one, `<agentId>/<n>` for another).
  * Never `thread`: a generation is not one of Threads mode's threads.
  */
-export function agentRoute(node: string, agentId: string, generation?: number): Route {
+export function agentRoute(target: NodeTarget, agentId: string, generation?: number): Route {
   return {
-    node,
+    ...targetFields(target),
     mode: CIVILIZATION_MODE,
     panel: AGENT_PANEL,
     section: generation === undefined ? agentId : `${agentId}/${generation}`,
@@ -32,10 +33,10 @@ export function parseAgentSection(
 /** The route panel of the form that defines or edits an agent (D1065). */
 export const AGENT_FORM_PANEL = "agent-definition";
 
-/** The form of a new agent, or with `agentId` of one to edit (D1065). */
-export function agentFormRoute(node: string, agentId?: string): Route {
+/** The form of a new agent, or with `agentId` of one to edit (D1065), on its node (D1528). */
+export function agentFormRoute(target: NodeTarget, agentId?: string): Route {
   return {
-    node,
+    ...targetFields(target),
     mode: CIVILIZATION_MODE,
     panel: AGENT_FORM_PANEL,
     ...(agentId === undefined ? {} : { section: agentId }),

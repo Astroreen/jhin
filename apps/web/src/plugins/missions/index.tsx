@@ -104,12 +104,18 @@ export const missionsViewPlugin = builtin(
           description: "Opens a mission in Civilization mode's mission view (D1393)",
           input: z.object({
             node: z.string().min(1).meta({ description: "The connection the mission is on" }),
+            remote: z.string().min(1).optional().meta({
+              description: "A member of that connection's mesh the mission is on (D1529)",
+            }),
             missionId: z.string().min(1),
           }),
           output: z.object({}),
-          handler: ({ node, missionId }) => {
+          handler: ({ node, remote, missionId }) => {
             shared.navigation.navigate(
-              routeOf({ node, mode: CIVILIZATION_MODE }, { kind: "mission", missionId }),
+              routeOf(
+                { node, ...(remote === undefined ? {} : { remote }), mode: CIVILIZATION_MODE },
+                { kind: "mission", missionId },
+              ),
             );
             return {};
           },
@@ -118,6 +124,7 @@ export const missionsViewPlugin = builtin(
       // The orchestrator beside a mission (C2: D1087), a chunk of its own.
       const orchestrator = {
         connections,
+        mesh: shared.mesh,
         threads: shared.threads,
         dialogs: shared.dialogs,
       };

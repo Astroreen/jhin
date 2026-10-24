@@ -3,9 +3,12 @@
 // `civilization.views`, its generations read through `thread.transcript`.
 import {
   CONNECTIONS_CAPABILITY,
+  MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
+  targetKey,
   type Connections,
+  type MeshMembership,
   type Navigation,
   type ThreadsCatalog,
 } from "@jhin/client-api";
@@ -20,6 +23,7 @@ import {
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { routeTarget } from "../../lib/mesh-targets.ts";
 import {
   AGENT_FORM_PANEL,
   AGENT_PANEL,
@@ -66,7 +70,7 @@ export const agentsViewPlugin = builtin(
       [NAVIGATION_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
     },
-    optional: { [UI_TOASTS_CAPABILITY]: "^1" },
+    optional: { [UI_TOASTS_CAPABILITY]: "^1", [MESH_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
@@ -78,7 +82,9 @@ export const agentsViewPlugin = builtin(
       // The store comes with the views' chunk, made when they first show (D440).
       const held: { store?: AgentsStore } = {};
       context.subscriptions.add({ dispose: () => held.store?.dispose() });
-      const view: AgentsView = { context, held, connections, navigation, threads, toasts };
+      // The agents of each connection's mesh members too (M1, D1528).
+      const mesh = context.services.tryGet<MeshMembership>(MESH_CAPABILITY);
+      const view: AgentsView = { context, held, connections, mesh, navigation, threads, toasts };
 
       // Opening an agent is a command, so the palette, CLI and MCP reach it (rule 6).
       context.subscriptions.add(
@@ -89,12 +95,18 @@ export const agentsViewPlugin = builtin(
             "Opens a defined agent's page in Civilization mode, at its current generation or the one named (D615)",
           input: z.object({
             node: z.string().min(1).meta({ description: "The connection the agent is on" }),
+            remote: z
+              .string()
+              .min(1)
+              .optional()
+              .meta({ description: "A member of that connection's mesh the agent is on (D1528)" }),
             agentId: z.string().min(1),
             generation: z.number().int().positive().optional(),
           }),
           output: z.object({}),
-          handler: ({ node, agentId, generation }) => {
-            navigation.navigate(agentRoute(node, agentId, generation));
+          handler: ({ node, remote, agentId, generation }) => {
+            const target = routeTarget({ node, ...(remote === undefined ? {} : { remote }) })!;
+            navigation.navigate(agentRoute(target, agentId, generation));
             return {};
           },
         }),
@@ -108,11 +120,17 @@ export const agentsViewPlugin = builtin(
             "Opens the form that defines a new agent, or with agentId edits one, in Civilization mode (D1065)",
           input: z.object({
             node: z.string().min(1).meta({ description: "The connection the agent is on" }),
+            remote: z
+              .string()
+              .min(1)
+              .optional()
+              .meta({ description: "A member of that connection's mesh the agent is on (D1528)" }),
             agentId: z.string().min(1).optional(),
           }),
           output: z.object({}),
-          handler: ({ node, agentId }) => {
-            navigation.navigate(agentFormRoute(node, agentId));
+          handler: ({ node, remote, agentId }) => {
+            const target = routeTarget({ node, ...(remote === undefined ? {} : { remote }) })!;
+            navigation.navigate(agentFormRoute(target, agentId));
             return {};
           },
         }),
@@ -121,12 +139,13 @@ export const agentsViewPlugin = builtin(
       const AgentsRoster = () => <Roster view={view} />;
       const AgentFormView = () => {
         const route = useExternal(navigation, navigation.current);
-        if (route.panel !== AGENT_FORM_PANEL || route.node === undefined) return null;
+        const target = routeTarget(route);
+        if (route.panel !== AGENT_FORM_PANEL || target === undefined) return null;
         return (
           <Form
             agentId={route.section}
-            key={`${route.node}|${route.section ?? ""}`}
-            node={route.node}
+            key={`${targetKey(target)}|${route.section ?? ""}`}
+            target={target}
             view={view}
           />
         );
@@ -134,15 +153,16 @@ export const agentsViewPlugin = builtin(
       const AgentView = () => {
         const route = useExternal(navigation, navigation.current);
         // Only its own panel: the other views of `civilization.views` render theirs (D750).
-        if (route.panel !== AGENT_PANEL || route.node === undefined) return null;
+        const target = routeTarget(route);
+        if (route.panel !== AGENT_PANEL || target === undefined) return null;
         const section = parseAgentSection(route.section);
         if (section === undefined) return null;
         return (
           <Page
             agentId={section.agentId}
             generation={section.generation}
-            key={`${route.node}|${section.agentId}`}
-            node={route.node}
+            key={`${targetKey(target)}|${section.agentId}`}
+            target={target}
             view={view}
           />
         );

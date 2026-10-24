@@ -7,7 +7,13 @@ import {
   type AgentRecord,
   type WorkflowPatch,
 } from "@jhin/agent-api";
-import type { Connections, ThreadsCatalog } from "@jhin/client-api";
+import {
+  targetKey,
+  type Connections,
+  type MeshMembership,
+  type NodeTarget,
+  type ThreadsCatalog,
+} from "@jhin/client-api";
 import { missionProgress } from "@jhin/missions-api";
 import type { Disposable } from "@jhin/sdk";
 import {
@@ -24,6 +30,8 @@ import { PauseIcon, PlayIcon, SquareIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
+import { nodeChannel } from "../../lib/node-channel.ts";
+import { useMeshTargets } from "../../lib/use-mesh-targets.ts";
 import { useDirectory } from "./directory.ts";
 import { DirectoryNotices } from "./notice.tsx";
 import {
@@ -36,6 +44,8 @@ import {
 
 export interface OrchestratorServices {
   readonly connections: Connections;
+  /** For the titles of every node's agents (D1532). */
+  readonly mesh: MeshMembership | undefined;
   readonly threads: ThreadsCatalog;
   readonly dialogs: Dialogs | undefined;
 }
@@ -66,14 +76,15 @@ const runOf = (record: OrchestratorRun): OrchestratorRun => ({
  * started elsewhere (the lead orchestrating again) is read afresh when its
  * first record comes by.
  */
-function useMissionRun(connections: Connections, connection: string, missionId: string) {
+function useMissionRun(connections: Connections, target: NodeTarget, missionId: string) {
   const nodes = useExternal(connections, connections.list);
-  const node = nodes.find((item) => item.id === connection);
-  const client = node?.state === "open" ? node.client : undefined;
+  const node = nodes.find((item) => item.id === target.node);
+  // A member's mission is read through its connection (D1529).
+  const client = node?.state === "open" ? nodeChannel(node.client, target.remote) : undefined;
   const [view, setView] = useState<{ key: string; view: RunView }>();
   const [round, setRound] = useState(0);
   // A reload keeps showing the last answer until the new one comes: no flash.
-  const key = `${connection}|${missionId}`;
+  const key = `${targetKey(target)}|${missionId}`;
   useEffect(() => {
     if (client === undefined) return;
     let stopped = false;
@@ -81,6 +92,8 @@ function useMissionRun(connections: Connections, connection: string, missionId: 
     const set = (next: RunView) => !stopped && setView({ key, view: next });
     const failed = (error: unknown) => {
       const code = String((error as { code?: unknown } | null)?.code);
+      // A member's runs are read, not followed: it does not share them (M1 Deferred).
+      if (code === "STREAM_NOT_SHARED") return;
       set(
         UNAVAILABLE.has(code)
           ? { status: "unavailable" }
@@ -202,8 +215,9 @@ const RUN_VARIANT: Readonly<Record<string, "info" | "warning" | "secondary" | "o
 
 export function OrchestratorPanel(props: MissionAsideProps & { services: OrchestratorServices }) {
   const { target, mission, slices, titles, services } = props;
-  const { view, reload } = useMissionRun(services.connections, target.node, mission.id);
-  const directory = useDirectory(services.threads, target);
+  const { view, reload } = useMissionRun(services.connections, target, mission.id);
+  const meshNodes = useMeshTargets(services.connections, services.mesh);
+  const directory = useDirectory(services.threads, target, meshNodes);
   const leads = leadsOf(directory.agents);
   const teamLeads = useTeamLeads(services.threads, target);
   const run = view.status === "ready" ? view.run : undefined;

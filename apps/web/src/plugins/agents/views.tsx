@@ -3,9 +3,11 @@
 import type { AgentGeneration, AgentRecord, AgentStatus } from "@jhin/agent-api";
 import {
   THREAD_TRANSCRIPT_SLOT,
+  targetKey,
   type Connections,
+  type MeshMembership,
   type Navigation,
-  type NodeConnection,
+  type NodeTarget,
   type ThreadsCatalog,
   type ThreadTranscriptProps,
 } from "@jhin/client-api";
@@ -43,6 +45,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
+import { targetFields, type MeshTarget } from "../../lib/mesh-targets.ts";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 import {
   AGENT_FORM_PANEL,
@@ -67,13 +70,15 @@ export interface AgentsView {
   /** The agents store, made by this chunk on first use and disposed with the plugin. */
   readonly held: { store?: AgentsStore };
   readonly connections: Connections;
+  /** With it, the agents of each connection's mesh members too (D1528). */
+  readonly mesh: MeshMembership | undefined;
   readonly navigation: Navigation;
   readonly threads: ThreadsCatalog;
   readonly toasts: Toasts | undefined;
 }
 
 export const storeOf = (view: AgentsView): AgentsStore =>
-  (view.held.store ??= createAgentsStore(view.connections, view.context.log));
+  (view.held.store ??= createAgentsStore(view.connections, view.context.log, undefined, view.mesh));
 
 const STATUS_DOT: Readonly<Record<AgentStatus, string>> = {
   idle: "bg-muted-foreground/40",
@@ -111,13 +116,13 @@ function Muted({ children }: { children: string }) {
 /** One node's agents by home project, in the catalog's order of projects. */
 function NodeRoster(props: {
   view: AgentsView;
-  connection: NodeConnection;
+  node: MeshTarget;
   state: NodeAgents;
   labelled: boolean;
 }) {
-  const { view, connection, state } = props;
+  const { view, node, state } = props;
   const route = useExternal(view.navigation, view.navigation.current);
-  const catalog = useCatalog(view.threads, { node: connection.id });
+  const catalog = useCatalog(view.threads, node.target);
   const projects = catalog?.projects ?? [];
   const groups = new Map<string | undefined, AgentRecord[]>();
   for (const agent of state.agents) {
@@ -133,10 +138,10 @@ function NodeRoster(props: {
   ];
   const open = parseAgentSection(route.section);
   return (
-    <div data-agents-node={connection.id}>
+    <div data-agents-node={node.key}>
       {props.labelled ? (
         <p className="truncate px-2 pt-1 text-2xs font-medium uppercase tracking-wide text-sidebar-muted-foreground">
-          {connection.label}
+          {node.label}
         </p>
       ) : null}
       {ordered.map((group) => (
@@ -147,7 +152,8 @@ function NodeRoster(props: {
               const status = statusOf(agent, state);
               const active =
                 route.panel === AGENT_PANEL &&
-                route.node === connection.id &&
+                route.node === node.target.node &&
+                route.remote === node.target.remote &&
                 open?.agentId === agent.agentId;
               return (
                 <SidebarMenuItem key={agent.agentId}>
@@ -157,7 +163,7 @@ function NodeRoster(props: {
                     isActive={active}
                     onClick={() =>
                       void view.context.commands.execute("civilization.agent.open", {
-                        node: connection.id,
+                        ...targetFields(node.target),
                         agentId: agent.agentId,
                       })
                     }
@@ -184,7 +190,7 @@ function NodeRoster(props: {
       {state.status === "error" ? (
         <div className="flex items-center gap-2 px-2 py-1 text-xs text-destructive-foreground">
           <span className="min-w-0 truncate">{state.error}</span>
-          <Button onClick={() => storeOf(view).refresh(connection.id)} size="xs" variant="ghost">
+          <Button onClick={() => storeOf(view).refresh(node.key)} size="xs" variant="ghost">
             Retry
           </Button>
         </div>
@@ -193,24 +199,25 @@ function NodeRoster(props: {
   );
 }
 
-/** The `civilization.sidebar.agents` section: every open node's defined agents. */
+/** The `civilization.sidebar.agents` section: the defined agents of every node shown, members too (D1528). */
 export function Roster({ view }: { view: AgentsView }) {
   const nodes = useExternal(storeOf(view), storeOf(view).snapshot);
-  const list = useExternal(view.connections, view.connections.list);
-  const shown = list.filter((connection) => {
-    const state = nodes.get(connection.id);
-    return state !== undefined && state.status !== "unsupported";
-  });
+  const shown = storeOf(view)
+    .nodes()
+    .filter((node) => {
+      const state = nodes.get(node.key);
+      return state !== undefined && state.status !== "unsupported";
+    });
   const agents = shown.reduce(
-    (count, connection) => count + (nodes.get(connection.id)?.agents.length ?? 0),
+    (count, node) => count + (nodes.get(node.key)?.agents.length ?? 0),
     0,
   );
-  const failed = shown.some((connection) => nodes.get(connection.id)?.status === "error");
+  const failed = shown.some((node) => nodes.get(node.key)?.status === "error");
   // A new agent goes to the route's node, else the first that has agents (D1065).
   const route = useExternal(view.navigation, view.navigation.current);
   const target =
-    shown.find((connection) => connection.id === route.node) ??
-    shown.find((connection) => (nodes.get(connection.id)?.agents.length ?? 0) > 0) ??
+    shown.find((node) => node.target.node === route.node && node.target.remote === route.remote) ??
+    shown.find((node) => (nodes.get(node.key)?.agents.length ?? 0) > 0) ??
     shown[0];
   const add =
     target === undefined ? null : (
@@ -219,7 +226,7 @@ export function Roster({ view }: { view: AgentsView }) {
           <SidebarMenuButton
             className="text-sidebar-muted-foreground"
             isActive={route.panel === AGENT_FORM_PANEL && route.section === undefined}
-            onClick={() => view.navigation.navigate(agentFormRoute(target.id))}
+            onClick={() => view.navigation.navigate(agentFormRoute(target.target))}
           >
             <PlusIcon />
             <span>New agent</span>
@@ -228,7 +235,7 @@ export function Roster({ view }: { view: AgentsView }) {
       </SidebarMenu>
     );
   if (agents === 0 && !failed) {
-    const loading = shown.some((connection) => nodes.get(connection.id)?.status === "loading");
+    const loading = shown.some((node) => nodes.get(node.key)?.status === "loading");
     return (
       <>
         <Muted>{loading ? "Loading agents…" : "No agents yet."}</Muted>
@@ -238,12 +245,12 @@ export function Roster({ view }: { view: AgentsView }) {
   }
   return (
     <>
-      {shown.map((connection) => (
+      {shown.map((node) => (
         <NodeRoster
-          connection={connection}
-          key={connection.id}
+          key={node.key}
           labelled={shown.length > 1}
-          state={nodes.get(connection.id)!}
+          node={node}
+          state={nodes.get(node.key)!}
           view={view}
         />
       ))}
@@ -270,12 +277,13 @@ function PageEmpty({ title, text }: { title: string; text: string }) {
 
 function Generations(props: {
   view: AgentsView;
-  node: string;
+  target: NodeTarget;
   agent: AgentRecord;
   state: NodeAgents;
   shown: AgentGeneration;
 }) {
-  const { view, node, agent, state, shown } = props;
+  const { view, target, agent, state, shown } = props;
+  const node = targetKey(target);
   // Each generation's own status (D1272): `agents.generations`, asked again when this agent changes.
   const [statuses, setStatuses] = useState<
     { key: string; map: ReadonlyMap<string, AgentStatus> | "failed" } | undefined
@@ -284,7 +292,7 @@ function Generations(props: {
   useEffect(() => {
     let live = true;
     view.threads
-      .call<{ threadId: string; status: AgentStatus }[]>({ node }, "agents.generations", {
+      .call<{ threadId: string; status: AgentStatus }[]>(target, "agents.generations", {
         agentId: agent.agentId,
       })
       .then(
@@ -317,7 +325,7 @@ function Generations(props: {
                 )}
                 onClick={() =>
                   view.navigation.navigate(
-                    agentRoute(node, agent.agentId, current ? undefined : generation.number),
+                    agentRoute(target, agent.agentId, current ? undefined : generation.number),
                   )
                 }
                 type="button"
@@ -353,13 +361,13 @@ function Generations(props: {
  */
 export function AgentPage(props: {
   view: AgentsView;
-  node: string;
+  target: NodeTarget;
   agentId: string;
   generation?: number | undefined;
 }) {
-  const { view, node, agentId } = props;
+  const { view, target, agentId } = props;
   const nodes = useExternal(storeOf(view), storeOf(view).snapshot);
-  const state = nodes.get(node);
+  const state = nodes.get(targetKey(target));
   const agent = state?.agents.find((item) => item.agentId === agentId);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -389,7 +397,8 @@ export function AgentPage(props: {
   ) => {
     setBusy(true);
     try {
-      await view.threads.call({ node }, command, { agentId, ...input });
+      // On the agent's node, a member through its connection (D1528).
+      await view.threads.call(target, command, { agentId, ...input });
       return true;
     } catch (error) {
       view.toasts?.show({ type: "error", title: failure, description: (error as Error).message });
@@ -405,13 +414,13 @@ export function AgentPage(props: {
         reason: "started by the owner",
       })
     ) {
-      view.navigation.navigate(agentRoute(node, agentId));
+      view.navigation.navigate(agentRoute(target, agentId));
     }
   };
   const remove = async () => {
     setRemoving(false);
     if (await run("agents.remove", "Could not remove the agent")) {
-      view.navigation.navigate({ node, mode: CIVILIZATION_MODE });
+      view.navigation.navigate({ ...targetFields(target), mode: CIVILIZATION_MODE });
     }
   };
   return (
@@ -433,7 +442,7 @@ export function AgentPage(props: {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button
-            onClick={() => view.navigation.navigate(agentFormRoute(node, agentId))}
+            onClick={() => view.navigation.navigate(agentFormRoute(target, agentId))}
             size="compact"
             variant="outline"
           >
@@ -510,11 +519,11 @@ export function AgentPage(props: {
         />
       ) : (
         <div className="flex min-h-0 flex-1">
-          <Generations agent={agent} node={node} shown={shown} state={state} view={view} />
+          <Generations agent={agent} shown={shown} state={state} target={target} view={view} />
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto py-4">
             <Slot
               name={THREAD_TRANSCRIPT_SLOT}
-              props={{ target: { node }, threadId: shown.threadId } satisfies ThreadTranscriptProps}
+              props={{ target, threadId: shown.threadId } satisfies ThreadTranscriptProps}
             />
           </div>
         </div>

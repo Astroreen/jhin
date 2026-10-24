@@ -220,10 +220,20 @@ export function ThreadView(props: {
                 item.state === "open" &&
                 chat.mesh?.members(item.id)?.find((member) => member.self)?.nodeId === party.nodeId,
             )?.id;
-    if (connection === undefined) return undefined;
+    // Else a member of the thread's connection's mesh, through it (agents.md D1528).
+    const member =
+      connection === undefined &&
+      chat.mesh?.members(target.node)?.some((item) => item.nodeId === party.nodeId && !item.self)
+        ? party.nodeId
+        : undefined;
+    if (connection === undefined && member === undefined) return undefined;
     return () =>
       void chat.context.commands
-        .execute("civilization.agent.open", { node: connection, agentId: party.agentId })
+        .execute("civilization.agent.open", {
+          node: connection ?? target.node,
+          ...(member === undefined ? {} : { remote: member }),
+          agentId: party.agentId,
+        })
         .catch(() => undefined);
   };
   // T3's find in the thread (D801): mod+f opens its bar over the messages.

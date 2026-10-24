@@ -2,8 +2,10 @@
 // D630): the open messages and asks agents sent the owner, kept current from
 // the `agents/inbox` stream.
 import { INBOX_STREAM, MessageEvents, type InboxItem } from "@jhin/agent-api";
-import type { Connections, NodeConnection } from "@jhin/client-api";
+import type { Connections, MeshMembership } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
+
+import type { MeshTarget } from "../../lib/mesh-targets.ts";
 
 import {
   createNodeFeeds,
@@ -38,7 +40,8 @@ export function applyInboxEvent(
 export type InboxStore = NodeFeeds<readonly InboxItem[]>;
 
 /**
- * Follows the inbox of every open connection for as long as the plugin runs,
+ * Follows the inbox of every open connection, and with `mesh` of every
+ * reachable member of one (M1, D1530), for as long as the plugin runs,
  * so an ask is told to the owner in any mode: `agents.inbox.list`, then the
  * `agents/inbox` stream after its head. `arrived` hears each item that came
  * after the list, never the ones already waiting.
@@ -49,32 +52,39 @@ export function createInboxStore(
     warn(message: string, fields?: Record<string, unknown>): void;
     info(message: string, fields?: Record<string, unknown>): void;
   },
-  arrived: (connection: NodeConnection, item: InboxItem) => void,
+  arrived: (node: MeshTarget, item: InboxItem) => void,
+  mesh?: MeshMembership,
 ): InboxStore & Disposable {
-  return createNodeFeeds<readonly InboxItem[]>(connections, log, {
-    empty: [],
-    stream: INBOX_STREAM,
-    load: async (client) => {
-      const { head, items } = await client.call<{ head: number; items: InboxItem[] }>(
-        "agents.inbox.list",
-        {},
-      );
-      return { head, state: items };
+  return createNodeFeeds<readonly InboxItem[]>(
+    connections,
+    log,
+    {
+      empty: [],
+      stream: INBOX_STREAM,
+      load: async (client) => {
+        const { head, items } = await client.call<{ head: number; items: InboxItem[] }>(
+          "agents.inbox.list",
+          {},
+        );
+        return { head, state: items };
+      },
+      apply: applyInboxEvent,
+      reread: (connection, before, after) => {
+        const fresh = after
+          .filter(
+            (item) => !before.some((known) => known.message.messageId === item.message.messageId),
+          )
+          .toSorted((a, b) => b.message.sentAt.localeCompare(a.message.sentAt));
+        for (const item of newestToTell(fresh, log, INBOX_STREAM)) arrived(connection, item);
+      },
+      seen: (connection, event, before, after) => {
+        if (event.type === MessageEvents.received && after !== before)
+          arrived(connection, after.at(-1)!);
+      },
     },
-    apply: applyInboxEvent,
-    reread: (connection, before, after) => {
-      const fresh = after
-        .filter(
-          (item) => !before.some((known) => known.message.messageId === item.message.messageId),
-        )
-        .toSorted((a, b) => b.message.sentAt.localeCompare(a.message.sentAt));
-      for (const item of newestToTell(fresh, log, INBOX_STREAM)) arrived(connection, item);
-    },
-    seen: (connection, event, before, after) => {
-      if (event.type === MessageEvents.received && after !== before)
-        arrived(connection, after.at(-1)!);
-    },
-  });
+    {},
+    mesh,
+  );
 }
 
 /** How many items are open on every node together (D1273). */
@@ -84,7 +94,7 @@ export function openCount(nodes: ReadonlyMap<string, NodeInbox>): number {
   return count;
 }
 
-/** The open items of every node, oldest first, with the connection each is on. */
+/** The open items of every node, oldest first, with the key of the node each is on. */
 export function openItems(
   nodes: ReadonlyMap<string, NodeInbox>,
 ): { readonly node: string; readonly item: InboxItem }[] {

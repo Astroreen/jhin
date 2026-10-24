@@ -61,6 +61,17 @@ function viewOf(
   const view = {
     store: {
       snapshot: () => snapshot,
+      // As `createNodeFeeds` names a connection's node (D1530): the connection's client.
+      target: (id: string) => {
+        const connection = (
+          view.connections as unknown as {
+            get(id: string): { label: string; client: unknown } | undefined;
+          }
+        ).get(id);
+        return connection === undefined
+          ? undefined
+          : { key: id, target: { node: id }, label: connection.label, channel: connection.client };
+      },
       subscribe: (listener: () => void) => {
         listeners.add(listener);
         return toDisposable(() => listeners.delete(listener));

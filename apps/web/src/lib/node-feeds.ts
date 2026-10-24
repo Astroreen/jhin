@@ -1,7 +1,11 @@
-// A record of every open connection kept current from one of its streams:
-// what the inbox (agents.md D630) and health (D731) follow on each node.
-import type { Connections, NodeConnection } from "@jhin/client-api";
+// A record of every node kept current from one of its streams: what the
+// inbox (agents.md D630) and health (D731) follow on each open connection and,
+// with the mesh, on each reachable member of it (M1, D1527, D1530).
+import type { Connections, MeshMembership } from "@jhin/client-api";
 import { toDisposable, type Disposable } from "@jhin/sdk";
+
+import { createMeshTargets, type MeshTarget } from "./mesh-targets.ts";
+import type { NodeChannel } from "./node-channel.ts";
 
 /** One node's state of a feed. */
 export interface NodeFeed<S> {
@@ -20,8 +24,10 @@ export const holdsRead = <S>(feed: NodeFeed<S> | undefined): boolean =>
   feed?.status === "ready" || (feed?.status === "error" && feed.read === true);
 
 export interface NodeFeeds<S> {
-  /** Every connection's feed, by connection id: the same map until one changes. */
+  /** Every node's feed, by its key (`targetKey`): the same map until one changes. */
   snapshot(): ReadonlyMap<string, NodeFeed<S>>;
+  /** The node a feed's key names, while it is followed (its label, its channel). */
+  target(key: string): MeshTarget | undefined;
   subscribe(listener: () => void): Disposable;
   /**
    * Applies a change this client made and knows succeeded to a feed, live
@@ -32,7 +38,7 @@ export interface NodeFeeds<S> {
   apply(id: string, event: { type: string; payload: unknown }): void;
 }
 
-/** The connections whose feed was read and then failed: what they show may be out of date. */
+/** The nodes whose feed was read and then failed: what they show may be out of date. */
 export function notLive<S>(nodes: ReadonlyMap<string, NodeFeed<S>>): string[] {
   // A feed never read shows nothing that could be out of date.
   return [...nodes]
@@ -46,21 +52,16 @@ export interface NodeFeedSource<S> {
   /** The stream to follow after the head `load` returns. */
   readonly stream: string;
   /** Reads a node's state and the head of `stream` it reflects. */
-  load(client: NodeConnection["client"]): Promise<{ head: number; state: S }>;
+  load(client: Pick<NodeChannel, "call">): Promise<{ head: number; state: S }>;
   /** Applies one event of the stream; the same state when nothing changed. */
   apply(state: S, event: { type: string; payload: unknown }): S;
   /** Hears every event that came after the load, with the states around it. */
-  seen?(
-    connection: NodeConnection,
-    event: { type: string; payload: unknown },
-    before: S,
-    after: S,
-  ): void;
+  seen?(node: MeshTarget, event: { type: string; payload: unknown }, before: S, after: S): void;
   /**
    * Hears a read again after the stream dropped, with what the feed held
    * before it and what the node holds now: what came meanwhile is new.
    */
-  reread?(connection: NodeConnection, before: S, after: S): void;
+  reread?(node: MeshTarget, before: S, after: S): void;
 }
 
 /**
@@ -113,7 +114,10 @@ const NOT_THERE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSION_
  */
 const LASTING = new Set([...NOT_THERE, "COMMAND_INPUT_INVALID", "COMMAND_OUTPUT_INVALID"]);
 
-/** Follows `source` on every open connection for as long as it is not disposed. */
+/**
+ * Follows `source` on every open connection, and with `mesh` on every
+ * reachable member of one (D1527), for as long as it is not disposed.
+ */
 export function createNodeFeeds<S>(
   connections: Connections,
   log: { warn(message: string, fields?: Record<string, unknown>): void },
@@ -127,6 +131,7 @@ export function createNodeFeeds<S>(
     /** Runs `run` after `ms`; tests run it when they say. */
     readonly later?: (ms: number, run: () => void) => Disposable;
   } = {},
+  mesh?: MeshMembership,
 ): NodeFeeds<S> & Disposable {
   const clock = timing.clock ?? (() => performance.now());
   const later =
@@ -138,7 +143,7 @@ export function createNodeFeeds<S>(
   const states = new Map<string, NodeFeed<S>>();
   /** Changes this client applied to a feed while its stream is read again. */
   const rereads = new Map<string, { type: string; payload: unknown }[]>();
-  const feeds = new Map<string, { client: NodeConnection["client"]; stop: () => void }>();
+  const feeds = new Map<string, { node: MeshTarget; stop: () => void }>();
   const listeners = new Set<() => void>();
   let snapshot: ReadonlyMap<string, NodeFeed<S>> = new Map();
   const changed = () => {
@@ -160,12 +165,12 @@ export function createNodeFeeds<S>(
     changed();
   };
 
-  const start = (connection: NodeConnection) => {
-    const { id, client } = connection;
+  const start = (connection: MeshTarget) => {
+    const { key: id, channel: client } = connection;
     const subscriptions: Disposable[] = [];
     let stopped = false;
     feeds.set(id, {
-      client,
+      node: connection,
       stop: () => {
         stopped = true;
         for (const subscription of subscriptions) subscription.dispose();
@@ -352,20 +357,22 @@ export function createNodeFeeds<S>(
     rereads.delete(id);
     if (states.delete(id)) changed();
   };
+  const targets = createMeshTargets(connections, mesh);
   const sync = () => {
-    const open = connections.list().filter((connection) => connection.state === "open");
+    const shown = targets.snapshot();
     for (const [id, feed] of feeds) {
-      const connection = open.find((item) => item.id === id);
-      // What a closed or replaced connection showed is not live any more.
-      if (connection === undefined || connection.client !== feed.client) stop(id);
+      const node = shown.find((item) => item.key === id);
+      // What a closed or replaced connection, or a member gone, showed is not live any more.
+      if (node === undefined || node.channel !== feed.node.channel) stop(id);
     }
-    for (const connection of open) if (!feeds.has(connection.id)) start(connection);
+    for (const node of shown) if (!feeds.has(node.key)) start(node);
   };
-  const watching = connections.subscribe(sync);
+  const watching = targets.subscribe(sync);
   sync();
 
   return {
     snapshot: () => snapshot,
+    target: (key) => feeds.get(key)?.node,
     apply(id, event) {
       const pending = rereads.get(id);
       set(id, (feed) => {
@@ -381,6 +388,7 @@ export function createNodeFeeds<S>(
     },
     dispose() {
       watching.dispose();
+      targets.dispose();
       listeners.clear();
       for (const id of Array.from(feeds.keys())) stop(id);
     },

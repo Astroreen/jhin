@@ -1,6 +1,6 @@
 # Agents plan: teams of persistent agents
 
-Status: **in progress** (A1–A8 and phase 2, C1–C3, landed; phase 3, L1–L3, running). This file records how Jhin grows from "one thread,
+Status: **in progress** (A1–A8, phase 2 (C1–C3) and phase 3 (L1–L3) landed; phase 4: M1 landed, M2 and M3 running). This file records how Jhin grows from "one thread,
 one agent run" into persistent agents with addresses that message each other
 across the mesh, work in teams on missions, keep and inherit what they learn,
 and stay on the intent while nobody watches. It takes "Agent entity …",
@@ -2326,11 +2326,17 @@ Decisions (M1):
   its label (D617), and its page reads and acts on the agent's node through
   the channel. `civilization.agent.open` and `civilization.agent.define` take
   `remote` (optional, additive), and the route of an agent's page carries it.
-- **D1529. Missions of members.** The Missions section lists the route's
-  node, its member included (`route.remote`, D654), and the mission view,
-  its dialogs and the orchestrator panel talk to that node. A slice's thread
-  is read on the node it names, relative to the mission's node (D656).
-  `civilization.mission.open` takes `remote`.
+- **D1529. Missions of members.** With one node shown the Missions section
+  is as before (D654); with several it lists each node's missions under its
+  label, as the roster lists agents (D617), leaving out a node without
+  missions, and New mission plans on the route's node (else the first). A
+  mission opens on its node (`route.remote` for a member), and the mission
+  view, its dialogs and the orchestrator panel talk to that node. A slice's
+  thread is read on the node it names, relative to the mission's node: the
+  connection's own node is read through the connection itself (D656).
+  `civilization.mission.open` takes `remote`. The orchestrator panel reads a
+  member's run, but does not follow it: `orchestration` is not shared
+  ([Deferred](#deferred)).
 - **D1530. The inbox and health of every node.** `lib/node-feeds.ts` follows
   every node of D1527, so an ask or a warning raised on a member is told and
   listed like one on a connection (D630, D731); answering and dismissing go
@@ -2555,9 +2561,9 @@ Decisions:
   M1, D1523.
 - M1: two nodes' clocks: the joined conversation orders its halves by each
   node's `sentAt` (D1523); a skew between them interleaves the halves.
-- A1: agents of a mesh member reached through another node (`remote` in
+- ~~A1: agents of a mesh member reached through another node (`remote` in
   the route): the roster follows the client's open connections only (D617),
-  as D747 does.
+  as D747 does.~~ M1, D1528.
 - ~~A1: starting the agents feed of a node over again with backoff when its
   stream breaks; today the roster shows the error with a Retry button.~~ A1,
   D1387.
@@ -2566,9 +2572,13 @@ Decisions:
 - A3: the Projects section (`civilization.sidebar.projects`) with a
   project's intent of its own; the Missions section groups by project and a
   mission shows its project's intent (D654, D656).
-- A3: missions of a mesh member (`route.remote`): the view reads the route's
+- ~~A3: missions of a mesh member (`route.remote`): the view reads the route's
   connection's node only (D654); a slice's thread on a member is read through
-  the mesh (D656).
+  the mesh (D656).~~ M1, D1529.
+- M1: the orchestrator panel of a member's mission reads its run when it
+  opens and after its own buttons, but does not follow it: the `orchestration`
+  stream is unguarded and not shared with the mesh (D1529). Guarding and
+  sharing it goes with running the orchestrator from another node (M2).
 - A3: proof screenshots shown inline: a screenshot item is a link (D646 keeps
   URLs only) until proof files live on the node.
 - ~~A3: an agent's title for an assignee (`agents.catalog`); the view shows
@@ -2580,8 +2590,9 @@ Decisions:
   (D656), the commands edit.~~ C2, D1081–D1085.
 - ~~C2: editing a step's description (D1084 keeps it by id).~~ C2, D1388.
 - C2: proving a slice from the client (`slices.prove` stays the agent's).
-- C2: titles and the assignee picker for agents of other nodes of the mesh;
-  the view lists its own node's agents, read once per view (D1082).
+- ~~C2: titles and the assignee picker for agents of other nodes of the mesh;
+  the view lists its own node's agents, read once per view (D1082).~~ M1,
+  D1532.
 - ~~C2: saying why titles fall back to ids: a failing `host.identity` or
   `agents.catalog` leaves the picker without Owner or agents, silently
   (D1082).~~ C2, D1277.
@@ -2678,9 +2689,10 @@ Decisions:
 - ~~A8: mode places that survive a page reload (D744 keeps them for the page's
   life).~~ A8, D1389.
 - A8: a mode per window or per node.
-- A8: offering Civilization mode for a mesh member reached through another node
+- ~~A8: offering Civilization mode for a mesh member reached through another node
   (D747 asks only the client's open connections), and as soon as the first
-  agent is defined (D747 asks again only when the connection reopens).
+  agent is defined (D747 asks again only when the connection reopens).~~ D1398
+  (the first agent), M1, D1531 (members).
 - A8: a Threads-mode view of an agent's generations for debugging, through
   `includeGenerations` (D745).
 - A8: one footer for both modes' sidebars: Civilization contributes its own
@@ -2937,3 +2949,13 @@ Each workstream lists its PRs here as they merge.
   orchestrator (`missions.orchestration.record`) (D1541–D1545).
 - M2 #301: `teams.up` takes a member that moved off its old node
   (`teams.leave`), at once or once that node is back (D1546).
+- M1 #287: a civilization's streams shared with the mesh (`agents`,
+  `agents/messages`, `agents/inbox`, `missions`, `health`, each behind its
+  guard), `mesh.streams@1.1` (`follow`, `members`, `onChange`), the owner's
+  conversation joined from the agent's node, and the answer to another node's
+  owner's message (D1521–D1524).
+- M1 #302: a mission's health counted with the work of every node, and the
+  mesh-core fix for a request sent on a fresh inbound link (D1525, D1526).
+- M1 #314: Civilization reads every node of the mesh: roster, missions,
+  inbox, health, the offer of the mode, titles and assignees, and the Lead
+  view of a lead on another node (D1527–D1533).

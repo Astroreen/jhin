@@ -9,8 +9,10 @@ import {
   type Idea,
   type Warning,
 } from "@jhin/health-api";
-import type { Connections, NodeConnection } from "@jhin/client-api";
+import type { Connections, MeshMembership } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
+
+import type { MeshTarget } from "../../lib/mesh-targets.ts";
 
 import {
   createNodeFeeds,
@@ -23,7 +25,8 @@ export type NodeHealth = NodeFeed<HealthState>;
 export type HealthStore = NodeFeeds<HealthState>;
 
 /**
- * Follows health on every open connection for as long as the plugin runs, so
+ * Follows health on every open connection, and with `mesh` on every reachable
+ * member of one (M1, D1530), for as long as the plugin runs, so
  * a warning is told to the owner in any mode: `health.catalog`, then the
  * `health` stream after its head. `raised` hears each warning raised after
  * the catalog, never the ones already there.
@@ -34,51 +37,58 @@ export function createHealthStore(
     warn(message: string, fields?: Record<string, unknown>): void;
     info(message: string, fields?: Record<string, unknown>): void;
   },
-  raised: (connection: NodeConnection, warning: Warning) => void,
+  raised: (node: MeshTarget, warning: Warning) => void,
+  mesh?: MeshMembership,
 ): HealthStore & Disposable {
-  return createNodeFeeds<HealthState>(connections, log, {
-    empty: EMPTY_HEALTH,
-    stream: HEALTH_STREAM,
-    load: async (client) => {
-      const { head, warnings, ideas } = await client.call<{
-        head: number;
-        warnings: Warning[];
-        ideas: Idea[];
-      }>("health.catalog", {});
-      return {
-        head,
-        state: {
-          warnings: Object.fromEntries(warnings.map((warning) => [warning.warningId, warning])),
-          ideas: Object.fromEntries(ideas.map((idea) => [idea.ideaId, idea])),
-        },
-      };
+  return createNodeFeeds<HealthState>(
+    connections,
+    log,
+    {
+      empty: EMPTY_HEALTH,
+      stream: HEALTH_STREAM,
+      load: async (client) => {
+        const { head, warnings, ideas } = await client.call<{
+          head: number;
+          warnings: Warning[];
+          ideas: Idea[];
+        }>("health.catalog", {});
+        return {
+          head,
+          state: {
+            warnings: Object.fromEntries(warnings.map((warning) => [warning.warningId, warning])),
+            ideas: Object.fromEntries(ideas.map((idea) => [idea.ideaId, idea])),
+          },
+        };
+      },
+      // Commits are no part of the fold: the counts come from `health.status`.
+      apply: applyHealthEvent,
+      reread: (connection, before, after) => {
+        const fresh = Object.values(after.warnings)
+          .filter(
+            (warning) =>
+              warning.status === "open" && before.warnings[warning.warningId] === undefined,
+          )
+          .toSorted((a, b) => b.raisedAt.localeCompare(a.raisedAt));
+        for (const warning of newestToTell(fresh, log, HEALTH_STREAM)) raised(connection, warning);
+      },
+      seen: (connection, event, before) => {
+        const warning = (event.payload as { warning?: Warning } | null)?.warning;
+        // A warning told once: a replayed raise of a known warning is not news.
+        if (
+          event.type === HealthEvents.warningRaised &&
+          warning !== undefined &&
+          before.warnings[warning.warningId] === undefined
+        ) {
+          raised(connection, warning);
+        }
+      },
     },
-    // Commits are no part of the fold: the counts come from `health.status`.
-    apply: applyHealthEvent,
-    reread: (connection, before, after) => {
-      const fresh = Object.values(after.warnings)
-        .filter(
-          (warning) =>
-            warning.status === "open" && before.warnings[warning.warningId] === undefined,
-        )
-        .toSorted((a, b) => b.raisedAt.localeCompare(a.raisedAt));
-      for (const warning of newestToTell(fresh, log, HEALTH_STREAM)) raised(connection, warning);
-    },
-    seen: (connection, event, before) => {
-      const warning = (event.payload as { warning?: Warning } | null)?.warning;
-      // A warning told once: a replayed raise of a known warning is not news.
-      if (
-        event.type === HealthEvents.warningRaised &&
-        warning !== undefined &&
-        before.warnings[warning.warningId] === undefined
-      ) {
-        raised(connection, warning);
-      }
-    },
-  });
+    {},
+    mesh,
+  );
 }
 
-/** The open warnings of every node, newest first, with the connection each is on. */
+/** The open warnings of every node, newest first, with the key of the node each is on. */
 export function openWarnings(
   nodes: ReadonlyMap<string, NodeHealth>,
 ): { readonly node: string; readonly warning: Warning }[] {

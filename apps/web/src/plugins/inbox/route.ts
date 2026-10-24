@@ -1,12 +1,18 @@
-import type { Route } from "@jhin/client-api";
+import type { NodeTarget, Route } from "@jhin/client-api";
+import { targetFields } from "../../lib/mesh-targets.ts";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 
 /** The route panel of an inbox item (D630). */
 export const INBOX_PANEL = "inbox";
 
-/** An inbox item's page: panel `inbox`, the item's message id as `section`. */
-export function inboxRoute(node: string, messageId: string): Route {
-  return { node, mode: CIVILIZATION_MODE, panel: INBOX_PANEL, section: messageId };
+/** An inbox item's page: panel `inbox`, the item's message id as `section`, on its node (D1530). */
+export function inboxRoute(target: NodeTarget, messageId: string): Route {
+  return {
+    ...targetFields(target),
+    mode: CIVILIZATION_MODE,
+    panel: INBOX_PANEL,
+    section: messageId,
+  };
 }
 
 /**

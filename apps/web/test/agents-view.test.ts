@@ -102,13 +102,13 @@ describe("the agents of a node", () => {
 
 describe("an agent's route (D615)", () => {
   it("names the agent and, for an earlier one, the generation in the section", () => {
-    expect(agentRoute("n", "builder")).toEqual({
+    expect(agentRoute({ node: "n" }, "builder")).toEqual({
       node: "n",
       mode: "civilization",
       panel: "agent",
       section: "builder",
     });
-    expect(agentRoute("n", "builder", 2).section).toBe("builder/2");
+    expect(agentRoute({ node: "n" }, "builder", 2).section).toBe("builder/2");
     expect(parseAgentSection("builder")).toEqual({ agentId: "builder" });
     expect(parseAgentSection("builder/2")).toEqual({ agentId: "builder", generation: 2 });
     expect(parseAgentSection("builder/0")).toBeUndefined();
@@ -265,12 +265,12 @@ describe("an agent's definition from the client (C1, D1065)", () => {
   });
 
   it("opens the form of a new agent or of one to edit", () => {
-    expect(agentFormRoute("a")).toEqual({
+    expect(agentFormRoute({ node: "a" })).toEqual({
       node: "a",
       mode: "civilization",
       panel: "agent-definition",
     });
-    expect(agentFormRoute("a", "builder")).toEqual({
+    expect(agentFormRoute({ node: "a" }, "builder")).toEqual({
       node: "a",
       mode: "civilization",
       panel: "agent-definition",

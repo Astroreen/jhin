@@ -59,7 +59,9 @@ export function routeOf(route: Route, place: MissionPlace): Route {
 
 /**
  * Where to read a slice's thread from (D647): on the route's node when the
- * thread names none or names that node itself, else through its mesh.
+ * thread names none or names that node itself, on the connection when it
+ * names the connection's own node (a mission of a member, D1529), else
+ * through its mesh.
  */
 export function threadTarget(
   route: NodeTarget,
@@ -67,6 +69,7 @@ export function threadTarget(
   selfNodeId: string | undefined,
 ): NodeTarget {
   if (thread.nodeId === undefined || thread.nodeId === (route.remote ?? selfNodeId)) return route;
+  if (thread.nodeId === selfNodeId) return { node: route.node };
   return { node: route.node, remote: thread.nodeId };
 }
 

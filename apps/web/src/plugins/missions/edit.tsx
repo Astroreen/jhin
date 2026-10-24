@@ -432,14 +432,28 @@ export function MissionDialog(props: {
   );
 }
 
-/** Who a slice can go to: nobody, the node's owner, or one of its agents; the current one stays. */
+/**
+ * Who a slice can go to: nobody, an owner (the node's first), or an agent of
+ * the node, then of every other node under its label (D1532); the current
+ * one stays.
+ */
 function assigneeOptions(directory: Directory, current: string | undefined) {
   const options: { value: string; label: string }[] = [{ value: NONE, label: "Unassigned" }];
   if (directory.nodeId !== undefined) {
     options.push({ value: ownerAddress(directory.nodeId), label: "Owner" });
   }
+  for (const other of directory.others) {
+    if (other.nodeId !== undefined) {
+      options.push({ value: ownerAddress(other.nodeId), label: `Owner (${other.label})` });
+    }
+  }
   for (const agent of directory.agents) {
     options.push({ value: agent.address, label: agent.title });
+  }
+  for (const other of directory.others) {
+    for (const agent of other.agents) {
+      options.push({ value: agent.address, label: `${agent.title} (${other.label})` });
+    }
   }
   if (current !== undefined && !options.some((option) => option.value === current)) {
     options.push({ value: current, label: assigneeLabel(current, directory.titles) });

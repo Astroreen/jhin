@@ -1,4 +1,4 @@
-import type { Connections } from "@jhin/client-api";
+import { targetKey, type Connections, type NodeTarget } from "@jhin/client-api";
 import {
   applyMissionEvent,
   EMPTY_MISSIONS,
@@ -10,6 +10,8 @@ import {
 } from "@jhin/missions-api";
 import type { RpcClient } from "@jhin/rpc";
 import { toDisposable, type Disposable } from "@jhin/sdk";
+
+import { nodeChannel, type NodeChannel } from "../../lib/node-channel.ts";
 
 /** What a client knows of one node's missions (D641: the fold of its `missions` stream). */
 export interface MissionsView {
@@ -44,14 +46,14 @@ function stateOf(catalog: {
 }
 
 export interface MissionsStore {
-  /** The view of a connection's node; the same object until it changes. */
-  view(connection: string): MissionsView;
-  /** Follows the connection's node while subscribed; `listener` fires whenever its view changes. */
-  subscribe(connection: string, listener: () => void): Disposable;
+  /** The view of a node, a member of a connection's mesh too (D1529); the same object until it changes. */
+  view(target: NodeTarget): MissionsView;
+  /** Follows the node while subscribed; `listener` fires whenever its view changes. */
+  subscribe(target: NodeTarget, listener: () => void): Disposable;
 }
 
 interface Feed {
-  readonly connection: string;
+  readonly target: NodeTarget;
   readonly listeners: Set<() => void>;
   view: MissionsView;
   client: RpcClient | undefined;
@@ -61,7 +63,8 @@ interface Feed {
 }
 
 /**
- * The missions of every connected node somebody looks at: `missions.catalog`,
+ * The missions of every node somebody looks at, a connection's or a member's
+ * of its mesh (D1529): `missions.catalog`,
  * then the node's `missions` stream after the head it reflects, folded with
  * `applyMissionEvent` as the node folds it (D641). A feed starts over whenever
  * its connection opens again, and after a failure, backing off.
@@ -89,7 +92,9 @@ export function createMissionsStore(
     }
   };
 
-  const start = (feed: Feed, client: RpcClient): (() => void) => {
+  const start = (feed: Feed, connection: RpcClient): (() => void) => {
+    // A member is read through its connection: `mesh.call` and the relay (D1529).
+    const client: NodeChannel = nodeChannel(connection, feed.target.remote);
     let stopped = false;
     let subscription: Disposable | undefined;
     let cancelRetry: (() => void) | undefined;
@@ -105,9 +110,9 @@ export function createMissionsStore(
       const message = error instanceof Error ? error.message : String(error);
       set(feed, { ...feed.view, status: "error", error: message });
       const again = () => {
-        if (stopped || feed.client !== client) return;
+        if (stopped || feed.client !== connection) return;
         feed.stop?.();
-        feed.stop = start(feed, client);
+        feed.stop = start(feed, connection);
       };
       const attempt = feed.retries++;
       if (attempt === 0) queueMicrotask(again);
@@ -144,7 +149,7 @@ export function createMissionsStore(
   };
 
   const sync = (feed: Feed) => {
-    const node = connections.get(feed.connection);
+    const node = connections.get(feed.target.node);
     const client = node?.state === "open" ? node.client : undefined;
     if (client === feed.client) return;
     feed.stop?.();
@@ -161,19 +166,20 @@ export function createMissionsStore(
   });
 
   return {
-    view: (connection) => feeds.get(connection)?.view ?? LOADING,
-    subscribe(connection, listener) {
-      let feed = feeds.get(connection);
+    view: (target) => feeds.get(targetKey(target))?.view ?? LOADING,
+    subscribe(target, listener) {
+      const key = targetKey(target);
+      let feed = feeds.get(key);
       if (feed === undefined) {
         feed = {
-          connection,
+          target,
           listeners: new Set(),
           view: LOADING,
           client: undefined,
           stop: undefined,
           retries: 0,
         };
-        feeds.set(connection, feed);
+        feeds.set(key, feed);
       }
       feed.listeners.add(listener);
       sync(feed);
@@ -183,7 +189,7 @@ export function createMissionsStore(
         // The last one gone closes the feed; the next subscriber loads it afresh.
         if (followed.listeners.size > 0) return;
         followed.stop?.();
-        feeds.delete(followed.connection);
+        feeds.delete(targetKey(followed.target));
       });
     },
     dispose() {

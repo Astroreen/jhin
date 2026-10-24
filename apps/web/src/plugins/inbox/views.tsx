@@ -1,7 +1,7 @@
 // The owner's inbox in Civilization mode (D626, D630), a chunk of its own
 // (D440): the page loads it once Civilization mode shows it.
 import type { AgentMessage, InboxItem } from "@jhin/agent-api";
-import type { Connections, Navigation } from "@jhin/client-api";
+import { targetKey, type Connections, type Navigation, type NodeTarget } from "@jhin/client-api";
 import {
   Badge,
   Button,
@@ -43,7 +43,7 @@ export function InboxList({ view }: { view: InboxView }) {
   const notice =
     stale.length === 0 ? null : (
       <p className="px-2 py-1 text-xs text-destructive">
-        Not live: {stale.map((node) => view.connections.get(node)?.label ?? node).join(", ")}. What
+        Not live: {stale.map((node) => view.store.target(node)?.label ?? node).join(", ")}. What
         shows may be out of date.
       </p>
     );
@@ -61,16 +61,21 @@ export function InboxList({ view }: { view: InboxView }) {
       {items.map(({ node, item }) => {
         const { message } = item;
         const Icon = message.kind === "ask" ? MessageCircleQuestionIcon : MessageSquareIcon;
+        const target = view.store.target(node)?.target ?? { node };
         return (
           <SidebarMenuItem key={`${node}|${message.messageId}`}>
             <SidebarMenuButton
               className="h-auto py-1.5"
               isActive={
                 route.panel === INBOX_PANEL &&
-                route.node === node &&
+                route.node !== undefined &&
+                targetKey({
+                  node: route.node,
+                  ...(route.remote === undefined ? {} : { remote: route.remote }),
+                }) === node &&
                 route.section === message.messageId
               }
-              onClick={() => view.navigation.navigate(inboxRoute(node, message.messageId))}
+              onClick={() => view.navigation.navigate(inboxRoute(target, message.messageId))}
             >
               <Icon />
               <span className="flex min-w-0 flex-col">
@@ -118,8 +123,9 @@ function Meta({ message }: { message: AgentMessage }) {
  * An inbox item in `civilization.views` (D630): what the agent sent, who and
  * the trace, and the owner's answer, which goes back to it as a message.
  */
-export function InboxPage(props: { view: InboxView; node: string; messageId: string }) {
-  const { view, node, messageId } = props;
+export function InboxPage(props: { view: InboxView; target: NodeTarget; messageId: string }) {
+  const { view, target, messageId } = props;
+  const node = targetKey(target);
   const nodes = useExternal(view.store, view.store.snapshot);
   const [answer, setAnswer] = useState("");
   const [sending, setSending] = useState(false);
@@ -140,12 +146,13 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
     );
   }
   const { message } = item;
+  // The item's own node answers it, a member through its connection (D1530).
+  const channel = view.store.target(node)?.channel;
   const send = async () => {
-    const connection = view.connections.get(node);
-    if (connection === undefined) return;
+    if (channel === undefined) return;
     setSending(true);
     try {
-      await connection.client.call("agents.inbox.answer", { messageId, answer: answer.trim() });
+      await channel.call("agents.inbox.answer", { messageId, answer: answer.trim() });
       view.toasts?.show({ type: "success", title: "Answer sent", description: message.from });
     } catch (error) {
       view.toasts?.show({
@@ -158,11 +165,10 @@ export function InboxPage(props: { view: InboxView; node: string; messageId: str
     }
   };
   const dismiss = async () => {
-    const connection = view.connections.get(node);
-    if (connection === undefined) return;
+    if (channel === undefined) return;
     setDismissing(true);
     try {
-      await connection.client.call("agents.inbox.dismiss", { messageId });
+      await channel.call("agents.inbox.dismiss", { messageId });
       view.toasts?.show({ type: "success", title: "Dismissed", description: message.from });
     } catch (error) {
       view.toasts?.show({
