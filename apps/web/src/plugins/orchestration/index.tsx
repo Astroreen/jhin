@@ -1,11 +1,13 @@
 import { OrchestrationThreadEvents, ThreadEvents } from "@jhin/agent-api";
 import {
   CONNECTIONS_CAPABILITY,
+  MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
   type ChatThreadDetailsProps,
   type ChatTurnItemProps,
   type Connections,
+  type MeshMembership,
   type Navigation,
   type NodeTarget,
   type ThreadsCatalog,
@@ -37,7 +39,7 @@ export const orchestrationViewPlugin = builtin(
       [THREADS_CAPABILITY]: "^1",
       [NAVIGATION_CAPABILITY]: "^1",
     },
-    optional: { [UI_TOASTS_CAPABILITY]: "^1" },
+    optional: { [UI_TOASTS_CAPABILITY]: "^1", [MESH_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
@@ -46,6 +48,13 @@ export const orchestrationViewPlugin = builtin(
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
+      const mesh = context.services.tryGet<MeshMembership>(MESH_CAPABILITY);
+      /** Where a child on mesh node `node` is reached from `target`'s connection (D1507). */
+      const onNode = (target: NodeTarget, node: string | undefined): NodeTarget => {
+        if (node === undefined) return target;
+        const self = mesh?.members(target.node)?.find((member) => member.self)?.nodeId;
+        return node === self ? { node: target.node } : { node: target.node, remote: node };
+      };
       // The rows, their store and the Lineage rows are one chunk, loaded with the first of them.
       let chunk:
         | undefined
@@ -58,12 +67,14 @@ export const orchestrationViewPlugin = builtin(
               store: context.subscriptions.add(
                 module.createDelegationStore(connections, threads, context.log),
               ),
-              open: (target: NodeTarget, threadId: string) =>
+              open: (parent: NodeTarget, threadId: string, node?: string) => {
+                const target = onNode(parent, node);
                 navigation.navigate({
                   node: target.node,
                   ...(target.remote === undefined ? {} : { remote: target.remote }),
                   thread: threadId,
-                }),
+                });
+              },
               threads,
               toasts,
             },

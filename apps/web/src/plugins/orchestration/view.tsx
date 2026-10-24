@@ -29,11 +29,14 @@ interface TaskMark {
   readonly taskId: string;
   readonly childThreadId: string;
   readonly title: string;
+  /** The mesh node the child runs on, when it is not the parent's (D1507). */
+  readonly node?: string;
 }
 
 export interface DelegatedWorkServices {
   readonly store: DelegationStore;
-  readonly open: (target: NodeTarget, threadId: string) => void;
+  /** Opens a thread of `target`'s node, or of mesh node `node` (D1507). */
+  readonly open: (target: NodeTarget, threadId: string, node?: string) => void;
   readonly threads: ThreadsCatalog;
   readonly toasts: Toasts | undefined;
 }
@@ -103,20 +106,24 @@ export function subagentMember(
     readonly view: DelegationView;
     readonly threads: readonly ThreadRecord[];
     readonly parent: ThreadRecord;
-    readonly open: (threadId: string) => void;
+    readonly open: (threadId: string, node?: string) => void;
   },
 ): SubagentMember {
   const key = String(mark.sequence);
   if (mark.type === OrchestrationThreadEvents.taskDelegated) {
-    const { taskId, childThreadId, title } = mark.payload as TaskMark;
+    const { taskId, childThreadId, title, node } = mark.payload as TaskMark;
     const task = context.view.tasks.get(taskId);
-    const child = context.threads.find((thread) => thread.id === childThreadId);
+    // A child on another node is not in this node's catalog.
+    const child =
+      node === undefined
+        ? context.threads.find((thread) => thread.id === childThreadId)
+        : undefined;
     return {
       key,
       title: task?.title ?? title,
       status: task?.status ?? (context.view.status === "loading" ? "starting" : "unknown"),
       run: runOfTask(task),
-      onOpen: () => context.open(childThreadId),
+      onOpen: () => context.open(childThreadId, node),
       details: childDetails(child, context.parent, {
         ...(task === undefined ? {} : { agentId: task.agentId }),
         ...(task?.model === undefined ? {} : { model: task.model }),
@@ -170,7 +177,7 @@ function SubagentRows({
     view,
     threads: catalog?.threads ?? [],
     parent: thread,
-    open: (threadId: string) => services.open(target, threadId),
+    open: (threadId: string, node?: string) => services.open(target, threadId, node),
   };
   if (marks.length > 1) {
     return <SubagentGroup members={marks.map((mark) => subagentMember(mark, context))} />;

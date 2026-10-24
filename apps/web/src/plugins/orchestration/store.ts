@@ -26,6 +26,8 @@ export interface TaskRecord {
   readonly taskId: string;
   readonly parentThreadId: string;
   readonly childThreadId: string;
+  /** The mesh node the child runs on, when it is not the parent's (D1507). */
+  readonly node?: string;
   readonly title: string;
   readonly agentId: string;
   readonly model?: string;
