@@ -343,6 +343,14 @@ W42's project scope (D1463) and must land on top of it, never undo it.
   render of the form on a node with every first-party plugin, names where
   the time goes, and fixes that cause. The PR reports the timings before and
   after.
+  Measured (2026-10-24, 23 sections, every first-party plugin, a CPU-profiled
+  node): about 94% of a `host.config.get` was `kernel.config.jsonSchema()`,
+  which converted every section's Zod schema to JSON Schema on each call
+  (`sectionSchema` takes one section from it). The kernel now converts a
+  section once, when first asked, and keeps it until the section is defined
+  anew. One `host.config.get` went from 37–60 ms to 1–2 ms; reading all 23
+  from 0.6–1.25 s to 40–110 ms; `host.config.schema` from 57–143 ms to
+  0.1 ms (a loaded machine, medians of a few runs).
 - **D1622. The page shows every section, in the picker's order.** Each
   section is a settings section of its own, titled as the picker titled it
   (its name in mono next to a title that differs), with its own form or JSON,

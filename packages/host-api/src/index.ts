@@ -193,3 +193,4 @@ export type EditorErrorCode =
   | "LAUNCH_FAILED";
 
 export * from "./config-change.ts";
+export * from "./config-read.ts";

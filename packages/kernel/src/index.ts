@@ -1,5 +1,6 @@
 export {
   configComments,
+  configCommentsBySection,
   parseConfigText,
   DEFAULT_CONFIG_LAYERS,
   type ConfigComment,
