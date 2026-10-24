@@ -2338,8 +2338,8 @@ panel and devices are in `terminal.md`, `source-control.md` and
   available for the place (and T3's reason when not) and what adding one
   does. Each place (a thread, or the draft of a project, on its node) keeps
   its surfaces in their order, the active one, and whether the panel is open
-  and maximized, on this device (`localStorage`, `jhin:right-panel:v1`), as
-  T3 persists its store. The route still says what shows: its `panel` is the
+  and maximized, on this device (`localStorage`, `jhin:right-panel:v1`, the
+  200 places changed last), as T3 persists its store. The route still says what shows: its `panel` is the
   active surface's kind and its `section` the resource, so a command or a
   link that opened a panel through the route opens its surface now, and a
   route naming a surface the place does not have adds it at the end. The
@@ -2369,7 +2369,8 @@ panel and devices are in `terminal.md`, `source-control.md` and
   lets their kind release them first (`release`, T3's
   `useRightPanelSurfaceClose`): a browser tab closes on the node, after
   T3's "Close browser while the agent is using it?" while an agent drives
-  it, and a refusal keeps every surface of that close.
+  it; a refusal, or a tab that does not close, keeps every surface of that
+  close, and a surface added while a kind asked stays.
 - **D1423. Opening, closing and maximizing are T3's commands.** The chat
   header has T3's "Toggle right panel" (`chat.header.actions`
   `jhin.right-panel.toggle`, lucide `PanelRight`, "Right panel is
@@ -2395,8 +2396,9 @@ panel and devices are in `terminal.md`, `source-control.md` and
   "Open browser in a profile"; a tab the agent keeps hidden, `reveal`
   false, is not added; D403's own strip goes), the diff
   (`diff`, "Diff", D), the thread's pull requests (`pull-requests`,
-  "Linked pull requests", L), the devices (`devices`, "Device", M), the
-  thread's terminals (`terminal`, "Terminal", T) and a mentioned file
+  "Linked pull requests", L), the devices (`devices`, "Device", M: the list,
+  or the thread's latest device), the thread's terminals (`terminal`,
+  "Terminal", T: D474's one layout) and a mentioned file
   (`file:<path>`, several at once, offered by no entry: T3's "Files" is the
   explorer). Each body keeps its name as a region ("Diff panel", "File
   preview", "Device panel", "Pull requests", "Terminal") and drops the
@@ -2420,6 +2422,11 @@ panel and devices are in `terminal.md`, `source-control.md` and
 
 ## Deferred
 
+- The right panel (D1421–D1424): T3's reopening of a closed view
+  (`view.reopenClosed`, ⌘/Ctrl+Shift+T), its sheet over the chat on a narrow
+  window, its open and close animation, a browser tab's audio and mute, a
+  device tab's renaming, and forgetting a deleted thread's tabs (the 200
+  places changed last are kept).
 - T3's Usage page beyond its "Limits" view (D1308): the token and cost
   views and an account's reset credits, which no Jhin runtime reads yet.
 - The watcher test of `packages/node-host/test/host.test.ts` said to have
@@ -2440,9 +2447,9 @@ panel and devices are in `terminal.md`, `source-control.md` and
     editor opening at the quote's place in the message right after "Cite",
     "Save and send" (Mod+Enter), the quote highlighted after its thread
     opens from another one, and the legacy text for a node from before D1010;
-  - T3's file panel beyond D1342: several files as tabs beside the other
-    surfaces, editing and saving, the file explorer, "Open in" an editor,
-    a link's line revealed, and file chips in an agent's message;
+  - T3's file panel beyond D1342 and D1424 (several files as tabs): editing
+    and saving, the file explorer, "Open in" an editor, a link's line
+    revealed, and file chips in an agent's message;
   - a sent message's skills (D1341) are asked once per thread view, on any
     `$word` (a `$HOME` too), and not asked again when the agent's skills
     change while the thread shows (T3 keeps its providers' skills current);

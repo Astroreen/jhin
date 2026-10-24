@@ -53,6 +53,9 @@ import {
   writeStored,
 } from "./store.ts";
 
+/** Places kept on the device, the least recently changed going first (D1421). */
+const MAX_PLACES = 200;
+
 /** The panel's place while its chunk loads, so the chat does not jump. */
 function PanelPlaceholder(props: { children?: React.ReactNode }) {
   return (
@@ -145,8 +148,13 @@ export const rightPanelPlugin = builtin(
         const current = stateOf(key);
         const next = change(current);
         if (next === current) return;
-        if (isEmpty(next)) places.delete(key);
-        else places.set(key, next);
+        // The latest change last, so the oldest places go first past the cap.
+        places.delete(key);
+        if (!isEmpty(next)) places.set(key, next);
+        for (const old of places.keys()) {
+          if (places.size <= MAX_PLACES) break;
+          if (old !== key) places.delete(old);
+        }
         if (user) revisions.set(key, (revisions.get(key) ?? 0) + 1);
         save();
         changed();
@@ -368,8 +376,19 @@ export const rightPanelPlugin = builtin(
           }),
         );
         if (!answers.every(Boolean)) return false;
+        // Only what was released goes: a surface added while a kind asked (a tab an agent
+        // opened meanwhile) stays, as its kind was never asked about it.
         const current = stateOf(key);
-        change(place, edit);
+        change(place, (state) => {
+          let next = state;
+          for (const surface of removed) next = closeSurface(next, surface.id);
+          const wanted = after.activeId;
+          return wanted !== null &&
+            next.activeId !== wanted &&
+            next.surfaces.some((surface) => surface.id === wanted)
+            ? { ...next, activeId: wanted }
+            : next;
+        });
         return stateOf(key) !== current;
       };
 
@@ -454,7 +473,7 @@ export const rightPanelPlugin = builtin(
       });
       context.commands.register({
         name: "right-panel.close",
-        title: "Close panel surface",
+        title: "Close active panel surface",
         description: "Closes the surface the right panel shows (T3's rightPanel.close)",
         input: z.object({}),
         output: Changed,

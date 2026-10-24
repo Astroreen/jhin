@@ -157,6 +157,17 @@ test("D403: the agent's tab shows in the right panel, and the user takes it over
   await panel.getByRole("button", { name: "Release control" }).click();
   await expect(panel.getByRole("status")).toHaveText("Agent has control");
   await node.client().call("preview.press", { threadId, key: "Tab" });
+
+  // Closing the tab the agent drives asks first, as T3's does (t3-parity.md D1422).
+  await panel
+    .locator('[data-active-tab="true"]')
+    .getByRole("button", { name: /^Close / })
+    .click();
+  const question = page.getByRole("alertdialog");
+  await expect(question).toContainText("Close browser while the agent is using it?");
+  await shot(page, info, "right-panel-close-agent-browser");
+  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(panel.getByRole("status")).toHaveText("Agent has control");
 });
 
 test("D950: a server a terminal started shows under Local servers and opens", async ({
@@ -368,8 +379,12 @@ test("D403: the user opens a page from the address bar and sizes it like a devic
   // The tab closes from its strip, and with the last surface the panel (D1422).
   await panel.getByRole("button", { name: "Close Confirmed" }).click();
   await expect(panel).toBeHidden();
-  // A new tab offers the page just visited; the header toggle hides the panel.
-  await openSurface(page, "Browser");
+  // T3's "Open a surface"; a new tab offers the page just visited.
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  const launcher = panel.getByLabel("Open a surface");
+  await expect(launcher).toBeVisible();
+  await shot(page, info, "right-panel-open-a-surface");
+  await launcher.getByRole("button", { name: /^Browser/ }).click();
   await expect(panel.getByRole("region", { name: "Recently used" })).toContainText("Second page");
   await page.getByRole("button", { name: "Toggle right panel" }).click();
   await expect(panel).toBeHidden();

@@ -151,6 +151,33 @@ describe("jhin.right-panel", () => {
     await kernel.stop();
   });
 
+  it("closes only what its kind released, not a surface added while it asked", async () => {
+    let answer!: (released: boolean) => void;
+    let asked!: () => void;
+    const askedOnce = new Promise<void>((resolve) => {
+      asked = resolve;
+    });
+    const { kernel, panel } = await start({ ...thread, panel: "browser", section: "a" }, [
+      kind("browser", {
+        release: () => {
+          asked();
+          return new Promise<boolean>((resolve) => {
+            answer = resolve;
+          });
+        },
+      }),
+    ]);
+    panel.reconcile(place, "browser", ["a", "b"]);
+    const closing = kernel.commands.execute("right-panel.surfaces.close-all", {});
+    await askedOnce;
+    // An agent opens another tab while the user is asked.
+    panel.reconcile(place, "browser", ["a", "b", "c"]);
+    answer(true);
+    expect(await closing).toEqual({ changed: true });
+    expect(ids(panel.state(place).surfaces)).toEqual(["browser:c"]);
+    await kernel.stop();
+  });
+
   it("reconciles a kind's surfaces and the route follows the one on screen", async () => {
     const { kernel, panel, navigation } = await start(
       { ...thread, panel: "browser", section: "a" },

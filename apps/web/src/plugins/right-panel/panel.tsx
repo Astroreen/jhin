@@ -107,6 +107,8 @@ function PanelShell(props: { children: ReactNode; maximized: boolean }) {
           ? "absolute inset-0 z-30 w-full"
           : "relative shrink-0 border-l border-border",
       )}
+      // T3's PreviewPanelShell mode: focus anywhere in the panel is `previewFocus` (D403).
+      data-preview-panel-mode="inline"
       data-right-panel=""
       data-right-panel-maximized={props.maximized ? "true" : "false"}
       style={props.maximized ? undefined : ({ width: `${shown}px` } as CSSProperties)}

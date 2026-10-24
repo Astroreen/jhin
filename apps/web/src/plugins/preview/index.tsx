@@ -58,6 +58,7 @@ import {
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import type { BrowserPanelProps, BrowserSurfaceViewProps, PanelServices } from "./panel.tsx";
 import { NEW_TAB, tabTitle } from "./tab-title.ts";
+import { browserSurfaceResources, releaseBrowserTabs } from "./surfaces.ts";
 import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
 import { DesktopWebviews } from "./desktop-webviews.tsx";
@@ -935,12 +936,7 @@ export const previewPanelPlugin = builtin(
                 .surfaces.filter((surface) => surface.kind === BROWSER_PANEL)
                 .map((surface) => surface.resource),
             );
-            const resources = shown.feed
-              .tabs()
-              // T3 hides a server tab the agent did not reveal; the app's own tabs always show.
-              .filter((tab) => tab.reveal || tab.desktop === true || present.has(tab.tabId))
-              .map((tab) => tab.tabId);
-            if (present.has(NEW_TAB)) resources.push(NEW_TAB);
+            const resources = browserSurfaceResources(shown.feed.tabs(), present);
             panel.reconcile(place, BROWSER_PANEL, resources);
           };
           watched = { key: shown.key, stop: shown.feed.subscribe(apply) };
@@ -1051,45 +1047,31 @@ export const previewPanelPlugin = builtin(
               floatTab(keyOf(place), surface.resource);
             },
             // T3's useRightPanelSurfaceClose: a closed surface closes its tab, after asking while
-            // an agent drives it (`agentControlledBrowserCloseConfirmation`).
-            release: async (place, closing) => {
-              if (place.threadId === undefined || place.target.remote !== undefined) return true;
-              const tabs = feeds.of(place.target.node, place.threadId).tabs();
-              const closed = closing
-                .map((surface) => tabs.find((tab) => tab.tabId === surface.resource))
-                .filter((tab) => tab !== undefined);
-              const driven = closed.filter(
-                (tab) => tab.owner === "agent" && tab.controller === null,
-              ).length;
-              if (driven > 0 && dialogs !== undefined) {
-                const confirmed = await dialogs.confirm(
-                  driven === 1
-                    ? {
-                        title: "Close browser while the agent is using it?",
-                        description:
-                          "The agent is actively controlling this browser. Closing it may interrupt the current browser action.",
+            // an agent drives it; a tab that does not close keeps its surface.
+            release: (place, closing) => {
+              if (place.threadId === undefined || place.target.remote !== undefined) {
+                return true;
+              }
+              const threadId = place.threadId;
+              return releaseBrowserTabs({
+                tabs: feeds.of(place.target.node, threadId).tabs(),
+                closing,
+                confirm: (question) =>
+                  dialogs === undefined
+                    ? Promise.resolve(true)
+                    : dialogs.confirm({
+                        ...question,
                         confirmLabel: "Close",
                         variant: "destructive",
-                      }
-                    : {
-                        title: `Close ${driven} browsers while the agent is using them?`,
-                        description:
-                          "The agent is actively controlling these browsers. Closing them may interrupt the current browser actions.",
-                        confirmLabel: "Close",
-                        variant: "destructive",
-                      },
-                );
-                if (!confirmed) return false;
-              }
-              for (const tab of closed) {
-                void threads
-                  .call(place.target, "preview.tab.close", {
-                    threadId: place.threadId,
-                    tabId: tab.tabId,
-                  })
-                  .catch((error: unknown) => onError("Unable to change the browser tab", error));
-              }
-              return true;
+                      }),
+                close: (tabId) =>
+                  threads
+                    .call(place.target, "preview.tab.close", { threadId, tabId })
+                    .catch((error: unknown) => {
+                      onError("Unable to change the browser tab", error);
+                      throw error;
+                    }),
+              });
             },
             component: BrowserSurface,
           }),

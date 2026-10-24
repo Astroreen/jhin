@@ -199,6 +199,12 @@ test("D280–D285: the diff panel renders with @pierre/diffs, splits, lists file
   );
   await expect(right.getByText("No preview yet")).toBeVisible();
   await shot(page, info, "right-panel-tabs");
+  // A tab's context menu, as T3's.
+  await right.getByRole("tab", { name: "Diff" }).click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Close others" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Close to the right" })).toBeEnabled();
+  await shot(page, info, "right-panel-tab-menu");
+  await page.keyboard.press("Escape");
   // Back on the diff, which shows again as it opens (T3 renders the active surface alone).
   await right.getByRole("tab", { name: "Diff" }).click();
   await panel.getByRole("button", { name: "Expand all files" }).click();

@@ -515,7 +515,7 @@ read again from a snapshot).
   project's folder only, so a terminal in a worktree opens none of its own
   files.
 - Right-panel terminals as surfaces of their own, beside the drawer's
-  (D474): Jhin moves one layout between the two places. W38 left it: in T3
-  they are tabs of its right panel beside the browser, diff, files and
-  pull requests, and Jhin's right panel shows one surface at a time; the
-  tabs come first.
+  (D474): Jhin moves one layout between the two places. The tabs came with
+  `t3-parity.md` D1424, where the thread's terminals are one surface
+  `terminal` showing that layout; in T3 each right-panel terminal group is a
+  surface of its own (W40 takes it next).
