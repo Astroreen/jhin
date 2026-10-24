@@ -131,6 +131,8 @@ function TerminalActionButton(props: {
 export interface TerminalDrawerProps {
   /** Under the chat (T3's drawer), or right of it (T3's right-panel terminal, D474). */
   placement: "drawer" | "panel";
+  /** In the panel: a surface of the right panel (t3-parity.md D1424), filling it below its strip. */
+  embedded?: boolean;
   /** Shown; a hidden drawer keeps its terminals mounted (D474). */
   visible: boolean;
   fontFamily: string;
@@ -300,13 +302,18 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
     />
   );
 
+  const Frame = props.embedded === true ? "section" : "aside";
+  const panelFrameClass =
+    props.embedded === true
+      ? "thread-terminal-panel relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
+      : "thread-terminal-panel relative flex h-full w-[42vw] min-w-[360px] max-w-[560px] shrink-0 flex-col overflow-hidden border-l border-border bg-background";
   if (terminalIds.length === 0) {
     return (
-      <aside
+      <Frame
         aria-label="Terminal"
         className={cn(
           props.placement === "panel"
-            ? "thread-terminal-panel relative flex h-full w-[42vw] min-w-[360px] max-w-[560px] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
+            ? panelFrameClass
             : "thread-terminal-drawer relative z-45 flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-border/80 bg-background",
           !props.visible && "hidden",
         )}
@@ -321,7 +328,7 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
             {newLabel}
           </Button>
         </div>
-      </aside>
+      </Frame>
     );
   }
 
@@ -347,7 +354,7 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
   );
   const panel = props.placement === "panel";
   const frameClass = panel
-    ? "thread-terminal-panel relative flex h-full w-[42vw] min-w-[360px] max-w-[560px] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
+    ? panelFrameClass
     : "thread-terminal-drawer relative z-45 flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-border/80 bg-background";
   const frameStyle = panel ? undefined : { height: `${drawerHeight}px` };
 
@@ -357,7 +364,7 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
     }`;
 
   return (
-    <aside
+    <Frame
       aria-label="Terminal"
       className={cn(frameClass, !props.visible && "hidden")}
       data-terminal-owner={panel ? "right-panel" : "drawer"}
@@ -528,7 +535,7 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
           ) : null}
         </div>
       </div>
-    </aside>
+    </Frame>
   );
 }
 

@@ -69,7 +69,7 @@ test("D243–D249: a turn's checkpoint, its changed files card, the card's count
 
   // "Open diff" opens the panel on that turn.
   await changed.nth(1).getByRole("button", { name: "Open diff" }).click();
-  const panel = page.getByRole("complementary", { name: "Diff panel" });
+  const panel = page.getByRole("region", { name: "Diff panel" });
   await expect(panel.getByRole("button", { name: "Diff scope: Latest turn" })).toBeVisible();
   await expect(
     panel.getByRole("button", { name: /^(Expand|Collapse) src\/app\/bye\.ts$/ }),

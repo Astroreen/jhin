@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
-import { threadRow } from "./support/ui.ts";
+import { openSurface, threadRow } from "./support/ui.ts";
 
 let node: RunningNode;
 test.beforeAll(async () => {
@@ -144,8 +144,8 @@ test("D472–D474: the selection menu adds to the chat, and the terminals move t
   await info.attach("terminal-chip", { path: chipShot, contentType: "image/png" });
   await page.keyboard.press("Escape");
 
-  // The header's toggle shows the thread's terminals right of the chat.
-  await page.getByRole("button", { name: "Toggle terminal panel" }).click();
+  // The right panel's "Terminal" surface shows the thread's terminals right of the chat (D1424).
+  await openSurface(page, "Terminal");
   const panel = page.locator('[data-terminal-owner="right-panel"]');
   await expect(
     panel.getByRole("group", { name: "Terminal 1" }).locator(".xterm-rows"),
@@ -154,7 +154,7 @@ test("D472–D474: the selection menu adds to the chat, and the terminals move t
   await page.screenshot({ path: panelShot });
   await info.attach("terminal-right-panel", { path: panelShot, contentType: "image/png" });
 
-  await page.getByRole("button", { name: "Toggle terminal panel" }).click();
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
   await expect(panel).toHaveCount(0);
   await expect(drawer.getByRole("group", { name: "Terminal 1" })).toBeVisible();
 });

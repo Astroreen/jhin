@@ -7,6 +7,7 @@ import {
   KEYBINDINGS_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  RIGHT_PANEL_CAPABILITY,
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
   THREAD_TRANSCRIPT_SLOT,
@@ -17,6 +18,8 @@ import {
   type MeshMembership,
   type Navigation,
   type NodeTarget,
+  type RightPanel,
+  type RightPanelSurfaceProps,
   type ThreadsCatalog,
   type ThreadTranscriptProps,
   type ThreadUndoService,
@@ -41,7 +44,7 @@ import {
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
+import { FileIcon, MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
@@ -77,6 +80,9 @@ import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createDetailsVisibility, registerThreadDetails } from "./thread-details.tsx";
 import type { FilePanelProps } from "./file-panel.tsx";
 import { FILE_PANEL } from "./file-panel-route.ts";
+import { basename } from "./file-chips.tsx";
+import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
+import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 import { armPasteAsText, consumeArmedPasteAsText } from "../../lib/attachment-files.ts";
 import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
@@ -305,6 +311,8 @@ export const chatPlugin = builtin(
       [KEYBINDINGS_CAPABILITY]: "^1",
       [VISITS_CAPABILITY]: "^1",
       [UNDO_CAPABILITY]: "^1",
+      // A mentioned file as a surface of the right panel (t3-parity.md D1424).
+      [RIGHT_PANEL_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -839,12 +847,65 @@ export const chatPlugin = builtin(
         slots.contribute("app.main", { id: "jhin.chat.view", component: Main }),
       );
       // T3's right-hand file panel (D1342): while the route's panel is `file`, its section the path.
+      // Beside the right panel each file is a surface `file:<path>` of it (D1424).
+      const rightPanel = context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY);
+      if (rightPanel !== undefined) {
+        context.subscriptions.add(
+          rightPanel.register({
+            id: FILE_PANEL,
+            title: "File",
+            icon: FileIcon,
+            useTab: ({ surface }) => {
+              const theme = useResolvedTheme();
+              const path = surface.resource ?? "";
+              return {
+                title: basename(path),
+                icon: (
+                  <PierreEntryIcon className="size-3" kind="file" pathValue={path} theme={theme} />
+                ),
+              };
+            },
+            // T3's "Copy path" of a file's tab.
+            menuItems: ({ surface }) =>
+              surface.resource === undefined
+                ? []
+                : [
+                    {
+                      id: "copy-path",
+                      label: "Copy path",
+                      onSelect: () => void copyText(surface.resource!).catch(() => undefined),
+                    },
+                  ],
+            component: function FileSurface({ place, surface }: RightPanelSurfaceProps) {
+              if (surface.resource === undefined) return null;
+              return (
+                <ChatContext.Provider value={services}>
+                  <FilePanel
+                    embedded
+                    key={`${place.target.node}|${place.target.remote ?? ""}|${place.threadId ?? place.projectId ?? ""}`}
+                    onClose={() => void rightPanel.close(place, surface.id)}
+                    path={surface.resource}
+                    projectId={place.threadId === undefined ? place.projectId : undefined}
+                    target={place.target}
+                    threadId={place.threadId}
+                  />
+                </ChatContext.Provider>
+              );
+            },
+          }),
+        );
+      }
       context.subscriptions.add(
         slots.contribute("app.panel", {
           id: "jhin.chat.file-panel",
           component: function FilePanelSlot() {
             const route = useExternal(navigation, navigation.current);
-            if (route.panel !== FILE_PANEL || !route.section || route.node === undefined) {
+            if (
+              rightPanel !== undefined ||
+              route.panel !== FILE_PANEL ||
+              !route.section ||
+              route.node === undefined
+            ) {
               return null;
             }
             const { panel: _panel, section: _section, ...rest } = route;

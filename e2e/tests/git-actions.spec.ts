@@ -200,7 +200,7 @@ test("D260–D274, D1281–D1283: the chat header's git actions commit, push and
 
   // The stack's badge opens the thread's pull requests panel (D1281, D1282).
   await stack.click();
-  const panel = page.getByRole("complementary", { name: "Pull requests" });
+  const panel = page.getByRole("region", { name: "Pull requests" });
   const rows = panel.getByRole("list", { name: "Linked pull requests" }).getByRole("listitem");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText("Greet by name");
@@ -222,6 +222,10 @@ test("D260–D274, D1281–D1283: the chat header's git actions commit, push and
   await details.getByRole("button", { name: "Stop watching #42" }).click();
   await expect(card).not.toContainText("Waiting");
   await page.keyboard.press("Escape");
-  await panel.getByRole("button", { name: "Close pull requests panel" }).click();
+  // The surface's tab closes it, as T3's strip does (t3-parity.md D1422).
+  await page
+    .getByRole("complementary", { name: "Right panel" })
+    .getByRole("button", { name: "Close Pull requests" })
+    .click();
   await expect(panel).toBeHidden();
 });

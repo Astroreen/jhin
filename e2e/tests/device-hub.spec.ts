@@ -52,7 +52,7 @@ test("D1208: an open simulator streams from the device hub and takes touches and
 
   // An agent opens the simulator: the hub installs and starts, the panel streams it.
   await node.client().call("device.open", { threadId, deviceId: "SIM-1" });
-  const panel = page.getByRole("complementary", { name: "Device panel" });
+  const panel = page.getByRole("region", { name: "Device panel" });
   const screen = panel.getByRole("application", { name: "iOS Simulator screen" });
   await expect(screen).toBeVisible();
   await expect(panel.getByText("Connecting video…")).toBeHidden();
@@ -86,7 +86,7 @@ test("D1333: the device tools beside the screen read and change the simulator's 
   );
   const threadId = decodeURIComponent(/[#&]t=([^&]+)/.exec(page.url())![1]!);
   await node.client().call("device.open", { threadId, deviceId: "SIM-1" });
-  const panel = page.getByRole("complementary", { name: "Device panel" });
+  const panel = page.getByRole("region", { name: "Device panel" });
   await panel.getByRole("button", { name: "Device tools" }).click();
   const toolsPanel = panel.getByRole("region", { name: "Device tools" });
   const appearance = toolsPanel.getByRole("group", { name: "Appearance" });
@@ -151,7 +151,7 @@ test("D1328: T3's Set up devices wizard turns the hub on, checks the simulators 
     await expect(wizard).toBeHidden();
 
     // Set up: the panel streams the simulator, and the node keeps the settings.
-    const panel = page.getByRole("complementary", { name: "Device panel" });
+    const panel = page.getByRole("region", { name: "Device panel" });
     await expect(panel.getByRole("application", { name: "iOS Simulator screen" })).toBeVisible();
     const { value } = await fresh
       .client()

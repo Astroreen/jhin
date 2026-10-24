@@ -1097,7 +1097,9 @@ probe of `ServerBrowser.ts`.
   - T3's 3D phone models, the iPhone Duo's panels and hinge, Android fold
     controls and the keyboard accessory: only the flat view is ported.
   - Physical iOS devices (agent-device's XCTest runner on a device).
-  - Showing a device as a surface of the right panel beside browser tabs.
+  - Each device as a surface of its own: since `t3-parity.md` D1424 the
+    devices are one surface `devices` beside browser tabs (the list, or the
+    thread's latest device), where T3 has a surface per device.
   - Hub tickets that follow a caller's grants as they change: the node keeps
     no token to verify again, so a ticket keeps its grants for its five
     minutes, as T3's does.

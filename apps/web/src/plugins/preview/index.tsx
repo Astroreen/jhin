@@ -6,8 +6,10 @@ import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  RIGHT_PANEL_CAPABILITY,
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
+  rightPanelSurfaceId,
   targetKey,
   type ChatHeaderActionProps,
   type ChatThreadOverlayProps,
@@ -16,6 +18,9 @@ import {
   type Keybindings,
   type Navigation,
   type NodeTarget,
+  type RightPanel,
+  type RightPanelPlace,
+  type RightPanelSurfaceProps,
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import { DESKTOP_SHELL_CAPABILITY, type DesktopShell } from "@jhin/desktop-api";
@@ -51,7 +56,9 @@ import {
   type ProfilesServices,
 } from "./profiles.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
-import type { BrowserPanelProps, PanelServices } from "./panel.tsx";
+import type { BrowserPanelProps, BrowserSurfaceViewProps, PanelServices } from "./panel.tsx";
+import { NEW_TAB, tabTitle } from "./tab-title.ts";
+import { browserSurfaceResources, releaseBrowserTabs } from "./surfaces.ts";
 import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
 import { DesktopWebviews } from "./desktop-webviews.tsx";
@@ -107,6 +114,15 @@ const BrowserPanel = lazyChunk<BrowserPanelProps>(
   },
 );
 
+// A browser surface of the right panel: the same chunk (D440).
+const BrowserSurfaceView = lazyChunk<BrowserSurfaceViewProps>(
+  () => import("./panel.tsx").then((module) => module.BrowserSurfaceView),
+  {
+    loading: () => null,
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load the browser.</ChunkFailed>,
+  },
+);
+
 // T3's floating preview, a chunk of its own too: loaded when a tab first floats (D1202).
 const MiniPlayer = lazyChunk<MiniPlayerProps>(
   () => import("./mini-player.tsx").then((module) => module.MiniPlayer),
@@ -144,6 +160,8 @@ export const previewPanelPlugin = builtin(
       [UI_SETTINGS_CAPABILITY]: "^1",
       // The desktop app's webviews (D1324).
       [DESKTOP_SHELL_CAPABILITY]: "^1.1",
+      // Each browser tab as a surface of the right panel (t3-parity.md D1424).
+      [RIGHT_PANEL_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -154,6 +172,7 @@ export const previewPanelPlugin = builtin(
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
+      const rightPanel = context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY);
       const feeds = context.subscriptions.add(createTabFeeds(connections));
       const desktopShell = () => context.services.tryGet<DesktopShell>(DESKTOP_SHELL_CAPABILITY);
       // Where the panel and the mini player show the desktop app's webviews (D1324).
@@ -252,7 +271,10 @@ export const previewPanelPlugin = builtin(
         key: string,
         tabs: readonly PreviewTab[],
         tabId: string,
-      ) => route.panel === BROWSER_PANEL && shownTab(key, tabs) === tabId;
+      ) =>
+        route.panel === BROWSER_PANEL &&
+        // Beside the right panel the route names the tab it shows (t3-parity.md D1424).
+        (rightPanel === undefined ? shownTab(key, tabs) : route.section) === tabId;
       /** The route without the right panel (and the section it showed). */
       const withoutPanel = (route: ReturnType<Navigation["current"]>) => {
         const { panel: _panel, section: _section, ...rest } = route;
@@ -400,7 +422,14 @@ export const previewPanelPlugin = builtin(
           return { toggled: false, floated: null };
         }
         if (route.panel !== BROWSER_PANEL) {
-          navigation.navigate({ ...withoutPanel(route), panel: BROWSER_PANEL });
+          // T3's togglePreviewPanel: the tab shown last, else a new tab.
+          const key = `${targetKey({ node: route.node })}|${route.thread}`;
+          const tabId = shownTab(key, feeds.of(route.node, route.thread).tabs());
+          navigation.navigate({
+            ...withoutPanel(route),
+            panel: BROWSER_PANEL,
+            ...(rightPanel === undefined ? {} : { section: tabId ?? NEW_TAB }),
+          });
           return { toggled: true, floated: null };
         }
         // Closing the panel floats the tab it showed, as T3's closePreviewPanel does (D1202).
@@ -594,7 +623,8 @@ export const previewPanelPlugin = builtin(
       function PanelToggle({ target, thread }: ChatHeaderActionProps) {
         const route = useExternal(navigation, navigation.current);
         const shortcut = useShortcutLabels(keybindings)("preview.toggle");
-        if (thread === undefined) return null;
+        // Beside the right panel, its own "Toggle right panel" takes this place (D1424).
+        if (thread === undefined || rightPanel !== undefined) return null;
         const available = target.remote === undefined;
         return (
           <Tooltip>
@@ -668,6 +698,17 @@ export const previewPanelPlugin = builtin(
         if (fresh === undefined) return;
         setActiveTab(key, fresh.tabId);
         const route = navigation.current();
+        if (rightPanel !== undefined) {
+          // T3's useAgentOpenedPreviews: the right panel shows the agent's tab.
+          if (route.thread === threadId) {
+            navigation.navigate({
+              ...withoutPanel(route),
+              panel: BROWSER_PANEL,
+              section: fresh.tabId,
+            });
+          }
+          return;
+        }
         if (route.panel !== BROWSER_PANEL && route.thread === threadId) {
           const { section: _section, ...rest } = route;
           navigation.navigate({ ...rest, panel: BROWSER_PANEL });
@@ -677,6 +718,7 @@ export const previewPanelPlugin = builtin(
       function Panel() {
         const route = useExternal(navigation, navigation.current);
         if (
+          rightPanel !== undefined ||
           route.panel !== BROWSER_PANEL ||
           route.node === undefined ||
           route.thread === undefined
@@ -686,6 +728,28 @@ export const previewPanelPlugin = builtin(
         if (route.remote !== undefined) return null;
         return <PanelFor target={{ node: route.node }} threadId={route.thread} />;
       }
+
+      /** What the panel's chunk asks of the plugin, for a thread on `target`. */
+      const servicesFor = (
+        target: NodeTarget,
+        shortcut: (command: string) => string | undefined,
+      ): PanelServices => ({
+        viewer,
+        activeTab: (panelKey) => active.get(panelKey),
+        setActiveTab,
+        focusUrlRequests,
+        call: (method, params) => threads.call(target, method, params),
+        shortcut,
+        onError,
+        useFloatingTab: (panelKey) => useExternal(players, () => players.get(panelKey)?.tabId),
+        float: (panelKey, tabId) => {
+          if (tabId === undefined) players.close(panelKey);
+          else float(panelKey, tabId);
+        },
+        useProfiles: () => resolveBrowserProfiles(profiles.use()),
+        offerDownload,
+        surfaces,
+      });
 
       function PanelFor(props: { target: NodeTarget; threadId: string }) {
         const feed = feeds.of(props.target.node, props.threadId);
@@ -719,23 +783,7 @@ export const previewPanelPlugin = builtin(
             </PanelPlaceholder>
           );
         }
-        const services: PanelServices = {
-          viewer,
-          activeTab: (panelKey) => active.get(panelKey),
-          setActiveTab,
-          focusUrlRequests,
-          call: (method, params) => threads.call(props.target, method, params),
-          shortcut,
-          onError,
-          useFloatingTab: (panelKey) => useExternal(players, () => players.get(panelKey)?.tabId),
-          float: (panelKey, tabId) => {
-            if (tabId === undefined) players.close(panelKey);
-            else float(panelKey, tabId);
-          },
-          useProfiles: () => resolveBrowserProfiles(profiles.use()),
-          offerDownload,
-          surfaces,
-        };
+        const services = servicesFor(props.target, shortcut);
         return (
           <BrowserPanel
             client={connection.client}
@@ -800,7 +848,13 @@ export const previewPanelPlugin = builtin(
               players.close(key);
               setActiveTab(key, tab.tabId);
               const current = navigation.current();
-              if (current.panel !== BROWSER_PANEL) {
+              if (rightPanel !== undefined) {
+                navigation.navigate({
+                  ...withoutPanel(current),
+                  panel: BROWSER_PANEL,
+                  section: tab.tabId,
+                });
+              } else if (current.panel !== BROWSER_PANEL) {
                 const { section: _section, ...rest } = current;
                 navigation.navigate({ ...rest, panel: BROWSER_PANEL });
               }
@@ -819,6 +873,210 @@ export const previewPanelPlugin = builtin(
       context.subscriptions.add(
         slots.contribute("app.panel", { id: "jhin.preview.panel", component: Panel }),
       );
+      if (rightPanel !== undefined) registerSurfaces(rightPanel);
+
+      /**
+       * Each of a thread's tabs as a surface `browser:<tabId>` of the right panel, and T3's new
+       * tab `browser:new` (t3-parity.md D1424).
+       */
+      function registerSurfaces(panel: RightPanel) {
+        const keyOf = (place: RightPanelPlace) => `${targetKey(place.target)}|${place.threadId}`;
+        /** The profile each place's new tab opens in, when the user picked one. */
+        const draftProfiles = new Map<string, string>();
+        const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
+
+        // The route names the tab on screen: the plugin's own choice follows it.
+        const followRoute = () => {
+          const route = navigation.current();
+          if (
+            route.panel !== BROWSER_PANEL ||
+            route.node === undefined ||
+            route.thread === undefined ||
+            route.remote !== undefined
+          ) {
+            return;
+          }
+          const key = `${targetKey({ node: route.node })}|${route.thread}`;
+          if (route.section === undefined) {
+            // A route naming the browser alone (an older link): the tab shown last, else a new one.
+            const tabId = shownTab(key, feeds.of(route.node, route.thread).tabs()) ?? NEW_TAB;
+            navigation.navigate({ ...route, section: tabId }, { replace: true });
+            const place = { target: { node: route.node }, threadId: route.thread };
+            const lone = panel
+              .state(place)
+              .surfaces.some((surface) => surface.id === BROWSER_PANEL);
+            if (lone) void panel.close(place, BROWSER_PANEL);
+            return;
+          }
+          if (route.section !== NEW_TAB && active.get(key) !== route.section) {
+            setActiveTab(key, route.section);
+          }
+        };
+        context.subscriptions.add(navigation.subscribe(followRoute));
+        followRoute();
+
+        // The thread on screen's tabs become its surfaces, as T3's reconcileBrowserSurfaces: a
+        // new one is added unless its agent keeps it hidden (`reveal` false), a closed one goes.
+        let watched: { key: string; stop: Disposable } | undefined;
+        const watch = () => {
+          const shown = threadOnScreen();
+          if (watched?.key === shown?.key) return;
+          watched?.stop.dispose();
+          watched = undefined;
+          if (shown === undefined) return;
+          const place: RightPanelPlace = {
+            target: { node: shown.route.node! },
+            threadId: shown.route.thread!,
+          };
+          const apply = () => {
+            if (!shown.feed.loaded()) return;
+            const present = new Set(
+              panel
+                .state(place)
+                .surfaces.filter((surface) => surface.kind === BROWSER_PANEL)
+                .map((surface) => surface.resource),
+            );
+            const resources = browserSurfaceResources(shown.feed.tabs(), present);
+            panel.reconcile(place, BROWSER_PANEL, resources);
+          };
+          watched = { key: shown.key, stop: shown.feed.subscribe(apply) };
+          apply();
+        };
+        context.subscriptions.add(navigation.subscribe(watch));
+        context.subscriptions.add({ dispose: () => watched?.stop.dispose() });
+        watch();
+
+        function BrowserSurface({ place, surface }: RightPanelSurfaceProps) {
+          const shortcut = useShortcutLabels(keybindings);
+          const node = place.target.node;
+          const threadId = place.threadId ?? "";
+          const feed = feeds.of(node, threadId);
+          const tabs = useExternal(feed, feed.tabs);
+          const connection = useExternal(connections, () => connections.get(node));
+          const key = keyOf(place);
+          const resource = surface.resource;
+          useEffect(() => {
+            if (resource === undefined || resource === NEW_TAB) return;
+            const refresh = () =>
+              void threads
+                .call(place.target, "preview.tab.navigate", {
+                  threadId,
+                  tabId: resource,
+                  viewer,
+                  reload: {},
+                })
+                .catch((error: unknown) => onError("Unable to change the browser tab", error));
+            refreshListeners.add(refresh);
+            return () => {
+              refreshListeners.delete(refresh);
+            };
+          }, [key, resource]);
+          if (place.threadId === undefined || place.target.remote !== undefined) return null;
+          if (resource === undefined) return null;
+          if (connection === undefined) {
+            return <p className="p-4 text-xs text-muted-foreground">Connecting…</p>;
+          }
+          return (
+            <BrowserSurfaceView
+              client={connection.client}
+              onOpened={(tabId) => {
+                draftProfiles.delete(key);
+                panel.open(place, { kind: BROWSER_PANEL, resource: tabId });
+                // The new tab's start goes, as T3's openBrowser drops `browser:new`.
+                void panel.close(place, rightPanelSurfaceId(BROWSER_PANEL, NEW_TAB));
+              }}
+              panelKey={key}
+              profileId={draftProfiles.get(key)}
+              resource={resource}
+              services={servicesFor(place.target, shortcut)}
+              tabs={tabs}
+              threadId={place.threadId}
+            />
+          );
+        }
+
+        context.subscriptions.add(
+          panel.register({
+            id: BROWSER_PANEL,
+            title: "Browser",
+            icon: Globe2Icon,
+            offer: {
+              label: "Browser",
+              shortcut: "B",
+              order: 10,
+              useAvailability: (place) =>
+                place.threadId === undefined
+                  ? {
+                      available: false,
+                      reason: "Browser previews are only available from a thread.",
+                      hint: "Available from a thread.",
+                    }
+                  : place.target.remote !== undefined
+                    ? {
+                        available: false,
+                        reason:
+                          "The browser opens on nodes this client connects to; this thread is on another node of the mesh.",
+                      }
+                    : { available: true },
+              // T3's browser profiles, a submenu of "Browser".
+              useOptions: () =>
+                resolveBrowserProfiles(profiles.use()).profiles.map((profile) => ({
+                  id: profile.id,
+                  label: profile.name,
+                })),
+              optionsLabel: "Open browser in a profile",
+              add: (place, option) => {
+                const key = keyOf(place);
+                if (option === undefined) draftProfiles.delete(key);
+                else draftProfiles.set(key, option);
+                panel.open(place, { kind: BROWSER_PANEL, resource: NEW_TAB });
+              },
+            },
+            useTab: ({ place, surface }) => {
+              const feed =
+                place.threadId === undefined || place.target.remote !== undefined
+                  ? undefined
+                  : feeds.of(place.target.node, place.threadId);
+              const tabs = useExternal(feed ?? emptyFeed, () => feed?.tabs() ?? NO_TABS);
+              return { title: tabTitle(tabs.find((tab) => tab.tabId === surface.resource)) };
+            },
+            // T3's closePreviewPanel: the tab on screen floats over the chat (D1202).
+            onPanelClose: ({ place, surface }) => {
+              if (surface.resource === undefined || surface.resource === NEW_TAB) return;
+              if (place.threadId === undefined || place.target.remote !== undefined) return;
+              floatTab(keyOf(place), surface.resource);
+            },
+            // T3's useRightPanelSurfaceClose: a closed surface closes its tab, after asking while
+            // an agent drives it; a tab that does not close keeps its surface.
+            release: (place, closing) => {
+              if (place.threadId === undefined || place.target.remote !== undefined) {
+                return true;
+              }
+              const threadId = place.threadId;
+              return releaseBrowserTabs({
+                tabs: feeds.of(place.target.node, threadId).tabs(),
+                closing,
+                confirm: (question) =>
+                  dialogs === undefined
+                    ? Promise.resolve(true)
+                    : dialogs.confirm({
+                        ...question,
+                        confirmLabel: "Close",
+                        variant: "destructive",
+                      }),
+                close: (tabId) =>
+                  threads
+                    .call(place.target, "preview.tab.close", { threadId, tabId })
+                    .catch((error: unknown) => {
+                      onError("Unable to change the browser tab", error);
+                      throw error;
+                    }),
+              });
+            },
+            component: BrowserSurface,
+          }),
+        );
+      }
       // In the desktop app: its own node's tabs in webviews (D1321, D1324).
       context.subscriptions.add(
         slots.contribute("app.global", {

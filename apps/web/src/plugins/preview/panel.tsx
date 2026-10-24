@@ -79,6 +79,7 @@ import {
 } from "react";
 
 import { profileName, type BrowserProfile } from "./profiles.tsx";
+import { NEW_TAB, tabTitle } from "./tab-title.ts";
 import { BrowserSurface } from "./surface.tsx";
 import { NativeSurface } from "./native-surface.tsx";
 import type { NativeSurfaces } from "./native-surfaces.ts";
@@ -129,18 +130,6 @@ function forgetRecentUrl(url: string): void {
 }
 
 // --- Labels ---------------------------------------------------------------------------
-
-/** T3's tab title: the page's title, else its host, else "Browser". */
-function tabTitle(tab: PreviewTab | undefined): string {
-  const status = tab?.navStatus;
-  if (status === undefined || status.state === "idle") return "Browser";
-  if (status.title.trim() !== "") return status.title;
-  try {
-    return new URL(status.url).host || "Browser";
-  } catch {
-    return "Browser";
-  }
-}
 
 function urlLabel(url: string): string {
   try {
@@ -309,6 +298,84 @@ export interface BrowserPanelProps {
   readonly tabs: readonly PreviewTab[];
   readonly services: PanelServices;
   readonly panelKey: string;
+}
+
+/** Opens a page typed into a new tab's address bar, as T3's new browser tab does. */
+async function openPage(
+  services: PanelServices,
+  threadId: string,
+  raw: string,
+  profileId: string,
+): Promise<PreviewTab | undefined> {
+  let url: string;
+  try {
+    url = resolveAddressBarInput(raw);
+  } catch (error) {
+    services.onError("Unable to open the page", error);
+    return undefined;
+  }
+  try {
+    const tab = await services.call<PreviewTab>("preview.tab.open", { threadId, url, profileId });
+    recordRecentUrl(url, "");
+    return tab;
+  } catch (error) {
+    services.onError("Unable to open the page", error);
+    return undefined;
+  }
+}
+
+export interface BrowserSurfaceViewProps {
+  readonly threadId: string;
+  readonly client: RpcClient;
+  readonly tabs: readonly PreviewTab[];
+  readonly services: PanelServices;
+  readonly panelKey: string;
+  /** The surface's tab, or `new` for T3's new tab (`browser:new`). */
+  readonly resource: string;
+  /** The profile a new tab opens in (T3's "Open browser in a profile"). */
+  readonly profileId: string | undefined;
+  /** A page opened from the new tab: the surface becomes its tab. */
+  onOpened(tabId: string): void;
+}
+
+/** One browser surface of the right panel (t3-parity.md D1424): a tab, or a new tab's start. */
+export function BrowserSurfaceView(props: BrowserSurfaceViewProps) {
+  const { services, threadId } = props;
+  const { profiles, defaultProfileId } = services.useProfiles();
+  if (props.resource === NEW_TAB) {
+    // A profile removed in the settings meanwhile is not opened: the default is.
+    const profile =
+      props.profileId !== undefined && profiles.some((entry) => entry.id === props.profileId)
+        ? props.profileId
+        : defaultProfileId;
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" data-preview-surface="">
+        <DraftView
+          onOpen={(url) =>
+            void openPage(services, threadId, url, profile).then((tab) => {
+              if (tab !== undefined) props.onOpened(tab.tabId);
+            })
+          }
+          services={services}
+        />
+      </div>
+    );
+  }
+  const tab = props.tabs.find((entry) => entry.tabId === props.resource);
+  // A tab that closed leaves the strip once the thread's tabs say so.
+  if (tab === undefined) return null;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-preview-surface="">
+      <TabView
+        client={props.client}
+        key={tab.tabId}
+        panelKey={props.panelKey}
+        services={services}
+        tab={tab}
+        threadId={threadId}
+      />
+    </div>
+  );
 }
 
 /** The right panel of a thread: its browser tabs and the one on screen. */
