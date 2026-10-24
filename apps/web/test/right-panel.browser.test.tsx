@@ -140,18 +140,17 @@ describe("the right panel's strip", () => {
     expect(calls).toEqual(["add browser", "add browser"]);
   });
 
-  it("closes a tab on a middle click, and scrolls tabs past the strip's width", async () => {
-    const many = Array.from({ length: 24 }, (_, index) =>
-      surfaceOf("file", `src/file-${index}.ts`),
+  // The strip's overflow scrolling needs the app's stylesheet, which these tests do not load.
+  it("closes a tab on a middle click", async () => {
+    const calls = await mount(
+      state([surfaceOf("file", "src/a.ts"), surfaceOf("file", "src/b.ts")], "file:src/a.ts"),
     );
-    const calls = await mount(state(many, "file:src/file-0.ts"));
-    const first = page.getByRole("tab", { name: "src/file-0.ts" }).element();
-    first
+    page
+      .getByRole("tab", { name: "src/b.ts" })
+      .element()
       .closest<HTMLElement>("[data-surface-id]")!
       .dispatchEvent(new MouseEvent("auxclick", { bubbles: true, button: 1 }));
-    expect(calls).toEqual(["close file:src/file-0.ts"]);
-    await expect.element(page.getByRole("button", { name: "Scroll tabs right" })).toBeEnabled();
-    await expect.element(page.getByRole("button", { name: "Scroll tabs left" })).toBeDisabled();
+    expect(calls).toEqual(["close file:src/b.ts"]);
   });
 
   it("maximizes and restores the panel", async () => {
