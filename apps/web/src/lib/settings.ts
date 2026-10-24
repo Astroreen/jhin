@@ -52,6 +52,18 @@ export const SyncSettings = z.object({
 });
 export type SyncSettings = z.output<typeof SyncSettings>;
 
+/**
+ * Whether this device keeps the chat history it read (loading.md D1592);
+ * defined by the history cache plugin and, like `jhin.sync`, never shared:
+ * each device decides for itself (D1609).
+ */
+export const HISTORY_CACHE_SECTION = "jhin.history-cache";
+export const HistoryCacheSettings = z.object({
+  /** "Keep chat history on this device". */
+  enabled: z.boolean().default(true),
+});
+export type HistoryCacheSettings = z.output<typeof HistoryCacheSettings>;
+
 /** A section's value, or its schema's defaults when nobody defined it (its plugin is absent). */
 export function readSection<S extends z.ZodType>(
   context: PluginContext,

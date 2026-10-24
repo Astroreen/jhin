@@ -7,7 +7,7 @@ import {
 } from "@jhin/client-api";
 import type { Disposable, PluginContext } from "@jhin/sdk";
 
-import { readSection, SYNC_SECTION, SyncSettings } from "../lib/settings.ts";
+import { HISTORY_CACHE_SECTION, readSection, SYNC_SECTION, SyncSettings } from "../lib/settings.ts";
 
 /** A section of the device settings as a node keeps it (D487). */
 interface Kept {
@@ -17,10 +17,11 @@ interface Kept {
 
 /**
  * The device settings to share: every section but `jhin.sync`, which says
- * what this device shares and so stays its own (D488).
+ * what this device shares and so stays its own (D488), and
+ * `jhin.history-cache`, which each device decides for itself (loading.md D1609).
  */
 export function shared(section: string): boolean {
-  return section !== SYNC_SECTION;
+  return section !== SYNC_SECTION && section !== HISTORY_CACHE_SECTION;
 }
 
 /**
