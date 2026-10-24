@@ -571,6 +571,52 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   share the check (`lockedInstallStrays` in `scripts/packing.ts`, unit
   tested).
 
+- **D1486. The app attaches to a node of its home that already runs.**
+  Before it starts its own node, the app looks for one as `jhin pair` does
+  (security.md D1184): the home's `runtime.json`, whose process is alive and
+  whose address answers `/.well-known/jhin` with its instance. The lookup
+  moves from the CLI into `@jhin/node-host/running` (`findRunningNode`),
+  which both use. A node found there is used instead of starting one: the
+  window loads its address (loopback for a wildcard listener) with the
+  home's token, as D512 reads it. One that does not serve the web client (a
+  `jhin serve` without `--ui`) gets D512's dialog with "A Jhin node of this
+  home already runs at <url> without the web client. Stop it, or start it
+  with `jhin serve --ui`." (Try Again, Quit). Such a node is not the app's:
+  quitting leaves it running, and D1201's restart does not apply. While it
+  runs, the app checks its process every 2 s. Once the process is gone, the
+  app relaunches itself, which starts the app's own node. The node does not
+  serve `jhin.desktop`, as a browser opening it never gets it (D514). So
+  the window has the system's frame and title bar instead of T3's chrome
+  (D515), which needs the plugin's insets. The page goes without the
+  plugin's parts: the update control and the About section, the quit hold's
+  hint, Paste as Text's arming, the badge, and the preview's webviews (its
+  tabs open headless, D394). The native menus, the single instance,
+  renderer recovery and the menu's update dialogs stay. T3 has no such
+  path: its app always starts its own backend.
+
+- **D1487. Another port when the node's is taken by something else.** When
+  no node of the home runs and the app's node fails because its port is in
+  use (`jhin.http`'s "Port N on H is in use"), the app picks the first port
+  above N that it can listen on at H. It keeps the port in its settings
+  file (`nodePort`) and starts the node again with it. Later launches pass
+  the kept port, so the page's origin, and with it the client's
+  `localStorage`, stays the same (D513). If the kept port is taken too, the
+  app picks again from there. The port reaches the node through
+  `jhin serve`'s new `--port <port>`, which the CLI puts in the
+  distribution config layer (the node host's new `config` option). So a
+  `jhin.http.port` the user configured still wins, and when that port is
+  taken the app shows D512's dialog as before, rather than picking again.
+  The app cannot tell a configured port from the default one before it
+  tries: with no port kept yet, a taken configured port costs one more
+  start, on the picked port, which the configured one overrides and which
+  fails the same way, and nothing is kept. `--port` takes 1 to 65535, never
+  0, whose port would change with every start. The choice is
+  `startOnFreePort` in `apps/desktop/src/local-node.ts`, unit tested with
+  injected starts.
+  T3 scans for a free port from its default on every launch
+  (`resolveDesktopBackendPort`); its client's origin is a custom protocol,
+  so the port can change, while here it must be kept.
+
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
@@ -611,9 +657,12 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   on all three systems.
 - Trimming the packaged app (about 400 MB unpacked: every agent SDK's
   binaries) and an asar archive with the node's files unpacked (D942).
-- Attaching to a node of the same home that already runs (`jhin serve`), and
-  choosing another port when 7777 is taken by something else (D513 keeps the
-  origin stable, so the choice must be kept).
+- An attached node with T3's chrome and the rest of `jhin.desktop` (D1486):
+  the node would have to load the app's client plugin while it runs, which
+  no host command does yet.
+- An e2e of D1487's port choice: it needs the node's default port taken on
+  the CI machine; the unit tests cover reading the failure and picking a
+  free port.
 - The trackpad
   scroll-end and window-fullscreen events beyond macOS's controls inset.
 - Asking the user before a preview page reads the clipboard (withheld

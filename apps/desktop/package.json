@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@jhin/desktop-api": "workspace:*",
+    "@jhin/node-host": "workspace:*",
     "@jhin/preview-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@types/node": "catalog:",

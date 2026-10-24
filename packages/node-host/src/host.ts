@@ -82,6 +82,12 @@ export interface NodeHostOptions {
    */
   readonly watch?: boolean;
   readonly logLevel?: string;
+  /**
+   * Settings the launcher gives, as the distribution config layer: under the
+   * node's and the project's files, which win over them (`jhin serve --port`,
+   * desktop.md D1487).
+   */
+  readonly config?: Readonly<Record<string, unknown>>;
 }
 
 export interface NodeInspection {
@@ -716,6 +722,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     if (recentEvents.length > RECENT_EVENTS) recentEvents.shift();
   });
 
+  if (options.config !== undefined) kernel.config.setLayer("distribution", { ...options.config });
   applyLayer(kernel, "node", home.config, log);
   applyLayer(kernel, "project", projectConfig, log);
 

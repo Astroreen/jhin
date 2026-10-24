@@ -1,5 +1,6 @@
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
+import * as Net from "node:net";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
@@ -213,5 +214,43 @@ export default definePlugin({
     const unknown = await jhin(home, "nope.command");
     expect(unknown.status).toBe(2);
     expect(unknown.stderr).toContain("example.greet");
+  });
+
+  it("serve --port listens there unless jhin.http.port is configured, and wants 1 to 65535", async () => {
+    const home = homeWith({});
+    for (const port of ["0", "99999", "x"]) {
+      const refused = await jhin(home, "serve", "--port", port);
+      expect(refused.status).toBe(2);
+      expect(refused.stderr).toContain("--port needs a port from 1 to 65535");
+    }
+    // No configured port: --port is the node's (the distribution layer, D1487).
+    Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), "{}");
+    const free = await new Promise<number>((resolve) => {
+      const probe = Net.createServer().listen(0, "127.0.0.1", () => {
+        const { port } = probe.address() as Net.AddressInfo;
+        probe.close(() => resolve(port));
+      });
+    });
+    const child = ChildProcess.spawn(
+      process.execPath,
+      [BIN, "serve", "--port", String(free), "--home", home, "--cwd", home],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    try {
+      const rpc = await new Promise<string>((resolve, reject) => {
+        let stderr = "";
+        child.stderr.on("data", (chunk) => {
+          stderr += String(chunk);
+          const url = /rpc: (ws:\/\/\S+)/.exec(stderr)?.[1];
+          if (url !== undefined) resolve(url);
+        });
+        child.once("exit", (code) => reject(new Error(`serve exited with ${code}:\n${stderr}`)));
+      });
+      expect(new URL(rpc).port).toBe(String(free));
+    } finally {
+      child.kill("SIGTERM");
+      await exited;
+    }
   });
 });

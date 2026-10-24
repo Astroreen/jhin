@@ -225,6 +225,9 @@ importers:
       '@jhin/desktop-api':
         specifier: workspace:*
         version: link:../../packages/desktop-api
+      '@jhin/node-host':
+        specifier: workspace:*
+        version: link:../../packages/node-host
       '@jhin/preview-api':
         specifier: workspace:*
         version: link:../../packages/preview-api

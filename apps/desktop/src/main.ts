@@ -27,7 +27,19 @@ import {
 } from "@jhin/desktop-api";
 import { z } from "@jhin/sdk";
 
-import { cliEntry, startLocalNode, type RunningLocalNode } from "./local-node.ts";
+import { findRunningNode } from "@jhin/node-host/running";
+
+import {
+  attachRunningNode,
+  cliEntry,
+  freePortAbove,
+  localNodeHome,
+  startLocalNode,
+  startOnFreePort,
+  watchAttachedNode,
+  type AttachedNode,
+  type RunningLocalNode,
+} from "./local-node.ts";
 import { buildApplicationMenu, type ContentsCommand, type ZoomDirection } from "./menu.ts";
 import { createSettingsStore } from "./settings.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updates/channels.ts";
@@ -62,8 +74,10 @@ let mainWindow: BrowserWindow | undefined;
 let node: RunningLocalNode | undefined;
 /** The node being started, so quitting meanwhile can wait for it and stop it. */
 let starting: Promise<RunningLocalNode> | undefined;
-/** The node last started, which the window shows; kept while `node` is cleared to quit. */
-let shownNode: RunningLocalNode | undefined;
+/** The node the window shows: the last started, kept while `node` is cleared to quit, or an attached one. */
+let shownNode: { readonly url: string; readonly token: string } | undefined;
+/** A node of the home that already ran when the app started; never the app's to stop (D1486). */
+let attached: AttachedNode | undefined;
 let nodeOrigin: string | undefined;
 let quitting = false;
 /** `startNode` runs, its Try Again dialog included: a restart leaves the node to it (D1201). */
@@ -331,10 +345,22 @@ async function main(): Promise<void> {
   });
 
   // --- The local node and the window (D512, D513). ---
+  const home = localNodeHome();
+  /** The node on its port, or another when that is taken by something else (D1487). */
+  const startOnFreePortNow = () =>
+    startOnFreePort({
+      kept: settings.get().nodePort,
+      start: (port) => startLocalNode(nodePaths, home, undefined, port),
+      running: () => findRunningNode(home),
+      freePortAbove,
+      keep: (nodePort) => settings.update({ nodePort }),
+      quitting: () => quitting,
+      log,
+    });
   /** Starts the node once and makes it the app's; rejects when it did not come up. */
   async function launchNode(): Promise<RunningLocalNode> {
     try {
-      starting = startLocalNode(nodePaths);
+      starting = startOnFreePortNow();
       const started = await starting;
       starting = undefined;
       if (quitting) {
@@ -362,6 +388,29 @@ async function main(): Promise<void> {
       return await startNodeAsking();
     } finally {
       startingInDialog = false;
+    }
+  }
+  /** The node of the home that already runs, asking to try again or quit while it cannot be shown (D1486). */
+  async function attachAsking(): Promise<AttachedNode | undefined> {
+    for (;;) {
+      try {
+        return await attachRunningNode(home);
+      } catch (error) {
+        const choice = await dialog.showMessageBox({
+          type: "error",
+          title: "The node of this home cannot be shown",
+          message: `${APP_NAME} could not show the node of its home.`,
+          detail: error instanceof Error ? error.message : String(error),
+          buttons: ["Try Again", "Quit"],
+          defaultId: 0,
+          cancelId: 1,
+        });
+        if (choice.response !== 0) {
+          quitting = true;
+          app.quit();
+          throw error;
+        }
+      }
     }
   }
   async function startNodeAsking(): Promise<RunningLocalNode> {
@@ -422,6 +471,8 @@ async function main(): Promise<void> {
       preload: Path.join(import.meta.dirname, "preload.cjs"),
       icon: undefined,
       node: () => shownNode!,
+      // An attached node serves no jhin.desktop, whose insets T3's chrome needs (D1486).
+      chrome: attached === undefined ? "t3" : "system",
       settings,
       log,
       webviews,
@@ -471,9 +522,26 @@ async function main(): Promise<void> {
     });
   });
   try {
-    await startNode();
+    attached = await attachAsking();
+    if (attached === undefined) await startNode();
   } catch {
     return;
+  }
+  if (attached !== undefined) {
+    shownNode = attached;
+    nodeOrigin = new URL(attached.url).origin;
+    log("showing the node of this home that already runs", {
+      url: attached.url,
+      pid: attached.pid,
+    });
+    // Once it stops, the app starts again with a node of its own (D1486).
+    const stopWatching = watchAttachedNode(attached, () => {
+      if (quitting) return;
+      log("the attached node stopped; relaunching with the app's own node", { pid: attached!.pid });
+      app.relaunch();
+      app.quit();
+    });
+    app.on("before-quit", stopWatching);
   }
   openWindow();
   updates.start();

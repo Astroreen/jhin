@@ -32,6 +32,8 @@ const AppSettings = z.object({
   quitShortcut: QuitConfirmationMode.optional().catch(undefined),
   mainWindowBounds: Bounds.nullable().catch(null).default(null),
   mainWindowMaximized: z.boolean().catch(false).default(false),
+  /** The node's port the app chose when its own was taken (D1487); unset is the node's own. */
+  nodePort: z.number().int().min(1).max(65_535).optional().catch(undefined),
 });
 export type AppSettings = z.output<typeof AppSettings>;
 

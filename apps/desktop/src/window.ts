@@ -69,8 +69,11 @@ function titleBarOptions(dark: boolean, platform: NodeJS.Platform) {
   };
 }
 
+/** Windows with the system's frame (D1486): no overlay or traffic lights to place. */
+const systemChrome = new WeakSet<BrowserWindow>();
+
 function syncMacosWindowButtons(window: BrowserWindow): void {
-  if (window.isDestroyed() || window.isFullScreen()) return;
+  if (window.isDestroyed() || window.isFullScreen() || systemChrome.has(window)) return;
   window.setWindowButtonPosition({
     x: 16,
     y: Math.round(
@@ -90,6 +93,11 @@ export interface MainWindowOptions {
    * restarted after it stopped may listen elsewhere.
    */
   node(): { readonly url: string; readonly token: string };
+  /**
+   * T3's chrome (D515), or the system's frame for a node that serves no
+   * `jhin.desktop`, whose insets T3's chrome needs (D1486).
+   */
+  readonly chrome?: "t3" | "system";
   readonly settings: SettingsStore;
   log(message: string, fields?: Record<string, unknown>): void;
   /** The preview's webviews (D1322, D1323). */
@@ -124,7 +132,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     backgroundColor: backgroundColor(dark),
     ...(platform === "darwin" || options.icon === undefined ? {} : { icon: options.icon }),
     title: options.title,
-    ...titleBarOptions(dark, platform),
+    ...(options.chrome === "system" ? {} : titleBarOptions(dark, platform)),
     webPreferences: {
       preload: options.preload,
       // Chromium throttles hidden renderers, which stalls first paint; the
@@ -137,6 +145,8 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       webviewTag: options.webviews !== undefined,
     },
   });
+
+  if (options.chrome === "system") systemChrome.add(window);
 
   // --- Bounds, written 500 ms after the last change and on close (D515). ---
   let persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -321,6 +331,7 @@ export function syncWindowAppearance(window: BrowserWindow, platform: NodeJS.Pla
   if (window.isDestroyed()) return;
   const dark = nativeTheme.shouldUseDarkColors;
   window.setBackgroundColor(backgroundColor(dark));
+  if (systemChrome.has(window)) return;
   const { titleBarOverlay } = titleBarOptions(dark, platform) as {
     titleBarOverlay?: Electron.TitleBarOverlayOptions;
   };
