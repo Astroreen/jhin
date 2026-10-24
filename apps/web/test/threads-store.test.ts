@@ -113,7 +113,11 @@ describe("applyIndexEvent", () => {
 /** A node's RPC client: answers from `answers`, records `threads` subscriptions. */
 function fakeNode(answers: Record<string, () => Promise<unknown>>) {
   const calls: string[] = [];
-  const subscriptions: { after: number | undefined; onEvent: (event: StoredEvent) => void }[] = [];
+  const subscriptions: {
+    after: number | undefined;
+    onEvent: (event: StoredEvent) => void;
+    onError?: (error: Error) => void;
+  }[] = [];
   let open = 0;
   const onSubscribe: (() => void)[] = [];
   const client = {
@@ -125,11 +129,15 @@ function fakeNode(answers: Record<string, () => Promise<unknown>>) {
     },
     subscribe: (
       stream: string,
-      options: { after?: number },
+      options: { after?: number; onError?: (error: Error) => void },
       onEvent: (event: StoredEvent) => void,
     ) => {
       if (stream !== THREADS_STREAM) throw new Error(`unexpected stream ${stream}`);
-      subscriptions.push({ after: options.after, onEvent });
+      subscriptions.push({
+        after: options.after,
+        onEvent,
+        ...(options.onError === undefined ? {} : { onError: options.onError }),
+      });
       open += 1;
       for (const resolve of onSubscribe.splice(0)) resolve();
       return { lastSequence: 0, dispose: () => (open -= 1) };
@@ -144,6 +152,11 @@ function fakeNode(answers: Record<string, () => Promise<unknown>>) {
     /** Resolves once the index is subscribed to. */
     subscribed: () =>
       open > 0 ? Promise.resolve() : new Promise<void>((resolve) => onSubscribe.push(resolve)),
+    /** The node refuses the latest subscription (it is then over, as the client disposes it). */
+    refuse(message: string) {
+      open -= 1;
+      subscriptions.at(-1)!.onError?.(new Error(message));
+    },
     /** Appends an event to the node's index, as every open subscription sees it. */
     append(type: string, payload: unknown, at?: number) {
       sequence = at ?? sequence + 1;
@@ -447,6 +460,39 @@ describe("client.threads@1 with the history cache (loading.md D1591)", () => {
     follow(store);
     expect(await written(1)).toMatchObject({ epoch: "e1", head: 4, projects: [scratch] });
     expect(node.calls).toEqual(["threads.catalog"]);
+    await kernel.stop();
+  });
+
+  it("reads the catalog after all when the node refuses to follow the index from the kept head", async () => {
+    const node = fakeNode({
+      "threads.epoch": async () => ({ epoch: "e1", head: 9 }),
+      "threads.catalog": async () => ({ head: 9, epoch: "e1", projects: [scratch], threads: [] }),
+    });
+    const { kernel, store } = await start(node.client, catalogCache(kept).cache);
+    const feed = follow(store);
+    await node.subscribed();
+    node.refuse("STREAM_TRIMMED");
+    let catalog = await feed.next();
+    while (catalog.threads.length !== 0) catalog = await feed.next();
+    await node.subscribed();
+    expect(catalog.status).toBe("ready");
+    expect(node.calls).toEqual(["threads.epoch", "threads.catalog"]);
+    expect(node.subscriptions.map((entry) => entry.after)).toEqual([7, 9]);
+    await kernel.stop();
+  });
+
+  it("forgets the kept catalog of a node that answers no epoch (D1607)", async () => {
+    const node = fakeNode({
+      "threads.epoch": () =>
+        Promise.reject(Object.assign(new Error("no"), { code: "COMMAND_NOT_FOUND" })),
+      "threads.catalog": async () => ({ head: 2, projects: [scratch], threads: [] }),
+    });
+    const { cache, drops, writes } = catalogCache(kept);
+    const { kernel, store } = await start(node.client, cache);
+    follow(store);
+    await node.subscribed();
+    expect(drops).toContain("all");
+    expect(writes).toEqual([]);
     await kernel.stop();
   });
 });

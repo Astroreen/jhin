@@ -86,4 +86,57 @@ describe("the history cache's IndexedDB store (loading.md D1588, D1590)", () => 
     await store.drop();
     expect(await store.entries()).toEqual([]);
   });
+
+  it("keeps a connection's catalog, and forgets it with the connection or everything (D1591)", async () => {
+    store = openHistoryStore();
+    const catalog = { epoch: "e1", head: 4, projects: [], threads: [] };
+    await store.writeCatalog("one", catalog);
+    await store.writeCatalog("two", { ...catalog, head: 9 });
+    await store.append("one", "thread/a", "e1", range("thread/a", 1, 1), 0);
+    expect(await store.readCatalog("one")).toEqual(catalog);
+    // Dropping one stream leaves the catalog; dropping the connection takes it.
+    await store.drop("one", "thread/a");
+    expect(await store.readCatalog("one")).toEqual(catalog);
+    await store.drop("one");
+    expect(await store.readCatalog("one")).toBeUndefined();
+    expect(await store.readCatalog("two")).toMatchObject({ head: 9 });
+    await store.drop();
+    expect(await store.readCatalog("two")).toBeUndefined();
+  });
+
+  it("upgrades a version 1 database and keeps its streams", async () => {
+    // What version 1 wrote: the streams and their events, no catalogs.
+    await new Promise<void>((resolve, reject) => {
+      const opening = indexedDB.open(DATABASE, 1);
+      opening.addEventListener("upgradeneeded", () => {
+        const db = opening.result;
+        db.createObjectStore("streams", { keyPath: ["connection", "stream"] });
+        db.createObjectStore("events");
+      });
+      opening.addEventListener("error", () => reject(opening.error));
+      opening.addEventListener("success", () => {
+        const db = opening.result;
+        const tx = db.transaction(["streams", "events"], "readwrite");
+        tx.objectStore("streams").put({
+          connection: "node",
+          stream: "thread/a",
+          epoch: "e1",
+          lastSequence: 1,
+          openedAt: 0,
+          bytes: 10,
+        });
+        tx.objectStore("events").put(event("thread/a", 1), ["node", "thread/a", 1]);
+        tx.addEventListener("complete", () => {
+          db.close();
+          resolve();
+        });
+        tx.addEventListener("error", () => reject(tx.error));
+      });
+    });
+    store = openHistoryStore();
+    expect(await store.read("node", "thread/a", 0)).toMatchObject({ epoch: "e1", lastSequence: 1 });
+    expect(await store.readCatalog("node")).toBeUndefined();
+    await store.writeCatalog("node", { epoch: "e1", head: 1, projects: [], threads: [] });
+    expect(await store.readCatalog("node")).toMatchObject({ head: 1 });
+  });
 });

@@ -252,10 +252,14 @@ export const threadsStorePlugin = builtin(
                   if (cacheable && loaded.epoch !== undefined) {
                     keeping = loaded.epoch;
                     keep(head);
+                  } else if (cacheable) {
+                    // A node with no epoch has nothing kept (D1607): no stale catalog first next boot.
+                    void cache!.drop(connection).catch(() => undefined);
                   }
                 } catch (error) {
                   // A node from before threads.catalog: lists, then a refetch on every change.
                   if ((error as { code?: unknown }).code !== "COMMAND_NOT_FOUND") throw error;
+                  if (cacheable) void cache!.drop(connection).catch(() => undefined);
                   refetchOnEvent = true;
                   await reload(feed, generation);
                 }

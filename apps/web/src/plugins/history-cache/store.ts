@@ -95,8 +95,9 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
       });
     }));
 
-  const transaction = async (mode: IDBTransactionMode) =>
-    (await database()).transaction([STREAMS, EVENTS, CATALOGS], mode);
+  /** A transaction over only the stores it names, so a catalog write never waits on a stream's. */
+  const transaction = async (mode: IDBTransactionMode, stores: string[] = [STREAMS, EVENTS]) =>
+    (await database()).transaction(stores, mode);
 
   return {
     async read(connection, stream, now) {
@@ -157,7 +158,7 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
     },
 
     async drop(connection, stream) {
-      const tx = await transaction("readwrite");
+      const tx = await transaction("readwrite", [STREAMS, EVENTS, CATALOGS]);
       const streams = tx.objectStore(STREAMS);
       const store = tx.objectStore(EVENTS);
       if (connection === undefined) {
@@ -176,7 +177,7 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
     },
 
     async readCatalog(connection) {
-      const tx = await transaction("readonly");
+      const tx = await transaction("readonly", [CATALOGS]);
       const kept = (await promised(tx.objectStore(CATALOGS).get(connection))) as
         | CachedCatalog
         | undefined;
@@ -185,7 +186,7 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
     },
 
     async writeCatalog(connection, catalog) {
-      const tx = await transaction("readwrite");
+      const tx = await transaction("readwrite", [CATALOGS]);
       tx.objectStore(CATALOGS).put(catalog, connection);
       await done(tx);
     },
