@@ -302,6 +302,18 @@ function DiffRows() {
         resetAction={reset("layout", "diff layout")}
         title="Diff layout"
       />
+      <SettingsRow
+        control={
+          <Switch
+            aria-label="Proactive panels"
+            checked={diff.proactivePanels}
+            onCheckedChange={(proactivePanels) => set({ proactivePanels })}
+          />
+        }
+        description="Open linked pull requests first. Otherwise, open Changes for edits to at least 3 files or 50 lines."
+        resetAction={reset("proactivePanels", "proactive panels")}
+        title="Proactive panels"
+      />
     </>
   );
 }
