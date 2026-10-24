@@ -79,7 +79,7 @@ const RightPanelView = lazyChunk<RightPanelViewProps>(
 );
 
 /** The place a route is in: its thread, or the draft of its project, on its node. */
-export function placeOf(route: Route): RightPanelPlace | undefined {
+function placeOf(route: Route): RightPanelPlace | undefined {
   if (route.node === undefined) return undefined;
   const target = {
     node: route.node,
