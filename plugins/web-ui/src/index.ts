@@ -1,6 +1,7 @@
 import * as Fs from "node:fs";
 import * as Module from "node:module";
 import * as Path from "node:path";
+import * as Stream from "node:stream";
 
 import {
   KEYBINDINGS_CONFIG_SECTION,
@@ -11,6 +12,18 @@ import {
 import { HOST_PLUGINS_CAPABILITY, type HostPlugins } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpHandler, type HttpServer } from "@jhin/http-api";
 import { definePlugin, z } from "@jhin/sdk";
+
+import {
+  MIN_COMPRESS_BYTES,
+  bodyTag,
+  compress,
+  compressible,
+  compressor,
+  fileTag,
+  matches,
+  negotiate,
+  type Coding,
+} from "./encoding.ts";
 
 const require = Module.createRequire(import.meta.url);
 
@@ -32,6 +45,13 @@ const Config = z
     dir: z.string().optional().meta({
       title: "Web client directory",
       description: "Directory of the built web client; defaults to the @jhin/web package's dist/.",
+      advanced: true,
+    }),
+    // docs/plans/loading.md D1586.
+    compression: z.boolean().default(true).meta({
+      title: "Compression",
+      description:
+        "Send the web client and its plugins compressed (brotli or gzip) to browsers that accept it. Turn off when a reverse proxy compresses instead.",
       advanced: true,
     }),
   })
@@ -72,6 +92,27 @@ export default definePlugin({
         Path.join(Path.dirname(require.resolve("@jhin/web/package.json")), "dist"),
     );
     const index = Path.join(dir, "index.html");
+    const compression = () =>
+      context.config.get<z.output<typeof Config>>("jhin.web-ui").compression !== false;
+    /** The compressed siblings the build wrote next to `file` (D1582). */
+    const SIBLING: Record<Coding, string> = { br: ".br", gzip: ".gz" };
+    const siblings = (file: string): Coding[] =>
+      (["br", "gzip"] as const).filter((coding) => Fs.existsSync(`${file}${SIBLING[coding]}`));
+    /**
+     * The headers every response of a no-cache body shares, and whether the
+     * request already holds it (D1585): then it gets `304` and no body.
+     */
+    const validated = (
+      request: Parameters<HttpHandler>[0],
+      response: Parameters<HttpHandler>[1],
+      headers: Record<string, string | number>,
+      tag: string,
+    ): boolean => {
+      headers["etag"] = tag;
+      if (!matches(request.headers["if-none-match"], tag)) return false;
+      response.writeHead(304, headers).end();
+      return true;
+    };
     if (!Fs.existsSync(index)) {
       throw new Error(
         `The web client is not built: ${index} is missing (run: vp run --filter @jhin/web build)`,
@@ -99,15 +140,26 @@ export default definePlugin({
       }
       const target = exists ? file : index;
       const hashed = target.includes(`${Path.sep}assets${Path.sep}`);
-      response.writeHead(200, {
+      const stat = Fs.statSync(target);
+      const zipped = compression() && compressible(Path.extname(target));
+      const headers: Record<string, string | number> = {
         "content-type": TYPES[Path.extname(target)] ?? "application/octet-stream",
-        "content-length": Fs.statSync(target).size,
         "cache-control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
         "x-content-type-options": "nosniff",
         "referrer-policy": "no-referrer",
-      });
+      };
+      // Also on a plain body: a cache in between must not hand it a compressed one (D1583).
+      if (zipped) headers["vary"] = "accept-encoding";
+      if (!hashed && validated(request, response, headers, fileTag(stat))) return;
+      const coding = zipped
+        ? negotiate(request.headers["accept-encoding"], siblings(target))
+        : undefined;
+      const body = coding === undefined ? target : `${target}${SIBLING[coding]}`;
+      if (coding !== undefined) headers["content-encoding"] = coding;
+      headers["content-length"] = coding === undefined ? stat.size : Fs.statSync(body).size;
+      response.writeHead(200, headers);
       if (request.method === "HEAD") response.end();
-      else Fs.createReadStream(target).pipe(response);
+      else Fs.createReadStream(body).pipe(response);
     };
     // --- Client plugins (D16): listed, served under a revision, changes pushed. ---
     // Revisions are times: they only grow, also across node restarts, so a
@@ -131,15 +183,48 @@ export default definePlugin({
     };
     const clientPlugins = () =>
       hostPlugins.list().filter((plugin) => forClient(plugin.manifest) && runnable(plugin));
-    const json = (response: Parameters<HttpHandler>[1], value: unknown): void => {
-      response
-        .writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" })
-        .end(JSON.stringify(value));
+    /** A no-cache JSON body: tagged by its hash (D1585), compressed as it is sent (D1584). */
+    const json = (
+      request: Parameters<HttpHandler>[0],
+      response: Parameters<HttpHandler>[1],
+      value: unknown,
+    ): void => {
+      const body = Buffer.from(JSON.stringify(value));
+      const headers: Record<string, string | number> = {
+        "content-type": "application/json",
+        "cache-control": "no-cache",
+      };
+      const zipped = compression();
+      if (zipped) headers["vary"] = "accept-encoding";
+      if (validated(request, response, headers, bodyTag(body))) return;
+      const coding =
+        zipped && body.length >= MIN_COMPRESS_BYTES
+          ? negotiate(request.headers["accept-encoding"])
+          : undefined;
+      if (coding === undefined) {
+        response.writeHead(200, { ...headers, "content-length": body.length }).end(body);
+        return;
+      }
+      compress(coding, body).then(
+        (compressed) =>
+          response
+            .writeHead(200, {
+              ...headers,
+              "content-encoding": coding,
+              "content-length": compressed.length,
+            })
+            .end(compressed),
+        (error: unknown) => {
+          context.log.error("compressing a response failed", { error: String(error) });
+          response.writeHead(500).end();
+        },
+      );
     };
 
     context.subscriptions.add(
-      http.route("GET", `${CLIENT}/plugins`, (_request, response) =>
+      http.route("GET", `${CLIENT}/plugins`, (request, response) =>
         json(
+          request,
           response,
           clientPlugins().map((plugin) => {
             const rev = revisions.get(plugin.id) ?? startedAt;
@@ -195,24 +280,40 @@ export default definePlugin({
           notFound();
           return;
         }
-        response.writeHead(200, {
+        const stat = Fs.statSync(real);
+        const zipped = compression() && compressible(Path.extname(real));
+        const headers: Record<string, string | number> = {
           "content-type": TYPES[Path.extname(real)] ?? "application/octet-stream",
           "cache-control": "no-cache",
           "x-content-type-options": "nosniff",
-        });
-        Fs.createReadStream(real).pipe(response);
+        };
+        if (zipped) headers["vary"] = "accept-encoding";
+        if (validated(request, response, headers, fileTag(stat))) return;
+        // Not built by @jhin/web, so compressed as it is read (D1584).
+        const coding =
+          zipped && stat.size >= MIN_COMPRESS_BYTES
+            ? negotiate(request.headers["accept-encoding"])
+            : undefined;
+        if (coding === undefined) {
+          response.writeHead(200, { ...headers, "content-length": stat.size });
+          Fs.createReadStream(real).pipe(response);
+          return;
+        }
+        response.writeHead(200, { ...headers, "content-encoding": coding });
+        Stream.pipeline(Fs.createReadStream(real), compressor(coding), response, () => undefined);
       }),
     );
     context.subscriptions.add(
-      http.route("GET", `${CLIENT}/config`, (_request, response) =>
-        json(response, {
+      http.route("GET", `${CLIENT}/config`, (request, response) =>
+        json(request, response, {
           [UI_CONFIG_SECTION]: context.config.get(UI_CONFIG_SECTION),
           [KEYBINDINGS_CONFIG_SECTION]: context.config.get(KEYBINDINGS_CONFIG_SECTION),
         }),
       ),
     );
 
-    // Server-sent events: `plugin` {id, rev} when a client plugin's files change,
+    // Server-sent events, never compressed: a compressor buffers, and an event
+    // must arrive when it is written (D1584). `plugin` {id, rev} when a client plugin's files change,
     // `plugins` when client plugins are added, removed or change manifest (clients re-read the
     // list), `config` when the jhin.ui or jhin.keybindings section changes.
     const streams = new Set<Parameters<HttpHandler>[1]>();
