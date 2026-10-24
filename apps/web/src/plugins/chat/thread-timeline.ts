@@ -1,9 +1,10 @@
-import type { Connections, NodeTarget, ThreadsCatalog } from "@jhin/client-api";
+import type { Connections, HistoryCache, NodeTarget, ThreadsCatalog } from "@jhin/client-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { useEffect, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
 import { createTimeline, type Timeline } from "../../lib/timeline.ts";
+import { followCachedStream, type StreamInfo } from "./cached-stream.ts";
 
 export interface ThreadTimelineState {
   readonly timeline: Timeline;
@@ -23,13 +24,16 @@ const NO_TIMELINE: ThreadTimelineState = { timeline: { turns: [], deleted: false
  * node gets another client (a new token, a change in another tab) the stream
  * is read again on that one. The client itself waits for the node and resumes
  * after a reconnect. Events are folded in as they arrive, one batch per
- * frame, never the whole thread again.
+ * frame, never the whole thread again. A thread of the connected node opens
+ * from what the history cache keeps of it, then asks only for what is new
+ * (loading.md D1589).
  */
 export function useThreadTimeline(
-  threads: Pick<ThreadsCatalog, "open">,
+  threads: Pick<ThreadsCatalog, "open" | "call">,
   connections: Connections,
   target: NodeTarget,
   threadId: string,
+  cache?: HistoryCache,
 ): ThreadTimelineState {
   const client = useExternal(connections, connections.list).find(
     (node) => node.id === target.node,
@@ -42,16 +46,11 @@ export function useThreadTimeline(
     }
     setState(NO_TIMELINE);
     let disposed = false;
-    let subscription: { dispose(): void } | undefined;
-    const fold = createTimeline();
+    let following: { dispose(): void } | undefined;
+    let fold = createTimeline();
     let count = 0;
-    // Events arrive one by one; they are batched into one update per frame.
-    let pending: StoredEvent[] = [];
-    let frame: number | undefined;
-    const flush = () => {
-      frame = undefined;
-      const batch = pending;
-      pending = [];
+    const onBatch = (batch: readonly StoredEvent[], reset: boolean) => {
+      if (reset) fold = createTimeline();
       count += batch.length;
       // Events again: whatever went wrong with the stream is over.
       setState({ timeline: fold.apply(batch), count });
@@ -60,17 +59,21 @@ export function useThreadTimeline(
       .open(target, threadId)
       .then((stream) => {
         if (disposed) return;
-        subscription = client.subscribe(
+        following = followCachedStream({
+          client,
+          // A remote's thread is this node's copy of it: it opens from 0 (D1606).
+          cache: target.remote === undefined ? cache : undefined,
+          connection: target.node,
           stream,
-          {
-            onError: (error) =>
-              !disposed && setState((previous) => ({ ...previous, error: error.message })),
+          info: () => threads.call<StreamInfo>(target, "threads.get", { threadId }),
+          schedule: (flush) => {
+            const frame = requestAnimationFrame(flush);
+            return () => cancelAnimationFrame(frame);
           },
-          (event) => {
-            pending.push(event);
-            frame ??= requestAnimationFrame(flush);
-          },
-        );
+          onBatch,
+          onError: (error) =>
+            !disposed && setState((previous) => ({ ...previous, error: error.message })),
+        });
       })
       .catch((failure: unknown) => {
         if (!disposed) {
@@ -82,9 +85,8 @@ export function useThreadTimeline(
       });
     return () => {
       disposed = true;
-      subscription?.dispose();
-      if (frame !== undefined) cancelAnimationFrame(frame);
+      following?.dispose();
     };
-  }, [threads, client, target.node, target.remote, threadId]);
+  }, [threads, client, cache, target.node, target.remote, threadId]);
   return state;
 }
