@@ -13,7 +13,7 @@ import type {
   NodeTarget,
   ThreadsCatalog,
 } from "@jhin/client-api";
-import { targetKey, type ThreadVisits } from "@jhin/client-api";
+import { targetKey, type HistoryCache, type ThreadVisits } from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
 import type { Dialogs, SlotRegistry, Toasts } from "@jhin/ui";
 import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
@@ -137,6 +137,8 @@ export interface ChatServices {
   readonly threadFind: { current: { open(): void } | undefined };
   /** Whether each thread's details show, inline or in the header's popover (D1350). */
   readonly threadDetails: DetailsVisibility;
+  /** What this device keeps of the threads it read (loading.md D1588); absent without a provider. */
+  readonly historyCache: HistoryCache | undefined;
 }
 
 /**

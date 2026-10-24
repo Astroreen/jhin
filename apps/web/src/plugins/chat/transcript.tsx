@@ -14,7 +14,13 @@ import { TimelineView } from "./timeline.tsx";
 export function ThreadTranscript({ target, threadId }: ThreadTranscriptProps) {
   const chat = useChat();
   const settings = useSection(chat.context, CHAT_SECTION, ChatSettings);
-  const { timeline, error } = useThreadTimeline(chat.threads, chat.connections, target, threadId);
+  const { timeline, error } = useThreadTimeline(
+    chat.threads,
+    chat.connections,
+    target,
+    threadId,
+    chat.historyCache,
+  );
   const loadAttachment = useAttachmentLoader(target);
   if (error !== undefined) {
     return <p className="px-4 py-6 text-sm text-destructive-foreground">{error}</p>;

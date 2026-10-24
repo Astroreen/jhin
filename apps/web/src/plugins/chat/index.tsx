@@ -21,7 +21,9 @@ import {
   type ThreadTranscriptProps,
   type ThreadUndoService,
   VISITS_CAPABILITY,
+  HISTORY_CACHE_CAPABILITY,
   type ThreadVisits,
+  type HistoryCache,
   type ChatDrafts,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
@@ -305,6 +307,7 @@ export const chatPlugin = builtin(
       [KEYBINDINGS_CAPABILITY]: "^1",
       [VISITS_CAPABILITY]: "^1",
       [UNDO_CAPABILITY]: "^1",
+      [HISTORY_CACHE_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -320,6 +323,7 @@ export const chatPlugin = builtin(
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
+      const historyCache = context.services.tryGet<HistoryCache>(HISTORY_CACHE_CAPABILITY);
       const composer: ComposerHandle = { current: undefined };
       // Shared through each thread's node unless this device turned it off (D486, D488).
       const syncDrafts = () => readSection(context, SYNC_SECTION, SyncSettings).drafts;
@@ -373,6 +377,7 @@ export const chatPlugin = builtin(
         composer,
         threadFind: { current: undefined },
         threadDetails: createDetailsVisibility(),
+        historyCache,
       };
 
       function Routed() {

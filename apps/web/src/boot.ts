@@ -10,6 +10,7 @@ import { inboxPlugin } from "./plugins/inbox/index.tsx";
 import { missionsViewPlugin } from "./plugins/missions/index.tsx";
 import { teamsViewPlugin } from "./plugins/teams/index.tsx";
 import { healthPlugin } from "./plugins/health/index.tsx";
+import { historyCachePlugin } from "./plugins/history-cache/index.ts";
 import { commandPalettePlugin } from "./plugins/command-palette.tsx";
 import { connectionsPlugin } from "./plugins/connections.ts";
 import { deviceSyncPlugin } from "./plugins/device-sync.ts";
@@ -166,6 +167,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     modesPlugin,
     meshPlugin,
     threadsStorePlugin,
+    historyCachePlugin,
     machinesPlugin,
     visitsPlugin,
     threadWorkPlugin,

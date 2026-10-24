@@ -775,6 +775,46 @@ export interface ThreadsCatalog {
   open(target: NodeTarget, threadId: string): Promise<string>;
 }
 
+/** An event of a node's stream, as an RPC subscription delivers it. */
+export type StreamEvent = Parameters<Parameters<RpcClient["subscribe"]>[2]>[0];
+
+/**
+ * `client.history-cache@1`: the streams this device has already read, kept
+ * on it (IndexedDB) per connection, so a thread opens from them and asks its
+ * node only for what is new (loading.md D1588). What is kept is the events as
+ * they came, from sequence 1 without a gap, under the node's epoch (D1590).
+ */
+export const HISTORY_CACHE_CAPABILITY = "client.history-cache";
+
+/** What the cache keeps of one stream. */
+export interface CachedStream {
+  /** The epoch of the node's database the events came from. */
+  readonly epoch: string;
+  /** The sequence of the last event kept: the events are 1 to this one. */
+  readonly lastSequence: number;
+  readonly events: readonly StreamEvent[];
+}
+
+export interface HistoryCache {
+  /** Whether this device keeps history now; off, nothing is read or written. */
+  enabled(): boolean;
+  /** What is kept of a stream of the connection; marks it as opened now. */
+  read(connection: string, stream: string): Promise<CachedStream | undefined>;
+  /**
+   * Keeps events that follow what is kept. Events kept already are skipped; a
+   * batch that leaves a gap, or comes under another epoch without starting at
+   * sequence 1, drops the stream instead (D1590).
+   */
+  append(
+    connection: string,
+    stream: string,
+    epoch: string,
+    events: readonly StreamEvent[],
+  ): Promise<void>;
+  /** Forgets a stream of the connection, every stream of it, or everything. */
+  drop(connection?: string, stream?: string): Promise<void>;
+}
+
 /** What a node says it is (`host.identity`). */
 export interface NodeMachine {
   /** The kind its icon shows: the owner's choice, else what the node detects, else `server`. */

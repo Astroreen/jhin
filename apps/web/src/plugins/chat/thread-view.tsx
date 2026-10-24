@@ -163,7 +163,7 @@ export function ThreadView(props: {
     timeline,
     count,
     error: openError,
-  } = useThreadTimeline(chat.threads, chat.connections, target, threadId);
+  } = useThreadTimeline(chat.threads, chat.connections, target, threadId, chat.historyCache);
   const catalog = useCatalog(chat.threads, target);
   const lastTurn = timeline.turns.at(-1);
   const running = lastTurn?.state === "running";
