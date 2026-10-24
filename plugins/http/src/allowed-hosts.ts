@@ -22,10 +22,22 @@ export function hostName(host: string): string | undefined {
   return name === "" ? undefined : name;
 }
 
+/**
+ * The owner's tailnet (`jhin.http.tailnet`, D1516) as a suffix to compare
+ * with: `.tail1a2b3c.ts.net`, whatever its leading `.` and case.
+ */
+function tailnetSuffix(tailnet: string | undefined): string | undefined {
+  const name = tailnet?.trim().toLowerCase().replace(/^\./, "").replace(/\.$/, "");
+  return name === undefined || name === "" ? undefined : `.${name}`;
+}
+
 export function hostPolicy(options: {
   readonly configured: readonly string[];
   readonly machineName: string;
+  /** The one tailnet whose `.ts.net` names are answered (D1516); unset, every one. */
+  readonly tailnet?: string | undefined;
 }): HostPolicy {
+  const tailnet = tailnetSuffix(options.tailnet);
   const entries = new Map<string, number>();
   const add = (entry: string) => {
     const key = entry.trim().toLowerCase();
@@ -51,8 +63,11 @@ export function hostPolicy(options: {
       // A rebinding page always uses a name: an address is never one.
       if (Net.isIP(name) !== 0) return true;
       if (name === "localhost" || name.endsWith(".localhost")) return true;
-      // Tailscale answers these, never a page's author (Tailscale Serve keeps them as Host).
-      if (name.endsWith(".ts.net")) return true;
+      // Tailscale answers these, never a page's author (Tailscale Serve keeps them as Host);
+      // on a shared tailnet the owner names theirs, and another's goes to the list (D1516).
+      if (name.endsWith(".ts.net") && (tailnet === undefined || name.endsWith(tailnet))) {
+        return true;
+      }
       if (own.has(name)) return true;
       for (const entry of entries.keys()) {
         if (entry.startsWith(".")) {

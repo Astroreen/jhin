@@ -19,6 +19,7 @@ export {
   missingPermissions,
   type PermissionDescription,
   type PermissionEntry,
+  shellAccessText,
 } from "./permissions.ts";
 export {
   definePlugin,

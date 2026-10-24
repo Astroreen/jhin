@@ -7,6 +7,7 @@ import {
   intersectPermissions,
   isGrant,
   missingPermissions,
+  shellAccessText,
   type Hooks,
   type PermissionEntry,
 } from "../src/index.ts";
@@ -107,5 +108,24 @@ describe("describePermissions (security.md D961)", () => {
     const { hooks: context, run } = hooks();
     describePermissions({ hooks: context }, { "git.read": { title: "View" } }).dispose();
     expect(run(entries())).toEqual(entries());
+  });
+});
+
+describe("the words that name shell access (security.md D1364, D1517)", () => {
+  it("says a permission's reason, else D1364's sentence, and nothing without shell access", () => {
+    expect(shellAccessText({ shellAccess: true })).toBe(
+      "Shell access: runs commands on this machine as the node's user.",
+    );
+    expect(
+      shellAccessText({
+        shellAccess: true,
+        shellAccessReason: "a repository's hooks run on this machine as the node's user",
+      }),
+    ).toBe("Shell access: a repository's hooks run on this machine as the node's user.");
+    expect(shellAccessText({ shellAccess: true, shellAccessReason: " " })).toBe(
+      "Shell access: runs commands on this machine as the node's user.",
+    );
+    expect(shellAccessText({ shellAccessReason: "never shown" })).toBeUndefined();
+    expect(shellAccessText({})).toBeUndefined();
   });
 });

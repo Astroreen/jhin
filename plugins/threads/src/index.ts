@@ -2149,6 +2149,10 @@ export default definePlugin({
       "threads.write": {
         title: "Operate threads",
         description: "Start, update, and stop threads and their turns.",
+        // An agent in full access runs commands (security.md D1517).
+        shellAccess: true,
+        shellAccessReason:
+          "an agent it starts in full access runs commands on this machine as the node's user",
       },
       "projects.read": {
         title: "View projects",

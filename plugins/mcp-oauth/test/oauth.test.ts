@@ -54,8 +54,22 @@ const threads = {
         permissions: ["app.shell.run"],
         handler: () => ({}),
       });
+      // One with a reason (D1517).
+      context.commands.register({
+        name: "app.shell.hooks",
+        description: "Runs a repository's hooks",
+        input: z.object({}),
+        output: z.object({}),
+        permissions: ["app.shell.hooks"],
+        handler: () => ({}),
+      });
       describePermissions(context, {
         "app.shell.run": { title: "Run commands", shellAccess: true },
+        "app.shell.hooks": {
+          title: "Change repositories",
+          shellAccess: true,
+          shellAccessReason: "a repository's hooks run on this machine as the node's user",
+        },
       });
     },
   }),
@@ -357,17 +371,24 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     expect(token).not.toBe(issued.access_token);
   });
 
-  it("says a pattern that covers shell access grants it (security.md D1364)", async () => {
+  it("says a pattern that covers shell access grants it, with its reason (security.md D1364, D1517)", async () => {
     const { base } = await startNode();
     const { client_id: clientId } = (await (await register(base)).json()) as {
       client_id: string;
     };
     const page = async (scope: string) =>
       (await fetch(authorizeUrl(base, clientId, { scope }))).text();
-    const shellLine = "Shell access: runs commands on this machine as the node's user.";
+    const shellLine = "Shell access: runs commands on this machine as the node&#39;s user.";
+    const hooksLine =
+      "Shell access: a repository&#39;s hooks run on this machine as the node&#39;s user.";
+    // A pattern over permissions with different reasons says D1364's sentence.
     expect(await page("app.shell.*")).toContain(shellLine);
     expect(await page("app.shell.run")).toContain(shellLine);
-    expect(await page("threads.read")).not.toContain(shellLine);
+    expect(await page("threads.read")).not.toContain("Shell access");
+    // A permission with a reason says it instead (D1517).
+    const hooks = await page("app.shell.hooks");
+    expect(hooks).toContain(hooksLine);
+    expect(hooks).not.toContain(shellLine);
   });
 
   it("refuses a DPoP-bound device token at /mcp, where no proof is sent (security.md D1366)", async () => {

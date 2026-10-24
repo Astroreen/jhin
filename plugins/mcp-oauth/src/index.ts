@@ -26,6 +26,7 @@ import {
   renderApprovalPage,
   renderErrorPage,
   type AccessLevel,
+  type ApprovalPage,
 } from "./html.ts";
 import {
   authorizationServerMetadata,
@@ -53,6 +54,9 @@ export function grantsFor(level: AccessLevel, asked: readonly string[]): string[
   const chosen = asked.filter((scope) => !scope.startsWith("threads.mode."));
   return [...new Set([...chosen, `threads.mode.${level}`])];
 }
+
+/** An entry of `auth.permissions.list`, as the approval page reads it (D1364, D1517). */
+type DescribedPermission = ApprovalPage["permissions"][number];
 
 /** Approving issues tokens: the approver needs `auth.write` (D1193). */
 const APPROVE_PERMISSION = "auth.write";
@@ -273,12 +277,7 @@ export default definePlugin({
     const titles = async () => {
       try {
         const { permissions } = (await context.commands.execute("auth.permissions.list", {})) as {
-          permissions: {
-            permission: string;
-            title?: string;
-            description?: string;
-            shellAccess?: boolean;
-          }[];
+          permissions: DescribedPermission[];
         };
         return new Map(permissions.map((entry) => [entry.permission, entry]));
       } catch (error) {
@@ -364,7 +363,7 @@ export default definePlugin({
       const authorization = validated.request;
       const approver = await approverOf(request, authorization);
       const described = await titles();
-      const known = described ?? new Map<string, { permission: string; shellAccess?: boolean }>();
+      const known = described ?? new Map<string, DescribedPermission>();
       const nonce = Crypto.randomBytes(16).toString("base64url");
       const kept = Object.fromEntries(
         AUTHORIZE_PARAMS.flatMap((name) =>
@@ -385,10 +384,21 @@ export default definePlugin({
             const entry = known.get(scope) ?? { permission: scope };
             // A pattern (`terminals.*`) grants shell access when it covers a permission
             // that has it (security.md D1364).
-            const shell = [...known.values()].some(
+            const shell = [...known.values()].filter(
               (other) => other.shellAccess === true && holdsPermission([scope], other.permission),
             );
-            return shell ? { ...entry, shellAccess: true } : entry;
+            if (shell.length === 0) return entry;
+            // Its reason (D1517) when every permission it covers gives the same one;
+            // else D1364's sentence, which holds for each of them.
+            const reasons = new Set(shell.map((other) => other.shellAccessReason));
+            const [reason] = reasons;
+            return {
+              permission: entry.permission,
+              ...(entry.title === undefined ? {} : { title: entry.title }),
+              ...(entry.description === undefined ? {} : { description: entry.description }),
+              shellAccess: true,
+              ...(reasons.size === 1 && reason !== undefined ? { shellAccessReason: reason } : {}),
+            };
           }),
           ...(approver.kind === "ok" ? { csrf: oauth.csrf(approver.session, authorization) } : {}),
           ...(approver.kind === "short"

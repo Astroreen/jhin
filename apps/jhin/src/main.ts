@@ -22,7 +22,7 @@ import {
   reachableBaseUrl,
   type PairingLink,
 } from "./pair.ts";
-import { fileMappings, publishOverTailscale } from "./tailscale.ts";
+import { fileMappings, publishOverTailscale, tailnetNotes } from "./tailscale.ts";
 
 const require = Module.createRequire(import.meta.url);
 
@@ -233,6 +233,7 @@ async function pair(
   let url = remote.url;
   let baseUrl = option("base-url");
   const notes: string[] = [];
+  let tailnet: string | undefined;
   try {
     if (url === undefined) {
       const node = await discoverNode(remote.home);
@@ -246,6 +247,7 @@ async function pair(
           ),
         });
         baseUrl = published.baseUrl;
+        tailnet = published.tailnet;
         notes.push(...published.notes);
       }
     }
@@ -278,6 +280,20 @@ async function pair(
     } catch (error) {
       // A token without auth.read still pairs; any other failure is said, never hidden.
       notes.push(shellAccessUnknown(error));
+    }
+    if (tailnet !== undefined) {
+      // Only while jhin.http.tailnet is unset (D1516); a token that cannot
+      // read the config (host.config.read) gets the note too.
+      let configured: unknown;
+      try {
+        const http = (await target.execute("host.config.get", { section: "jhin.http" })) as {
+          value?: { tailnet?: unknown };
+        };
+        configured = http.value?.tailnet;
+      } catch {
+        configured = undefined;
+      }
+      notes.push(...tailnetNotes(tailnet, configured));
     }
     if (options.get("json") === true) {
       // The notes too: a Tailscale mapping outlives this run and says how to remove it.

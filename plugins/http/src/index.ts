@@ -55,6 +55,21 @@ const Config = z
           "Names browsers may reach this node by, besides its addresses, localhost, the machine's name, Tailscale names and the mesh's advertised addresses. .example.com allows every name under it; * turns the check off.",
         advanced: true,
       }),
+    tailnet: z
+      .string()
+      .trim()
+      .regex(
+        // The part of a MagicDNS name after the machine's label; a leading `.` is ignored.
+        /^\.?[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$/i,
+        "must be your tailnet's name, such as tail1a2b3c.ts.net",
+      )
+      .optional()
+      .meta({
+        title: "Tailnet",
+        description:
+          "Your tailnet's name (tail1a2b3c.ts.net). Set, browsers reach this node only by that tailnet's Tailscale names, not another's; unset, by every one.",
+        advanced: true,
+      }),
     forwardedHeader: z.enum(["x-forwarded-for", "forwarded"]).default("x-forwarded-for").meta({
       title: "Forwarded header",
       description: "The header the trusted proxies set; the other one is never read.",
@@ -115,7 +130,11 @@ export default definePlugin({
     const trust = trustList(config.trustProxy);
     const routes = new Set<Route>();
     const upgrades = new Map<string, UpgradeHandler>();
-    const hosts = hostPolicy({ configured: config.allowedHosts, machineName: Os.hostname() });
+    const hosts = hostPolicy({
+      configured: config.allowedHosts,
+      machineName: Os.hostname(),
+      tailnet: config.tailnet,
+    });
     /** Hosts already warned about; bounded, since the header is the client's. */
     const warned = new Set<string>();
     /**
