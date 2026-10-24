@@ -2,8 +2,17 @@
 // reads them (MIT, see THIRD_PARTY_NOTICES.md): `gh pr list --head <branch>`
 // for a branch's pull request, `gh pr list --search` for a repository's (its
 // GitHubPullRequestProvider: any state, most recently updated first), and the check rollup of
-// gitHubPullRequestJson.ts (toCheckStatus, rollupChecksState).
-import type { PullRequest, PullRequestChecks } from "@jhin/source-control-api";
+// gitHubPullRequestJson.ts (toCheckStatus, rollupChecksState, the review decision and
+// mergeability), pullRequestReviews.graphql (review threads, D1447) and pullRequestReads.graphql
+// (the repository's merge methods). T3 sends its actions as GraphQL mutations; Jhin runs the
+// `gh pr merge|ready|close|reopen` that send them (D1451).
+import {
+  parsePullRequestUrl,
+  type PullRequest,
+  type PullRequestCheck,
+  type PullRequestChecks,
+  type PullRequestMergeMethod,
+} from "@jhin/source-control-api";
 
 import {
   ForgeUnavailable,
@@ -27,7 +36,7 @@ const GH_ENV = {
 };
 const GH_TIMEOUT_MS = 20_000;
 const FIELDS =
-  "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup";
+  "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup,author,additions,deletions,changedFiles,reviewDecision,mergeable";
 /** A listed pull request: no checks, which would make a long list slow to read. */
 const LIST_FIELDS =
   "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt";
@@ -63,6 +72,9 @@ interface RawCheck {
   readonly status?: string | null;
   readonly conclusion?: string | null;
   readonly state?: string | null;
+  readonly description?: string | null;
+  readonly detailsUrl?: string | null;
+  readonly targetUrl?: string | null;
 }
 
 /** A check run reports `status` and, once completed, a `conclusion`; a commit status a `state`. */
@@ -123,6 +135,54 @@ interface RawPullRequest {
   readonly isCrossRepository?: unknown;
   readonly headRepositoryOwner?: { readonly login?: unknown } | null;
   readonly headRepository?: { readonly name?: unknown } | null;
+  readonly author?: { readonly login?: unknown; readonly name?: unknown } | null;
+  readonly additions?: unknown;
+  readonly deletions?: unknown;
+  readonly changedFiles?: unknown;
+  readonly reviewDecision?: unknown;
+  readonly mergeable?: unknown;
+}
+
+const count = (value: unknown) =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+
+/** T3's review decision of GitHub's words. */
+function reviewDecisionOf(value: unknown): PullRequest["reviewDecision"] {
+  switch (typeof value === "string" ? value.toUpperCase() : "") {
+    case "APPROVED":
+      return "approved";
+    case "CHANGES_REQUESTED":
+      return "changes-requested";
+    case "REVIEW_REQUIRED":
+      return "review-required";
+    default:
+      return undefined;
+  }
+}
+
+/** T3's mergeability of GitHub's `mergeable`. */
+function mergeabilityOf(value: unknown): PullRequest["mergeability"] {
+  const word = typeof value === "string" ? value.toUpperCase() : "";
+  return word === "MERGEABLE" ? "mergeable" : word === "CONFLICTING" ? "conflicting" : "unknown";
+}
+
+/** The row details of D1449, where `gh` told them. */
+function detailsOf(raw: RawPullRequest): Partial<PullRequest> {
+  const login = typeof raw.author?.login === "string" ? raw.author.login : undefined;
+  const name =
+    typeof raw.author?.name === "string" && raw.author.name !== "" ? raw.author.name : null;
+  const additions = count(raw.additions);
+  const deletions = count(raw.deletions);
+  const changedFiles = count(raw.changedFiles);
+  const reviewDecision = reviewDecisionOf(raw.reviewDecision);
+  return {
+    ...(login === undefined ? {} : { author: { login, name } }),
+    ...(additions === undefined ? {} : { additions }),
+    ...(deletions === undefined ? {} : { deletions }),
+    ...(changedFiles === undefined ? {} : { changedFiles }),
+    ...(reviewDecision === undefined ? {} : { reviewDecision }),
+    ...(raw.mergeable === undefined ? {} : { mergeability: mergeabilityOf(raw.mergeable) }),
+  };
 }
 
 function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
@@ -159,6 +219,7 @@ function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
       ? { closedAt: raw.closedAt }
       : {}),
     checks: rollupChecks(Array.isArray(raw.statusCheckRollup) ? raw.statusCheckRollup : []),
+    ...detailsOf(raw),
   };
 }
 
@@ -477,10 +538,11 @@ async function readWatch(
   url: string,
   viewers: Viewers,
 ): Promise<WatchRead> {
-  const [answer, viewer, required] = await Promise.all([
+  const [answer, viewer, required, threads] = await Promise.all([
     ghJson(ghPath, cwd, ["pr", "view", url, "--json", WATCH_FIELDS]),
     githubViewer(viewers, ghPath, cwd, hostOf(url)),
     requiredChecks(ghPath, cwd, url),
+    reviewThreadRemarks(ghPath, cwd, url),
   ]);
   const raw = (answer ?? {}) as Record<string, unknown>;
   const state = text(raw["state"])?.toLowerCase();
@@ -531,11 +593,150 @@ async function readWatch(
           : "unknown",
     author: login(raw["author"] as RawActor | null),
     viewer,
+    // A review thread's comment is told once, by its id (D1447).
     remarks: [
       ...list("comments").map((item) => remark(item, false)),
       ...list("reviews").map((item) => remark(item, true)),
-    ].filter((item): item is Remark => item !== undefined),
+      ...threads,
+    ]
+      .filter((item): item is Remark => item !== undefined)
+      .filter((item, index, all) => all.findIndex((other) => other.id === item.id) === index),
   };
+}
+
+/** The review threads' comments on lines (D1447): `gh pr view` has none, GraphQL has them. */
+const REVIEW_THREADS = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100) {
+        nodes {
+          path
+          comments(first: 100) {
+            nodes { id author { login } body createdAt lastEditedAt url }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+/** The comments of a pull request's review threads, each with its file; none when unread. */
+async function reviewThreadRemarks(ghPath: string, cwd: string, url: string): Promise<Remark[]> {
+  const parsed = parsePullRequestUrl(url);
+  const [owner, name] = parsed?.repository.split("/") ?? [];
+  if (parsed === undefined || owner === undefined || name === undefined) return [];
+  const answer = (await ghJson(ghPath, cwd, [
+    "api",
+    "graphql",
+    "--hostname",
+    parsed.host,
+    "-F",
+    `owner=${owner}`,
+    "-F",
+    `name=${name}`,
+    "-F",
+    `number=${parsed.number}`,
+    "-f",
+    `query=${REVIEW_THREADS}`,
+  ]).catch(() => undefined)) as {
+    data?: {
+      repository?: {
+        pullRequest?: {
+          reviewThreads?: {
+            nodes?: { path?: unknown; comments?: { nodes?: RawRemark[] } }[];
+          };
+        };
+      };
+    };
+  };
+  const threads = answer?.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+  return threads.flatMap((thread) => {
+    const path = text(thread.path);
+    return (thread.comments?.nodes ?? []).flatMap((item): Remark[] => {
+      const id = text(item.id);
+      const createdAt = text(item.createdAt);
+      if (id === undefined || createdAt === undefined) return [];
+      const edited = text(item.lastEditedAt);
+      const link = text(item.url);
+      return [
+        {
+          id,
+          author: login(item.author),
+          body: text(item.body) ?? "",
+          createdAt,
+          ...(edited ? { editedAt: edited } : {}),
+          ...(path ? { path } : {}),
+          ...(link ? { url: link } : {}),
+        },
+      ];
+    });
+  });
+}
+
+/** The head's checks one by one (D1450), required ones marked as D908 reads them. */
+async function checksOf(ghPath: string, cwd: string, url: string): Promise<PullRequestCheck[]> {
+  const [answer, required] = await Promise.all([
+    ghJson(ghPath, cwd, ["pr", "view", url, "--json", "statusCheckRollup"]),
+    requiredChecks(ghPath, cwd, url),
+  ]);
+  const rollup = (answer as { statusCheckRollup?: RawCheck[] | null } | null)?.statusCheckRollup;
+  return (Array.isArray(rollup) ? rollup : []).map((check) => {
+    const name = check.name ?? check.context ?? "check";
+    return {
+      name,
+      status: checkStatus(check),
+      description: check.description || null,
+      url: check.detailsUrl || check.targetUrl || null,
+      ...(required === undefined ? {} : { required: required.has(name) }),
+    };
+  });
+}
+
+/** The merge methods the repository allows (T3's `mergeCommitAllowed`, … of GraphQL). */
+async function mergeMethodsOf(
+  ghPath: string,
+  cwd: string,
+  url: string,
+): Promise<PullRequestMergeMethod[]> {
+  const parsed = parsePullRequestUrl(url);
+  if (parsed === undefined) throw new GitHubUnavailable("failed", `${url} is no pull request URL`);
+  const answer = (await ghJson(ghPath, cwd, [
+    "repo",
+    "view",
+    `${parsed.host}/${parsed.repository}`,
+    "--json",
+    "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed",
+  ])) as Record<string, unknown> | null;
+  return [
+    ...(answer?.["mergeCommitAllowed"] === true ? (["merge"] as const) : []),
+    ...(answer?.["squashMergeAllowed"] === true ? (["squash"] as const) : []),
+    ...(answer?.["rebaseMergeAllowed"] === true ? (["rebase"] as const) : []),
+  ];
+}
+
+/** Runs a `gh` command that answers no JSON; its first line of error when it fails. */
+async function ghRun(ghPath: string, cwd: string, args: readonly string[]): Promise<void> {
+  let result;
+  try {
+    result = await run(ghPath, args, { cwd, env: GH_ENV, timeoutMs: 60_000 });
+  } catch (error) {
+    if (error instanceof SpawnError && (error.code === "ENOENT" || error.code === "EACCES")) {
+      throw new GitHubUnavailable("missing", "GitHub CLI (gh) is not installed on this node");
+    }
+    throw new GitHubUnavailable("failed", (error as Error).message);
+  }
+  if (result.code === 0) return;
+  if (result.code === 4 || SIGNED_OUT.test(result.stderr)) {
+    throw new GitHubUnavailable(
+      "signed-out",
+      "GitHub CLI is not signed in: run `gh auth login` on this node",
+    );
+  }
+  const line = result.stderr
+    .split("\n")
+    .map((item) => item.trim())
+    .find((item) => item !== "");
+  throw new GitHubUnavailable("failed", line ?? `gh exited with code ${result.code}`);
 }
 
 /** GitHub and GitHub Enterprise through `gh`, which picks the host from the repository or URL. */
@@ -551,5 +752,14 @@ export function githubForge(ghPath: () => string, cwd: string, viewers: Viewers)
     create: (input) => createPullRequest(ghPath(), cwd, input),
     templatePaths: GITHUB_TEMPLATE_PATHS,
     watch: (url) => readWatch(ghPath(), cwd, url, viewers),
+    actions: ["merge", "ready", "close", "reopen"],
+    checks: (url) => checksOf(ghPath(), cwd, url),
+    mergeMethods: (url) => mergeMethodsOf(ghPath(), cwd, url),
+    act: (url, action, method) =>
+      ghRun(
+        ghPath(),
+        cwd,
+        action === "merge" ? ["pr", "merge", url, `--${method}`] : ["pr", action, url],
+      ),
   };
 }
