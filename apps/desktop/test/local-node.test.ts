@@ -174,7 +174,7 @@ describe("attachRunningNode (D1486)", () => {
     const dir = home();
     const url = await runningNode(dir, false);
     await expect(attachRunningNode(dir)).rejects.toThrow(
-      `A Jhin node of this home already runs at ${url}/ without the web client. Stop it, or start it with \`jhin serve --ui\`.`,
+      `A Jhin node of this home already runs at ${url}/ without the web client, or is still starting. Stop it, or start it with \`jhin serve --ui\`.`,
     );
   });
 

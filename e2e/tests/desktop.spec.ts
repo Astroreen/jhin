@@ -579,7 +579,7 @@ test("a crashed page and a stopped node come back with the node's token", async 
   );
 });
 
-test("the app shows its node's browser tabs in a webview the agent and the user drive (D1321–D1324)", async () => {
+test("the app shows its node's browser tabs in a webview the agent and the user drive (D1321–D1324, D1488, D1489)", async () => {
   const info = test.info();
   const page = Http.createServer((request, response) => {
     const pages: Record<string, string> = {
@@ -693,21 +693,95 @@ test("the app shows its node's browser tabs in a webview the agent and the user 
     await client.call("preview.tab.close", { threadId: thread.id, tabId: opened.tabId });
     await expect(webview).toHaveCount(0);
 
-    // DevTools taking a webview's debugger ends its relay: the node drops that tab (D1322).
+    // T3's "Open DevTools" opens the guest's DevTools detached; the tab waits for its webview
+    // meanwhile instead of ending (D1488, D1489).
     const second = panel.getByRole("tab", { name: "Second page" });
     await expect(second).toBeVisible();
-    const relays = () =>
-      app.evaluate(({ webContents }) =>
-        webContents
-          .getAllWebContents()
-          .filter((contents) => contents.getType() === "webview" && contents.debugger.isAttached())
-          .map((contents) => contents.id),
-      );
-    const [guest] = await relays();
-    expect(guest).toBeDefined();
-    await app.evaluate(({ webContents }, id) => webContents.fromId(id)!.debugger.detach(), guest!);
-    await expect(second).toHaveCount(0);
-    expect(await relays()).toEqual([]);
+    await second.click();
+    const listed = async () =>
+      (
+        await client.call<{ tabs: { tabId: string; reconnecting?: boolean; desktop?: boolean }[] }>(
+          "preview.list",
+          { threadId: thread.id },
+        )
+      ).tabs;
+    const [secondTab] = await listed();
+    type Listed = { tabId: string; reconnecting?: boolean; desktop?: boolean };
+    /** Resolves once the thread's tab list, as the node publishes it, satisfies `holds`. */
+    const untilTabs = (holds: (list: Listed[]) => boolean) =>
+      new Promise<void>((resolve) => {
+        const subscription = client.subscribe(`preview/${thread.id}`, { after: 0 }, (event) => {
+          const list = (event.payload as { tabs?: Listed[] }).tabs;
+          if (list === undefined || !holds(list)) return;
+          subscription.dispose();
+          resolve();
+        });
+      });
+    await panel.getByRole("button", { name: "Preview menu" }).click();
+    const devToolsItem = window.getByRole("menuitem", { name: "Open DevTools" });
+    await expect(devToolsItem).toBeVisible();
+    const menuShot = info.outputPath("desktop-preview-devtools-menu.png");
+    await window.screenshot({ path: menuShot });
+    await info.attach("desktop-preview-devtools-menu", {
+      path: menuShot,
+      contentType: "image/png",
+    });
+    const reconnecting = untilTabs((list) => list[0]?.reconnecting === true);
+    // The guest's id once its DevTools opened.
+    const inspecting = app.evaluate(
+      ({ webContents }) =>
+        new Promise<number>((resolve) => {
+          for (const contents of webContents.getAllWebContents()) {
+            if (contents.getType() !== "webview") continue;
+            if (contents.isDevToolsOpened()) resolve(contents.id);
+            else contents.once("devtools-opened", () => resolve(contents.id));
+          }
+        }),
+    );
+    await devToolsItem.click();
+    const inspected = await inspecting;
+    await reconnecting;
+    await expect(second).toBeVisible();
+    await expect(
+      client.call("preview.status", { threadId: thread.id, tabId: secondTab!.tabId }),
+    ).rejects.toMatchObject({ code: "PREVIEW_TAB_RECONNECTING" });
+
+    // Once they close, the page attaches the same webview again: the tab carries on there.
+    const reconnected = untilTabs((list) => list[0]?.reconnecting === undefined);
+    await app.evaluate(({ webContents }, id) => webContents.fromId(id)!.closeDevTools(), inspected);
+    await reconnected;
+    const again = await client.call<{ tabId: string; title: string }>("preview.status", {
+      threadId: thread.id,
+      tabId: secondTab!.tabId,
+    });
+    expect(again).toMatchObject({ tabId: secondTab!.tabId, title: "Second page" });
+
+    // A reload of the window: the new page hosts the tab in a new webview (D1488).
+    const left = untilTabs((list) => list[0]?.reconnecting === true);
+    await window.reload();
+    await left;
+    const back = untilTabs(
+      (list) =>
+        list[0]?.tabId === secondTab!.tabId &&
+        list[0].desktop === true &&
+        list[0].reconnecting === undefined,
+    );
+    await expect(window.locator("html.electron")).toHaveCount(1);
+    await expect(
+      window.locator(`webview[data-preview-desktop-tab="${secondTab!.tabId}"]`),
+    ).toHaveCount(1);
+    await back;
+    // The new webview started blank: the node takes it back to the tab's page.
+    await client.call("preview.wait.for", {
+      threadId: thread.id,
+      tabId: secondTab!.tabId,
+      text: "Second",
+    });
+    const reloaded = await client.call<{ title: string }>("preview.status", {
+      threadId: thread.id,
+      tabId: secondTab!.tabId,
+    });
+    expect(reloaded.title).toBe("Second page");
   } finally {
     await new Promise((resolve) => page.close(resolve));
   }

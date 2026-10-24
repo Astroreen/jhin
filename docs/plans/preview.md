@@ -994,9 +994,10 @@ probe of `ServerBrowser.ts`.
 
 ## Deferred
 
-- Of T3's desktop runtime, beside its webview per tab (`desktop.md` D1321–D1324):
-  its DevTools, separate windows and picture-in-picture, annotation of
-  elements, "Open in {environment}'s browser".
+- Of T3's desktop runtime, beside its webview per tab (`desktop.md` D1321–D1324)
+  and its DevTools (`desktop.md` D1489): separate windows and
+  picture-in-picture, annotation of elements, "Open in {environment}'s
+  browser".
 - Of the cookie import (D1204, D1205): opening the node's System Settings
   at Full Disk Access and watching for the grant (T3's `SafariPermission`
   and `checkSystemPermission`; a browser client cannot reach the node's

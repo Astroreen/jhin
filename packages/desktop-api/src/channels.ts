@@ -28,4 +28,8 @@ export const DESKTOP_CHANNELS = {
   /** Main to page: a webview's page opened a window (D1323). */
   previewOpenLink: "jhin-desktop:preview-open-link",
   previewClearPartition: "jhin-desktop:preview-clear-partition",
+  /** Opens a webview's DevTools in a window of their own (D1489). */
+  previewOpenDevTools: "jhin-desktop:preview-open-devtools",
+  /** Main to page: a webview's DevTools closed, its guest may be attached again (D1489). */
+  previewDevToolsClosed: "jhin-desktop:preview-devtools-closed",
 } as const;

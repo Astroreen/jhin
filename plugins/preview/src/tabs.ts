@@ -233,6 +233,8 @@ interface Tab {
   lastFrame: number | undefined;
   lastPointer: number | undefined;
   closing: boolean;
+  /** Its desktop page went: the tab waits for the app's webview again (D1488). */
+  reconnect: Promise<void> | null;
 }
 
 export interface TabsOptions {
@@ -354,6 +356,7 @@ export function createTabs(options: TabsOptions) {
     openedAt: tab.openedAt,
     updatedAt: tab.updatedAt,
     ...(tab.desktop === null ? {} : { desktop: true as const }),
+    ...(tab.reconnect === null ? {} : { reconnecting: true as const }),
   });
   /** The thread's `preview.tabs` event, once per tick however many changes came. */
   const publish = (threadId: string) => {
@@ -424,19 +427,33 @@ export function createTabs(options: TabsOptions) {
     setting?: PreviewViewportSetting | undefined;
     adopted?: { page: Page; openerTabId: string } | undefined;
     profileId?: string | undefined;
+    /** A desktop tab whose page went, on its new page (null: headless) (D1488). */
+    reuse?: { previous: Tab; desktop: DesktopPage | null } | undefined;
   }): Promise<Tab> {
-    const isolated = input.adopted === undefined && input.agentId !== null;
+    const previous = input.reuse?.previous;
+    const isolated = previous?.isolated ?? (input.adopted === undefined && input.agentId !== null);
     // A popup keeps its opener's profile (none for an agent's own context).
     const profileId =
-      input.adopted !== undefined
-        ? input.profileId
-        : isolated
-          ? undefined
-          : (input.profileId ?? DEFAULT_BROWSER_PROFILE_ID);
-    sequence += 1;
-    const tabId = `tab_${sequence.toString(36)}_${instance}`;
+      previous !== undefined
+        ? previous.profileId
+        : input.adopted !== undefined
+          ? input.profileId
+          : isolated
+            ? undefined
+            : (input.profileId ?? DEFAULT_BROWSER_PROFILE_ID);
+    let tabId: string;
+    if (previous !== undefined) {
+      tabId = previous.tabId;
+    } else {
+      sequence += 1;
+      tabId = `tab_${sequence.toString(36)}_${instance}`;
+    }
     const desktop =
-      input.adopted === undefined ? await openInDesktop(input.threadId, tabId, profileId) : null;
+      input.reuse !== undefined
+        ? input.reuse.desktop
+        : input.adopted === undefined
+          ? await openInDesktop(input.threadId, tabId, profileId)
+          : null;
     const opened = input.adopted
       ? { page: input.adopted.page, context: input.adopted.page.context() }
       : (desktop ?? (await chromium.newPage(isolated, profileId)));
@@ -476,30 +493,33 @@ export function createTabs(options: TabsOptions) {
         Ops.invalidateRefs(page);
         changed(tab);
       }),
-      openerTabId: input.adopted?.openerTabId,
-      openedAt: now(),
+      openerTabId: previous?.openerTabId ?? input.adopted?.openerTabId,
+      openedAt: previous?.openedAt ?? now(),
       updatedAt: now(),
-      usedAt: clock(),
+      usedAt: previous?.usedAt ?? clock(),
       navStatus:
-        input.url === undefined
-          ? { state: "idle" }
-          : { state: "loading", url: input.url, title: "" },
+        previous !== undefined
+          ? previous.navStatus
+          : input.url === undefined
+            ? { state: "idle" }
+            : { state: "loading", url: input.url, title: "" },
       canGoBack: false,
       canGoForward: false,
       loading: false,
       navigationGeneration: 0,
-      setting: input.setting ?? { mode: "fill" },
-      fillSize: { ...DEFAULT_PREVIEW_VIEWPORT },
-      colorScheme: "system",
-      zoomFactor: 1,
+      setting: previous?.setting ?? input.setting ?? { mode: "fill" },
+      fillSize: previous?.fillSize ?? { ...DEFAULT_PREVIEW_VIEWPORT },
+      colorScheme: previous?.colorScheme ?? "system",
+      zoomFactor: previous?.zoomFactor ?? 1,
       reveal: input.reveal,
       dialog: null,
       fileChooser: null,
       fileChooserAccept: "",
-      downloads: [],
-      consoleEntries: [],
-      networkEntries: [],
-      actionTimeline: [],
+      // What the tab gathered stays with it across its pages (D1488).
+      downloads: previous?.downloads ?? [],
+      consoleEntries: previous?.consoleEntries ?? [],
+      networkEntries: previous?.networkEntries ?? [],
+      actionTimeline: previous?.actionTimeline ?? [],
       recording: null,
       recordingStart: null,
       viewers: 0,
@@ -511,6 +531,7 @@ export function createTabs(options: TabsOptions) {
       lastFrame: undefined,
       lastPointer: undefined,
       closing: false,
+      reconnect: null,
     };
     if (input.adopted === undefined && desktop === null) {
       await page.setViewportSize(fixedSize(tab.setting) ?? tab.fillSize);
@@ -609,9 +630,16 @@ export function createTabs(options: TabsOptions) {
     page.on("download", (download) => void saveDownload(tab, download));
     // Popups become tabs and keep `window.opener`, so sign-in popups can report back.
     page.on("popup", (popup) => void adoptPopup(tab, popup));
-    // Playwright cannot reload a crashed page, so it leaves the tab list.
-    page.on("close", () => void dropTab(tab, "page closed"));
-    page.on("crash", () => void dropTab(tab, "page crashed"));
+    // Playwright cannot reload a crashed page, so it leaves the tab list. A desktop page that
+    // goes (a reload of the window, its DevTools) leaves the tab waiting for the next (D1488).
+    page.on(
+      "close",
+      () => void (desktop !== null ? reconnectDesktop(tab) : dropTab(tab, "page closed")),
+    );
+    page.on(
+      "crash",
+      () => void (desktop !== null ? reconnectDesktop(tab) : dropTab(tab, "page crashed")),
+    );
     if (desktop !== null) {
       // Through Playwright's own session: the app's relay has one real session for the page.
       await page
@@ -624,8 +652,19 @@ export function createTabs(options: TabsOptions) {
     tab.viewers = viewerCounts.get(tabKey(tab.threadId, tab.tabId)) ?? 0;
     changed(tab);
     if (tab.viewers > 0) void syncScreencast(tab);
-    if (input.adopted === undefined && input.url !== undefined) {
-      const url = input.url;
+    if (previous?.colorScheme !== undefined && previous.colorScheme !== "system") {
+      await applyAppearance(tab, previous.colorScheme).catch(() => undefined);
+    }
+    // A fresh page of a tab that had one goes back to where the tab was (D1488); a webview
+    // whose DevTools closed is still there.
+    const reopenAt =
+      previous === undefined
+        ? input.url
+        : page.url() === "about:blank" && "url" in previous.navStatus
+          ? previous.navStatus.url
+          : undefined;
+    if (input.adopted === undefined && reopenAt !== undefined) {
+      const url = reopenAt;
       const navigation = page
         .goto(url, { waitUntil: "commit", timeout: Ops.DEFAULT_TIMEOUT_MS })
         .then(() => page.waitForLoadState("load").catch(() => undefined));
@@ -646,18 +685,7 @@ export function createTabs(options: TabsOptions) {
   ): Promise<DesktopPage | null> {
     const host = options.desktop;
     if (host === undefined || options.connectDesktop === undefined || !host.active()) return null;
-    const partition =
-      profileId === undefined
-        ? `jhin-preview-agent-${tabId}`
-        : profileId === INCOGNITO_BROWSER_PROFILE_ID
-          ? `jhin-preview-incognito-${tabId}`
-          : previewProfilePartition(profileId);
-    const endpoint = await host.request({
-      threadId,
-      tabId,
-      partition,
-      ...(profileId === undefined ? {} : { profileId }),
-    });
+    const endpoint = await host.request(desktopTab(threadId, tabId, profileId));
     if (endpoint !== null && !disposed) {
       try {
         return await options.connectDesktop(endpoint);
@@ -670,6 +698,93 @@ export function createTabs(options: TabsOptions) {
     }
     host.forget(threadId, tabId);
     return null;
+  }
+
+  /** What the app is asked to host for a tab: its partition by profile (D1323). */
+  function desktopTab(threadId: string, tabId: string, profileId: string | undefined) {
+    const partition =
+      profileId === undefined
+        ? `jhin-preview-agent-${tabId}`
+        : profileId === INCOGNITO_BROWSER_PROFILE_ID
+          ? `jhin-preview-incognito-${tabId}`
+          : previewProfilePartition(profileId);
+    return { threadId, tabId, partition, ...(profileId === undefined ? {} : { profileId }) };
+  }
+
+  /**
+   * A desktop tab whose page went without the tab closing (D1488): it stays
+   * listed, reconnecting, until a page of the app hosts it again (without a
+   * limit while one hosts tabs, T3's 10 s while none does), then carries on
+   * there, or headless at its last address.
+   */
+  function reconnectDesktop(old: Tab): void {
+    const key = tabKey(old.threadId, old.tabId);
+    if (tabs.get(key) !== old || old.closing || old.reconnect !== null || disposed) return;
+    const host = options.desktop;
+    const connect = options.connectDesktop;
+    log.info("preview tab reconnecting", { threadId: old.threadId, tabId: old.tabId });
+    const waiting = () => tabs.get(key) === old && !old.closing && !disposed;
+    old.reconnect = (async () => {
+      // What ends with the page: the human's control, a recording, the old connection, a
+      // dialog or file chooser it showed.
+      old.dialog = null;
+      old.fileChooser = null;
+      await old.control.close();
+      await stopScreencast(old);
+      const recording = old.recording;
+      old.recording = null;
+      await recording?.encoder
+        .context()
+        .close()
+        .catch(() => undefined);
+      await old.desktop?.close().catch(() => undefined);
+      let page: DesktopPage | null = null;
+      while (waiting()) {
+        if (host === undefined || connect === undefined) break;
+        if (!host.active()) {
+          // A reloaded window subscribes again within T3's wait; else the tab opens headless.
+          if (!(await host.whenActive())) break;
+          continue;
+        }
+        const endpoint = await host.request(
+          desktopTab(old.threadId, old.tabId, old.profileId),
+          null,
+        );
+        if (endpoint === null) continue;
+        if (!waiting()) break;
+        try {
+          page = await connect(endpoint);
+        } catch (error) {
+          log.warn("desktop webview not connected again; the tab opens headless", {
+            tabId: old.tabId,
+            error: String(error),
+          });
+        }
+        break;
+      }
+      if (!waiting()) {
+        await page?.close().catch(() => undefined);
+        return;
+      }
+      if (page === null) host?.forget(old.threadId, old.tabId);
+      const created = createTab({
+        threadId: old.threadId,
+        agentId: old.control.agentId,
+        reveal: false,
+        reuse: { previous: old, desktop: page },
+      });
+      pendingTabs.add(created);
+      try {
+        await created;
+      } catch (error) {
+        log.warn("preview tab not reconnected", { tabId: old.tabId, error: String(error) });
+        old.reconnect = null;
+        await dropTab(old, "not reconnected");
+      } finally {
+        pendingTabs.delete(created);
+      }
+    })();
+    changed(old);
   }
 
   async function adoptPopup(opener: Tab, popup: Page) {
@@ -760,6 +875,7 @@ export function createTabs(options: TabsOptions) {
       .catch(() => undefined);
     if (tab.desktop !== null) {
       await tab.desktop.close().catch(() => undefined);
+      // Also ends the wait of a reconnecting tab (D1488).
       options.desktop?.forget(tab.threadId, tab.tabId);
     } else {
       await tab.page.close().catch(() => undefined);
@@ -923,7 +1039,20 @@ export function createTabs(options: TabsOptions) {
 
   // --- Finding the tab an agent means -------------------------------------------
 
-  const find = (threadId: string, tabId: string) => tabs.get(tabKey(threadId, tabId));
+  /** A tab waiting for the app's webview answers no command but closing (D1488). */
+  const live = <T extends Tab | undefined>(tab: T): T => {
+    if (tab !== undefined && tab.reconnect !== null) {
+      throw new PreviewError(
+        "PREVIEW_TAB_RECONNECTING",
+        "Close preview DevTools before using agent browser control. The tab is waiting for the desktop app's webview.",
+        { tabId: tab.tabId, instance },
+      );
+    }
+    return tab;
+  };
+  const find = (threadId: string, tabId: string) => live(tabs.get(tabKey(threadId, tabId)));
+  /** Any tab, a reconnecting one too: for closing it. */
+  const findAny = (threadId: string, tabId: string) => tabs.get(tabKey(threadId, tabId));
 
   function notFound(operation: string, tabId?: string): PreviewError {
     return new PreviewError(
@@ -952,11 +1081,11 @@ export function createTabs(options: TabsOptions) {
     if (assignedTab !== undefined) return assignedTab;
     const mine = owned(agent, input.threadId);
     if (mine.length > 1) throw controlError("tabRequired");
-    if (mine.length === 1) return mine[0]!;
+    if (mine.length === 1) return live(mine[0]!);
     const thread = threadTabs(input.threadId).toSorted((a, b) => b.usedAt - a.usedAt);
     const tab = thread.find((candidate) => candidate.viewers > 0) ?? thread[0];
     if (tab === undefined) throw notFound(operation);
-    return tab;
+    return live(tab);
   }
 
   const markUsed = (agent: string, tab: Tab) => {
@@ -1338,7 +1467,7 @@ export function createTabs(options: TabsOptions) {
             if (tab === undefined) {
               const mine = owned(agent, input.threadId);
               if (mine.length > 1) throw controlError("tabRequired");
-              tab = mine[0];
+              tab = live(mine[0]);
             }
           }
         }
@@ -1540,7 +1669,7 @@ export function createTabs(options: TabsOptions) {
     /** An agent closes its own tab (T3's `t3_preview_close`). */
     async closeAsAgent(agent: string, input: { threadId: string; tabId: string }): Promise<void> {
       return withErrors(async () => {
-        const tab = find(input.threadId, input.tabId);
+        const tab = findAny(input.threadId, input.tabId);
         if (tab === undefined) throw notFound("close", input.tabId);
         if (tab.control.agentId !== null && tab.control.agentId !== agent) {
           throw controlError("agentMismatch");

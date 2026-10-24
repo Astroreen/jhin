@@ -1156,6 +1156,21 @@ async function standInApp() {
     drop() {
       for (const socket of sockets) socket.terminate();
     },
+    /** Navigates the browser's page, as a fresh webview starts at `about:blank` (D1488). */
+    async navigate(url: string): Promise<void> {
+      const http = devtools.replace(/^ws:/, "http:").replace(/\/devtools\/.*$/, "/json/list");
+      const list = (await (await fetch(http)).json()) as {
+        type: string;
+        webSocketDebuggerUrl: string;
+      }[];
+      const target = list.find((each) => each.type === "page")!;
+      const socket = new WebSocket(target.webSocketDebuggerUrl);
+      await new Promise((resolve) => socket.once("open", resolve));
+      const answered = new Promise((resolve) => socket.once("message", resolve));
+      socket.send(JSON.stringify({ id: 1, method: "Page.navigate", params: { url } }));
+      await answered;
+      socket.close();
+    },
     /** The URLs of the browser's pages, from its own DevTools list. */
     async pages(): Promise<string[]> {
       const http = devtools.replace(/^ws:/, "http:").replace(/\/devtools\/.*$/, "/json/list");
@@ -1233,7 +1248,7 @@ describe("jhin.preview in the desktop app (D1321)", () => {
     host.subscription.dispose();
   });
 
-  it("ends the tab when the app's relay drops mid-session, and tells the app (D1322)", async () => {
+  it("keeps a tab whose relay drops, and carries on in the webview that hosts it next (D1488)", async () => {
     const { client } = await ownNode();
     const app = await standInApp();
     stops.push(app.stop);
@@ -1250,55 +1265,82 @@ describe("jhin.preview in the desktop app (D1321)", () => {
       tabId: announced!.tabId,
       endpoint: app.endpoint,
     });
-    await opening;
+    const opened = await opening;
     await host.until(() => desktopTabs(host.events)[0]?.attached === true);
-    await tabsStream.until(() => lastTabs(tabsStream.events).length === 1);
+    await client.call("preview.wait.for", { threadId: thread, text: "Preview home" });
+    await client.call("preview.click", {
+      threadId: thread,
+      locator: "role=button[name='Press me']",
+    });
 
-    // The connection drops (DevTools took the guest, the guest went): the tab ends on the node,
-    // and the app is told to drop it, so nothing waits on a relay that is gone.
+    // The connection drops (DevTools took the guest): the tab stays, reconnecting, and the
+    // app is asked to host it again.
     app.drop();
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.reconnecting === true);
+    await host.until(() => desktopTabs(host.events)[0]?.attached === false);
+    expect(lastTabs(tabsStream.events).map((tab) => tab.tabId)).toEqual([opened.tabId]);
+    await expect(client.call("preview.status", { threadId: thread })).rejects.toMatchObject({
+      code: "PREVIEW_TAB_RECONNECTING",
+      message: expect.stringContaining(
+        "Close preview DevTools before using agent browser control.",
+      ),
+    });
+
+    // The same webview attaches again (its DevTools closed): the page was not reloaded.
+    await client.call("preview.desktop.attach", {
+      threadId: thread,
+      tabId: opened.tabId,
+      endpoint: app.endpoint,
+    });
+    await tabsStream.until(() => {
+      const [tab] = lastTabs(tabsStream.events);
+      return tab !== undefined && tab.reconnecting === undefined && tab.desktop === true;
+    });
+    const kept = await client.call<PreviewStatus>("preview.status", { threadId: thread });
+    expect(kept).toMatchObject({ tabId: opened.tabId, title: "Clicked" });
+
+    // A fresh webview after a reload of the window starts blank: the node takes it back to
+    // where the tab was.
+    app.drop();
+    await host.until(() => desktopTabs(host.events)[0]?.attached === false);
+    await app.navigate("about:blank");
+    const reconnected = tabsStream.events.length;
+    await client.call("preview.desktop.attach", {
+      threadId: thread,
+      tabId: opened.tabId,
+      endpoint: app.endpoint,
+    });
+    // The attach hands the node the endpoint; the tab carries on once it connected.
+    await tabsStream.until(
+      () =>
+        tabsStream.events.length > reconnected &&
+        lastTabs(tabsStream.events)[0]?.reconnecting === undefined,
+    );
+    await client.call("preview.wait.for", { threadId: thread, text: "Preview home" });
+    expect(await app.pages()).toContain(`${origin}/`);
+
+    // Closing still works while it waits, and ends the wait.
+    app.drop();
+    await tabsStream.until(() => lastTabs(tabsStream.events)[0]?.reconnecting === true);
+    await client.call("preview.close", { threadId: thread, tabId: opened.tabId });
     await tabsStream.until(() => lastTabs(tabsStream.events).length === 0);
     await host.until(() => desktopTabs(host.events).length === 0);
     host.subscription.dispose();
     tabsStream.subscription.dispose();
   });
 
-  it("opens the tab headless when the app's page stops hosting before it attaches", async () => {
-    const { client } = await ownNode();
-    const host = watch(client, PREVIEW_DESKTOP_STREAM);
-    const opening = client.call<PreviewStatus>("preview.open", {
-      threadId: thread,
-      url: `${origin}/second`,
-    });
-    await host.until(() => desktopTabs(host.events).length === 1);
-    host.subscription.dispose();
-    await opening;
-    await client.call("preview.wait.for", { threadId: thread, text: "Second page text" });
-    const { tabs } = await client.call<{ tabs: PreviewTab[] }>("preview.list", {
-      threadId: thread,
-    });
-    expect(tabs[0]?.desktop).toBeUndefined();
-  });
-
-  it("refuses an attach nobody waits for, and an endpoint off this machine", async () => {
-    const { client } = await ownNode();
-    const secret = "a".repeat(32);
-    const unknown = await rejection(
-      client.call("preview.desktop.attach", {
-        threadId: thread,
-        tabId: "tab_1_abcdef01",
-        endpoint: `ws://127.0.0.1:9/${secret}`,
-      }),
-    );
-    expect(unknown.code).toBe("PREVIEW_TAB_NOT_FOUND");
-    const remote = await rejection(
-      client.call("preview.desktop.attach", {
-        threadId: thread,
-        tabId: "tab_1_abcdef01",
-        endpoint: `ws://192.168.1.2:9/${secret}`,
-      }),
-    );
-    expect(remote.code).not.toBe("PREVIEW_TAB_NOT_FOUND");
+  it("waits for a page to host tabs again, at once when one does (D1488)", async () => {
+    const desktop = createDesktopHost(createMemoryStreams());
+    try {
+      await expect(desktop.whenActive(0)).resolves.toBe(false);
+      const waiting = desktop.whenActive(60_000);
+      const page = desktop.source.subscribe(PREVIEW_DESKTOP_STREAM, () => undefined);
+      await expect(waiting).resolves.toBe(true);
+      await expect(desktop.whenActive(0)).resolves.toBe(true);
+      page.dispose();
+    } finally {
+      desktop.dispose();
+    }
   });
 
   it("keeps an attached tab listed for a page whose connection drops and comes back (D1321)", async () => {

@@ -131,6 +131,13 @@ export interface DesktopPreviewBridge {
   onOpenLink(listener: (link: DesktopPreviewOpenLink) => void): Unsubscribe;
   /** Forgets the cookies and storage of a preview partition. */
   clearPartition(partition: string): Promise<void>;
+  /**
+   * Opens the webview's DevTools detached, or focuses them; its guest's relay
+   * ends meanwhile (D1489). Optional: an older app's bridge lacks it.
+   */
+  openDevTools?(webContentsId: number): Promise<void>;
+  /** A webview's DevTools closed: its guest can be attached again (D1489). */
+  onDevToolsClosed?(listener: (webContentsId: number) => void): Unsubscribe;
 }
 
 /** `window.jhinDesktop`, put there by the app's preload (D521). */
@@ -187,5 +194,9 @@ export interface DesktopShell {
     attachWebview(webContentsId: number): Promise<{ endpoint: string }>;
     onOpenLink(listener: (link: DesktopPreviewOpenLink) => void): Disposable;
     clearPartition(partition: string): Promise<void>;
+    /** Since 1.2: a webview's DevTools, detached (D1489). */
+    openDevTools?(webContentsId: number): Promise<void>;
+    /** Since 1.2: a webview's DevTools closed (D1489). */
+    onDevToolsClosed?(listener: (webContentsId: number) => void): Disposable;
   };
 }

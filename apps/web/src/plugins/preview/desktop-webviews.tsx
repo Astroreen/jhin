@@ -125,6 +125,28 @@ function Host(
   }, [client, surfaces]);
   // Webviews by their guest's id, for the links their pages open.
   const guests = useRef(new Map<number, DesktopTab>());
+  // Guests whose DevTools are open: never attached meanwhile, as DevTools hold their debugger;
+  // once they close, each attaches again (D1489).
+  const devTools = useRef<Guests>({ open: new Set(), reattach: new Map() });
+  useEffect(() => {
+    const { openDevTools, onDevToolsClosed } = preview;
+    if (openDevTools === undefined || onDevToolsClosed === undefined) return;
+    const action = surfaces.devTools((webContentsId) => {
+      devTools.current.open.add(webContentsId);
+      return openDevTools(webContentsId).catch((error: unknown) => {
+        devTools.current.open.delete(webContentsId);
+        throw error;
+      });
+    });
+    const closed = onDevToolsClosed((webContentsId) => {
+      devTools.current.open.delete(webContentsId);
+      devTools.current.reattach.get(webContentsId)?.();
+    });
+    return () => {
+      action.dispose();
+      closed.dispose();
+    };
+  }, [preview, surfaces]);
   const onError = useRef(props.onError);
   onError.current = props.onError;
   useEffect(() => {
@@ -146,6 +168,7 @@ function Host(
       {tabs.map((tab) => (
         <HostedWebview
           client={client}
+          devTools={devTools.current}
           guests={guests.current}
           onError={onError}
           key={desktopKey(tab)}
@@ -159,8 +182,15 @@ function Host(
   );
 }
 
+/** The guests whose DevTools are open, and how each attaches again (D1489). */
+interface Guests {
+  readonly open: Set<number>;
+  readonly reattach: Map<number, () => void>;
+}
+
 function HostedWebview(props: {
   readonly client: RpcClient;
+  readonly devTools: Guests;
   readonly preview: NonNullable<DesktopShell["preview"]>;
   readonly surfaces: NativeSurfaces;
   readonly tab: DesktopTab;
@@ -168,11 +198,13 @@ function HostedWebview(props: {
   readonly onError: { current: (title: string, error: unknown) => void };
   readonly onLost: (key: string) => void;
 }) {
-  const { client, preview, surfaces, tab, guests, onError, onLost } = props;
+  const { client, preview, surfaces, tab, guests, onError, onLost, devTools } = props;
   const ref = useRef<ElectronWebview | null>(null);
   // Fixed for the tab's life: Electron reads the partition once, as the guest attaches.
   const [partition] = useState(tab.partition);
   const attachedOnce = useRef(tab.attached);
+  /** Attaches the guest again, once the node waits for it anew (D1488). */
+  const register = useRef<() => void>(() => undefined);
   useSyncExternalStore(surfaces.subscribe, surfaces.version);
   const placement = surfaces.placement(tab.threadId, tab.tabId);
   const last = useRef(HIDDEN_SIZE);
@@ -183,7 +215,7 @@ function HostedWebview(props: {
     if (webview === null) return;
     let disposed = false;
     let guestId: number | undefined;
-    const register = () => {
+    const attach = () => {
       if (disposed || attachedOnce.current) return;
       // Electron answers the guest's id only once its first document is ready.
       let id: number;
@@ -192,9 +224,16 @@ function HostedWebview(props: {
       } catch {
         return;
       }
+      if (guestId !== id) {
+        if (guestId !== undefined) devTools.reattach.delete(guestId);
+        guestId = id;
+        guests.set(id, tab);
+        devTools.reattach.set(id, attach);
+        surfaces.guest(tab.threadId, tab.tabId, id);
+      }
+      // Its DevTools hold the debugger: it attaches once they closed (D1489).
+      if (devTools.open.has(id)) return;
       attachedOnce.current = true;
-      guestId = id;
-      guests.set(id, tab);
       void (async () => {
         const { endpoint } = await preview.attachWebview(id);
         if (disposed) return;
@@ -214,17 +253,29 @@ function HostedWebview(props: {
         onError.current("Couldn't show the browser tab in the app", error);
       });
     };
-    webview.addEventListener("did-attach", register);
-    webview.addEventListener("dom-ready", register);
+    register.current = attach;
+    webview.addEventListener("did-attach", attach);
+    webview.addEventListener("dom-ready", attach);
     return () => {
       disposed = true;
-      webview.removeEventListener("did-attach", register);
-      webview.removeEventListener("dom-ready", register);
-      if (guestId !== undefined) guests.delete(guestId);
+      webview.removeEventListener("did-attach", attach);
+      webview.removeEventListener("dom-ready", attach);
+      if (guestId !== undefined) {
+        guests.delete(guestId);
+        devTools.reattach.delete(guestId);
+        surfaces.guest(tab.threadId, tab.tabId, undefined);
+      }
     };
     // The tab is the same for the webview's life (its key).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The node waits for this webview again (its page went, D1488): it attaches anew.
+  useEffect(() => {
+    if (tab.attached || !attachedOnce.current) return;
+    attachedOnce.current = false;
+    register.current();
+  }, [tab.attached]);
 
   const zoomFactor = placement?.zoomFactor ?? 1;
   useEffect(() => {

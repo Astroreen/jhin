@@ -46,6 +46,9 @@ const bridge: DesktopBridge = {
     onOpenLink: (listener) => listen(DESKTOP_CHANNELS.previewOpenLink, listener),
     clearPartition: (partition) =>
       ipcRenderer.invoke(DESKTOP_CHANNELS.previewClearPartition, partition),
+    openDevTools: (webContentsId) =>
+      ipcRenderer.invoke(DESKTOP_CHANNELS.previewOpenDevTools, webContentsId),
+    onDevToolsClosed: (listener) => listen(DESKTOP_CHANNELS.previewDevToolsClosed, listener),
   },
 };
 
