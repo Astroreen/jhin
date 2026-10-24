@@ -16,6 +16,7 @@ import {
   createMesh,
   meshCallCommand,
   meshRelayCommand,
+  meshStreams,
   serveRelays,
   type MemberRecord,
   type MemberView,
@@ -251,10 +252,9 @@ export default definePlugin({
       ...(live === undefined ? {} : { streams: live }),
     });
     context.subscriptions.add(mesh);
-    // D501: plugins share their streams with members through this.
-    context.services.provide<MeshStreams>(MESH_STREAMS_CAPABILITY, {
-      share: (name) => mesh.share(name),
-    });
+    // D501: plugins share their streams with members through this; D1522:
+    // and follow members' streams.
+    context.services.provide<MeshStreams>(MESH_STREAMS_CAPABILITY, meshStreams(mesh));
     // D502: a relay needs mesh.call and what the relayed stream needs here.
     if (live !== undefined) {
       context.subscriptions.add(serveRelays(mesh, live));

@@ -5,6 +5,7 @@ import {
   createMesh,
   meshCallCommand,
   meshRelayCommand,
+  meshStreams,
   serveRelays,
   type Mesh,
 } from "@jhin/mesh-core";
@@ -38,7 +39,7 @@ export interface MemoryMeshNode {
 /**
  * A mesh node on the in-memory network (D38, D505), wired as `jhin.mesh`
  * wires one: its kernel provides `rpc.streams@1.2`, `storage.*` and
- * `mesh.streams@1`, and registers the plugin's own `mesh.call` and
+ * `mesh.streams@1.1` (D1522), and registers the plugin's own `mesh.call` and
  * `mesh.relay`; `plugins` run next to them. Signatures are not
  * cryptographic: one owner's nodes in one process.
  */
@@ -52,6 +53,8 @@ export async function startMeshNode(
     readonly storage?: ReturnType<typeof memoryStoragePlugin>;
     /** Streams relayed at once at most (D502). */
     readonly maxRelays?: number;
+    /** What a call or a stream from another node may do here (security.md D416); everything by default. */
+    readonly memberPermissions?: readonly string[];
   } = {},
 ): Promise<MemoryMeshNode> {
   const address = `mem://${id}`;
@@ -77,17 +80,18 @@ export async function startMeshNode(
     log,
     streams: live,
     ...(options.maxRelays === undefined ? {} : { maxRelays: options.maxRelays }),
+    ...(options.memberPermissions === undefined
+      ? {}
+      : { memberPermissions: () => options.memberPermissions! }),
   });
   const meshPlugin: TestPlugin = {
     manifest: testManifest("test.mesh", {
-      provides: { [MESH_STREAMS_CAPABILITY]: "1.0.0" },
+      provides: { [MESH_STREAMS_CAPABILITY]: "1.1.0" },
       side: "server",
     }),
     definition: definePlugin({
       activate(context) {
-        context.services.provide(MESH_STREAMS_CAPABILITY, {
-          share: (name: string) => mesh.share(name),
-        });
+        context.services.provide(MESH_STREAMS_CAPABILITY, meshStreams(mesh));
         context.subscriptions.add(serveRelays(mesh, live));
         context.commands.register(meshCallCommand(mesh));
         context.commands.register(meshRelayCommand(mesh));
