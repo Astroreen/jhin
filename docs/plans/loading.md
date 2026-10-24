@@ -181,7 +181,11 @@ What the node does today (2026-10-24, `08eeb571`):
 - **D1611. Writes and clears take turns.** The cache runs its writes and
   clears one after another, and a write checks the setting when its turn
   comes: one in flight when the setting goes off or a node is forgotten
-  lands before the clear and goes with it, and none lands after. Signing
+  lands before the clear and goes with it, and none lands after. Drops,
+  the boot's eviction and `history-cache.status` take their turn too, so the
+  status says what is kept once the queued work is done. The queue is per
+  tab; every tab sees the setting change and clears after its own writes, so
+  no tab's write outlives the setting. Signing
   out of a node is removing it in this client (removing the page's own node
   ends its session), so D1593's "signing out" is that removal. Without
   IndexedDB the plugin provides no service, but `history-cache.status` and
@@ -225,6 +229,9 @@ loading one.
 - A thread followed from the cache while its node could not be asked checks
   the head on every acceptance and asks again once; a database reset whose
   stream has grown past the kept sequence is caught only at the next open.
+- The settings row's "Now N threads" is read when the page opens, when
+  the setting changes and after a clear; it does not follow writes made
+  while the settings page stays open.
 - Opening a remote mesh node's thread from the cache (D1606): it needs the
   epoch of the copy the connected node reads it from.
 - `permessage-deflate` with context takeover, if P1's numbers show a large

@@ -28,6 +28,15 @@ const event = (sequence: number): StreamEvent => ({
 function memoryStore(entries: StreamEntry[] = []) {
   let kept = [...entries];
   const state = { full: 0, appends: 0 };
+  /** The next append waits for `go()`; `started` resolves once it is running. */
+  let held: { start: () => void; wait: Promise<void> } | undefined;
+  const hold = () => {
+    let go!: () => void;
+    let start!: () => void;
+    const started = new Promise<void>((resolve) => (start = resolve));
+    held = { start, wait: new Promise<void>((resolve) => (go = resolve)) };
+    return { started, go };
+  };
   const store: HistoryStore = {
     read: async (connection, stream) =>
       kept.some((entry) => entry.connection === connection && entry.stream === stream)
@@ -35,6 +44,12 @@ function memoryStore(entries: StreamEntry[] = []) {
         : undefined,
     async append(connection, stream, epoch, events, now) {
       state.appends += 1;
+      if (state.full === 0 && held !== undefined) {
+        const waiting = held;
+        held = undefined;
+        waiting.start();
+        await waiting.wait;
+      }
       if (state.full > 0) {
         state.full -= 1;
         throw new DOMException("full", "QuotaExceededError");
@@ -61,7 +76,12 @@ function memoryStore(entries: StreamEntry[] = []) {
     entries: async () => [...kept],
     close: () => undefined,
   };
-  return { store, state, kept: () => kept.map((entry) => `${entry.connection} ${entry.stream}`) };
+  return {
+    store,
+    state,
+    hold,
+    kept: () => kept.map((entry) => `${entry.connection} ${entry.stream}`),
+  };
 }
 
 const entry = (connection: string, stream: string, openedAt: number): StreamEntry => ({
@@ -118,20 +138,49 @@ describe("the history cache's service (loading.md D1592, D1593)", () => {
     expect(kept()).toEqual(["n thread/recent"]);
   });
 
-  it("lands a write in flight before a clear, never after it (D1592)", async () => {
-    const { store, kept } = memoryStore();
+  it("lands a write in flight before a clear, never after it (D1611)", async () => {
+    const { store, kept, hold } = memoryStore();
     let on = true;
     const cache = createHistoryCache(store, { enabled: () => on });
-    let cleared = 0;
-    cache.onCleared(() => (cleared += 1));
+    const release = hold();
     const writing = cache.append("n", "thread/a", "e1", [event(1)]);
+    // The write is running in the store when the setting goes off and the clear comes.
+    await release.started;
     on = false;
-    const clearing = cache.clear();
-    // A write asked for after the setting went off is not made at all.
-    const late = cache.append("n", "thread/b", "e1", [event(1)]);
-    await Promise.all([writing, clearing, late]);
+    let clearedAfter: string[] | undefined;
+    const clearing = cache.clear().then(() => (clearedAfter = kept()));
+    await Promise.resolve();
+    expect(clearedAfter).toBeUndefined();
+    release.go();
+    await Promise.all([writing, clearing]);
+    expect(clearedAfter).toEqual([]);
     expect(kept()).toEqual([]);
-    expect(cleared).toBe(1);
+  });
+
+  it("lands a write that makes room over the quota before a clear that comes meanwhile", async () => {
+    const { store, kept, state, hold } = memoryStore([entry("n", "thread/old", 1)]);
+    state.full = 1;
+    const cache = createHistoryCache(store, { enabled: () => true });
+    const writing = cache.append("n", "thread/a", "e1", [event(1)]);
+    // Held on its second try, after the quota failure made room.
+    const release = hold();
+    await release.started;
+    const clearing = cache.clear();
+    release.go();
+    await Promise.all([writing, clearing]);
+    expect(kept()).toEqual([]);
+  });
+
+  it("drops a stream after the write queued for it, not before", async () => {
+    const { store, kept, hold } = memoryStore();
+    const cache = createHistoryCache(store, { enabled: () => true });
+    const release = hold();
+    const writing = cache.append("n", "thread/a", "e1", [event(1)]);
+    await release.started;
+    const dropping = cache.drop("n", "thread/a");
+    release.go();
+    await Promise.all([writing, dropping]);
+    expect(kept()).toEqual([]);
   });
 
   it("says it is off once it stopped over the quota", async () => {
@@ -194,6 +243,16 @@ describe("what a device forgets, the cache forgets (D1593)", () => {
     nodes.set([nodes.node("b")]);
     expect(forgotten).toEqual(["a"]);
     watch.dispose();
+  });
+
+  it("keeps a node whose connection is replaced in one change (a new token from another tab)", () => {
+    const nodes = connections();
+    const forgotten: string[] = [];
+    forgetWithConnections(nodes.service, (id) => forgotten.push(id));
+    nodes.set([nodes.node("a")]);
+    // The connections plugin closes and opens the node again, then tells once.
+    nodes.set([nodes.node("a")]);
+    expect(forgotten).toEqual([]);
   });
 
   it("forgets a node whose token was refused, once", () => {

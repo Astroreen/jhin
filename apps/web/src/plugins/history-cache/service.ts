@@ -102,29 +102,34 @@ export function createHistoryCache(
     read: async (connection, stream) => (on() ? store.read(connection, stream, now()) : undefined),
     append: (connection, stream, epoch, events) =>
       write(connection, stream, () => store.append(connection, stream, epoch, events, now())),
-    drop: (connection, stream) => store.drop(connection, stream),
+    // In turn too: a write queued for the stream lands before the drop, not after it.
+    drop: (connection, stream) => serial(() => store.drop(connection, stream)),
     readCatalog: async (connection) => (on() ? store.readCatalog(connection) : undefined),
     writeCatalog: (connection, catalog) =>
       write(connection, "", () => store.writeCatalog(connection, catalog)),
-    async status() {
-      const entries = await store.entries();
-      return {
-        enabled: on(),
-        entries: entries.length,
-        bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
-      };
-    },
+    // After what is queued: the status of the cache once its writes and clears are done.
+    status: () =>
+      serial(async () => {
+        const entries = await store.entries();
+        return {
+          enabled: on(),
+          entries: entries.length,
+          bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
+        };
+      }),
     clear: forget,
     onCleared(listener) {
       cleared.add(listener);
       return { dispose: () => cleared.delete(listener) };
     },
-    async evictStale() {
-      const oldest = now() - STALE_AFTER_MS;
-      const stale = (await store.entries()).filter((entry) => entry.openedAt < oldest);
-      for (const entry of stale) await store.drop(entry.connection, entry.stream);
-      return stale.length;
-    },
+    evictStale: () =>
+      serial(async () => {
+        if (!on()) return 0;
+        const oldest = now() - STALE_AFTER_MS;
+        const stale = (await store.entries()).filter((entry) => entry.openedAt < oldest);
+        for (const entry of stale) await store.drop(entry.connection, entry.stream);
+        return stale.length;
+      }),
   };
 }
 
