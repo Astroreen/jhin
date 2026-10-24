@@ -1,9 +1,12 @@
 import { ThreadEvents, THREADS_STREAM } from "@jhin/agent-api";
 import {
   CONNECTIONS_CAPABILITY,
+  HISTORY_CACHE_CAPABILITY,
   MESH_CAPABILITY,
   THREADS_CAPABILITY,
+  type CachedCatalog,
   type Connections,
+  type HistoryCache,
   type MeshMembership,
   type NodeCatalog,
   type NodeConnection,
@@ -142,8 +145,8 @@ function fakeNode(answers: Record<string, () => Promise<unknown>>) {
     subscribed: () =>
       open > 0 ? Promise.resolve() : new Promise<void>((resolve) => onSubscribe.push(resolve)),
     /** Appends an event to the node's index, as every open subscription sees it. */
-    append(type: string, payload: unknown) {
-      sequence += 1;
+    append(type: string, payload: unknown, at?: number) {
+      sequence = at ?? sequence + 1;
       for (const { onEvent } of subscriptions) {
         onEvent({
           stream: THREADS_STREAM,
@@ -182,13 +185,14 @@ const noMesh: MeshMembership = {
   subscribe: () => toDisposable(() => undefined),
 };
 
-async function start(client: RpcClient) {
+async function start(client: RpcClient, cache?: HistoryCache) {
   let store: ThreadsCatalog | undefined;
   const kernel = await createTestKernel({
     side: "client",
     plugins: [
       mockCapability(CONNECTIONS_CAPABILITY, oneConnection(connection(client))),
       mockCapability(MESH_CAPABILITY, noMesh),
+      ...(cache === undefined ? [] : [mockCapability(HISTORY_CACHE_CAPABILITY, cache, "1.1.0")]),
       threadsStorePlugin,
       {
         manifest: testManifest("app.consumer", {
@@ -307,6 +311,142 @@ describe("client.threads@1", () => {
     expect(node.subscriptions.map((entry) => entry.after)).toEqual([0]);
 
     feed.subscription.dispose();
+    await kernel.stop();
+  });
+});
+
+/** A history cache in memory that keeps one connection's catalog and records drops. */
+function catalogCache(kept?: CachedCatalog) {
+  let catalog = kept;
+  const drops: string[] = [];
+  const writes: CachedCatalog[] = [];
+  const waiters: (() => void)[] = [];
+  const cache: HistoryCache = {
+    enabled: () => true,
+    read: async () => undefined,
+    append: async () => undefined,
+    drop: async (_connection, stream) => {
+      drops.push(stream ?? "all");
+    },
+    readCatalog: async () => catalog,
+    writeCatalog: async (_connection, next) => {
+      catalog = next;
+      writes.push(next);
+      for (const waiter of waiters.splice(0)) waiter();
+    },
+  };
+  return {
+    cache,
+    drops,
+    writes,
+    /** Resolves once the catalog was written `count` times. */
+    written: (count: number) =>
+      new Promise<CachedCatalog>((resolve) => {
+        const check = () =>
+          writes.length >= count ? resolve(writes[count - 1]!) : waiters.push(check);
+        check();
+      }),
+  };
+}
+
+describe("client.threads@1 with the history cache (loading.md D1591)", () => {
+  const kept: CachedCatalog = {
+    epoch: "e1",
+    head: 7,
+    projects: [scratch],
+    threads: [
+      thread("t1", "scratch", "2026-10-18T12:00:00.000Z"),
+      thread("t2", "scratch", "2026-10-18T13:00:00.000Z"),
+    ],
+  };
+
+  it("shows the kept catalog and follows the index after its head, without reading the catalog", async () => {
+    const node = fakeNode({ "threads.epoch": async () => ({ epoch: "e1", head: 9 }) });
+    const { cache, written, drops } = catalogCache(kept);
+    const { kernel, store } = await start(node.client, cache);
+    const feed = follow(store);
+    const shown = await feed.next();
+    expect(shown.status).toBe("ready");
+    expect(shown.threads.map((item) => item.id)).toEqual(["t1", "t2"]);
+    await node.subscribed();
+    expect(node.calls).toEqual(["threads.epoch"]);
+    expect(node.subscriptions.map((entry) => entry.after)).toEqual([7]);
+
+    // What follows is kept too, with the head it reflects; a gone thread drops its stream.
+    node.append(ThreadEvents.threadDeleted, { id: "t2" }, 8);
+    const after = await written(1);
+    expect(after).toMatchObject({ epoch: "e1", head: 8 });
+    expect(after.threads.map((item) => item.id)).toEqual(["t1"]);
+    expect(drops).toEqual(["thread/t2"]);
+    await kernel.stop();
+  });
+
+  it("reads the catalog when the node's epoch is another one", async () => {
+    const node = fakeNode({
+      "threads.epoch": async () => ({ epoch: "e2", head: 9 }),
+      "threads.catalog": async () => ({
+        head: 3,
+        epoch: "e2",
+        projects: [scratch],
+        threads: [thread("t9", "scratch", "2026-10-18T14:00:00.000Z")],
+      }),
+    });
+    const { cache, written } = catalogCache(kept);
+    const { kernel, store } = await start(node.client, cache);
+    follow(store);
+    await node.subscribed();
+    expect(node.calls).toEqual(["threads.epoch", "threads.catalog"]);
+    expect(node.subscriptions.map((entry) => entry.after)).toEqual([3]);
+    expect(store.catalog({ node: "ws://a/rpc" }).threads.map((item) => item.id)).toEqual(["t9"]);
+    expect(await written(1)).toMatchObject({ epoch: "e2", head: 3 });
+    await kernel.stop();
+  });
+
+  it("reads the catalog when the node's index is behind the kept head", async () => {
+    const node = fakeNode({
+      "threads.epoch": async () => ({ epoch: "e1", head: 2 }),
+      "threads.catalog": async () => ({ head: 2, epoch: "e1", projects: [scratch], threads: [] }),
+    });
+    const { kernel, store } = await start(node.client, catalogCache(kept).cache);
+    follow(store);
+    await node.subscribed();
+    expect(node.calls).toEqual(["threads.epoch", "threads.catalog"]);
+    expect(node.subscriptions.map((entry) => entry.after)).toEqual([2]);
+    await kernel.stop();
+  });
+
+  it("reads the catalog after all when the index skips past the kept head (a gap, D498)", async () => {
+    const node = fakeNode({
+      "threads.epoch": async () => ({ epoch: "e1", head: 12 }),
+      "threads.catalog": async () => ({ head: 12, epoch: "e1", projects: [scratch], threads: [] }),
+    });
+    const { kernel, store } = await start(node.client, catalogCache(kept).cache);
+    const feed = follow(store);
+    await node.subscribed();
+    node.append(
+      ThreadEvents.threadCreated,
+      thread("t5", "scratch", "2026-10-18T15:00:00.000Z"),
+      11,
+    );
+    // The event after the gap is not applied: the catalog is read instead.
+    let catalog = await feed.next();
+    while (catalog.threads.length !== 0) catalog = await feed.next();
+    // The index is followed again after the head of the catalog read.
+    await node.subscribed();
+    expect(node.calls).toEqual(["threads.epoch", "threads.catalog"]);
+    expect(node.subscriptions.map((entry) => entry.after)).toEqual([7, 12]);
+    await kernel.stop();
+  });
+
+  it("keeps the catalog it read when nothing was kept", async () => {
+    const node = fakeNode({
+      "threads.catalog": async () => ({ head: 4, epoch: "e1", projects: [scratch], threads: [] }),
+    });
+    const { cache, written } = catalogCache();
+    const { kernel, store } = await start(node.client, cache);
+    follow(store);
+    expect(await written(1)).toMatchObject({ epoch: "e1", head: 4, projects: [scratch] });
+    expect(node.calls).toEqual(["threads.catalog"]);
     await kernel.stop();
   });
 });

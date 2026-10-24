@@ -1,10 +1,12 @@
 // The history cache's IndexedDB database (loading.md D1588, D1609): what this
 // device has read of each node's streams, kept per connection.
-import type { CachedStream, StreamEvent } from "@jhin/client-api";
+import type { CachedCatalog, CachedStream, StreamEvent } from "@jhin/client-api";
 
 export const DATABASE = "jhin.history-cache";
 const STREAMS = "streams";
 const EVENTS = "events";
+/** Since version 2: each connection's catalog (D1591). */
+const CATALOGS = "catalogs";
 
 /** One kept stream, without its events. */
 interface StreamEntry {
@@ -28,6 +30,8 @@ export interface HistoryStore {
     now: number,
   ): Promise<void>;
   drop(connection?: string, stream?: string): Promise<void>;
+  readCatalog(connection: string): Promise<CachedCatalog | undefined>;
+  writeCatalog(connection: string, catalog: CachedCatalog): Promise<void>;
   /** Every kept stream, without its events. */
   entries(): Promise<StreamEntry[]>;
   close(): void;
@@ -63,11 +67,14 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
   let opened: Promise<IDBDatabase> | undefined;
   const database = () =>
     (opened ??= new Promise<IDBDatabase>((resolve, reject) => {
-      const opening = factory.open(DATABASE, 1);
-      opening.addEventListener("upgradeneeded", () => {
+      const opening = factory.open(DATABASE, 2);
+      opening.addEventListener("upgradeneeded", (change) => {
         const db = opening.result;
-        db.createObjectStore(STREAMS, { keyPath: ["connection", "stream"] });
-        db.createObjectStore(EVENTS);
+        if (change.oldVersion < 1) {
+          db.createObjectStore(STREAMS, { keyPath: ["connection", "stream"] });
+          db.createObjectStore(EVENTS);
+        }
+        if (change.oldVersion < 2) db.createObjectStore(CATALOGS);
       });
       opening.addEventListener("error", () => {
         opened = undefined;
@@ -89,7 +96,7 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
     }));
 
   const transaction = async (mode: IDBTransactionMode) =>
-    (await database()).transaction([STREAMS, EVENTS], mode);
+    (await database()).transaction([STREAMS, EVENTS, CATALOGS], mode);
 
   return {
     async read(connection, stream, now) {
@@ -156,13 +163,30 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
       if (connection === undefined) {
         streams.clear();
         store.clear();
+        tx.objectStore(CATALOGS).clear();
       } else if (stream === undefined) {
         streams.delete(connectionRange(connection));
         store.delete(connectionRange(connection));
+        tx.objectStore(CATALOGS).delete(connection);
       } else {
         streams.delete([connection, stream]);
         store.delete(eventRange(connection, stream));
       }
+      await done(tx);
+    },
+
+    async readCatalog(connection) {
+      const tx = await transaction("readonly");
+      const kept = (await promised(tx.objectStore(CATALOGS).get(connection))) as
+        | CachedCatalog
+        | undefined;
+      await done(tx);
+      return kept;
+    },
+
+    async writeCatalog(connection, catalog) {
+      const tx = await transaction("readwrite");
+      tx.objectStore(CATALOGS).put(catalog, connection);
       await done(tx);
     },
 
