@@ -5,7 +5,7 @@ import * as Path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
-import { threadRow } from "./support/ui.ts";
+import { openSurface, threadRow } from "./support/ui.ts";
 
 let node: RunningNode;
 test.beforeAll(async () => {
@@ -453,6 +453,46 @@ test("shows a sent message's file and skill chips, and its file beside the threa
   await page.getByRole("button", { name: "Close plan.md" }).click();
   await expect(preview).toBeHidden();
   await expect(sent.getByRole("button", { name: "Preview docs/plan.md" })).toBeVisible();
+});
+
+test("D1428–D1431: an agent's file chip opens its line, beside T3's explorer; Files lists the project", async ({
+  page,
+}, info) => {
+  const scratch = Path.join(node.home, "data", "jhin.threads", "scratch");
+  Fs.mkdirSync(Path.join(scratch, "notes"), { recursive: true });
+  Fs.writeFileSync(
+    Path.join(scratch, "notes", "todo.txt"),
+    Array.from({ length: 80 }, (_, index) => `item ${index + 1}`).join("\n"),
+  );
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  // The fake agent echoes the message: its inline code names the file at a line.
+  await message.fill("see `notes/todo.txt:60`");
+  await message.press("Enter");
+  const agent = page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "Agent" });
+  const chip = agent.getByRole("button", { name: "Preview notes/todo.txt" });
+  await expect(chip).toHaveText("todo.txt · L60");
+  await chip.click();
+  const preview = page.getByRole("region", { name: "File preview" });
+  // T3's revealed line, tinted (D1430), and the explorer beside the file (D1428).
+  await expect(preview.locator("[data-file-link-reveal][data-line]")).toHaveText("item 60");
+  await expect(preview.getByRole("treeitem", { name: "todo.txt" })).toBeVisible();
+  await expect(preview.getByRole("group", { name: "Open in editor" })).toBeVisible();
+  const shot = info.outputPath("file-panel-revealed-line.png");
+  await page.screenshot({ path: shot });
+  await info.attach("an agent's file chip at its line", { path: shot, contentType: "image/png" });
+
+  // "Files" (F): T3's explorer as a surface of its own; a file opened there takes its place.
+  const panel = await openSurface(page, "Files");
+  const files = panel.getByRole("region", { name: "Files" });
+  await files.getByRole("treeitem", { name: "notes" }).click();
+  await files.getByRole("treeitem", { name: "todo.txt" }).click();
+  await expect(files).toBeHidden();
+  await expect(panel.getByRole("tab", { name: "todo.txt" })).toHaveCount(1);
+  const explorerShot = info.outputPath("file-explorer.png");
+  await page.screenshot({ path: explorerShot });
+  await info.attach("the file explorer", { path: explorerShot, contentType: "image/png" });
 });
 
 test("spaces a heading as T3 does, and shows a code block's language with its icon", async ({
