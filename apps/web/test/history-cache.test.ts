@@ -183,6 +183,18 @@ describe("the history cache's service (loading.md D1592, D1593)", () => {
     expect(kept()).toEqual([]);
   });
 
+  it("reports a clear that is done even when a listener throws", async () => {
+    const { store } = memoryStore([entry("n", "thread/a", 0)]);
+    const cache = createHistoryCache(store, { enabled: () => true });
+    let told = 0;
+    cache.onCleared(() => {
+      throw new Error("a broken listener");
+    });
+    cache.onCleared(() => (told += 1));
+    expect(await cache.clear()).toBe(1);
+    expect(told).toBe(1);
+  });
+
   it("says it is off once it stopped over the quota", async () => {
     const { store, state } = memoryStore();
     state.full = 2;

@@ -79,10 +79,11 @@ export const historyCachePlugin = builtin(
         name: "history-cache.clear",
         title: "Clear the history cache",
         description:
-          "Forgets the chat history this device keeps, of one connection (its RPC URL) or of every node; threads then open from their nodes again. Answers how many thread streams went",
+          "Forgets the chat history this device keeps, of one connection (its id in `client.connections`, today the node's RPC URL) or of every node; threads then open from their nodes again. Answers how many thread streams went",
         input: z.object({
           connection: z.string().min(1).optional().meta({
-            description: "The connection (a node's RPC URL) to forget; every node when absent",
+            description:
+              "The connection to forget, by its id in `client.connections` (today the node's RPC URL); every node when absent",
           }),
         }),
         output: z.object({ cleared: z.number() }),

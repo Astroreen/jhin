@@ -93,7 +93,14 @@ export function createHistoryCache(
     serial(async () => {
       const before = await store.entries();
       await store.drop(connection);
-      for (const listener of Array.from(cleared)) listener();
+      // A listener that throws never fails a clear that is done, nor the others.
+      for (const listener of Array.from(cleared)) {
+        try {
+          listener();
+        } catch {
+          // The settings row only reads the status again.
+        }
+      }
       return before.filter((entry) => connection === undefined || entry.connection === connection)
         .length;
     });
