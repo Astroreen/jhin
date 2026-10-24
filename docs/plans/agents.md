@@ -2230,6 +2230,113 @@ below names the Deferred entry it takes; move it out of
 - Health of a team across nodes: the counts of every node, not only this
   one's streams (A7).
 
+Decisions (M1):
+
+- **D1521. A civilization's streams are shared with the mesh.** `jhin.agents`
+  shares `agents`, `agents/messages` and `agents/inbox`, `jhin.missions`
+  shares `missions` and `jhin.health` shares `health`, each through
+  `mesh.streams@1` taken optionally (D501). A client then follows them on a
+  member through its connection's relay (D499, D502), and a node's plugins
+  follow them on its members (D1522). Nothing is mirrored, and nothing is
+  read beyond what it was before: over a link a member reads a shared stream
+  only within its member grants and the stream's guard there (`agents.read`,
+  `agents.inbox`, `missions.read`, `health.read`; D499, D628, D730).
+- **D1522. `mesh.streams@1.1`: a plugin follows a member's stream.**
+  `follow(node, stream, after, listener, onEnd?)` returns `{ ready, dispose }`
+  and travels as a relay does (D499): next to the owner its stream, further
+  away the next hop's `relay/<owner>/<stream>`, nothing stored. `ready`
+  resolves with the head once attached and rejects with the relay's errors
+  (`NODE_UNREACHABLE`, `STREAM_NOT_SHARED`, `PERMISSION_DENIED`, `RELAY_*`);
+  an attached follower waits while the route is away and resumes after the
+  last sequence it passed on, and `onEnd(error)` hears one the owner refuses
+  later. `members()` lists the other members with whether each is reachable
+  now, and `onChange(listener)` hears when that changes, so a plugin knows
+  whom to follow. It is the mesh core's relay used in process
+  (`meshStreams(mesh)` in `@jhin/mesh-core`); `jhin.mesh` and
+  `@jhin/testing`'s `startMeshNode` provide it. A follower runs with the
+  node's own standing: the owner of the stream still applies its member
+  grants.
+- **D1523. `agents.conversation` joins the agent's node.** It takes `owner`
+  (an owner's address, this node's by default) and folds the records between
+  that owner and `with`; the state of an inbox item only for its own owner,
+  whose inbox it holds. With `with` on another node it asks that node through
+  `mesh.call` for the records between this node's owner and `with` (D627
+  keeps the owner's messages there), and merges both halves by `sentAt`
+  before keeping the newest `limit`. The answer gains `elsewhere { nodeId,
+  head?, error? }`: the head of that node's `agents/messages` the entries
+  reflect, or why it could not be read, in which case the local half comes
+  alone. A client lists again on the next event of either stream. The
+  forwarded call carries the caller's grants (D416), so it needs nothing new.
+- **D1524. A message from another node's owner gets its answer.** D1221
+  follows the turn that a message from any owner of the mesh starts in an
+  agent of this node, not only this node's owner's, and records the answer
+  here, where D1523 reads it. D1262 still holds: the agent's own reply to
+  that owner is delivered on the owner's node, so this node remembers each
+  reply it forwards by the id it answers (`replied/<messageId>` in its
+  storage), and the check reads both.
+- **D1525. Every node knows the slices of the mesh.** Health folds the
+  `missions` stream of every reachable member besides its own (D1522), keyed
+  by node. A turn on this node in a thread that a slice of any node links is
+  counted for its commits (D723) and recorded on this node's `health`
+  stream, so the slice's node can count it (D1526). Missions of other nodes
+  are no groups here: this node counts nothing for them and raises no
+  warning about them.
+- **D1526. A mission is counted on its node with the work of every node.**
+  Health follows the `agents/messages`, `source-control` and `health` streams
+  of every reachable member, and the threads on members that its own slices
+  link (`SliceThread.nodeId`, D647), and counts what they say for its own
+  missions and their projects by D722's rules: a message by its delivery's
+  thread or by assignee, queue activity and approvals of a linked thread, a
+  merged pull request of one, a recorded commit of one. Never for this
+  node's `node` group, which stays what this node does. An event of another
+  node is attributed with the missions as they are when it arrives. Its
+  evidence names the stream the way this node relays it,
+  `relay/<node>/<stream>` (`relayStream`), so heads, dismissals (D724) and
+  references never mix two nodes' sequences; `health.warnings.get` reads
+  such a record through the same relay, with what the stream takes here
+  (D502, D730). A member that cannot be reached or does not share a stream
+  is followed again on the next change of the members; what it said before
+  stays counted.
+- **D1527. Civilization reads every node the client shows.** The roster,
+  the missions view, the inbox, health and the offer of the mode follow each
+  open connection and each reachable member of its mesh (`shownNodes`, D47),
+  keyed by `targetKey`. A node reached in two ways (connected, and a member
+  of another connection) is read once, through its own connection. A
+  member's commands go through `mesh.call` and its streams through its
+  connection's relay (`mesh.relay`), behind one channel
+  (`lib/node-channel.ts`: D504's terminal channel, moved and shared). A
+  member's connection that closes takes its member's feeds with it; a member
+  that becomes unreachable leaves the list as it does in Threads mode.
+- **D1528. Agents of members.** The roster lists each member's agents under
+  its label (D617), and its page reads and acts on the agent's node through
+  the channel. `civilization.agent.open` and `civilization.agent.define` take
+  `remote` (optional, additive), and the route of an agent's page carries it.
+- **D1529. Missions of members.** The Missions section lists the route's
+  node, its member included (`route.remote`, D654), and the mission view,
+  its dialogs and the orchestrator panel talk to that node. A slice's thread
+  is read on the node it names, relative to the mission's node (D656).
+  `civilization.mission.open` takes `remote`.
+- **D1530. The inbox and health of every node.** `lib/node-feeds.ts` follows
+  every node of D1527, so an ask or a warning raised on a member is told and
+  listed like one on a connection (D630, D731); answering and dismissing go
+  to the item's node. `civilization.inbox.open` and `civilization.health.open`
+  take `remote`. The health overview of a member shows its counts, which
+  since D1526 hold the work of every node for its missions.
+- **D1531. Civilization mode is offered by any node of the mesh.** The offer
+  (D747) asks every node of D1527, members too, and follows the `agents`
+  stream of each that has no agents yet (D1398) through the relay, so the
+  mode appears as soon as the first agent is defined anywhere in the mesh.
+- **D1532. Titles and assignees from every node.** The mission view reads
+  `host.identity` and `agents.catalog` of every node of D1527 once per view
+  (D1082): an agent's title shows wherever it lives, and each node's owner
+  shows as Owner, with its node's label when that is not the mission's node.
+  The assignee picker offers Unassigned, the owners, then every node's agents
+  grouped under the node's label, the mission's node first. A node that
+  fails to answer says so beside the others (D1277).
+- **D1533. The Lead view of a lead on another node.** The conversation comes
+  joined (D1523), and the view lists it again on the next event of this
+  node's `agents/messages` and, through the relay, of `elsewhere.nodeId`'s.
+
 ### M2. Acting across nodes (D1541–D1560)
 
 - A slice handed to an assignee on another node keeps its thread link, and
@@ -2302,9 +2409,10 @@ below names the Deferred entry it takes; move it out of
 - C1: writing a team spec from the client (a `teams.define` writing the
   `jhin.teams` section); Settings edits the section, and a bundle installs as
   a plugin (D686, D1067).
-- C1: the owner's conversation with an agent on another node: the owner's
+- ~~C1: the owner's conversation with an agent on another node: the owner's
   messages are recorded on the agent's node (D627), so `agents.conversation`
-  here misses them (D1061). Reading both nodes, through `mesh.call`, joins it.
+  here misses them (D1061). Reading both nodes, through `mesh.call`, joins it.~~
+  M1, D1523.
 - A1: agents of a mesh member reached through another node (`remote` in
   the route): the roster follows the client's open connections only (D617),
   as D747 does.
@@ -2466,10 +2574,10 @@ below names the Deferred entry it takes; move it out of
   D724 means to avoid. Seen running the scenario (D1101): its Health
   section lists both; the test asserts only the mission's.~~ C3, D1384.
 - L1: the answer to the owner's message (D1221) is followed while the node
-  runs; a node that stops before the turn ends records none for it. Only
+  runs; a node that stops before the turn ends records none for it. ~~Only
   this node's owner is answered: a message the owner of another node sends
   here stays unanswered in its conversation, which misses it anyway (C1's
-  item on agents on another node).
+  item on agents on another node).~~ M1, D1524.
 - L1: a mission closed, or a run that ended, while the node was catching up
   (or down) is not reported (D1222); a mission no lead ran from a thread
   (handed out by hand, never orchestrated) has no lead to report from.

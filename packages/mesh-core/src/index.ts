@@ -19,5 +19,6 @@ export {
   meshNodesCommand,
   meshOpenCommand,
   meshRelayCommand,
+  meshStreams,
   serveRelays,
 } from "./commands.ts";

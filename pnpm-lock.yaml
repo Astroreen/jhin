@@ -896,6 +896,9 @@ importers:
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../../packages/host-api
+      '@jhin/mesh-api':
+        specifier: workspace:*
+        version: link:../../packages/mesh-api
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
@@ -1070,6 +1073,9 @@ importers:
       '@jhin/health-api':
         specifier: workspace:*
         version: link:../../packages/health-api
+      '@jhin/mesh-api':
+        specifier: workspace:*
+        version: link:../../packages/mesh-api
       '@jhin/missions-api':
         specifier: workspace:*
         version: link:../../packages/missions-api
@@ -1247,6 +1253,9 @@ importers:
 
   plugins/missions:
     dependencies:
+      '@jhin/mesh-api':
+        specifier: workspace:*
+        version: link:../../packages/mesh-api
       '@jhin/missions-api':
         specifier: workspace:*
         version: link:../../packages/missions-api
