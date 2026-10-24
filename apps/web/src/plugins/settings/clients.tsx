@@ -4,7 +4,7 @@
 // "Create pairing link" dialog and the QR code of the link.
 import { AUTH_CLIENTS_STREAM } from "@jhin/auth-api";
 import type { NodeConnection } from "@jhin/client-api";
-import type { PermissionEntry } from "@jhin/sdk";
+import { shellAccessText, type PermissionEntry } from "@jhin/sdk";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -84,9 +84,6 @@ interface CreatedLink extends PairingLink {
 }
 
 const when = (time: number) => new Date(time).toLocaleString();
-
-/** What a permission with shell access says where it is granted (security.md D1364). */
-const SHELL_ACCESS_NOTE = "Shell access: runs commands on this machine as the node's user.";
 
 function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCreated(): void }) {
   const id = useId();
@@ -202,7 +199,7 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                   )
                 ) : (
                   <div className="flex max-h-72 flex-col divide-y overflow-y-auto rounded-lg border">
-                    {permissions.map(({ permission, title, description, shellAccess }) => (
+                    {permissions.map(({ permission, title, description, ...entry }) => (
                       <Label
                         className="flex cursor-pointer items-start gap-3 px-3 py-2.5 font-normal transition-colors hover:bg-muted/40"
                         key={permission}
@@ -230,10 +227,10 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                               {description}
                             </span>
                           )}
-                          {shellAccess !== true ? null : (
-                            // security.md D1364: whoever holds it holds the machine as the node's user.
+                          {entry.shellAccess !== true ? null : (
+                            // security.md D1364, D1517: whoever holds it holds the machine as the node's user.
                             <span className="block text-xs leading-snug text-destructive">
-                              {SHELL_ACCESS_NOTE}
+                              {shellAccessText(entry)}
                             </span>
                           )}
                           {!title ? null : (

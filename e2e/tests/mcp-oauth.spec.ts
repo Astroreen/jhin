@@ -83,3 +83,38 @@ test("the owner approves an MCP client in the browser and the client gets a toke
     callback.close();
   }
 });
+
+test("the approval page names the shell access of what a client asks for (security.md D1517)", async ({
+  page,
+}, info) => {
+  const base = node.rpc.replace(/^ws/, "http").replace(/\/rpc$/, "");
+  const redirect = "http://127.0.0.1:9/callback";
+  const registered = (await (
+    await fetch(`${base}/oauth/mcp/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ client_name: "Claude Code", redirect_uris: [redirect] }),
+    })
+  ).json()) as { client_id: string };
+  await page.request.post(`${base}/auth/session`, { data: { credential: node.token } });
+  await page.goto(
+    `${base}/oauth/mcp/authorize?${new URLSearchParams({
+      client_id: registered.client_id,
+      redirect_uri: redirect,
+      response_type: "code",
+      code_challenge: Crypto.randomBytes(32).toString("base64url"),
+      code_challenge_method: "S256",
+      state: "e2e",
+      scope: "threads.read threads.write git.write terminals.write",
+    })}`,
+  );
+  const asked = page.getByRole("list", { name: "Permissions asked for" });
+  await expect(asked.getByRole("listitem")).toHaveText([
+    /^View threads/,
+    /Shell access: an agent it starts in full access runs commands on this machine as the node's user\./,
+    /Shell access: a repository's hooks run on this machine as the node's user\./,
+    /Shell access: runs commands on this machine as the node's user\./,
+  ]);
+  await expect(asked.getByRole("listitem").first()).not.toContainText("Shell access");
+  await page.screenshot({ path: info.outputPath("mcp-oauth-shell-access.png"), fullPage: true });
+});

@@ -236,4 +236,34 @@ describe("the names a node answers to (security.md D1362)", () => {
     expect(fromBrowser({ "user-agent": "claude-code/2.0" })).toBe(false);
     expect(fromBrowser({ "user-agent": "node" })).toBe(false);
   });
+
+  it("answers only the owner's tailnet when jhin.http.tailnet names it (D1516)", async () => {
+    const policy = hostPolicy({
+      configured: ["shared.tailfeed.ts.net"],
+      machineName: "studio",
+      tailnet: ".Tail1A2B3C.ts.net",
+    });
+    expect(policy.allows("studio.tail1a2b3c.ts.net")).toBe(true);
+    expect(policy.allows("STUDIO.tail1a2b3c.ts.net.:443")).toBe(true);
+    // Another tailnet's name, and a name that only ends like the owner's, are refused,
+    expect(policy.allows("studio.tail9z8y7x.ts.net")).toBe(false);
+    expect(policy.allows("eviltail1a2b3c.ts.net")).toBe(false);
+    // unless the owner lists it.
+    expect(policy.allows("shared.tailfeed.ts.net")).toBe(true);
+    // Unset, every tailnet's names are answered, as before.
+    const open = hostPolicy({ configured: [], machineName: "studio" });
+    expect(open.allows("studio.tail9z8y7x.ts.net")).toBe(true);
+
+    const { port } = await start({ tailnet: "tail1a2b3c.ts.net" });
+    const status = async (host: string) =>
+      (await get(port, { host, origin: `https://${host}` })).status;
+    expect(await status("studio.tail1a2b3c.ts.net")).toBe(200);
+    expect(await status("studio.tail9z8y7x.ts.net")).toBe(403);
+  });
+
+  it("refuses a tailnet that is not a .ts.net name", async () => {
+    for (const tailnet of ["example.com", "ts.net", "*.ts.net", "https://tail1a2b3c.ts.net"]) {
+      await expect(start({ tailnet }), tailnet).rejects.toThrow();
+    }
+  });
 });

@@ -999,7 +999,7 @@ follow the standards they name.
   can now name the one tailnet the node answers for (D1516). (2) _Shell
   access granted unknowingly_: `threads.write` (an agent in full access
   runs commands), `git.write` (a repository's hooks run) and
-  `editors.open` (it starts a program) reach the node's OS user as
+  `editor.open` (`editors.open` starts a program) reach the node's OS user as
   `terminals.write` does, but nothing said so where they are granted
   (D1517). (3) _An unreadable `clients.json`_ locks every device out, and
   a repair that trusted a stale copy could bring a revoked token back; the
@@ -1017,21 +1017,31 @@ follow the standards they name.
   an unknown name (D1362), unless `jhin.http.allowedHosts` lists it.
   Unset (the default), every `.ts.net` name is answered, as before. A
   value that is not a `.ts.net` name is refused by the config's schema.
-  `jhin pair --tailscale` reads the tailnet from `tailscale status` and,
-  when the setting is unset, adds the note "To answer only your
-  tailnet's names, set jhin.http.tailnet to <name>."; it never sets it
-  itself.
+  `jhin pair --tailscale` reads the tailnet from `tailscale status`
+  (`Self.DNSName` after its first label) and, when the setting is unset,
+  adds the note "To answer only your tailnet's names, set
+  jhin.http.tailnet to <name>."; it never sets it itself. It reads the
+  setting with `host.config.get`; a token that cannot (no
+  `host.config.read`) gets the note too.
 - **D1517. Shell access is named on `threads.write`, `git.write` and
-  `editors.open`.** Their plugins describe them with `shellAccess: true`
+  `editor.open`.** Their plugins describe them with `shellAccess: true`
   (D1364) and a reason, `shellAccessReason` (`PermissionDescription`,
   `@jhin/sdk`, additive; `auth.permissions.list` returns it):
   `threads.write` "an agent it starts in full access runs commands on
   this machine as the node's user", `git.write` "a repository's hooks
-  run on this machine as the node's user", `editors.open` "it starts
-  programs on this machine as the node's user". Wherever a grant is
-  chosen (the pairing dialog, the MCP approval page, `jhin pair`'s note)
-  a permission with a reason says "Shell access: <reason>." instead of
-  D1364's sentence, which stays for one without. Nothing is granted or
+  run on this machine as the node's user", `editor.open` (the
+  permission of `editors.open`) "it starts programs on this machine as
+  the node's user". Where a grant is chosen in the pairing dialog and on
+  the MCP approval page, a permission with a reason says "Shell access:
+  <reason>." instead of D1364's sentence, which stays for one without
+  (`shellAccessText` of `@jhin/sdk` words both); on the approval page a
+  pattern says the reason when every permission it covers gives the same
+  one. `jhin pair`'s note puts the reason in place of "the device can
+  run commands on this machine as the node's user": one note for the
+  permissions without a reason, as D1364's, and one per permission with
+  one ("This link grants shell access (git.write): a repository's hooks
+  run on this machine as the node's user. Narrow it with
+  --permission."). Nothing is granted or
   refused differently: `AGENT_PERMISSIONS` keeps `threads.write` and
   `git.write`, so an MCP client's approval page now names its shell
   access, which it always had.
@@ -1044,7 +1054,12 @@ follow the standards they name.
   (mode 0600, renamed into place), keeps the unreadable file beside it
   as `clients.json.corrupt-<time>` (never overwriting an earlier one),
   and warns once in the log with how many records it kept and how many
-  it could not read. A revoked token cannot come back: revoking removes
+  it could not read (in text that is not JSON: the objects that start as
+  the node writes a record, `{` and its `id` first, but did not read; a
+  string's `{"id"` is escaped in the file, so it never counts). A repair
+  that cannot be written (a read-only or full disk) never stops the
+  plugin from activating: no device token is accepted, the unreadable
+  file is moved aside, and the warning says so. A revoked token cannot come back: revoking removes
   its record from the file (D412), so every record the repair keeps was
   live at the last write; a record it cannot read fails closed. No older
   copy is ever read.
@@ -1245,10 +1260,6 @@ A slice a PR, in the order of D1361's risks:
 - A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
   target against that node's own stored value; a target with none refuses
   the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.
-- The `Host` allowlist (D1362) allows every `*.ts.net` name: on a tailnet
-  shared with members the owner does not trust, one of them could give a
-  page a name that resolves to the node. No setting narrows it to the
-  owner's tailnet yet.
 - T3 Connect: pairing and remote access through a T3 account, the hosted
   relay and the hosted-app pairing link (out of scope, `t3-roadmap.md`).
 - Tailscale Serve (D1189) is `jhin pair --tailscale` only: T3's
@@ -1321,13 +1332,6 @@ A slice a PR, in the order of D1361's risks:
 - `auth.permissions.list` names streams (D1371) only for a transport that
   provides `rpc.streams` 1.3 and only with fixed permissions; a guard
   given as a function of the stream is not listed.
-- Shell access (D1364) marks `terminals.write` only. Other permissions
-  that end in commands run as the node's user are not marked yet:
-  `projects.write` with project scripts needs `terminals.write` already,
-  but `threads.write` (an agent in full access runs commands),
-  `git.write` (hooks) and `editors.open` are not described as such.
-- An unreadable `clients.json` is moved aside to `clients.json.corrupt` and
-  no device token works until new ones are issued; nothing repairs it.
 - `lastSeenAt` is kept in memory and written with the next change of
   `clients.json`, so a restart may lose the latest ones. Expired tokens are
   dropped from the file with the next write.

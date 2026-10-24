@@ -170,6 +170,28 @@ export function parseMagicDnsName(statusJson: string): string | undefined {
   }
 }
 
+/**
+ * The tailnet of a MagicDNS name: what follows the machine's label
+ * (`tail1a2b3c.ts.net`), or undefined for a name not under `.ts.net`.
+ */
+export function tailnetOf(magicDnsName: string): string | undefined {
+  const name = magicDnsName.toLowerCase();
+  const dot = name.indexOf(".");
+  const tailnet = dot < 0 ? "" : name.slice(dot + 1);
+  return tailnet.endsWith(".ts.net") ? tailnet : undefined;
+}
+
+/**
+ * The note that `jhin.http.tailnet` would narrow the node's Tailscale names
+ * to the owner's tailnet (security.md D1516), while it is unset; `jhin pair`
+ * never sets it itself.
+ */
+export function tailnetNotes(tailnet: string | undefined, configured: unknown): string[] {
+  if (tailnet === undefined) return [];
+  if (typeof configured === "string" && configured.trim() !== "") return [];
+  return [`To answer only your tailnet's names, set jhin.http.tailnet to ${tailnet}.`];
+}
+
 /** T3's `buildTailscaleHttpsBaseUrl`, as an origin: the port only when it is not 443. */
 export function tailscaleBaseUrl(magicDnsName: string, servePort: number): string {
   const url = new URL(`https://${magicDnsName}`);
@@ -191,7 +213,7 @@ export async function publishOverTailscale(input: {
   readonly probe?: (baseUrl: string) => Promise<Probe>;
   /** Between probes of a fresh mapping; a second by default. */
   readonly pause?: () => Promise<void>;
-}): Promise<{ baseUrl: string; notes: string[] }> {
+}): Promise<{ baseUrl: string; notes: string[]; tailnet?: string }> {
   const run = input.run ?? runTailscale;
   const probe = input.probe ?? probeNode;
   const pause = input.pause ?? (() => new Promise<void>((resolve) => setTimeout(resolve, 1_000)));
@@ -216,6 +238,12 @@ export async function publishOverTailscale(input: {
     );
   }
   const baseUrl = tailscaleBaseUrl(magicDnsName, input.servePort);
+  const tailnet = tailnetOf(magicDnsName);
+  const published = (notes: string[]) => ({
+    baseUrl,
+    notes,
+    ...(tailnet === undefined ? {} : { tailnet }),
+  });
   const port = String(input.servePort);
   const otherNode = new PairError(
     "TAILSCALE_SERVES_OTHER_NODE",
@@ -241,7 +269,7 @@ export async function publishOverTailscale(input: {
   const existing = await probe(baseUrl);
   if (existing.kind === "node") {
     if (existing.instance !== input.node.instance) throw otherNode;
-    return { baseUrl, notes: [TRUST_PROXY_NOTE] };
+    return published([TRUST_PROXY_NOTE]);
   }
   if (existing.kind === "other") {
     throw new PairError(
@@ -295,7 +323,7 @@ export async function publishOverTailscale(input: {
       if (probed.instance !== input.node.instance) {
         throw new PairError(otherNode.code, `${otherNode.message}${stays}`);
       }
-      return { baseUrl, notes };
+      return published(notes);
     }
     // Something else answers on the fresh mapping: never hand out a link to it.
     if (probed.kind === "other") {
@@ -308,5 +336,5 @@ export async function publishOverTailscale(input: {
   notes.push(
     "The HTTPS endpoint has not answered yet. First use can take a moment while Tailscale provisions certificates.",
   );
-  return { baseUrl, notes };
+  return published(notes);
 }

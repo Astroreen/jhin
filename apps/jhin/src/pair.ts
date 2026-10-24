@@ -106,18 +106,33 @@ export function pairingNotes(pairingUrl: string): string[] {
 
 /**
  * A note when the code's grants cover a permission with shell access
- * (security.md D1364), as `auth.permissions.list` marks them.
+ * (security.md D1364), as `auth.permissions.list` marks them: one for those
+ * without a reason, and one for each with its reason (D1517).
  */
 export function shellAccessNotes(
   granted: readonly string[],
-  entries: readonly Pick<PermissionEntry, "permission" | "shellAccess">[],
+  entries: readonly Pick<PermissionEntry, "permission" | "shellAccess" | "shellAccessReason">[],
 ): string[] {
-  const shell = entries
-    .filter((entry) => entry.shellAccess === true && holdsPermission(granted, entry.permission))
-    .map((entry) => entry.permission);
-  if (shell.length === 0) return [];
+  const shell = entries.filter(
+    (entry) => entry.shellAccess === true && holdsPermission(granted, entry.permission),
+  );
+  const reasonOf = (entry: (typeof shell)[number]) => entry.shellAccessReason?.trim() || undefined;
+  const plain = shell.filter((entry) => reasonOf(entry) === undefined);
+  const note = (permissions: string, what: string) =>
+    `This link grants shell access (${permissions}): ${what}. Narrow it with --permission.`;
   return [
-    `This link grants shell access (${shell.join(", ")}): the device can run commands on this machine as the node's user. Narrow it with --permission.`,
+    ...(plain.length === 0
+      ? []
+      : [
+          note(
+            plain.map((entry) => entry.permission).join(", "),
+            "the device can run commands on this machine as the node's user",
+          ),
+        ]),
+    ...shell.flatMap((entry) => {
+      const reason = reasonOf(entry);
+      return reason === undefined ? [] : [note(entry.permission, reason)];
+    }),
   ];
 }
 
