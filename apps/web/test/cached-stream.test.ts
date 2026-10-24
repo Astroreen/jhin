@@ -279,4 +279,62 @@ describe("a thread opens from the history cache (loading.md D1589, D1590)", () =
     await Promise.resolve();
     expect(calls.filter((call) => call.startsWith("append"))).toEqual([]);
   });
+
+  it("with nothing kept subscribes at once, before the node answers", async () => {
+    const { cache, streams } = memoryCache();
+    let answer!: (info: StreamInfo) => void;
+    const run = follow(cache, () => new Promise<StreamInfo>((resolve) => (answer = resolve)));
+    await run.subscribed(1);
+    expect(run.subscriptions[0]!.after).toBe(0);
+    run.subscriptions[0]!.push(event(1));
+    run.frame();
+    expect(run.batches.at(-1)).toEqual({ sequences: [1], reset: false });
+    expect(streams.size).toBe(0);
+    // What came before the answer is kept once it is in.
+    answer({ epoch: "e1", head: 1 });
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    await Promise.resolve();
+    expect(streams.get(`node|${STREAM}`)).toMatchObject({ epoch: "e1", lastSequence: 1 });
+  });
+
+  it("gives up a subscription that shows a gap while it is made", async () => {
+    const { cache } = memoryCache({ epoch: "e1", lastSequence: 3, events: range(1, 3) });
+    const made: { after: number; disposed: boolean }[] = [];
+    const batches: number[][] = [];
+    let ready!: () => void;
+    const restarted = new Promise<void>((resolve) => (ready = resolve));
+    followCachedStream({
+      // Delivers what it has inside subscribe: a gap first, then the stream from 1.
+      client: {
+        subscribe(_stream: string, options: { after?: number }, onEvent: (e: StreamEvent) => void) {
+          const entry = { after: options.after ?? 0, disposed: false };
+          made.push(entry);
+          if (entry.after === 3) onEvent(event(9));
+          else {
+            onEvent(event(1));
+            ready();
+          }
+          return { lastSequence: 0, dispose: () => (entry.disposed = true) };
+        },
+      } as never,
+      cache,
+      connection: "node",
+      stream: STREAM,
+      info: async () => ({ epoch: "e1", head: 9 }),
+      schedule: (flush) => {
+        queueMicrotask(flush);
+        return () => undefined;
+      },
+      onBatch: (events) => batches.push(events.map((item) => item.sequence)),
+      onError: (error) => {
+        throw error;
+      },
+    });
+    await restarted;
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(made.map((entry) => entry.after)).toEqual([3, 0]);
+    expect(made[0]!.disposed).toBe(true);
+    // Event 9 of the given-up subscription is never folded.
+    expect(batches.flat()).not.toContain(9);
+  });
 });

@@ -66,21 +66,29 @@ export function followCachedStream(options: FollowOptions): Disposable {
       void cache?.append(connection, stream, keeping, batch).catch(() => undefined);
     }
   };
-  /** Asks for the epoch again once the stream has events, and keeps what came meanwhile. */
-  const askAgain = () => {
-    void options
-      .info()
-      .then((info) => {
+  /** Set when the node did not know the thread yet: the epoch is asked again at its first event. */
+  let retry = false;
+  /**
+   * Waits for the epoch while the stream is followed from 0 and keeps what came
+   * meanwhile once it is known. A thread the node does not know yet (its
+   * creation is on its way) is asked about again at its first event.
+   */
+  const learn = (asking: Promise<StreamInfo>, again: boolean) => {
+    waiting = [];
+    void asking.then(
+      (info) => {
         const kept = waiting;
         waiting = undefined;
         if (disposed || kept === undefined || info.epoch === undefined || !cache?.enabled()) return;
         keeping = info.epoch;
         if (kept.length > 0)
           void cache.append(connection, stream, keeping, kept).catch(() => undefined);
-      })
-      .catch(() => {
-        waiting = undefined;
-      });
+      },
+      (error: unknown) => {
+        if (again && codeOf(error) === "THREAD_NOT_FOUND" && waiting !== undefined) retry = true;
+        else waiting = undefined;
+      },
+    );
   };
   const deliver = (event: StreamEvent) => {
     pending.push(event);
@@ -93,61 +101,29 @@ export function followCachedStream(options: FollowOptions): Disposable {
     cancel ??= options.schedule(flush);
   };
 
-  const start = async (fromCache: boolean) => {
-    const useCache = fromCache && cache !== undefined && cache.enabled();
-    // Both at once: the kept events render while the node is asked.
-    const asking = useCache || cache?.enabled() === true ? options.info() : undefined;
-    asking?.catch(() => undefined);
-    let kept: CachedStream | undefined;
-    if (useCache) kept = await cache.read(connection, stream).catch(() => undefined);
-    if (disposed) return;
-    if (kept !== undefined) options.onBatch(kept.events, true);
-    let info: StreamInfo | undefined;
-    let notFound = false;
-    try {
-      info = await asking;
-    } catch (error) {
-      // Gone: what is kept of it goes too. Anything else: read it as before the cache.
-      notFound = codeOf(error) === "THREAD_NOT_FOUND";
-      if (notFound) drop();
-    }
-    if (disposed) return;
-    // A failed question (a dropped connection) proves nothing: what is kept is
-    // followed, and nothing new is kept until the next open. Only an answer that
-    // disagrees, or a thread that is gone, drops it.
-    if (
-      kept !== undefined &&
-      (notFound ||
-        (info !== undefined &&
-          (info.epoch === undefined || info.epoch !== kept.epoch || info.head < kept.lastSequence)))
-    ) {
-      drop();
-      kept = undefined;
-      startOver();
-    }
-    keeping = cache?.enabled() === true ? info?.epoch : undefined;
-    // Not there yet (a new thread whose creation is on its way): asked again at its first event.
-    let retry = notFound && cache?.enabled() === true;
-    if (retry) waiting = [];
-    let last = kept?.lastSequence ?? 0;
-    subscription = options.client.subscribe(
+  /** Bumped for every subscription, so the events of one given up are ignored. */
+  let round = 0;
+  const follow = (after: number) => {
+    const mine = ++round;
+    let last = after;
+    const following = options.client.subscribe(
       stream,
-      { after: last, onError: (error) => !disposed && options.onError(error) },
+      { after, onError: (error) => !disposed && mine === round && options.onError(error) },
       (event) => {
-        if (disposed) return;
+        if (disposed || mine !== round) return;
         if (retry) {
           retry = false;
-          askAgain();
+          learn(options.info(), false);
         }
         if (event.sequence !== last + 1) {
           // A gap (D498): from the cache, start over from 0; from 0, keep nothing of it.
           drop();
           keeping = undefined;
           waiting = undefined;
-          if (kept !== undefined) {
+          if (after > 0) {
+            round += 1;
             subscription?.dispose();
             subscription = undefined;
-            kept = undefined;
             startOver();
             void start(false).catch((error: unknown) => options.onError(error as Error));
             return;
@@ -163,6 +139,52 @@ export function followCachedStream(options: FollowOptions): Disposable {
         deliver(event);
       },
     );
+    // Given up while it was made (a gap in what it delivered at once): end it now.
+    if (mine === round) subscription = following;
+    else following.dispose();
+  };
+
+  const start = async (fromCache: boolean) => {
+    const enabled = cache?.enabled() === true;
+    // Both at once: the kept events render while the node is asked.
+    const asking = enabled ? options.info() : undefined;
+    asking?.catch(() => undefined);
+    let kept: CachedStream | undefined;
+    if (fromCache && enabled) kept = await cache!.read(connection, stream).catch(() => undefined);
+    if (disposed) return;
+    if (kept === undefined) {
+      // Nothing kept: follow from 0 at once, and keep it once the epoch is known.
+      if (asking !== undefined) learn(asking, true);
+      follow(0);
+      return;
+    }
+    options.onBatch(kept.events, true);
+    let info: StreamInfo | undefined;
+    let notFound = false;
+    try {
+      info = await asking;
+    } catch (error) {
+      // Gone: what is kept of it goes too. Anything else: read it as before the cache.
+      notFound = codeOf(error) === "THREAD_NOT_FOUND";
+    }
+    if (disposed) return;
+    // A failed question (a dropped connection) proves nothing: what is kept is
+    // followed, and nothing new is kept until the next open. Only an answer that
+    // disagrees, or a thread that is gone, drops it.
+    if (
+      notFound ||
+      (info !== undefined &&
+        (info.epoch === undefined || info.epoch !== kept.epoch || info.head < kept.lastSequence))
+    ) {
+      drop();
+      startOver();
+      // Read again from 0 under the node's epoch, when it answered one.
+      keeping = !notFound && cache?.enabled() === true ? info?.epoch : undefined;
+      follow(0);
+      return;
+    }
+    keeping = cache?.enabled() === true ? info?.epoch : undefined;
+    follow(kept.lastSequence);
   };
 
   void start(true).catch((error: unknown) => !disposed && options.onError(error as Error));
