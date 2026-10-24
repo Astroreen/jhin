@@ -33,6 +33,7 @@ import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import {
   definePlugin,
   describePermissions,
+  holdsPermission,
   z,
   type CancelSignal,
   type Invocation,
@@ -683,8 +684,9 @@ export default definePlugin({
     // --- Children on other nodes (D1506, D1507) -----------------------------------------
 
     /**
-     * Runs `method` on `node` through the mesh, with what delegating needs of the
-     * caller's grants: its mode ceiling travels along (security.md D416, D1370).
+     * Runs `method` on `node` through the mesh with no more than the caller holds of
+     * what delegating needs, and its mode ceiling (security.md D416, D1370). The mesh
+     * call itself is this plugin's way there, as messaging's is (agents.md D623).
      */
     const remote = <T>(node: string, method: string, params: unknown, invocation?: Invocation) =>
       context.commands.execute(
@@ -696,8 +698,11 @@ export default definePlugin({
             id: invocation?.caller?.id ?? context.plugin.id,
             permissions: [
               "mesh.call",
-              "threads.read",
-              "threads.write",
+              ...["threads.read", "threads.write"].filter(
+                (permission) =>
+                  invocation?.caller === undefined ||
+                  holdsPermission(invocation.caller.permissions, permission),
+              ),
               ...(invocation?.caller?.permissions ?? []).filter((grant) =>
                 grant.startsWith("threads.mode."),
               ),
@@ -1494,7 +1499,7 @@ export default definePlugin({
             // Gone already: nothing to stop.
           } else if (latest.node !== undefined && codeOf(error) === "NODE_UNREACHABLE") {
             // It goes on there until someone stops it on its node (D1507).
-            latest = await saveTask({
+            await saveTask({
               ...(tasks.get(latest.taskId) ?? latest),
               cancelReason: `${reason ?? "Cancelled"}; node ${latest.node} could not be reached, so the child goes on there`,
             });
@@ -2802,7 +2807,14 @@ export default definePlugin({
       for (const task of tasks.values()) {
         if (task.endedAt === undefined) {
           // A child on another node is followed through its index again (D1507).
-          if (task.node !== undefined) await followNode(task.node).catch(() => undefined);
+          if (task.node !== undefined) {
+            await followNode(task.node).catch((error: unknown) =>
+              context.log.warn("could not follow another node's threads", {
+                node: task.node,
+                error: String(error),
+              }),
+            );
+          }
           await reconcile(task, true).catch((error: unknown) =>
             context.log.warn("could not reconcile a delegated task", {
               taskId: task.taskId,

@@ -364,6 +364,10 @@ section lands rather than a second path.
   restarts is lost, and its thread ends `interrupted` (D1164); T3's
   continuation turns, which read a result into an idle parent, stay out
   (`t3-parity.md` D805).
+- A child on another node (D1506, D1507): `hasPendingChildRuns` is not
+  read there; `parentNode` on `threads.create` is not checked against the
+  mesh's members; a member's index that could not be mirrored at start is
+  followed again only by the next delegation to it.
 - A workflow `agent()` on another node (D1506): its schema retries and
   its wait follow a thread of this node.
 - The hover card of a child on another node (D1162): its details come
