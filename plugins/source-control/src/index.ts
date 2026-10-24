@@ -128,6 +128,7 @@ import {
   ProjectWorktreeCleanup,
   WorktreeCleanupConfig,
   cleanupEnabled,
+  orphanEntries,
   resolveWorktreeCleanup,
   exists,
   judge,
@@ -1419,6 +1420,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   });
   type DeletedWorktree = z.output<typeof DeletedWorktree>;
   const DELETED_PREFIX = "cleanup/deleted/";
+  /** The last sweep's report (D1469). */
+  const LAST_REPORT_KEY = "cleanup/last-report";
 
   async function noteDeletedWorktree(threadId: string) {
     // Only under the delete rule: without it the user decided at the deletion
@@ -1547,11 +1550,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         })),
       });
     }
+    /** Worktrees a thread uses, or a deleted one did: no orphans (D1470). */
+    const referenced = new Set(groups.keys());
     for (const { key, value } of await kv.list(NAMESPACE, { prefix: DELETED_PREFIX })) {
       const parsed = DeletedWorktree.safeParse(value);
       // A record this version cannot read decides nothing, and is kept for one that can.
       if (!parsed.success) continue;
       const record = parsed.data;
+      referenced.add(record.path);
       // Without its project's delete rule it decides nothing: kept for when it is on, not reported.
       if (!cleanupRulesOf(record.projectId).onDelete) continue;
       const project = projectPath.get(record.projectId);
@@ -1666,7 +1672,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       }
     }
     if (entries.some((entry) => entry.outcome === "removed")) await syncWorktrees();
-    return report();
+    if (!stopped) {
+      const projectRoots = await Promise.all([...projectPath.values()].map(realPath));
+      entries.push(...(await orphanEntries(root, referenced, projectRoots, Date.now())));
+    }
+    // T3's "Last run": kept, so a restart still shows it (D1469).
+    const finished = { ...report(), finishedAt: new Date().toISOString() };
+    await kv.set(NAMESPACE, LAST_REPORT_KEY, finished as unknown as Json);
+    return finished;
   }
 
   let cleanupTimer: ReturnType<typeof setInterval> | undefined = setInterval(
@@ -3392,6 +3405,20 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       // A sweep asked for meanwhile may start as the running one ends: wait for it too.
       while (cleaning !== undefined) await cleaning.catch(() => undefined);
       return requestCleanup();
+    },
+  });
+
+  context.commands.register({
+    name: "git.worktree.cleanup.report",
+    title: "Last worktree cleanup",
+    description:
+      'The last worktree cleanup\'s report (T3\'s "Last run"), or null before the first; rulesOn says whether a rule of the node or a project is on, which "Delete now" needs',
+    input: z.object({}),
+    output: z.object({ report: CleanupReport.nullable(), rulesOn: z.boolean() }),
+    permissions: ["git.read"],
+    handler: async () => {
+      const parsed = CleanupReport.safeParse(await kv.get(NAMESPACE, LAST_REPORT_KEY));
+      return { report: parsed.success ? parsed.data : null, rulesOn: anyCleanupEnabled() };
     },
   });
 

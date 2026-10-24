@@ -13,6 +13,7 @@ import { git, node, repository, temp, type Node } from "./support.ts";
 interface Report {
   entries: { path: string; threadId?: string; outcome: string; reason: string }[];
   counts: { removed: number; kept: number; failed: number };
+  finishedAt?: string;
 }
 
 const removed = (threadId: string) => (event: StoredEvent) =>
@@ -225,6 +226,56 @@ describe("jhin.source-control: a project's own worktree cleanup (D1468)", () => 
     expect((await cleanup(sc)).entries).toEqual([]);
     expect(Fs.existsSync(threads.custom.worktreePath)).toBe(true);
     expect(Fs.existsSync(threads.off.worktreePath)).toBe(true);
+  });
+});
+
+describe("jhin.source-control: the last run and T3's orphan report (D1469, D1470)", () => {
+  it("reports folders no thread uses, keeps the last run across a restart", async () => {
+    const data = temp("jhin-sc-report-");
+    const storage = memoryStoragePlugin();
+    const sc = await node({ watch: false, worktreeCleanup: { afterDays: 30 } }, { data, storage });
+    const projectId = await sc.project(repository());
+    const thread = await worktreeThread(sc, projectId);
+    const reportOf = () =>
+      sc.client.call<{ report: Report | null; rulesOn: boolean }>(
+        "git.worktree.cleanup.report",
+        {},
+      );
+    expect((await reportOf()).rulesOn).toBe(true);
+
+    // Beside the thread's worktree: an old worktree nobody uses, an old folder, a new one.
+    const repositoryFolder = Path.dirname(Fs.realpathSync(thread.worktreePath));
+    const old = Date.now() / 1000 - 7200;
+    const stale = Path.join(repositoryFolder, "stale");
+    const junk = Path.join(repositoryFolder, "junk");
+    const fresh = Path.join(repositoryFolder, "fresh");
+    for (const folder of [stale, junk, fresh]) Fs.mkdirSync(folder);
+    Fs.writeFileSync(Path.join(stale, ".git"), "gitdir: /nowhere\n");
+    Fs.utimesSync(stale, old, old);
+    Fs.utimesSync(junk, old, old);
+
+    const swept = await cleanup(sc);
+    expect(swept.entries.filter((entry) => entry.threadId === undefined)).toEqual(
+      expect.arrayContaining([
+        { path: stale, outcome: "kept", reason: "No thread uses this worktree." },
+        {
+          path: junk,
+          outcome: "kept",
+          reason: "No thread uses this folder, and it isn't a git worktree.",
+        },
+      ]),
+    );
+    expect(swept.entries.map((entry) => entry.path)).not.toContain(fresh);
+    // Reported, never removed.
+    expect(Fs.existsSync(stale)).toBe(true);
+    expect(swept.finishedAt).toEqual(expect.any(String));
+
+    await sc.stop();
+    const after = await node({ watch: false }, { data, storage });
+    expect(await after.client.call("git.worktree.cleanup.report", {})).toEqual({
+      report: swept,
+      rulesOn: false,
+    });
   });
 });
 
