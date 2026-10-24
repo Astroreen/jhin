@@ -324,6 +324,59 @@ checked-in `t3.json` and the scripts are `source-control.md`'s
   its layers button's label how many projects override it (T3's "· N
   project overrides"). The JSON view (D80) still shows the whole file.
 
+## Every section on one page (P4)
+
+The owner asked (2026-10-24) for the node config page to stop making them
+pick one section from a dropdown and wait for it. The page shows every section
+at once, with the section list under the page's name in the settings
+navigation, and a click scrolls to the section. Decisions D1621–D1640
+(D1621–D1627 used so far); the speed part continues `loading.md`. It builds on
+W42's project scope (D1463) and must land on top of it, never undo it.
+
+- **D1621. Why one section is slow is measured before anything changes.**
+  The workstream times `host.config.schema`, `host.config.get` and the
+  render of the form on a node with every first-party plugin, names where
+  the time goes, and fixes that cause. The PR reports the timings before and
+  after.
+- **D1622. The page shows every section, in the picker's order.** Each
+  section is a settings section of its own, titled as the picker titled it
+  (its name in mono next to a title that differs), with its own form or JSON,
+  "Edit as JSON", Save and outcomes, as one section had before. The section
+  dropdown goes. The node picker, the mesh scope (D20, D50) and W42's
+  project scope (D1463) stay above all sections and apply to the whole page.
+- **D1623. The sections are listed under "Node config" in the settings
+  navigation.** The settings navigation gets sub-entries that a page
+  contributes while it is open, with stable ids (`node-config/<section>`).
+  It is a contribution shape every settings page can use, not a node config
+  special case (AGENTS.md rule 7). A click scrolls the section into view and
+  focuses its heading. The entry of the section in view is marked current as
+  the page scrolls. The URL hash names the section (`#jhin.web-ui`), so a
+  link or a reload opens at it. On a narrow screen, where the navigation
+  folds away, the same list is a "Jump to section" menu at the top of the
+  page.
+- **D1624. All sections are read at once.** A new command
+  `host.config.sections` (permission `host.config.read`) returns what
+  `host.config.get` returns, keyed by section, for every section or for the
+  ones named. It reads each config file and its comments once, not once per
+  section. Secrets are redacted as in `host.config.get` (`security.md`
+  D417). A node without the command gets one `host.config.get` per
+  section, all in flight together, and each section renders as its answer
+  lands.
+- **D1625. Sections off screen cost little.** A section's form is rendered
+  when it comes near the viewport (an `IntersectionObserver` with a margin),
+  with a placeholder of its last height before that. The find of the
+  browser and the hash link of D1623 still reach every section: a section a
+  link or a jump names is rendered first.
+- **D1626. Edits belong to their section.** Each section keeps its own
+  unsaved edits and saves alone. A change the node reports (D484) rebases
+  only the section it covers. Choosing another node, another file (D477) or
+  another project scope with unsaved edits asks once, naming the sections
+  that would lose their edits. Leaving the page with unsaved edits asks the
+  same way.
+- **D1627. Nothing of the form itself changes.** Fields, validation, layers,
+  comments and the plugin controls stay as W16 built them. Only where the
+  forms are placed and how they are loaded changes.
+
 ## How to write a config schema (for plugin authors)
 
 The settings page renders the section a plugin declares; the schema is all

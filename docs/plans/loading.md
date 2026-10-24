@@ -154,6 +154,10 @@ What the node does today (2026-10-24, `08eeb571`):
 
 D1597–D1620 are free for decisions the workstreams find they need.
 
+P4, every config section on one page and read at once, is in
+`config-ui.md` (D1621–D1640): it is a settings page change that is also a
+loading one.
+
 ## Deferred
 
 - Paging the timeline: render the newest turns first and load older ones as
