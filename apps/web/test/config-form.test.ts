@@ -61,7 +61,7 @@ describe("a section's schema as a form (D80)", () => {
   });
 
   it("maps each kind of value to its control", () => {
-    expect(fields.get("host")?.control).toEqual({ kind: "text", secret: false });
+    expect(fields.get("host")?.control).toEqual({ kind: "text", secret: false, multiline: false });
     expect(fields.get("port")?.control).toEqual({ kind: "number", integer: true });
     expect(fields.get("open")?.control).toEqual({ kind: "switch" });
     expect(fields.get("forwardedHeader")?.control).toEqual({
@@ -100,6 +100,21 @@ describe("a section's schema as a form (D80)", () => {
       secret: true,
       control: { kind: "text", secret: true },
     });
+  });
+
+  it("makes a text field marked multiline a text area, but never a secret (D1461)", () => {
+    const form = sectionForm(
+      "acme.notes",
+      served(
+        z.object({
+          notes: z.string().default("").meta({ multiline: true }),
+          token: z.string().optional().meta({ multiline: true, writeOnly: true }),
+        }),
+      ),
+    );
+    const notes = byKey(form.fields);
+    expect(notes.get("notes")?.control).toEqual({ kind: "text", secret: false, multiline: true });
+    expect(notes.get("token")?.control).toEqual({ kind: "text", secret: true, multiline: false });
   });
 
   it("renders a nullable value as its other branch that can also be none", () => {

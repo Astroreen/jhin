@@ -5,6 +5,10 @@ import * as Path from "node:path";
 import {
   AGENT_REGISTRY_CAPABILITY,
   ProjectScript,
+  T3_PROJECT_FILE_NAME,
+  parseT3ProjectFile,
+  projectSettingsRecord,
+  resolveProjectSettings,
   setupProjectScript,
   THREADS_STREAM,
   ThreadEvents,
@@ -135,8 +139,10 @@ import {
 import { watchTree, type TreeWatcher } from "./watch.ts";
 import {
   CleanupReport,
+  ProjectWorktreeCleanup,
   WorktreeCleanupConfig,
   cleanupEnabled,
+  resolveWorktreeCleanup,
   exists,
   judge,
   localChangesReason,
@@ -183,6 +189,44 @@ const TRIM_EVERY = 100;
 const SETTLE_MS = 150;
 /** …but no later than this after the first, so a steady stream of writes still shows. */
 const MAX_SETTLE_MS = 1000;
+
+const SubmodulesSetting = z.union([
+  z.literal("recursive").meta({ title: "Recursive" }),
+  z.literal("top-level").meta({ title: "Top level only" }),
+  z.literal("none").meta({ title: "Skip" }),
+]);
+const BranchNamingMode = z.union([
+  z.literal("static").meta({ title: "Static prefix" }),
+  z.literal("semantic").meta({ title: "Semantic prefix" }),
+  z.literal("custom").meta({ title: "Custom instructions" }),
+]);
+const BRANCH_NAMING_MODE_META = {
+  title: "Worktree branch naming",
+  description:
+    "Choose how new worktree branches are named from your first message. Semantic prefix: the model chooses a prefix that describes the work, such as feat/add-search, fix/login-timeout, or refactor/auth.",
+};
+const BRANCH_NAME_PREFIX_META = {
+  title: "Branch prefix",
+  description: "For example, jhin or jhin/ produces jhin/add-search. Leave empty for no prefix.",
+  when: { branchNamingMode: "static" },
+  clearWhenEmpty: "persist",
+};
+const BRANCH_NAME_INSTRUCTIONS_META = {
+  title: "Branch naming instructions",
+  description:
+    "Appended to the naming prompt. The model returns the complete branch name; no prefix or suffix is added.",
+  when: { branchNamingMode: "custom" },
+  examples: ["Use julius/ followed by the issue ID and a short description."],
+  // T3's text area (D1461).
+  multiline: true,
+};
+/** The keys a project's entry replaces whole; its worktree cleanup is resolved apart (D1468). */
+const PROJECT_KEYS = [
+  "worktreeSubmodules",
+  "branchNamingMode",
+  "branchNamePrefix",
+  "branchNameInstructions",
+] as const;
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
 export const Config = z
@@ -285,55 +329,29 @@ export const Config = z
         "How long the writer agent may take; past it the message is written without a model",
       advanced: true,
     }),
-    worktreeSubmodules: z
-      .union([
-        z.literal("recursive").meta({ title: "Recursive" }),
-        z.literal("top-level").meta({ title: "Top level only" }),
-        z.literal("none").meta({ title: "Skip" }),
-      ])
-      .default("recursive")
-      .meta({
-        title: "Worktree submodules",
-        description:
-          "How new worktrees populate git submodules. Recursive checks out submodules and theirs; Top level only checks out the repository's own and leaves theirs empty; Skip leaves every submodule empty, for a setup script to handle.",
-      }),
+    // T3's file-backed worktreeSubmodules: unset, the project's t3.json decides (D1467).
+    worktreeSubmodules: SubmodulesSetting.optional().meta({
+      title: "Worktree submodules",
+      description:
+        "How new worktrees populate git submodules. Recursive checks out submodules and theirs; Top level only checks out the repository's own and leaves theirs empty; Skip leaves every submodule empty, for a setup script to handle. Unset: the project's t3.json decides, else Recursive.",
+    }),
     // T3's branch naming settings (D1126), with T3's words.
-    branchNamingMode: z
-      .union([
-        z.literal("static").meta({ title: "Static prefix" }),
-        z.literal("semantic").meta({ title: "Semantic prefix" }),
-        z.literal("custom").meta({ title: "Custom instructions" }),
-      ])
-      .default("static")
-      .meta({
-        title: "Worktree branch naming",
-        description:
-          "Choose how new worktree branches are named from your first message. Semantic prefix: the model chooses a prefix that describes the work, such as feat/add-search, fix/login-timeout, or refactor/auth.",
-      }),
-    branchNamePrefix: z
-      .string()
-      .trim()
-      .default("jhin")
-      .meta({
-        title: "Branch prefix",
-        description:
-          "For example, jhin or jhin/ produces jhin/add-search. Leave empty for no prefix.",
-        when: { branchNamingMode: "static" },
-        clearWhenEmpty: "persist",
-      }),
-    branchNameInstructions: z
-      .string()
-      .trim()
-      .default("")
-      .meta({
-        title: "Branch naming instructions",
-        description:
-          "Appended to the naming prompt. The model returns the complete branch name; no prefix or suffix is added.",
-        when: { branchNamingMode: "custom" },
-        examples: ["Use julius/ followed by the issue ID and a short description."],
-      }),
+    branchNamingMode: BranchNamingMode.default("static").meta(BRANCH_NAMING_MODE_META),
+    branchNamePrefix: z.string().trim().default("jhin").meta(BRANCH_NAME_PREFIX_META),
+    branchNameInstructions: z.string().trim().default("").meta(BRANCH_NAME_INSTRUCTIONS_META),
     // T3's worktree cleanup rules (D1128), all off by default.
     worktreeCleanup: WorktreeCleanupConfig,
+    // T3's projectSettingsOverrides of the settings above (D1466, config-ui.md D1462).
+    projects: projectSettingsRecord({
+      worktreeSubmodules: SubmodulesSetting.optional().meta({
+        title: "Worktree submodules",
+        description: "How this project's new worktrees populate git submodules.",
+      }),
+      branchNamingMode: BranchNamingMode.optional().meta(BRANCH_NAMING_MODE_META),
+      branchNamePrefix: z.string().trim().optional().meta(BRANCH_NAME_PREFIX_META),
+      branchNameInstructions: z.string().trim().optional().meta(BRANCH_NAME_INSTRUCTIONS_META),
+      worktreeCleanup: ProjectWorktreeCleanup.optional(),
+    }),
     writerAgent: z.string().optional().meta({
       title: "Writer agent",
       description:
@@ -423,6 +441,36 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const mesh = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
   if (mesh !== undefined) context.subscriptions.add(mesh.share(SOURCE_CONTROL_STREAM));
   const config = () => context.config.get<Config>(CONFIG_SECTION);
+  /** The section as a project sees it: its own settings over the node's (D1466). */
+  const projectConfig = (projectId: string | undefined) =>
+    resolveProjectSettings(config(), projectId, PROJECT_KEYS);
+  /** A project's worktree cleanup rules: its own Off or Custom, else the node's (D1468). */
+  const cleanupRulesOf = (projectId: string | undefined) =>
+    resolveWorktreeCleanup(
+      config().worktreeCleanup,
+      projectId === undefined ? undefined : config().projects[projectId]?.worktreeCleanup,
+    );
+  /** Some rule, the node's or a project's, may remove a worktree. */
+  const anyCleanupEnabled = () =>
+    cleanupEnabled(config().worktreeCleanup) ||
+    Object.keys(config().projects).some((projectId) => cleanupEnabled(cleanupRulesOf(projectId)));
+  /**
+   * How a project's new worktree populates its submodules: the project's
+   * setting, the node's, the worktree's own `t3.json`, else recursive (D1467).
+   */
+  const submodulesOf = (projectId: string) => async (worktree: string) => {
+    const configured = projectConfig(projectId).worktreeSubmodules;
+    if (configured !== undefined) return configured;
+    const contents = await Fs.readFile(Path.join(worktree, T3_PROJECT_FILE_NAME), "utf8").catch(
+      () => undefined,
+    );
+    if (contents === undefined) return "recursive";
+    const read = parseT3ProjectFile(contents);
+    if (read.file === null) {
+      context.log.warn("ignored a worktree's t3.json", { worktree, error: read.error });
+    }
+    return read.file?.worktreeSubmodules ?? "recursive";
+  };
   // Its events name repositories and branches: reading them takes git.read (security.md D415).
   const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
   if (live?.guard !== undefined) {
@@ -1291,7 +1339,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         }
         return;
       }
-      case ThreadEvents.threadDeleted:
+      case ThreadEvents.threadDeleted: {
+        const deletedProject = threadDirs.get(id)?.projectId;
         forgetSetup(id);
         // Bookkeeping for the cleanup never keeps the thread's own removal from running.
         await noteDeletedWorktree(id).catch((error: unknown) =>
@@ -1304,8 +1353,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         await syncWorktrees();
         await removeThread(id);
         // Once the thread is gone everywhere, its worktree's sweep runs (D1129).
-        if (config().worktreeCleanup.onDelete) cleanInBackground();
+        if (cleanupRulesOf(deletedProject).onDelete) cleanInBackground();
         return;
+      }
     }
   };
 
@@ -1415,10 +1465,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   async function noteDeletedWorktree(threadId: string) {
     // Only under the delete rule: without it the user decided at the deletion
     // (D255's question), and a later rule must not overturn that choice.
-    if (!config().worktreeCleanup.onDelete) return;
     const dir = threadDirs.get(threadId);
+    if (dir === undefined || !cleanupRulesOf(dir.projectId).onDelete) return;
     const branch = threads.get(threadId)?.branch;
-    if (dir?.worktreePath === undefined || branch == null) return;
+    if (dir.worktreePath === undefined || branch == null) return;
     const root = await realPath(worktreesRoot(config().worktreesDirectory, hostPaths.home));
     if (!isManagedWorktree(root, dir.worktreePath)) return;
     for (const [other, entry] of threadDirs) {
@@ -1466,7 +1516,6 @@ export function activateSourceControl(context: PluginContext): SourceControl {
 
   /** T3's `cleanWorktrees`: decides each managed worktree a thread works or worked in. */
   async function sweepWorktrees(): Promise<CleanupReport> {
-    const rules = config().worktreeCleanup;
     const entries: CleanupEntry[] = [];
     const report = () => ({
       entries,
@@ -1476,7 +1525,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         failed: entries.filter((entry) => entry.outcome === "failed").length,
       },
     });
-    if (!cleanupEnabled(rules) || stopped) return report();
+    if (!anyCleanupEnabled() || stopped) return report();
     const root = await realPath(worktreesRoot(config().worktreesDirectory, hostPaths.home));
     const projects = (await context.commands.execute("projects.list", {})) as {
       id: string;
@@ -1540,15 +1589,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         })),
       });
     }
-    // Without the delete rule they decide nothing: kept for when it is turned on, not reported.
-    const deletedRecords = rules.onDelete
-      ? await kv.list(NAMESPACE, { prefix: DELETED_PREFIX })
-      : [];
-    for (const { key, value } of deletedRecords) {
+    for (const { key, value } of await kv.list(NAMESPACE, { prefix: DELETED_PREFIX })) {
       const parsed = DeletedWorktree.safeParse(value);
       // A record this version cannot read decides nothing, and is kept for one that can.
       if (!parsed.success) continue;
       const record = parsed.data;
+      // Without its project's delete rule it decides nothing: kept for when it is on, not reported.
+      if (!cleanupRulesOf(record.projectId).onDelete) continue;
       const project = projectPath.get(record.projectId);
       // Taken by a thread again, gone, or of a project that went: nothing to decide.
       // …or no longer under the worktrees directory (its setting changed): not this node's to remove.
@@ -1589,6 +1636,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       const entry = { path: candidate.path, threadId: candidate.threadId };
       try {
         if (!(await exists(candidate.path))) continue;
+        const rules = cleanupRulesOf(candidate.projectId);
         const verdict = await judge(candidate, rules, {
           now: Date.now(),
           git: (cwd) => createGit(config().gitPath, cwd),
@@ -1673,7 +1721,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   // reload, or the plugin enabled into a running kernel), else once every plugin is up.
   // A failure is logged and the hourly sweep tries again.
   const startupSweep = () => {
-    if (cleanupEnabled(config().worktreeCleanup)) cleanInBackground();
+    if (anyCleanupEnabled()) cleanInBackground();
   };
   const answering = () => {
     const names = new Set(context.commands.list().map((command) => command.name));
@@ -1690,7 +1738,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       }),
     );
   }
-  let lastRules = JSON.stringify(config().worktreeCleanup);
+  /** Every rule a sweep reads: the node's and each project's. */
+  const allRules = () =>
+    JSON.stringify([
+      config().worktreeCleanup,
+      Object.entries(config().projects).map(([id, entry]) => [id, entry.worktreeCleanup]),
+    ]);
+  let lastRules = allRules();
   context.subscriptions.add({
     dispose() {
       if (cleanupTimer !== undefined) clearInterval(cleanupTimer);
@@ -1701,7 +1755,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   context.subscriptions.add(
     context.config.onDidChange(CONFIG_SECTION, () => {
       // New rules apply at once, as T3 sweeps when its settings change.
-      const rules = JSON.stringify(config().worktreeCleanup);
+      const rules = allRules();
       if (rules !== lastRules) {
         lastRules = rules;
         cleanInBackground();
@@ -2022,7 +2076,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         repository: root,
         root: worktreesRoot(config().worktreesDirectory, hostPaths.home),
         baseRef: options.baseRef,
-        submodules: config().worktreeSubmodules,
+        submodules: submodulesOf(projectId),
         ...(options.branch === undefined ? {} : { branch: options.branch }),
         ...(options.startFromOrigin === undefined
           ? {}
@@ -2386,7 +2440,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
             git,
             worktree,
             branch,
-            config().worktreeSubmodules,
+            submodulesOf(input.projectId),
           );
           if (warning !== undefined) {
             context.log.warn("a recreated worktree's submodules", {
@@ -2429,7 +2483,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     }
     const first = firstMessageInputOf(events, input.turnId);
     if (first === undefined) return;
-    const { branchNamingMode, branchNamePrefix, branchNameInstructions } = config();
+    const { branchNamingMode, branchNamePrefix, branchNameInstructions } = projectConfig(
+      input.projectId,
+    );
     const naming = {
       mode: branchNamingMode,
       prefix: branchNamePrefix,
@@ -3554,7 +3610,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     permissions: ["git.read"],
     handler: async ({ projectId }) => ({
       worktrees: await service.worktrees(projectId),
-      cleanupOnDelete: config().worktreeCleanup.onDelete,
+      cleanupOnDelete: cleanupRulesOf(projectId).onDelete,
     }),
   });
 

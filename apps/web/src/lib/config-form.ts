@@ -33,7 +33,8 @@ export interface Option {
 }
 
 type Control =
-  | { readonly kind: "text"; readonly secret: boolean }
+  /** `multiline`: `.meta({ multiline: true })`, a text area (D1461). */
+  | { readonly kind: "text"; readonly secret: boolean; readonly multiline: boolean }
   | { readonly kind: "number"; readonly integer: boolean }
   | { readonly kind: "switch" }
   | { readonly kind: "select"; readonly options: readonly Option[] }
@@ -190,7 +191,7 @@ function controlOf(
   if (types.length !== 1 || branchesOf(schema) !== undefined) return { kind: "json" };
   switch (types[0]) {
     case "string":
-      return { kind: "text", secret };
+      return { kind: "text", secret, multiline: !secret && schema["multiline"] === true };
     case "number":
     case "integer":
       return { kind: "number", integer: types[0] === "integer" };

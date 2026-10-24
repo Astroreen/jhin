@@ -62,6 +62,61 @@ export const WorktreeCleanupConfig = z
   .meta({ title: "Worktree cleanup" });
 export type WorktreeCleanupRules = z.output<typeof WorktreeCleanupConfig>;
 
+const RULES = WorktreeCleanupConfig.unwrap().shape;
+/** A rule shown only while a project's cleanup is Custom (config-ui.md D481). */
+const customOnly = <Schema extends z.ZodType>(schema: Schema): Schema =>
+  schema.meta({ ...schema.meta(), when: { mode: "custom" } }) as Schema;
+
+/**
+ * A project's own cleanup, T3's per-project `worktreeCleanup` (D1468): Off, or
+ * Custom with rules of its own; a project without one inherits the node's.
+ */
+export const ProjectWorktreeCleanup = z
+  .object({
+    mode: z
+      .union([
+        z.literal("off").meta({ title: "Off" }),
+        z.literal("custom").meta({ title: "Custom" }),
+      ])
+      .meta({
+        title: "Mode",
+        description:
+          "Off keeps this project's worktrees until you delete them manually; Custom uses these rules for this project.",
+      }),
+    onDelete: customOnly(RULES.onDelete),
+    afterDays: customOnly(RULES.afterDays),
+    settledAfterDays: customOnly(RULES.settledAfterDays),
+    onMerge: customOnly(RULES.onMerge),
+    unchanged: customOnly(RULES.unchanged),
+    keepWhen: customOnly(RULES.keepWhen),
+  })
+  .meta({
+    title: "Automatic worktree cleanup",
+    description:
+      "Unset: use each machine's worktree cleanup settings. Off: keep this project's worktrees until you delete them manually. Custom: use these rules for this project.",
+  });
+export type ProjectWorktreeCleanup = z.output<typeof ProjectWorktreeCleanup>;
+
+/** T3's `resolveWorktreeCleanup`: Off keeps the node's `keepWhen` and turns every rule off. */
+export function resolveWorktreeCleanup(
+  node: WorktreeCleanupRules,
+  project: ProjectWorktreeCleanup | undefined,
+): WorktreeCleanupRules {
+  if (project === undefined) return node;
+  if (project.mode === "off") {
+    return {
+      keepWhen: node.keepWhen,
+      onDelete: false,
+      afterDays: null,
+      settledAfterDays: null,
+      onMerge: false,
+      unchanged: false,
+    };
+  }
+  const { mode: _mode, ...rules } = project;
+  return rules;
+}
+
 export const cleanupEnabled = (rules: WorktreeCleanupRules) =>
   rules.onDelete ||
   rules.afterDays !== null ||

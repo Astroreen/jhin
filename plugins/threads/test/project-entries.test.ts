@@ -231,3 +231,46 @@ describe("jhin.threads: project files for @ mentions (D302)", () => {
     await expect(skill({ name: "deploy" })).rejects.toMatchObject({ code: "PATH_NOT_SKILL" });
   });
 });
+
+describe("jhin.threads: the checked-in t3.json (source-control.md D1465)", () => {
+  it("reads T3's project file, leniently, and says why one is no project file", async () => {
+    const { client, data } = await node();
+    const dir = Path.join(data, "app");
+    Fs.mkdirSync(dir, { recursive: true });
+    const project = await client.call<{ id: string }>("projects.create", { path: dir });
+    const read = () =>
+      client.call<{ file: unknown; error?: string }>("projects.t3-file.get", {
+        projectId: project.id,
+      });
+
+    expect(await read()).toEqual({ file: null });
+    // T3's own file: comments, a trailing comma and keys it does not know.
+    Fs.writeFileSync(
+      Path.join(dir, "t3.json"),
+      [
+        "{",
+        '  "$schema": "https://t3.codes/schema/t3.json",',
+        "  // shared with the team",
+        '  "scripts": [{ "name": " Dev ", "command": "pnpm dev", "previewUrl": "http://localhost:5173" },],',
+        '  "worktreeSubmodules": "top-level",',
+        '  "later": true,',
+        "}",
+      ].join("\n"),
+    );
+    expect(await read()).toEqual({
+      file: {
+        $schema: "https://t3.codes/schema/t3.json",
+        scripts: [{ name: "Dev", command: "pnpm dev", previewUrl: "http://localhost:5173" }],
+        worktreeSubmodules: "top-level",
+      },
+    });
+
+    Fs.writeFileSync(Path.join(dir, "t3.json"), '{ "scripts": [{ "name": "" }] }');
+    expect(await read()).toMatchObject({
+      file: null,
+      error: expect.stringMatching(/^t3\.json is not a T3 project file at scripts\.0\.name/),
+    });
+    Fs.writeFileSync(Path.join(dir, "t3.json"), "{ nope");
+    expect(await read()).toMatchObject({ file: null, error: expect.stringMatching(/not JSON/) });
+  });
+});

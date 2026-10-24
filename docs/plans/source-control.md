@@ -1700,10 +1700,9 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   node's whole. A sweep (D1129) runs when any project's rules or the node's
   enable a rule and judges each worktree by its project's; a deleted
   thread's worktree is noted (D1129's store) when its project's
-  `onDelete` is on, and D1130's "asks nothing" reads the thread's project.
-  `git.worktree.list`'s `cleanupOnDelete` becomes per project
-  (`cleanupOnDeleteProjects`, additive, the ids whose rule differs from
-  the node's).
+  `onDelete` is on, and D1130's "asks nothing" reads the thread's project:
+  `git.worktree.list { projectId }`'s `cleanupOnDelete` answers that
+  project's rule.
 - **D1469. The last cleanup's report is kept, and shown as T3's "Last run".**
   Every sweep that judged something (or found nothing to clean) keeps its
   report with `finishedAt` in the plugin's store, so a restart keeps it;
