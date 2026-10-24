@@ -198,12 +198,16 @@ const noMesh: MeshMembership = {
   subscribe: () => toDisposable(() => undefined),
 };
 
-async function start(client: RpcClient, cache?: HistoryCache) {
+async function start(
+  client: RpcClient,
+  cache?: HistoryCache,
+  connections: Connections = oneConnection(connection(client)),
+) {
   let store: ThreadsCatalog | undefined;
   const kernel = await createTestKernel({
     side: "client",
     plugins: [
-      mockCapability(CONNECTIONS_CAPABILITY, oneConnection(connection(client))),
+      mockCapability(CONNECTIONS_CAPABILITY, connections),
       mockCapability(MESH_CAPABILITY, noMesh),
       ...(cache === undefined ? [] : [mockCapability(HISTORY_CACHE_CAPABILITY, cache, "1.1.0")]),
       threadsStorePlugin,
@@ -493,6 +497,70 @@ describe("client.threads@1 with the history cache (loading.md D1591)", () => {
     await node.subscribed();
     expect(drops).toContain("all");
     expect(writes).toEqual([]);
+    await kernel.stop();
+  });
+
+  it("after a reconnect keeps the catalog it followed instead of the kept one", async () => {
+    let head = 9;
+    const node = fakeNode({
+      "threads.epoch": async () => ({ epoch: "e1", head }),
+      "threads.catalog": async () => ({
+        head,
+        epoch: "e1",
+        projects: [scratch],
+        threads: [thread("t9", "scratch", "2026-10-18T14:00:00.000Z")],
+      }),
+    });
+    // A connection that drops and comes back.
+    let state: "open" | "closed" = "open";
+    const listeners = new Set<() => void>();
+    const node0 = () => ({ ...connection(node.client), state });
+    const connections: Connections = {
+      list: () => [node0()],
+      get: (id) => (id === "ws://a/rpc" ? node0() : undefined),
+      add: () => {
+        throw new Error("not used");
+      },
+      remove: () => undefined,
+      subscribe(listener) {
+        listeners.add(listener);
+        return toDisposable(() => listeners.delete(listener));
+      },
+    };
+    const toggle = (next: "open" | "closed") => {
+      state = next;
+      for (const listener of Array.from(listeners)) listener();
+    };
+    const { kernel, store } = await start(node.client, catalogCache(kept).cache, connections);
+    const feed = follow(store);
+    await node.subscribed();
+    node.append(ThreadEvents.threadCreated, thread("t8", "scratch", "2026-10-18T13:30:00.000Z"), 8);
+    expect(feed.current().threads.map((item) => item.id)).toEqual(["t1", "t2", "t8"]);
+
+    toggle("closed");
+    head = 12;
+    const shown: string[][] = [];
+    const watching = store.subscribe({ node: "ws://a/rpc" }, () =>
+      shown.push(store.catalog({ node: "ws://a/rpc" }).threads.map((item) => item.id)),
+    );
+    toggle("open");
+    await node.subscribed();
+    // Read again from the node, never the kept catalog over the one it followed.
+    expect(shown).not.toContainEqual(["t1", "t2"]);
+    expect(node.calls).toEqual(["threads.epoch", "threads.catalog"]);
+    expect(feed.current().threads.map((item) => item.id)).toEqual(["t9"]);
+    watching.dispose();
+    await kernel.stop();
+  });
+
+  it("keeps showing the kept catalog when the node cannot be asked at all", async () => {
+    const down = () => Promise.reject(Object.assign(new Error("closed"), { code: "DISCONNECTED" }));
+    const node = fakeNode({ "threads.epoch": down, "threads.catalog": down });
+    const { kernel, store } = await start(node.client, catalogCache(kept).cache);
+    const feed = follow(store);
+    let catalog = await feed.next();
+    while (catalog.status !== "error") catalog = await feed.next();
+    expect(catalog.threads.map((item) => item.id)).toEqual(["t1", "t2"]);
     await kernel.stop();
   });
 });

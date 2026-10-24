@@ -165,7 +165,14 @@ export const threadsStorePlugin = builtin(
         let keeping: string | undefined;
         let keptHead = 0;
         let writing = false;
-        /** Keeps the catalog as of `head`: one write for what changed within a tick. */
+        /**
+         * Keeps the catalog as of `head`: one write for what changed within a tick.
+         * Writes land in the order they are made: each opens its transaction on
+         * the same database after the same wait, and IndexedDB runs read-write
+         * transactions over one store in the order they were created. A write
+         * that fails costs an older catalog at the next boot, which its head then
+         * brings up to date.
+         */
         const keep = (head: number) => {
           if (keeping === undefined) return;
           keptHead = head;
@@ -318,7 +325,9 @@ export const threadsStorePlugin = builtin(
             }
           })();
         };
-        run(true);
+        // Only the first start of a feed uses the kept catalog: after a reconnect the
+        // feed still has the catalog it followed, newer than what was kept.
+        run(feed.catalog.status === "loading");
         return () => {
           stopped = true;
           subscription?.dispose();

@@ -108,7 +108,12 @@ What the node does today (2026-10-24, `08eeb571`):
   catalog and its `head`. On boot the sidebar shows the cached catalog and
   follows the `threads` stream after the cached head; an epoch mismatch, a
   gap or a refused subscription falls back to reading `threads.catalog`, as
-  the store does today.
+  the store does today. Only a feed's first start uses the kept catalog:
+  after a reconnect it still has the catalog it followed, and reads
+  `threads.catalog` as before. A node that cannot be asked keeps the kept
+  catalog on screen with the error, as a live one is kept. Forgetting a
+  connection forgets its catalog, and a node that answers no epoch has its
+  connection forgotten (D1607).
 - **D1592. A device setting turns the cache off.** "Keep chat history on
   this device", default on, under the client's device settings (stored on
   the device, not in node config: one node serves many devices, and each
@@ -151,7 +156,9 @@ What the node does today (2026-10-24, `08eeb571`):
 - **D1608. What is kept starts at 1 and has no gap.** The cache keeps a
   stream only as its events 1 to its last sequence, in the IndexedDB
   database `jhin.history-cache` (stores `streams` and `events`, keyed by
-  connection, stream and sequence). A write that would leave a gap drops the
+  connection, stream and sequence; version 2 adds `catalogs`, one per
+  connection, for D1591, and upgrades a version 1 database keeping its
+  streams). A write that would leave a gap drops the
   stream; one that repeats kept events skips them, so two tabs following
   the same thread write it once. A read that finds fewer events than its
   last sequence (a write cut short) drops it. A thread whose own stream says

@@ -291,8 +291,9 @@ Words about Jhin:
   that open it later. Several terminals of a thread show in the **terminal
   drawer** under the chat, as tabs and split groups (T3 Code's terms).
 - **History cache** — the events of streams a web client has already read,
-  kept on the device (IndexedDB) so a thread opens from it and asks the node
-  only for what is new (`loading.md` D1588).
+  and each node's thread catalog, kept on the device (IndexedDB) so a thread
+  and the sidebar open from it and ask the node only for what is new
+  (`loading.md` D1588, D1591).
 - **Epoch** — the id of a node's database, written once when it is created
   (`threads.epoch`, `loading.md` D1590): a node reinstalled under the same
   node id has another epoch, so what a device kept of it is not its history.
