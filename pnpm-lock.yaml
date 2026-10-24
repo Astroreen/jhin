@@ -1145,6 +1145,9 @@ importers:
       '@jhin/auth-api':
         specifier: workspace:*
         version: link:../../packages/auth-api
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
       '@jhin/http-api':
         specifier: workspace:*
         version: link:../../packages/http-api

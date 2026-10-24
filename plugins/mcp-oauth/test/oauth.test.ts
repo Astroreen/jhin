@@ -4,9 +4,9 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import { AGENT_PERMISSIONS } from "@jhin/mcp-api";
-import { definePlugin, describePermissions, z } from "@jhin/sdk";
+import { definePlugin, describePermissions, z, type PluginDefinition } from "@jhin/sdk";
 import { createTestKernel, mockCapability, testManifest, type TestKernel } from "@jhin/testing";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import auth from "../../auth-token/src/index.ts";
 import http from "../../http/src/index.ts";
@@ -63,10 +63,16 @@ const threads = {
 
 const kernels: TestKernel[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   for (const kernel of kernels.splice(0)) await kernel.stop();
 });
 
-async function startNode(): Promise<{ kernel: TestKernel; base: string; token: string }> {
+async function startNode(authDefinition: PluginDefinition = auth): Promise<{
+  kernel: TestKernel;
+  base: string;
+  token: string;
+  data: string;
+}> {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-mcp-oauth-"));
   const kernel = await createTestKernel({
     plugins: [
@@ -79,7 +85,7 @@ async function startNode(): Promise<{ kernel: TestKernel; base: string; token: s
       }),
       memorySecrets(),
       { manifest: manifest("http"), definition: http },
-      { manifest: manifest("auth-token"), definition: auth },
+      { manifest: manifest("auth-token"), definition: authDefinition },
       { manifest: manifest("mcp-server"), definition: mcpServer },
       { manifest: manifest("mcp-oauth"), definition: oauth },
       threads,
@@ -90,7 +96,7 @@ async function startNode(): Promise<{ kernel: TestKernel; base: string; token: s
   expect(kernel.inspect().plugins.filter((plugin) => plugin.status !== "active")).toEqual([]);
   const { url } = (await kernel.commands.execute("http.info", {})) as { url: string };
   const { token } = (await kernel.commands.execute("auth.token.show", {})) as { token: string };
-  return { kernel, base: url, token };
+  return { kernel, base: url, token, data };
 }
 
 const REDIRECT = "http://127.0.0.1:33418/callback";
@@ -172,6 +178,7 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
       registration_endpoint: `${base}/oauth/mcp/register`,
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
     });
   });
 
@@ -605,7 +612,7 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
       // Spent by the failed attempt (RFC 6749 §4.1.2).
       expect(await exchange(code, {})).toMatchObject({ body: { error: "invalid_grant" } });
     }
-    expect(await exchange("x", { grant_type: "refresh_token" })).toMatchObject({
+    expect(await exchange("x", { grant_type: "password" })).toMatchObject({
       body: { error: "unsupported_grant_type" },
     });
     expect(await exchange("x", { client_id: "forged.client" })).toMatchObject({
@@ -735,5 +742,352 @@ describe("MCP OAuth (security.md D1191–D1196)", () => {
     };
     expect(named.client_name).toHaveLength(100);
     expect(named.token_endpoint_auth_method).toBe("none");
+  });
+});
+
+interface Tokens {
+  access_token: string;
+  refresh_token: string;
+  scope: string;
+  expires_in: number;
+}
+
+/** Registers a client and signs it in, approved by `approver`'s page session (read only). */
+async function signIn(
+  base: string,
+  approver: string,
+  scope = "threads.read git.read",
+): Promise<{ clientId: string; tokens: Tokens }> {
+  const { client_id: clientId } = (await (await register(base)).json()) as { client_id: string };
+  const cookie = await sessionCookie(base, approver);
+  const html = await (
+    await fetch(authorizeUrl(base, clientId, { scope }), { headers: { cookie } })
+  ).text();
+  const approved = await fetch(`${base}/oauth/mcp/authorize`, {
+    method: "POST",
+    redirect: "manual",
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie, origin: base },
+    body: new URLSearchParams({ ...formOf(html), decision: "approve" }),
+  });
+  const code = new URL(approved.headers.get("location")!).searchParams.get("code")!;
+  const exchanged = await fetch(`${base}/oauth/mcp/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      client_id: clientId,
+      redirect_uri: REDIRECT.replace("33418", "40000"),
+      code_verifier: verifier,
+    }),
+  });
+  expect(exchanged.status).toBe(200);
+  return { clientId, tokens: (await exchanged.json()) as Tokens };
+}
+
+async function refreshWith(
+  base: string,
+  clientId: string,
+  refreshToken: string,
+  extra: Record<string, string> = {},
+): Promise<{ status: number; body: Tokens & { error?: string } }> {
+  const response = await fetch(`${base}/oauth/mcp/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: clientId,
+      ...extra,
+    }),
+  });
+  return { status: response.status, body: (await response.json()) as Tokens & { error?: string } };
+}
+
+/** Whether `/mcp` still takes the access token (D414). */
+async function accepted(base: string, accessToken: string): Promise<boolean> {
+  const response = await fetch(`${base}/mcp`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    body: "{}",
+  });
+  return response.status !== 401;
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * `jhin.auth-token` whose next `auth.tokens.issue` waits once `hold()` is
+ * called: a refresh held in flight between spending its token and issuing.
+ */
+function gatedAuth() {
+  let gate: { reached: () => void; release: Promise<void> } | undefined;
+  const definition = definePlugin({
+    activate(context) {
+      const commands = Object.create(context.commands) as typeof context.commands;
+      commands.register = ((command: Parameters<typeof context.commands.register>[0]) =>
+        context.commands.register(
+          command.name !== "auth.tokens.issue"
+            ? command
+            : {
+                ...command,
+                handler: async (input: never, invocation: never) => {
+                  const held = gate;
+                  gate = undefined;
+                  if (held !== undefined) {
+                    held.reached();
+                    await held.release;
+                  }
+                  return command.handler(input, invocation);
+                },
+              },
+        )) as typeof commands.register;
+      return auth.activate(Object.create(context, { commands: { value: commands } }));
+    },
+  });
+  const hold = () => {
+    let reached!: () => void;
+    let release!: () => void;
+    const reachedAt = new Promise<void>((resolve) => (reached = resolve));
+    gate = { reached, release: new Promise<void>((resolve) => (release = resolve)) };
+    return { reached: reachedAt, release };
+  };
+  return { definition, hold };
+}
+
+/** The device tokens issued to MCP clients that are still listed. */
+async function oauthClients(kernel: TestKernel): Promise<string[]> {
+  const { clients } = (await kernel.commands.execute("auth.clients.list", {})) as {
+    clients: { id: string; method: string }[];
+  };
+  return clients.filter((client) => client.method === "oauth").map((client) => client.id);
+}
+
+describe("MCP OAuth refresh tokens (security.md D1519)", () => {
+  it("answers a code with a refresh token, and a refresh renews, revokes and rotates", async () => {
+    const { base, token } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    expect(tokens.scope).toBe("threads.read git.read");
+    expect(tokens.refresh_token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+    const renewed = await refreshWith(base, clientId, tokens.refresh_token);
+    expect(renewed.status).toBe(200);
+    expect(renewed.body).toMatchObject({ token_type: "Bearer", scope: "threads.read git.read" });
+    expect(renewed.body.access_token).toMatch(/^jhd1\./);
+    expect(renewed.body.access_token).not.toBe(tokens.access_token);
+    expect(renewed.body.refresh_token).not.toBe(tokens.refresh_token);
+    expect(renewed.body.expires_in).toBeGreaterThan(29 * 86_400);
+    // The token it renews is revoked; the new one works.
+    expect(await accepted(base, tokens.access_token)).toBe(false);
+    expect(await accepted(base, renewed.body.access_token)).toBe(true);
+    // Rotated again with the new refresh token.
+    expect((await refreshWith(base, clientId, renewed.body.refresh_token)).status).toBe(200);
+  });
+
+  it("narrows the scope on request and refuses a wider one", async () => {
+    const { base, token } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    const wider = await refreshWith(base, clientId, tokens.refresh_token, {
+      scope: "threads.read threads.write",
+    });
+    expect(wider).toMatchObject({ status: 400, body: { error: "invalid_scope" } });
+    // Refused for its scope, the token is not spent.
+    const narrowed = await refreshWith(base, clientId, tokens.refresh_token, {
+      scope: "threads.read",
+    });
+    expect(narrowed).toMatchObject({ status: 200, body: { scope: "threads.read" } });
+    // The refresh token keeps the granted scope (OAuth 2.1 §4.3.1).
+    const again = await refreshWith(base, clientId, narrowed.body.refresh_token);
+    expect(again.body.scope).toBe("threads.read git.read");
+  });
+
+  it("refuses another client, and a forged one", async () => {
+    const { base, token } = await startNode();
+    const { tokens } = await signIn(base, token);
+    const { client_id: other } = (await (
+      await register(base, { client_name: "Other" })
+    ).json()) as { client_id: string };
+    expect(await refreshWith(base, other, tokens.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+    expect(await refreshWith(base, "forged.client", tokens.refresh_token)).toMatchObject({
+      status: 401,
+      body: { error: "invalid_client" },
+    });
+    expect(await refreshWith(base, other, "not-a-token")).toMatchObject({
+      body: { error: "invalid_grant" },
+    });
+  });
+
+  it("ends the sign-in when its access token is revoked under Authorized clients", async () => {
+    const { kernel, base, token } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    const { clients } = (await kernel.commands.execute("auth.clients.list", {})) as {
+      clients: { id: string; method: string }[];
+    };
+    const client = clients.find((entry) => entry.method === "oauth")!;
+    await kernel.commands.execute("auth.clients.revoke", { id: client.id });
+    expect(await refreshWith(base, clientId, tokens.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+  });
+
+  it("ends the sign-in when whoever approved it is revoked", async () => {
+    const { kernel, base } = await startNode();
+    const approver = (await kernel.commands.execute("auth.tokens.issue", {
+      label: "approver",
+      permissions: ["threads.read", "git.read", "auth.write"],
+    })) as { id: string; token: string };
+    const { clientId, tokens } = await signIn(base, approver.token);
+    expect((await refreshWith(base, clientId, tokens.refresh_token)).status).toBe(200);
+    const { clientId: second, tokens: secondTokens } = await signIn(base, approver.token);
+    await kernel.commands.execute("auth.clients.revoke", { id: approver.id });
+    expect(await refreshWith(base, second, secondTokens.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+  });
+
+  it("revokes the sign-in's current tokens when a spent refresh token comes back", async () => {
+    const { base, token } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    const first = await refreshWith(base, clientId, tokens.refresh_token);
+    const second = await refreshWith(base, clientId, first.body.refresh_token);
+    expect(second.status).toBe(200);
+    // The first refresh token again: one of its two holders stole it (RFC 9700 §4.14.2).
+    expect(await refreshWith(base, clientId, tokens.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+    expect(await accepted(base, second.body.access_token)).toBe(false);
+    expect(await refreshWith(base, clientId, second.body.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+  });
+
+  it("renews an expired access token, and expires 90 days after its issue", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { kernel, base, token } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    vi.setSystemTime(Date.now() + 31 * DAY_MS);
+    expect(await accepted(base, tokens.access_token)).toBe(false);
+    // Issuing drops the expired access token from the list: gone because it
+    // expired, not because it was revoked, so the refresh still renews it.
+    await kernel.commands.execute("auth.tokens.issue", {
+      label: "other",
+      permissions: ["threads.read"],
+    });
+    const renewed = await refreshWith(base, clientId, tokens.refresh_token);
+    expect(renewed.status).toBe(200);
+    expect(await accepted(base, renewed.body.access_token)).toBe(true);
+
+    // 90 days from its own issue, the rotated refresh token is spent by time.
+    vi.setSystemTime(Date.now() + 90 * DAY_MS + 1);
+    expect(await refreshWith(base, clientId, renewed.body.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+  });
+
+  it("keeps refresh tokens across a restart, as hashes in a 0600 refresh.json", async () => {
+    const { kernel, base, token, data } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    const file = Path.join(data, "jhin.mcp-oauth", "refresh.json");
+    const text = Fs.readFileSync(file, "utf8");
+    expect(text).not.toContain(tokens.refresh_token);
+    expect(text).toContain(
+      Crypto.createHash("sha256").update(tokens.refresh_token).digest("base64url"),
+    );
+    if (process.platform !== "win32") expect(Fs.statSync(file).mode & 0o777).toBe(0o600);
+
+    await kernel.reload("jhin.mcp-oauth");
+    const renewed = await refreshWith(base, clientId, tokens.refresh_token);
+    expect(renewed.status).toBe(200);
+    expect(Fs.readFileSync(file, "utf8")).not.toContain(renewed.body.refresh_token);
+  });
+
+  it("keeps a sign-in's last 20 spent tokens, however often it refreshes", async () => {
+    const { base, token, data } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    let current = tokens.refresh_token;
+    for (let round = 0; round < 25; round++) {
+      current = (await refreshWith(base, clientId, current)).body.refresh_token;
+    }
+    const file = Path.join(data, "jhin.mcp-oauth", "refresh.json");
+    const stored = JSON.parse(Fs.readFileSync(file, "utf8")) as { tokens: { spent: boolean }[] };
+    expect(stored.tokens.filter((record) => record.spent)).toHaveLength(20);
+    expect(stored.tokens.filter((record) => !record.spent)).toHaveLength(1);
+    // The oldest is forgotten: refused, as an unknown token is, without ending the sign-in.
+    expect((await refreshWith(base, clientId, tokens.refresh_token)).status).toBe(400);
+    expect((await refreshWith(base, clientId, current)).status).toBe(200);
+  });
+
+  it("ends the sign-in when two refreshes use one token at once", async () => {
+    const gated = gatedAuth();
+    const { kernel, base, token } = await startNode(gated.definition);
+    const { clientId, tokens } = await signIn(base, token);
+    const held = gated.hold();
+    const first = refreshWith(base, clientId, tokens.refresh_token);
+    await held.reached;
+    // The second use lands while the first is between spending and issuing.
+    expect(await refreshWith(base, clientId, tokens.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+    held.release();
+    expect(await first).toMatchObject({ status: 400, body: { error: "invalid_grant" } });
+    // Neither holder keeps anything: the renewed token and the one just issued are revoked.
+    expect(await accepted(base, tokens.access_token)).toBe(false);
+    expect(await oauthClients(kernel)).toEqual([]);
+  });
+
+  it("ends the sign-in when its access token is revoked while a refresh is under way", async () => {
+    const gated = gatedAuth();
+    const { kernel, base, token } = await startNode(gated.definition);
+    const { clientId, tokens } = await signIn(base, token);
+    const [renewing] = await oauthClients(kernel);
+    const held = gated.hold();
+    const refreshing = refreshWith(base, clientId, tokens.refresh_token);
+    await held.reached;
+    await kernel.commands.execute("auth.clients.revoke", { id: renewing! });
+    held.release();
+    expect(await refreshing).toMatchObject({ status: 400, body: { error: "invalid_grant" } });
+    expect(await oauthClients(kernel)).toEqual([]);
+  });
+
+  it("issues only what the approver still holds, and nothing once it expired", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { kernel, base, data } = await startNode();
+    const approver = (await kernel.commands.execute("auth.tokens.issue", {
+      label: "approver",
+      permissions: ["threads.read", "git.read", "auth.write"],
+      ttlDays: 2,
+    })) as { id: string; token: string };
+    const { clientId, tokens } = await signIn(base, approver.token);
+    expect(tokens.scope).toBe("threads.read git.read");
+
+    // Narrowed on disk (no command narrows a token), then read again.
+    const file = Path.join(data, "jhin.auth-token", "clients.json");
+    const stored = JSON.parse(Fs.readFileSync(file, "utf8")) as {
+      clients: { id: string; permissions: string[] }[];
+    };
+    for (const client of stored.clients) {
+      if (client.id === approver.id) client.permissions = ["threads.read", "auth.write"];
+    }
+    Fs.writeFileSync(file, JSON.stringify(stored), { mode: 0o600 });
+    await kernel.reload("jhin.auth-token");
+    const narrowed = await refreshWith(base, clientId, tokens.refresh_token);
+    expect(narrowed).toMatchObject({ status: 200, body: { scope: "threads.read" } });
+    expect(narrowed.body.expires_in).toBeLessThanOrEqual(2 * 86_400);
+
+    vi.setSystemTime(Date.now() + 2 * DAY_MS + 1);
+    const expired = await refreshWith(base, clientId, narrowed.body.refresh_token);
+    expect(expired).toMatchObject({ status: 400, body: { error: "invalid_grant" } });
+    expect(expired.body).toMatchObject({
+      error_description: "Whoever approved this sign-in can no longer grant it.",
+    });
   });
 });

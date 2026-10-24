@@ -592,13 +592,14 @@ The threat model comes first; the decisions after it implement it.
   dynamic client registration (`/oauth/mcp/register`), the authorization
   code flow with PKCE `S256` only (`/oauth/mcp/authorize`,
   `/oauth/mcp/token`), public clients only (`token_endpoint_auth_method`
-  `none`), no refresh tokens. Every URL comes from the request's origin, so
+  `none`), refresh tokens since D1519. Every URL comes from the request's origin, so
   loopback, a proxy and Tailscale Serve each answer with their own:
   `http.server` 1.3 `requestOrigin` (the requested host; `https` for TLS,
   or for `X-Forwarded-Proto: https` from a trusted proxy or loopback), the
   one derivation the 401 header and the metadata share. The
   endpoints are the plugin `jhin.mcp-oauth` (requires `http.server`,
-  `auth.verifier`, `secrets.store@^1.1`): neither `jhin.auth-token` nor
+  `auth.verifier`, `secrets.store@^1.1`, and `host.paths` for D1519's
+  `refresh.json`): neither `jhin.auth-token` nor
   `jhin.mcp-server` can depend on the secret store, whose optional edge to
   `agent.registry` leads back to them (D14 drops an edge that closes a
   cycle). Without the plugin (or the store) `/mcp` still answers `401` with
@@ -1052,7 +1053,10 @@ follow the standards they name.
   `grant_type=refresh_token` (`grant_types_supported` lists both;
   RFC 6749 §6, OAuth 2.1 §4.3). A refresh token is 32 random bytes,
   bound to its client id, the resource, the granted scope, the approver's
-  principal and the device token it renews; the node keeps its SHA-256,
+  principal and the device token it renews; the approver's principal is
+  the token behind the page session that approved (the owner, or the
+  device whose token opened the session, D421), since a session lives
+  30 days at most and ends when its browser signs out. The node keeps its SHA-256,
   in `refresh.json` in the plugin's data directory (mode 0600, written
   whole and renamed into place). It is valid 90 days from its issue and
   used once: a refresh issues a new access token through
@@ -1061,12 +1065,22 @@ follow the standards they name.
   `invalid_scope`) as far as the approver still holds it, never past the
   approver's own expiry, revokes the token it renews and returns a new
   refresh token. It is refused (`invalid_grant`) once the token it renews
-  was revoked (so revoking under Authorized clients ends the sign-in),
+  was revoked (so revoking under Authorized clients ends the sign-in; an
+  access token gone from the list after its expiry was not revoked and is
+  renewed),
   once the approver was revoked or expired, for another client id, and
   when spent: a spent token presented again revokes the sign-in's
   current access token and refresh token (RFC 9700 §4.14.2), since one
   of the two holders stole it. Without refreshing, a client signs in
-  again after 30 days, as before.
+  again after 30 days, as before. A refresh that spent its token and then
+  cannot issue (the token was revoked, the approver went, issuing failed)
+  ends the sign-in and revokes the access token it renews: a spent token
+  cannot be tried again, so the client signs in again. A revoke or a reuse
+  that lands while a refresh is under way ends the sign-in too; the token
+  the refresh just issued is revoked. A sign-in keeps its last 20 spent
+  tokens, so `refresh.json` grows with the number of sign-ins, not with
+  how often they refresh; an older spent token presented again is refused
+  as an unknown one, without ending the sign-in.
 
 ## PR plan
 
@@ -1287,8 +1301,7 @@ A slice a PR, in the order of D1361's risks:
 - MCP OAuth (D1191–D1196): T3's access levels came with W39 (D1369,
   D1370) without T3's "Auto" mode, which Jhin's agents do not have. A
   ceiling (D1370) is carried by grants, so a mesh member whose
-  `memberPermissions` do not cover `threads.mode.*` drops it with them. No refresh tokens: a
-  client signs in again after 30 days. The approval page is the node's own
+  `memberPermissions` do not cover `threads.mode.*` drops it with them. The approval page is the node's own
   HTML, not a web client route, and assumes the node at the root of its
   origin (a proxy path prefix breaks its form and its `/auth/session`
   call). A pairing code opens a page session to approve with; T3's
@@ -1318,3 +1331,8 @@ A slice a PR, in the order of D1361's risks:
 - `lastSeenAt` is kept in memory and written with the next change of
   `clients.json`, so a restart may lose the latest ones. Expired tokens are
   dropped from the file with the next write.
+- MCP refresh tokens (D1519): `refresh.json` is written whole and
+  synchronously on each issue and spend, on the token request's path, as
+  `clients.json` is; a failed write answers the request with an error
+  rather than `invalid_grant`. An unreadable `refresh.json` is not
+  repaired: every MCP client signs in again.

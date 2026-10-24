@@ -2,9 +2,11 @@
 // the metadata, registration, authorization and token endpoints of an MCP client's sign-in.
 import * as Crypto from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import * as Path from "node:path";
 
 import {
   AUTH_VERIFIER_CAPABILITY,
+  AuthEvents,
   OWNER_PRINCIPAL_ID,
   clientPrincipalId,
   deriveClientMetadata,
@@ -12,6 +14,7 @@ import {
   sessionCookieName,
   type AuthVerifier,
 } from "@jhin/auth-api";
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import { AGENT_PERMISSIONS } from "@jhin/mcp-api";
 import { definePlugin, holdsPermission } from "@jhin/sdk";
@@ -29,9 +32,11 @@ import {
   createOAuth,
   protectedResourceMetadata,
   urlsFor,
+  type Approver,
   type AuthorizationRequest,
   type PendingCode,
 } from "./oauth.ts";
+import { createRefreshStore, type RefreshGrant } from "./refresh.ts";
 
 const SIGNING_KEY = "jhin.mcp-oauth/signing-key";
 /** An OAuth client's token lives as long as a paired device's (security.md D1195). */
@@ -169,6 +174,38 @@ export default definePlugin({
       defaultScopes: AGENT_PERMISSIONS,
     });
     const cookie = sessionCookieName(new URL(http.url).port);
+    // Refresh tokens outlive a restart, so they live in a file, as hashes (D1519).
+    const refresh = createRefreshStore({
+      file: Path.join(
+        context.services.get<HostPaths>(HOST_PATHS_CAPABILITY).dataDir(context.plugin.id),
+        "refresh.json",
+      ),
+      onCorrupt: (error) =>
+        context.log.warn("refresh.json is unreadable: every MCP client signs in again", { error }),
+    });
+
+    /** Revokes a device token as the node itself; one already gone is fine. */
+    const revokeToken = async (id: string) => {
+      try {
+        await context.commands.execute("auth.clients.revoke", { id });
+      } catch (error) {
+        context.log.info("an MCP client's token was already gone", { id, error: String(error) });
+      }
+    };
+    /** Ends a sign-in: its refresh tokens and the access token it currently renews. */
+    const endSignIn = async (family: string) => {
+      const current = refresh.end(family);
+      if (current !== undefined) await revokeToken(current);
+    };
+    // Revoking under Authorized clients ends the sign-in at once (D1519).
+    context.subscriptions.add(
+      context.events.on(AuthEvents.clientRevoked, (payload) => {
+        const principal = (payload as { principal?: unknown } | undefined)?.principal;
+        if (typeof principal !== "string") return;
+        const family = refresh.familyOf((tokenId) => clientPrincipalId(tokenId) === principal);
+        if (family !== undefined) refresh.end(family);
+      }),
+    );
 
     /** Every URL from the request's own origin: loopback, a proxy and Tailscale Serve alike (D1191). */
     const originOf = (request: IncomingMessage) =>
@@ -212,6 +249,25 @@ export default definePlugin({
             permissions: record.permissions,
             ...(record.expiresAt === undefined ? {} : { expiresAt: record.expiresAt }),
           };
+    };
+
+    /**
+     * Who stands behind an approver: a page session is opened with a token
+     * and never outlives it (D421), so a sign-in's refresh tokens hang on that
+     * token (the owner, or a paired device), not on one browser's session (D1519).
+     */
+    const standingOf = async (approver: Approver): Promise<Approver> => {
+      if (approver.id === OWNER_PRINCIPAL_ID) return approver;
+      const { clients } = (await context.commands.execute("auth.clients.list", {})) as {
+        clients: { id: string; parent?: string }[];
+      };
+      let id = approver.id;
+      for (let hops = 0; hops <= clients.length; hops++) {
+        const parent = clients.find((client) => clientPrincipalId(client.id) === id)?.parent;
+        if (parent === undefined) break;
+        id = parent;
+      }
+      return { id };
     };
 
     const titles = async () => {
@@ -284,7 +340,7 @@ export default definePlugin({
         client_id: registered.client.clientId,
         client_name: registered.client.name,
         redirect_uris: registered.client.redirectUris,
-        grant_types: ["authorization_code"],
+        grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],
         token_endpoint_auth_method: "none",
       });
@@ -463,6 +519,10 @@ export default definePlugin({
         json(response, 400, { error: "invalid_request", error_description: "Malformed body." });
         return;
       }
+      if (params["grant_type"] === "refresh_token") {
+        await refreshGrant(request, response, params);
+        return;
+      }
       const exchanged = oauth.exchange(urlsOf(request), params);
       if (exchanged.kind === "error") {
         json(response, exchanged.error === "invalid_client" ? 401 : 400, {
@@ -474,6 +534,7 @@ export default definePlugin({
       const approverNow = await currentGrants(exchanged.approver);
       const grants = approverNow?.permissions;
       if (
+        approverNow === undefined ||
         grants === undefined ||
         !exchanged.scopes.every((scope) => holdsPermission(grants, scope))
       ) {
@@ -483,17 +544,75 @@ export default definePlugin({
         });
         return;
       }
-      let issued: { token: string; expiresAt?: number };
+      const issued = await issueAccess(
+        request,
+        exchanged.clientName,
+        exchanged.approver,
+        approverNow,
+        exchanged.scopes,
+      );
+      if (issued === undefined) {
+        json(response, 400, {
+          error: "invalid_grant",
+          error_description: "The token could not be issued.",
+        });
+        return;
+      }
+      // Every code grant gets a refresh token too, a new sign-in of its own (D1519).
+      const refreshToken = refresh.issue({
+        clientId: exchanged.clientId,
+        clientName: exchanged.clientName,
+        resource: exchanged.resource,
+        scopes: [...exchanged.scopes],
+        approver: await standingOf(exchanged.approver),
+        ...renews(issued),
+      });
+      answerTokens(response, issued, exchanged.scopes, refreshToken);
+    });
+
+    /** What a refresh token records of the device token it renews. */
+    const renews = (issued: { id: string; expiresAt?: number }) => ({
+      tokenId: issued.id,
+      ...(issued.expiresAt === undefined ? {} : { tokenExpiresAt: issued.expiresAt }),
+    });
+
+    const answerTokens = (
+      response: ServerResponse,
+      issued: { token: string; expiresAt?: number },
+      scopes: readonly string[],
+      refreshToken: string,
+    ) =>
+      json(response, 200, {
+        access_token: issued.token,
+        token_type: "Bearer",
+        expires_in:
+          issued.expiresAt === undefined
+            ? TOKEN_TTL_DAYS * 86_400
+            : Math.max(0, Math.floor((issued.expiresAt - Date.now()) / 1000)),
+        scope: scopes.join(" "),
+        refresh_token: refreshToken,
+      });
+
+    /**
+     * A device token for an MCP client, issued as its approver: it never holds
+     * more than who approved it (D413, D1195) and never outlives it.
+     */
+    const issueAccess = async (
+      request: IncomingMessage,
+      clientName: string,
+      approver: Approver,
+      approverNow: { permissions: string[]; expiresAt?: number },
+      scopes: readonly string[],
+    ): Promise<{ id: string; token: string; expiresAt?: number } | undefined> => {
       try {
-        // As the approver: a token never holds more than who approved it (D413, D1195).
-        issued = (await context.commands.execute(
+        return (await context.commands.execute(
           "auth.tokens.issue",
           {
-            label: exchanged.clientName,
-            permissions: exchanged.scopes,
+            label: clientName,
+            permissions: scopes,
             // Never outlives who approved it, as a page session never outlives its token (D421).
             ttlDays:
-              approverNow?.expiresAt === undefined
+              approverNow.expiresAt === undefined
                 ? TOKEN_TTL_DAYS
                 : Math.min(TOKEN_TTL_DAYS, (approverNow.expiresAt - Date.now()) / 86_400_000),
             method: "oauth",
@@ -502,28 +621,106 @@ export default definePlugin({
               ipAddress: http.clientAddress(request),
             }),
           },
-          { caller: { id: exchanged.approver.id, permissions: grants } },
-        )) as { token: string; expiresAt?: number };
+          { caller: { id: approver.id, permissions: approverNow.permissions } },
+        )) as { id: string; token: string; expiresAt?: number };
       } catch (error) {
         context.log.error("an approved MCP client could not get its token", {
           error: String(error),
         });
-        json(response, 400, {
-          error: "invalid_grant",
-          error_description: "The token could not be issued.",
+        return undefined;
+      }
+    };
+
+    /**
+     * `grant_type=refresh_token` (D1519): one use, rotated, bound to its
+     * client, its resource and the approver's standing; a spent token
+     * presented again ends the sign-in (RFC 9700 §4.14.2).
+     */
+    const refreshGrant = async (
+      request: IncomingMessage,
+      response: ServerResponse,
+      params: Record<string, string>,
+    ) => {
+      const refused = (description: string) =>
+        json(response, 400, { error: "invalid_grant", error_description: description });
+      const urls = urlsOf(request);
+      const asked = oauth.refreshRequest(urls, params);
+      if (asked.kind === "error") {
+        json(response, asked.error === "invalid_client" ? 401 : 400, {
+          error: asked.error,
+          error_description: asked.description,
         });
         return;
       }
-      json(response, 200, {
-        access_token: issued.token,
-        token_type: "Bearer",
-        expires_in:
-          issued.expiresAt === undefined
-            ? TOKEN_TTL_DAYS * 86_400
-            : Math.max(0, Math.floor((issued.expiresAt - Date.now()) / 1000)),
-        scope: exchanged.scopes.join(" "),
-      });
-    });
+      const found = refresh.find(asked.token);
+      if (found.kind === "unknown") return refused("The refresh token is invalid or expired.");
+      if (found.kind === "spent") {
+        // One of the two holders stole it: neither keeps the sign-in.
+        context.log.warn("a spent MCP refresh token was presented again; its sign-in ends");
+        await endSignIn(found.family);
+        return refused("The refresh token was already used.");
+      }
+      const record = found.record;
+      if (record.clientId !== asked.clientId || record.resource !== urls.resource) {
+        return refused("The refresh token was issued to another client.");
+      }
+      const scopes = asked.scopes ?? record.scopes;
+      if (!scopes.every((scope) => holdsPermission(record.scopes, scope))) {
+        json(response, 400, {
+          error: "invalid_scope",
+          error_description: "A refresh may narrow the granted scope, never widen it.",
+        });
+        return;
+      }
+      // Spent before anything is awaited: the same token twice is a reuse.
+      refresh.spend(record.hash);
+      const end = async (description: string) => {
+        await endSignIn(record.family);
+        refused(description);
+      };
+      const { clients } = (await context.commands.execute("auth.clients.list", {})) as {
+        clients: { id: string }[];
+      };
+      const renewed = clients.some((client) => client.id === record.tokenId);
+      // Gone before it expired: it was revoked, and the sign-in with it. An
+      // access token that expired is what a refresh is for.
+      if (!renewed && (record.tokenExpiresAt === undefined || record.tokenExpiresAt > Date.now())) {
+        return end("The sign-in was revoked.");
+      }
+      const approverNow = await currentGrants(record.approver);
+      const granted =
+        approverNow === undefined
+          ? []
+          : scopes.filter((scope) => holdsPermission(approverNow.permissions, scope));
+      if (approverNow === undefined || granted.length === 0) {
+        return end("Whoever approved this sign-in can no longer grant it.");
+      }
+      const issued = await issueAccess(
+        request,
+        record.clientName,
+        record.approver,
+        approverNow,
+        granted,
+      );
+      if (issued === undefined) return end("The token could not be issued.");
+      if (!refresh.alive(record.family)) {
+        // The sign-in ended while this refresh was under way (a reuse, a revoke).
+        await revokeToken(issued.id);
+        return refused("The sign-in was revoked.");
+      }
+      const grant: RefreshGrant = {
+        clientId: record.clientId,
+        clientName: record.clientName,
+        resource: record.resource,
+        // The refresh token keeps the granted scope (OAuth 2.1 §4.3.1).
+        scopes: record.scopes,
+        approver: record.approver,
+        ...renews(issued),
+      };
+      const next = refresh.issue(grant, record.family);
+      if (renewed) await revokeToken(record.tokenId);
+      answerTokens(response, issued, granted, next);
+    };
     context.log.info("mcp oauth ready");
   },
 });
