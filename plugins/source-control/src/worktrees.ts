@@ -286,8 +286,11 @@ export async function createWorktree(
     readonly baseRef: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
-    /** How a new worktree populates git submodules (T3's `worktreeSubmodules`, D1134). */
-    readonly submodules?: "recursive" | "top-level" | "none";
+    /**
+     * How a new worktree populates git submodules (T3's `worktreeSubmodules`, D1134), or
+     * how to tell once its files are there (its `t3.json` may say, D1467).
+     */
+    readonly submodules?: SubmodulesMode | ((path: string) => Promise<SubmodulesMode>);
     /** Told when fetching the base and checking the files out start and end (D1123). */
     readonly onStage?: (
       stage: "fetch" | "checkout",
@@ -354,7 +357,11 @@ export async function createWorktree(
   await git(["worktree", "add", "-b", branch, "--", path, startRef], {
     timeoutMs: WORKTREE_TIMEOUT_MS,
   });
-  const [status, detail] = await populateSubmodules(git, path, options.submodules ?? "recursive");
+  const mode =
+    typeof options.submodules === "function"
+      ? await options.submodules(path)
+      : (options.submodules ?? "recursive");
+  const [status, detail] = await populateSubmodules(git, path, mode);
   onStage("checkout", status, detail);
   return {
     path: await Fs.realpath(path),
@@ -371,10 +378,13 @@ export async function createWorktree(
  * checked out (`--recursive` unless only the top level is wanted). A failure
  * leaves their folders empty and the worktree in use, with a warning.
  */
+/** How a worktree populates git submodules (T3's `WorktreeSubmodules`). */
+export type SubmodulesMode = "recursive" | "top-level" | "none";
+
 async function populateSubmodules(
   git: Git,
   path: string,
-  mode: "recursive" | "top-level" | "none",
+  mode: SubmodulesMode,
 ): Promise<["done", string | undefined] | ["warning", string]> {
   // Another error reading `.gitmodules` is said.
   const hasSubmodules = await gitmodulesIn(path);
@@ -447,13 +457,14 @@ export async function recreateWorktree(
   git: Git,
   path: string,
   branch: string,
-  submodules: "recursive" | "top-level" | "none",
+  submodules: SubmodulesMode | ((path: string) => Promise<SubmodulesMode>),
 ): Promise<string | undefined> {
   await git(["worktree", "prune"]);
   await Fs.mkdir(Path.dirname(path), { recursive: true });
   await git(["worktree", "add", "--", path, branch], { timeoutMs: WORKTREE_TIMEOUT_MS });
   // Made again as a new one is (D1134): its submodules too; a failure is only told.
-  const [status, detail] = await populateSubmodules(git, path, submodules);
+  const mode = typeof submodules === "function" ? await submodules(path) : submodules;
+  const [status, detail] = await populateSubmodules(git, path, mode);
   return status === "warning" ? detail : undefined;
 }
 

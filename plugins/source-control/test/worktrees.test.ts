@@ -307,6 +307,15 @@ describe("jhin.source-control: worktrees", () => {
     expect(await namedBranch(sc, projectId, '{"branch": "JIRA-12_Exact"}')).toBe("JIRA-12_Exact");
   });
 
+  it("names a project's branches as its own settings say, others as the node's (D1466)", async () => {
+    const sc = await node({ watch: false });
+    const own = await sc.project(repository());
+    const other = await sc.project(repository());
+    sc.configure({ projects: { [own]: { branchNamingMode: "semantic" } } });
+    expect(await namedBranch(sc, own, '{"branch": "fix/Login timeout"}')).toBe("fix/login-timeout");
+    expect(await namedBranch(sc, other, '{"branch": "Login timeout"}')).toBe("jhin/login-timeout");
+  });
+
   it("lets go of a worktree no thread works in any more", async () => {
     const dir = repository();
     const sc = await node({ watch: false });

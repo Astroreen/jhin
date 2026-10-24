@@ -183,6 +183,51 @@ describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
   });
 });
 
+describe("jhin.source-control: a project's own worktree cleanup (D1468)", () => {
+  it("applies a project's Custom rules and keeps an Off project's worktrees", async () => {
+    const sc = await node({ watch: false });
+    const custom = await sc.project(repository());
+    const off = await sc.project(repository());
+    const inherit = await sc.project(repository());
+    // The node's delete rule; Off turns it off for one project, and Custom's own
+    // rules (only removing unchanged worktrees) replace the node's whole.
+    sc.configure({
+      worktreeCleanup: { onDelete: true },
+      projects: {
+        [custom]: { worktreeCleanup: { mode: "custom", unchanged: true } },
+        [off]: { worktreeCleanup: { mode: "off" } },
+      },
+    });
+    const threads = {
+      custom: await worktreeThread(sc, custom),
+      off: await worktreeThread(sc, off),
+      inherit: await worktreeThread(sc, inherit),
+    };
+    // A client asks before deleting only where the delete rule is not on (D1130).
+    const listed = async (projectId: string) =>
+      (await sc.client.call<{ cleanupOnDelete: boolean }>("git.worktree.list", { projectId }))
+        .cleanupOnDelete;
+    expect([await listed(custom), await listed(off), await listed(inherit)]).toEqual([
+      false,
+      false,
+      true,
+    ]);
+
+    const swept = sc.logged("removed a worktree");
+    await sc.client.call("threads.delete", { threadId: threads.inherit.id });
+    await swept;
+    expect(Fs.existsSync(threads.inherit.worktreePath)).toBe(false);
+    for (const thread of [threads.custom, threads.off]) {
+      await sc.client.call("threads.delete", { threadId: thread.id });
+      await sc.until(removed(thread.id));
+    }
+    // Deleted without their project's delete rule: the user's to remove (D255).
+    expect((await cleanup(sc)).entries).toEqual([]);
+    expect(Fs.existsSync(threads.custom.worktreePath)).toBe(true);
+    expect(Fs.existsSync(threads.off.worktreePath)).toBe(true);
+  });
+});
+
 describe("worktree cleanup decisions (D1129, T3's cleanWorktrees)", () => {
   const DAY = 86_400_000;
   const NOW = Date.parse("2026-10-22T12:00:00Z");

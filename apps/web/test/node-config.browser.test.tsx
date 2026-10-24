@@ -149,6 +149,7 @@ const Server = z
         z.object({ none: z.boolean() }),
       ])
       .optional(),
+    motd: z.string().optional().meta({ title: "Message of the day", multiline: true }),
   })
   .meta({ title: "Server" });
 const schema = z.toJSONSchema(Server, { io: "input", unrepresentable: "any" });
@@ -248,6 +249,14 @@ describe("a config section as a form (D80)", () => {
         { path: ["header"], value: "forwarded" },
       ],
     });
+  });
+
+  it("edits multi-line text in a text area (D1461)", async () => {
+    const view = mountForm({});
+    const area = page.getByRole("textbox", { name: "Message of the day" });
+    expect(area.element().tagName).toBe("TEXTAREA");
+    await userEvent.fill(area, "first line\nsecond line");
+    expect(view.state.value).toEqual({ motd: "first line\nsecond line" });
   });
 
   it("shows descriptions from comments, defaults, groups and lists", async () => {

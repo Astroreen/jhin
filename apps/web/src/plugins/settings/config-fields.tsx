@@ -197,6 +197,25 @@ function LeafControl(props: {
       );
     }
     default:
+      // T3's text area, rows growing with the text (D1461).
+      if (field.control.kind === "text" && field.control.multiline) {
+        return (
+          <Textarea
+            {...aria}
+            disabled={props.disabled}
+            onChange={(event) =>
+              onChange(
+                event.target.value === "" && field.clearWhenEmpty === "omit"
+                  ? undefined
+                  : event.target.value,
+              )
+            }
+            placeholder={value === "" ? "Empty" : placeholder}
+            rows={4}
+            value={typeof value === "string" ? value : ""}
+          />
+        );
+      }
       // A secret is typed, never shown (D83).
       return (
         <Input
@@ -784,6 +803,23 @@ function FieldRow({
           />
         }
       />
+    );
+  }
+  // T3's text area goes under its row's title, as a list does (D1461).
+  if (field.control.kind === "text" && field.control.multiline) {
+    return (
+      <SettingsRow {...row}>
+        <div className="mt-3 max-w-2xl pb-3.5">
+          <LeafControl
+            describedBy={describedBy}
+            field={field}
+            invalid={messages.length > 0}
+            label={field.title}
+            onChange={(next) => context.set(path, next)}
+            value={value}
+          />
+        </div>
+      </SettingsRow>
     );
   }
   switch (field.control.kind) {
