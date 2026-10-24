@@ -15,6 +15,8 @@ export function createHistoryCache(
     append: (connection, stream, epoch, events) =>
       store.append(connection, stream, epoch, events, now()),
     drop: (connection, stream) => store.drop(connection, stream),
+    readCatalog: (connection) => store.readCatalog(connection),
+    writeCatalog: (connection, catalog) => store.writeCatalog(connection, catalog),
   };
 }
 
@@ -26,7 +28,7 @@ export function createHistoryCache(
  */
 export const historyCachePlugin = builtin(
   "jhin.history-cache",
-  { provides: { [HISTORY_CACHE_CAPABILITY]: "1.0.0" } },
+  { provides: { [HISTORY_CACHE_CAPABILITY]: "1.1.0" } },
   definePlugin({
     activate(context) {
       if (typeof indexedDB === "undefined") return;
