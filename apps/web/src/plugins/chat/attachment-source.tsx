@@ -1,9 +1,11 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac:
 // apps/web/src/components/files/ReadOnlySourcePreview.tsx: a text attachment highlighted by
-// @pierre/diffs, a chunk of its own. T3's virtualizer and worker pool are left out: a preview
-// holds at most 1 MB of text. A line asked for is shown and tinted as T3's `useFileLineReveal`
-// and `FILE_LINK_REVEAL_UNSAFE_CSS` of apps/web/src/components/files/ do (t3-parity.md D1430).
-import { File } from "@pierre/diffs/react";
+// @pierre/diffs in T3's virtualizer (only the rows in view are in the page, t3-parity.md D1437),
+// a chunk of its own; T3's worker pool is left out. A line asked for is shown and tinted as T3's
+// `useFileLineReveal` and `FILE_LINK_REVEAL_UNSAFE_CSS` of apps/web/src/components/files/ do
+// (D1430).
+import { VirtualizedFile, type FileContents, type PostRenderPhase } from "@pierre/diffs";
+import { File, Virtualizer } from "@pierre/diffs/react";
 import { useRef } from "react";
 
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
@@ -58,8 +60,13 @@ export function ReadOnlySourcePreview(props: {
   const reveal = props.reveal;
   const line = reveal === undefined ? undefined : clampLine(props.text, reveal.line);
   // T3's updateFileLinkReveal, after each render of the file: the line is marked, and scrolled to
-  // once per request.
-  const onPostRender = (container: HTMLElement) => {
+  // once per request, by where the virtualizer puts it while its row is not in the page.
+  const onPostRender = (
+    container: HTMLElement,
+    instance: { file?: FileContents },
+    phase: PostRenderPhase,
+  ) => {
+    if (phase === "unmount") return;
     const root = container.shadowRoot ?? container;
     for (const element of root.querySelectorAll<HTMLElement>(`[${REVEAL_ATTRIBUTE}]`)) {
       element.removeAttribute(REVEAL_ATTRIBUTE);
@@ -67,18 +74,37 @@ export function ReadOnlySourcePreview(props: {
     if (line === undefined || reveal === undefined) return;
     const row = root.querySelector<HTMLElement>(`[data-line="${line}"]`);
     row?.setAttribute(REVEAL_ATTRIBUTE, "");
-    root.querySelector<HTMLElement>(`[data-column-number="${line}"]`)?.setAttribute(REVEAL_ATTRIBUTE, "");
-    if (row === null || handled.current === reveal.id) return;
+    root
+      .querySelector<HTMLElement>(`[data-column-number="${line}"]`)
+      ?.setAttribute(REVEAL_ATTRIBUTE, "");
+    if (handled.current === reveal.id) return;
+    const scroller = container.closest<HTMLElement>(".file-preview-virtualizer");
+    if (scroller === null) return;
+    const position = instance instanceof VirtualizedFile ? instance.getLinePosition(line) : undefined;
+    if (row === null && position === undefined) return;
     handled.current = reveal.id;
-    row.scrollIntoView({ block: "center" });
+    // T3's resolveCenteredFileLineScrollTop: the line in the middle of the view.
+    const view = scroller.getBoundingClientRect();
+    const fileTop = scroller.scrollTop + container.getBoundingClientRect().top - view.top;
+    const rect = row?.getBoundingClientRect();
+    const top =
+      rect !== undefined && rect.height > 0
+        ? scroller.scrollTop + rect.top - view.top
+        : fileTop + (position?.top ?? 0);
+    const height = rect !== undefined && rect.height > 0 ? rect.height : (position?.height ?? 0);
+    scroller.scrollTop = Math.max(0, top - Math.max(0, (scroller.clientHeight - height) / 2));
   };
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
+    <Virtualizer
+      className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
+      config={{ overscrollSize: 600, intersectionObserverMargin: 1200 }}
+      contentClassName="min-h-full"
+      key={`${props.name}:${theme}:${props.text.length}`}
+    >
       <File
         className="min-h-full"
         disableWorkerPool
         file={{ name: props.name, contents: props.text }}
-        key={`${props.name}:${theme}:${props.text.length}`}
         options={{
           disableFileHeader: true,
           overflow: props.wordWrap ? "wrap" : "scroll",
@@ -88,6 +114,6 @@ export function ReadOnlySourcePreview(props: {
           onPostRender,
         }}
       />
-    </div>
+    </Virtualizer>
   );
 }

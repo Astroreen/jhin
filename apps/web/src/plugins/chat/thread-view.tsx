@@ -5,6 +5,7 @@ import {
   contextReferencesAsLabels,
   parseMessageAddress,
   type MessageContext,
+  type StoredAttachment,
   type TurnAttachment,
 } from "@jhin/agent-api";
 import {
@@ -58,10 +59,19 @@ import { useChatCanvas } from "./chat-canvas.ts";
 import { useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
-import { AttachmentLoaderContext, useAttachmentLoader } from "./attachment-media.tsx";
+import {
+  AttachmentLoaderContext,
+  AttachmentPanelContext,
+  useAttachmentLoader,
+} from "./attachment-media.tsx";
 import { inlineSkillTokens } from "../../lib/composer-trigger.ts";
 import { useAgentSkills } from "./agent-skills.ts";
-import { FILE_PANEL, openFilePanel } from "./file-panel-route.ts";
+import {
+  ATTACHMENT_PANEL,
+  attachmentResource,
+  FILE_PANEL,
+  openFilePanel,
+} from "./file-panel-route.ts";
 import { detailsKey, lanePadding, laneInsetBesideCard } from "./thread-details.tsx";
 import { TimelineView } from "./timeline.tsx";
 
@@ -532,6 +542,19 @@ export function ThreadView(props: {
 
   // Attachments of sent messages, read back from the node once each.
   const loadAttachment = useAttachmentLoader(target);
+  // A sent message's file opens in the right panel (D1435), as T3's does.
+  const rightPanel = chat.rightPanel;
+  const openAttachment = useMemo(
+    () =>
+      rightPanel === undefined
+        ? undefined
+        : (attachment: StoredAttachment) =>
+            rightPanel.open(
+              { target, threadId },
+              { kind: ATTACHMENT_PANEL, resource: attachmentResource(attachment) },
+            ),
+    [rightPanel, target, threadId],
+  );
 
   const shownError = openError ?? error;
   // The lane moves left of the inline details card while it shows (T3's chat canvas, D1350).
@@ -729,6 +752,7 @@ export function ThreadView(props: {
                 </div>
               ) : (
                 <AttachmentLoaderContext.Provider value={loadAttachment}>
+                  <AttachmentPanelContext value={openAttachment}>
                   <TimelineView
                     extension={
                       thread === undefined
@@ -804,6 +828,7 @@ export function ThreadView(props: {
                       catalog?.threads.find((candidate) => candidate.id === id)?.title
                     }
                   />
+                  </AttachmentPanelContext>
                 </AttachmentLoaderContext.Provider>
               )}
             </div>

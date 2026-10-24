@@ -21,6 +21,7 @@ import {
   cn,
 } from "@jhin/ui";
 import {
+  Table2Icon,
   CheckIcon,
   ChevronRightIcon,
   Code2Icon,
@@ -34,6 +35,8 @@ import {
   XIcon,
 } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+
+import { DelimitedTablePreview, filePreviewDelimiter } from "./delimited-table.tsx";
 
 import { formatAttachmentSize } from "../../lib/attachment-files.ts";
 import {
@@ -179,8 +182,9 @@ export function FileSurfaceFailure(props: {
   );
 }
 
-function renderedToggleLabel(mode: "markdown" | "html", rendered: boolean): string {
+function renderedToggleLabel(mode: "markdown" | "html" | "table", rendered: boolean): string {
   if (mode === "markdown") return rendered ? "Show markdown source" : "Show rendered markdown";
+  if (mode === "table") return rendered ? "Show source" : "Show table";
   return rendered ? "Show HTML source" : "Show rendered page";
 }
 
@@ -295,7 +299,10 @@ export function AttachmentFilePreview(
 ) {
   const chat = useChat();
   const kind = filePreviewKind(props);
-  const renderedMode = kind === "markdown" ? "markdown" : kind === "html" ? "html" : null;
+  // T3's table of a CSV or TSV file, its source a toggle away (D1436).
+  const delimiter = kind === "text" ? filePreviewDelimiter(props) : null;
+  const renderedMode =
+    kind === "markdown" ? "markdown" : kind === "html" ? "html" : delimiter ? "table" : null;
   const [rendered, setRendered] = useState(true);
   const [revision, setRevision] = useState(0);
   const [content, setContent] = useState<{ text: string; truncated: boolean } | null>(null);
@@ -338,7 +345,11 @@ export function AttachmentFilePreview(
   const [mediaError, setMediaError] = useState<string | null>(null);
   const shownFailure = failure ?? mediaError;
   const showsRawText =
-    shownFailure === null && needsText && content !== null && !(kind === "markdown" && rendered);
+    shownFailure === null &&
+    needsText &&
+    content !== null &&
+    !(kind === "markdown" && rendered) &&
+    !(delimiter !== null && rendered);
   const canSave =
     props.file !== undefined || (props.stored !== undefined && props.loader !== undefined);
 
@@ -378,6 +389,8 @@ export function AttachmentFilePreview(
   ) : needsText ? (
     content === null ? (
       <FileSurfaceLoading />
+    ) : delimiter !== null && rendered ? (
+      <DelimitedTablePreview delimiter={delimiter} name={props.name} text={content.text} />
     ) : kind === "markdown" && rendered ? (
       <ScrollArea className="min-h-0 flex-1">
         <MessageText className="mx-auto max-w-4xl px-6 py-5" text={content.text} />
@@ -472,7 +485,13 @@ export function AttachmentFilePreview(
             onPress={() => setRendered((value) => !value)}
             pressed={rendered}
           >
-            {rendered ? <Code2Icon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
+            {rendered ? (
+              <Code2Icon className="size-3.5" />
+            ) : renderedMode === "table" ? (
+              <Table2Icon className="size-3.5" />
+            ) : (
+              <EyeIcon className="size-3.5" />
+            )}
           </FileSurfaceAction>
         ) : null}
         {showsRawText ? (

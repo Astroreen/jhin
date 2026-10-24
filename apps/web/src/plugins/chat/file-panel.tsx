@@ -7,6 +7,7 @@
 // loaded when the panel first opens. The file is read through `projects.read-file`.
 import type { NodeTarget } from "@jhin/client-api";
 import { targetKey } from "@jhin/client-api";
+import type { StoredAttachment } from "@jhin/agent-api";
 import type { EditorInfo } from "@jhin/host-api";
 import {
   Button,
@@ -37,6 +38,7 @@ import {
   FileSurfaceLoading,
 } from "./attachment-preview.tsx";
 import { FileExplorer } from "./file-explorer.tsx";
+import { useAttachmentLoader } from "./attachment-media.tsx";
 import { basename } from "./file-chips.tsx";
 import { revealKey } from "./file-panel-route.ts";
 import { isTooLarge, type PreviewFile, readPreviewFile } from "./preview-file.ts";
@@ -142,6 +144,26 @@ function OpenInEditor(props: { target: NodeTarget; projectId: string; path: stri
         </MenuPopup>
       </Menu>
     </div>
+  );
+}
+
+/** A sent message's file as a surface of the right panel (D1435), T3's `attachment:<id>`. */
+export function AttachmentPanel(props: {
+  readonly target: NodeTarget;
+  readonly attachment: StoredAttachment;
+}) {
+  const loader = useAttachmentLoader(props.target);
+  return (
+    <section aria-label="File preview" className="flex min-h-0 flex-1 flex-col" data-file-panel>
+      <AttachmentFilePreview
+        loader={loader}
+        mimeType={props.attachment.mimeType}
+        name={props.attachment.name}
+        origin="Attachment"
+        sizeBytes={props.attachment.sizeBytes}
+        stored={props.attachment}
+      />
+    </section>
   );
 }
 

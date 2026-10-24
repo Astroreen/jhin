@@ -2462,6 +2462,26 @@ panel and devices are in `terminal.md`, `source-control.md` and
   sheet closes the panel, and it cannot be maximized. It is also the diff's
   pop-out mode of `source-control.md`'s Deferred (D1433).
 
+- **D1435. A message's file opens in the right panel,** as T3's
+  `openAttachment`, where D854 opened a dialog: pressing a sent message's
+  file opens it as a surface `attachment:<id>` (its size, type and name in
+  the resource, so a reload shows it again), with D854's preview and
+  "Attachment" as its breadcrumb; its tab is its name and icon. A
+  composer's file keeps D854's dialog, as in T3, and so does a client
+  without `ui.right-panel@1`.
+- **D1436. T3's table of a CSV or TSV file:** a file named `.csv` or
+  `.tsv`, or typed `text/csv` or `text/tab-separated-values` (T3's
+  `filePreviewDelimiter`), shows as a table, its first row the header, at
+  most 100 rows and 30 columns of 2000 characters with T3's notice "Table
+  limited to the first 100 rows and 30 columns. Switch to source for the
+  rest."; "Show source" / "Show table" switch, as T3's
+  `parseDelimitedPreview` and `DelimitedTablePreview` do. It is so in the
+  file panel, a message's file and the composer's dialog alike.
+- **D1437. A file's text shows through T3's virtualizer,** `@pierre/diffs`'
+  `Virtualizer`, so only the rows in view are in the page, the first MiB of
+  a larger file as before (D1003's notice); a revealed line far down
+  (D1430) is scrolled to by where the virtualizer puts it.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -2517,8 +2537,7 @@ panel and devices are in `terminal.md`, `source-control.md` and
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's captured window context on screenshots (D1013: with
-  the desktop SnapShot, `desktop.md` D510); T3's right-hand file panel for a message's file (D854 opens a dialog), its table
-  preview of CSV and TSV, and its virtualized preview of text past 1 MiB; a bound on the page's cache
+  the desktop SnapShot, `desktop.md` D510); a bound on the page's cache
   of attachment bytes (a video is read whole to show its first frame, D855). A live Claude Code session starts again
   when a turn's attachments add their folder to `additionalDirectories`.
 - Thread history (W2, D220–D228): Claude Code rewinds and forks its own

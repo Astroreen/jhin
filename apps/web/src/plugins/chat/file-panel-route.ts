@@ -87,3 +87,38 @@ export function createFileReveals(): FileReveals {
     },
   };
 }
+
+/** The route's `panel` while the right panel shows a message's file (D1435). */
+export const ATTACHMENT_PANEL = "attachment";
+
+/** A message's file as its surface's resource: its id, size and type, then its name. */
+export function attachmentResource(attachment: {
+  readonly id: string;
+  readonly name: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number;
+}): string {
+  return [attachment.id, String(attachment.sizeBytes), attachment.mimeType, attachment.name]
+    .map(encodeURIComponent)
+    .join(":");
+}
+
+export function parseAttachmentResource(
+  resource: string,
+): { kind: "file"; id: string; name: string; mimeType: string; sizeBytes: number } | undefined {
+  const parts = resource.split(":");
+  if (parts.length !== 4) return undefined;
+  try {
+    const [id, size, mimeType, name] = parts.map(decodeURIComponent) as [
+      string,
+      string,
+      string,
+      string,
+    ];
+    const sizeBytes = Number(size);
+    if (id === "" || !Number.isSafeInteger(sizeBytes) || sizeBytes < 0) return undefined;
+    return { kind: "file", id, name, mimeType, sizeBytes };
+  } catch {
+    return undefined;
+  }
+}
