@@ -534,7 +534,10 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   secrets instead of repository ones: then a run that publishes waits for
   a reviewer before any job gets a secret or the token that writes
   releases, and a workflow dispatched from another branch cannot reach
-  them. The workflow's expressions are unchanged otherwise (D945 still
+  them. The reviewer approves twice per publishing run: once for the six
+  build jobs, which wait on `release` together and are approved in one
+  "Review deployments" dialog, and once for the release job when the builds
+  are done. The workflow's expressions are unchanged otherwise (D945 still
   hands secrets to publishing runs only); until the owner creates the
   environment, GitHub creates it without protection on the first
   publishing run, and the repository's secrets keep working.
@@ -555,7 +558,9 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   files it ran for. The web client and the other packages' sources change
   in most pull requests, and a dry run builds six installers, so they are
   proven by a scheduled dry run of `main` every Monday (04:00 UTC) instead,
-  which builds as a release would and publishes nothing.
+  which builds as a release would and publishes nothing. The app installs
+  nearly every workspace package (the CLI's distribution), so the manifest
+  filter names them all rather than a list that would drift.
 
 - **D1485. Packaging checks what it installed, as `pnpm pack:smoke`
   does.** `scripts/package-desktop.ts` prints the third-party packages the
@@ -595,6 +600,9 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   deployment limits and the signing secrets moved into it are repository
   settings, the owner's to make; until then a publishing run creates it
   unprotected and uses the repository's secrets.
+- A notice when the weekly dry run fails (D1484): GitHub mails only the
+  user who last changed the schedule, and disables a schedule after 60 days
+  without activity in the repository.
 - Pinning the other workflows' actions (`ci.yml`, `claude.yml`,
   `claude-review.yml`) to commit SHAs, and a Dependabot configuration that
   proposes the pins' updates (D1483 pins the release path only).
