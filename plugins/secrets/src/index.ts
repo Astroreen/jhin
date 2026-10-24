@@ -102,6 +102,9 @@ export default definePlugin({
       hasRef: (ref) => store.hasRef(ref),
       consumeRef: (input) => store.consumeRef(input),
       getOrCreateRandom: (name, bytes) => store.getOrCreateRandom(name, bytes),
+      putSecret: (name, value) => store.putSecret(name, value),
+      getSecret: (name) => store.getSecret(name),
+      deleteSecret: (name) => store.deleteSecret(name),
     };
     context.services.provide(SECRETS_STORE_CAPABILITY, capability);
 

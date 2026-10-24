@@ -499,6 +499,143 @@ describe("jhin.scheduler: webhooks", () => {
   });
 });
 
+/** A `secrets.store@1.2` in memory: its named secrets, and whether it can be read. */
+function memorySecrets() {
+  const named = new Map<string, string>();
+  const store = {
+    named,
+    readable: true,
+    putSecret(name: string, value: string) {
+      if (!store.readable) throw new Error("The secret store could not be opened.");
+      named.set(name, value);
+    },
+    getSecret(name: string) {
+      if (!store.readable) throw new Error("The secret store could not be opened.");
+      return named.get(name);
+    },
+    deleteSecret(name: string) {
+      if (!store.readable) throw new Error("The secret store could not be opened.");
+      named.delete(name);
+    },
+  };
+  return store;
+}
+
+describe("jhin.scheduler: signing secrets in the secret store (D1512)", () => {
+  const signature = { header: "x-hub-signature-256", encoding: "hex", prefix: "sha256=" };
+  const body = JSON.stringify({ release: { tag_name: "v4" } });
+  const signed = (url: string, secret: string) =>
+    post(url, body, { "x-hub-signature-256": githubSignature(secret, body) });
+
+  it("keeps a task's secret in the store, storage.kv only that it has one", async () => {
+    const secrets = memorySecrets();
+    const { client, storage, task } = await node({ http: true, secrets });
+    const created = await webhookTask(client, {
+      schedule: { type: "webhook", signature: { ...signature, secret: "s3cret" } },
+    });
+    const name = `jhin.scheduler/webhook/${created.id}`;
+    expect(secrets.named.get(name)).toBe("s3cret");
+    expect(created.webhook.hasSecret).toBe(true);
+    const kept = await storage.kv.get("jhin.scheduler", `task/${created.id}`);
+    expect(JSON.stringify(kept)).not.toContain("s3cret");
+    expect((await signed(created.webhook.url!, "wrong")).status).toBe(401);
+    expect((await signed(created.webhook.url!, "s3cret")).status).toBe(202);
+    await task((t) => t.id === created.id && t.runCount === 1);
+
+    // An update without a secret keeps it; a new one replaces it in the store.
+    await client.call("scheduler.tasks.update", {
+      id: created.id,
+      schedule: { type: "webhook", signature },
+    });
+    expect(secrets.named.get(name)).toBe("s3cret");
+    await client.call("scheduler.tasks.update", {
+      id: created.id,
+      schedule: { type: "webhook", signature: { ...signature, secret: "n3w" } },
+    });
+    expect(secrets.named.get(name)).toBe("n3w");
+    expect((await signed(created.webhook.url!, "n3w")).status).toBe(202);
+
+    // A signature removed takes the secret with it, and so does deleting the task.
+    const unsigned = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      schedule: { type: "webhook", signature: null },
+    });
+    expect(unsigned.webhook?.hasSecret).toBe(false);
+    expect(secrets.named.has(name)).toBe(false);
+    const other = await webhookTask(client, {
+      schedule: { type: "webhook", signature: { ...signature, secret: "other" } },
+    });
+    expect(secrets.named.has(`jhin.scheduler/webhook/${other.id}`)).toBe(true);
+    await client.call("scheduler.tasks.delete", { id: other.id });
+    expect(secrets.named.has(`jhin.scheduler/webhook/${other.id}`)).toBe(false);
+  });
+
+  it("answers 503 for a signed delivery whose secret cannot be read, and logs none", async () => {
+    const secrets = memorySecrets();
+    const { client } = await node({ http: true, secrets });
+    const created = await webhookTask(client, {
+      schedule: { type: "webhook", signature: { ...signature, secret: "s3cret" } },
+    });
+    secrets.readable = false;
+    const refused = await signed(created.webhook.url!, "s3cret");
+    expect(refused.status).toBe(503);
+    expect(await refused.json()).toEqual({
+      error: "secret_unreadable",
+      message: "The webhook's signing secret cannot be read.",
+    });
+    // A store that is open again but lost the secret answers the same.
+    secrets.readable = true;
+    secrets.named.clear();
+    expect((await signed(created.webhook.url!, "s3cret")).status).toBe(503);
+    const { deliveries } = await client.call<{ deliveries: DeliverySummary[] }>(
+      "scheduler.deliveries.list",
+      { id: created.id },
+    );
+    expect(deliveries).toEqual([]);
+  });
+
+  it("moves the secrets storage.kv holds into the store on activation", async () => {
+    // A node without the store keeps the secret in storage.kv (D386).
+    const first = await node({ http: true });
+    const created = await webhookTask(first.client, {
+      schedule: { type: "webhook", signature: { ...signature, secret: "s3cret" } },
+    });
+    const key = `task/${created.id}`;
+    expect(JSON.stringify(await first.storage.kv.get("jhin.scheduler", key))).toContain("s3cret");
+    await first.stop();
+
+    // A store that cannot be read leaves it there: deliveries still check it.
+    const unreadable = memorySecrets();
+    unreadable.readable = false;
+    const second = await node({ storage: first.storage, http: true, secrets: unreadable });
+    const url = (await second.client.call<ScheduledTask>("scheduler.tasks.get", { id: created.id }))
+      .webhook!.url!;
+    expect((await signed(url, "s3cret")).status).toBe(202);
+    await second.task((t) => t.id === created.id && t.runCount === 1);
+    expect(JSON.stringify(await first.storage.kv.get("jhin.scheduler", key))).toContain("s3cret");
+    await second.stop();
+
+    const secrets = memorySecrets();
+    const head = await first.storage.log.head("scheduler");
+    const third = await node({ storage: first.storage, http: true, secrets });
+    await third.until(
+      "scheduler",
+      (event) =>
+        event.sequence > head &&
+        event.type === "scheduler.task.updated" &&
+        (event.payload as ScheduledTask).id === created.id,
+    );
+    expect(secrets.named.get(`jhin.scheduler/webhook/${created.id}`)).toBe("s3cret");
+    const moved = await first.storage.kv.get("jhin.scheduler", key);
+    expect(JSON.stringify(moved)).not.toContain("s3cret");
+    const thirdUrl = (
+      await third.client.call<ScheduledTask>("scheduler.tasks.get", { id: created.id })
+    ).webhook!;
+    expect(thirdUrl.hasSecret).toBe(true);
+    expect((await signed(thirdUrl.url!, "s3cret")).status).toBe(202);
+  });
+});
+
 describe("jhin.scheduler: webhook prompts", () => {
   const request = {
     method: "POST",
