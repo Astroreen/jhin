@@ -112,7 +112,7 @@ test("an exited shell closes its tab, as in T3", async ({ page }) => {
   await expect(drawer).toBeHidden();
 });
 
-test("D472–D474: the selection menu adds to the chat, and the terminals move to the right panel", async ({
+test("D472, D473, D1425: the selection menu adds to the chat, and the right panel has terminals of its own", async ({
   page,
 }, info) => {
   await startThread(page, "terminal menus");
@@ -144,19 +144,35 @@ test("D472–D474: the selection menu adds to the chat, and the terminals move t
   await info.attach("terminal-chip", { path: chipShot, contentType: "image/png" });
   await page.keyboard.press("Escape");
 
-  // The right panel's "Terminal" surface shows the thread's terminals right of the chat (D1424).
-  await openSurface(page, "Terminal");
+  // The right panel's "Terminal" starts a terminal of its own beside the drawer's (D1425).
+  const right = await openSurface(page, "Terminal");
   const panel = page.locator('[data-terminal-owner="right-panel"]');
-  await expect(
-    panel.getByRole("group", { name: "Terminal 1" }).locator(".xterm-rows"),
-  ).toContainText("menu-42");
+  const second = panel.getByRole("group", { name: "Terminal 2" });
+  await expect(second.locator(".xterm-rows")).toContainText("$");
+  await expect(right.getByRole("tab", { name: "Terminal 2" })).toBeVisible();
+  await page.keyboard.type("echo panel-$((3*3))");
+  await page.keyboard.press("Enter");
+  await expect(second.locator(".xterm-rows")).toContainText("panel-9");
+  // The drawer keeps its own, beside it.
+  await expect(drawer.getByRole("group", { name: "Terminal 1" })).toBeVisible();
+  await expect(drawer.getByRole("group", { name: "Terminal 2" })).toHaveCount(0);
   const panelShot = info.outputPath("terminal-right-panel.png");
   await page.screenshot({ path: panelShot });
   await info.attach("terminal-right-panel", { path: panelShot, contentType: "image/png" });
 
-  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  // Closing its tab closes its terminal, after T3's question.
+  await right.getByRole("button", { name: "Close Terminal 2" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText('Close terminal "Terminal 2"?');
+  await confirm.getByRole("button", { name: "Close" }).click();
   await expect(panel).toHaveCount(0);
+  await expect(right).toBeHidden();
   await expect(drawer.getByRole("group", { name: "Terminal 1" })).toBeVisible();
+  const threadId = decodeURIComponent(/[#&]t=([^&]+)/.exec(page.url())![1]!);
+  const { terminals } = await node
+    .client()
+    .call<{ terminals: { terminalId: string }[] }>("terminals.list", { threadId });
+  expect(terminals.map((item) => item.terminalId)).toEqual(["term-1"]);
 });
 
 test("D965: a path in the output opens in the editor, or says why not", async ({ page }) => {
