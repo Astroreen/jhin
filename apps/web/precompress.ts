@@ -27,35 +27,34 @@ async function* files(dir: string): AsyncGenerator<string> {
  */
 export async function precompressDir(dir: string): Promise<string[]> {
   const written: string[] = [];
-  const work: Promise<void>[] = [];
-  for await (const file of files(dir)) {
-    if (!COMPRESSIBLE.has(Path.extname(file))) continue;
-    work.push(
-      (async () => {
-        const body = await Fs.readFile(file);
-        if (body.length < MIN_BYTES) return;
-        const [br, gz] = await Promise.all([
-          brotli(body, {
-            params: {
-              [Zlib.constants.BROTLI_PARAM_QUALITY]: 11,
-              [Zlib.constants.BROTLI_PARAM_MODE]: Zlib.constants.BROTLI_MODE_TEXT,
-              [Zlib.constants.BROTLI_PARAM_SIZE_HINT]: body.length,
-            },
-          }),
-          gzip(body, { level: 9 }),
-        ]);
-        for (const [extension, compressed] of [
-          [".br", br],
-          [".gz", gz],
-        ] as const) {
-          if (compressed.length >= body.length) continue;
-          await Fs.writeFile(`${file}${extension}`, compressed);
-          written.push(`${file}${extension}`);
-        }
-      })(),
-    );
-  }
-  await Promise.all(work);
+  const queue: string[] = [];
+  for await (const file of files(dir)) if (COMPRESSIBLE.has(Path.extname(file))) queue.push(file);
+  // A few at a time: brotli 11 over the whole of dist/ at once would hold it all in memory.
+  const worker = async () => {
+    for (let file = queue.pop(); file !== undefined; file = queue.pop()) {
+      const body = await Fs.readFile(file);
+      if (body.length < MIN_BYTES) continue;
+      const [br, gz] = await Promise.all([
+        brotli(body, {
+          params: {
+            [Zlib.constants.BROTLI_PARAM_QUALITY]: 11,
+            [Zlib.constants.BROTLI_PARAM_MODE]: Zlib.constants.BROTLI_MODE_TEXT,
+            [Zlib.constants.BROTLI_PARAM_SIZE_HINT]: body.length,
+          },
+        }),
+        gzip(body, { level: 9 }),
+      ]);
+      for (const [extension, compressed] of [
+        [".br", br],
+        [".gz", gz],
+      ] as const) {
+        if (compressed.length >= body.length) continue;
+        await Fs.writeFile(`${file}${extension}`, compressed);
+        written.push(`${file}${extension}`);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
   return written.toSorted();
 }
 
@@ -68,7 +67,8 @@ export function precompress(): Plugin {
     configResolved(config) {
       outDir = Path.resolve(config.root, config.build.outDir);
     },
-    async closeBundle() {
+    // After the bundle is written, which a failed build never reaches.
+    async writeBundle() {
       await precompressDir(outDir);
     },
   };

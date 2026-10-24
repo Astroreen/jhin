@@ -51,6 +51,8 @@ function clientPlugin(): HostPlugin {
 }
 
 const kernels: TestKernel[] = [];
+/** The `dist/` of the node started last. */
+let dist = "";
 afterEach(async () => {
   for (const kernel of kernels.splice(0)) await kernel.stop();
 });
@@ -64,7 +66,10 @@ async function startNode(webUiConfig: Record<string, unknown> = {}): Promise<str
       { manifest: manifest("web-ui"), definition: webUi },
     ],
     config: {
-      node: { "jhin.http": { port: 0 }, "jhin.web-ui": { dir: webDist(), ...webUiConfig } },
+      node: {
+        "jhin.http": { port: 0 },
+        "jhin.web-ui": { dir: (dist = webDist()), ...webUiConfig },
+      },
     },
   });
   kernels.push(kernel);
@@ -183,6 +188,17 @@ describe("jhin.web-ui compression (loading.md D1582–D1586)", () => {
     expect(head.raw.length).toBe(0);
     expect(head.headers["content-encoding"]).toBe("gzip");
     expect(Number(head.headers["content-length"])).toBe(Zlib.gzipSync(INDEX).length);
+  });
+
+  it("skips a sibling older than its file", async () => {
+    const url = await startNode();
+    const file = Path.join(dist, "index.html");
+    Fs.writeFileSync(file, `${INDEX}<!-- edited -->`);
+    const later = new Date(Fs.statSync(`${file}.br`).mtimeMs + 10_000);
+    Fs.utimesSync(file, later, later);
+    const page = await request(`${url}/`, { "accept-encoding": "br, gzip" });
+    expect(page.headers["content-encoding"]).toBeUndefined();
+    expect(page.text).toBe(`${INDEX}<!-- edited -->`);
   });
 
   it("compresses client plugin files and /client JSON on the fly, never the event stream", async () => {

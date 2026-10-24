@@ -94,10 +94,19 @@ export default definePlugin({
     const index = Path.join(dir, "index.html");
     const compression = () =>
       context.config.get<z.output<typeof Config>>("jhin.web-ui").compression !== false;
-    /** The compressed siblings the build wrote next to `file` (D1582). */
+    /**
+     * The compressed siblings the build wrote next to `file` (D1582) and their
+     * sizes. One older than the file is stale (a `dir` edited by hand) and skipped.
+     */
     const SIBLING: Record<Coding, string> = { br: ".br", gzip: ".gz" };
-    const siblings = (file: string): Coding[] =>
-      (["br", "gzip"] as const).filter((coding) => Fs.existsSync(`${file}${SIBLING[coding]}`));
+    const siblings = (file: string, source: Fs.Stats): Map<Coding, number> => {
+      const found = new Map<Coding, number>();
+      for (const coding of ["br", "gzip"] as const) {
+        const stat = Fs.statSync(`${file}${SIBLING[coding]}`, { throwIfNoEntry: false });
+        if (stat?.isFile() === true && stat.mtimeMs >= source.mtimeMs) found.set(coding, stat.size);
+      }
+      return found;
+    };
     /**
      * The headers every response of a no-cache body shares, and whether the
      * request already holds it (D1585): then it gets `304` and no body.
@@ -151,12 +160,11 @@ export default definePlugin({
       // Also on a plain body: a cache in between must not hand it a compressed one (D1583).
       if (zipped) headers["vary"] = "accept-encoding";
       if (!hashed && validated(request, response, headers, fileTag(stat))) return;
-      const coding = zipped
-        ? negotiate(request.headers["accept-encoding"], siblings(target))
-        : undefined;
+      const available = zipped ? siblings(target, stat) : new Map<Coding, number>();
+      const coding = negotiate(request.headers["accept-encoding"], [...available.keys()]);
       const body = coding === undefined ? target : `${target}${SIBLING[coding]}`;
       if (coding !== undefined) headers["content-encoding"] = coding;
-      headers["content-length"] = coding === undefined ? stat.size : Fs.statSync(body).size;
+      headers["content-length"] = coding === undefined ? stat.size : available.get(coding)!;
       response.writeHead(200, headers);
       if (request.method === "HEAD") response.end();
       else Fs.createReadStream(body).pipe(response);
