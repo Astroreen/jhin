@@ -2918,3 +2918,5 @@ Each workstream lists its PRs here as they merge.
   refocus of a thread of another node on its own node (`refocus.follow`),
   `missions.stop` on every node, and a lead on another node running the
   orchestrator (`missions.orchestration.record`) (D1541–D1545).
+- M2 #301: `teams.up` takes a member that moved off its old node
+  (`teams.leave`), at once or once that node is back (D1546).
