@@ -14,7 +14,7 @@ import {
 import type { StoredEvent } from "@jhin/storage-api";
 import { createMemoryStorage, type EventLog } from "@jhin/storage-api";
 
-import { createMemoryNetwork, createMesh, type Mesh } from "../src/index.ts";
+import { createMemoryNetwork, createMesh, meshStreams, type Mesh } from "../src/index.ts";
 
 type Network = ReturnType<typeof createMemoryNetwork>;
 
@@ -766,6 +766,51 @@ describe("relays (D499)", () => {
       "after",
     ]);
     expect(relay.events.map((event) => event.sequence)).toEqual([100, 101, 102]);
+  });
+
+  it("lets a plugin follow a member's shared stream, and lists the members (M1, D1522)", async () => {
+    const { network, a, c } = await relayChain();
+    const streams = meshStreams(a.mesh);
+    expect(
+      streams
+        .members()
+        .map((member) => [member.nodeId, member.reachable])
+        .toSorted(),
+    ).toEqual([
+      ["b", true],
+      ["c", true],
+    ]);
+    await c.log.append("missions", [{ type: "missions.mission.created", payload: 1 }]);
+    const sharing = c.mesh.share("missions");
+    const events: StoredEvent[] = [];
+    let arrived!: () => void;
+    const second = new Promise<void>((resolve) => (arrived = resolve));
+    const followed = streams.follow("c", "missions", 0, (event) => {
+      events.push(event as StoredEvent);
+      if (events.length === 2) arrived();
+    });
+    expect(await followed.ready).toBe(1);
+    await c.log.append("missions", [{ type: "missions.mission.updated", payload: 2 }]);
+    await second;
+    expect(events.map((event) => [event.sequence, event.type])).toEqual([
+      [1, "missions.mission.created"],
+      [2, "missions.mission.updated"],
+    ]);
+    followed.dispose();
+    sharing.dispose();
+    // Unshared, a new follower is refused as a relay is.
+    await expect(streams.follow("c", "missions", 0, () => {}).ready).rejects.toMatchObject({
+      code: "STREAM_NOT_SHARED",
+    });
+    // A member out of reach is heard of, and listed so.
+    let heard!: () => void;
+    const unreachable = new Promise<void>((resolve) => (heard = resolve));
+    const hearing = streams.onChange(() => {
+      if (streams.members().some((member) => member.nodeId === "c" && !member.reachable)) heard();
+    });
+    network.down(c.address);
+    await unreachable;
+    hearing.dispose();
   });
 });
 

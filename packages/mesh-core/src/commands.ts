@@ -1,4 +1,10 @@
-import { RELAY_PREFIX, parseRelayStream } from "@jhin/mesh-api";
+import {
+  RELAY_PREFIX,
+  parseRelayStream,
+  relayStream,
+  type FollowedMemberStream,
+  type MeshStreams,
+} from "@jhin/mesh-api";
 import type { LiveStreams } from "@jhin/rpc";
 import { z, type CommandDefinition } from "@jhin/sdk";
 
@@ -53,4 +59,33 @@ export function serveRelays(mesh: Mesh, live: Pick<LiveStreams, "serve" | "sourc
       return ["mesh.call", ...needs];
     },
   });
+}
+
+/**
+ * `mesh.streams@1.1` as `jhin.mesh` provides it (D501, D1522): sharing, and
+ * the relays of `mesh` used in process, so a plugin follows a member's stream
+ * the way a relay passes it to a client. The owner of the stream applies its
+ * member grants; nothing is stored here.
+ */
+export function meshStreams(mesh: Mesh): Required<MeshStreams> {
+  return {
+    share: (name) => mesh.share(name),
+    follow(node, stream, after, listener, onEnd): FollowedMemberStream {
+      if (mesh.relays.follow === undefined) {
+        return { ready: Promise.reject(new Error("This mesh has no relays")), dispose: () => {} };
+      }
+      const followed = mesh.relays.follow(relayStream(node, stream), after, listener, (error) =>
+        onEnd?.(error),
+      );
+      // Nobody may be waiting on `ready` (a follower disposed before it attached).
+      followed.ready.catch(() => undefined);
+      return followed;
+    },
+    members: () =>
+      mesh
+        .members()
+        .filter((member) => !member.self)
+        .map((member) => ({ nodeId: member.record.nodeId, reachable: member.reachable })),
+    onChange: (listener) => mesh.onChange(listener),
+  };
 }

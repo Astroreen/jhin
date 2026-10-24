@@ -587,7 +587,11 @@ describe("messages across the mesh (D623)", () => {
     for (const stop of stops.splice(0)) await stop();
   });
 
-  const meshNode = async (network: ReturnType<typeof createMemoryNetwork>, id: string) => {
+  const meshNode = async (
+    network: ReturnType<typeof createMemoryNetwork>,
+    id: string,
+    gate?: (request: TurnRequest) => Promise<void>,
+  ) => {
     const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), `jhin-messages-${id}-`));
     const requests: TurnRequest[] = [];
     const started = await startMeshNode(network, id, {
@@ -607,7 +611,10 @@ describe("messages across the mesh (D623)", () => {
         }),
         mockCapability("host.identity", { nodeId: id }),
         { manifest: manifest("threads"), definition: threads },
-        captureRuntime(requests, { answer: (request) => `${id} says ok to ${request.threadId}` }),
+        captureRuntime(requests, {
+          answer: (request) => `${id} says ok to ${request.threadId}`,
+          ...(gate === undefined ? {} : { gate }),
+        }),
         { manifest: manifest("agents"), definition: agents },
       ],
     });
@@ -679,5 +686,132 @@ describe("messages across the mesh (D623)", () => {
     })) as { message: AgentMessage; delivery?: MessageDelivery };
     expect(reply.delivery).toMatchObject({ nodeId: "b", threadId: asked.delivery!.threadId });
     expect(reply.message).toMatchObject({ from: "jhin://a/owner", kind: "answer" });
+  });
+  it("joins the owner's conversation with an agent of another node, whose answer is recorded there (M1, D1521, D1523, D1524)", async () => {
+    const network = createMemoryNetwork();
+    let replyItself: ((threadId: string) => Promise<unknown>) | undefined;
+    const a = await meshNode(network, "a");
+    const b = await meshNode(network, "b", async (request) => {
+      if (request.input.text.includes("Reply.")) await replyItself?.(request.threadId);
+    });
+    await b.node.join(a.node);
+    const asBuilder = (threadId: string) => ({
+      caller: { id: "jhin.agent-claude:b", permissions: ["agents.message"] },
+      threadId,
+    });
+    replyItself = (threadId) =>
+      b.node.kernel.commands.execute(
+        "agents.send",
+        { to: "jhin://a/owner", body: "My own answer", inReplyTo: "owner-reply" },
+        asBuilder(threadId),
+      );
+    const { client } = a.node.connect();
+    // b's messages are read from a through its relay (D1521).
+    const { stream } = await client.call<{ stream: string }>("mesh.relay", {
+      node: "b",
+      stream: MESSAGES_STREAM,
+    });
+    expect(stream).toBe("relay/b/agents/messages");
+    const there = watch(client, stream);
+    const here = watch(client, MESSAGES_STREAM);
+    const answeredThere = (messageId: string) =>
+      there.untilMatch(
+        (event) =>
+          event.type === MessageEvents.answered &&
+          (event.payload as { messageId?: string }).messageId === messageId,
+      );
+
+    // The owner of a writes to the builder on b: its turn's answer is recorded on b (D1524).
+    const sent = await client.call<Sent>("agents.send", {
+      to: address("builder", "b"),
+      body: "Go on.",
+    });
+    expect(sent.message.from).toBe("jhin://a/owner");
+    const answer = await answeredThere(sent.message.messageId);
+    expect(answer.payload).toMatchObject({ answeredBy: address("builder", "b") });
+    // The builder answers "Reply." itself: delivered on a, remembered on b (D1262).
+    await client.call<Sent>("agents.send", {
+      to: address("builder", "b"),
+      body: "Reply.",
+      messageId: "owner-reply",
+    });
+    const reply = await here.untilMatch(
+      (event) =>
+        event.type === MessageEvents.delivered &&
+        (event.payload as unknown as Sent).message.inReplyTo === "owner-reply",
+    );
+    const last = await client.call<Sent>("agents.send", {
+      to: address("builder", "b"),
+      body: "Last.",
+    });
+    await answeredThere(last.message.messageId);
+    expect(
+      there.events
+        .filter((event) => event.type === MessageEvents.answered)
+        .map((event) => (event.payload as { messageId: string }).messageId),
+    ).toEqual([sent.message.messageId, last.message.messageId]);
+    // The builder asks the owner of a: its inbox item is on a.
+    const escalated = (await b.node.kernel.commands.execute(
+      "agents.ask",
+      { to: "jhin://a/owner", question: "Merge?" },
+      asBuilder(sent.delivery!.threadId),
+    )) as Asked;
+
+    interface Conversation {
+      head: number;
+      owner: string;
+      entries: { message: AgentMessage; answer?: string; answeredBy?: string; inbox?: string }[];
+      elsewhere?: { nodeId: string; head?: number; error?: string };
+    }
+    const joined = await client.call<Conversation>("agents.conversation", {
+      with: address("builder", "b"),
+    });
+    expect(joined.owner).toBe("jhin://a/owner");
+    expect(joined.entries.map((entry) => entry.message.messageId)).toEqual([
+      sent.message.messageId,
+      "owner-reply",
+      (reply.payload as unknown as Sent).message.messageId,
+      last.message.messageId,
+      escalated.message.messageId,
+    ]);
+    expect(joined.entries[0]).toMatchObject({
+      answer: `b says ok to ${sent.delivery!.threadId}`,
+      answeredBy: address("builder", "b"),
+    });
+    expect(joined.entries[4]).toMatchObject({ inbox: "open" });
+    expect(joined.elsewhere).toMatchObject({ nodeId: "b" });
+    expect(joined.elsewhere!.head).toBeGreaterThan(0);
+    // On b, the same command for a's owner gives only b's half, and no further hop.
+    const half = (await b.node.kernel.commands.execute("agents.conversation", {
+      with: address("builder", "b"),
+      owner: "jhin://a/owner",
+    })) as Conversation;
+    expect(half.entries.map((entry) => entry.message.messageId)).toEqual([
+      sent.message.messageId,
+      "owner-reply",
+      last.message.messageId,
+    ]);
+    expect(half.elsewhere).toBeUndefined();
+
+    // b out of reach: a's half comes alone, and says why.
+    await new Promise<void>((resolve) => {
+      const gone = () =>
+        a.node.mesh.members().some((member) => member.record.nodeId === "b" && !member.reachable);
+      const watching = a.node.mesh.onChange(() => {
+        if (!gone()) return;
+        watching.dispose();
+        resolve();
+      });
+      network.down(b.node.address);
+    });
+    const alone = await client.call<Conversation>("agents.conversation", {
+      with: address("builder", "b"),
+    });
+    expect(alone.entries.map((entry) => entry.message.messageId)).toEqual([
+      (reply.payload as unknown as Sent).message.messageId,
+      escalated.message.messageId,
+    ]);
+    expect(alone.elsewhere).toMatchObject({ nodeId: "b" });
+    expect(alone.elsewhere!.error).toBeDefined();
   });
 });
