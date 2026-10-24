@@ -3,7 +3,7 @@ import * as Path from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { lockedPackages, lockedPins, packedManifest } from "./packing.ts";
+import { lockedInstallStrays, lockedPackages, lockedPins, packedManifest } from "./packing.ts";
 
 describe("packedManifest", () => {
   it("applies publishConfig.jhin to jhin and keeps the other publishConfig fields", () => {
@@ -121,5 +121,30 @@ describe("lockedPins", () => {
     const { pins } = lockedPins(lockfile);
     expect(pins.get("zod")).toMatch(/^\d+\.\d+\.\d+$/);
     expect(pins.size).toBeGreaterThan(100);
+  });
+});
+
+describe("lockedInstallStrays", () => {
+  const installed = (keys: readonly string[]) =>
+    `lockfileVersion: '9.0'\n\npackages:\n\n${keys
+      .map((key) => `  '${key}':\n    resolution: {integrity: sha512-x}\n`)
+      .join("\n")}\nsnapshots:\n`;
+
+  it("names third-party versions the workspace lockfile does not have", () => {
+    const strays = lockedInstallStrays(
+      LOCKFILE,
+      installed(["plain@4.0.0", "twice@2.1.0", "plain@4.0.1", "newcomer@1.0.0"]),
+      () => false,
+    );
+    expect(strays).toEqual(["plain@4.0.1", "newcomer@1.0.0"]);
+  });
+
+  it("leaves out the packages installed from their own tarballs", () => {
+    const strays = lockedInstallStrays(
+      LOCKFILE,
+      installed(["@jhin/kernel@file:/tmp/jhin-kernel.tgz", "zero@0.3.1"]),
+      (key) => key.startsWith("@jhin/"),
+    );
+    expect(strays).toEqual([]);
   });
 });
