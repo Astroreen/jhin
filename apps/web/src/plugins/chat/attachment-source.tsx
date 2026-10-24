@@ -4,7 +4,7 @@
 // a chunk of its own; T3's worker pool is left out. A line asked for is shown and tinted as T3's
 // `useFileLineReveal` and `FILE_LINK_REVEAL_UNSAFE_CSS` of apps/web/src/components/files/ do
 // (D1430).
-import { VirtualizedFile, type FileContents, type PostRenderPhase } from "@pierre/diffs";
+import { VirtualizedFile, type PostRenderPhase } from "@pierre/diffs";
 import { File, Virtualizer } from "@pierre/diffs/react";
 import { useRef } from "react";
 
@@ -64,7 +64,7 @@ export function useLineReveal(
   // once per request, by where the virtualizer puts it while its row is not in the page.
   const onPostRender = (
     container: HTMLElement,
-    instance: { file?: FileContents },
+    instance: unknown,
     phase: PostRenderPhase,
   ) => {
     if (phase === "unmount") return;

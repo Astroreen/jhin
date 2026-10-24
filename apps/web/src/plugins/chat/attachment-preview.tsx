@@ -296,7 +296,7 @@ export function AttachmentFilePreview(
     /** A line of its text to show (D1430). */
     readonly reveal?: { readonly line: number; readonly id: number } | undefined;
     /** In place of the read-only source of a whole text: the file panel's editor (D1438). */
-    readonly renderSource?: (source: { text: string; wordWrap: boolean }) => ReactNode;
+    readonly renderSource?: ((source: { text: string; wordWrap: boolean }) => ReactNode) | undefined;
   },
 ) {
   const chat = useChat();
