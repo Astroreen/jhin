@@ -39,6 +39,7 @@
     "@jhin/sdk": "workspace:*"
   },
   "devDependencies": {
+    "@jhin/testing": "workspace:*",
     "@types/node": "catalog:"
   },
   "jhin": {

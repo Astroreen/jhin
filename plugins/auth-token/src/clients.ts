@@ -66,8 +66,8 @@ export interface ClientStore {
 
 /** What repairing an unreadable `clients.json` did (security.md D1518). */
 export interface ClientRepair {
-  /** Where the unreadable file was kept: `<file>.corrupt-<time>`. */
-  readonly moved: string;
+  /** Where the unreadable file was kept: `<file>.corrupt-<time>`; absent when it could not be. */
+  readonly moved?: string;
   /** Why the file did not read whole. */
   readonly error: string;
   /** Records that read on their own and were still valid. */
@@ -76,7 +76,15 @@ export interface ClientRepair {
   readonly unreadable: number;
   /** Records that read but had expired, dropped. */
   readonly expired: number;
+  /**
+   * Why the repair could not be written. Then nothing is accepted, as
+   * before D1518: the unreadable file is moved aside and `kept` is 0.
+   */
+  readonly failed?: string;
 }
+
+/** Where a record starts as the node writes one: `{` and its `id` first. */
+const RECORD_START = /\{\s*"id"\s*:/y;
 
 /**
  * The end (exclusive) of the JSON object that starts at `start` (a `{`),
@@ -131,27 +139,26 @@ function salvageClients(
     for (const candidate of candidates) if (!take(candidate)) unreadable += 1;
     return { kept, unreadable, expired };
   }
-  let read = 0;
   let index = text.indexOf("{");
   while (index >= 0) {
     const end = objectEnd(text, index);
     let next = index + 1;
+    let read = false;
     if (end > 0) {
       try {
         // A record read whole: the search goes on after it, not inside it.
-        if (take(JSON.parse(text.slice(index, end)))) {
-          read += 1;
-          next = end;
-        }
+        read = take(JSON.parse(text.slice(index, end)));
+        if (read) next = end;
       } catch {
         // Not an object on its own: one inside it may be.
       }
     }
+    // An object that starts as a record does (a string's `{"id"` is escaped
+    // in the file, so it never does) but did not read is one lost.
+    RECORD_START.lastIndex = index;
+    if (!read && RECORD_START.test(text)) unreadable += 1;
     index = text.indexOf("{", next);
   }
-  // Every record names its secret's hash: those not read whole did not read.
-  const named = text.split('"secretHash"').length - 1;
-  unreadable = Math.max(0, named - read);
   return { kept, unreadable, expired };
 }
 
@@ -216,11 +223,35 @@ export function createClientStore(
   if (repair !== undefined) {
     // The unreadable file stays beside the new one, as it was; a copy, so the
     // name never replaces one an earlier repair kept.
-    const moved = corruptName(file, clock());
-    Fs.copyFileSync(file, moved, Fs.constants.COPYFILE_EXCL);
-    Fs.chmodSync(moved, 0o600);
-    commit(records);
-    onRepaired({ moved, ...repair });
+    let moved: string | undefined;
+    let failed: string | undefined;
+    try {
+      const target = corruptName(file, clock());
+      Fs.copyFileSync(file, target, Fs.constants.COPYFILE_EXCL);
+      moved = target;
+      Fs.chmodSync(target, 0o600);
+      commit(records);
+    } catch (thrown) {
+      failed = String(thrown);
+    }
+    if (failed !== undefined) {
+      // A repair that cannot be written never stops the node (and its owner
+      // token) from starting: nothing is accepted, and the unreadable file is
+      // moved aside so a later write does not silently replace it.
+      records = [];
+      try {
+        const target = moved ?? corruptName(file, clock());
+        Fs.renameSync(file, target);
+        moved = target;
+      } catch {
+        // It stays where it is; the warning says so by naming no copy.
+      }
+    }
+    onRepaired({
+      ...(moved === undefined ? {} : { moved }),
+      ...repair,
+      ...(failed === undefined ? {} : { kept: 0, failed }),
+    });
   }
 
   return {

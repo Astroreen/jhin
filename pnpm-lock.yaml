@@ -937,6 +937,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
     devDependencies:
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2

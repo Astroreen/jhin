@@ -111,11 +111,16 @@ export default definePlugin({
     // Warned once, with what was kept (security.md D1518).
     const clients = createClientStore(
       Path.join(dataDir, "clients.json"),
-      ({ moved, error, kept, unreadable, expired }) =>
-        context.log.warn(
-          `device tokens were unreadable; repaired from the file itself: kept ${kept}, could not read ${unreadable}`,
-          { moved, error, kept, unreadable, expired },
-        ),
+      ({ moved, error, kept, unreadable, expired, failed }) =>
+        failed === undefined
+          ? context.log.warn(
+              `device tokens were unreadable; repaired from the file itself: kept ${kept}, could not read ${unreadable}`,
+              { moved, error, kept, unreadable, expired },
+            )
+          : context.log.warn(
+              "device tokens unreadable and the repair could not be written; none are accepted until they are issued again",
+              { moved, error, failed, unreadable, expired },
+            ),
     );
     const existing = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8").trim() : "";
     let token: string;

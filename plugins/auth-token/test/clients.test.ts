@@ -2,9 +2,16 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+import type { Logger } from "@jhin/sdk";
+import { createTestKernel, mockCapability } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createClientStore, type ClientRepair } from "../src/clients.ts";
+import auth from "../src/index.ts";
+
+const authManifest = JSON.parse(
+  Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).jhin;
 
 const tempFile = () =>
   Path.join(Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-clients-")), "clients.json");
@@ -189,7 +196,7 @@ describe("repairing an unreadable clients.json from itself (security.md D1518)",
         .map((record) => record.label),
     ).toEqual(["phone"]);
     expect(again).toEqual([]);
-    expect(Fs.readFileSync(reported[0]!.moved, "utf8")).toBe(broken);
+    expect(Fs.readFileSync(reported[0]!.moved!, "utf8")).toBe(broken);
   });
 
   it("finds the records in text that is not JSON any more", () => {
@@ -228,5 +235,94 @@ describe("repairing an unreadable clients.json from itself (security.md D1518)",
     expect(Fs.readFileSync(`${earlier}-1`, "utf8")).toBe("{ nothing left");
     expect(store.verify(phone.token, NOW)).toBeUndefined();
     expect(JSON.parse(Fs.readFileSync(file, "utf8"))).toEqual({ clients: [] });
+  });
+
+  it("never stops the node when the repair cannot be written: nothing is accepted, the file moved aside", () => {
+    const { file, text, phone } = threeTokens();
+    Fs.writeFileSync(file, text.slice(0, -40));
+    // The new file's temporary name is taken by a directory: the write fails.
+    Fs.mkdirSync(`${file}.${process.pid}.tmp`);
+
+    const reported: ClientRepair[] = [];
+    const store = createClientStore(
+      file,
+      (repair) => reported.push(repair),
+      () => NOW,
+    );
+    const moved = `${file}.corrupt-2026-10-24T12-00-00-000Z`;
+    expect(reported).toEqual([
+      {
+        moved,
+        error: expect.any(String),
+        kept: 0,
+        unreadable: 1,
+        expired: 0,
+        failed: expect.stringContaining("EISDIR"),
+      },
+    ]);
+    expect(store.list()).toEqual([]);
+    expect(store.verify(phone.token, NOW)).toBeUndefined();
+    expect(Fs.existsSync(file)).toBe(false);
+    expect(Fs.readFileSync(moved, "utf8")).toBe(text.slice(0, -40));
+  });
+
+  it("counts the records that start as the node writes them but did not read", () => {
+    const { file, text } = threeTokens();
+    // A label that looks like a record is escaped in the file and never counts;
+    // a record cut off before its end does.
+    const store = createClientStore(file);
+    store.issue({
+      label: '{"id": "fake", "secretHash": "x"}',
+      permissions: ["*"],
+      method: "issued",
+      now: NOW - 1000,
+    });
+    const withLabel = Fs.readFileSync(file, "utf8");
+    expect(withLabel.length).toBeGreaterThan(text.length);
+    Fs.writeFileSync(file, withLabel.slice(0, -40));
+
+    const reported: ClientRepair[] = [];
+    createClientStore(
+      file,
+      (repair) => reported.push(repair),
+      () => NOW,
+    );
+    expect(reported).toMatchObject([{ kept: 2, unreadable: 1, expired: 1 }]);
+  });
+
+  it("keeps the node starting when clients.json cannot be repaired", async () => {
+    const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-clients-plugin-"));
+    const dir = Path.join(data, "jhin.auth-token");
+    Fs.mkdirSync(dir, { recursive: true });
+    const file = Path.join(dir, "clients.json");
+    Fs.writeFileSync(file, '{ "clients": [{ "id": 1 }');
+    Fs.mkdirSync(`${file}.${process.pid}.tmp`);
+    const warnings: string[] = [];
+    const logger: Logger = {
+      debug() {},
+      info() {},
+      warn: (message) => void warnings.push(message),
+      error() {},
+      child: () => logger,
+    };
+    const kernel = await createTestKernel({
+      logger,
+      plugins: [
+        mockCapability("host.paths", {
+          home: data,
+          dataDir: (id: string) => Path.join(data, id),
+        }),
+        { manifest: authManifest, definition: auth },
+      ],
+    });
+    try {
+      expect(kernel.inspect().plugins.filter((plugin) => plugin.status !== "active")).toEqual([]);
+      expect(warnings).toContain(
+        "device tokens unreadable and the repair could not be written; none are accepted until they are issued again",
+      );
+      expect(Fs.existsSync(file)).toBe(false);
+    } finally {
+      await kernel.stop();
+    }
   });
 });

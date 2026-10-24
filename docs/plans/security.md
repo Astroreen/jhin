@@ -1054,8 +1054,12 @@ follow the standards they name.
   (mode 0600, renamed into place), keeps the unreadable file beside it
   as `clients.json.corrupt-<time>` (never overwriting an earlier one),
   and warns once in the log with how many records it kept and how many
-  it could not read (in text that is not JSON: the records that name a
-  `secretHash` but did not read whole). A revoked token cannot come back: revoking removes
+  it could not read (in text that is not JSON: the objects that start as
+  the node writes a record, `{` and its `id` first, but did not read; a
+  string's `{"id"` is escaped in the file, so it never counts). A repair
+  that cannot be written (a read-only or full disk) never stops the
+  plugin from activating: no device token is accepted, the unreadable
+  file is moved aside, and the warning says so. A revoked token cannot come back: revoking removes
   its record from the file (D412), so every record the repair keeps was
   live at the last write; a record it cannot read fails closed. No older
   copy is ever read.
