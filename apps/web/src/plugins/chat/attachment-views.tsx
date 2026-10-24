@@ -16,6 +16,7 @@ import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 import { useChat } from "./services.ts";
 import {
   AttachmentLoaderContext,
+  AttachmentPanelContext,
   AttachmentPreviewDialog,
   VideoPreviewDialog,
   useAttachmentUrl,
@@ -148,6 +149,7 @@ function ImageAttachment({ attachment }: { attachment: TurnAttachment }) {
  */
 function FileAttachment({ attachment }: { attachment: StoredAttachment }) {
   const loader = useContext(AttachmentLoaderContext);
+  const openInPanel = useContext(AttachmentPanelContext);
   const theme = useResolvedTheme();
   const [previewing, setPreviewing] = useState(false);
   const chat = useChat();
@@ -181,7 +183,8 @@ function FileAttachment({ attachment }: { attachment: StoredAttachment }) {
       <button
         aria-label={`Preview ${attachment.name}`}
         className="focus-visible:ring-ring/70 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 text-left text-sm hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
-        onClick={() => setPreviewing(true)}
+        // T3 opens it in the right panel (D1435).
+        onClick={() => (openInPanel === undefined ? setPreviewing(true) : openInPanel(attachment))}
         type="button"
       >
         {identity}

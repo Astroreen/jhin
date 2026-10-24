@@ -1828,7 +1828,7 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   running setup a restart cut short is recorded "failed" ("The node
   restarted during the setup."). It goes with its thread.
 
-### The right panel opening itself (W40, D1426)
+### The right panel's diff (W40, D1426, D1433)
 
 W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
 `hooks/useProactivePanels.ts`, the proactive helpers of
@@ -1854,6 +1854,13 @@ W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
   (`RightPanel.openProactive` with the revision read then, T3's
   `observeProactivePanelUserChoice`); the decision is
   `decideProactivePanels` in `source-control/proactive.tsx`.
+- **D1433. A diff's file opens in the app,** as at D53: in the right panel a
+  click on a file's name in the diff opens that file as a surface beside the
+  diff (`file:<path>`, `t3-parity.md` D1342, D1428), where D286 opened the
+  preferred editor; the file's context menu keeps "Open with" an editor. A
+  diff panel outside the right panel (a client without `ui.right-panel@1`)
+  keeps D286. The diff's pop-out (non-inline) mode is the right panel's
+  sheet on a narrow window (`t3-parity.md` D1434).
 
 ## Deferred
 
@@ -1953,16 +1960,15 @@ W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
   writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
   minutes), with no way to stop it from the client. T3 has none either (at
   D53 and at `v0.1.2-nightly.20261021.3457`), so W21 leaves it until T3 does.
-- What D1284–D1286 leave of T3's review comments (the chip's popover and the
-  grouped annotation are D1458, D1459): comments on a file's own contents
-  (T3's file panel, `buildFileReviewComment`) wait for that panel (W40).
-- What W5 leaves of T3's diff panel: its in-app file preview (at D53 a click
-  on a file's name opens T3's file panel; Jhin has none, so it opens the
-  editor, D286), loading the patches of a truncated diff file by file
+- T3's review comments (D1284–D1286): nothing is left; the chip's popover
+  and the grouped annotation are D1458, D1459, and comments on a file's own
+  contents are `t3-parity.md` D1439.
+- What W5 leaves of T3's diff panel (its in-app file preview and pop-out
+  mode are D1433, D1434): loading the patches of a truncated diff file by file
   (`useReviewFilePatches`), refusing to expand a file whose working tree copy
   no longer matches the patch shown (D921), revealing a file of a WSL node in Windows File Explorer
-  (D922), opening a remote node's file in a local editor (T3's remote editor
-  URLs), and the pop-out (non-inline) panel mode.
+  (D922), and opening a remote node's file in a local editor (T3's remote
+  editor URLs).
 - The diff panel test "shows the branch's changes with Pierre" counts Shiki's
   highlighted spans as soon as the text shows; highlighting comes later from
   a worker, so under load it can count none. It should wait for a

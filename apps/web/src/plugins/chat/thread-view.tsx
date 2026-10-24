@@ -5,6 +5,7 @@ import {
   contextReferencesAsLabels,
   parseMessageAddress,
   type MessageContext,
+  type StoredAttachment,
   type TurnAttachment,
 } from "@jhin/agent-api";
 import {
@@ -58,10 +59,19 @@ import { useChatCanvas } from "./chat-canvas.ts";
 import { useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
-import { AttachmentLoaderContext, useAttachmentLoader } from "./attachment-media.tsx";
+import {
+  AttachmentLoaderContext,
+  AttachmentPanelContext,
+  useAttachmentLoader,
+} from "./attachment-media.tsx";
 import { inlineSkillTokens } from "../../lib/composer-trigger.ts";
 import { useAgentSkills } from "./agent-skills.ts";
-import { FILE_PANEL, openFilePanel } from "./file-panel-route.ts";
+import {
+  ATTACHMENT_PANEL,
+  attachmentResource,
+  FILE_PANEL,
+  openFilePanel,
+} from "./file-panel-route.ts";
 import { detailsKey, lanePadding, laneInsetBesideCard } from "./thread-details.tsx";
 import { TimelineView } from "./timeline.tsx";
 
@@ -509,21 +519,42 @@ export function ThreadView(props: {
     namesSkill,
   );
   const hasProject = props.project !== undefined;
+  // The folder an agent's links are read against: the thread's worktree, else its project's.
+  const workspaceRoot = thread?.worktreePath ?? props.project?.path;
   const fileChips = useMemo(
     () => ({
       skills,
       ...(hasProject
         ? {
-            previewFile: (path: string) =>
-              openFilePanel(chat.navigation, { target, threadId }, path),
+            previewFile: (path: string, line?: number) =>
+              openFilePanel(
+                chat.navigation,
+                { target, threadId },
+                path,
+                line === undefined ? undefined : { reveals: chat.fileReveals, line },
+              ),
+            workspaceRoot,
           }
         : {}),
     }),
-    [skills, hasProject, chat.navigation, target, threadId],
+    [skills, hasProject, chat.navigation, target, threadId, workspaceRoot],
   );
 
   // Attachments of sent messages, read back from the node once each.
   const loadAttachment = useAttachmentLoader(target);
+  // A sent message's file opens in the right panel (D1435), as T3's does.
+  const rightPanel = chat.rightPanel;
+  const openAttachment = useMemo(
+    () =>
+      rightPanel === undefined
+        ? undefined
+        : (attachment: StoredAttachment) =>
+            rightPanel.open(
+              { target, threadId },
+              { kind: ATTACHMENT_PANEL, resource: attachmentResource(attachment) },
+            ),
+    [rightPanel, target, threadId],
+  );
 
   const shownError = openError ?? error;
   // The lane moves left of the inline details card while it shows (T3's chat canvas, D1350).
@@ -721,81 +752,87 @@ export function ThreadView(props: {
                 </div>
               ) : (
                 <AttachmentLoaderContext.Provider value={loadAttachment}>
-                  <TimelineView
-                    extension={
-                      thread === undefined
-                        ? undefined
-                        : (turn, event, adjacent) => (
-                            <Slot
-                              name="chat.turn.item"
-                              props={
-                                {
-                                  target,
-                                  thread,
-                                  turnId: turn.turnId,
-                                  event,
-                                  adjacent,
-                                } satisfies ChatTurnItemProps
-                              }
-                            />
-                          )
-                    }
-                    header={
-                      thread === undefined
-                        ? undefined
-                        : (turn, first) => (
-                            <Slot
-                              name="chat.turn.header"
-                              props={
-                                {
-                                  target,
-                                  thread,
-                                  turnId: turn.turnId,
-                                  state: turn.state,
-                                  first,
-                                } satisfies ChatTurnHeaderProps
-                              }
-                            />
-                          )
-                    }
-                    footer={
-                      thread === undefined
-                        ? undefined
-                        : (turn, latest) => (
-                            <Slot
-                              name="chat.turn.footer"
-                              props={
-                                {
-                                  target,
-                                  thread,
-                                  turnId: turn.turnId,
-                                  state: turn.state,
-                                  latest,
-                                } satisfies ChatTurnFooterProps
-                              }
-                            />
-                          )
-                    }
-                    findOpen={find.bar.open}
-                    fileChips={fileChips}
-                    format={settings.timestampFormat}
-                    onRetry={(turn) =>
-                      chat.context.commands
-                        .execute("thread.regenerate", { ...target, threadId, turnId: turn.turnId })
-                        // The command shows its own toast.
-                        .catch(() => undefined)
-                    }
-                    onOpenThread={(id) => chat.navigation.navigate({ ...target, thread: id })}
-                    onOpenSender={openSender}
-                    thread={{ target, threadId }}
-                    timeline={timeline}
-                    {...(savePlan === undefined || props.project === undefined
-                      ? {}
-                      : { onSavePlan: savePlan, projectPath: props.project.path })}
-                    titleOf={(id) =>
-                      catalog?.threads.find((candidate) => candidate.id === id)?.title
-                    }
-                  />
+                  <AttachmentPanelContext value={openAttachment}>
+                    <TimelineView
+                      extension={
+                        thread === undefined
+                          ? undefined
+                          : (turn, event, adjacent) => (
+                              <Slot
+                                name="chat.turn.item"
+                                props={
+                                  {
+                                    target,
+                                    thread,
+                                    turnId: turn.turnId,
+                                    event,
+                                    adjacent,
+                                  } satisfies ChatTurnItemProps
+                                }
+                              />
+                            )
+                      }
+                      header={
+                        thread === undefined
+                          ? undefined
+                          : (turn, first) => (
+                              <Slot
+                                name="chat.turn.header"
+                                props={
+                                  {
+                                    target,
+                                    thread,
+                                    turnId: turn.turnId,
+                                    state: turn.state,
+                                    first,
+                                  } satisfies ChatTurnHeaderProps
+                                }
+                              />
+                            )
+                      }
+                      footer={
+                        thread === undefined
+                          ? undefined
+                          : (turn, latest) => (
+                              <Slot
+                                name="chat.turn.footer"
+                                props={
+                                  {
+                                    target,
+                                    thread,
+                                    turnId: turn.turnId,
+                                    state: turn.state,
+                                    latest,
+                                  } satisfies ChatTurnFooterProps
+                                }
+                              />
+                            )
+                      }
+                      findOpen={find.bar.open}
+                      fileChips={fileChips}
+                      format={settings.timestampFormat}
+                      onRetry={(turn) =>
+                        chat.context.commands
+                          .execute("thread.regenerate", {
+                            ...target,
+                            threadId,
+                            turnId: turn.turnId,
+                          })
+                          // The command shows its own toast.
+                          .catch(() => undefined)
+                      }
+                      onOpenThread={(id) => chat.navigation.navigate({ ...target, thread: id })}
+                      onOpenSender={openSender}
+                      thread={{ target, threadId }}
+                      timeline={timeline}
+                      {...(savePlan === undefined || props.project === undefined
+                        ? {}
+                        : { onSavePlan: savePlan, projectPath: props.project.path })}
+                      titleOf={(id) =>
+                        catalog?.threads.find((candidate) => candidate.id === id)?.title
+                      }
+                    />
+                  </AttachmentPanelContext>
                 </AttachmentLoaderContext.Provider>
               )}
             </div>

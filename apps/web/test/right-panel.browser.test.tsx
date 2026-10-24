@@ -79,6 +79,7 @@ async function mount(panel: RightPanelState) {
     onCloseAll: () => calls.push("close-all"),
     onMove: (id, index) => calls.push(`move ${id} ${index}`),
     onToggleMaximized: () => calls.push("maximize"),
+    onClosePanel: () => calls.push("close panel"),
     onError: (kind, error) => calls.push(`error ${kind} ${String(error)}`),
   };
   await act(async () => root.render(<RightPanelView {...props} />));
