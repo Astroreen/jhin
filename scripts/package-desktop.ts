@@ -35,7 +35,7 @@ import {
   UPDATE_REPOSITORY,
   withoutSecrets,
 } from "./desktop-release.ts";
-import { lockedPins } from "./packing.ts";
+import { lockedInstallStrays, lockedPins } from "./packing.ts";
 import { closure, type Manifest, readJson, ROOT, workspacePackages } from "./workspace-packages.ts";
 
 const DESKTOP = Path.join(ROOT, "apps", "desktop");
@@ -144,7 +144,14 @@ function main(): void {
     );
     // Workspace packages come from their tarballs, third-party ones at the
     // versions of the workspace lockfile (as scripts/pack-smoke.ts installs them).
-    const locked = lockedPins(Fs.readFileSync(Path.join(ROOT, "pnpm-lock.yaml"), "utf8"));
+    const lockfile = Fs.readFileSync(Path.join(ROOT, "pnpm-lock.yaml"), "utf8");
+    const locked = lockedPins(lockfile);
+    process.stdout.write(`${locked.pins.size} third-party versions pinned from pnpm-lock.yaml\n`);
+    if (locked.unpinned.length > 0) {
+      process.stdout.write(
+        `left unpinned (several versions on one major, or not from the registry): ${locked.unpinned.join("; ")}\n`,
+      );
+    }
     const pins = new Map<string, string>([
       ...locked.pins,
       ...names.map((name): [string, string] => [name, `file:${tarball.get(name)}`]),
@@ -158,6 +165,18 @@ function main(): void {
       `nodeLinker: hoisted\noverrides:\n${overrides.join("\n")}\nallowBuilds:\n  node-pty: true\n`,
     );
     run("pnpm", ["install", "--prod"], app);
+    // What floated still resolved to a version the workspace lockfile has (D1485).
+    const strays = lockedInstallStrays(
+      lockfile,
+      Fs.readFileSync(Path.join(app, "pnpm-lock.yaml"), "utf8"),
+      (key) => names.some((name) => key.startsWith(`${name}@`)),
+    );
+    if (strays.length > 0) {
+      throw new Error(
+        `installed versions the workspace lockfile does not have: ${strays.join(", ")}`,
+      );
+    }
+    process.stdout.write("every installed third-party package is at a workspace-locked version\n");
 
     step("electron-builder");
     const config = builderConfig({

@@ -508,6 +508,69 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   Chromium's WebCodecs. The desktop e2e opens a simulator from D409's fake
   hub in the app and sends it a touch and Home.
 
+### The app's rest (W43)
+
+Workstream W43 of `t3-roadmap.md` continues this plan and `preview.md` with
+the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
+
+- **D1481. W43's scope and order.** W43 lands as a stack of small PRs: the
+  release path's hardening that needs no secrets (D1482–D1485), attaching
+  to a node of the same home and another port when 7777 is taken, the
+  preview in the app (a tab that outlives its webview, T3's DevTools,
+  context menu and element annotation of a guest, the download toast and
+  the pop-out of a tab the app hosts), then device hosts over SSH in
+  `preview.md`. Signing itself still waits for the owner's secrets and is
+  not proven here (Deferred).
+
+- **D1482. The signing secrets live in a protected environment,
+  `release`.** As T3 keeps its publishing secrets in an environment
+  (`production` in its `release.yml`), the jobs that sign or publish name
+  the GitHub environment `release`: the build job only when the run
+  publishes (a dry run names none, so it never waits for a review and never
+  sees the secrets), and the release job always (it runs only when
+  publishing). The environment is the owner's to create in the repository's
+  settings, with required reviewers and deployment limited to `main` and
+  the `v*.*.*` tags, and holds the signing secrets of D944 as environment
+  secrets instead of repository ones: then a run that publishes waits for
+  a reviewer before any job gets a secret or the token that writes
+  releases, and a workflow dispatched from another branch cannot reach
+  them. The reviewer approves twice per publishing run: once for the six
+  build jobs, which wait on `release` together and are approved in one
+  "Review deployments" dialog, and once for the release job when the builds
+  are done. The workflow's expressions are unchanged otherwise (D945 still
+  hands secrets to publishing runs only); until the owner creates the
+  environment, GitHub creates it without protection on the first
+  publishing run, and the repository's secrets keep working.
+
+- **D1483. The release path's actions are pinned to commit SHAs.** Every
+  `uses:` of `release-desktop.yml` and of the setup action it runs
+  (`.github/actions/setup`, shared with CI) names a full commit SHA with
+  the release it is in as a comment (`# v6.1.0`), as T3's
+  `release-desktop.yml` pins its actions: a moved tag cannot change what
+  runs with the signing secrets. Bumping one is a commit that changes the
+  SHA and its comment.
+
+- **D1484. A dry run also when the app's sources change, and weekly.** A
+  pull request that changes the desktop plugin (`plugins/desktop/**`),
+  `packages/desktop-api/**`, or the manifest of any package the app
+  installs (`apps/*/package.json`, `plugins/*/package.json`,
+  `packages/*/package.json`) runs the dry run too, beside the packaging
+  files it ran for. The web client and the other packages' sources change
+  in most pull requests, and a dry run builds six installers, so they are
+  proven by a scheduled dry run of `main` every Monday (04:00 UTC) instead,
+  which builds as a release would and publishes nothing. The app installs
+  nearly every workspace package (the CLI's distribution), so the manifest
+  filter names them all rather than a list that would drift.
+
+- **D1485. Packaging checks what it installed, as `pnpm pack:smoke`
+  does.** `scripts/package-desktop.ts` prints the third-party packages the
+  workspace lockfile cannot pin (several versions on one major, or not from
+  the registry) before it installs the staged app, and after the install
+  fails on any third-party version the workspace lockfile does not have:
+  what floated still has to resolve to a version CI tested. Both scripts
+  share the check (`lockedInstallStrays` in `scripts/packing.ts`, unit
+  tested).
+
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
@@ -533,20 +596,19 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   unsigned and publish nothing, so the first nightly (and the first run with
   the signing secrets) is what proves notarization, Azure Trusted Signing,
   `--require-signing` and the publish job.
-- Packaging checks what it installed as `pnpm pack:smoke` does: print the
-  third-party packages the lockfile cannot pin, and fail on a version the
-  workspace lockfile does not have.
-- A pull request dry run also when the app's sources change (the desktop
-  plugin, `packages/desktop-api`, the web client), or a scheduled dry run on
-  `main`: today its path filter covers the packaging files only.
+- The `release` environment itself (D1482): its required reviewers, its
+  deployment limits and the signing secrets moved into it are repository
+  settings, the owner's to make; until then a publishing run creates it
+  unprotected and uses the repository's secrets.
+- A notice when the weekly dry run fails (D1484): GitHub mails only the
+  user who last changed the schedule, and disables a schedule after 60 days
+  without activity in the repository.
+- Pinning the other workflows' actions (`ci.yml`, `claude.yml`,
+  `claude-review.yml`) to commit SHAs, and a Dependabot configuration that
+  proposes the pins' updates (D1483 pins the release path only).
 - A test of `scripts/package-desktop.ts`'s orchestration with a fake spawn:
   its pure parts are unit tested and the pull request dry run runs it whole
   on all three systems.
-- A protected GitHub environment (required reviewers) for the signing
-  secrets and the publishing job: today they are repository secrets, reachable
-  by anyone who may dispatch a workflow on `main`.
-- Pinning the release workflow's actions to commit SHAs (the repository's
-  workflows use version tags today).
 - Trimming the packaged app (about 400 MB unpacked: every agent SDK's
   binaries) and an asar archive with the node's files unpacked (D942).
 - Attaching to a node of the same home that already runs (`jhin serve`), and

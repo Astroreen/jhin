@@ -19,7 +19,7 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { lockedPackages, lockedPins } from "./packing.ts";
+import { lockedInstallStrays, lockedPins } from "./packing.ts";
 import { closure, type Manifest, readJson, ROOT, workspacePackages } from "./workspace-packages.ts";
 
 const CLI = "jhin-ai";
@@ -219,9 +219,10 @@ async function main(): Promise<void> {
     run("pnpm", ["install"], app);
     // Everything third-party that got installed is a version the workspace lockfile
     // has: what floated (the unpinned list) still resolved to a known version.
-    const known = new Set(lockedPackages(lockfile));
-    const strays = lockedPackages(Fs.readFileSync(Path.join(app, "pnpm-lock.yaml"), "utf8")).filter(
-      (key) => !key.startsWith("@jhin/") && !key.startsWith(`${CLI}@`) && !known.has(key),
+    const strays = lockedInstallStrays(
+      lockfile,
+      Fs.readFileSync(Path.join(app, "pnpm-lock.yaml"), "utf8"),
+      (key) => key.startsWith("@jhin/") || key.startsWith(`${CLI}@`),
     );
     if (strays.length > 0) {
       throw new Error(

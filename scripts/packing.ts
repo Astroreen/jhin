@@ -85,3 +85,19 @@ export function lockedPins(lockfile: string): LockedPins {
   }
   return { pins, unpinned };
 }
+
+/**
+ * The third-party packages an install outside the workspace resolved that
+ * the workspace lockfile does not have (`name@version` keys of the installed
+ * lockfile): what floated past `lockedPins` must still land on a version the
+ * workspace tested (D1485). `own` names the packages installed from their
+ * tarballs, which the workspace lockfile knows by path only.
+ */
+export function lockedInstallStrays(
+  workspaceLockfile: string,
+  installedLockfile: string,
+  own: (key: string) => boolean,
+): string[] {
+  const known = new Set(lockedPackages(workspaceLockfile));
+  return lockedPackages(installedLockfile).filter((key) => !own(key) && !known.has(key));
+}

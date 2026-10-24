@@ -8,13 +8,17 @@
 #   - a pushed tag v1.2.3, or "stable", publishes the stable release of
 #     apps/desktop/package.json's version (`latest*.yml`) from a commit on main;
 #   - "nightly" publishes the prerelease v<version>-nightly.<date>.<run> (`nightly*.yml`);
-#   - "dry-run" (the default, and every pull request that changes packaging)
-#     builds as a release would, feed files included, and publishes nothing.
+#   - "dry-run" (the default, every pull request that changes packaging or the
+#     app's own sources, and a weekly run of main, D1484) builds as a release
+#     would, feed files included, and publishes nothing.
 # Each platform signs only when all its secrets are set (scripts/desktop-release.ts,
 # SIGNING_SECRETS). A stable release fails on macOS and Windows without them,
 # unless "allow_unsigned" is chosen: an unsigned macOS app cannot update itself.
 # Only runs that publish get the signing secrets, and they build from main
-# only; a dry run (also from a branch) is unsigned. A failed run is finished
+# only; a dry run (also from a branch) is unsigned. The jobs that sign or
+# publish name the protected environment `release`, which holds the signing
+# secrets and waits for a reviewer (D1482); a dry run names none. Every action
+# is pinned to a commit SHA (D1483). A failed run is finished
 # with "Re-run failed jobs": the release stays a draft marked with the run's id
 # until every file is up, so a re-run finishes it, while any other run fails on
 # a version that already has a release.
@@ -35,10 +39,17 @@ on:
       - scripts/packing.ts
       - scripts/workspace-packages.ts
       - apps/desktop/**
-      - apps/jhin/package.json
-      - plugins/desktop/package.json
+      # The app's own sources, and the manifests of every package it installs (D1484).
+      - plugins/desktop/**
+      - packages/desktop-api/**
+      - apps/*/package.json
+      - plugins/*/package.json
+      - packages/*/package.json
       - pnpm-workspace.yaml
       - pnpm-lock.yaml
+  # The web client and the other packages are proven by a weekly dry run of main (D1484).
+  schedule:
+    - cron: "0 4 * * 1"
   workflow_dispatch:
     inputs:
       channel:
@@ -75,13 +86,13 @@ jobs:
       channel: ${{ steps.meta.outputs.channel }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # The whole history: a stable release must come from a commit on main.
           fetch-depth: 0
           filter: blob:none
       # Node 24 runs the TypeScript helpers as they are.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: package.json
       - id: meta
@@ -127,9 +138,12 @@ jobs:
           - { os: windows-latest, platform: win, arch: x64 }
           - { os: windows-11-arm, platform: win, arch: arm64 }
     runs-on: ${{ matrix.os }}
+    # A publishing build signs: it waits for the environment's reviewers and gets its
+    # secrets there. A dry run names no environment (D1482).
+    environment: ${{ needs.meta.outputs.channel != 'dry-run' && 'release' || '' }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: ./.github/actions/setup
       - name: Package
         shell: bash
@@ -193,13 +207,13 @@ jobs:
             win-*) mv "$feed" "apps/desktop/release/$channel-win-${{ matrix.arch }}.yml" ;;
           esac
       - name: Upload installers
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: error
           path: apps/desktop/release/Jhin-${{ needs.meta.outputs.version }}-*
       - name: Upload the feed file
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: feed-${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: error
@@ -215,16 +229,16 @@ jobs:
     timeout-minutes: 5
     steps:
       # The merge script, run by Node 24 as it is.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           sparse-checkout: |
             scripts/update-manifests.ts
             package.json
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: package.json
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: feed-*
           path: feeds
@@ -268,7 +282,7 @@ jobs:
               grep -q -- "-$arch\." "$feed" || { echo "$feed lacks the $arch build" >&2; exit 1; }
             done
           done
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: feeds
           if-no-files-found: error
@@ -279,16 +293,18 @@ jobs:
     needs: [meta, build, feeds]
     if: needs.meta.outputs.channel != 'dry-run'
     runs-on: ubuntu-latest
+    # The token that writes releases, behind the same reviewers (D1482).
+    environment: release
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: desktop-*
           path: release
           merge-multiple: true
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: feeds
           path: release
