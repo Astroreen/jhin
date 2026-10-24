@@ -214,6 +214,8 @@ function checkIgnore(root: string, paths: readonly string[]): Promise<Set<string
         else resolve(new Set(stdout.split("\0").filter((path) => path !== "")));
       },
     );
+    // Outside git it exits before it reads: the paths it never took are no error.
+    child.stdin?.on("error", () => undefined);
     child.stdin?.end(`${paths.join("\0")}\0`);
   });
 }
