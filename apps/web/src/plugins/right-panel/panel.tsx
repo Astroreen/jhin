@@ -779,7 +779,13 @@ export function RightPanelView(props: RightPanelViewProps) {
                       </MenuSub>
                     );
                   }
-                  const item = (
+                  const label = (
+                    <>
+                      <KindIcon kind={offer.kind} />
+                      {offer.label}
+                    </>
+                  );
+                  return (
                     <MenuItem
                       aria-keyshortcuts={offer.shortcut === "" ? undefined : offer.shortcut}
                       className={offer.available ? undefined : "data-disabled:pointer-events-auto"}
@@ -787,15 +793,21 @@ export function RightPanelView(props: RightPanelViewProps) {
                       key={offer.kind.id}
                       onClick={() => props.onAdd(offer.kind)}
                     >
-                      <KindIcon kind={offer.kind} />
-                      {offer.label}
+                      {offer.available || offer.reason === undefined ? (
+                        label
+                      ) : (
+                        // T3's reason on the disabled entry, in a tooltip.
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={<span className="flex min-w-0 flex-1 items-center gap-2" />}
+                          >
+                            {label}
+                          </TooltipTrigger>
+                          <TooltipPopup side="top">{offer.reason}</TooltipPopup>
+                        </Tooltip>
+                      )}
                       {offer.shortcut === "" ? null : <MenuShortcut>{offer.shortcut}</MenuShortcut>}
                     </MenuItem>
-                  );
-                  return offer.available ? (
-                    item
-                  ) : (
-                    <DisabledReason key={offer.kind.id} reason={offer.reason} trigger={item} />
                   );
                 })}
               </MenuPopup>
