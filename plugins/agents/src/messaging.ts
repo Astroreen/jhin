@@ -373,9 +373,11 @@ export function registerMessaging(
     const forwarded = (await kv.get(NAMESPACE, repliedKey(message.messageId))) as
       | { from?: string; to?: string }
       | undefined;
-    // Asked once, at the end of the message's turn: the record has served then.
-    if (forwarded !== undefined) await kv.delete(NAMESPACE, repliedKey(message.messageId));
-    if (forwarded?.from === message.to && forwarded.to === message.from) return true;
+    if (forwarded?.from === message.to && forwarded.to === message.from) {
+      // Asked once, at the end of the message's turn: the record has served then.
+      await kv.delete(NAMESPACE, repliedKey(message.messageId));
+      return true;
+    }
     return (await log.read(MESSAGES_STREAM)).some((event) => {
       if (event.type !== MessageEvents.delivered) return false;
       const reply = (event.payload as unknown as Delivered).message;

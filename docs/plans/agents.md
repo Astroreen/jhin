@@ -2268,8 +2268,10 @@ Decisions (M1):
   head?, error? }`: the head of that node's `agents/messages` the entries
   reflect, or why it could not be read, in which case the local half comes
   alone. A client lists again on the next event of either stream. The
-  forwarded call carries the caller's grants (D416), so it needs nothing new
-  (this node's own code asks with what reading the conversation takes).
+  forwarded call carries the caller's grants (D416), so the other half also
+  takes `mesh.call`: a caller without it gets this node's half and
+  `elsewhere.error` (this node's own code asks with what reading the
+  conversation takes).
   `owner` other than this node's own is taken only from that owner's node
   (`node:<id>`, the mesh's caller) or from this node's code, else
   `OWNER_MISMATCH`. The halves are ordered by `sentAt` as each node stamped
