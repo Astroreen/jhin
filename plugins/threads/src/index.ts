@@ -995,10 +995,11 @@ export default definePlugin({
     }
     registerDrafts(context, kv, live);
     /**
-     * The id of this node's database (loading.md D1590): written once, when the
-     * threads plugin first runs on it, so a node reinstalled under the same id
-     * is told apart. An append with `expectedHead: 0` writes it, so two
-     * processes sharing the storage agree on one.
+     * The id of this node's database (loading.md D1590): written once, the
+     * first time it is asked for on that database, so a node reinstalled under
+     * the same id is told apart. An append with `expectedHead: 0` writes it, so
+     * two processes sharing the storage agree on one. Its stream
+     * `threads/epoch` is neither mirrored nor shared (mesh-core's MIRRORABLE).
      */
     let epochOf: Promise<string> | undefined;
     const epoch = (): Promise<string> =>

@@ -52,6 +52,9 @@ export function followCachedStream(options: FollowOptions): Disposable {
    * before its creation reached the node): kept once it is.
    */
   let waiting: StreamEvent[] | undefined;
+  // A drop or a write that fails is not retried here: what it left is checked
+  // again at the next open (epoch, head, a gone thread), and the cache service
+  // handles the quota (D1593).
   const drop = () => void cache?.drop(connection, stream).catch(() => undefined);
 
   const flush = () => {
@@ -74,7 +77,8 @@ export function followCachedStream(options: FollowOptions): Disposable {
    * creation is on its way) is asked about again at its first event.
    */
   const learn = (asking: Promise<StreamInfo>, again: boolean) => {
-    waiting = [];
+    // A second question keeps what the first one waited with.
+    waiting ??= [];
     void asking.then(
       (info) => {
         const kept = waiting;
@@ -101,14 +105,56 @@ export function followCachedStream(options: FollowOptions): Disposable {
     cancel ??= options.schedule(flush);
   };
 
+  /** The epoch what is followed from the cache was kept under. */
+  let keptEpoch: string | undefined;
   /** Bumped for every subscription, so the events of one given up are ignored. */
   let round = 0;
-  const follow = (after: number) => {
+  /** What is kept cannot be trusted after all: drop it and read the stream from 0. */
+  const startAgain = () => {
+    round += 1;
+    subscription?.dispose();
+    subscription = undefined;
+    drop();
+    keeping = undefined;
+    waiting = undefined;
+    startOver();
+    void start(false).catch((error: unknown) => options.onError(error as Error));
+  };
+  /**
+   * Follows the stream after `after`. From what is kept, every acceptance
+   * (also after a reconnect) checks the node's head: a head below `after` is
+   * another database. `unverified` (the node could not be asked at the open)
+   * asks it again once a subscription is accepted.
+   */
+  const follow = (after: number, unverified = false) => {
     const mine = ++round;
     let last = after;
+    let verify = unverified;
     const following = options.client.subscribe(
       stream,
-      { after, onError: (error) => !disposed && mine === round && options.onError(error) },
+      {
+        after,
+        onError: (error) => !disposed && mine === round && options.onError(error),
+        onReady: (head) => {
+          if (disposed || mine !== round || after === 0) return;
+          if (head < after) {
+            startAgain();
+            return;
+          }
+          if (!verify) return;
+          verify = false;
+          void options
+            .info()
+            .then((info) => {
+              if (disposed || mine !== round) return;
+              if (info.epoch === undefined || info.epoch !== keptEpoch || info.head < after)
+                startAgain();
+            })
+            .catch((error: unknown) => {
+              if (!disposed && mine === round && codeOf(error) === "THREAD_NOT_FOUND") startAgain();
+            });
+        },
+      },
       (event) => {
         if (disposed || mine !== round) return;
         if (retry) {
@@ -117,17 +163,13 @@ export function followCachedStream(options: FollowOptions): Disposable {
         }
         if (event.sequence !== last + 1) {
           // A gap (D498): from the cache, start over from 0; from 0, keep nothing of it.
+          if (after > 0) {
+            startAgain();
+            return;
+          }
           drop();
           keeping = undefined;
           waiting = undefined;
-          if (after > 0) {
-            round += 1;
-            subscription?.dispose();
-            subscription = undefined;
-            startOver();
-            void start(false).catch((error: unknown) => options.onError(error as Error));
-            return;
-          }
         }
         last = event.sequence;
         // A deleted thread keeps nothing on the device.
@@ -184,7 +226,8 @@ export function followCachedStream(options: FollowOptions): Disposable {
       return;
     }
     keeping = cache?.enabled() === true ? info?.epoch : undefined;
-    follow(kept.lastSequence);
+    keptEpoch = kept.epoch;
+    follow(kept.lastSequence, info === undefined);
   };
 
   void start(true).catch((error: unknown) => !disposed && options.onError(error as Error));

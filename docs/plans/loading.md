@@ -138,7 +138,8 @@ What the node does today (2026-10-24, `08eeb571`):
   answers through `mesh.call`. It opens from 0, as before this plan
   (Deferred).
 - **D1607. The epoch is written with an append, and `threads.epoch` answers
-  it.** `jhin.threads` writes the epoch the first time it is asked: one
+  it.** `jhin.threads` writes the epoch the first time it is asked
+  (a database never asked has none yet): one
   event `threads.epoch.created { epoch }` in the stream `threads/epoch`,
   appended with `expectedHead: 0` together with the record `epoch`
   (`storage.eventlog@1.1` records), so two processes sharing the storage
@@ -192,6 +193,9 @@ loading one.
   "renders every turn" and the page-wide find (D801), so it needs its own
   decisions first.
 - A cached timeline snapshot (D1588 stores raw events).
+- A thread followed from the cache while its node could not be asked checks
+  the head on every acceptance and asks again once; a database reset whose
+  stream has grown past the kept sequence is caught only at the next open.
 - Opening a remote mesh node's thread from the cache (D1606): it needs the
   epoch of the copy the connected node reads it from.
 - `permessage-deflate` with context takeover, if P1's numbers show a large

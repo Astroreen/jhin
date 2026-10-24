@@ -31,6 +31,11 @@ function memoryCache(kept?: CachedStream) {
       const current = streams.get(`${connection}|${stream}`);
       const base = current?.epoch === epoch ? current.events : [];
       const all = [...base, ...events];
+      // As the store: kept from 1 without a gap, or not at all (D1608).
+      if (all.some((item, index) => item.sequence !== index + 1)) {
+        streams.delete(`${connection}|${stream}`);
+        return;
+      }
       streams.set(`${connection}|${stream}`, {
         epoch,
         lastSequence: all.at(-1)!.sequence,
@@ -51,6 +56,8 @@ function fakeClient() {
     after: number;
     disposed: boolean;
     push(event: StreamEvent): void;
+    /** The node accepts it with this head (again after a reconnect). */
+    ready(head: number): void;
   }[] = [];
   const waiters: (() => void)[] = [];
   return {
@@ -65,7 +72,7 @@ function fakeClient() {
     client: {
       subscribe(
         _stream: string,
-        options: { after?: number },
+        options: { after?: number; onReady?: (head: number) => void },
         onEvent: (event: StreamEvent) => void,
       ) {
         const entry = {
@@ -73,6 +80,9 @@ function fakeClient() {
           disposed: false,
           push: (item: StreamEvent) => {
             if (!entry.disposed) onEvent(item);
+          },
+          ready: (head: number) => {
+            if (!entry.disposed) options.onReady?.(head);
           },
         };
         subscriptions.push(entry);
@@ -336,5 +346,66 @@ describe("a thread opens from the history cache (loading.md D1589, D1590)", () =
     expect(made[0]!.disposed).toBe(true);
     // Event 9 of the given-up subscription is never folded.
     expect(batches.flat()).not.toContain(9);
+  });
+
+  it("starts over when the node accepts what is kept with a lower head (another database)", async () => {
+    const { cache, calls } = memoryCache({ epoch: "e1", lastSequence: 3, events: range(1, 3) });
+    const run = follow(cache, () =>
+      Promise.reject(Object.assign(new Error("closed"), { code: "DISCONNECTED" })),
+    );
+    await run.subscribed(1);
+    expect(run.subscriptions[0]!.after).toBe(3);
+    // Accepted after a reconnect by a node whose stream is shorter than what is kept.
+    run.subscriptions[0]!.ready(1);
+    await run.subscribed(2);
+    expect(run.subscriptions[0]!.disposed).toBe(true);
+    expect(run.subscriptions[1]!.after).toBe(0);
+    expect(calls).toContain("drop thread/t1");
+  });
+
+  it("asks again once the node accepts, when it could not be asked at the open", async () => {
+    const { cache, calls } = memoryCache({ epoch: "e1", lastSequence: 3, events: range(1, 3) });
+    let reachable = false;
+    let asked!: () => void;
+    const askedAgain = new Promise<void>((resolve) => (asked = resolve));
+    const run = follow(cache, () => {
+      if (!reachable)
+        return Promise.reject(Object.assign(new Error("closed"), { code: "DISCONNECTED" }));
+      asked();
+      return Promise.resolve({ epoch: "reset", head: 5 });
+    });
+    await run.subscribed(1);
+    reachable = true;
+    run.subscriptions[0]!.ready(5);
+    await askedAgain;
+    await run.subscribed(2);
+    expect(run.subscriptions[1]!.after).toBe(0);
+    expect(calls).toContain("drop thread/t1");
+  });
+
+  it("keeps what came before a second question about a thread the node did not know yet", async () => {
+    const { cache, streams } = memoryCache();
+    let refuse!: () => void;
+    let calls = 0;
+    const run = follow(cache, () => {
+      calls += 1;
+      if (calls > 1) return Promise.resolve({ epoch: "e1", head: 2 });
+      return new Promise<StreamInfo>((_resolve, reject) => {
+        refuse = () => reject(Object.assign(new Error("not yet"), { code: "THREAD_NOT_FOUND" }));
+      });
+    });
+    await run.subscribed(1);
+    run.subscriptions[0]!.push(event(1));
+    run.frame();
+    // The first answer comes after a batch: the thread was not there yet.
+    refuse();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    await Promise.resolve();
+    run.subscriptions[0]!.push(event(2));
+    run.frame();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    await Promise.resolve();
+    expect(calls).toBe(2);
+    expect(streams.get(`node|${STREAM}`)).toMatchObject({ epoch: "e1", lastSequence: 2 });
   });
 });

@@ -637,7 +637,7 @@ export const ThreadEvents = {
   projectDeleted: "threads.project.deleted",
   /**
    * Since `agent.registry` 1.7, the stream `threads/epoch`: `{ epoch }`, the id
-   * of the node's database, written once when it is created (loading.md D1590).
+   * of the node's database, written once, the first time it is asked for (loading.md D1590).
    */
   epochCreated: "threads.epoch.created",
   /**
