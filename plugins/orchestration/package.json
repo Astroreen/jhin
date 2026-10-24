@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
+    "@jhin/host-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*"
   },
@@ -54,6 +55,9 @@
       "storage.kv": "^1",
       "storage.eventlog": "^1"
     },
-    "entry": "src/index.ts"
+    "entry": "src/index.ts",
+    "optional": {
+      "host.paths": "^1"
+    }
   }
 }

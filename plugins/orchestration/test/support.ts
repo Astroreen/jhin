@@ -2,11 +2,14 @@ import * as Fs from "node:fs";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
+  OrchestrationEvents,
+  applyWorkflowPatch,
   type AgentItem,
   type AgentRegistry,
   type AgentRuntime,
   type RuntimeMode,
   type TurnRequest,
+  type WorkflowPatch,
 } from "@jhin/agent-api";
 import type { RpcClient } from "@jhin/rpc";
 import { definePlugin } from "@jhin/sdk";
@@ -117,15 +120,22 @@ export function orchestrationFeed(client: RpcClient) {
             test(payload(event)),
         )
         .then(payload),
-    workflow: (workflowId: string, test: (workflow: Record<string, unknown>) => boolean) =>
-      feed
-        .untilMatch(
-          (event) =>
-            event.type === "orchestration.workflow.updated" &&
-            payload(event).workflowId === workflowId &&
-            test(payload(event)),
-        )
-        .then(payload),
+    /** The first state of the workflow's record `test` accepts, its patches folded in (D1504). */
+    workflow: (workflowId: string, test: (workflow: Record<string, unknown>) => boolean) => {
+      let record: Record<string, unknown> | undefined;
+      let matched: Record<string, unknown> | undefined;
+      return feed
+        .untilMatch((event) => {
+          if (payload(event).workflowId !== workflowId) return false;
+          if (event.type === OrchestrationEvents.workflowUpdated) record = payload(event);
+          else if (event.type === OrchestrationEvents.workflowPatched && record !== undefined)
+            record = applyWorkflowPatch(record, payload(event) as unknown as WorkflowPatch);
+          else return false;
+          matched = record;
+          return test(record);
+        })
+        .then(() => matched!);
+    },
   };
 }
 
