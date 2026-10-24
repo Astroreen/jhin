@@ -7,6 +7,9 @@ import {
   parsePullRequestUrl,
   type ChangeRequestTerminology,
   type PullRequest,
+  type PullRequestAction,
+  type PullRequestCheck,
+  type PullRequestMergeMethod,
 } from "@jhin/source-control-api";
 
 import { SpawnError, run, type RunResult } from "./git.ts";
@@ -96,7 +99,18 @@ export interface Forge {
   readonly templatePaths: readonly string[];
   /** What a watch reads (D272); forges without it cannot be watched. */
   watch?(url: string): Promise<WatchRead>;
+  /** The actions of `git.pr.action` the forge has (T3's `changeRequestActions`, D1450). */
+  readonly actions: readonly PullRequestAction[];
+  /** The head's checks one by one (D1450); without it, the watch's read gives them. */
+  checks?(url: string): Promise<PullRequestCheck[]>;
+  /** The merge methods the pull request's repository allows (D1450). */
+  mergeMethods(url: string): Promise<PullRequestMergeMethod[]>;
+  /** Runs one of `actions` on the pull request (D1451). */
+  act(url: string, action: PullRequestAction, method: PullRequestMergeMethod): Promise<void>;
 }
+
+/** T3's merge methods, in its order. */
+export const MERGE_METHODS: readonly PullRequestMergeMethod[] = ["merge", "squash", "rebase"];
 
 export const PULL_REQUEST: ChangeRequestTerminology = {
   singular: "pull request",

@@ -86,6 +86,23 @@ const accountName = (raw: unknown) => {
   return text(account?.nickname) ?? text(account?.display_name) ?? null;
 };
 
+/** T3's author of a Bitbucket pull request (D1449), with its avatar. */
+function authorOf(raw: unknown): Partial<PullRequest> {
+  const login = accountName(raw);
+  if (login === null) return {};
+  const account = raw as {
+    display_name?: unknown;
+    links?: { avatar?: { href?: unknown } };
+  };
+  return {
+    author: {
+      login,
+      name: text(account.display_name) ?? null,
+      avatarUrl: text(account.links?.avatar?.href) ?? null,
+    },
+  };
+}
+
 function bitbucketRequest(raw: Raw, checks: readonly CheckWord[]): ForgePullRequest | undefined {
   const number = raw["id"];
   const links = raw["links"] as { html?: { href?: unknown } } | undefined;
@@ -123,6 +140,7 @@ function bitbucketRequest(raw: Raw, checks: readonly CheckWord[]): ForgePullRequ
       ...(state === "MERGED" && updated ? { mergedAt: updated } : {}),
       ...((state === "DECLINED" || state === "SUPERSEDED") && updated ? { closedAt: updated } : {}),
       checks: rollup(checks),
+      ...authorOf(raw["author"]),
     },
     ...(from !== undefined && into !== undefined
       ? {
@@ -249,15 +267,30 @@ export function bitbucketForge(
     (await statusesOf(repository, number).catch(() => [] as Raw[])).map((value) =>
       statusWord(text(value["state"])),
     );
+  /** T3's diff stat of a pull request: its diffstat's lines summed, an entry a file (D1449). */
+  const diffStatOf = async (repository: string, number: number): Promise<Partial<PullRequest>> => {
+    const entries = await paged(
+      `${repo(repository)}/pullrequests/${number}/diffstat?pagelen=${PAGE_SIZE}`,
+    ).catch(() => undefined);
+    if (entries === undefined) return {};
+    const sum = (key: string) =>
+      entries.reduce((total, entry) => total + (Number(entry[key]) || 0), 0);
+    return {
+      additions: sum("lines_added"),
+      deletions: sum("lines_removed"),
+      changedFiles: entries.length,
+    };
+  };
   const full = async (repository: string, raw: Raw) => {
     const number = raw["id"];
-    const found = bitbucketRequest(
-      raw,
-      typeof number === "number" ? await checksOf(repository, number) : [],
-    );
+    const [checks, stat] =
+      typeof number === "number"
+        ? await Promise.all([checksOf(repository, number), diffStatOf(repository, number)])
+        : [[], {}];
+    const found = bitbucketRequest(raw, checks);
     if (found === undefined)
       throw new ForgeUnavailable("failed", "Bitbucket answered no pull request");
-    return found;
+    return { ...found, pr: { ...found.pr, ...stat } };
   };
   const forge: Forge = {
     kind: "bitbucket",
@@ -380,6 +413,34 @@ export function bitbucketForge(
     },
     // Bitbucket has no template files of a pull request.
     templatePaths: [],
+    // T3: no endpoint reopens a declined pull request or moves one out of draft.
+    actions: ["merge", "close"],
+    mergeMethods: () => Promise.resolve(["merge", "squash", "rebase"]),
+    // T3's `…/merge` with its strategy, and `…/decline` (D1451).
+    act: async (url, action, method) => {
+      const { repository = site.repository, number } = numberedReference(url, forge);
+      const path = `${repo(repository)}/pullrequests/${number}`;
+      if (action === "merge") {
+        await call(`${path}/merge`, {
+          method: "POST",
+          body: {
+            merge_strategy:
+              method === "squash"
+                ? "squash"
+                : method === "rebase"
+                  ? "rebase_fast_forward"
+                  : "merge_commit",
+          },
+        });
+      } else if (action === "close") {
+        await call(`${path}/decline`, { method: "POST" });
+      } else {
+        throw new ForgeUnavailable(
+          "failed",
+          `Bitbucket does not expose ${action} through its API.`,
+        );
+      }
+    },
   };
   return forge;
 }

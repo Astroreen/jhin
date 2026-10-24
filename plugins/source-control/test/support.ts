@@ -107,6 +107,10 @@ export function fakeGh(): {
   failCreate(code: number, stderr: string): void;
   /** The body file `gh pr create` was given for `head`. */
   body(head: string): string | undefined;
+  /** What `gh api graphql` prints (review threads, D1447); `{"data":{}}` until set. */
+  graphql(value: unknown): void;
+  /** What `gh repo view` prints (merge methods, D1450). */
+  repo(value: unknown): void;
   calls(): string[];
 } {
   const dir = temp("jhin-fake-gh-");
@@ -130,6 +134,18 @@ if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
   exit 0
 fi
 if [ "$1" = "api" ] && [ "$4" = "user" ]; then echo '{"login":"jhin-bot"}'; exit 0; fi
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+  if [ -f "${dir}/graphql.json" ]; then cat "${dir}/graphql.json"; else echo '{"data":{}}'; fi
+  exit 0
+fi
+if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
+  if [ -f "${dir}/repo.json" ]; then cat "${dir}/repo.json"; exit 0; fi
+  echo "unexpected gh call: $*" >&2
+  exit 1
+fi
+if [ "$1" = "pr" ] && { [ "$2" = "merge" ] || [ "$2" = "ready" ] || [ "$2" = "close" ] || [ "$2" = "reopen" ]; }; then
+  exit 0
+fi
 if [ "$1" = "pr" ] && [ "$2" = "checks" ]; then
   if [ -f "${dir}/required.json" ]; then cat "${dir}/required.json"; exit 8; fi
   echo "no required checks reported on the 'feature' branch" >&2
@@ -162,6 +178,8 @@ exit 1
   });
   return {
     dir,
+    graphql: (value) => Fs.writeFileSync(Path.join(dir, "graphql.json"), JSON.stringify(value)),
+    repo: (value) => Fs.writeFileSync(Path.join(dir, "repo.json"), JSON.stringify(value)),
     required: (names) =>
       Fs.writeFileSync(
         Path.join(dir, "required.json"),
