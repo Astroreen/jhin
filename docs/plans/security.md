@@ -1072,7 +1072,15 @@ follow the standards they name.
   when spent: a spent token presented again revokes the sign-in's
   current access token and refresh token (RFC 9700 §4.14.2), since one
   of the two holders stole it. Without refreshing, a client signs in
-  again after 30 days, as before.
+  again after 30 days, as before. A refresh that spent its token and then
+  cannot issue (the token was revoked, the approver went, issuing failed)
+  ends the sign-in and revokes the access token it renews: a spent token
+  cannot be tried again, so the client signs in again. A revoke or a reuse
+  that lands while a refresh is under way ends the sign-in too; the token
+  the refresh just issued is revoked. A sign-in keeps its last 20 spent
+  tokens, so `refresh.json` grows with the number of sign-ins, not with
+  how often they refresh; an older spent token presented again is refused
+  as an unknown one, without ending the sign-in.
 
 ## PR plan
 
@@ -1323,3 +1331,8 @@ A slice a PR, in the order of D1361's risks:
 - `lastSeenAt` is kept in memory and written with the next change of
   `clients.json`, so a restart may lose the latest ones. Expired tokens are
   dropped from the file with the next write.
+- MCP refresh tokens (D1519): `refresh.json` is written whole and
+  synchronously on each issue and spend, on the token request's path, as
+  `clients.json` is; a failed write answers the request with an error
+  rather than `invalid_grant`. An unreadable `refresh.json` is not
+  repaired: every MCP client signs in again.

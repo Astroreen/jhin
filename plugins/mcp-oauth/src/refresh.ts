@@ -9,6 +9,8 @@ import { z } from "@jhin/sdk";
 
 /** A refresh token lives 90 days from its issue (D1519). */
 const REFRESH_TTL_MS = 90 * 86_400_000;
+/** Spent tokens a sign-in keeps to tell a reuse; an older one is refused as unknown. */
+const MAX_SPENT_PER_SIGN_IN = 20;
 
 const RefreshRecord = z.object({
   /** SHA-256 of the token, base64url; the token itself is never kept. */
@@ -66,7 +68,19 @@ export function createRefreshStore(options: {
 
   const commit = (next: RefreshRecord[]) => {
     const at = now();
-    const kept = next.filter((record) => record.expiresAt > at);
+    // A sign-in keeps its last spent tokens only, so the file stays bounded
+    // by the number of sign-ins however often a client refreshes.
+    const spentSeen = new Map<string, number>();
+    const kept = next
+      .toReversed()
+      .filter((record) => {
+        if (record.expiresAt <= at) return false;
+        if (!record.spent) return true;
+        const seen = (spentSeen.get(record.family) ?? 0) + 1;
+        spentSeen.set(record.family, seen);
+        return seen <= MAX_SPENT_PER_SIGN_IN;
+      })
+      .toReversed();
     const temporary = `${options.file}.${process.pid}.tmp`;
     Fs.mkdirSync(Path.dirname(options.file), { recursive: true });
     Fs.writeFileSync(temporary, `${JSON.stringify({ tokens: kept }, null, 2)}\n`, {
@@ -75,6 +89,9 @@ export function createRefreshStore(options: {
     Fs.renameSync(temporary, options.file);
     records = kept;
   };
+
+  /** A sign-in's last token: its current one, or the spent one a refresh is renewing. */
+  const latest = (family: string) => records.findLast((record) => record.family === family);
 
   return {
     /** A new refresh token for `grant`, in `family` (a new sign-in when absent). */
@@ -110,18 +127,21 @@ export function createRefreshStore(options: {
       return records.some((record) => record.family === family);
     },
 
-    /** The sign-in whose current token renews the device token `renews` matches. */
+    /**
+     * The sign-in whose latest token renews the device token `renews` matches.
+     * Latest, not unspent: while a refresh is under way its spent token is the
+     * latest, and revoking the access token it renews must still end the sign-in.
+     */
     familyOf(renews: (tokenId: string) => boolean): string | undefined {
-      return records.find((record) => !record.spent && renews(record.tokenId))?.family;
+      const families = new Set(records.map((record) => record.family));
+      return [...families].find((family) => renews(latest(family)!.tokenId));
     },
 
-    /** Ends a sign-in: forgets its tokens and returns the device token it currently renews. */
+    /** Ends a sign-in: forgets its tokens and returns the device token it renews last. */
     end(family: string): string | undefined {
-      const current = records.find((record) => record.family === family && !record.spent);
-      if (records.some((record) => record.family === family)) {
-        commit(records.filter((record) => record.family !== family));
-      }
-      return current?.tokenId;
+      const last = latest(family);
+      if (last !== undefined) commit(records.filter((record) => record.family !== family));
+      return last?.tokenId;
     },
   };
 }
