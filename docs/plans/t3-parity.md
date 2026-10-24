@@ -2515,8 +2515,7 @@ panel and devices are in `terminal.md`, `source-control.md` and
 ## Deferred
 
 - The right panel (D1421–D1424): T3's reopening of a closed view
-  (`view.reopenClosed`, ⌘/Ctrl+Shift+T), its sheet over the chat on a narrow
-  window, its open and close animation, a browser tab's audio and mute, a
+  (`view.reopenClosed`, ⌘/Ctrl+Shift+T), its open and close animation, a browser tab's audio and mute, a
   device tab's renaming, and forgetting a deleted thread's tabs (the 200
   places changed last are kept).
 - T3's Usage page beyond its "Limits" view (D1308): the token and cost
