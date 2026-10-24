@@ -256,12 +256,13 @@ section lands rather than a second path.
   runtime's `AbortSignal` is one and the isomorphic packages need no DOM
   or Node types; `createCancelSignal()` makes one. The kernel passes the
   invocation through untouched, so it learns nothing about callers,
-  transports or threads. A surface aborts the signal when nobody is left to take
-  the answer: `serveRpc` (`@jhin/rpc`) for every call of a connection
-  when the connection closes (the WebSocket transport, and a mesh link's
-  inbound calls), the MCP endpoint (`jhin.mcp-server`) for a request
-  whose HTTP response closes before it was answered. A caller in process
-  passes its own. A command that ignores the signal runs as it did; one
+  transports or threads. A surface aborts the signal when nobody is left
+  to take the answer: `serveRpc` (`@jhin/rpc`) for every call of a
+  connection when the connection closes or the server is disposed (the
+  WebSocket transport, and a mesh link's inbound calls, which `serveRpc`
+  serves too), the MCP endpoint (`jhin.mcp-server`) for a request whose
+  HTTP response closes before it was answered. Every listener hears the
+  abort, also after one that throws. A caller in process passes its own. A command that ignores the signal runs as it did; one
   that honours it stops waiting, never undoes what it already did. The
   error of an aborted command reaches nobody, so a command need not throw.
 - **D1502. A waited delegation ends with its caller.** `tasks.delegate`

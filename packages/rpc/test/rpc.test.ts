@@ -176,6 +176,27 @@ describe("rpc", () => {
     client.close();
   });
 
+  it("aborts the signal of a connection's calls when the server is disposed (D1501)", async () => {
+    const [clientEnd, serverEnd] = createPeerPair();
+    const signals: NonNullable<Invocation["signal"]>[] = [];
+    const server = serveRpc(serverEnd, {
+      caller: { id: "owner", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async (_name, _input, invocation) => {
+        signals.push(invocation.signal!);
+        return {};
+      },
+    });
+    await createCaller(clientEnd).call("app.echo", {});
+    expect(signals[0]!.aborted).toBe(false);
+
+    server.dispose();
+
+    expect(signals[0]!.aborted).toBe(true);
+  });
+
   it("aborts the signal of a connection's calls when the connection closes (D1501)", async () => {
     const { client, invocations, servers } = harness();
     await nextState(client, "open");

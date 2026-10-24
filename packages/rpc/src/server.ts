@@ -326,6 +326,13 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
 
   // Aborted when the connection ends: its calls' answers reach nobody (D1501).
   const gone = createCancelSignal();
+  const cancelCalls = () => {
+    try {
+      gone.cancel();
+    } catch (error) {
+      options.logger.error("a command's abort listener failed", { error: String(error) });
+    }
+  };
 
   async function handle(request: RequestMessage, trace: string): Promise<unknown> {
     switch (request.method) {
@@ -411,7 +418,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       for (const subscription of subscriptions.values()) subscription.dispose();
       subscriptions.clear();
       store.dispose();
-      gone.cancel();
+      cancelCalls();
     }),
   );
   return {
@@ -419,7 +426,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       for (const subscription of subscriptions.values()) subscription.dispose();
       subscriptions.clear();
       store.dispose();
-      gone.cancel();
+      cancelCalls();
     },
   };
 }

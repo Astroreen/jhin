@@ -154,6 +154,28 @@ describe("delegated tasks", () => {
     expect((wake.payload as { input: { text: string } }).input.text).toContain(started.taskId);
   });
 
+  it("does not wait at all for a caller already gone (D1502)", async () => {
+    const { client, kernel } = await node();
+    const feed = orchestrationFeed(client);
+    const parent = await parentThread(client);
+    const gone = new AbortController();
+    gone.abort();
+
+    const returned = (await kernel.commands.execute(
+      "tasks.delegate",
+      { task: "/hold on", mode: "wait", parentThreadId: parent.id },
+      { signal: gone.signal },
+    )) as TaskView;
+
+    expect(returned).toMatchObject({ status: "running", waitTimedOut: false });
+    // Its end still wakes the parent, as an async task's does.
+    const child = returned.childThreadId;
+    await client.call("threads.steer", { threadId: child, text: "finish" });
+    expect(
+      await feed.task(returned.taskId, (record) => record.delivery === "delivered"),
+    ).toMatchObject({ status: "completed" });
+  });
+
   it("reports a pending question to a waiting caller", async () => {
     const { client } = await node();
     const parent = await parentThread(client);

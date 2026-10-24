@@ -31,7 +31,16 @@ export function createCancelSignal(): { readonly signal: CancelSignal; cancel():
       aborted = true;
       const called = [...listeners];
       listeners.clear();
-      for (const listener of called) listener();
+      // Every listener hears it, as an `AbortSignal`'s do; the first error is thrown after.
+      const errors: unknown[] = [];
+      for (const listener of called) {
+        try {
+          listener();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (errors.length > 0) throw errors[0];
     },
   };
 }
