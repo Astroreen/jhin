@@ -393,3 +393,45 @@ test("D1128–D1130: with the delete rule on, deleting a thread asks nothing and
   expect(Fs.existsSync(thread.worktreePath)).toBe(false);
   expect(git(dir, "branch", "--list", "jhin/*").trim()).not.toBe("");
 });
+
+test("D1469, D1470: Storage's Delete now runs the cleanup and its Last run lists what it found", async ({
+  page,
+}, info) => {
+  const node = await startNode({
+    mode: "ui",
+    config: { "jhin.source-control": { worktreeCleanup: { afterDays: 30 } } },
+  });
+  running.push(node);
+  const dir = Path.join(node.home, "acme");
+  Fs.mkdirSync(dir, { recursive: true });
+  git(dir, "init", "--quiet", "--initial-branch=main");
+  Fs.writeFileSync(Path.join(dir, "README.md"), "acme\n");
+  git(dir, "add", ".");
+  git(dir, "commit", "--quiet", "-m", "first");
+  const project = await node.client().call<{ id: string }>("projects.create", { path: dir });
+  const thread = await node.client().call<{ worktreePath: string }>("threads.create", {
+    projectId: project.id,
+    title: "Search",
+    workspace: { type: "worktree", baseRef: "main" },
+  });
+  // A worktree no thread uses, untouched for two hours: T3's orphan report.
+  const orphan = Path.join(Path.dirname(thread.worktreePath), "forgotten");
+  Fs.mkdirSync(orphan);
+  Fs.writeFileSync(Path.join(orphan, ".git"), "gitdir: /nowhere\n");
+  const old = Date.now() / 1000 - 7200;
+  Fs.utimesSync(orphan, old, old);
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Storage" })
+    .click();
+  const cleanup = page.getByRole("region", { name: "Cleanup" });
+  await cleanup.getByRole("button", { name: "Delete now" }).click();
+  await expect(cleanup.getByText(/^Last run /)).toBeVisible();
+  await cleanup.getByRole("button", { name: /^Last run/ }).click();
+  await expect(cleanup.getByText("No thread uses this worktree.")).toBeVisible();
+  await expect(cleanup.getByText(/^Search\. /)).toBeVisible();
+  await shot(page, info, "storage-last-run");
+});
