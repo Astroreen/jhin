@@ -8,6 +8,8 @@ import type {
   ProjectStatus,
 } from "@jhin/source-control-api";
 
+import { forgeTerminology } from "../../lib/forges.ts";
+
 export type GitActionIconName = "commit" | "push" | "pr";
 
 export interface GitActionMenuItem {
@@ -41,15 +43,9 @@ export type DefaultBranchConfirmableAction =
 /** How long a finished action's toast stays once seen. */
 export const GIT_ACTION_SUCCESS_VISIBLE_MS = 10_000;
 
-const DEFAULT_TERMINOLOGY: ChangeRequestTerminology = {
-  singular: "pull request",
-  shortLabel: "PR",
-};
-
 /** The forge's word for a pull request: GitLab says merge request. */
 function terminologyOf(status: ProjectStatus | undefined): ChangeRequestTerminology {
-  const kind = status?.provider?.kind as string | undefined;
-  return kind === "gitlab" ? { singular: "merge request", shortLabel: "MR" } : DEFAULT_TERMINOLOGY;
+  return forgeTerminology(status?.provider?.kind);
 }
 
 /** What T3's `VcsStatusResult` says, read from a `ProjectStatus`. */
@@ -333,7 +329,7 @@ export function resolveDefaultBranchActionDialogCopy(input: {
 }): DefaultBranchActionDialogCopy {
   const branch = input.branchName;
   const suffix = ` on "${branch}". You can continue on this ref or create a feature ref and run the same action there.`;
-  const terminology = input.terminology ?? DEFAULT_TERMINOLOGY;
+  const terminology = input.terminology ?? forgeTerminology(undefined);
   if (input.action === "push" || input.action === "commit_push") {
     if (input.includesCommit) {
       return {

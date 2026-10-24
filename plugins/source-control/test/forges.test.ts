@@ -1,50 +1,21 @@
 import * as Http from "node:http";
 
 import type { GitActionResult, ProjectStatus, PullRequest } from "@jhin/source-control-api";
-import type { StoredEvent } from "@jhin/storage-api";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { forgeKindOf, matchesHead } from "../src/index.ts";
-import { fakeCli, fakeGh, ghPullRequest, git, node, repository, temp, write } from "./support.ts";
+import {
+  fakeCli,
+  fakeGh,
+  ghPullRequest,
+  git,
+  node,
+  repositoryAt,
+  watching,
+  write,
+} from "./support.ts";
 
 const only = (snapshot: { projects: ProjectStatus[] }) => snapshot.projects[0]!;
-
-/** A repository on `feature` whose `origin` is `url`, pushing to a bare repository. */
-function repositoryAt(url: string) {
-  const dir = repository();
-  const remote = temp("jhin-sc-remote-");
-  git(remote, "init", "--quiet", "--bare", "--initial-branch=main");
-  git(dir, "remote", "add", "origin", url);
-  git(dir, "config", "remote.origin.pushurl", remote);
-  git(dir, "push", "--quiet", remote, "main:main");
-  git(dir, "fetch", "--quiet", remote, "+refs/heads/*:refs/remotes/origin/*");
-  git(dir, "switch", "--quiet", "--create", "feature");
-  return dir;
-}
-
-/**
- * A node that watches only on request, a thread of a project on `remote`, and a wait for the
- * thread's next turn whose text matches.
- */
-async function watching(remote: string) {
-  const sc = await node({ watchSweepSeconds: 0 });
-  const projectId = await sc.project(repositoryAt(remote));
-  const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
-  const texts: string[] = [];
-  const waiters = new Set<{ match: (text: string) => boolean; resolve(): void }>();
-  sc.client.subscribe(`thread/${thread.id}`, {}, (event: StoredEvent) => {
-    if (event.type !== "agent.turn.started") return;
-    const text = (event.payload as { input?: { text?: string } }).input?.text ?? "";
-    texts.push(text);
-    for (const waiter of waiters) if (waiter.match(text)) waiter.resolve();
-  });
-  const until = (match: (text: string) => boolean) =>
-    new Promise<void>((resolve) => {
-      if (texts.some(match)) resolve();
-      else waiters.add({ match, resolve });
-    });
-  return { sc, thread, until };
-}
 
 describe("which forge a host is", () => {
   it("tells forges apart by their hosts, as T3 Code does, and takes configured ones first", () => {
@@ -84,7 +55,12 @@ describe("jhin.source-control: GitHub Enterprise and forks", () => {
     const sc = await node();
     const projectId = await sc.project(repositoryAt("https://github.acme.io/acme/demo.git"));
     const status = only(await sc.status(projectId, true));
-    expect(status.provider).toEqual({ kind: "github", available: true });
+    // T3's providerName for another host (D1445).
+    expect(status.provider).toEqual({
+      kind: "github",
+      name: "GitHub Self-Hosted",
+      available: true,
+    });
     expect(status.pullRequests["feature"]?.number).toBe(7);
   });
 
@@ -165,7 +141,7 @@ describe("jhin.source-control: GitLab through glab", () => {
     const sc = await node();
     const projectId = await sc.project(dir);
     const status = only(await sc.status(projectId, true));
-    expect(status.provider).toEqual({ kind: "gitlab", available: true });
+    expect(status.provider).toEqual({ kind: "gitlab", name: "GitLab", available: true });
     // The newer one comes from a fork: not this branch's.
     expect(status.pullRequests["feature"]).toMatchObject({
       number: 5,
@@ -267,6 +243,7 @@ describe("jhin.source-control: GitLab through glab", () => {
     const projectId = await sc.project(repositoryAt("git@gitlab.com:acme/demo.git"));
     expect(only(await sc.status(projectId, true)).provider).toEqual({
       kind: "gitlab",
+      name: "GitLab",
       available: false,
       reason: "GitLab CLI (glab) is not installed on this node",
     });
@@ -499,9 +476,7 @@ describe("jhin.source-control: Forgejo and Gitea through tea", () => {
         updated_at: "2026-10-20T10:00:00Z",
       },
     ]);
-    tea.answer("api /repos/acme/demo/commits/abc/status", {
-      statuses: [{ status: "success" }, { status: "pending" }],
-    });
+    tea.answer("api /repos/acme/demo/statuses/abc", [{ status: "success" }, { status: "pending" }]);
     const sc = await node();
     const projectId = await sc.project(repositoryAt("https://codeberg.org/acme/demo.git"));
     expect(only(await sc.status(projectId, true)).pullRequests["feature"]).toMatchObject({
@@ -571,9 +546,10 @@ describe("jhin.source-control: Bitbucket through its API", () => {
     const projectId = await sc.project(repositoryAt("git@bitbucket.org:acme/demo.git"));
     expect(only(await sc.status(projectId, true)).provider).toEqual({
       kind: "bitbucket",
+      name: "Bitbucket",
       available: false,
       reason:
-        "Bitbucket needs a token on this node: set JHIN_BITBUCKET_ACCESS_TOKEN, or JHIN_BITBUCKET_EMAIL and JHIN_BITBUCKET_API_TOKEN",
+        "Bitbucket needs a token on this node: set it in the source control settings, or JHIN_BITBUCKET_ACCESS_TOKEN (or JHIN_BITBUCKET_EMAIL and JHIN_BITBUCKET_API_TOKEN)",
     });
   });
 });

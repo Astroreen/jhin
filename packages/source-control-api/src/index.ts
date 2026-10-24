@@ -148,6 +148,8 @@ export type PreparedPullRequest = z.output<typeof PreparedPullRequest>;
  */
 export const PullRequestProvider = z.object({
   kind: z.enum(["github", "gitlab", "azure-devops", "bitbucket", "forgejo"]),
+  /** T3's `providerName` (D1445): "GitHub", "GitLab Self-Hosted", …; absent from older nodes. */
+  name: z.string().optional(),
   available: z.boolean(),
   reason: z.string().optional(),
 });

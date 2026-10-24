@@ -267,6 +267,7 @@ async function checkoutTarget(
   return {
     pr,
     crossRepository,
+    pullRefs: true,
     ...(owner === undefined ? {} : { headOwner: owner }),
     ...(crossRepository && owner !== undefined && name !== undefined
       ? { headRepository: `${owner}/${name}` }

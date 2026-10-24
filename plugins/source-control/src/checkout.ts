@@ -6,7 +6,11 @@
 // refreshCheckedOutBranch) and the GitHub provider's checkoutChangeRequest.
 import * as Path from "node:path";
 
-import type { PreparedPullRequest, PullRequest } from "@jhin/source-control-api";
+import {
+  parsePullRequestUrl,
+  type PreparedPullRequest,
+  type PullRequest,
+} from "@jhin/source-control-api";
 
 import type { CheckoutTarget } from "./forge.ts";
 import { SourceControlError, type Git } from "./git.ts";
@@ -69,12 +73,15 @@ function normalizeUrl(url: string): string {
 }
 
 /**
- * Whether a pull request's URL (`https://<host>/<owner>/<name>/pull/<n>`) is
- * one of the repository a remote URL names: a URL reference may name another.
+ * Whether a pull request's URL is one of the repository a remote URL names: a URL reference
+ * may name another. Every forge's URL shape is read (`parsePullRequestUrl`, D1444).
  */
 export function isPullRequestOf(remoteUrl: string, pullRequestUrl: string): boolean {
-  const repository = pullRequestUrl.split(/\/pull\/\d+/)[0];
-  return repository !== undefined && normalizeUrl(repository) === normalizeUrl(remoteUrl);
+  const parsed = parsePullRequestUrl(pullRequestUrl);
+  return (
+    parsed !== undefined &&
+    normalizeUrl(`${parsed.host}/${parsed.repository}`) === normalizeUrl(remoteUrl)
+  );
 }
 
 /** The fork's clone URL on the pull request's host, over SSH when the primary remote uses it. */
@@ -173,6 +180,8 @@ async function headCommit(
     const ref = await fetchHead(git, await headRemote(git, target), target.pr.headBranch);
     return { commit: (await git(["rev-parse", "--verify", `${ref}^{commit}`])).stdout.trim(), ref };
   } catch (error) {
+    // Azure DevOps, GitLab and Bitbucket publish no refs/pull: nothing else to try (D1444).
+    if (!target.pullRefs) throw error;
     // T3 falls back on any failure too: the pull request's own ref, without an upstream.
     warn("could not fetch the pull request's head branch, using refs/pull", {
       number: target.pr.number,
@@ -305,8 +314,17 @@ async function materialize(
  * safe (T3's `refreshCheckedOutBranch`): already there, or a fast-forward of
  * a clean checkout. Returns whether it is on the head.
  */
-async function refresh(git: Git, pr: PullRequest): Promise<boolean> {
-  const target = await fetchPullRequestHead(git, pr);
+async function refresh(git: Git, found: CheckoutTarget): Promise<boolean> {
+  // A forge without refs/pull is read at its head branch (D1444).
+  const target = found.pullRefs
+    ? await fetchPullRequestHead(git, found.pr)
+    : (
+        await git([
+          "rev-parse",
+          "--verify",
+          `${await fetchHead(git, await headRemote(git, found), found.pr.headBranch)}^{commit}`,
+        ])
+      ).stdout.trim();
   const head = (await git(["rev-parse", "HEAD"])).stdout.trim();
   if (head === target) return true;
   if ((await git(["status", "--porcelain"])).stdout.trim() !== "") return false;
@@ -349,7 +367,7 @@ export async function checkoutWorktree(
   if (found !== undefined) {
     const worktreeGit = options.createGit(found.path);
     await configureUpstream(worktreeGit, target, local, options.warn);
-    const onHead = await refresh(worktreeGit, pr).catch((error: unknown) => {
+    const onHead = await refresh(worktreeGit, target).catch((error: unknown) => {
       options.warn("could not refresh a reused pull request worktree", {
         worktreePath: found.path,
         error: (error as Error).message,

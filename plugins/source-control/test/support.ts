@@ -566,3 +566,40 @@ export function fakeCli(name: string): {
         : [],
   };
 }
+
+/** A repository on `feature` whose `origin` is `url`, pushing to a bare repository. */
+export function repositoryAt(url: string) {
+  const dir = repository();
+  const remote = temp("jhin-sc-remote-");
+  git(remote, "init", "--quiet", "--bare", "--initial-branch=main");
+  git(dir, "remote", "add", "origin", url);
+  git(dir, "config", "remote.origin.pushurl", remote);
+  git(dir, "push", "--quiet", remote, "main:main");
+  git(dir, "fetch", "--quiet", remote, "+refs/heads/*:refs/remotes/origin/*");
+  git(dir, "switch", "--quiet", "--create", "feature");
+  return dir;
+}
+
+/**
+ * A node that watches only on request, a thread of a project on `remote`, and a wait for the
+ * thread's next turn whose text matches.
+ */
+export async function watching(remote: string) {
+  const sc = await node({ watchSweepSeconds: 0 });
+  const projectId = await sc.project(repositoryAt(remote));
+  const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
+  const texts: string[] = [];
+  const waiters = new Set<{ match: (text: string) => boolean; resolve(): void }>();
+  sc.client.subscribe(`thread/${thread.id}`, {}, (event: StoredEvent) => {
+    if (event.type !== "agent.turn.started") return;
+    const text = (event.payload as { input?: { text?: string } }).input?.text ?? "";
+    texts.push(text);
+    for (const waiter of waiters) if (waiter.match(text)) waiter.resolve();
+  });
+  const until = (match: (text: string) => boolean) =>
+    new Promise<void>((resolve) => {
+      if (texts.some(match)) resolve();
+      else waiters.add({ match, resolve });
+    });
+  return { sc, thread, until };
+}

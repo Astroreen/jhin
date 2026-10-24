@@ -43,7 +43,7 @@ describe("jhin.source-control: pull requests through the GitHub CLI", () => {
     const sc = await node();
     const projectId = await sc.project(dir);
     const status = only(await sc.status(projectId, true));
-    expect(status.provider).toEqual({ kind: "github", available: true });
+    expect(status.provider).toEqual({ kind: "github", name: "GitHub", available: true });
     expect(status.pullRequests).toEqual({
       feature: {
         number: 7,
