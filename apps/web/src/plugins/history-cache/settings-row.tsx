@@ -9,6 +9,8 @@ import { SettingsRow } from "../../lib/settings-layout.tsx";
 import type { HistoryCacheControl } from "./service.ts";
 
 interface Status {
+  /** False while the setting is on means the cache stopped over the quota (D1593). */
+  readonly enabled: boolean;
   readonly entries: number;
   readonly bytes: number;
 }
@@ -45,11 +47,13 @@ export function historyCacheRow(
     const kept =
       status === undefined
         ? ""
-        : status.entries === 0
-          ? " Nothing is kept now."
-          : enabled
-            ? ` Now ${status.entries} ${status.entries === 1 ? "thread" : "threads"}, about ${formatAttachmentSize(status.bytes)}.`
-            : "";
+        : enabled && !status.enabled
+          ? " Paused for this session: this browser has no room left for it, so threads load from their nodes."
+          : status.entries === 0
+            ? " Nothing is kept now."
+            : enabled
+              ? ` Now ${status.entries} ${status.entries === 1 ? "thread" : "threads"}, about ${formatAttachmentSize(status.bytes)}.`
+              : "";
     return (
       <SettingsRow
         control={

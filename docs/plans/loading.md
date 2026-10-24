@@ -190,6 +190,10 @@ What the node does today (2026-10-24, `08eeb571`):
   ends its session), so D1593's "signing out" is that removal. Without
   IndexedDB the plugin provides no service, but `history-cache.status` and
   `history-cache.clear` still answer (nothing kept, nothing cleared).
+- **D1612. A cache stopped over the quota says so.** `history-cache.status`
+  answers `enabled: false` while the setting is on, and the settings row says
+  the cache is paused for this session because the browser has no room left.
+  What is kept stays: the next session reads it and makes room again.
 
 ### P3. Chunks and prefetch
 
