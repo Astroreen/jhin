@@ -223,6 +223,24 @@ describe("jhin.right-panel", () => {
     expect(await kernel.commands.execute("right-panel.surface.open", { kind: "nope" })).toEqual({
       opened: false,
     });
+    // Activating the surface already shown changes nothing; a far index moves to the end.
+    expect(await kernel.commands.execute("right-panel.surface.activate", { id: "diff" })).toEqual({
+      changed: false,
+    });
+    await kernel.commands.execute("right-panel.surface.move", { id: "file:a.ts", index: 9 });
+    expect(
+      (
+        (await kernel.commands.execute("right-panel.surfaces.list", {})) as {
+          surfaces: { id: string }[];
+        }
+      ).surfaces.map((surface) => surface.id),
+    ).toEqual(["diff", "file:a.ts"]);
+    expect(await kernel.commands.execute("right-panel.maximize.toggle", {})).toEqual({
+      maximized: true,
+    });
+    expect(await kernel.commands.execute("right-panel.maximize.toggle", {})).toEqual({
+      maximized: false,
+    });
     await kernel.stop();
   });
 });

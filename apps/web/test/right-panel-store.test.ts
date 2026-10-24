@@ -75,6 +75,13 @@ describe("the right panel's state", () => {
     expect(gone.activeId).toBe("browser:t2");
     const same = three();
     expect(reconcile(same, "browser", ["t1"])).toBe(same);
+    // Open on "Open a surface": new tabs join the strip, and the chooser stays.
+    const choosing = { ...EMPTY_STATE, open: true };
+    expect(reconcile(choosing, "browser", ["t1"])).toMatchObject({
+      activeId: null,
+      open: true,
+      surfaces: [{ id: "browser:t1" }],
+    });
   });
 
   it("keeps places on the device and leaves out what is malformed", () => {

@@ -340,6 +340,16 @@ export const rightPanelPlugin = builtin(
           routeFor(place, active !== null && kinds.has(active.kind) ? active : null),
         );
       };
+      /** Moves a surface to another place of its strip (T3's `moveSurface`), clamped to the strip. */
+      const moveSurface = (key: string, id: string, index: number) =>
+        update(
+          key,
+          (state) => move(state, id, Math.max(0, Math.min(index, state.surfaces.length - 1))),
+          false,
+        );
+      /** T3's `setMaximized`, not a choice it counts against opening a panel by itself. */
+      const toggleMaximized = (key: string) =>
+        update(key, (state) => ({ ...state, maximized: !state.maximized }), false);
       /** A user's change of a place's panel, the route following it. */
       const change = (
         place: RightPanelPlace,
@@ -494,7 +504,7 @@ export const rightPanelPlugin = builtin(
           if (!routeShowsPanel(navigation.current())) return { maximized: false };
           const shown = onScreen();
           if (shown === undefined) return { maximized: false };
-          update(shown.key, (state) => ({ ...state, maximized: !state.maximized }), false);
+          toggleMaximized(shown.key);
           return { maximized: stateOf(shown.key).maximized };
         },
       });
@@ -542,9 +552,10 @@ export const rightPanelPlugin = builtin(
           if (shown === undefined || surface === undefined || !kinds.has(surface.kind)) {
             return { changed: false };
           }
-          const before = navigation.current();
+          const before = stateOf(shown.key);
           open(shown.place, surface);
-          return { changed: navigation.current() !== before };
+          const after = stateOf(shown.key);
+          return { changed: after.activeId !== before.activeId || after.open !== before.open };
         },
       });
       context.commands.register({
@@ -589,11 +600,7 @@ export const rightPanelPlugin = builtin(
           const shown = onScreen();
           if (shown === undefined) return { changed: false };
           const before = stateOf(shown.key);
-          update(
-            shown.key,
-            (state) => move(state, id, Math.min(index, state.surfaces.length - 1)),
-            false,
-          );
+          moveSurface(shown.key, id, index);
           return { changed: stateOf(shown.key) !== before };
         },
       });
@@ -679,11 +686,8 @@ export const rightPanelPlugin = builtin(
             onError={(id, error) =>
               context.log.error("surface failed to render", { kind: id, error: String(error) })
             }
-            // Neither is a choice T3 counts against opening a panel by itself.
-            onMove={(id, index) => update(key, (current) => move(current, id, index), false)}
-            onToggleMaximized={() =>
-              update(key, (current) => ({ ...current, maximized: !current.maximized }), false)
-            }
+            onMove={(id, index) => moveSurface(key, id, index)}
+            onToggleMaximized={() => toggleMaximized(key)}
             place={place}
             state={state}
           />
