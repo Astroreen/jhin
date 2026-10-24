@@ -99,5 +99,7 @@ export const DiffSettings = z.object({
   ignoreWhitespace: z.boolean().default(true),
   /** Files start folded. */
   filesCollapsed: z.boolean().default(true),
+  /** T3's proactive panels: the right panel opens on new pull requests and big turns (D1426). */
+  proactivePanels: z.boolean().default(false),
 });
 export type DiffSettings = z.output<typeof DiffSettings>;
