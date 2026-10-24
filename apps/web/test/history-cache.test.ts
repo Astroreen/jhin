@@ -1,5 +1,11 @@
-import type { Connections, NodeConnection, StreamEvent } from "@jhin/client-api";
-import { toDisposable } from "@jhin/sdk";
+import {
+  HISTORY_CACHE_CAPABILITY,
+  type Connections,
+  type NodeConnection,
+  type StreamEvent,
+} from "@jhin/client-api";
+import { definePlugin, toDisposable } from "@jhin/sdk";
+import { createTestKernel, testManifest } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -7,6 +13,7 @@ import {
   forgetWithConnections,
   STALE_AFTER_MS,
 } from "../src/plugins/history-cache/service.ts";
+import { historyCachePlugin } from "../src/plugins/history-cache/index.ts";
 import type { HistoryStore, StreamEntry } from "../src/plugins/history-cache/store.ts";
 
 const event = (sequence: number): StreamEvent => ({
@@ -111,6 +118,30 @@ describe("the history cache's service (loading.md D1592, D1593)", () => {
     expect(kept()).toEqual(["n thread/recent"]);
   });
 
+  it("lands a write in flight before a clear, never after it (D1592)", async () => {
+    const { store, kept } = memoryStore();
+    let on = true;
+    const cache = createHistoryCache(store, { enabled: () => on });
+    let cleared = 0;
+    cache.onCleared(() => (cleared += 1));
+    const writing = cache.append("n", "thread/a", "e1", [event(1)]);
+    on = false;
+    const clearing = cache.clear();
+    // A write asked for after the setting went off is not made at all.
+    const late = cache.append("n", "thread/b", "e1", [event(1)]);
+    await Promise.all([writing, clearing, late]);
+    expect(kept()).toEqual([]);
+    expect(cleared).toBe(1);
+  });
+
+  it("says it is off once it stopped over the quota", async () => {
+    const { store, state } = memoryStore();
+    state.full = 2;
+    const cache = createHistoryCache(store, { enabled: () => true });
+    await cache.append("n", "thread/a", "e1", [event(1)]).catch(() => undefined);
+    expect((await cache.status()).enabled).toBe(false);
+  });
+
   it("clears one connection or everything and says how many streams went", async () => {
     const { store, kept } = memoryStore([
       entry("one", "thread/a", 0),
@@ -175,5 +206,37 @@ describe("what a device forgets, the cache forgets (D1593)", () => {
     nodes.set([nodes.node("a", "UNAUTHENTICATED")]);
     nodes.set([nodes.node("a", "UNAUTHENTICATED")]);
     expect(forgotten).toEqual(["a"]);
+  });
+});
+
+describe("jhin.history-cache without IndexedDB", () => {
+  it("provides no service, but its commands answer that nothing is kept", async () => {
+    expect(typeof indexedDB).toBe("undefined");
+    let service: unknown = "not activated";
+    const kernel = await createTestKernel({
+      side: "client",
+      plugins: [
+        historyCachePlugin,
+        {
+          manifest: testManifest("app.consumer", {
+            side: "client",
+            optional: { [HISTORY_CACHE_CAPABILITY]: "^1" },
+          }),
+          definition: definePlugin({
+            activate(context) {
+              service = context.services.tryGet(HISTORY_CACHE_CAPABILITY);
+            },
+          }),
+        },
+      ],
+    });
+    expect(service).toBeUndefined();
+    expect(await kernel.commands.execute("history-cache.status", {})).toEqual({
+      enabled: false,
+      entries: 0,
+      bytes: 0,
+    });
+    expect(await kernel.commands.execute("history-cache.clear", {})).toEqual({ cleared: 0 });
+    await kernel.stop();
   });
 });

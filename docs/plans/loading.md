@@ -178,6 +178,14 @@ What the node does today (2026-10-24, `08eeb571`):
   streams, then is tried once more. The 30 days of D1593 count from when a
   thread last opened from the cache, kept per stream; the sidebar's catalog
   of a node goes only with the node (D1593) or the setting.
+- **D1611. Writes and clears take turns.** The cache runs its writes and
+  clears one after another, and a write checks the setting when its turn
+  comes: one in flight when the setting goes off or a node is forgotten
+  lands before the clear and goes with it, and none lands after. Signing
+  out of a node is removing it in this client (removing the page's own node
+  ends its session), so D1593's "signing out" is that removal. Without
+  IndexedDB the plugin provides no service, but `history-cache.status` and
+  `history-cache.clear` still answer (nothing kept, nothing cleared).
 
 ### P3. Chunks and prefetch
 

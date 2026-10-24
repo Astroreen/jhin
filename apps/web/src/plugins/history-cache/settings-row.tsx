@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { formatAttachmentSize } from "../../lib/attachment-files.ts";
 import { HISTORY_CACHE_SECTION, HistoryCacheSettings, useSection } from "../../lib/settings.ts";
 import { SettingsRow } from "../../lib/settings-layout.tsx";
+import type { HistoryCacheControl } from "./service.ts";
 
 interface Status {
   readonly entries: number;
@@ -17,11 +18,20 @@ interface Status {
  * general settings' Behavior section. Turning it off deletes what is kept at
  * once; the row says how much is kept and that it is not encrypted.
  */
-export function historyCacheRow(context: PluginContext, settings: DeviceSettings) {
+export function historyCacheRow(
+  context: PluginContext,
+  settings: DeviceSettings,
+  cache: Pick<HistoryCacheControl, "onCleared">,
+) {
   return function HistoryCacheRow() {
     const { enabled } = useSection(context, HISTORY_CACHE_SECTION, HistoryCacheSettings);
     const [status, setStatus] = useState<Status | undefined>();
     const [read, setRead] = useState(0);
+    // The plugin clears once the setting is off; the row reads again after it did.
+    useEffect(() => {
+      const watching = cache.onCleared(() => setRead((count) => count + 1));
+      return () => watching.dispose();
+    }, []);
     useEffect(() => {
       let current = true;
       void (context.commands.execute("history-cache.status", {}) as Promise<Status>)
@@ -31,19 +41,15 @@ export function historyCacheRow(context: PluginContext, settings: DeviceSettings
         current = false;
       };
     }, [enabled, read]);
-    const set = (checked: boolean) => {
-      settings.patch(HISTORY_CACHE_SECTION, { enabled: checked });
-      if (checked) return;
-      // Deleted at once, and the row shows it gone.
-      void context.commands
-        .execute("history-cache.clear", {})
-        .catch(() => undefined)
-        .finally(() => setRead((count) => count + 1));
-    };
+    const set = (checked: boolean) => settings.patch(HISTORY_CACHE_SECTION, { enabled: checked });
     const kept =
-      enabled && status !== undefined && status.entries > 0
-        ? ` Now ${status.entries} ${status.entries === 1 ? "thread" : "threads"}, about ${formatAttachmentSize(status.bytes)}.`
-        : "";
+      status === undefined
+        ? ""
+        : status.entries === 0
+          ? " Nothing is kept now."
+          : enabled
+            ? ` Now ${status.entries} ${status.entries === 1 ? "thread" : "threads"}, about ${formatAttachmentSize(status.bytes)}.`
+            : "";
     return (
       <SettingsRow
         control={

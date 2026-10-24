@@ -152,7 +152,8 @@ test("turning off “Keep chat history on this device” deletes it, and threads
 
   await setting.click();
   await expect(setting).not.toBeChecked();
-  await expect(page.getByText(/Now 1 thread/)).toHaveCount(0);
+  // Once the clear is done, the row reads what is kept again.
+  await expect(page.getByText(/Nothing is kept now\./)).toBeVisible();
   expect(await keptStreams(page)).toBe(0);
   const off = info.outputPath("setting-off.png");
   await page.screenshot({ path: off });

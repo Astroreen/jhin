@@ -19,7 +19,20 @@ export interface HistoryCacheControl extends HistoryCache {
   clear(connection?: string): Promise<number>;
   /** Forgets the streams no thread opened for 30 days (D1593); resolves how many went. */
   evictStale(): Promise<number>;
+  /** Fires after a clear has deleted what it was asked to. */
+  onCleared(listener: () => void): Disposable;
 }
+
+/** Where nothing is kept: the store of a browser without IndexedDB. */
+export const NO_STORE: HistoryStore = {
+  read: async () => undefined,
+  append: async () => undefined,
+  drop: async () => undefined,
+  readCatalog: async () => undefined,
+  writeCatalog: async () => undefined,
+  entries: async () => [],
+  close: () => undefined,
+};
 
 const isQuota = (error: unknown) =>
   (error as { name?: unknown } | null)?.name === "QuotaExceededError";
@@ -38,6 +51,18 @@ export function createHistoryCache(
   const now = options.now ?? Date.now;
   let stopped = false;
   const on = () => options.enabled() && !stopped;
+  /**
+   * Writes and clears run one after another, a write checking the setting when
+   * its turn comes: one in flight when the cache is turned off or a node is
+   * forgotten lands before the clear, never after it (D1592).
+   */
+  let queue: Promise<unknown> = Promise.resolve();
+  const serial = <T>(task: () => Promise<T>): Promise<T> => {
+    const run = queue.then(task, task);
+    queue = run.catch(() => undefined);
+    return run;
+  };
+  const cleared = new Set<() => void>();
   const evictFor = async (connection: string, stream: string) => {
     const others = (await store.entries())
       .filter((entry) => entry.connection !== connection || entry.stream !== stream)
@@ -46,8 +71,10 @@ export function createHistoryCache(
       await store.drop(entry.connection, entry.stream);
     }
   };
-  /** Runs a write; over the quota, makes room once and tries again. */
-  const write = async (connection: string, stream: string, run: () => Promise<void>) => {
+  /** Runs a write in its turn; over the quota, makes room once and tries again. */
+  const write = (connection: string, stream: string, run: () => Promise<void>) =>
+    serial(() => attempt(connection, stream, run));
+  const attempt = async (connection: string, stream: string, run: () => Promise<void>) => {
     if (!on()) return;
     try {
       await run();
@@ -62,12 +89,14 @@ export function createHistoryCache(
       }
     }
   };
-  const forget = async (connection?: string) => {
-    const before = await store.entries();
-    await store.drop(connection);
-    return before.filter((entry) => connection === undefined || entry.connection === connection)
-      .length;
-  };
+  const forget = (connection?: string) =>
+    serial(async () => {
+      const before = await store.entries();
+      await store.drop(connection);
+      for (const listener of Array.from(cleared)) listener();
+      return before.filter((entry) => connection === undefined || entry.connection === connection)
+        .length;
+    });
   return {
     enabled: on,
     read: async (connection, stream) => (on() ? store.read(connection, stream, now()) : undefined),
@@ -80,12 +109,16 @@ export function createHistoryCache(
     async status() {
       const entries = await store.entries();
       return {
-        enabled: options.enabled(),
+        enabled: on(),
         entries: entries.length,
         bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
       };
     },
     clear: forget,
+    onCleared(listener) {
+      cleared.add(listener);
+      return { dispose: () => cleared.delete(listener) };
+    },
     async evictStale() {
       const oldest = now() - STALE_AFTER_MS;
       const stale = (await store.entries()).filter((entry) => entry.openedAt < oldest);

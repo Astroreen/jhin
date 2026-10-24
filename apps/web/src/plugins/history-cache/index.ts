@@ -11,15 +11,15 @@ import { UI_SLOTS_CAPABILITY, type SlotRegistry } from "@jhin/ui";
 import { builtin } from "../../lib/builtin.ts";
 import { HISTORY_CACHE_SECTION, HistoryCacheSettings, readSection } from "../../lib/settings.ts";
 import { historyCacheRow } from "./settings-row.tsx";
-import { createHistoryCache, forgetWithConnections } from "./service.ts";
+import { createHistoryCache, forgetWithConnections, NO_STORE } from "./service.ts";
 import { openHistoryStore } from "./store.ts";
 
 /**
  * `jhin.history-cache` (loading.md D1588): the streams this device has read,
  * kept in IndexedDB, as `client.history-cache@1`, behind the device setting
  * "Keep chat history on this device" (D1592). Without IndexedDB (a private
- * window that refuses it) the plugin provides nothing and threads open from
- * 0, as before it.
+ * window that refuses it) the plugin provides no service, so threads open
+ * from 0 as before it, and its commands answer that nothing is kept.
  */
 export const historyCachePlugin = builtin(
   "jhin.history-cache",
@@ -34,10 +34,11 @@ export const historyCachePlugin = builtin(
   definePlugin({
     activate(context) {
       context.config.define(HISTORY_CACHE_SECTION, HistoryCacheSettings);
-      if (typeof indexedDB === "undefined") return;
+      // Without IndexedDB nothing is kept, but the commands still answer (rule 6).
+      const available = typeof indexedDB !== "undefined";
       const enabled = () =>
-        readSection(context, HISTORY_CACHE_SECTION, HistoryCacheSettings).enabled;
-      const store = openHistoryStore();
+        available && readSection(context, HISTORY_CACHE_SECTION, HistoryCacheSettings).enabled;
+      const store = available ? openHistoryStore() : NO_STORE;
       context.subscriptions.add({ dispose: () => store.close() });
       const cache = createHistoryCache(store, { enabled });
       const warn = (what: string) => (error: unknown) =>
@@ -47,11 +48,12 @@ export const historyCachePlugin = builtin(
       if (!enabled()) void cache.clear().catch(warn("the history cache was not cleared"));
       else void cache.evictStale().catch(warn("old history was not evicted"));
       const settings = context.services.tryGet<DeviceSettings>(SETTINGS_CAPABILITY);
-      const changes = settings?.onDidChange?.(({ section }) => {
-        if (section === HISTORY_CACHE_SECTION && !enabled())
-          void cache.clear().catch(warn("the history cache was not cleared"));
-      });
-      if (changes !== undefined) context.subscriptions.add(changes);
+      // Turned off here or in another tab: deleted at once.
+      context.subscriptions.add(
+        context.config.onDidChange(HISTORY_CACHE_SECTION, () => {
+          if (!enabled()) void cache.clear().catch(warn("the history cache was not cleared"));
+        }),
+      );
 
       const connections = context.services.tryGet<Connections>(CONNECTIONS_CAPABILITY);
       if (connections !== undefined) {
@@ -68,7 +70,7 @@ export const historyCachePlugin = builtin(
         name: "history-cache.status",
         title: "History cache status",
         description:
-          "Whether this device keeps the chat history it read (loading.md D1592), how many thread streams it keeps and about how many bytes they take (the length of their JSON)",
+          "Whether this device keeps the chat history it read (loading.md D1592), how many thread streams it keeps and about how many bytes they take (the UTF-8 size of their JSON)",
         input: z.object({}),
         output: z.object({ enabled: z.boolean(), entries: z.number(), bytes: z.number() }),
         handler: () => cache.status(),
@@ -92,11 +94,11 @@ export const historyCachePlugin = builtin(
         context.subscriptions.add(
           slots.contribute("settings.general.behavior", {
             id: "jhin.history-cache.setting",
-            component: historyCacheRow(context, settings),
+            component: historyCacheRow(context, settings, cache),
           }),
         );
       }
-      context.services.provide(HISTORY_CACHE_CAPABILITY, cache);
+      if (available) context.services.provide(HISTORY_CACHE_CAPABILITY, cache);
     },
   }),
 );
