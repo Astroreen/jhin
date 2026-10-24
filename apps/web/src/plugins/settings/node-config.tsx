@@ -34,8 +34,24 @@ import {
 import { useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { SettingsEmpty, SettingsRow, SettingsSection } from "../../lib/settings-layout.tsx";
-import { Fields, SectionJson, type FieldsContext } from "./config-fields.tsx";
+import {
+  Fields,
+  SectionJson,
+  type FieldInheritance,
+  type FieldsContext,
+} from "./config-fields.tsx";
 import { useSettingsServices } from "./index.tsx";
+import {
+  PROJECT_SETTINGS_KEY,
+  ProjectScopeSentence,
+  inheritanceLayers,
+  overridesOf,
+  projectEntrySchema,
+  projectFormSchema,
+  projectKeys,
+  t3FileFields,
+  type ScopeProject,
+} from "./project-scope.tsx";
 
 interface ConfigRead {
   readonly value?: unknown;
@@ -284,6 +300,11 @@ function ConfigEditor({
   const [loaded, setLoaded] = useLoadedSection(client, section, layer);
   const [asJson, setAsJson] = useState(false);
   const [scope, setScope] = useState<readonly string[] | undefined>();
+  /** T3's project scope (D1463): a project of this node, or all of them. */
+  const [projectScope, setProjectScope] = useState<string | undefined>();
+  const [projects, setProjects] = useState<readonly ScopeProject[]>([]);
+  /** The chosen project's `t3.json`, for the settings it backs (D1467). */
+  const [t3File, setT3File] = useState<{ readonly projectId: string; readonly file: unknown }>();
   const [saving, setSaving] = useState(false);
   /** A save in flight reads the section back itself; a change heard meanwhile is skipped. */
   const savingNow = useRef(false);
@@ -324,6 +345,19 @@ function ConfigEditor({
       .call<Pending[]>("mesh.config.pending")
       .then((next) => current && setPending(next))
       .catch(() => current && setPending([]));
+    // A node without the threads plugin has no projects: the scope stays All projects.
+    void client
+      .call<{ id: string; name: string; path: string; scratch?: boolean }[]>("projects.list", {})
+      .then(
+        (next) =>
+          current &&
+          setProjects(
+            next
+              .filter((project) => project.scratch !== true)
+              .map(({ id, name, path }) => ({ id, name, path })),
+          ),
+      )
+      .catch(() => current && setProjects([]));
     return () => {
       current = false;
     };
@@ -369,6 +403,25 @@ function ConfigEditor({
     form === undefined || !isObject(loaded?.value)
       ? []
       : Object.keys(loaded.value).filter((key) => !form.fields.some((field) => field.key === key));
+
+  // The project scope (D1463): a project's entry of the section's `projects` record.
+  const entry = projectEntrySchema(schema);
+  const scoped =
+    projectScope !== undefined && projects.some((project) => project.id === projectScope)
+      ? projectScope
+      : undefined;
+  const backedBy = entry === undefined ? new Map<string, string>() : t3FileFields(entry);
+  useEffect(() => {
+    if (scoped === undefined || backedBy.size === 0) return;
+    let current = true;
+    void client
+      .call<{ file: unknown }>("projects.t3-file.get", { projectId: scoped })
+      .then((answer) => current && setT3File({ projectId: scoped, file: answer.file }))
+      .catch(() => current && setT3File({ projectId: scoped, file: null }));
+    return () => {
+      current = false;
+    };
+  }, [client, scoped, backedBy.size]);
 
   /** Whether unsaved edits may go: they are none, or the user gives them up. */
   const discard = async () =>
@@ -492,6 +545,103 @@ function ConfigEditor({
             ),
         };
 
+  const keys = entry === undefined ? [] : projectKeys(entry);
+  const entryPath = scoped === undefined ? [] : [PROJECT_SETTINGS_KEY, scoped];
+  /** What a file sets for a top-level key: the edited file as edited, the other as read. */
+  const nodeSets = (key: string) =>
+    getAt(loaded?.value, [key]) ?? getAt(read?.layers[other], [key]);
+  const t3Value = (key: string) => {
+    const field = backedBy.get(key);
+    return field === undefined || t3File?.projectId !== scoped
+      ? undefined
+      : getAt(t3File?.file, [field]);
+  };
+  // A key without a default of its own falls back to what its project key names (T3's builtIn).
+  const nodeDefault = (key: string) =>
+    getAt(schema, ["properties", key, "default"]) ?? getAt(entry, ["properties", key, "builtIn"]);
+  const nodeFields = new Map(form?.fields.map((field) => [field.key, field]) ?? []);
+  const projectSchema =
+    entry === undefined || scoped === undefined || schema === undefined
+      ? undefined
+      : projectFormSchema(
+          schema,
+          entry,
+          (key) => getAt(read?.value, [key]) ?? t3Value(key) ?? nodeDefault(key),
+        );
+  const projectForm =
+    projectSchema === undefined || loaded === undefined
+      ? undefined
+      : sectionForm(loaded.section, projectSchema);
+  const prefix = `${entryPath.join(".")}.`;
+  const projectContext: FieldsContext | undefined =
+    projectSchema === undefined || loaded === undefined || scoped === undefined
+      ? undefined
+      : {
+          value: getAt(loaded.value, entryPath) ?? {},
+          other: { layer: other, value: getAt(read?.layers[other], entryPath) },
+          errors: new Map(
+            [...errors].flatMap(([path, messages]) =>
+              path.startsWith(prefix) ? [[path.slice(prefix.length), messages] as const] : [],
+            ),
+          ),
+          root: projectSchema,
+          resetTooltip: "Reset to inherited value",
+          unsetLabel: "Inherit",
+          set: (path, next) =>
+            setLoaded((current) => {
+              if (current === undefined) return current;
+              let value = setAt(current.value, [...entryPath, ...path], next) ?? {};
+              // What is left empty goes, up to the record itself (its default is empty):
+              // a project setting reset to Inherit leaves no `{}` behind.
+              for (let end = entryPath.length + path.length - 1; end >= 1; end -= 1) {
+                const at = [...entryPath, ...path].slice(0, end);
+                const left = getAt(value, at);
+                if (!isObject(left) || Object.keys(left).length > 0) break;
+                value = setAt(value, at, undefined) ?? {};
+              }
+              return { ...current, value };
+            }),
+          inheritance: (field): FieldInheritance => {
+            const layers = inheritanceLayers({
+              field: nodeFields.get(field.key) ?? field,
+              nodeLabel: connection.label,
+              project: getAt(loaded.value, [...entryPath, field.key]),
+              node: nodeSets(field.key),
+              t3File: backedBy.has(field.key) ? { value: t3Value(field.key) } : undefined,
+              fallback: nodeDefault(field.key),
+            });
+            const effective = layers.find((layer) => layer.effective);
+            return {
+              layers,
+              overridden: effective?.key === "project",
+              summary:
+                effective?.key === "project"
+                  ? "Project override"
+                  : `Inherited from ${effective?.label ?? "the node"}`,
+            };
+          },
+        };
+  /** With All projects chosen, a field says how many projects override it (T3's summary). */
+  const allContext: FieldsContext | undefined =
+    context === undefined || entry === undefined
+      ? context
+      : {
+          ...context,
+          inheritance: (field) => {
+            if (!keys.includes(field.key)) return undefined;
+            const count = overridesOf(loaded?.value, field.key);
+            return count === 0
+              ? undefined
+              : {
+                  overridden: false,
+                  summary: `${count} project ${count === 1 ? "override" : "overrides"}`,
+                };
+          },
+        };
+  const nodeWide = (form?.fields ?? []).filter(
+    (field) => field.key !== PROJECT_SETTINGS_KEY && !keys.includes(field.key),
+  );
+
   return (
     <>
       <SettingsSection title={`Config of ${connection.label}`}>
@@ -564,6 +714,9 @@ function ConfigEditor({
           }
           title={form.title}
         >
+          {projects.length === 0 || showJson ? null : (
+            <ProjectScopeSentence onChange={setProjectScope} projects={projects} value={scoped} />
+          )}
           <div className="space-y-1 px-3 py-3 sm:px-4">
             <p className="font-mono text-xs text-muted-foreground">{loaded.section}</p>
             {form.description === undefined ? null : (
@@ -618,9 +771,34 @@ function ConfigEditor({
                 />
               </SettingsRow>
             </>
+          ) : scoped !== undefined ? (
+            entry === undefined || projectForm === undefined || projectContext === undefined ? (
+              <SettingsEmpty>This section has no project settings.</SettingsEmpty>
+            ) : (
+              <>
+                <Fields context={projectContext} fields={projectForm.fields} path={[]} />
+                {nodeWide.length === 0 ? null : (
+                  <fieldset aria-label="Node-wide settings" disabled>
+                    <SettingsRow
+                      description="Node-wide setting. Choose All projects to change it."
+                      title="Node-wide settings"
+                    />
+                    <Fields context={{ ...context, disabled: true }} fields={nodeWide} path={[]} />
+                  </fieldset>
+                )}
+              </>
+            )
           ) : (
             <>
-              <Fields context={context} fields={form.fields} path={[]} />
+              <Fields
+                context={allContext ?? context}
+                fields={
+                  entry === undefined
+                    ? form.fields
+                    : form.fields.filter((field) => field.key !== PROJECT_SETTINGS_KEY)
+                }
+                path={[]}
+              />
               {unknownKeys.length === 0 ? null : (
                 <SettingsRow
                   description={`The ${LAYER_TITLES[layer].toLowerCase()} also sets ${unknownKeys.join(", ")}, which the schema does not know. Saving keeps them; edit them as JSON.`}
