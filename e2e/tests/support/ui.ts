@@ -78,8 +78,8 @@ export async function openSurface(page: Page, label: string): Promise<Locator> {
   if (!(await panel.isVisible())) {
     await page.getByRole("button", { name: "Toggle right panel" }).click();
   }
-  // The entry's name is its label and its letter ("Browser B").
-  const name = new RegExp(`^${escape(label)}( |$)`);
+  // The entry's name is its label, then its letter ("Browser B", or "BrowserB").
+  const name = new RegExp(`^${escape(label)}`);
   const launcher = panel.getByLabel("Open a surface");
   if (await launcher.isVisible()) {
     await launcher.getByRole("button", { name }).click();
