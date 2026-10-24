@@ -393,11 +393,16 @@ export const rightPanelPlugin = builtin(
           let next = state;
           for (const surface of removed) next = closeSurface(next, surface.id);
           const wanted = after.activeId;
-          return wanted !== null &&
+          if (
+            wanted !== null &&
             next.activeId !== wanted &&
             next.surfaces.some((surface) => surface.id === wanted)
-            ? { ...next, activeId: wanted }
-            : next;
+          ) {
+            next = { ...next, activeId: wanted };
+          }
+          // A close that empties the strip closes the panel, also when the kind's own update
+          // (a tab gone from the node) removed the surfaces while it was asked.
+          return !after.open && next.open ? { ...next, open: false } : next;
         });
         return stateOf(key) !== current;
       };

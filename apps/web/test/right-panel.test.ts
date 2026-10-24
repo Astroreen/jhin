@@ -178,6 +178,27 @@ describe("jhin.right-panel", () => {
     await kernel.stop();
   });
 
+  it("closes the panel with its last surface, also when the kind removed it while releasing", async () => {
+    let reconcileNow!: () => void;
+    const { kernel, panel, navigation } = await start(
+      { ...thread, panel: "browser", section: "a" },
+      [
+        kind("browser", {
+          // The node's tab goes, and its feed takes the surface away, before the close answers.
+          release: () => {
+            reconcileNow();
+            return Promise.resolve(true);
+          },
+        }),
+      ],
+    );
+    reconcileNow = () => panel.reconcile(place, "browser", []);
+    expect(await panel.close(place, "browser:a")).toBe(true);
+    expect(panel.state(place)).toMatchObject({ surfaces: [], open: false });
+    expect(navigation.current()).toEqual(thread);
+    await kernel.stop();
+  });
+
   it("reconciles a kind's surfaces and the route follows the one on screen", async () => {
     const { kernel, panel, navigation } = await start(
       { ...thread, panel: "browser", section: "a" },
