@@ -190,3 +190,87 @@ export function createProjectEntries(now: () => number = Date.now) {
     },
   };
 }
+
+/** Paths sent to one `git check-ignore` call when labelling a folder's children (T3's). */
+const IGNORE_CHECK_CHUNK_SIZE = 1000;
+
+/** One folder's child, for the file explorer (t3-parity.md D1428). */
+export interface ListedEntry extends ProjectEntry {
+  /** Git ignores it (T3 shows it dimmed). */
+  readonly ignored?: true;
+}
+
+/** T3's `git check-ignore --stdin`: the paths git ignores; undefined without git. */
+function checkIgnore(root: string, paths: readonly string[]): Promise<Set<string> | undefined> {
+  return new Promise((resolve) => {
+    const child = ChildProcess.execFile(
+      "git",
+      ["-c", "core.fsmonitor=false", "check-ignore", "-z", "--stdin"],
+      { cwd: root, maxBuffer: 16 * 1024 * 1024, timeout: 10_000 },
+      (error, stdout) => {
+        // 1: none of them is ignored; anything else but 0 is no answer.
+        const code = error === null ? 0 : (error as { code?: unknown }).code;
+        if (code !== 0 && code !== 1) resolve(undefined);
+        else resolve(new Set(stdout.split("\0").filter((path) => path !== "")));
+      },
+    );
+    child.stdin?.end(`${paths.join("\0")}\0`);
+  });
+}
+
+/**
+ * The files and folders directly in `folder` of `root` (T3's `WorkspaceEntries.list` of a
+ * directory): never through `.git`, never out of the root through a link, ignored ones marked.
+ */
+export async function listFolder(root: string, folder: string): Promise<ListedEntry[]> {
+  const parts = folder.split("/").filter((part) => part !== "");
+  const relative = parts.join("/");
+  if (parts.includes(".git") || parts.includes("..")) throw new Error("FOLDER_OUTSIDE");
+  const realRoot = await Fs.promises.realpath(root);
+  const directory = await Fs.promises.realpath(Path.join(root, ...parts));
+  const inside = Path.relative(realRoot, directory);
+  if (
+    inside === ".." ||
+    inside.startsWith(`..${Path.sep}`) ||
+    Path.isAbsolute(inside) ||
+    inside.split(Path.sep).includes(".git")
+  ) {
+    throw new Error("FOLDER_OUTSIDE");
+  }
+  const children = await Fs.promises.readdir(directory, { withFileTypes: true });
+  const entries: ProjectEntry[] = children.flatMap((child): ProjectEntry[] => {
+    if (child.name === ".git" || (!child.isDirectory() && !child.isFile())) return [];
+    return [
+      {
+        path: relative === "" ? child.name : `${relative}/${child.name}`,
+        kind: child.isDirectory() ? "directory" : "file",
+      },
+    ];
+  });
+  // Git cannot classify paths beyond a link: a folder reached through one asks about each.
+  const throughLink = inside !== parts.join(Path.sep);
+  // Asking about the folder itself answers for all its children when git ignores it whole.
+  if (
+    entries.length > IGNORE_CHECK_CHUNK_SIZE &&
+    relative !== "" &&
+    !throughLink &&
+    !/^:|[*?[\\]/.test(relative)
+  ) {
+    const folderIgnored = await checkIgnore(root, [relative]);
+    if (folderIgnored?.has(relative)) {
+      return entries.map((entry) => ({ ...entry, ignored: true as const }));
+    }
+  }
+  const ignored = new Set<string>();
+  for (let offset = 0; offset < entries.length; offset += IGNORE_CHECK_CHUNK_SIZE) {
+    const answer = await checkIgnore(
+      root,
+      entries.slice(offset, offset + IGNORE_CHECK_CHUNK_SIZE).map((entry) => entry.path),
+    );
+    if (answer === undefined) break;
+    for (const path of answer) ignored.add(path);
+  }
+  return entries.map((entry) =>
+    ignored.has(entry.path) ? { ...entry, ignored: true as const } : entry,
+  );
+}
