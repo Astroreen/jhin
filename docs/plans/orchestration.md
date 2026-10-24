@@ -1009,12 +1009,6 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
   has no task yet).
 - Tasks of mesh members on the settings page: it shows the nodes the client
   is connected to.
-- Component tests of the page. Its one end-to-end spec covers create, pause,
-  run now and delete. The webhook parts (signature and secret, Rotate), the
-  Deliveries dialog, several nodes and a node without the scheduler have no
-  test in the UI yet. Below the UI, the server tests of `jhin.scheduler`
-  cover them, and unit tests cover the store and the editor's validation
-  (`draftProblem`).
 - Releasing a run in-process when its completion cannot be recorded (T3's
   `releaseStuckRun`): today a storage failure at that write leaves the task
   marked running until the next start's recovery.
@@ -1024,6 +1018,4 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
 - A public webhook URL through a relay, held deliveries while the node is
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.
-- A page-level test that the task editor keeps a task's model options on a
-  save that leaves its model as it was (D1178); the server's side is tested.
 - Metrics of deliveries (T3 counts them per outcome).
