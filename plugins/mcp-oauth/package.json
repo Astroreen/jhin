@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@jhin/auth-api": "workspace:*",
+    "@jhin/host-api": "workspace:*",
     "@jhin/http-api": "workspace:*",
     "@jhin/mcp-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
@@ -52,6 +53,7 @@
     "requires": {
       "http.server": "^1.3",
       "auth.verifier": "^1.1",
+      "host.paths": "^1",
       "secrets.store": "^1.1"
     },
     "entry": "src/index.ts"

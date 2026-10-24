@@ -38,7 +38,8 @@ export const authorizationServerMetadata = (urls: OAuthUrls, scopes: readonly st
   token_endpoint: `${urls.issuer}/oauth/mcp/token`,
   registration_endpoint: `${urls.issuer}/oauth/mcp/register`,
   response_types_supported: ["code"],
-  grant_types_supported: ["authorization_code"],
+  // Refresh tokens are Jhin's (security.md D1519); T3 issues none.
+  grant_types_supported: ["authorization_code", "refresh_token"],
   code_challenge_methods_supported: ["S256"],
   token_endpoint_auth_methods_supported: ["none"],
   scopes_supported: scopes,
@@ -133,9 +134,22 @@ export type Exchange =
   | { readonly kind: "error"; readonly error: string; readonly description: string }
   | {
       readonly kind: "ok";
+      readonly clientId: string;
       readonly clientName: string;
+      readonly resource: string;
       readonly scopes: readonly string[];
       readonly approver: Approver;
+    };
+
+/** A refresh request whose form is valid; the token itself is checked by the store (D1519). */
+export type RefreshRequest =
+  | { readonly kind: "error"; readonly error: string; readonly description: string }
+  | {
+      readonly kind: "ok";
+      readonly clientId: string;
+      readonly token: string;
+      /** The narrower scope asked for; absent, the granted one. */
+      readonly scopes?: readonly string[];
     };
 
 function redirectWith(redirectUri: string, params: Record<string, string | undefined>): string {
@@ -393,10 +407,39 @@ export function createOAuth(options: {
       }
       return {
         kind: "ok",
+        clientId: pending.clientId,
         clientName: pending.clientName,
+        resource: pending.resource,
         scopes: pending.scopes,
         approver: pending.approver,
       };
+    },
+
+    /** The form of a `refresh_token` grant (security.md D1519, RFC 6749 §6). */
+    refreshRequest(urls: OAuthUrls, params: Record<string, string | undefined>): RefreshRequest {
+      const fail = (error: string, description: string): RefreshRequest => ({
+        kind: "error",
+        error,
+        description,
+      });
+      const token = params["refresh_token"];
+      const clientId = params["client_id"];
+      if (!token || !clientId) {
+        return fail("invalid_request", "refresh_token and client_id are required.");
+      }
+      if (parseClientId(clientId) === undefined) {
+        return fail("invalid_client", "The client is unknown.");
+      }
+      if (!sameResource(urls, params["resource"])) {
+        return fail("invalid_target", `This node only issues tokens for ${urls.resource}.`);
+      }
+      const scope = params["scope"];
+      if (scope === undefined) return { kind: "ok", clientId, token };
+      const asked = [...new Set(scope.split(/\s+/u).filter((entry) => entry !== ""))];
+      if (asked.length === 0 || !asked.every(isGrant)) {
+        return fail("invalid_scope", "A scope is a Jhin permission or a pattern such as git.*.");
+      }
+      return { kind: "ok", clientId, token, scopes: asked };
     },
   };
 }
