@@ -35,7 +35,12 @@ import {
 } from "@jhin/health-api";
 import { MISSIONS_STREAM } from "@jhin/missions-api";
 import { SOURCE_CONTROL_STREAM } from "@jhin/source-control-api";
-import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
+import {
+  MESH_STREAMS_CAPABILITY,
+  parseRelayStream,
+  relayStream,
+  type MeshStreams,
+} from "@jhin/mesh-api";
 import { LIVE_STREAMS_CAPABILITY, UNGUARDED_STREAM_PERMISSION, type LiveStreams } from "@jhin/rpc";
 import {
   definePlugin,
@@ -272,8 +277,11 @@ export default definePlugin({
         return error;
       }
     };
+    /** Follows what other nodes say, once that is wired (D1526); nothing until then. */
+    let followRemote = () => {};
     /** A thread a slice links is followed for its approvals and queue (D722). */
     const followThreads = () => {
+      followRemote();
       const linked = sensors.linkedThreads();
       // A thread no slice links any more (unlinked, its slice gone) is left.
       for (const [stream, subscription] of followed) {
@@ -725,6 +733,134 @@ export default definePlugin({
       { stream: SOURCE_CONTROL_STREAM, handle: (event) => sensors.ingestSourceControl(event) },
     ]);
     if (unread !== undefined) throw unread;
+
+    // --- Other nodes of the mesh (M1, D1525, D1526) -------------------------------
+    /**
+     * This node's id, for the slices of other nodes that link its threads
+     * (D1525): asked when first needed, and again after a failure.
+     */
+    let selfNode: Promise<string | undefined> | undefined;
+    const selfNodeId = () => {
+      selfNode ??= context.commands.execute("host.identity", {}).then(
+        (answer) => (answer as { nodeId?: string }).nodeId,
+        (error: unknown) => {
+          selfNode = undefined;
+          context.log.info("this node's id is not known yet", { error: String(error) });
+          return undefined;
+        },
+      );
+      return selfNode;
+    };
+    /** Members' streams followed, by the name this node relays them under. */
+    const remote = new Map<string, Disposable>();
+    /** The last sequence handled of each, so a follower started again goes on from there. */
+    const remoteHeads = new Map<string, number>();
+    const follower = meshStreams;
+    if (
+      follower?.follow !== undefined &&
+      follower.members !== undefined &&
+      follower.onChange !== undefined
+    ) {
+      const followOne = (node: string, stream: string, handle: (event: StoredEvent) => void) => {
+        // Named as this node relays it: heads, dismissals and evidence never
+        // mix two nodes' sequences (D1526).
+        const name = relayStream(node, stream);
+        if (remote.has(name)) return;
+        const followed = follower.follow!(
+          node,
+          stream,
+          remoteHeads.get(name) ?? 0,
+          (event) => {
+            if (!active || event.sequence <= (remoteHeads.get(name) ?? 0)) return;
+            remoteHeads.set(name, event.sequence);
+            try {
+              handle({ ...event, stream: name } as StoredEvent);
+            } catch (error) {
+              context.log.warn("a health sensor failed on another node's event", {
+                stream: name,
+                sequence: event.sequence,
+                error: String(error),
+              });
+            }
+            evaluateSoon();
+          },
+          (error) => {
+            // Refused later: followed again on the next change of the members.
+            if (remote.get(name) === followed) remote.delete(name);
+            context.log.info("another node's stream ended", { stream: name, error: String(error) });
+          },
+        );
+        remote.set(name, followed);
+        followed.ready.catch((error: unknown) => {
+          // Out of reach, or not shared there: tried again on the next change of the members.
+          if (remote.get(name) === followed) remote.delete(name);
+          context.log.info("another node's stream could not be followed", {
+            stream: name,
+            error: String(error),
+          });
+        });
+      };
+      /** Health's own asks and their replies on another node are no ceremony there either. */
+      const healthsOwn = (event: StoredEvent) => {
+        const message = (
+          event.payload as { message?: { messageId?: string; inReplyTo?: string } } | null
+        )?.message;
+        return OWN_ASK.test(message?.messageId ?? "") || OWN_ASK.test(message?.inReplyTo ?? "");
+      };
+      followRemote = () => {
+        if (!active) return;
+        const reachable = new Set(
+          follower.members!()
+            .filter((member) => member.reachable)
+            .map((member) => member.nodeId),
+        );
+        for (const node of reachable) {
+          followOne(node, MISSIONS_STREAM, (event) => {
+            sensors.ingestForeignMission(node, event);
+          });
+          followOne(node, MESSAGES_STREAM, (event) => {
+            if (event.type === MessageEvents.delivered && !healthsOwn(event)) {
+              sensors.ingestMessage(event, node);
+            }
+          });
+          followOne(node, SOURCE_CONTROL_STREAM, (event) =>
+            sensors.ingestSourceControl(event, node),
+          );
+          followOne(node, HEALTH_STREAM, (event) => {
+            if (event.type !== HealthEvents.progressRecorded) return;
+            const progress = (event.payload as { progress?: Progress }).progress;
+            if (progress !== undefined) sensors.ingestProgress(progress, event, node);
+          });
+        }
+        // Threads on members that this node's slices link (D1526); one no slice
+        // links any more is left.
+        const linked = sensors.remoteLinkedThreads();
+        for (const [name, followed] of remote) {
+          const relayed = parseRelayStream(name);
+          if (relayed === undefined || !relayed.stream.startsWith("thread/")) continue;
+          const threadId = relayed.stream.slice("thread/".length);
+          if (linked.get(relayed.owner)?.has(threadId) === true) continue;
+          followed.dispose();
+          remote.delete(name);
+        }
+        for (const [node, threads] of linked) {
+          if (!reachable.has(node)) continue;
+          for (const threadId of threads) {
+            followOne(node, threadStream(threadId), (event) =>
+              sensors.ingestThread(threadId, event, node),
+            );
+          }
+        }
+      };
+      context.subscriptions.add(follower.onChange(() => followRemote()));
+      context.subscriptions.add({
+        dispose: () => {
+          for (const followed of remote.values()) followed.dispose();
+          remote.clear();
+        },
+      });
+    }
+
     followThreads();
     evaluateSoon();
     // An open warning without an analysis: never asked (asked now), or asked
@@ -788,8 +924,12 @@ export default definePlugin({
       if (start === undefined) return;
       context.state.set(STARTS, rest);
       let count = 0;
-      // Only a thread a slice links by the turn's end makes progress of a mission.
-      if (sensors.slicesOfThread(input.threadId).length === 0) {
+      // Only a thread a slice links by the turn's end makes progress of a mission,
+      // a slice of this node or of another (D1525).
+      if (
+        sensors.slicesOfThread(input.threadId).length === 0 &&
+        !sensors.linksHere(input.threadId, await selfNodeId())
+      ) {
         context.events.emit(COMMITS_COUNTED_EVENT, { turnId: input.turnId, count });
         return;
       }
@@ -870,6 +1010,33 @@ export default definePlugin({
       },
     });
     const sync = async () => applyHealth(await log.read(HEALTH_STREAM, { after: healthHead }));
+    /**
+     * One event of another node's stream, read through the node's relay of it
+     * (D1526): the first event from `sequence`, or none when the node cannot be
+     * reached, the stream is not shared there, or it holds nothing from there.
+     */
+    const readElsewhere = (node: string, stream: string, sequence: number) =>
+      new Promise<{ sequence: number; payload: unknown } | undefined>((resolve) => {
+        if (meshStreams?.follow === undefined) return resolve(undefined);
+        let done = false;
+        let followed: Disposable | undefined;
+        const finish = (event?: { sequence: number; payload: unknown }) => {
+          if (done) return;
+          done = true;
+          followed?.dispose();
+          resolve(event);
+        };
+        const following = meshStreams.follow(node, stream, sequence - 1, (event) => finish(event));
+        followed = following;
+        if (done) following.dispose();
+        following.ready.then(
+          // A head before the sequence: nothing will come for it.
+          (head) => {
+            if (head < sequence) finish();
+          },
+          () => finish(),
+        );
+      });
     const getWarning = (warningId: string) => {
       const warning = health.warnings[warningId];
       if (warning === undefined)
@@ -962,11 +1129,20 @@ export default definePlugin({
           warning.evidence.map(async (ref) => {
             // A record is read with what its own stream takes, as the plugin
             // that owns it guards it (security.md D415): health.read is no way
-            // around agents.read, missions.read or threads.read.
-            const needed = live?.guardOf?.(ref.stream) ?? [UNGUARDED_STREAM_PERMISSION];
+            // around agents.read, missions.read or threads.read. Another node's
+            // record takes what its stream takes here (D502, D1526).
+            const relayed = parseRelayStream(ref.stream);
+            const own = relayed?.stream ?? ref.stream;
+            const needed = live?.guardOf?.(own) ?? [UNGUARDED_STREAM_PERMISSION];
             const missing = grants === undefined ? [] : missingPermissions(grants, needed);
             if (missing.length > 0) {
               return { ...ref, payload: null, withheld: missing.join(", ") };
+            }
+            if (relayed !== undefined) {
+              const event = await readElsewhere(relayed.owner, relayed.stream, ref.sequence);
+              return event?.sequence === ref.sequence
+                ? { ...ref, payload: event.payload }
+                : { ...ref, payload: null, missing: true };
             }
             const [event] = await log.read(ref.stream, { after: ref.sequence - 1, limit: 1 });
             // A trimmed stream (D496) keeps the reference, not the event.
@@ -991,13 +1167,15 @@ export default definePlugin({
         // An exact cut for counting again (D724): the log's own head of every
         // stream health follows now, also of events not delivered to it yet. A
         // stream not followed now (a thread unlinked) counts from the time.
-        const dismissedAfter = Object.fromEntries(
-          await Promise.all(
+        const dismissedAfter = Object.fromEntries([
+          ...(await Promise.all(
             [...new Set([...followed.keys(), HEALTH_STREAM])].map(
               async (stream) => [stream, await log.head(stream)] as const,
             ),
-          ),
-        );
+          )),
+          // Another node's streams: the last event that reached this node (D1526).
+          ...remoteHeads,
+        ]);
         // Decided on the fold right before the write: two dismissals make one.
         await appendIf(() =>
           getWarning(warningId).status !== "open"
