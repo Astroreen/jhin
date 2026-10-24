@@ -34,8 +34,8 @@ import {
   cliEntry,
   freePortAbove,
   localNodeHome,
-  portInUse,
   startLocalNode,
+  startOnFreePort,
   watchAttachedNode,
   type AttachedNode,
   type RunningLocalNode,
@@ -346,37 +346,21 @@ async function main(): Promise<void> {
 
   // --- The local node and the window (D512, D513). ---
   const home = localNodeHome();
-  /**
-   * Starts the node on its port, or on the one the app kept (D1487); when that
-   * port is taken by something else, on the next free one, which is kept.
-   */
-  async function startOnFreePort(): Promise<RunningLocalNode> {
-    const kept = settings.get().nodePort;
-    try {
-      return await startLocalNode(nodePaths, home, undefined, kept);
-    } catch (error) {
-      const busy = portInUse(error instanceof Error ? error.message : String(error));
-      // A configured jhin.http.port wins over the app's choice: its failure is the node's to report.
-      if (quitting || busy === undefined || (kept !== undefined && busy.port !== kept)) throw error;
-      // A node of this home took the port meanwhile: one node per home (D1486).
-      const running = await findRunningNode(home);
-      if (running !== undefined) {
-        throw new Error(
-          `A Jhin node of this home already runs at ${running.url}. Quit it, or restart ${APP_NAME} to show it.`,
-          { cause: error },
-        );
-      }
-      const port = await freePortAbove(busy.port, busy.host);
-      log("the node's port is taken; trying another", { taken: busy.port, port });
-      const started = await startLocalNode(nodePaths, home, undefined, port);
-      settings.update({ nodePort: port });
-      return started;
-    }
-  }
+  /** The node on its port, or another when that is taken by something else (D1487). */
+  const startOnFreePortNow = () =>
+    startOnFreePort({
+      kept: settings.get().nodePort,
+      start: (port) => startLocalNode(nodePaths, home, undefined, port),
+      running: () => findRunningNode(home),
+      freePortAbove,
+      keep: (nodePort) => settings.update({ nodePort }),
+      quitting: () => quitting,
+      log,
+    });
   /** Starts the node once and makes it the app's; rejects when it did not come up. */
   async function launchNode(): Promise<RunningLocalNode> {
     try {
-      starting = startOnFreePort();
+      starting = startOnFreePortNow();
       const started = await starting;
       starting = undefined;
       if (quitting) {
@@ -414,7 +398,7 @@ async function main(): Promise<void> {
       } catch (error) {
         const choice = await dialog.showMessageBox({
           type: "error",
-          title: "The local node did not start",
+          title: "The node of this home cannot be shown",
           message: `${APP_NAME} could not show the node of its home.`,
           detail: error instanceof Error ? error.message : String(error),
           buttons: ["Try Again", "Quit"],
@@ -551,12 +535,13 @@ async function main(): Promise<void> {
       pid: attached.pid,
     });
     // Once it stops, the app starts again with a node of its own (D1486).
-    watchAttachedNode(attached, () => {
+    const stopWatching = watchAttachedNode(attached, () => {
       if (quitting) return;
       log("the attached node stopped; relaunching with the app's own node", { pid: attached!.pid });
       app.relaunch();
       app.quit();
     });
+    app.on("before-quit", stopWatching);
   }
   openWindow();
   updates.start();

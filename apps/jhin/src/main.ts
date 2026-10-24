@@ -55,6 +55,7 @@ const USAGE = `Usage:
   jhin serve [--watch] [--ui]   run this node until interrupted; --ui also serves the web client
          [--port <port>]        ...listen on <port> unless jhin.http.port is configured
   jhin client [--watch]         serve only the web client, which connects to remote nodes
+                                (serve and client take --port too)
   jhin inspect                  print the node's live state as JSON
   jhin pair                     print a one-time pairing link and its QR code for another device
          [--label <name>]       ...shown in Authorized clients (default: jhin pair)
@@ -350,9 +351,13 @@ async function main(argv: readonly string[]): Promise<number> {
     const mode =
       command === "client" ? "client" : parsed.options.get("ui") === true ? "ui" : "serve";
     const port = parsed.options.get("port");
-    if (port !== undefined && !(typeof port === "string" && /^\d{1,5}$/.test(port))) {
-      process.stderr.write("--port needs a port number\n");
-      return 1;
+    // A stable port, never an ephemeral 0 (desktop.md D1487).
+    if (
+      port !== undefined &&
+      !(typeof port === "string" && /^\d{1,5}$/.test(port) && +port >= 1 && +port <= 65_535)
+    ) {
+      process.stderr.write("--port needs a port from 1 to 65535\n");
+      return 2;
     }
     const host = await startNodeHost({
       distribution: distribution(mode),

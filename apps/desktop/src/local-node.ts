@@ -251,3 +251,51 @@ export async function freePortAbove(taken: number, host: string): Promise<number
   }
   throw new Error(`No port above ${taken} is free on ${host}.`);
 }
+
+/** What D1487's choice of a port needs, injected so it is tested without processes. */
+export interface PortChoice<Node> {
+  /** The port the app kept from an earlier choice, if any. */
+  readonly kept: number | undefined;
+  /** Starts the node, on `port` when given. */
+  start(port: number | undefined): Promise<Node>;
+  /** The node of the app's home that runs now, if any (security.md D1184). */
+  running(): Promise<{ readonly url: string } | undefined>;
+  freePortAbove(taken: number, host: string): Promise<number>;
+  /** Keeps the port the node came up on. */
+  keep(port: number): void;
+  /** Whether the app is quitting: nothing starts again then. */
+  quitting(): boolean;
+  log(message: string, fields?: Record<string, unknown>): void;
+}
+
+/**
+ * Starts the node on its port, or on the one the app kept (D1487); when that
+ * port is taken by something else, on the next free one above it, which is
+ * kept once the node came up there.
+ */
+export async function startOnFreePort<Node>(choice: PortChoice<Node>): Promise<Node> {
+  const { kept } = choice;
+  try {
+    return await choice.start(kept);
+  } catch (error) {
+    const busy = portInUse(error instanceof Error ? error.message : String(error));
+    // With a kept port, a failure on another port is a configured jhin.http.port's: it wins
+    // over the app's choice, so its failure is the node's to report.
+    if (choice.quitting() || busy === undefined || (kept !== undefined && busy.port !== kept)) {
+      throw error;
+    }
+    // A node of this home took the port meanwhile: one node per home (D1486).
+    const running = await choice.running();
+    if (running !== undefined) {
+      throw new Error(
+        `A Jhin node of this home already runs at ${running.url}. Quit it, or restart the app to show it.`,
+        { cause: error },
+      );
+    }
+    const port = await choice.freePortAbove(busy.port, busy.host);
+    choice.log("the node's port is taken; trying another", { taken: busy.port, port });
+    const started = await choice.start(port);
+    choice.keep(port);
+    return started;
+  }
+}

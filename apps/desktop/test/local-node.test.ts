@@ -12,7 +12,9 @@ import {
   freePortAbove,
   portInUse,
   startLocalNode,
+  startOnFreePort,
   watchAttachedNode,
+  type PortChoice,
 } from "../src/local-node.ts";
 
 const CLI = Path.join(import.meta.dirname, "fixtures", "fake-cli.mjs");
@@ -242,5 +244,99 @@ describe("another port when the node's is taken (D1487)", () => {
         blockers.map((server) => new Promise((resolve) => server.close(() => resolve(null)))),
       );
     }
+  });
+});
+
+describe("startOnFreePort (D1487)", () => {
+  const busy = (port: number) =>
+    new Error(
+      `The local node does not serve the web client:\n  failed jhin.http: Port ${port} on 127.0.0.1 is in use`,
+    );
+  /** A node whose ports in `taken` are in use; records starts and what was kept. */
+  function choice(
+    taken: readonly number[],
+    overrides: Partial<PortChoice<string>> & { configured?: number } = {},
+  ) {
+    const starts: (number | undefined)[] = [];
+    const kept: number[] = [];
+    const value: PortChoice<string> = {
+      kept: undefined,
+      start: (port) => {
+        starts.push(port);
+        // A configured port wins over the one passed, as the distribution layer is under it.
+        const listening = overrides.configured ?? port ?? 7777;
+        return taken.includes(listening)
+          ? Promise.reject(busy(listening))
+          : Promise.resolve(`node on ${listening}`);
+      },
+      running: () => Promise.resolve(undefined),
+      freePortAbove: (from) => {
+        let port = from + 1;
+        while (taken.includes(port)) port += 1;
+        return Promise.resolve(port);
+      },
+      keep: (port) => void kept.push(port),
+      quitting: () => false,
+      log: () => undefined,
+      ...overrides,
+    };
+    return { value, starts, kept };
+  }
+
+  it("starts on the node's own port, keeping nothing", async () => {
+    const { value, starts, kept } = choice([]);
+    await expect(startOnFreePort(value)).resolves.toBe("node on 7777");
+    expect(starts).toEqual([undefined]);
+    expect(kept).toEqual([]);
+  });
+
+  it("moves to the next free port when the node's is taken, and keeps it once up", async () => {
+    const { value, starts, kept } = choice([7777, 7778]);
+    await expect(startOnFreePort(value)).resolves.toBe("node on 7779");
+    expect(starts).toEqual([undefined, 7779]);
+    expect(kept).toEqual([7779]);
+  });
+
+  it("starts on the kept port, and picks again above it when that is taken too", async () => {
+    const kept7790 = choice([], { kept: 7790 });
+    await expect(startOnFreePort(kept7790.value)).resolves.toBe("node on 7790");
+    expect(kept7790.starts).toEqual([7790]);
+
+    const taken = choice([7790], { kept: 7790 });
+    await expect(startOnFreePort(taken.value)).resolves.toBe("node on 7791");
+    expect(taken.kept).toEqual([7791]);
+  });
+
+  it("leaves a configured port's failure to the node's dialog when a port is kept", async () => {
+    const { value, starts, kept } = choice([8000], { kept: 7790, configured: 8000 });
+    await expect(startOnFreePort(value)).rejects.toThrow("Port 8000 on 127.0.0.1 is in use");
+    expect(starts).toEqual([7790]);
+    expect(kept).toEqual([]);
+  });
+
+  it("keeps nothing when the second start fails too (a configured port, nothing kept)", async () => {
+    const { value, starts, kept } = choice([8000], { configured: 8000 });
+    await expect(startOnFreePort(value)).rejects.toThrow("Port 8000 on 127.0.0.1 is in use");
+    expect(starts).toEqual([undefined, 8001]);
+    expect(kept).toEqual([]);
+  });
+
+  it("says so when a node of the home took the port meanwhile", async () => {
+    const { value, starts } = choice([7777], {
+      running: () => Promise.resolve({ url: "http://127.0.0.1:7777" }),
+    });
+    await expect(startOnFreePort(value)).rejects.toThrow(
+      "A Jhin node of this home already runs at http://127.0.0.1:7777. Quit it, or restart the app to show it.",
+    );
+    expect(starts).toEqual([undefined]);
+  });
+
+  it("starts nothing again while the app quits, and passes other failures on", async () => {
+    const quitting = choice([7777], { quitting: () => true });
+    await expect(startOnFreePort(quitting.value)).rejects.toThrow("Port 7777");
+    expect(quitting.starts).toEqual([undefined]);
+
+    const other = choice([], { start: () => Promise.reject(new Error("exited with 3")) });
+    await expect(startOnFreePort(other.value)).rejects.toThrow("exited with 3");
   });
 });

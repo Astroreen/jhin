@@ -606,6 +606,13 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   distribution config layer (the node host's new `config` option). So a
   `jhin.http.port` the user configured still wins, and when that port is
   taken the app shows D512's dialog as before, rather than picking again.
+  The app cannot tell a configured port from the default one before it
+  tries: with no port kept yet, a taken configured port costs one more
+  start, on the picked port, which the configured one overrides and which
+  fails the same way, and nothing is kept. `--port` takes 1 to 65535, never
+  0, whose port would change with every start. The choice is
+  `startOnFreePort` in `apps/desktop/src/local-node.ts`, unit tested with
+  injected starts.
   T3 scans for a free port from its default on every launch
   (`resolveDesktopBackendPort`); its client's origin is a custom protocol,
   so the port can change, while here it must be kept.
