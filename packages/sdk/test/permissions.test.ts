@@ -122,6 +122,9 @@ describe("the words that name shell access (security.md D1364, D1517)", () => {
         shellAccessReason: "a repository's hooks run on this machine as the node's user",
       }),
     ).toBe("Shell access: a repository's hooks run on this machine as the node's user.");
+    expect(shellAccessText({ shellAccess: true, shellAccessReason: "it starts programs. " })).toBe(
+      "Shell access: it starts programs.",
+    );
     expect(shellAccessText({ shellAccess: true, shellAccessReason: " " })).toBe(
       "Shell access: runs commands on this machine as the node's user.",
     );

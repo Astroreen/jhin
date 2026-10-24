@@ -162,13 +162,34 @@ function salvageClients(
   return { kept, unreadable, expired };
 }
 
-/** `<file>.corrupt-<time>`, never one that exists already. */
-function corruptName(file: string, now: number): string {
+/** `<file>.corrupt-<time>`, then `-1`, `-2`… */
+function* corruptNames(file: string, now: number): Generator<string, never> {
   const time = new Date(now).toISOString().replace(/[:.]/g, "-");
   for (let attempt = 0; ; attempt += 1) {
-    const name = `${file}.corrupt-${time}${attempt === 0 ? "" : `-${attempt}`}`;
-    if (!Fs.existsSync(name)) return name;
+    yield `${file}.corrupt-${time}${attempt === 0 ? "" : `-${attempt}`}`;
   }
+}
+
+/**
+ * Copies `file` to the first free `<file>.corrupt-<time>` name, never over
+ * one that exists: a name taken meanwhile (`EEXIST`) moves on to the next.
+ */
+function copyAside(file: string, now: number): string {
+  for (const name of corruptNames(file, now)) {
+    try {
+      Fs.copyFileSync(file, name, Fs.constants.COPYFILE_EXCL);
+      return name;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
+  throw new Error("unreachable");
+}
+
+/** The first `<file>.corrupt-<time>` name nothing has. */
+function freeCorruptName(file: string, now: number): string {
+  for (const name of corruptNames(file, now)) if (!Fs.existsSync(name)) return name;
+  throw new Error("unreachable");
 }
 
 /**
@@ -226,10 +247,8 @@ export function createClientStore(
     let moved: string | undefined;
     let failed: string | undefined;
     try {
-      const target = corruptName(file, clock());
-      Fs.copyFileSync(file, target, Fs.constants.COPYFILE_EXCL);
-      moved = target;
-      Fs.chmodSync(target, 0o600);
+      moved = copyAside(file, clock());
+      Fs.chmodSync(moved, 0o600);
       commit(records);
     } catch (thrown) {
       failed = String(thrown);
@@ -240,7 +259,7 @@ export function createClientStore(
       // moved aside so a later write does not silently replace it.
       records = [];
       try {
-        const target = moved ?? corruptName(file, clock());
+        const target = moved ?? freeCorruptName(file, clock());
         Fs.renameSync(file, target);
         moved = target;
       } catch {

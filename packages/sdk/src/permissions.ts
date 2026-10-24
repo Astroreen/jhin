@@ -71,7 +71,9 @@ export interface PermissionDescription {
   /**
    * Since security.md D1517: why a permission with `shellAccess` reaches the
    * node's user, as the end of "Shell access: <reason>." Without one, the UI
-   * says D1364's "runs commands on this machine as the node's user".
+   * says D1364's "runs commands on this machine as the node's user". One
+   * short clause, without a closing period; `auth.permissions.list` keeps
+   * at most 200 characters of it.
    */
   readonly shellAccessReason?: string;
 }
@@ -84,7 +86,8 @@ export function shellAccessText(
   description: Pick<PermissionDescription, "shellAccess" | "shellAccessReason">,
 ): string | undefined {
   if (description.shellAccess !== true) return undefined;
-  const reason = description.shellAccessReason?.trim();
+  // The sentence ends with its own period: a reason's is dropped.
+  const reason = description.shellAccessReason?.trim().replace(/\.+$/, "").trimEnd();
   return `Shell access: ${reason === undefined || reason === "" ? "runs commands on this machine as the node's user" : reason}.`;
 }
 
