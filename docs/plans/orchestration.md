@@ -251,15 +251,18 @@ phase 4 (M2) acts across nodes for missions and teams; it reuses what this
 section lands rather than a second path.
 
 - **D1501. A command may be told its caller went away.** `Invocation`
-  (`@jhin/sdk`) gains `signal?: AbortSignal`, additive. The kernel passes
-  the invocation through untouched, so it learns nothing about callers,
-  transports or threads; `AbortSignal` is a global of every runtime the
-  kernel runs on. A surface aborts the signal when nobody is left to take
-  the answer: `serveRpc` (`@jhin/rpc`) for every call of a connection
-  when the connection closes (the WebSocket transport, and a mesh link's
-  inbound calls), the MCP endpoint (`jhin.mcp-server`) for a request
-  whose HTTP response closes before it was answered. A caller in process
-  passes its own. A command that ignores the signal runs as it did; one
+  (`@jhin/sdk`) gains `signal?: CancelSignal`, additive: the part of an
+  `AbortSignal` a command reads (`aborted`, the `abort` listener), so any
+  runtime's `AbortSignal` is one and the isomorphic packages need no DOM
+  or Node types; `createCancelSignal()` makes one. The kernel passes the
+  invocation through untouched, so it learns nothing about callers,
+  transports or threads. A surface aborts the signal when nobody is left
+  to take the answer: `serveRpc` (`@jhin/rpc`) for every call of a
+  connection when the connection closes or the server is disposed (the
+  WebSocket transport, and a mesh link's inbound calls, which `serveRpc`
+  serves too), the MCP endpoint (`jhin.mcp-server`) for a request whose
+  HTTP response closes before it was answered. Every listener hears the
+  abort, also after one that throws. A caller in process passes its own. A command that ignores the signal runs as it did; one
   that honours it stops waiting, never undoes what it already did. The
   error of an aborted command reaches nobody, so a command need not throw.
 - **D1502. A waited delegation ends with its caller.** `tasks.delegate`
@@ -360,9 +363,11 @@ section lands rather than a second path.
   them all.
 - Smaller workflow events: every change appends the whole record (agents,
   logs, result) to the `orchestration` stream; deltas would keep it small.
-- Ending a `mode: "wait"` delegation when its caller goes away: commands
-  get no cancellation signal today, so the wait runs to its timeout (at most
-  60 minutes) and the task goes on either way.
+- A caller's cancel that crosses a mesh call or does not close its
+  connection (D1501): the signal aborts when a connection or an HTTP
+  request ends; a `mesh.call` abandoned at its origin still runs on the
+  target until its link closes, and no RPC message cancels one call of a
+  connection that stays open.
 - Running workflow scripts out of process (a worker or a child process),
   which would bound their asynchronous part too and give them no node
   rights.

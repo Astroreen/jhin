@@ -1,5 +1,6 @@
 import {
   DisposableStore,
+  createCancelSignal,
   missingPermissions,
   type Disposable,
   type Invocation,
@@ -323,6 +324,16 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     return { subscription: id, head };
   }
 
+  // Aborted when the connection ends: its calls' answers reach nobody (D1501).
+  const gone = createCancelSignal();
+  const cancelCalls = () => {
+    try {
+      gone.cancel();
+    } catch (error) {
+      options.logger.error("a command's abort listener failed", { error: String(error) });
+    }
+  };
+
   async function handle(request: RequestMessage, trace: string): Promise<unknown> {
     switch (request.method) {
       case RPC_HELLO:
@@ -339,6 +350,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
         return options.execute(request.method, request.params ?? {}, {
           traceId: trace,
           caller: options.caller,
+          signal: gone.signal,
         });
     }
   }
@@ -406,6 +418,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       for (const subscription of subscriptions.values()) subscription.dispose();
       subscriptions.clear();
       store.dispose();
+      cancelCalls();
     }),
   );
   return {
@@ -413,6 +426,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       for (const subscription of subscriptions.values()) subscription.dispose();
       subscriptions.clear();
       store.dispose();
+      cancelCalls();
     },
   };
 }

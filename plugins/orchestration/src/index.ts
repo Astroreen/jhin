@@ -26,7 +26,13 @@ import {
   type InteractionMode,
   type RuntimeMode,
 } from "@jhin/agent-api";
-import { definePlugin, describePermissions, z, type Invocation } from "@jhin/sdk";
+import {
+  definePlugin,
+  describePermissions,
+  z,
+  type CancelSignal,
+  type Invocation,
+} from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -917,7 +923,7 @@ export default definePlugin({
         timeoutMs?: number;
         /** `questions`: also when it asks the user something; `any`: also when it waits for an approval. */
         waiting: "none" | "questions" | "any";
-        signal?: AbortSignal;
+        signal?: CancelSignal;
       },
     ): Promise<{ timedOut: boolean }> {
       const done = (task: Task | undefined) =>
@@ -1275,7 +1281,12 @@ export default definePlugin({
             Number.isFinite(input.timeoutMs) ? input.timeoutMs! : DEFAULT_WAIT_TIMEOUT_MS,
           ),
         );
-        const { timedOut } = await waitFor(task.taskId, { timeoutMs, waiting: "questions" });
+        // A caller that went away stops the wait, not the task (D1502).
+        const { timedOut } = await waitFor(task.taskId, {
+          timeoutMs,
+          waiting: "questions",
+          ...(invocation.signal === undefined ? {} : { signal: invocation.signal }),
+        });
         let latest = tasks.get(task.taskId) ?? task;
         // Not over when the wait returned: its end wakes the parent after all.
         if (latest.endedAt === undefined && latest.wake === "none") {

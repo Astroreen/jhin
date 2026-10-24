@@ -103,9 +103,18 @@ describe("rpc", () => {
     await client.call("app.echo", {});
 
     expect(invocations).toEqual([
-      { traceId: "t-123", caller: { id: "owner", permissions: ["*"] } },
-      { traceId: "generated-2", caller: { id: "owner", permissions: ["*"] } },
+      {
+        traceId: "t-123",
+        caller: { id: "owner", permissions: ["*"] },
+        signal: expect.objectContaining({ aborted: false }),
+      },
+      {
+        traceId: "generated-2",
+        caller: { id: "owner", permissions: ["*"] },
+        signal: expect.objectContaining({ aborted: false }),
+      },
     ]);
+    expect(invocations[0]!.signal!.aborted).toBe(false);
     client.close();
   });
 
@@ -163,6 +172,46 @@ describe("rpc", () => {
     const hanging = client.call("app.hang");
     servers.at(-1)!.close(1006, "gone");
 
+    await expect(hanging).rejects.toMatchObject({ code: "DISCONNECTED" });
+    client.close();
+  });
+
+  it("aborts the signal of a connection's calls when the server is disposed (D1501)", async () => {
+    const [clientEnd, serverEnd] = createPeerPair();
+    const signals: NonNullable<Invocation["signal"]>[] = [];
+    const server = serveRpc(serverEnd, {
+      caller: { id: "owner", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async (_name, _input, invocation) => {
+        signals.push(invocation.signal!);
+        return {};
+      },
+    });
+    await createCaller(clientEnd).call("app.echo", {});
+    expect(signals[0]!.aborted).toBe(false);
+
+    server.dispose();
+
+    expect(signals[0]!.aborted).toBe(true);
+  });
+
+  it("aborts the signal of a connection's calls when the connection closes (D1501)", async () => {
+    const { client, invocations, servers } = harness();
+    await nextState(client, "open");
+
+    const hanging = client.call("app.hang");
+    await client.call("app.echo", {});
+    const signal = invocations[0]!.signal!;
+    expect(signal.aborted).toBe(false);
+    const aborted = new Promise<void>((resolve) =>
+      signal.addEventListener("abort", () => resolve()),
+    );
+    servers.at(-1)!.close(1006, "gone");
+
+    await aborted;
+    expect(signal.aborted).toBe(true);
     await expect(hanging).rejects.toMatchObject({ code: "DISCONNECTED" });
     client.close();
   });

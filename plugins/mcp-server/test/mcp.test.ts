@@ -5,7 +5,7 @@ import * as Path from "node:path";
 import { MCP_SERVER_CAPABILITY, type McpServer } from "@jhin/mcp-api";
 import { toolName } from "@jhin/mcp-bridge";
 import { connectWebSocket, createRpcClient } from "@jhin/rpc";
-import { definePlugin, z, type PluginDefinition } from "@jhin/sdk";
+import { definePlugin, z, type CancelSignal, type PluginDefinition } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import {
   createTestKernel,
@@ -42,6 +42,8 @@ afterEach(async () => {
 
 /** The `mcp.server@1` service, as a plugin that uses it gets it. */
 let server: McpServer | undefined;
+/** The signal of each `app.hang` call, as it starts. */
+let hung: ((signal: CancelSignal | undefined) => void) | undefined;
 
 async function startNode() {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-mcp-"));
@@ -82,6 +84,17 @@ async function startNode() {
         definition: definePlugin({
           activate(context) {
             server = context.services.tryGet<McpServer>(MCP_SERVER_CAPABILITY);
+            context.commands.register({
+              name: "app.hang",
+              description: "Answers once its caller went away",
+              input: z.object({}),
+              output: z.object({}),
+              handler: (_input, invocation) =>
+                new Promise<Record<string, never>>((resolve) => {
+                  invocation.signal?.addEventListener("abort", () => resolve({}));
+                  hung?.(invocation.signal);
+                }),
+            });
             context.commands.register({
               name: "app.whoami",
               description: "Who calls",
@@ -218,6 +231,24 @@ describe("jhin.mcp-server", () => {
     const whoami = await client.callTool({ name: "app_whoami", arguments: {} });
     expect(whoami.structuredContent).toEqual({ id: "owner", threadId: "thread-3" });
     await client.close();
+  });
+
+  it("aborts a call's signal when its client goes away before the answer (D1501)", async () => {
+    const node = await startNode();
+    const client = await mcpClient(node.url, node.token);
+    const started = new Promise<CancelSignal | undefined>((resolve) => (hung = resolve));
+
+    const call = client.callTool({ name: "app_hang", arguments: {} }).catch(() => undefined);
+    const signal = await started;
+    expect(signal?.aborted).toBe(false);
+    const aborted = new Promise<void>((resolve) =>
+      signal!.addEventListener("abort", () => resolve()),
+    );
+    await client.close();
+
+    await aborted;
+    expect(signal!.aborted).toBe(true);
+    await call;
   });
 
   it("names the endpoint by loopback when HTTP listens on every address", () => {
