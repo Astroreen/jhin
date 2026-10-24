@@ -134,7 +134,9 @@ export function meshStreams(mesh: Mesh): Required<MeshStreams> {
     share: (name) => mesh.share(name),
     follow(node, stream, after, listener, onEnd): FollowedMemberStream {
       if (mesh.relays.follow === undefined) {
-        return { ready: Promise.reject(new Error("This mesh has no relays")), dispose: () => {} };
+        const ready = Promise.reject(new Error("This mesh has no relays"));
+        ready.catch(() => undefined);
+        return { ready, dispose: () => {} };
       }
       const followed = mesh.relays.follow(relayStream(node, stream), after, listener, (error) =>
         onEnd?.(error),

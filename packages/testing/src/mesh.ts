@@ -57,6 +57,8 @@ export async function startMeshNode(
     readonly storage?: ReturnType<typeof memoryStoragePlugin>;
     /** Streams relayed at once at most (D502). */
     readonly maxRelays?: number;
+    /** What a call or a stream from another node may do here (security.md D416); everything by default. */
+    readonly memberPermissions?: readonly string[];
   } = {},
 ): Promise<MemoryMeshNode> {
   const address = `mem://${id}`;
@@ -82,6 +84,9 @@ export async function startMeshNode(
     log,
     streams: live,
     ...(options.maxRelays === undefined ? {} : { maxRelays: options.maxRelays }),
+    ...(options.memberPermissions === undefined
+      ? {}
+      : { memberPermissions: () => options.memberPermissions! }),
   });
   const meshPlugin: TestPlugin = {
     manifest: testManifest("test.mesh", {

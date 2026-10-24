@@ -1452,7 +1452,7 @@ sensors and detectors are `plugins/health/src/sensors.ts`.
   while a new question is awaited makes it be asked once more. A client can subscribe to
   `agents` on a node where nothing writes it yet: it is a stream of the
   event log that reads as empty, and a subscription needs only the right to
-  read events. The follower is dropped when the node has agents, when its
+  read it (`agents.read` since D1521, as `agents.catalog`). The follower is dropped when the node has agents, when its
   token may not read them (`PERMISSION_DENIED` stays final for the opening),
   when the connection closes and with the plugin; an answer of an earlier
   opening is still dropped. A failure that is not known (a timeout) is asked
@@ -2240,7 +2240,9 @@ Decisions (M1):
   follow them on its members (D1522). Nothing is mirrored, and nothing is
   read beyond what it was before: over a link a member reads a shared stream
   only within its member grants and the stream's guard there (`agents.read`,
-  `agents.inbox`, `missions.read`, `health.read`; D499, D628, D730).
+  `agents.inbox`, `missions.read`, `health.read`; D499, D628, D730). The
+  `agents` stream gets the guard it lacked, `agents.read`, as `agents.catalog`
+  takes, and a plugin shares a stream only once its guard is registered.
 - **D1522. `mesh.streams@1.1`: a plugin follows a member's stream.**
   `follow(node, stream, after, listener, onEnd?)` returns `{ ready, dispose }`
   and travels as a relay does (D499): next to the owner its stream, further
@@ -2266,14 +2268,19 @@ Decisions (M1):
   head?, error? }`: the head of that node's `agents/messages` the entries
   reflect, or why it could not be read, in which case the local half comes
   alone. A client lists again on the next event of either stream. The
-  forwarded call carries the caller's grants (D416), so it needs nothing new.
+  forwarded call carries the caller's grants (D416), so it needs nothing new
+  (this node's own code asks with what reading the conversation takes).
+  `owner` other than this node's own is taken only from that owner's node
+  (`node:<id>`, the mesh's caller) or from this node's code, else
+  `OWNER_MISMATCH`. The halves are ordered by `sentAt` as each node stamped
+  it, so two nodes' clocks set a little apart may interleave them.
 - **D1524. A message from another node's owner gets its answer.** D1221
   follows the turn that a message from any owner of the mesh starts in an
   agent of this node, not only this node's owner's, and records the answer
   here, where D1523 reads it. D1262 still holds: the agent's own reply to
   that owner is delivered on the owner's node, so this node remembers each
-  reply it forwards by the id it answers (`replied/<messageId>` in its
-  storage), and the check reads both.
+  reply to an owner it forwards by the id it answers (`replied/<messageId>`
+  in its storage), and the check reads both and forgets the record.
 - **D1525. Every node knows the slices of the mesh.** Health folds the
   `missions` stream of every reachable member besides its own (D1522), keyed
   by node. A turn on this node in a thread that a slice of any node links is
@@ -2413,6 +2420,11 @@ Decisions (M1):
   messages are recorded on the agent's node (D627), so `agents.conversation`
   here misses them (D1061). Reading both nodes, through `mesh.call`, joins it.~~
   M1, D1523.
+- M1: a forwarded reply to an owner is remembered until the turn of the
+  message it answers ends (D1524); one whose message started no turn (an
+  answer to an ask, or a reply sent after the turn) stays in storage.
+- M1: two nodes' clocks: the joined conversation orders its halves by each
+  node's `sentAt` (D1523); a skew between them interleaves the halves.
 - A1: agents of a mesh member reached through another node (`remote` in
   the route): the roster follows the client's open connections only (D617),
   as D747 does.
