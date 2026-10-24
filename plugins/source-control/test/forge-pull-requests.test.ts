@@ -174,6 +174,21 @@ describe("jhin.source-control: Bitbucket listed, watched and resolved (D1441–D
     }
   });
 
+  it("follows a next link only on the API's own origin, so the token goes nowhere else", async () => {
+    const server = await start();
+    server.answer("/repositories/acme/demo/pullrequests", {
+      values: [bitbucketPr()],
+      next: "https://elsewhere.example/2.0/repositories/acme/demo/pullrequests?page=2",
+    });
+    const sc = await node({ bitbucketAccessToken: "t", bitbucketApiBaseUrl: server.base });
+    const projectId = await sc.project(repositoryAt("git@bitbucket.org:acme/demo.git"));
+    await expect(
+      sc.client.call("git.pr.search", { projectId, query: "a", limit: 100 }),
+    ).rejects.toThrow(
+      "Bitbucket answered a link to another host: https://elsewhere.example/2.0/repositories/acme/demo/pullrequests?page=2",
+    );
+  });
+
   it("resolves a number or a URL, and refuses a branch with T3's words", async () => {
     const server = await start();
     server.answer("/repositories/acme/demo/pullrequests/8", bitbucketPr());

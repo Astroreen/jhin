@@ -4,6 +4,7 @@
 // `q` search, the pull request, its statuses, conflicts and comments, the viewer;
 // bitbucketPullRequestJson.ts: states, the author, comments), with their messages.
 // docs/plans/source-control.md D279, D1441–D1443, D1446.
+import { createHash } from "node:crypto";
 import * as Fs from "node:fs/promises";
 
 import type { PullRequest } from "@jhin/source-control-api";
@@ -171,6 +172,10 @@ export function bitbucketForge(
   const call = async (path: string, init: { method?: string; body?: unknown } = {}) => {
     const base = baseOf();
     const auth = authorization(credentials());
+    // A `next` link is followed only on the API's own origin: the token goes nowhere else.
+    if (/^https?:\/\//i.test(path) && new URL(path).origin !== new URL(base).origin) {
+      throw new ForgeUnavailable("failed", `Bitbucket answered a link to another host: ${path}`);
+    }
     let response: Response;
     try {
       response = await fetch(/^https?:\/\//i.test(path) ? path : `${base}${path}`, {
@@ -220,6 +225,14 @@ export function bitbucketForge(
       next = text(answer["next"]);
     }
     return values.slice(0, max);
+  };
+  /** Which account the credentials are, without them: another token is another viewer. */
+  const identity = () => {
+    const { accessToken, email, apiToken } = credentials();
+    return createHash("sha256")
+      .update(`${accessToken ?? ""}\u0000${email ?? ""}\u0000${apiToken ?? ""}`)
+      .digest("hex")
+      .slice(0, 16);
   };
   const repo = (repository: string) => `/repositories/${repository}`;
   const statusesOf = (repository: string, number: number) =>
@@ -324,7 +337,7 @@ export function bitbucketForge(
           (): WatchRead["mergeability"] => "unknown",
         ),
         paged(`${path}/comments?pagelen=${PAGE_SIZE}`),
-        viewerOf(viewers, `bitbucket\u0000${baseOf()}`, async () =>
+        viewerOf(viewers, `bitbucket\u0000${baseOf()}\u0000${identity()}`, async () =>
           accountName(await call("/user")),
         ),
       ]);

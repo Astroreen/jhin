@@ -1624,8 +1624,8 @@ and in `apps/web` `components/PullRequestThreadDialog.tsx`,
   "Delete comment"; the comment being written stays apart.
 - **D1460** is kept free for this workstream's follow-ups.
 
-The proof: `plugins/source-control/test/forges.test.ts` (Bitbucket against a
-local server and Forgejo with a fake `tea`: listing with words, a watch that
+The proof, as each layer of the stack lands it: `plugins/source-control/test/forge-pull-requests.test.ts`
+and `pr-detail.test.ts` (Bitbucket against a local server and Forgejo with a fake `tea`: listing with words, a watch that
 wakes the thread for a failed status, a comment on a line and, on
 Bitbucket, a conflict; resolving a number and refusing a branch; a
 Bitbucket token from the config's secret; GitLab, Azure DevOps, Bitbucket and
