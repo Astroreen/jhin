@@ -6,6 +6,7 @@ import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  RIGHT_PANEL_CAPABILITY,
   THREAD_DETAILS_SLOT,
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
@@ -22,6 +23,9 @@ import {
   type Keybindings,
   type Navigation,
   type NodeTarget,
+  type RightPanel,
+  type RightPanelPlace,
+  type RightPanelSurfaceProps,
   type ThreadActionProps,
   type ThreadIndicatorProps,
   type ThreadsCatalog,
@@ -41,11 +45,11 @@ import {
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { FileDiffIcon } from "lucide-react";
+import { FileDiffIcon, Link2Icon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { CHAT_SECTION, ChatSettings, readSection } from "../../lib/settings.ts";
-import { useExternal } from "../../lib/hooks.ts";
+import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
 import { createRunningActions } from "./running.ts";
@@ -96,6 +100,8 @@ export const sourceControlPlugin = builtin(
       [SETTINGS_CAPABILITY]: "^1",
       [THREAD_WORK_CAPABILITY]: "^1",
       [CHAT_DRAFTS_CAPABILITY]: "^1.1",
+      // The diff and the pull requests as surfaces of the right panel (t3-parity.md D1424).
+      [RIGHT_PANEL_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -147,12 +153,15 @@ export const sourceControlPlugin = builtin(
         return true;
       };
 
+      const rightPanel = context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY);
+
       function DiffToggle({ target, thread, project }: ChatHeaderActionProps) {
         const route = useExternal(navigation, navigation.current);
         const view = useSourceControl(store, target);
         const projectId = project?.id ?? thread?.projectId;
         const status = projectId === undefined ? undefined : view.projects.get(projectId);
-        if (status === undefined || !status.isRepo) return null;
+        // Beside the right panel, T3's one toggle opens the diff (D1424).
+        if (rightPanel !== undefined || status === undefined || !status.isRepo) return null;
         const open = route.panel === DIFF_PANEL;
         const shortcut = services.shortcut();
         return (
@@ -390,18 +399,54 @@ export const sourceControlPlugin = builtin(
         }),
       );
       // The diff panel is a chunk of its own, loaded when it first opens (D440).
-      const DiffPanel = lazyChunk(
-        () => import("./diff-panel.tsx").then((module) => module.createDiffPanel(services)),
-        {
-          loading: () => null,
-          failed: (_props, retry) => (
-            <ChunkFailed retry={retry}>Couldn't load the diff panel.</ChunkFailed>
-          ),
-        },
+      const diffChunk = () =>
+        import("./diff-panel.tsx").then((module) => module.createDiffPanel(services));
+      const diffFailed = (_props: unknown, retry: () => void) => (
+        <ChunkFailed retry={retry}>Couldn't load the diff panel.</ChunkFailed>
       );
+      const DiffPanel = lazyChunk(() => diffChunk().then((panel) => panel.DiffPanel), {
+        loading: () => null,
+        failed: diffFailed,
+      });
       function DiffPanelSlot() {
         const route = useExternal(navigation, navigation.current);
-        return route.panel === DIFF_PANEL ? <DiffPanel /> : null;
+        // Beside the right panel the diff is one of its surfaces (D1424).
+        return route.panel === DIFF_PANEL && rightPanel === undefined ? <DiffPanel /> : null;
+      }
+      const DiffSurface = lazyChunk<RightPanelSurfaceProps>(
+        () => diffChunk().then((panel) => panel.DiffSurface),
+        { loading: () => null, failed: diffFailed },
+      );
+      /** T3's `diffAvailable`: a thread or draft of a git repository. */
+      const useDiffAvailability = (place: RightPanelPlace) => {
+        const view = useSourceControl(store, place.target);
+        const catalog = useCatalog(threads, place.target);
+        const projectId =
+          place.projectId ?? catalog?.threads.find((item) => item.id === place.threadId)?.projectId;
+        const status = projectId === undefined ? undefined : view.projects.get(projectId);
+        return status?.isRepo === true
+          ? { available: true }
+          : {
+              available: false,
+              reason: "Diff is only available for server threads in Git repositories.",
+              hint: "Available for Git repositories.",
+            };
+      };
+      if (rightPanel !== undefined) {
+        context.subscriptions.add(
+          rightPanel.register({
+            id: DIFF_PANEL,
+            title: "Diff",
+            icon: FileDiffIcon,
+            offer: {
+              label: "Diff",
+              shortcut: "D",
+              order: 40,
+              useAvailability: useDiffAvailability,
+            },
+            component: DiffSurface,
+          }),
+        );
       }
       // A watched pull request keeps its thread waiting between turns (D1131).
       const work = context.services.tryGet<ThreadWork>(THREAD_WORK_CAPABILITY);
@@ -447,21 +492,53 @@ export const sourceControlPlugin = builtin(
       // A thread's pull requests (D1281–D1283): the right panel, a chunk of its own (D440), and
       // the rows of the thread details panel, loaded with it.
       const linkPrompt = dialogs === undefined ? undefined : createLinkPrompt(services, dialogs);
+      const pullRequestsChunk = () =>
+        import("./pull-requests-panel.tsx").then((module) =>
+          module.createPullRequestsPanel(services, linkPrompt),
+        );
+      const pullRequestsFailed = (_props: unknown, retry: () => void) => (
+        <ChunkFailed retry={retry}>Couldn't load the pull requests panel.</ChunkFailed>
+      );
       const PullRequestsPanel = lazyChunk(
-        () =>
-          import("./pull-requests-panel.tsx").then((module) =>
-            module.createPullRequestsPanel(services, linkPrompt),
-          ),
-        {
-          loading: () => null,
-          failed: (_props, retry) => (
-            <ChunkFailed retry={retry}>Couldn't load the pull requests panel.</ChunkFailed>
-          ),
-        },
+        () => pullRequestsChunk().then((panel) => panel.PullRequestsPanel),
+        { loading: () => null, failed: pullRequestsFailed },
       );
       function PullRequestsPanelSlot() {
         const route = useExternal(navigation, navigation.current);
-        return route.panel === PULL_REQUESTS_PANEL ? <PullRequestsPanel /> : null;
+        return route.panel === PULL_REQUESTS_PANEL && rightPanel === undefined ? (
+          <PullRequestsPanel />
+        ) : null;
+      }
+      if (rightPanel !== undefined) {
+        context.subscriptions.add(
+          rightPanel.register({
+            id: PULL_REQUESTS_PANEL,
+            title: "Pull requests",
+            icon: Link2Icon,
+            offer: {
+              label: "Linked pull requests",
+              shortcut: "L",
+              order: 60,
+              // T3's `pullRequestsSurfaceAvailable`: a thread with pull requests linked.
+              useAvailability: (place) => {
+                const view = useSourceControl(store, place.target);
+                const linked =
+                  place.threadId === undefined ? 0 : (view.links.get(place.threadId) ?? []).length;
+                return linked > 0
+                  ? { available: true }
+                  : {
+                      available: false,
+                      reason: "No linked pull requests are available for this thread.",
+                      hint: "No linked pull requests available.",
+                    };
+              },
+            },
+            component: lazyChunk<RightPanelSurfaceProps>(
+              () => pullRequestsChunk().then((panel) => panel.PullRequestsSurface),
+              { loading: () => null, failed: pullRequestsFailed },
+            ),
+          }),
+        );
       }
       context.subscriptions.add(
         slots.contribute("app.panel", {

@@ -446,7 +446,7 @@ describe("the diff panel", () => {
 
   it("shows the branch's changes with Pierre, files folded, and highlights a file it unfolds", async () => {
     const { value, calls } = services(viewWith(status()), { "git.diff": diff });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     const mounted = mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
     // T3's default scope is "Changes", whitespace hidden.
@@ -507,7 +507,7 @@ describe("the diff panel", () => {
     // does) while the click lands; this test is about the click, so the panel never hears it.
     const quiet = (event: Event) => event.stopImmediatePropagation();
     window.addEventListener("focus", quiet);
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     const mounted = mount(<Panel />);
     try {
       await userEvent.click(page.getByText("2 unmodified lines").first());
@@ -526,7 +526,7 @@ describe("the diff panel", () => {
 
   it("finds in the diff and unfolds the file of the match (D924)", async () => {
     const { value } = services(viewWith(status()), { "git.diff": diff });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     const mounted = mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
     // The view takes the keys once it has focus, as a click in it gives it.
@@ -559,7 +559,7 @@ describe("the diff panel", () => {
   it("switches to the split view and writes the layout on the device", async () => {
     const config = deviceConfig({ filesCollapsed: false });
     const { value } = services(viewWith(status()), { "git.diff": diff }, config);
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     const mounted = mount(<Panel />);
     await expect.element(page.getByText("const one = 1;")).toBeVisible();
     const pre = () =>
@@ -586,7 +586,7 @@ describe("the diff panel", () => {
     const { value } = services(viewWith(status()), {
       "git.diff": { ...diff, patch: `${added("AGENTS.md")}\n${added("src/Main.kt")}\n` },
     });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     const mounted = mount(<Panel />);
     await userEvent.click(page.getByRole("button", { name: "Show file tree" }));
     const tree = page.getByRole("tree");
@@ -605,7 +605,7 @@ describe("the diff panel", () => {
 
   it("lists the files in a tree and reveals the one chosen", async () => {
     const { value } = services(viewWith(status()), { "git.diff": diff });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     const mounted = mount(<Panel />);
     await userEvent.click(page.getByRole("button", { name: "Show file tree" }));
     const tree = page.getByRole("tree");
@@ -637,7 +637,7 @@ describe("the diff panel", () => {
         };
       },
     });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     await userEvent.click(
       page.getByRole("combobox", { name: "Change comparison target. Currently main" }),
@@ -666,7 +666,7 @@ describe("the diff panel", () => {
           answers.push((answer) => (answer instanceof Error ? reject(answer) : resolve(answer))),
         ),
     });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     const picker = page.getByRole("combobox", { name: "Change comparison target. Currently main" });
     await userEvent.click(picker);
@@ -704,7 +704,7 @@ describe("the diff panel", () => {
     const { value } = services(viewWith(status()), {
       "git.diff": { ...diff, patch: renamed },
     });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand src/new.ts" })).toBeVisible();
     // Neither the chevron nor the name: the counts in the header. They are only reachable in
@@ -736,7 +736,7 @@ describe("the diff panel", () => {
       "git.diff": (params: { base?: string }) => ({ ...diff, baseRef: params.base ?? "main" }),
       "git.branches": { branches },
     });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     const mounted = mount(<Panel />);
     await userEvent.click(
       page.getByRole("combobox", { name: "Change comparison target. Currently main" }),
@@ -782,7 +782,7 @@ describe("the diff panel", () => {
       },
     };
     const registration = scopes.register(reviews);
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     const mounted = mount(<Panel />);
     await userEvent.click(page.getByRole("button", { name: "Diff scope: Changes" }));
     expect(
@@ -811,7 +811,7 @@ describe("the diff panel", () => {
         return diff;
       },
     });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
     // The window regaining focus reads the diff again, as T3 does.
@@ -841,7 +841,7 @@ describe("the diff panel", () => {
       deviceConfig(),
       "/src/app/src",
     );
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     const title = page.getByText("src/app.ts", { exact: true });
     await expect.element(title).toBeVisible();
@@ -895,7 +895,7 @@ describe("the diff panel", () => {
       },
     });
     const editors = createEditors(value.threads, value.toasts);
-    const Panel = createDiffPanel({ ...value, editors });
+    const Panel = createDiffPanel({ ...value, editors }).DiffPanel;
     const mounted = mount(<Panel />);
     const title = page.getByText("src/app.ts", { exact: true });
     await expect.element(title).toBeVisible();
@@ -953,7 +953,7 @@ describe("the diff panel", () => {
       },
     );
     const { value } = services(viewWith(status()), { "git.diff": diff }, config);
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     const line = page.getByText("const two = 3;");
     await expect.element(line).toBeVisible();
@@ -1019,7 +1019,7 @@ describe("the diff panel", () => {
       "/src/app",
       drafts,
     );
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     const line = page.getByText("const two = 3;");
     await expect.element(line).toBeVisible();
@@ -1057,7 +1057,7 @@ describe("the diff panel", () => {
     const commands: Record<string, (input: unknown) => unknown> = {};
     const config = deviceConfig({ filesCollapsed: false }, commands);
     const { value } = services(viewWith(status()), { "git.diff": diff }, config);
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     const line = page.getByText("const two = 3;");
     await expect.element(line).toBeVisible();
@@ -1101,7 +1101,7 @@ describe("the diff panel", () => {
       },
     );
     const { value, shown } = services(viewWith(status()), { "git.diff": diff }, config);
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     const line = page.getByText("const two = 3;");
     const open = async () => {
@@ -1159,7 +1159,7 @@ describe("the diff panel", () => {
       },
     );
     const { value, shown } = services(viewWith(status()), { "git.diff": () => answer }, config);
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     const line = page.getByText("const two = 3;");
     await expect.element(line).toBeVisible();
@@ -1214,7 +1214,7 @@ describe("the diff panel", () => {
       },
     );
     const { value, shown } = services(viewWith(status()), { "git.diff": diff }, config);
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     const line = page.getByText("const two = 3;");
     await expect.element(line).toBeVisible();
@@ -1238,7 +1238,7 @@ describe("the diff panel", () => {
   it("says so when the project is no repository or has no changes", async () => {
     const Plain = createDiffPanel(
       services(viewWith(status({ isRepo: false, branch: null }))).value,
-    );
+    ).DiffPanel;
     const first = mount(<Plain />);
     expect(first.container.textContent).toContain(
       "Turn diffs are unavailable because this project is not a git repository.",
@@ -1247,7 +1247,7 @@ describe("the diff panel", () => {
 
     const Clean = createDiffPanel(
       services(viewWith(status()), { "git.diff": { ...diff, patch: "", files: [] } }).value,
-    );
+    ).DiffPanel;
     const second = mount(<Clean />);
     await expect.element(page.getByText("No net changes in this selection.")).toBeVisible();
     second.unmount();
@@ -1509,7 +1509,7 @@ describe("checkpoints in the client", () => {
       "git.diff": turnDiff,
     });
     value.selections.update(threadKey, { value: "latest" });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand src/a.ts" })).toBeVisible();
     expect(page.getByRole("button", { name: "Diff scope: Latest turn" }).element()).toBeTruthy();
@@ -1551,7 +1551,7 @@ describe("checkpoints in the client", () => {
       "git.checkpoints": { checkpoints: [failed] },
     });
     value.selections.update(threadKey, { value: "latest" });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     await expect.element(page.getByText("No completed turns yet.")).toBeVisible();
   });
@@ -1698,7 +1698,7 @@ describe("the diff panel across scopes", () => {
     );
     const key = selectionKey({ target, projectId: "app", threadId: "t1" });
     value.selections.update(key, { value: "latest" });
-    const Panel = createDiffPanel(value);
+    const Panel = createDiffPanel(value).DiffPanel;
     mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand turn.ts" })).toBeVisible();
 

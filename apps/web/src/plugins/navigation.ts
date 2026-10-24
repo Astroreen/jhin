@@ -43,7 +43,8 @@ export function writeRoute(route: Route): string {
 export const navigationPlugin = builtin(
   "jhin.navigation",
   {
-    provides: { [NAVIGATION_CAPABILITY]: "1.0.0" },
+    // 1.1: `navigate(route, {replace})` (t3-parity.md D1421).
+    provides: { [NAVIGATION_CAPABILITY]: "1.1.0" },
     optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
   },
   definePlugin({
@@ -65,10 +66,10 @@ export const navigationPlugin = builtin(
 
       const navigation: Navigation = {
         current: () => route,
-        navigate(next) {
+        navigate(next, options) {
           const hash = writeRoute(next);
           if (hash === writeRoute(route)) return;
-          history.pushState(
+          history[options?.replace === true ? "replaceState" : "pushState"](
             null,
             "",
             `${location.pathname}${location.search}${hash === "" ? "" : `#${hash}`}`,

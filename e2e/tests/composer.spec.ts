@@ -383,9 +383,10 @@ test("shows T3's chips with their details: a file's preview and a skill's instru
 
   // A file chip shows its file in the panel beside the thread (D1342).
   await page.getByRole("button", { name: "Preview src/app.ts" }).click();
-  const preview = page.getByRole("complementary", { name: "File preview" });
+  const preview = page.getByRole("region", { name: "File preview" });
   await expect(preview).toContainText("export const port = 8080;");
-  await preview.getByRole("button", { name: "Close app.ts" }).click();
+  // Its tab in the right panel's strip closes it (t3-parity.md D1424).
+  await page.getByRole("button", { name: "Close app.ts" }).click();
   await expect(preview).toBeHidden();
 
   // A skill chip: its description, and its SKILL.md behind "View instructions" (D1004).
@@ -437,7 +438,7 @@ test("shows a sent message's file and skill chips, and its file beside the threa
   await expect(sent).toContainText("not $ship");
 
   await sent.getByRole("button", { name: "Preview docs/plan.md" }).click();
-  const preview = page.getByRole("complementary", { name: "File preview" });
+  const preview = page.getByRole("region", { name: "File preview" });
   await expect(preview.getByRole("heading", { name: "The plan" })).toBeVisible();
   await expect(preview).toContainText("docs");
   const shot = info.outputPath("file-panel.png");
@@ -449,7 +450,7 @@ test("shows a sent message's file and skill chips, and its file beside the threa
   // The panel is a place in the URL: it is there after a reload.
   await page.reload();
   await expect(preview.getByRole("heading", { name: "The plan" })).toBeVisible();
-  await preview.getByRole("button", { name: "Close plan.md" }).click();
+  await page.getByRole("button", { name: "Close plan.md" }).click();
   await expect(preview).toBeHidden();
   await expect(sent.getByRole("button", { name: "Preview docs/plan.md" })).toBeVisible();
 });

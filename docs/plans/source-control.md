@@ -1495,8 +1495,9 @@ whose view already held a watched link tells when that watch ends).
   card shows its threads.
 - The pull request panel and rows (D1281–D1283): a row's author, diff stat
   and review decision, T3's speed actions under Shift, dragging a row into
-  the composer, the virtualized list, T3's tab strip of right panels and its
-  proactive opening of the panel; the details rows' Merge, Ready, Fix and
+  the composer, the virtualized list, T3's proactive opening of the panel
+  (its tab strip is `t3-parity.md` D1421–D1424: the pull requests are its
+  surface `pull-requests`); the details rows' Merge, Ready, Fix and
   Resolve, checks popover and files count (T3's pull request detail
   queries); native stacks of a forge (and their "Dismiss from thread") and
   the instructions that tell agents to link what they open.

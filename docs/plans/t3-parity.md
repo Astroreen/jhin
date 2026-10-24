@@ -2298,6 +2298,105 @@ says. The other W38 decisions land in their own pull requests.
   as before. Closing the bar drops the hidden copies; an opened fold stays
   open.
 
+### The tabbed right panel (W40, `t3-roadmap.md`)
+
+Round 5 of `t3-roadmap.md` (D1421–D1440), at T3 Code `eb7b35ac` as D290
+says: `rightPanelStore.ts`, `components/RightPanelTabs.tsx`,
+`components/ui/panel-tab-close-button.tsx`,
+`components/chat/PanelLayoutControls.tsx`,
+`components/chat/RightPanelSurfaceContent.tsx`,
+`components/preview/PreviewPanelShell.tsx` and the right panel's handlers
+of `components/ChatView.tsx`. The decisions of W40 on terminals, the diff
+panel and devices are in `terminal.md`, `source-control.md` and
+`preview.md`.
+
+- **D1421. One right panel holds every surface, as tabs.** The client
+  plugin `jhin.right-panel` provides `ui.right-panel@1` (`RightPanel` in
+  `@jhin/client-api`) and contributes `app.panel` `jhin.right-panel.panel`.
+  A _surface_ is one tab of it: a _surface kind_ (a stable id, public API
+  like a slot id) and what it shows, its id the kind's alone for one of a
+  kind (T3's `diff`) or `kind:resource` (T3's `browser:<tabId>`,
+  `file:<path>`). A plugin registers a kind with `register(kind)` (a
+  disposable): its id, its tab's title and icon (a hook, so a browser tab
+  follows its page's title), extra items of the tab's context menu, what
+  happens when the panel closes on it, the component that fills the panel
+  below the strip while its surface is active (only that one renders, as in
+  T3's `RightPanelSurfaceContent`), and, to be offered by "Add panel
+  surface", T3's label, icon, letter and order there, whether it is
+  available for the place (and T3's reason when not) and what adding one
+  does. Each place (a thread, or the draft of a project, on its node) keeps
+  its surfaces in their order, the active one, and whether the panel is open
+  and maximized, on this device (`localStorage`, `jhin:right-panel:v1`), as
+  T3 persists its store. The route still says what shows: its `panel` is the
+  active surface's kind and its `section` the resource, so a command or a
+  link that opened a panel through the route opens its surface now, and a
+  route naming a surface the place does not have adds it at the end. The
+  panel open on no surface (T3's "Open a surface") is the route's panel
+  `right-panel`. Coming back to a place whose panel was open shows it as it
+  was, as T3 keeps its panel per thread; the route is replaced
+  (`client.navigation@1.1` adds `navigate(route, {replace})`), so Back does
+  not come to it twice. A surface whose kind is not registered (its plugin is
+  off) stays in the list without a tab.
+- **D1422. The strip and its menu are T3's.** A tab shows its kind's icon,
+  which turns into T3's close button on hover ("Close <title>"), and its
+  title, truncated, in a tooltip too; a click activates it, a middle click
+  closes it, a drag reorders it (dnd-kit along the strip, from 6 px, T3's
+  `SortableTabList`); its context menu has the kind's items (T3's "Copy
+  path" of a file), then "Close", "Close others", "Close to the right" and
+  "Close all", disabled as T3 disables them. Tabs past the strip's width
+  scroll with the wheel and with T3's "Scroll tabs left" and "Scroll tabs
+  right"; the active tab scrolls into view. "Add panel surface" (+) opens
+  T3's menu of the kinds offered, in their order, each with its letter,
+  which picks it while the menu is open; one not available is disabled with
+  T3's reason in a tooltip. With no active surface the panel shows T3's
+  "Open a surface" with the same entries and letters (`Kbd`), the arrow
+  keys and Enter, and the letters pick one while focus is not in a text
+  field or another layer (T3's `surfaceShortcutActionForKey`). Closing the
+  active surface activates the one now in its place, else the last (T3's
+  fallback); closing the last surface closes the panel. Closing surfaces
+  lets their kind release them first (`release`, T3's
+  `useRightPanelSurfaceClose`): a browser tab closes on the node, after
+  T3's "Close browser while the agent is using it?" while an agent drives
+  it, and a refusal keeps every surface of that close.
+- **D1423. Opening, closing and maximizing are T3's commands.** The chat
+  header has T3's "Toggle right panel" (`chat.header.actions`
+  `jhin.right-panel.toggle`, lucide `PanelRight`, "Right panel is
+  unavailable" without a place), and the client commands are
+  `right-panel.toggle` (⌘/Ctrl+Alt+B, T3's `rightPanel.toggle`),
+  `right-panel.new` (⌘/Ctrl+T while the panel is open and focus is not in
+  a terminal: opens "Add panel surface"), `right-panel.close` (⌘/Ctrl+W
+  outside a terminal: closes the active surface) and
+  `right-panel.maximize.toggle` (T3's "Maximize panel" / "Restore panel
+  size" at the strip's end: the panel covers the chat until restored or
+  closed), and for any caller `right-panel.surfaces.list`,
+  `right-panel.surface.open`, `.activate`, `.close`, `.close-others`,
+  `.close-to-right`, `.move` and `right-panel.surfaces.close-all`, on the
+  place on screen. The context key `rightPanelOpen` is set while it shows.
+  Toggling the panel closed asks the active surface's kind first, so a
+  browser tab floats over the chat as T3's `closePreviewPanel` floats it
+  (D1202). The panel keeps D403's resizable width and its key
+  (`jhin:preview-panel-width`).
+- **D1424. The panels Jhin had become surfaces.** The browser (each of the
+  thread's tabs is a surface `browser:<tabId>`, added as the node opens it
+  and dropped as it closes, T3's `reconcileBrowserSurfaces`; "Browser", B,
+  opens T3's new tab `browser:new`, in a profile from its submenu, T3's
+  "Open browser in a profile"; a tab the agent keeps hidden, `reveal`
+  false, is not added; D403's own strip goes), the diff
+  (`diff`, "Diff", D), the thread's pull requests (`pull-requests`,
+  "Linked pull requests", L), the devices (`devices`, "Device", M), the
+  thread's terminals (`terminal`, "Terminal", T) and a mentioned file
+  (`file:<path>`, several at once, offered by no entry: T3's "Files" is the
+  explorer). Each body keeps its name as a region ("Diff panel", "File
+  preview", "Device panel", "Pull requests", "Terminal") and drops the
+  header it had as a panel of its own; its commands (`preview.toggle`,
+  `diff.toggle`, `terminal.panel.toggle`, `pull-requests.show`) open or
+  close its surface as T3's `toggle(kind)` does. As T3's header at D53 has
+  no toggle of its own for them, `jhin.preview.toggle`,
+  `jhin.device.toggle`, `jhin.terminal.panel-toggle` and
+  `jhin.source-control.diff-toggle` show nothing beside the right panel, and
+  each `app.panel` contribution of theirs shows its panel as before only on
+  a client without `ui.right-panel@1`.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
