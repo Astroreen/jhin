@@ -2411,6 +2411,32 @@ panel and devices are in `terminal.md`, `source-control.md` and
   each `app.panel` contribution of theirs shows its panel as before only on
   a client without `ui.right-panel@1`.
 
+- **D1428. T3's file explorer, as a surface and beside a file.** "Files"
+  (F) in "Add panel surface" opens the surface `files`, T3's
+  `FileBrowserPanel` on `@pierre/trees`: the project's folder, or the
+  thread's worktree, a folder read when it opens (four at once, T3's
+  `useDirectoryEntries`) through the new `projects.list-entries` (a
+  folder's own files and folders, never inside `.git` nor out of the
+  project through a link, the ones git ignores marked and shown dimmed as
+  T3 does), "Refresh workspace files", "Search files" (the matches of
+  `projects.search-entries` shown in the tree, T3's "No matching files." and
+  "More matches available. Refine your search.") and "Expand all folders" /
+  "Collapse all folders". Picking a file opens it as a surface
+  `file:<path>` in the explorer's place (T3's `openFile` replaces the
+  standalone explorer); a file's subheader then has T3's "Show file
+  explorer" / "Hide file explorer", the explorer beside it with the file
+  selected and its folders opened, open by default and kept on this device
+  (`jhin:file-explorer-open`, T3's `fileExplorerOpen`). Several files are
+  several tabs (D1424). T3's tree context menu ("Copy mention", "Add to
+  chat", "Open with") and dragging a row into the composer wait
+  (Deferred).
+- **D1429. "Open in" an editor from the file panel,** T3's `OpenInPicker`
+  there: "Open file in preferred editor" (the editor last chosen on this
+  device, `jhin.lastEditor`, as the diff panel's D286) and "Choose editor",
+  a menu of the node's editors (`editors.list`), through `editors.open`. A
+  file of a thread's worktree has no such action yet: editors open a
+  project folder's files only (`terminal.md`'s Deferred, D965).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -2447,9 +2473,10 @@ panel and devices are in `terminal.md`, `source-control.md` and
     editor opening at the quote's place in the message right after "Cite",
     "Save and send" (Mod+Enter), the quote highlighted after its thread
     opens from another one, and the legacy text for a node from before D1010;
-  - T3's file panel beyond D1342 and D1424 (several files as tabs): editing
-    and saving, the file explorer, "Open in" an editor, a link's line
-    revealed, and file chips in an agent's message;
+  - T3's file panel beyond D1342 and D1428–D1429: editing and saving, a
+    link's line revealed, file chips in an agent's message, the explorer's
+    context menu and dragging its rows into the composer, and "Open in" for
+    a file of a thread's worktree;
   - a sent message's skills (D1341) are asked once per thread view, on any
     `$word` (a `$HOME` too), and not asked again when the agent's skills
     change while the thread shows (T3 keeps its providers' skills current);

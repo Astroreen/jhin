@@ -3,6 +3,7 @@
 // fileContextMenu.ts ("Reveal in …", "Open with", the failure toasts) and
 // components/preview/fileExplorerLabel.ts (the reveal wording).
 import { targetKey, type NodeTarget, type ThreadsCatalog } from "@jhin/client-api";
+import { preferredEditor, rememberEditor } from "../../../lib/preferred-editor.ts";
 import type { EditorInfo, FileManagerRevealKind } from "@jhin/host-api";
 import {
   ContextMenuPopup,
@@ -76,33 +77,6 @@ export function pathInside(root: string, path: string): string | undefined {
   if (pathSegments.length <= rootSegments.length) return undefined;
   if (!rootSegments.every((segment, index) => same(segment, pathSegments[index]))) return undefined;
   return pathSegments.slice(rootSegments.length).join("/");
-}
-
-const LAST_EDITOR_KEY = "jhin.lastEditor";
-
-/** The editor to open with: the last one chosen on this device if the node has it, else its first. */
-export function preferredEditor(
-  editors: readonly EditorInfo[],
-  storage: Pick<Storage, "getItem"> = localStorage,
-): EditorInfo | undefined {
-  let last: string | null = null;
-  try {
-    last = storage.getItem(LAST_EDITOR_KEY);
-  } catch {
-    last = null;
-  }
-  return (
-    editors.find((editor) => editor.id === last) ??
-    editors.find((editor) => editor.id !== "file-manager")
-  );
-}
-
-function rememberEditor(id: string) {
-  try {
-    localStorage.setItem(LAST_EDITOR_KEY, id);
-  } catch {
-    // Blocked storage: the choice lasts for this page only.
-  }
 }
 
 const NO_EDITORS: readonly EditorInfo[] = [];
@@ -249,3 +223,5 @@ export function FileContextMenuPopup(props: {
     </ContextMenuPopup>
   );
 }
+
+export { preferredEditor };

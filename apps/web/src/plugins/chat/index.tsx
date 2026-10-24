@@ -44,7 +44,7 @@ import {
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { FileIcon, MessageSquareDashedIcon, PlusIcon } from "lucide-react";
+import { FileIcon, FilesIcon, MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
@@ -78,8 +78,8 @@ import {
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createDetailsVisibility, registerThreadDetails } from "./thread-details.tsx";
-import type { FilePanelProps } from "./file-panel.tsx";
-import { FILE_PANEL } from "./file-panel-route.ts";
+import type { FilePanelProps, FilesPanel as FilesPanelComponent } from "./file-panel.tsx";
+import { FILE_PANEL, FILES_PANEL } from "./file-panel-route.ts";
 import { basename } from "./file-chips.tsx";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
@@ -279,6 +279,15 @@ const Transcript = lazyChunk(
     failed: (_props, retry) => (
       <ChunkFailed retry={retry}>Couldn't load this conversation.</ChunkFailed>
     ),
+  },
+);
+
+/** T3's file explorer as a surface (D1428), in the file panel's chunk. */
+const FilesPanel = lazyChunk<Parameters<typeof FilesPanelComponent>[0]>(
+  () => import("./file-panel.tsx").then((module) => module.FilesPanel),
+  {
+    loading: () => null,
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load the files.</ChunkFailed>,
   },
 );
 
@@ -884,7 +893,46 @@ export const chatPlugin = builtin(
                     embedded
                     key={`${place.target.node}|${place.target.remote ?? ""}|${place.threadId ?? place.projectId ?? ""}`}
                     onClose={() => void rightPanel.close(place, surface.id)}
+                    onOpenFile={(path) => rightPanel.open(place, { kind: FILE_PANEL, resource: path })}
                     path={surface.resource}
+                    projectId={place.threadId === undefined ? place.projectId : undefined}
+                    target={place.target}
+                    threadId={place.threadId}
+                  />
+                </ChatContext.Provider>
+              );
+            },
+          }),
+        );
+      }
+      if (rightPanel !== undefined) {
+        // T3's "Files" (F): the explorer, which a file opened from it takes the place of (D1428).
+        context.subscriptions.add(
+          rightPanel.register({
+            id: FILES_PANEL,
+            title: "Files",
+            icon: FilesIcon,
+            offer: {
+              label: "Files",
+              shortcut: "F",
+              order: 30,
+              useAvailability: (place) =>
+                place.threadId === undefined && place.projectId === undefined
+                  ? {
+                      available: false,
+                      reason: "Files are only available when a project is open.",
+                      hint: "Available when a project is open.",
+                    }
+                  : { available: true },
+            },
+            component: function FilesSurface({ place, surface }: RightPanelSurfaceProps) {
+              return (
+                <ChatContext.Provider value={services}>
+                  <FilesPanel
+                    onOpenFile={(path) => {
+                      rightPanel.open(place, { kind: FILE_PANEL, resource: path });
+                      void rightPanel.close(place, surface.id);
+                    }}
                     projectId={place.threadId === undefined ? place.projectId : undefined}
                     target={place.target}
                     threadId={place.threadId}

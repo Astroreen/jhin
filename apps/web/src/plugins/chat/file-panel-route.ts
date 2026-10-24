@@ -5,6 +5,9 @@ import type { Navigation, NodeTarget, Route } from "@jhin/client-api";
 /** The route's `panel` while the file panel shows. */
 export const FILE_PANEL = "file";
 
+/** The route's `panel` while the right panel shows T3's file explorer (D1428). */
+export const FILES_PANEL = "files";
+
 /**
  * Opens `path` in the file panel beside `place`: the thread (or, without one, the draft of the
  * project) whose chip was pressed, on its node, in place of the panel it had.

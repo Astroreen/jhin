@@ -86,7 +86,7 @@ function PlainSource(props: { name: string; text: string; wordWrap: boolean }) {
 const FILE_SURFACE_SUBHEADER_CLASS =
   "flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3";
 
-function FileSurfaceAction(props: {
+export function FileSurfaceAction(props: {
   readonly label: string;
   readonly pressed?: boolean;
   readonly disabled?: boolean;
@@ -285,6 +285,10 @@ export function AttachmentFilePreview(
     readonly trail?: readonly string[];
     readonly onRemove?: () => void;
     readonly onClose?: () => void;
+    /** More actions of the subheader, before Close (the file panel's, t3-parity.md D1428). */
+    readonly actions?: ReactNode;
+    /** Beside the preview, right of it: T3's file explorer in the file panel (D1428). */
+    readonly aside?: ReactNode;
   },
 ) {
   const chat = useChat();
@@ -490,6 +494,7 @@ export function AttachmentFilePreview(
             <DownloadIcon className="size-3.5" />
           </FileSurfaceAction>
         ) : null}
+        {props.actions}
         {props.onRemove ? (
           <FileSurfaceAction label="Remove from draft" onPress={props.onRemove}>
             <Trash2Icon className="size-3.5" />
@@ -508,7 +513,14 @@ export function AttachmentFilePreview(
           the file to read it in full.
         </FileSurfaceNotice>
       ) : null}
-      {body}
+      {props.aside === undefined ? (
+        body
+      ) : (
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{body}</div>
+          {props.aside}
+        </div>
+      )}
     </div>
   );
 }
