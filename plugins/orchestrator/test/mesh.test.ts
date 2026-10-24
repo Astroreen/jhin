@@ -232,6 +232,14 @@ describe("what only the mission's node may ask (D1543, D1545)", () => {
     expect(await a.client.call("missions.orchestration", { missionId: mission.id })).toMatchObject({
       run: null,
     });
+    // c reaches b's missions through a: a relays no member's call to a third (D416).
+    await expect(
+      c.client.call("mesh.call", {
+        node: "a",
+        method: "missions.list",
+        params: { node: "b" },
+      }),
+    ).rejects.toMatchObject({ code: "RELAY_REFUSED" });
   });
 });
 

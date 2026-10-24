@@ -2381,7 +2381,9 @@ Decisions:
   permissions the command needs (the caller held them here; D416
   intersects them there), and answers what that node answers. Naming the
   node needs no `mesh.call` grant of the caller's own, as A2's messages to
-  another node need none (D628): the command reaches that node only. So an agent
+  another node need none (D628): the command reaches that node only. A call
+  that came from another node is sent back to that node only, never relayed
+  to a third with this node's membership (`RELAY_REFUSED`). So an agent
   of another node works on its slice with the same tools: the handoff tells
   it to pass `node` with `slices_update`, `slices_prove` and
   `slices_review`, and a lead on another node plans and orchestrates the
@@ -2408,7 +2410,8 @@ Decisions:
   `agents.stop` on each agent assigned an active slice of the mission, on
   its node (`mesh.call` with `agents.write`), and answers per agent
   `stoppedAt` and `interrupted`, or the error of a node that refused or
-  cannot be reached. It takes `missions.write`, `agents.write` and
+  cannot be reached; a run whose node cannot be reached carries its error
+  too, and the agents are stopped all the same. It takes `missions.write`, `agents.write` and
   `threads.write`. The panel's Stop mission calls it, so the dialog names
   the agents of every node, by title when the directory knows them. Pause
   stays `workflows.stop` on the run's node (D1090).

@@ -19,7 +19,8 @@ type Execute = (name: string, input: unknown, invocation?: Invocation) => Promis
  * intersects them with what it grants members (security.md D416). The
  * forward itself needs no `mesh.call` of the caller, as A2's messages to
  * another node need none (D628): naming the mission's node is part of the
- * command, which reaches that node only.
+ * command, which reaches that node only. A call that came from another node
+ * goes back to it only (`RELAY_REFUSED`).
  */
 export function forwardToNode<T = unknown>(
   execute: Execute,
@@ -31,6 +32,20 @@ export function forwardToNode<T = unknown>(
   /** Who calls when `invocation` names nobody: the plugin forwarding. */
   callerId = "jhin.missions",
 ): Promise<T> {
+  // A call from another node goes back to that node only: no node relays a
+  // member's call to a third with its own membership (D416).
+  const origin =
+    invocation.caller?.id.startsWith("node:") === true
+      ? invocation.caller.id.slice("node:".length)
+      : undefined;
+  if (origin !== undefined && origin !== node) {
+    return Promise.reject(
+      Object.assign(
+        new Error(`${method} on node ${node} came from node ${origin}: call that node itself`),
+        { code: "RELAY_REFUSED", details: { node, origin } },
+      ),
+    );
+  }
   return execute(
     "mesh.call",
     { node, method, params },

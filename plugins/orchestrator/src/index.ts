@@ -491,7 +491,7 @@ export default definePlugin({
     register({
       name: "missions.next",
       description:
-        "Where a mission is: its current wave, the slices ready to hand to their assignee, those at work, and what waits for a decision (no assignee, blocked, a dropped dependency, an assignee on another node)",
+        "Where a mission is: its current wave, the slices ready to hand to their assignee on any node, those at work, and what waits for a decision (no assignee, blocked, a dropped dependency)",
       input: z.object({ missionId: z.string() }),
       output: Next,
       permissions: ["missions.read"],
@@ -1176,7 +1176,14 @@ export default definePlugin({
             );
           }
           // A run still going is the mission's until it ends (D706).
-          const running = await runningOf(current, invocation).catch(() => undefined);
+          // A run on a node that cannot be reached may still go: it holds the mission.
+          const running =
+            current?.workflowId === undefined || current.workflowId === workflowId
+              ? undefined
+              : // Asked as this node: the caller's grants reach its own node only.
+                await runningOf(current).catch(() => ({
+                  workflowId: current.workflowId!,
+                }));
           if (running !== undefined && running.workflowId !== workflowId) {
             throw new OrchestratorError(
               "RUN_ACTIVE",
@@ -1212,39 +1219,59 @@ export default definePlugin({
       /** Why this agent's node did not stop it. */
       error: z.object({ code: z.string().optional(), message: z.string() }).optional(),
     });
+    const StopOutput = z.object({
+      /** The run that was stopped; null when none was running. */
+      run: z
+        .object({
+          workflowId: z.string(),
+          status: z.string().optional(),
+          nodeId: z.string().optional(),
+          /** Why the run's node did not stop it; the agents are stopped all the same. */
+          error: z.object({ code: z.string().optional(), message: z.string() }).optional(),
+        })
+        .nullable(),
+      agents: z.array(StoppedAgent),
+    });
     register({
       name: "missions.stop",
       description:
         "Stops a mission's work: its orchestrator run, on the node it runs on, and every agent assigned an active slice of it, on its node. Each agent stops as a whole, in every mission, until resumed. The mission's status stays",
       input: z.object({ missionId: z.string() }),
-      output: z.object({
-        /** The run that was stopped; null when none was running. */
-        run: z
-          .object({ workflowId: z.string(), status: z.string(), nodeId: z.string().optional() })
-          .nullable(),
-        agents: z.array(StoppedAgent),
-      }),
+      output: StopOutput,
       permissions: ["missions.write", "agents.write", "threads.write"],
       handler: async ({ missionId }, invocation) => {
         await sync();
         getMission(missionId);
         const last = await runOf(missionId);
-        const running = await runningOf(last, invocation);
-        let stopped: { workflowId: string; status: string; nodeId?: string } | null = null;
-        if (running !== undefined && last?.parentThreadId !== undefined) {
-          const input = { workflowId: running.workflowId, parentThreadId: last.parentThreadId };
-          const node = elsewhere(last);
-          const answer =
-            node === undefined
-              ? await run<{ workflowId: string; status: string }>("workflows.stop", input)
-              : await onNode<{ workflowId: string; status: string }>(
-                  node,
-                  "workflows.stop",
-                  input,
-                  ["threads.write"],
-                  invocation,
-                );
-          stopped = { ...answer, ...(node === undefined ? {} : { nodeId: node }) };
+        const errorOf = (error: unknown) => {
+          const { code, message } = error as { code?: unknown; message?: unknown };
+          return {
+            ...(typeof code === "string" ? { code } : {}),
+            message: String(message ?? error),
+          };
+        };
+        let stopped: z.input<typeof StopOutput>["run"] = null;
+        const node = last === undefined ? undefined : elsewhere(last);
+        const where = node === undefined ? {} : { nodeId: node };
+        try {
+          // A node that cannot be reached is reported, and the agents are stopped all the same.
+          const running = await runningOf(last, invocation);
+          if (running !== undefined && last?.parentThreadId !== undefined) {
+            const input = { workflowId: running.workflowId, parentThreadId: last.parentThreadId };
+            const answer =
+              node === undefined
+                ? await run<{ workflowId: string; status: string }>("workflows.stop", input)
+                : await onNode<{ workflowId: string; status: string }>(
+                    node,
+                    "workflows.stop",
+                    input,
+                    ["threads.write"],
+                    invocation,
+                  );
+            stopped = { ...answer, ...where };
+          }
+        } catch (error) {
+          stopped = { workflowId: last!.workflowId!, ...where, error: errorOf(error) };
         }
         const assignees = [
           ...new Set(
@@ -1274,14 +1301,7 @@ export default definePlugin({
                   );
             agents.push({ address, ...answer });
           } catch (error) {
-            const { code, message } = error as { code?: unknown; message?: unknown };
-            agents.push({
-              address,
-              error: {
-                ...(typeof code === "string" ? { code } : {}),
-                message: String(message ?? error),
-              },
-            });
+            agents.push({ address, error: errorOf(error) });
           }
         }
         return { run: stopped, agents };
