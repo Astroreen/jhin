@@ -37,6 +37,7 @@ import {
   type Option,
 } from "../../lib/config-form.ts";
 import { SettingResetButton, SettingsRow } from "../../lib/settings-layout.tsx";
+import { InheritanceButton, type InheritanceLayer } from "./project-scope.tsx";
 
 /** What every field of one section reads and changes. */
 export interface FieldsContext {
@@ -53,6 +54,24 @@ export interface FieldsContext {
   readonly root: JsonSchema;
   /** Sets `path` in the node file's part; `undefined` removes the key. */
   set(path: readonly string[], next: unknown): void;
+  /**
+   * The settings page's project scope (D1463): where a top-level field's value
+   * comes from, shown as T3's layers button.
+   */
+  readonly inheritance?: (field: Field) => FieldInheritance | undefined;
+  /** What the reset says: T3's "Reset to inherited value" in a project's scope. */
+  readonly resetTooltip?: string;
+  /** Shown but not editable: a node-wide setting in a project's scope (D1463). */
+  readonly disabled?: boolean;
+  /** What an unset choice without a default is called, and offered as (T3's "Inherit"). */
+  readonly unsetLabel?: string;
+}
+
+/** A field's layers (a project's scope) or only its summary (all projects). */
+export interface FieldInheritance {
+  readonly summary: string;
+  readonly layers?: readonly InheritanceLayer[];
+  readonly overridden: boolean;
 }
 
 const pretty = (value: unknown) => JSON.stringify(value, null, 2) ?? "";
@@ -89,6 +108,9 @@ function Errors({ id, messages }: { id: string; messages: readonly string[] }) {
 const optionKey = (value: Option["value"] | null) => JSON.stringify(value);
 
 /** A leaf value's control: text, number, switch or select. */
+/** The select item that removes the key. */
+const UNSET = "\u0000unset";
+
 function LeafControl(props: {
   field: Field;
   label: string;
@@ -98,6 +120,8 @@ function LeafControl(props: {
   describedBy?: string | undefined;
   className?: string;
   disabled?: boolean;
+  /** A choice without a default offers this item for "unset" (T3's "Inherit", D1463). */
+  unsetLabel?: string | undefined;
 }) {
   const { field, value, onChange } = props;
   const aria = {
@@ -130,21 +154,26 @@ function LeafControl(props: {
             : undefined
           : value;
       const chosen = options.find((option) => equal(option.value, current));
+      const unset = field.hasDefault ? undefined : props.unsetLabel;
       return (
         <Select
           disabled={props.disabled}
           onValueChange={(next) => {
+            if (unset !== undefined && next === UNSET) return onChange(undefined);
             const option = options.find((item) => optionKey(item.value) === next);
             if (option !== undefined) onChange(option.value);
           }}
-          value={chosen === undefined ? "" : optionKey(chosen.value)}
+          value={
+            chosen === undefined ? (unset === undefined ? "" : UNSET) : optionKey(chosen.value)
+          }
         >
           <SelectTrigger {...aria} className={width} size="sm">
             <SelectValue>
-              {chosen?.label ?? <span className="text-muted-foreground">Not set</span>}
+              {chosen?.label ?? unset ?? <span className="text-muted-foreground">Not set</span>}
             </SelectValue>
           </SelectTrigger>
           <SelectPopup>
+            {unset === undefined ? null : <SelectItem value={UNSET}>{unset}</SelectItem>}
             {options.map((option) => (
               <SelectItem key={optionKey(option.value)} value={optionKey(option.value)}>
                 {option.label}
@@ -719,9 +748,28 @@ function FieldRow({
   const contributed = useContributed(field);
   const value = getAt(context.value, path);
   const set = value !== undefined;
-  const reset = set ? (
-    <SettingResetButton label={field.title} onClick={() => context.set(path, undefined)} />
-  ) : undefined;
+  const reset =
+    set && context.disabled !== true ? (
+      <SettingResetButton
+        label={field.title}
+        onClick={() => context.set(path, undefined)}
+        {...(context.resetTooltip === undefined ? {} : { tooltip: context.resetTooltip })}
+      />
+    ) : undefined;
+  const inheritance = path.length === 1 ? context.inheritance?.(field) : undefined;
+  const title = (
+    <>
+      <FieldTitle field={field} />
+      {inheritance === undefined ? null : (
+        <InheritanceButton
+          overridden={inheritance.overridden}
+          summary={inheritance.summary}
+          title={field.title}
+          {...(inheritance.layers === undefined ? {} : { layers: inheritance.layers })}
+        />
+      )}
+    </>
+  );
   const fromOther = getAt(context.other.value, path);
   const shownOther = field.secret ? (
     "it"
@@ -742,7 +790,7 @@ function FieldRow({
         <div className="flex items-start gap-1.5 px-3 pt-3 pb-2 sm:px-4">
           <div className="min-w-0 flex-1 space-y-0.5">
             <h3 className="flex min-h-5 items-center gap-1.5 text-xs font-semibold tracking-wide text-foreground/80 uppercase">
-              <FieldTitle field={field} />
+              {title}
               <span className="inline-flex size-5 items-center justify-center">{reset}</span>
             </h3>
             {field.description === undefined ? null : (
@@ -771,7 +819,7 @@ function FieldRow({
       </>
     );
   const row = {
-    title: <FieldTitle field={field} />,
+    title,
     ...(field.description === undefined ? {} : { description: field.description }),
     ...(status === undefined ? {} : { status }),
     ...(reset === undefined ? {} : { resetAction: reset }),
@@ -783,7 +831,7 @@ function FieldRow({
         {...row}
         control={
           <ContributedControl
-            disabled={value === null}
+            disabled={value === null || context.disabled === true}
             field={{
               key: field.key,
               path,
@@ -812,6 +860,7 @@ function FieldRow({
         <div className="mt-3 max-w-2xl pb-3.5">
           <LeafControl
             describedBy={describedBy}
+            disabled={context.disabled === true}
             field={field}
             invalid={messages.length > 0}
             label={field.title}
@@ -852,8 +901,9 @@ function FieldRow({
       const leaf = (
         <LeafControl
           describedBy={describedBy}
-          disabled={value === null}
+          disabled={value === null || context.disabled === true}
           field={field}
+          unsetLabel={context.unsetLabel}
           invalid={messages.length > 0}
           label={field.title}
           onChange={(next) => context.set(path, next)}

@@ -98,7 +98,16 @@ export function SettingsRow(props: {
   );
 }
 
-export function SettingResetButton({ label, onClick }: { label: string; onClick(): void }) {
+export function SettingResetButton({
+  label,
+  onClick,
+  tooltip = "Reset to default",
+}: {
+  label: string;
+  onClick(): void;
+  /** T3's words for it: "Reset to inherited value" where a value is inherited. */
+  tooltip?: string;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -116,7 +125,7 @@ export function SettingResetButton({ label, onClick }: { label: string; onClick(
       >
         <Undo2Icon className="size-3" />
       </TooltipTrigger>
-      <TooltipPopup side="top">Reset to default</TooltipPopup>
+      <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>
   );
 }

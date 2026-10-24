@@ -419,3 +419,96 @@ test("D1126: T3's worktree branch naming settings, each field shown for its mode
     },
   });
 });
+
+test("D1463: T3's project scope edits a project's own settings, showing what it inherits", async ({
+  page,
+}, info) => {
+  node = await startNode({ mode: "ui" });
+  const dir = Path.join(node.home, "acme");
+  Fs.mkdirSync(dir, { recursive: true });
+  const project = await node
+    .client()
+    .call<{ id: string }>("projects.create", { path: dir, name: "acme" });
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  await page.getByRole("combobox", { name: "Config section" }).click();
+  await page.getByRole("option", { name: /^Source control/ }).click();
+  const section = page.getByRole("region", { name: "Source control" });
+
+  // All projects: the node's own settings, the record of projects is no field.
+  await expect(section.getByText("Applying settings for")).toBeVisible();
+  await expect(section.getByRole("group", { name: "Settings per project" })).toHaveCount(0);
+
+  await section.getByRole("button", { name: "Project scope: All projects" }).click();
+  await page.getByRole("menuitemradio", { name: "acme" }).click();
+  // The project's keys edit its entry; the rest are the node's alone.
+  const naming = section.getByRole("combobox", { name: "Worktree branch naming" });
+  await expect(naming).toHaveText(/Static prefix/);
+  // Inherited: the node sets none, the project has no t3.json, so T3's built-in.
+  await expect(section.getByRole("combobox", { name: "Worktree submodules" })).toHaveText(
+    /Recursive/,
+  );
+  await expect(section.getByRole("group", { name: "Node-wide settings" })).toBeVisible();
+  await expect(section.getByRole("switch", { name: "Watch repositories" })).toBeDisabled();
+  await naming.click();
+  await page.getByRole("option", { name: "Custom instructions", exact: true }).click();
+  // T3's text area for the instructions, shown for custom naming.
+  const instructions = section.getByRole("textbox", { name: "Branch naming instructions" });
+  await instructions.fill("Use the ticket id.\nKeep it short.");
+  // T3's "Automatic worktree cleanup": Inherit, Off or Custom.
+  const cleanup = section.getByRole("combobox", { name: "Mode" });
+  await expect(cleanup).toHaveText(/Inherit/);
+  await cleanup.click();
+  await page.getByRole("option", { name: "Off", exact: true }).click();
+  // The whole scoped form in one picture, with the layers of a setting open.
+  await page.setViewportSize({ width: 1280, height: 1300 });
+  await section.getByText("Applying settings for").scrollIntoViewIfNeeded();
+  await section.getByRole("button", { name: /^Worktree branch naming: Project override/ }).click();
+  const layers = page.getByRole("list", { name: "Where Worktree branch naming comes from" });
+  await expect(layers.getByRole("listitem")).toHaveText([
+    /Project\s*Custom instructions/,
+    /Inherits/,
+    /Default\s*Static prefix/,
+  ]);
+  const shot = info.outputPath("project-scope.png");
+  await page.screenshot({ path: shot });
+  await info.attach("project-scope", { path: shot, contentType: "image/png" });
+  await page.keyboard.press("Escape");
+
+  const save = section.getByRole("button", { name: "Save" });
+  await save.click();
+  // Read back: nothing is left unsaved.
+  await expect(save).toBeDisabled();
+  const saved = await node
+    .client()
+    .call<{ layers: { node?: Record<string, unknown> } }>("host.config.get", {
+      section: "jhin.source-control",
+    });
+  expect(saved.layers.node?.["projects"]).toEqual({
+    [project.id]: {
+      branchNamingMode: "custom",
+      branchNameInstructions: "Use the ticket id.\nKeep it short.",
+      worktreeCleanup: { mode: "off" },
+    },
+  });
+
+  // Reset to inherited value: the entry goes with its last key.
+  await section
+    .getByRole("button", { name: "Reset Branch naming instructions to default" })
+    .click();
+  await section.getByRole("button", { name: "Reset Worktree branch naming to default" }).click();
+  await cleanup.click();
+  await page.getByRole("option", { name: "Inherit", exact: true }).click();
+  await save.click();
+  await expect(save).toBeDisabled();
+  const reset = await node
+    .client()
+    .call<{ layers: { node?: Record<string, unknown> } }>("host.config.get", {
+      section: "jhin.source-control",
+    });
+  expect(reset.layers.node?.["projects"]).toBeUndefined();
+});
