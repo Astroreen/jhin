@@ -23,6 +23,7 @@ import {
   applyMissionEvent,
   intentChain,
   missionsOf,
+  onMissionNode,
   renderMarkdown,
   slicesOf,
   type MissionErrorCode,
@@ -31,8 +32,15 @@ import {
   REVIEW_TREE_EXCLUDE,
   type ReviewedWork,
 } from "@jhin/missions-api";
+import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, z, type Invocation, describePermissions } from "@jhin/sdk";
+import {
+  definePlugin,
+  z,
+  type CommandDefinition,
+  type Invocation,
+  describePermissions,
+} from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   StorageError,
@@ -284,6 +292,18 @@ export default definePlugin({
 
     const read = { permissions: ["missions.read"] } as const;
     const write = { permissions: ["missions.write"] } as const;
+    // Each command runs on the mission's node, this one unless `node` names another (D1542).
+    const nodeId = context.services.tryGet<HostIdentity>(HOST_IDENTITY_CAPABILITY)?.nodeId;
+    const register = <I extends z.ZodType, O extends z.ZodType>(
+      definition: CommandDefinition<I, O>,
+    ) =>
+      context.commands.register(
+        onMissionNode(definition, {
+          ...(nodeId === undefined ? {} : { nodeId }),
+          execute: (name, input, invocation) => context.commands.execute(name, input, invocation),
+          callerId: context.plugin.id,
+        }),
+      );
 
     // --- Intent -------------------------------------------------------------------
     // The titles of this plugin's permissions (security.md D961).
@@ -297,7 +317,7 @@ export default definePlugin({
         description: "Set intents, and change missions and slices.",
       },
     });
-    context.commands.register({
+    register({
       name: "missions.intent.get",
       description: "A project's intent (what it is for) and its process between missions",
       input: z.object({ projectId: z.string() }),
@@ -309,7 +329,7 @@ export default definePlugin({
         return state.intents[projectId] ?? { projectId, intent: "", process: [] };
       },
     });
-    context.commands.register({
+    register({
       name: "missions.intent.set",
       description:
         "Sets a project's intent, one paragraph on what the project is for, and its process between missions",
@@ -337,7 +357,7 @@ export default definePlugin({
     });
 
     // --- Missions -----------------------------------------------------------------
-    context.commands.register({
+    register({
       name: "missions.list",
       description: "Missions of the node, or of one project, oldest first",
       input: z.object({ projectId: z.string().optional() }),
@@ -355,7 +375,7 @@ export default definePlugin({
         );
       },
     });
-    context.commands.register({
+    register({
       name: "missions.get",
       description: "A mission with its slices, by wave",
       input: z.object({ missionId: z.string() }),
@@ -367,7 +387,7 @@ export default definePlugin({
         return { mission: mission!, slices: slicesOf(state, missionId) };
       },
     });
-    context.commands.register({
+    register({
       name: "missions.catalog",
       description:
         "Every intent, mission and slice of this node, and the head of the `missions` stream they reflect: follow the stream after `head` to keep them current",
@@ -389,7 +409,7 @@ export default definePlugin({
         };
       },
     });
-    context.commands.register({
+    register({
       name: "missions.create",
       description:
         "Plans a mission of a project: what it achieves when done (its outcome) and its process; slices are added with slices.create",
@@ -420,7 +440,7 @@ export default definePlugin({
         }));
       },
     });
-    context.commands.register({
+    register({
       name: "missions.update",
       description: "Changes a mission's title, outcome, status or process",
       input: z.object({
@@ -472,7 +492,7 @@ export default definePlugin({
       },
     });
 
-    context.commands.register({
+    register({
       name: "missions.delete",
       description:
         "Deletes a mission with its slices, as a tombstone: the records leave the state, the event log keeps what happened (D1395). Refused while an orchestrator run of the mission is active",
@@ -491,7 +511,7 @@ export default definePlugin({
     });
 
     // --- Reading as Markdown and the intent chain ---------------------------------
-    context.commands.register({
+    register({
       name: "missions.markdown",
       description:
         "A project's intent and missions as Markdown, or only one mission: what people and agents read",
@@ -519,7 +539,7 @@ export default definePlugin({
     });
     const projectName = async (projectId: string) =>
       (await projects())?.find((project) => project.id === projectId)?.name;
-    context.commands.register({
+    register({
       name: "missions.chain",
       description:
         "The intent chain of a slice, or of the slice a thread works on (nodeId: only that node's thread): slice spec → mission outcome → project intent",
@@ -561,7 +581,7 @@ export default definePlugin({
       thread.threadId === threadId && (nodeId === undefined || thread.nodeId === nodeId);
 
     // --- Slices -------------------------------------------------------------------
-    context.commands.register({
+    register({
       name: "slices.get",
       description: "A slice: its spec, order, assignee, status, threads and proof",
       input: z.object({ sliceId: z.string() }),
@@ -572,7 +592,7 @@ export default definePlugin({
         return getSlice(state, sliceId);
       },
     });
-    context.commands.register({
+    register({
       name: "slices.list",
       description:
         "Slices by wave, filtered by mission, project, assignee, status or a thread working on them (nodeId: only that node's thread)",
@@ -608,7 +628,7 @@ export default definePlugin({
           );
       },
     });
-    context.commands.register({
+    register({
       name: "slices.create",
       description:
         "Adds a slice to a mission: one change with a spec of what must work. The wave defaults to the one after its dependencies",
@@ -662,7 +682,7 @@ export default definePlugin({
           return { type: MissionEvents.sliceCreated, record: slice };
         }),
     });
-    context.commands.register({
+    register({
       name: "slices.update",
       description:
         "Changes a slice's title, spec, wave, dependencies, assignee, status or step; null clears the assignee or step. Done needs a proof (slices.prove)",
@@ -721,7 +741,7 @@ export default definePlugin({
           return { type: MissionEvents.sliceUpdated, record: { ...slice, updatedAt: now() } };
         }),
     });
-    context.commands.register({
+    register({
       name: "slices.delete",
       description:
         "Deletes a slice, as a tombstone: the record leaves the state, the event log keeps what happened (D1395). Refused while another slice depends on it or reviews it, or an orchestrator run of its mission is active",
@@ -749,7 +769,7 @@ export default definePlugin({
         });
       },
     });
-    context.commands.register({
+    register({
       name: "slices.link",
       description:
         "Records a thread as working on a slice; nodeId when the thread is on another node",
@@ -779,7 +799,7 @@ export default definePlugin({
           };
         }),
     });
-    context.commands.register({
+    register({
       name: "slices.unlink",
       description:
         "Removes a thread from a slice; without nodeId, that thread id on any node, as slices.list matches it",
@@ -797,7 +817,7 @@ export default definePlugin({
           };
         }),
     });
-    context.commands.register({
+    register({
       name: "slices.prove",
       description:
         "Records a slice's proof (commands with their output, screenshots, links) and marks it done. Keep it small: what shows the spec works, once",
@@ -859,7 +879,7 @@ export default definePlugin({
         throw error;
       }
     };
-    context.commands.register({
+    register({
       name: "slices.review",
       description:
         "Records a review of a slice's work: approved or changes-requested, with notes on what was checked and found, and the git tree of the files reviewed (where the slice's thread works, or threadId's). A mission step that needs a review is refused while a slice changed after its last review",

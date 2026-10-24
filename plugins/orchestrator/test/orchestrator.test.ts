@@ -307,9 +307,13 @@ describe("slices.handoff (D703)", () => {
       code: "SLICE_NOT_READY",
       details: { reason: "unassigned" },
     });
+    // An assignee of another node is ready too: the mesh delivers it (D1541). This
+    // node has no mesh, so the send fails and the slice stays planned.
     const far = await slice({ title: "Bowl", assignee: "jhin://node-b/agents/x" });
-    await expect(client.call("slices.handoff", { sliceId: far.id })).rejects.toMatchObject({
-      code: "AGENT_ELSEWHERE",
+    expect(missionProgress([far]).ready).toEqual([far.id]);
+    await expect(client.call("slices.handoff", { sliceId: far.id })).rejects.toThrow("mesh.call");
+    expect(await client.call("slices.get", { sliceId: far.id })).toMatchObject({
+      status: "planned",
     });
   });
 });

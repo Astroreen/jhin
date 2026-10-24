@@ -39,7 +39,10 @@
     "@jhin/storage-api": "workspace:*"
   },
   "devDependencies": {
+    "@jhin/plugin-agent-fake": "workspace:*",
+    "@jhin/plugin-threads": "workspace:*",
     "@jhin/rpc": "workspace:*",
+    "@jhin/testing": "workspace:*",
     "@types/node": "catalog:"
   },
   "jhin": {

@@ -392,6 +392,9 @@ Words about Jhin:
 - **Mission** — a planned outcome of a project, with its slices in
   **waves**: the slices of a wave run in parallel, waves one after another,
   and a slice depends only on slices of earlier waves.
+- **Mission's node** — the node whose `missions` stream holds a mission.
+  Its slices may go to agents of any node; a command about the mission run
+  elsewhere names it with `node` and is forwarded there (agents.md D1542).
 - **Slice** — one change in a mission: a **spec** (what must work), an
   assignee (an agent's or the owner's address), a status, the threads working
   on it, and a **proof** recorded when it is done (commands with output,
