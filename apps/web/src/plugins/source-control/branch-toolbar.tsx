@@ -26,6 +26,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ComposerControl } from "../../lib/composer-control.tsx";
 import { useCatalog } from "../../lib/hooks.ts";
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
+import { forgeTerminology } from "../../lib/forges.ts";
 import { forgeIcon } from "./forge-icons.tsx";
 import { PullRequestBadge } from "./indicators.tsx";
 import { PullRequestCheckoutDialog, parsePullRequestReference } from "./pull-request-checkout.tsx";
@@ -158,10 +159,10 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
 
     const trimmed = query.trim();
     const Forge = forgeIcon(projectStatus.provider);
-    // A draft on GitHub can check a pull request out into its thread (D902, D903); not while
-    // the picker chooses a new worktree's base.
+    // A draft on a forge can check a pull request out into its thread (D902, D903, D1444);
+    // not while the picker chooses a new worktree's base.
     const pullRequestReference =
-      thread === undefined && !choosingBase && projectStatus.provider?.kind === "github"
+      thread === undefined && !choosingBase && projectStatus.provider != null
         ? parsePullRequestReference(trimmed)
         : null;
     const items: RefItem[] = (branches ?? []).map((ref) => ({
@@ -175,7 +176,7 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     if (pullRequestReference !== null) {
       items.unshift({
         value: pullRequestReference,
-        label: "Checkout pull request",
+        label: `Checkout ${forgeTerminology(projectStatus.provider?.kind).singular}`,
         checkout: true,
       });
     }
@@ -340,6 +341,7 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
             }
             open
             projectId={project.id}
+            provider={projectStatus.provider}
             target={target}
             threads={threads}
           />

@@ -27,7 +27,7 @@ script runner (`plugins/source-control/src/setup.ts`, the contracts in
 `packages/source-control-api/src/worktree-setup.ts` and
 `packages/agent-api/src/project-scripts.ts`), the worktree cleanup rules and
 sweep (`plugins/source-control/src/cleanup.ts`), the "Checkout pull request"
-dialog, the forges' icons, a thread's pull requests panel and its thread
+dialog, the forges' icons, names and reference forms (`apps/web/src/lib/forges.ts`), a thread's pull requests panel and its thread
 details rows (`plugins/source-control/pull-requests-panel.tsx`,
 `pull-request-rows.tsx`, `apps/web/src/lib/thread-details-styles.ts`), the terminal drawer, its
 links (with the targets of path links, T3's `fileLinks.ts`), selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine

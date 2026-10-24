@@ -232,6 +232,88 @@ exit 1
   await expect(dialog).toBeHidden();
 });
 
+test("D1444–D1445: a draft on GitLab finds a merge request in GitLab's words", async ({
+  page,
+}, info) => {
+  const node = await startNode({
+    mode: "ui",
+    setup: (home) => {
+      // A stand-in for the GitLab CLI that knows merge request 5.
+      const fake = Path.join(home, "fake-glab");
+      Fs.mkdirSync(fake, { recursive: true });
+      Fs.writeFileSync(
+        Path.join(fake, "mr-5.json"),
+        JSON.stringify({
+          iid: 5,
+          title: "Greet in French",
+          web_url: "https://gitlab.com/acme/app/-/merge_requests/5",
+          state: "opened",
+          source_branch: "feature/french",
+          target_branch: "main",
+          source_project_id: 1,
+          target_project_id: 1,
+        }),
+      );
+      Fs.writeFileSync(
+        Path.join(fake, "glab"),
+        `#!/bin/sh
+case "$*" in
+  *merge_requests/5) cat "${fake}/mr-5.json"; exit 0;;
+  "mr list"*) echo '[]'; exit 0;;
+esac
+echo "404 Not Found" >&2
+exit 1
+`,
+        { mode: 0o755 },
+      );
+      const file = Path.join(home, ".jhin", "config.jsonc");
+      const config = JSON.parse(Fs.readFileSync(file, "utf8"));
+      Fs.writeFileSync(
+        file,
+        JSON.stringify(
+          { ...config, "jhin.source-control": { glabPath: Path.join(fake, "glab") } },
+          null,
+          2,
+        ),
+      );
+    },
+  });
+  running.push(node);
+  const dir = Path.join(node.home, "acme");
+  Fs.mkdirSync(dir, { recursive: true });
+  git(dir, "init", "--quiet", "--initial-branch=main");
+  Fs.writeFileSync(Path.join(dir, "README.md"), "acme\n");
+  git(dir, "add", ".");
+  git(dir, "commit", "--quiet", "-m", "first");
+  git(dir, "remote", "add", "origin", "git@gitlab.com:acme/app.git");
+  await node.client().call("projects.create", { path: dir });
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Command palette", exact: true }).click();
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("option", { name: "New thread in...", exact: true }).click();
+  await palette.getByRole("option", { name: /^acme/ }).click();
+  await expect(palette).toBeHidden();
+
+  // GitLab's checkout command, read as T3 reads it.
+  await page.getByRole("combobox", { name: "Branch main" }).click();
+  await page.getByRole("combobox", { name: "Search refs" }).fill("glab mr checkout 5");
+  const item = page.getByRole("option", { name: /Checkout merge request/ });
+  await expect(item).toBeVisible();
+  await item.click();
+
+  const dialog = page.getByRole("dialog", { name: "Checkout merge request" });
+  await expect(
+    dialog.getByText("Resolve a GitLab merge request, then create the draft thread"),
+  ).toBeVisible();
+  await expect(dialog.getByPlaceholder("MR URL, checkout command, or #42")).toBeVisible();
+  await expect(dialog.getByText("#5 · feature/french to main")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Worktree" })).toBeEnabled();
+  await shot(page, info, "checkout-merge-request-dialog");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+});
+
 test("D1121–D1125: a new worktree runs the project's setup script and shows its progress", async ({
   page,
 }, info) => {

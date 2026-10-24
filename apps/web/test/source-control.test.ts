@@ -1229,6 +1229,21 @@ describe("reading a pull request reference (D903)", () => {
     expect(parsePullRequestReference("feature/x")).toBeNull();
     expect(parsePullRequestReference("")).toBeNull();
   });
+  it("takes every forge's checkout command and URL (D1444)", () => {
+    expect(parsePullRequestReference("glab mr checkout 5")).toBe("5");
+    expect(parsePullRequestReference("tea pulls checkout 2")).toBe("2");
+    expect(parsePullRequestReference("az repos pr checkout --id 4 --remote-name origin")).toBe("4");
+    expect(parsePullRequestReference("az repos pr checkout --id=4")).toBe("4");
+    for (const url of [
+      "https://gitlab.com/acme/sub/demo/-/merge_requests/5",
+      "https://codeberg.org/acme/demo/pulls/2",
+      "https://dev.azure.com/acme/web/_git/demo/pullrequest/4",
+    ]) {
+      expect(parsePullRequestReference(url)).toBe(url);
+    }
+    // T3 reads no Bitbucket URL as a reference: its number is typed.
+    expect(parsePullRequestReference("https://bitbucket.org/acme/demo/pull-requests/8")).toBeNull();
+  });
 });
 
 describe("a node path inside a project (terminal.md D965)", () => {

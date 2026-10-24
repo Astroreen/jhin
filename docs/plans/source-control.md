@@ -1418,6 +1418,225 @@ asked and once only, its watched link and its watch ending told, the
 connection's own threads apart, unfollowed with its connection; a member
 whose view already held a watched link tells when that watch ends).
 
+### Pull requests on every forge, their details and the rest of the panel (W41, D1441–D1460)
+
+The reference is T3 Code at D53 (`eb7b35ac`): the forge packages
+`packages/source-control-{bitbucket,forgejo,gitlab,azure-devops,github}`
+(their pull request providers, JSON readers and client definitions),
+`packages/shared/src/sourceControl.ts` (`providerName`),
+`apps/server/src/orchestration-v2/PullRequestWatchReactor.ts` (`readRemarks`),
+and in `apps/web` `components/PullRequestThreadDialog.tsx`,
+`components/pullRequest/{ThreadPullRequestsPanel,PullRequestListRow,PullRequestSpeedActions,PullRequestChecksPopover,pullRequestPresentation,pullRequestDetail.logic,usePullRequestActions}`,
+`components/chat/{ThreadDetailsPrRow,ThreadDetailsPrRows,composerMentionDrag}.ts(x)`,
+`shortcutModifierState.ts`, `components/composerContextPresentation.tsx`
+(`ComposerReviewCommentDetails`) and `components/diffs/AnnotatableCodeView.tsx`.
+
+#### Forges
+
+- **D1441. Bitbucket and Forgejo list pull requests** for `git.pr.search`
+  (D849), as T3's `BitbucketPullRequestApi.listPullRequests` and
+  `ForgejoPullRequestProvider` list them. Bitbucket:
+  `GET /repositories/<ws>/<repo>/pullrequests?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&pagelen=<N, at most 50>&sort=-updated_on`,
+  with words as `q=(title ~ "<words>" OR description ~ "<words>")` (`\` and
+  `"` escaped). Forgejo: `tea api /repos/<owner>/<repo>/pulls?state=all&sort=recentupdate&limit=<N>`;
+  T3 searches no text there (`search: false`), so words are matched as D1288
+  matches them on Azure DevOps: a title holding them, or the number, from the
+  latest 100. Listed rows carry no checks, as GitHub's (D849).
+- **D1442. Bitbucket and Forgejo pull requests are watched** (D271–D274),
+  reading what T3's `getChangeRequest` and activity reads take. Bitbucket: the
+  pull request (`source.commit.hash` the head, the author's `nickname`, else
+  `display_name`), its `statuses` (each by `name`, else `key`; D279's
+  states), `…/conflicts` for a conflict (an empty list is mergeable, a failed
+  read unknown), its comments (`…/comments?pagelen=50`, ten pages at most;
+  deleted, pending and empty ones left out; an inline one with its
+  `inline.path`) and the node's account (`GET /user`, `nickname` else
+  `display_name`). Forgejo through `tea api`: the pull request (`head.sha`,
+  `user.login`, `mergeable` true is mergeable and anything else unknown, as
+  T3: Forgejo never says conflicting), the head's statuses
+  (`/repos/<o>/<r>/statuses/<sha>?sort=recentupdate`, by `context`), the
+  issue comments (`/issues/<n>/comments`), the reviews
+  (`/pulls/<n>/reviews`, without `PENDING` and `REQUEST_REVIEW`) and their
+  comments on lines (`/pulls/<n>/reviews/<id>/comments` for a review with
+  `comments_count`, with their `path`), and the account (`/user`). The
+  viewer is asked again after ten minutes, as D272's. `git.pr.watch` refuses
+  no forge any more.
+- **D1443. A typed reference is found on every forge.** Each forge gets
+  D902's `resolve`, so `git.pr.resolve` and with it the composer's typed
+  `#123` (D849) answer off GitHub. Off GitHub a reference is a number, `#N`
+  or the forge's pull request URL (T3's `normalizeChangeRequestId` per forge;
+  `parsePullRequestUrl` reads each forge's URL); a head branch is refused with
+  T3's "Specify a pull request number or <forge> pull request URL." GitLab
+  reads `glab api projects/<path>/merge_requests/<iid>` and, for a merge
+  request from a fork, the source project's path
+  (`projects/<source_project_id>`); Azure DevOps `az repos pr show --id <n>`
+  (a `forkSource` is a fork whose repository it names); Bitbucket
+  `pullrequests/<n>` (a fork's `source.repository.full_name`); Forgejo
+  `pulls/<n>` (`head.repo.full_name`).
+- **D1444. Checking a pull request out on every forge** (D902, D903). Only
+  GitHub and Forgejo publish `refs/pull/<n>/head` (T3: "Azure DevOps, GitLab
+  and Bitbucket publish no `refs/pull/<n>/head`"): elsewhere the head branch is
+  fetched from the pull request's repository or its fork's remote, and when
+  that fetch fails nothing else is tried; a worktree that is reused is moved
+  to the fetched head branch. A URL of another repository is still refused,
+  now compared through `parsePullRequestUrl` for every forge's URL shape. The
+  branch picker offers "Checkout <singular>" on every forge whose repository
+  it reads, and the dialog takes T3's terms there: the title "Checkout
+  <singular>", "Resolve a <providerName> <singular>, then create the draft
+  thread in the main repo or in a dedicated worktree.", the placeholder
+  "<shortLabel> URL, checkout command, or #42" and "Paste a <singular> URL,
+  checkout command, or enter 123 / #123."; T3's `parsePullRequestReference`
+  reads each forge's checkout command (`gh pr checkout`, `glab mr checkout`,
+  `tea pr|pulls checkout`, `az repos pr checkout --id`) and URL.
+- **D1445. Forges' names in the client** (T3's `providerName`):
+  `PullRequestProvider` gets `name` (additive): "GitHub", "GitLab",
+  "Bitbucket", or "GitHub Self-Hosted", "GitLab Self-Hosted", "Bitbucket
+  Self-Hosted" on another host, "Azure DevOps" and "Forgejo", as T3's
+  `detectSourceControlProviderFromRemoteUrl` names them. The client shows
+  `provider.name`, else the forge's own label, where T3 shows
+  `providerName`: the checkout dialog (D1444).
+- **D1446. Forge tokens are the node's secrets.** The source control config
+  gets `bitbucketAccessToken`, `bitbucketEmail` and `bitbucketApiToken`
+  (`writeOnly`, so a config file holds a `$secret:` reference and the value
+  lives in `secrets.store@1`, `security.md` D1025) and
+  `bitbucketApiBaseUrl`. The node's environment
+  (`JHIN_BITBUCKET_ACCESS_TOKEN`, …, D279) is read when the config has none.
+  Without either, "Bitbucket needs a token on this node: set it in the source
+  control settings, or JHIN_BITBUCKET_ACCESS_TOKEN (or JHIN_BITBUCKET_EMAIL
+  and JHIN_BITBUCKET_API_TOKEN)". `glab`, `az` and `tea` keep their own
+  sign-ins, as in T3.
+
+#### Watching
+
+- **D1447. Review thread comments on lines wake a watch** (T3's
+  `readRemarks`): GitHub's are read with `gh api graphql` (the pull
+  request's `reviewThreads(first: 100)` with their `path` and their
+  comments, `first: 100`), next to `gh pr view`'s comments and reviews; a
+  thread's comment that is also a review's is told once, by id. In the wake
+  message such a comment reads "<login> on <path>: …", as T3 prints it
+  (no line). GitLab's diff notes, Azure DevOps's file threads and the
+  Bitbucket and Forgejo comments on lines (D1442) already carry their path.
+- **D1448. Required checks off GitHub**: T3 marks none (no forge but GitHub
+  sets `required`; GitLab's `allow_failure`, Forgejo's protected status
+  contexts and Azure DevOps's policies are read nowhere), so every check
+  stays the gate of "All N checks passed" there (D908), as in T3.
+
+#### A pull request's details and actions
+
+- **D1449. A snapshot carries T3's row details** (additive optional fields of
+  `PullRequest`): `author` (`login`, `name`, `avatarUrl`), `additions`,
+  `deletions`, `changedFiles`, `reviewDecision` (`approved`,
+  `changes-requested`, `review-required`) and `mergeability` (`mergeable`,
+  `conflicting`, `unknown`). GitHub reads them with D269's `gh pr view`
+  (`author,additions,deletions,changedFiles,reviewDecision,mergeable`), GitLab
+  from its merge request (`author.username`, `changes_count`,
+  `has_conflicts`/`merge_status`), Azure DevOps (`createdBy`, `mergeStatus`),
+  Bitbucket (the author and `…/diffstat`'s sums) and Forgejo (`user`,
+  `additions`, `deletions`, `changed_files`, `mergeable`). Only GitHub has a
+  review decision, as in T3.
+- **D1450. `git.pr.detail`** (`git.read`; `{ projectId, url }` →
+  `{ pullRequest, checks, mergeMethods, actions }`), T3's
+  `pullRequests.detail` for the details rows and the checks popover: the
+  snapshot (D1449), the head's checks one by one (`name`, `status` in T3's
+  seven words, `description`, `url`, `required`; the watch read of D272 and
+  D1442 for every forge), the merge methods the repository allows (GitHub
+  `gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed`,
+  GitLab its project's `merge_method` and `squash_option`, Forgejo its
+  `allow_*` flags, Azure DevOps merge and squash, Bitbucket all three) and
+  the actions T3's `changeRequestActions` give the forge, of `merge`,
+  `ready`, `close` and `reopen` (GitHub, GitLab and Azure DevOps all four;
+  Forgejo merge, close and reopen; Bitbucket merge and close).
+- **D1451. `git.pr.action`** (`git.write`; `{ projectId, url, action,
+  mergeMethod? }` → `{ pullRequest }`), T3's `runAction` for those four:
+  GitHub through `gh pr merge --merge|--squash|--rebase`, `gh pr ready`,
+  `gh pr close` and `gh pr reopen` (T3 sends the same GraphQL mutations);
+  GitLab `glab mr merge --yes --auto-merge=false [--squash|--rebase]`,
+  `glab mr update --ready`, `glab mr close`, `glab mr reopen`; Azure DevOps
+  `az repos pr update --status completed [--squash true]`, `--draft false`,
+  `--status abandoned`, `--status active`; Bitbucket `POST …/merge`
+  (`merge_commit`, `squash`, `rebase_fast_forward`) and `POST …/decline`;
+  Forgejo `POST pulls/<n>/merge` (`Do`) and `PATCH pulls/<n>` (`state`). An
+  action the forge lacks answers `ACTION_UNAVAILABLE`. The pull request is
+  read again afterwards and every link of it is updated (`git.pr.updated`).
+
+#### The panel and the details rows
+
+- **D1452. A panel row has T3's author, diff stat and review decision**
+  (`PullRequestListRow.tsx`): the author's avatar (its initial without one)
+  and login, its name in the tooltip; `+additions -deletions`
+  (`PullRequestDiffStat`, nothing when both are 0) at the row's right; the
+  review decision's glyph ("Approved", "Changes requested", "Awaiting
+  review") after the checks; and a conflict badge on the state glyph
+  ("Conflicts with <base>") of an open, non-draft one.
+- **D1453. T3's speed actions under Shift**: while Shift alone is held (T3's
+  `useShortcutModifierState`, not while typing in a field), each row shows
+  its quick actions instead of its menu: "Close" and "Merge" for an open one,
+  "Close" and "Ready for review" for a draft, "Reopen" for a closed one,
+  those the forge has (D1450), as T3's `pullRequestQuickActions`. They run
+  `git.pr.action` with T3's toasts ("Merge requested", "Could not merge this
+  pull request" and its hint, …); a merge takes "merge" when allowed, else the
+  first allowed method (read from `git.pr.detail` on the click), and a
+  stack's layer cannot be merged from there ("Open this pull request to merge
+  its stack"). T3's sweep to close several rows by dragging is not ported.
+- **D1454. A row drags into the composer** (T3's `composerMentionDrag.ts`):
+  its link carries T3's pull request payload under
+  `application/x-jhin-pull-request` (the number, title, URL, branches, state
+  and draft), and the chat's composer, on a drop of that type, adds the pull
+  request as the `#` menu does (D851's record and chip) at the end of the
+  message; a composer that cannot take it says T3's "Unable to add to chat"
+  ("The composer is busy; try again once it is ready."). The type is a
+  public id.
+- **D1455. The list is virtualized** as T3's, with `@legendapp/list`
+  (`LegendList`, rows of about 44 pixels, 440 drawn beyond the view), so a
+  thread that links hundreds of pull requests mounts the rows in view only.
+- **D1456. The details rows get T3's actions** (`ThreadDetailsPrRow.tsx`):
+  the current pull request, while open, reads `git.pr.detail` and shows
+  T3's second line under its title: `#N`, the checks popover's count
+  (D1457) while it neither conflicts nor is a draft, the eye of a watch,
+  and one action as T3's `resolveThreadPanelPullRequestAction` picks it:
+  "Resolve" for a conflict, "Ready" for a draft, "Fix" for failing checks,
+  "Merge" otherwise (behind T3's "Merge pull request?" dialog, "This merges
+  #N using <method>."), with T3's tooltips and pending labels. "Fix" and
+  "Resolve" are T3's hand-offs: the pull request is checked out in a
+  worktree (`git.pr.checkout`), a new draft thread opens on it and T3's
+  prompt goes into its composer (`buildFixFindingsHandoff` with the failing
+  checks, `buildResolveConflictsPrompt`), with T3's toasts ("Preparing the
+  pull request checkout...", "Checkout ready", …). The row's tooltip adds the
+  files count and diff stat ("3 files +10 -2") and a draft's "Merge
+  conflicts with <base>". It is read again after an action and whenever the
+  link's snapshot changes.
+- **D1457. T3's checks popover** (`PullRequestChecksPopover.tsx`): the
+  checks state's label, T3's summary ("2 of 5 running", "1 of 3 failing", …,
+  `summarizePullRequestChecks`), then the checks that need attention, those
+  running and, behind "Show all" / "Show less", those completed, each with its
+  status icon, label ("Running", "Failed", …) and "Details" link. The details
+  row opens it from its count; a panel row's checks glyph opens it too and
+  reads `git.pr.detail` only then.
+
+#### Review comments
+
+- **D1458. A review comment's chip opens T3's popover**
+  (`ComposerReviewCommentDetails`): the file's path, "<section> · <range>",
+  the comment's text as markdown and, when it has one, its patch in a
+  read-only diff view, in the composer and in a sent message alike.
+- **D1459. Comments on one line are one annotation**, as T3's
+  `AnnotatableCodeView` groups them: comments that end on the same line and
+  side stack in one annotation with dividers between them, each with its own
+  "Delete comment"; the comment being written stays apart.
+- **D1460** is kept free for this workstream's follow-ups.
+
+The proof, as each layer of the stack lands it: `plugins/source-control/test/forge-pull-requests.test.ts`
+and `pr-detail.test.ts` (Bitbucket against a local server and Forgejo with a fake `tea`: listing with words, a watch that
+wakes the thread for a failed status, a comment on a line and, on
+Bitbucket, a conflict; resolving a number and refusing a branch; a
+Bitbucket token from the config's secret; GitLab, Azure DevOps, Bitbucket and
+Forgejo checkouts from a local remote; the details and an action on each
+forge), `plugins/source-control/test/pr-watch.test.ts` (a GitHub review
+thread's comment wakes the thread "on <path>"); `apps/web/test/*` (the
+dialog's terms per forge, the row's details, speed actions under Shift, the
+drop into the composer, the details row's actions and checks popover, the
+chip's popover and grouped annotations); Playwright
+`e2e/tests/git-actions.spec.ts` with screenshots.
+
 ### Project settings, `t3.json` and scripts (W42, D1461–D1480)
 
 W42 of `t3-roadmap.md` (round 5) takes what W30 left of a project's
@@ -1645,29 +1864,27 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   question (T3 keeps it too; `git.worktree.remove` takes `deleteBranch`), the
   `branch` of a `root` workspace, and worktree folders that tell two
   repositories of one name apart.
-- Forges (D275–D279): watching and listing pull requests on Bitbucket and
-  Forgejo (GitLab and Azure DevOps: D1287, D1288), the checks of an Azure
-  DevOps pull request's policies, Azure DevOps words matched past its latest
-  100 pull requests (`az` searches no text), notes of a merge request past
-  its newest hundred,
-  Bitbucket Server and Data Center, forges' names in the client (T3's
-  `providerName`: D904 brings their marks only),
-  tokens kept as the node's secrets instead of its environment, creating a
-  GitLab merge request or an Azure DevOps pull request from a fork, checks of
-  Forgejo and Bitbucket that fail to read showing as none rather than as an
-  error, Forgejo's search for a branch's pull request among
-  the 50 most recently updated only, and GitLab's matching of a fork's merge
-  request by its owner (a same-named branch of another fork can match), and
-  checking a pull request out (D902) on forges other than GitHub.
+- Forges (D275–D279; listing, watching and checking out everywhere since
+  D1441–D1444): the checks of an Azure DevOps pull request's policies, Azure
+  DevOps and Forgejo words matched past their latest 100 pull requests (`az`
+  and T3's Forgejo search no text), notes of a merge request past its newest
+  hundred and Bitbucket comments past ten pages, Bitbucket Server and Data
+  Center, creating a GitLab merge request or an Azure DevOps pull request from
+  a fork, checking an Azure DevOps fork's pull request out (its repository is
+  not read), a Forgejo server that pages below 50 (its first short page is
+  taken as the last; T3 follows the `link` header `tea` does not show),
+  checks of Forgejo and Bitbucket that fail to read showing as none rather
+  than as an error, Forgejo's search for a branch's pull request among the 50
+  most recently updated only, and GitLab's matching of a fork's merge request
+  by its owner (a same-named branch of another fork can match).
 - Checking a pull request out (D902, D903): resetting a reused
   worktree whose head was rewritten (T3's `refs/t3code/pre-refresh`), setup
   scripts after a checkout, and a fork whose head is named like its base
   being compared with the base repository's default branch (Jhin compares it
   with the pull request's base); T3's other ways in (the thread details
   panel, a draft that is not the current one: Jhin fills the draft the
-  branch picker belongs to), the dialog on forges other than GitHub (their
-  reference forms and terminology), and a "Checkout pull request" offered
-  while the node cannot write (T3's `canWriteSourceControl`).
+  branch picker belongs to), and a "Checkout pull request" offered while the
+  node cannot write (T3's `canWriteSourceControl`).
 - Watching (D274): review thread comments on lines, required checks of
   forges other than GitHub (D908), read fingerprints, rate limit pauses;
   T3's hover list of a waiting thread's background tasks ("Waiting" for a

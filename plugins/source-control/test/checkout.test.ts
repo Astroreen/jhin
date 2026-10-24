@@ -77,6 +77,7 @@ describe("checking a pull request out (D902)", () => {
     const target = await githubForge(() => "gh", repository(), new Map()).resolve!("7");
     expect(target).toMatchObject({
       crossRepository: true,
+      pullRefs: true,
       headOwner: "someone",
       headRepository: "someone/demo-fork",
       pr: { number: 7, headBranch: "feature" },
@@ -93,7 +94,7 @@ describe("checking a pull request out (D902)", () => {
 
   it("checks it out in the project's checkout, tracking its head branch", async () => {
     const { dir, head } = withPullRequest();
-    const target: CheckoutTarget = { pr: pr(), crossRepository: false };
+    const target: CheckoutTarget = { pr: pr(), crossRepository: false, pullRefs: true };
     const prepared = await checkoutLocal(createGit("git", dir), target, warn);
     expect(prepared).toEqual({
       pullRequest: target.pr,
@@ -114,7 +115,7 @@ describe("checking a pull request out (D902)", () => {
       createGit: (cwd: string) => createGit("git", cwd),
       warn,
     };
-    const target: CheckoutTarget = { pr: pr(), crossRepository: false };
+    const target: CheckoutTarget = { pr: pr(), crossRepository: false, pullRefs: true };
     const prepared = await checkoutWorktree(createGit("git", dir), target, options);
     expect(prepared.branch).toBe("feature");
     expect(prepared.worktreePath).toBe(Path.join(root, Path.basename(dir), "feature"));
@@ -141,7 +142,7 @@ describe("checking a pull request out (D902)", () => {
     await expect(
       checkoutWorktree(
         createGit("git", dir),
-        { pr: pr(), crossRepository: false },
+        { pr: pr(), crossRepository: false, pullRefs: true },
         {
           repository: dir,
           root: temp("jhin-sc-worktrees-"),
@@ -164,6 +165,7 @@ describe("checking a pull request out (D902)", () => {
     const target: CheckoutTarget = {
       pr: pr({ headBranch: "Fix/Login" }),
       crossRepository: true,
+      pullRefs: true,
       headOwner: "someone",
       headRepository: "someone/demo",
     };
@@ -191,7 +193,7 @@ describe("checking a pull request out (D902)", () => {
     git(dir, "config", `url.${upstream}.insteadOf`, "https://github.com/acme/demo");
     const prepared = await checkoutLocal(
       createGit("git", dir),
-      { pr: pr(), crossRepository: false },
+      { pr: pr(), crossRepository: false, pullRefs: true },
       warn,
     );
     expect(prepared.branch).toBe("feature");
@@ -204,7 +206,7 @@ describe("checking a pull request out (D902)", () => {
     git(origin, "branch", "-D", "feature");
     const prepared = await checkoutLocal(
       createGit("git", dir),
-      { pr: pr({ state: "merged" }), crossRepository: false },
+      { pr: pr({ state: "merged" }), crossRepository: false, pullRefs: true },
       warn,
     );
     expect(prepared.branch).toBe("feature");
@@ -226,7 +228,7 @@ describe("checking a pull request out without losing work (D902)", () => {
 
   it("refuses a project checkout with changes, and a branch with commits of its own", async () => {
     const { dir } = withPullRequest();
-    const target: CheckoutTarget = { pr: pr(), crossRepository: false };
+    const target: CheckoutTarget = { pr: pr(), crossRepository: false, pullRefs: true };
     write(dir, "README.md", "mine\n");
     await expect(checkoutLocal(createGit("git", dir), target, warn)).rejects.toThrow(
       "Commit or stash the changes in the project's checkout before checking a pull request out in it.",
@@ -248,7 +250,11 @@ describe("checking a pull request out without losing work (D902)", () => {
     // An untracked file the pull request also adds is in the way.
     write(dir, "feature.txt", "mine\n");
     await expect(
-      checkoutLocal(createGit("git", dir), { pr: pr(), crossRepository: false }, warn),
+      checkoutLocal(
+        createGit("git", dir),
+        { pr: pr(), crossRepository: false, pullRefs: true },
+        warn,
+      ),
     ).rejects.toThrow("The pull request could not be checked out with git.");
     expect(git(dir, "branch", "--show-current").trim()).toBe("main");
     expect(git(dir, "branch", "--list", "feature").trim()).toBe("");
@@ -259,7 +265,11 @@ describe("checking a pull request out without losing work (D902)", () => {
     const { dir, head } = withPullRequest();
     write(dir, "notes.txt", "untracked\n");
     git(dir, "branch", "feature", "main");
-    await checkoutLocal(createGit("git", dir), { pr: pr(), crossRepository: false }, warn);
+    await checkoutLocal(
+      createGit("git", dir),
+      { pr: pr(), crossRepository: false, pullRefs: true },
+      warn,
+    );
     expect(git(dir, "rev-parse", "HEAD").trim()).toBe(head);
   });
 
@@ -275,6 +285,7 @@ describe("checking a pull request out without losing work (D902)", () => {
       {
         pr: pr({ headBranch: "main" }),
         crossRepository: true,
+        pullRefs: true,
         headOwner: "someone",
         headRepository: "someone/demo",
       },
@@ -289,7 +300,7 @@ describe("checking a pull request out without losing work (D902)", () => {
   it("fast-forwards a reused worktree that is behind, and leaves one with changes", async () => {
     const { dir, origin, head } = withPullRequest();
     const options = { repository: dir, ...worktreeOptions() };
-    const target: CheckoutTarget = { pr: pr(), crossRepository: false };
+    const target: CheckoutTarget = { pr: pr(), crossRepository: false, pullRefs: true };
     const first = await checkoutWorktree(createGit("git", dir), target, options);
     const path = first.worktreePath!;
 
@@ -324,6 +335,7 @@ describe("checking a pull request out without losing work (D902)", () => {
     const target: CheckoutTarget = {
       pr: pr(),
       crossRepository: true,
+      pullRefs: true,
       headOwner: "someone",
       headRepository: "someone/demo",
     };
@@ -377,13 +389,6 @@ describe("git.pr.resolve and git.pr.checkout", () => {
     ).rejects.toThrow(
       "https://github.com/other/repo/pull/9 is not a pull request of this project's repository.",
     );
-
-    // A forge that cannot check pull requests out yet.
-    const gitlab = repository();
-    git(gitlab, "remote", "add", "origin", "https://gitlab.com/acme/demo.git");
-    await expect(
-      sc.client.call("git.pr.resolve", { projectId: await sc.project(gitlab), reference: "7" }),
-    ).rejects.toMatchObject({ code: "ACTION_UNAVAILABLE" });
 
     const plain = await sc.project(repository());
     await expect(
