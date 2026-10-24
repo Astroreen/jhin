@@ -188,6 +188,53 @@ describe("a slice handed to an agent of another node (D1541–D1543)", () => {
   });
 });
 
+describe("what only the mission's node may ask (D1543, D1545)", () => {
+  it("refuses a follow or a run record a node makes for another", async () => {
+    const network = createMemoryNetwork();
+    const a = await meshNode(network, "a");
+    const b = await meshNode(network, "b");
+    const c = await meshNode(network, "c");
+    await b.node.join(a.node);
+    await c.node.join(a.node);
+    const thread = await b.client.call<{ id: string }>("threads.create", { title: "Work" });
+    // c asks b to follow b's thread for a's slices: only a may.
+    await expect(
+      c.client.call("mesh.call", {
+        node: "b",
+        method: "refocus.follow",
+        params: { threadId: thread.id, node: "a" },
+      }),
+    ).rejects.toMatchObject({ code: "MESH_ONLY" });
+
+    const project = await a.client.call<{ id: string }>("projects.create", { path: a.data });
+    const mission = await a.client.call<Mission>("missions.create", {
+      projectId: project.id,
+      title: "Doghouse",
+      outcome: "The dog has a shelter",
+    });
+    const record = { missionId: mission.id, workflowId: "w", status: "running" };
+    // Not from another node: refused.
+    await expect(
+      a.client.call("missions.orchestration.record", {
+        ...record,
+        parentThreadId: thread.id,
+        lead: threadAddress("a", thread.id),
+      }),
+    ).rejects.toMatchObject({ code: "MESH_ONLY" });
+    // From c, naming a lead of b: refused.
+    await expect(
+      c.client.call("mesh.call", {
+        node: "a",
+        method: "missions.orchestration.record",
+        params: { ...record, parentThreadId: thread.id, lead: threadAddress("b", thread.id) },
+      }),
+    ).rejects.toMatchObject({ code: "MESH_ONLY" });
+    expect(await a.client.call("missions.orchestration", { missionId: mission.id })).toMatchObject({
+      run: null,
+    });
+  });
+});
+
 describe("a lead on another node (D1544, D1545)", () => {
   async function leadOnB() {
     const world = await mesh();
@@ -239,6 +286,9 @@ describe("a lead on another node (D1544, D1545)", () => {
         event.type === MessageEvents.delivered && payloadOf(event).message.to === builderOf("a"),
     );
     expect(payloadOf(handoff).message.from).toBe(threadAddress("b", lead.id));
+    // The builder on b took it in a thread of b, linked as such on a.
+    const roofThread = (await a.client.call<Slice>("slices.get", { sliceId: roof.id })).threads;
+    expect(roofThread).toEqual([{ threadId: expect.any(String), nodeId: "b" }]);
     // The mission's node knows the run, and where it runs.
     expect(await a.client.call("missions.orchestration", { missionId: mission.id })).toMatchObject({
       run: { workflowId: started.workflowId, nodeId: "b", parentThreadId: lead.id },

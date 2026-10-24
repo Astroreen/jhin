@@ -2379,7 +2379,9 @@ Decisions:
   its project takes an optional `node`: the node the mission lives on. For
   another node the command runs there through `mesh.call`, with the
   permissions the command needs (the caller held them here; D416
-  intersects them there), and answers what that node answers. So an agent
+  intersects them there), and answers what that node answers. Naming the
+  node needs no `mesh.call` grant of the caller's own, as A2's messages to
+  another node need none (D628): the command reaches that node only. So an agent
   of another node works on its slice with the same tools: the handoff tells
   it to pass `node` with `slices_update`, `slices_prove` and
   `slices_review`, and a lead on another node plans and orchestrates the
@@ -2391,7 +2393,8 @@ Decisions:
   thread's compactions and turns, and holds its project's lore. When the
   mission's orchestrator sees an open slice linking a thread of another
   node, it asks that node to follow it: `refocus.follow { threadId, node }`
-  (`threads.write`), kept in that node's `storage.kv`, asked again after a
+  (`threads.write`, and only the node named may ask, since its briefs go
+  into the thread: `MESH_ONLY` otherwise), kept in that node's `storage.kv`, asked again after a
   restart and when the node comes back (D1547). The thread's node follows it
   as one of its own (D710, D711, its own config): on a compaction or the
   interval it reads the brief from the mission's node (`refocus.brief
@@ -2423,8 +2426,11 @@ Decisions:
   another node to a third. The lead's node records the run on the mission's
   node with `missions.orchestration.record { missionId, workflowId, status,
   parentThreadId?, lead?, error? }`, which only a mesh caller may call and
-  which takes the run's node from the caller; it calls it again when its
-  run fails or is stopped. So the mission's node finds the run for
+  which takes the run's node from the caller. A run that starts must name a
+  lead of that node, for an open mission no other run is working on
+  (`MESH_ONLY`, `MISSION_CLOSED`, `RUN_ACTIVE`); when recording fails, the
+  lead's node stops the workflow it just started, so no run goes unseen. It
+  calls the command again when its run fails or is stopped. So the mission's node finds the run for
   `missions.orchestration` (with the run's `nodeId`, read through
   `workflows.list` there), reports a run that failed or was stopped as the
   lead (D1222), reads the lead's escalations in its own inbox and the lead

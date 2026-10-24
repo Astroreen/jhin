@@ -463,7 +463,14 @@ export default definePlugin({
                   ...(error === undefined ? {} : { error }),
                 },
                 ["missions.write"],
-              );
+              ).catch((failure: unknown) => {
+                context.log.warn("the mission's node did not hear that its run ended", {
+                  missionId: owned.missionId,
+                  node: owned.node,
+                  workflowId,
+                  error: String(failure),
+                });
+              });
               return;
             }
             // Only the mission's current run speaks for it: an older one ending late is no news.
@@ -821,7 +828,8 @@ export default definePlugin({
       const thread =
         agent === undefined || delivery === undefined
           ? undefined
-          : { threadId: delivery.threadId, ...linkedOn(delivery) };
+          : // The delivering node: here when it names none.
+            { threadId: delivery.threadId, ...linkedOn({ nodeId: delivery.nodeId ?? nodeId }) };
       if (thread !== undefined) {
         await place.write("slices.link", { sliceId, ...thread });
         // Its node follows it for refocus from here on (D1543); the mission's
@@ -1093,19 +1101,28 @@ export default definePlugin({
         } else {
           // The mission's node keeps the run: its panel, reports and escalations find it (D1545).
           const { thread } = await getThread(parentThreadId);
-          await onNode(
-            node,
-            "missions.orchestration.record",
-            {
-              missionId,
+          try {
+            await onNode(
+              node,
+              "missions.orchestration.record",
+              {
+                missionId,
+                workflowId: started.workflowId,
+                parentThreadId,
+                lead: senderOf(parentThreadId, thread),
+                status: started.status,
+              },
+              ["missions.write"],
+              invocation,
+            );
+          } catch (error) {
+            // A run its mission's node does not know would go on unseen: it stops.
+            await run("workflows.stop", {
               workflowId: started.workflowId,
               parentThreadId,
-              lead: senderOf(parentThreadId, thread),
-              status: started.status,
-            },
-            ["missions.write"],
-            invocation,
-          );
+            }).catch(() => undefined);
+            throw error;
+          }
         }
         return { ...started, existing: false };
       },
@@ -1143,6 +1160,30 @@ export default definePlugin({
         const mission = getMission(missionId);
         const current = await runOf(missionId);
         if (parentThreadId !== undefined && lead !== undefined) {
+          // The lead is a party of the node that runs it (D622).
+          if (parseMessageAddress(lead)?.nodeId !== runNode) {
+            throw new OrchestratorError(
+              "MESH_ONLY",
+              `Node ${runNode} records only a lead of its own, not ${lead}`,
+              { lead, node: runNode },
+            );
+          }
+          if (isClosed(mission.status)) {
+            throw new OrchestratorError(
+              "MISSION_CLOSED",
+              `Mission ${missionId} is ${mission.status}`,
+              { missionId },
+            );
+          }
+          // A run still going is the mission's until it ends (D706).
+          const running = await runningOf(current, invocation).catch(() => undefined);
+          if (running !== undefined && running.workflowId !== workflowId) {
+            throw new OrchestratorError(
+              "RUN_ACTIVE",
+              `Mission ${missionId} is being orchestrated by workflow ${running.workflowId}`,
+              { missionId, workflowId: running.workflowId },
+            );
+          }
           // A run that starts is the mission's current one.
           await kv.set(NAMESPACE, `run/${missionId}`, {
             workflowId,
@@ -1447,7 +1488,15 @@ export default definePlugin({
       }),
       output: z.object({ following: z.boolean() }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, node }) => {
+      handler: async ({ threadId, node }, invocation) => {
+        // Only the mission's node itself asks: its briefs go into the thread (D1543).
+        if (invocation.caller !== undefined && invocation.caller.id !== `node:${node}`) {
+          throw new OrchestratorError(
+            "MESH_ONLY",
+            `Only node ${node} asks to follow a thread for its own slices`,
+            { node, caller: invocation.caller.id },
+          );
+        }
         if (node === nodeId) return { following: false };
         await getThread(threadId);
         if (following.get(threadId) !== node) {
@@ -1567,13 +1616,19 @@ export default definePlugin({
     function watchThreads() {
       if (disposed) return;
       const wanted = new Set<string>(following.keys());
+      const remote = new Set<string>();
       for (const slice of Object.values(state.slices)) {
         if (!isOpen(slice)) continue;
         for (const thread of slice.threads) {
           if (thread.nodeId === undefined || thread.nodeId === nodeId) wanted.add(thread.threadId);
-          else askToFollow(thread.nodeId, thread.threadId);
+          else {
+            remote.add(`${thread.nodeId}/${thread.threadId}`);
+            void askToFollow(thread.nodeId, thread.threadId);
+          }
         }
       }
+      // A link that left or a slice that closed is asked again if it comes back.
+      for (const key of asked.keys()) if (!remote.has(key)) asked.delete(key);
       for (const [threadId, subscription] of watched) {
         if (wanted.has(threadId)) continue;
         subscription.dispose();
