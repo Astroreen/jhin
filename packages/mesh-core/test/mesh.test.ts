@@ -768,6 +768,27 @@ describe("relays (D499)", () => {
     expect(relay.events.map((event) => event.sequence)).toEqual([100, 101, 102]);
   });
 
+  it("attaches a follower started the moment a member becomes reachable (M1, D1522)", async () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a");
+    const b = startNode(network, "b");
+    const sharing = b.mesh.share("missions");
+    await b.log.append("missions", [{ type: "missions.mission.created", payload: 1 }]);
+    const streams = meshStreams(a.mesh);
+    // b dials a: the follower goes out over a's inbound link as soon as it is up.
+    let started = false;
+    const attached = new Promise<number>((resolve, reject) => {
+      a.mesh.onChange(() => {
+        if (started || !streams.members().some((member) => member.reachable)) return;
+        started = true;
+        streams.follow("b", "missions", 0, () => {}).ready.then(resolve, reject);
+      });
+    });
+    await b.mesh.join(a.address, a.mesh.invite().code);
+    expect(await attached).toBe(1);
+    sharing.dispose();
+  });
+
   it("lets a plugin follow a member's shared stream, and lists the members (M1, D1522)", async () => {
     const { network, a, c } = await relayChain();
     const streams = meshStreams(a.mesh);

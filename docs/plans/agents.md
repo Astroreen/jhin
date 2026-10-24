@@ -2257,7 +2257,9 @@ Decisions (M1):
   (`meshStreams(mesh)` in `@jhin/mesh-core`); `jhin.mesh` and
   `@jhin/testing`'s `startMeshNode` provide it. A follower runs with the
   node's own standing: the owner of the stream still applies its member
-  grants.
+  grants. A node uses an inbound link once its dialer has spoken on it, so a
+  follower started the moment a member becomes reachable is not sent before
+  the other side serves it, and is not lost.
 - **D1523. `agents.conversation` joins the agent's node.** It takes `owner`
   (an owner's address, this node's by default) and folds the records between
   that owner and `with`; the state of an inbox item only for its own owner,
@@ -2499,9 +2501,13 @@ Decisions (M1):
 - A7: the team group (D722): a team counting what its agents' messages and
   slices count, beside missions and projects; its lead is already the
   analyst (D726).
-- A7: health for a mesh: each node counts its own streams; a team across
+- ~~A7: health for a mesh: each node counts its own streams; a team across
   nodes needs the counts of every node, through `mesh.call` or shared
-  streams.
+  streams.~~ M1, D1525, D1526.
+- M1: another node's events count with the missions as they are when they
+  arrive (D1526): on a restart they are not replayed in time order with this
+  node's streams, so a message sent before a slice was assigned can count
+  for it.
 - A7: detecting a repeated wrong idea nobody named yet (phrases recurring
   across agents' notes and messages); D727 needs the correction first.
 - A7: an agent naming a corrected idea (`health.write` for an epidemiology
