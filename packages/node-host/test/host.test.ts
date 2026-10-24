@@ -744,6 +744,28 @@ export default definePlugin({
     expect(future.error).toMatchObject({ code: "CONFIG_TIME_IN_FUTURE" });
   });
 
+  it("puts the launcher's settings under the config files (desktop.md D1487)", async () => {
+    const home = tempDir("home");
+    host = new HostProcess({
+      home,
+      cwd: tempDir("cwd"),
+      distribution: [EXAMPLE],
+      config: { "jhin.example": { greeting: "Hi" } },
+    });
+    await host.ready();
+    expect(
+      (await host.execute("host.config.get", { section: "jhin.example" })).value.value,
+    ).toEqual({ greeting: "Hi" });
+    await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.example",
+      values: { greeting: "Hello there" },
+    });
+    expect(
+      (await host.execute("host.config.get", { section: "jhin.example" })).value.value,
+    ).toEqual({ greeting: "Hello there" });
+  });
+
   it("reads a config section with what each file sets, and the schema of every section", async () => {
     const home = tempDir("home");
     const cwd = tempDir("cwd");

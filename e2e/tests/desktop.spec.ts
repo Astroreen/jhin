@@ -17,7 +17,7 @@ import {
 import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
 
 import { fakeTools } from "./support/device-hub-fakes.ts";
-import { writeConfig } from "./support/node.ts";
+import { startNode, writeConfig } from "./support/node.ts";
 
 // The desktop app (docs/plans/desktop.md, D523), built by `pnpm e2e`. On Linux,
 // Electron needs a display: CI runs the suite under xvfb-run.
@@ -194,6 +194,37 @@ export default definePlugin({
 `,
   );
 }
+
+test("the app shows a node of its home that already runs, and leaves it running (D1486)", async () => {
+  // `jhin serve --ui` from the command line, before the app starts.
+  const node = await startNode();
+  try {
+    const app = await electron.launch({
+      executablePath: ELECTRON,
+      args: [APP],
+      env: {
+        ...process.env,
+        JHIN_HOME: node.home,
+        JHIN_DESKTOP_USER_DATA: temporary("data"),
+        XDG_CACHE_HOME: temporary("cache"),
+      },
+    });
+    const window = await app.firstWindow();
+    launched = { app, window, home: node.home };
+    await expect(window.getByRole("button", { name: "Go to threads" })).toBeVisible();
+    // The window shows that node: no second node started on the home.
+    expect(new URL(window.url()).origin).toBe(new URL(node.ui).origin);
+    // It serves no jhin.desktop (D514), so the page has none of T3's chrome classes.
+    await expect(window.locator("html.electron")).toHaveCount(0);
+
+    await app.close();
+    launched = undefined;
+    // Quitting the app leaves the node it did not start running.
+    expect((await fetch(new URL("/.well-known/jhin", node.ui))).ok).toBe(true);
+  } finally {
+    await node.stop();
+  }
+});
 
 test("the native menus are T3's, and Settings... opens the settings with the About section", async () => {
   const { app, window } = await launch({}, writeMenuPlugin);

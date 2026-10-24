@@ -53,6 +53,7 @@ function distribution(mode: "serve" | "ui" | "client" = "serve"): string[] {
 
 const USAGE = `Usage:
   jhin serve [--watch] [--ui]   run this node until interrupted; --ui also serves the web client
+         [--port <port>]        ...listen on <port> unless jhin.http.port is configured
   jhin client [--watch]         serve only the web client, which connects to remote nodes
   jhin inspect                  print the node's live state as JSON
   jhin pair                     print a one-time pairing link and its QR code for another device
@@ -93,6 +94,7 @@ const GLOBAL_OPTIONS = new Set([
   "token",
   "ui",
   "plugin-dir",
+  "port",
 ]);
 
 /**
@@ -347,9 +349,16 @@ async function main(argv: readonly string[]): Promise<number> {
   if (command === "serve" || command === "client") {
     const mode =
       command === "client" ? "client" : parsed.options.get("ui") === true ? "ui" : "serve";
+    const port = parsed.options.get("port");
+    if (port !== undefined && !(typeof port === "string" && /^\d{1,5}$/.test(port))) {
+      process.stderr.write("--port needs a port number\n");
+      return 1;
+    }
     const host = await startNodeHost({
       distribution: distribution(mode),
       watch: parsed.options.get("watch") === true,
+      // Under the config files: a configured jhin.http.port wins (desktop.md D1487).
+      ...(port === undefined ? {} : { config: { "jhin.http": { port: Number(port) } } }),
       ...global,
     });
     const snapshot = host.kernel.inspect();

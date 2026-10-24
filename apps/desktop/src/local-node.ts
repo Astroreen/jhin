@@ -1,7 +1,10 @@
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
+import * as Net from "node:net";
 import * as Os from "node:os";
 import * as Path from "node:path";
+
+import { findRunningNode, isProcessAlive, localUrl } from "@jhin/node-host/running";
 
 /** Where the app finds the CLI and its own client plugin (resolved from the app's package). */
 export interface LocalNodePaths {
@@ -41,7 +44,7 @@ const STOP_GRACE_MS = 5_000;
 const OUTPUT_LIMIT = 8_000;
 
 /** The node's home, as the CLI resolves it: `$JHIN_HOME` or `~/.jhin` (D512). */
-function localNodeHome(env: NodeJS.ProcessEnv = process.env): string {
+export function localNodeHome(env: NodeJS.ProcessEnv = process.env): string {
   // An empty JHIN_HOME counts as unset.
   return env["JHIN_HOME"] || Path.join(Os.homedir(), ".jhin");
 }
@@ -59,12 +62,25 @@ export function startLocalNode(
     const timer = setTimeout(kill, STOP_GRACE_MS);
     return () => clearTimeout(timer);
   },
+  /** The port the app chose when the node's own was taken (D1487). */
+  port?: number,
 ): Promise<RunningLocalNode> {
   Fs.mkdirSync(home, { recursive: true });
   const child = ChildProcess.spawn(
     process.execPath,
     // The node's folder is its home: no project layer or workspace plugins of wherever the app started.
-    [paths.cli, "serve", "--ui", "--plugin-dir", paths.plugin, "--home", home, "--cwd", home],
+    [
+      paths.cli,
+      "serve",
+      "--ui",
+      "--plugin-dir",
+      paths.plugin,
+      "--home",
+      home,
+      "--cwd",
+      home,
+      ...(port === undefined ? [] : ["--port", String(port)]),
+    ],
     {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", JHIN_HOME: home },
       stdio: ["ignore", "pipe", "pipe"],
@@ -110,13 +126,8 @@ export function startLocalNode(
         return;
       }
       // jhin.auth-token writes its token before the node reports itself ready.
-      const tokenFile = Path.join(home, "data", "jhin.auth-token", "token");
-      let token = "";
-      try {
-        token = Fs.readFileSync(tokenFile, "utf8").trim();
-      } catch {
-        // Missing: reported below.
-      }
+      const tokenFile = homeTokenFile(home);
+      const token = readHomeToken(home);
       if (token === "") {
         // Stopped before the error is shown, so Try Again does not meet the old node.
         void stop().then(() =>
@@ -150,4 +161,93 @@ export function startLocalNode(
       reject(new Error(`The local node could not be started: ${error.message}`));
     });
   });
+}
+
+const homeTokenFile = (home: string) => Path.join(home, "data", "jhin.auth-token", "token");
+
+/** The home's owner token, or "" when there is none (D512). */
+function readHomeToken(home: string): string {
+  try {
+    return Fs.readFileSync(homeTokenFile(home), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** A node of the app's home that was already running: shown, never stopped by the app (D1486). */
+export interface AttachedNode {
+  readonly url: string;
+  readonly token: string;
+  readonly home: string;
+  readonly pid: number;
+}
+
+/**
+ * The node of `home` that already runs (security.md D1184), ready to show:
+ * undefined when none runs; an error when it serves no web client or the home
+ * has no token for it (D1486).
+ */
+export async function attachRunningNode(home = localNodeHome()): Promise<AttachedNode | undefined> {
+  const running = await findRunningNode(home);
+  if (running === undefined) return undefined;
+  const url = `${localUrl(running.url)}/`;
+  let page: Response | undefined;
+  try {
+    page = await fetch(url, { signal: AbortSignal.timeout(5_000) });
+    await page.body?.cancel();
+  } catch {
+    page = undefined;
+  }
+  if (page === undefined || !page.ok || !page.headers.get("content-type")?.includes("text/html")) {
+    throw new Error(
+      `A Jhin node of this home already runs at ${url} without the web client. Stop it, or start it with \`jhin serve --ui\`.`,
+    );
+  }
+  const token = readHomeToken(home);
+  if (token === "") {
+    throw new Error(
+      `A Jhin node of this home already runs at ${url}, but there is no access token at ${homeTokenFile(home)}.`,
+    );
+  }
+  return { url, token, home, pid: running.pid };
+}
+
+/**
+ * Calls `onGone` once the attached node's process is gone, checking every
+ * `intervalMs` (D1486); returns the stop.
+ */
+export function watchAttachedNode(
+  node: Pick<AttachedNode, "pid">,
+  onGone: () => void,
+  alive: (pid: number) => boolean = isProcessAlive,
+  intervalMs = 2_000,
+): () => void {
+  const timer = setInterval(() => {
+    if (alive(node.pid)) return;
+    clearInterval(timer);
+    onGone();
+  }, intervalMs);
+  return () => clearInterval(timer);
+}
+
+/** The port and address `jhin.http` could not listen on, from a failed node's output (D1487). */
+export function portInUse(output: string): { port: number; host: string } | undefined {
+  const match = /Port (\d+) on (\S+) is in use/.exec(output);
+  return match === null ? undefined : { port: Number(match[1]), host: match[2]! };
+}
+
+function canListen(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = Net.createServer();
+    server.once("error", () => resolve(false));
+    server.listen({ port, host, exclusive: true }, () => server.close(() => resolve(true)));
+  });
+}
+
+/** The first port above `taken` that `host` can be listened on at (D1487). */
+export async function freePortAbove(taken: number, host: string): Promise<number> {
+  for (let port = taken + 1; port <= 65_535; port += 1) {
+    if (await canListen(port, host)) return port;
+  }
+  throw new Error(`No port above ${taken} is free on ${host}.`);
 }
