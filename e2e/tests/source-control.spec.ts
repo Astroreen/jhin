@@ -189,6 +189,21 @@ test("D280–D285: the diff panel renders with @pierre/diffs, splits, lists file
   await expect(bye).toHaveAttribute("data-line-type", "change-addition");
   await shot(page, info, "source-control-diff-panel");
 
+  // T3's tab strip (t3-parity.md D1422): a browser opens beside the diff, a tab of its own.
+  const right = page.getByRole("complementary", { name: "Right panel" });
+  await right.getByRole("button", { name: "Add panel surface" }).click();
+  await page.getByRole("menuitem", { name: "Browser" }).click();
+  await expect(right.getByRole("tab", { name: "Browser" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(right.getByText("No preview yet")).toBeVisible();
+  await shot(page, info, "right-panel-tabs");
+  // Back on the diff, which shows again as it opens (T3 renders the active surface alone).
+  await right.getByRole("tab", { name: "Diff" }).click();
+  await panel.getByRole("button", { name: "Expand all files" }).click();
+  await expect(bye).toBeVisible();
+
   // Side by side, with the file tree; choosing a file reveals it.
   await panel.getByRole("button", { name: "Split diff view" }).click();
   await expect(panel.locator('pre[data-diff-type="split"]').first()).toBeVisible();
