@@ -624,6 +624,17 @@ export const rightPanelPlugin = builtin(
         },
       };
 
+      /** What the panel follows of `right-panel.new`: one object, so it subscribes once. */
+      const newSurfaceSource = {
+        current: () => newSurfaceRequests.current,
+        subscribe(listener: () => void) {
+          newSurfaceRequests.listeners.add(listener);
+          return () => {
+            newSurfaceRequests.listeners.delete(listener);
+          };
+        },
+      };
+
       function Panel() {
         const route = useExternal(navigation, navigation.current);
         const state = useExternal(source, snapshot);
@@ -636,15 +647,7 @@ export const rightPanelPlugin = builtin(
             key={key}
             kinds={kindList}
             kindKey={(id) => kinds.get(id)?.key}
-            newSurfaceRequests={{
-              current: () => newSurfaceRequests.current,
-              subscribe(listener) {
-                newSurfaceRequests.listeners.add(listener);
-                return () => {
-                  newSurfaceRequests.listeners.delete(listener);
-                };
-              },
-            }}
+            newSurfaceRequests={newSurfaceSource}
             onActivate={(surface) => open(place, surface)}
             onAdd={(kind, option) => {
               if (kind.offer?.add !== undefined) kind.offer.add(place, option);
