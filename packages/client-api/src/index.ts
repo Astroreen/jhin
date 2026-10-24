@@ -813,6 +813,19 @@ export interface HistoryCache {
   ): Promise<void>;
   /** Forgets a stream of the connection, every stream of it, or everything. */
   drop(connection?: string, stream?: string): Promise<void>;
+  /** Since 1.1: the connection's catalog as last kept (D1591); `drop` of the connection forgets it. */
+  readCatalog?(connection: string): Promise<CachedCatalog | undefined>;
+  /** Since 1.1: keeps the connection's catalog, as of the `threads` index's `head`. */
+  writeCatalog?(connection: string, catalog: CachedCatalog): Promise<void>;
+}
+
+/** Since `client.history-cache` 1.1: a node's catalog as the device last knew it (D1591). */
+export interface CachedCatalog {
+  readonly epoch: string;
+  /** The sequence of the `threads` index the catalog reflects. */
+  readonly head: number;
+  readonly projects: readonly ProjectRecord[];
+  readonly threads: readonly ThreadRecord[];
 }
 
 /** What a node says it is (`host.identity`). */
