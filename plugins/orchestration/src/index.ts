@@ -1850,8 +1850,15 @@ export default definePlugin({
       for (const file of files) {
         try {
           return await Fs.readFile(file, "utf8");
-        } catch {
-          // The next place, if any.
+        } catch (error) {
+          // Only a file that is not there gives way to the next place: a broken one is an error.
+          if ((error as { code?: unknown }).code !== "ENOENT") {
+            throw new OrchestrationError(
+              "WORKFLOW_NOT_FOUND",
+              `Cannot read ${what} (${file}): ${String(error)}`,
+              { path: file },
+            );
+          }
         }
       }
       throw new OrchestrationError("WORKFLOW_NOT_FOUND", `No ${what} (${files.join(", ")}).`, {
@@ -2476,19 +2483,33 @@ export default definePlugin({
         entry.endedAt !== undefined &&
         Date.parse(entry.endedAt) < cutoff &&
         entry.delivery !== "pending";
-      // A map's iteration survives deleting the entry it is on.
-      for (const workflow of workflows.values()) {
-        if (disposed || !old(workflow)) continue;
-        // Its agents go with it, never before it.
-        for (const task of tasks.values()) {
-          if (task.workflowId === workflow.workflowId) await removeTask(task);
-        }
+      // What goes is chosen and taken out of memory at once, before any await, so a
+      // resume or a save that comes meanwhile finds no record to work on.
+      const goneWorkflows = [...workflows.values()].filter(old);
+      for (const workflow of goneWorkflows) workflows.delete(workflow.workflowId);
+      const goneIds = new Set(goneWorkflows.map((workflow) => workflow.workflowId));
+      const goneTasks = [...tasks.values()].filter((task) =>
+        task.workflowId !== undefined && workflows.has(task.workflowId)
+          ? false
+          : // A workflow's agents go with it, never before it.
+            (task.workflowId !== undefined && goneIds.has(task.workflowId)) || old(task),
+      );
+      for (const task of goneTasks) {
+        tasks.delete(task.taskId);
+        for (const [key, value] of requests) if (value === task.taskId) requests.delete(key);
+      }
+      for (const task of goneTasks) {
+        await persist(`task/${task.taskId}`, undefined, OrchestrationEvents.taskRemoved, {
+          taskId: task.taskId,
+          parentThreadId: task.parentThreadId,
+        });
+      }
+      for (const workflow of goneWorkflows) {
         for (const entry of await kv.list(NAMESPACE, {
           prefix: `journal/${workflow.workflowId}/`,
         })) {
           await kv.delete(NAMESPACE, entry.key);
         }
-        workflows.delete(workflow.workflowId);
         await persist(
           `workflow/${workflow.workflowId}`,
           undefined,
@@ -2496,20 +2517,6 @@ export default definePlugin({
           { workflowId: workflow.workflowId, parentThreadId: workflow.parentThreadId },
         );
       }
-      for (const task of tasks.values()) {
-        if (disposed || !old(task)) continue;
-        if (task.workflowId !== undefined && workflows.has(task.workflowId)) continue;
-        await removeTask(task);
-      }
-    }
-
-    async function removeTask(task: Task): Promise<void> {
-      tasks.delete(task.taskId);
-      for (const [key, value] of requests) if (value === task.taskId) requests.delete(key);
-      await persist(`task/${task.taskId}`, undefined, OrchestrationEvents.taskRemoved, {
-        taskId: task.taskId,
-        parentThreadId: task.parentThreadId,
-      });
     }
 
     const pruneNow = () =>

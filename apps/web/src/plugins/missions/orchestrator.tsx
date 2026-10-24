@@ -109,6 +109,15 @@ function useMissionRun(connections: Connections, connection: string, missionId: 
               }
               return;
             }
+            if (event.type === OrchestrationEvents.workflowRemoved) {
+              // A pruned run is no run to show (D1503).
+              const { workflowId } = event.payload as { workflowId?: string };
+              if (run !== null && workflowId === run.workflowId) {
+                run = null;
+                set({ status: "ready", run });
+              }
+              return;
+            }
             if (event.type !== OrchestrationEvents.workflowUpdated) return;
             const record = event.payload as unknown as OrchestratorRun & { name?: string };
             if (record.workflowId === run?.workflowId) {

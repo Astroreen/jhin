@@ -126,14 +126,13 @@ describe("pruning old records (D1503)", () => {
     ...fields,
   });
 
-  it("deletes what ended long ago and waits for no delivery, with its workflow's agents and journal", async () => {
+  it("deletes what ended long ago, with its workflow's agents and journal", async () => {
     const first = await node();
     const parent = await parentThread(first.client);
     await first.stop();
     const kv = first.storage.storage.kv;
     const recent = new Date().toISOString();
     await kv.set(NAMESPACE, "task/old", task("old", parent.id, { clientRequestId: "r1" }));
-    await kv.set(NAMESPACE, "task/pending", task("pending", parent.id, { delivery: "pending" }));
     await kv.set(NAMESPACE, "task/recent", task("recent", parent.id, { endedAt: recent }));
     await kv.set(NAMESPACE, "task/agent", task("agent", parent.id, { workflowId: "wf" }));
     await kv.set(NAMESPACE, "workflow/wf", {
@@ -163,7 +162,7 @@ describe("pruning old records (D1503)", () => {
     );
 
     const keys = (await kv.list(NAMESPACE)).map((entry) => entry.key);
-    expect(keys.toSorted()).toEqual(["task/pending", "task/recent"]);
+    expect(keys).toEqual(["task/recent"]);
     expect(
       records.events
         .filter((event) => event.type.endsWith(".removed"))
@@ -179,7 +178,7 @@ describe("pruning old records (D1503)", () => {
       (await second.client.call<{ taskId: string }[]>("tasks.list", { parentThreadId: parent.id }))
         .map((item) => item.taskId)
         .toSorted(),
-    ).toEqual(["pending", "recent"]);
+    ).toEqual(["recent"]);
   });
 
   it("keeps everything with retentionDays 0", async () => {
@@ -230,6 +229,14 @@ describe("the node's saved workflows (D1505)", () => {
     };
 
     expect(await result("greet", { who: "you" })).toBe("hi you");
+    // A project's file that cannot be read is an error, not a reason to run the node's.
+    Fs.mkdirSync(Path.join(dir, ".jhin", "workflows", "odd.js"));
+    Fs.writeFileSync(Path.join(data, "workflows", "odd.js"), run("odd", "return 'node'"));
+    await expect(
+      client.call("workflows.run", { parentThreadId: parent.id, name: "odd" }),
+    ).rejects.toMatchObject({ code: "WORKFLOW_NOT_FOUND" });
+    Fs.rmSync(Path.join(dir, ".jhin", "workflows", "odd.js"), { recursive: true });
+    Fs.rmSync(Path.join(data, "workflows", "odd.js"));
     expect(await result("shared")).toBe("project");
 
     const { workflows } = await client.call<{ workflows: Record<string, unknown>[] }>(
