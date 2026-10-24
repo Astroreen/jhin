@@ -5,6 +5,7 @@ import {
   type DeviceSettings,
   type Navigation,
   type NodeTarget,
+  type RightPanel,
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
@@ -70,6 +71,8 @@ export interface SourceControlServices {
   timestampFormat(): TimestampFormat;
   /** The label of the diff panel's shortcut, e.g. "⌘D". */
   shortcut(): string | undefined;
+  /** The right panel a diff's file opens in beside it (D1433), when the client has one. */
+  readonly rightPanel?: RightPanel | undefined;
 }
 
 type Subscribe = (listener: () => void) => () => void;

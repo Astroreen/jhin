@@ -692,6 +692,7 @@ export const rightPanelPlugin = builtin(
               context.log.error("surface failed to render", { kind: id, error: String(error) })
             }
             onMove={(id, index) => moveSurface(key, id, index)}
+            onClosePanel={() => toggle(place)}
             onToggleMaximized={() => toggleMaximized(key)}
             place={place}
             state={state}

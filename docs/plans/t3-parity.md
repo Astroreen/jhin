@@ -2455,6 +2455,13 @@ panel and devices are in `terminal.md`, `source-control.md` and
   relative path, Copy full path, Open in editor, ⌘-click to the editor) and
   its parent folder suffix for names that collide wait (Deferred).
 
+- **D1434. The right panel is a sheet on a narrow window,** as T3's
+  `RightPanelSheet` below its `RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY`
+  (980 px wide): the same strip and surfaces slide over the chat from the
+  right (`min(42vw, 28rem)`, `min(88vw, 24rem)` under 760 px), closing the
+  sheet closes the panel, and it cannot be maximized. It is also the diff's
+  pop-out mode of `source-control.md`'s Deferred (D1433).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
