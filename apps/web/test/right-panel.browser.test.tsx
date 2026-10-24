@@ -124,7 +124,7 @@ describe("the right panel's strip", () => {
     const calls = await mount(state([surfaceOf("browser", "a")], "browser:a"));
     await page.getByRole("button", { name: "Add panel surface" }).click();
     await expect
-      .element(page.getByRole("menuitem", { name: "Diff" }))
+      .element(page.getByRole("menuitem", { name: /^Diff/ }))
       .toHaveAttribute("aria-disabled", "true");
     await userEvent.keyboard("b");
     expect(calls).toEqual(["add browser"]);
