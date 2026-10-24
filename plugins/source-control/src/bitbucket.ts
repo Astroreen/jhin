@@ -273,12 +273,12 @@ export function bitbucketForge(
       ).pr;
     },
     at: async (url) => {
-      const { repository = site.repository, number } = numberedReference(url, forge);
+      const { repository = site.repository, number } = numberedReference(url, forge, 2);
       return (await full(repository, await call(`${repo(repository)}/pullrequests/${number}`))).pr;
     },
     // T3's normalizeChangeRequestId: a number or a pull request URL, no branch (D1443).
     resolve: async (reference) => {
-      const { repository = site.repository, number } = numberedReference(reference, forge);
+      const { repository = site.repository, number } = numberedReference(reference, forge, 2);
       const raw = await call(`${repo(repository)}/pullrequests/${number}`);
       const found = await full(repository, raw);
       const source = raw["source"] as { repository?: { full_name?: unknown } } | undefined;
@@ -324,7 +324,7 @@ export function bitbucketForge(
     // What a watch reads (D1442): the pull request, its statuses, conflicts, comments and the
     // node's account.
     watch: async (url) => {
-      const { repository = site.repository, number } = numberedReference(url, forge);
+      const { repository = site.repository, number } = numberedReference(url, forge, 2);
       const path = `${repo(repository)}/pullrequests/${number}`;
       const [raw, statuses, conflicts, comments, viewer] = await Promise.all([
         call(path),

@@ -209,6 +209,16 @@ describe("jhin.source-control: Bitbucket listed, watched and resolved (D1441–D
     await expect(
       sc.client.call("git.pr.resolve", { projectId, reference: "feature" }),
     ).rejects.toThrow("Specify a pull request number or Bitbucket pull request URL.");
+    // A pasted URL whose repository would reach elsewhere in the API is refused.
+    for (const reference of [
+      "https://bitbucket.org/%2e%2e/user%3f/pull-requests/1",
+      "https://bitbucket.org/acme%2Fdemo/x/pull-requests/1",
+      "https://bitbucket.org/acme/%E0%A4/pull-requests/1",
+    ]) {
+      await expect(
+        sc.client.call("git.pr.resolve", { projectId, reference }),
+      ).rejects.toMatchObject({ code: "PULL_REQUEST_FAILED" });
+    }
   });
 });
 
@@ -229,6 +239,7 @@ describe("jhin.source-control: Forgejo listed, watched and resolved through tea 
         })
       ).pullRequests.map((pr) => pr.number);
     expect(await search("toolbar")).toEqual([3]);
+    expect(await search("toolbar port")).toEqual([3]);
     expect(await search("#2")).toEqual([2]);
   });
 

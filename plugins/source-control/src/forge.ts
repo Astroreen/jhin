@@ -136,11 +136,24 @@ export function forgeName(kind: ForgeKind, host: string): string {
 export function numberedReference(
   reference: string,
   forge: { readonly name: string; readonly terminology: ChangeRequestTerminology },
+  /** How many path segments the forge's repository has (`owner/repo`: 2), when fixed. */
+  segments?: number,
 ): { readonly number: number; readonly host?: string; readonly repository?: string } {
   const trimmed = reference.trim().replace(/^#/, "");
   if (/^\d+$/.test(trimmed) && Number(trimmed) > 0) return { number: Number(trimmed) };
   const parsed = parsePullRequestUrl(trimmed);
-  if (parsed !== undefined) return parsed;
+  if (parsed !== undefined) {
+    // The repository goes into an API path with the node's token: decoded `%2F`, `..` or a
+    // query would reach elsewhere.
+    const parts = parsed.repository.split("/");
+    if (
+      (segments !== undefined && parts.length !== segments) ||
+      parts.some((part) => part === "" || part === "." || part === ".." || /[?#%\\]/.test(part))
+    ) {
+      throw new ForgeUnavailable("failed", `${trimmed} names no ${forge.name} repository.`);
+    }
+    return parsed;
+  }
   const singular = forge.terminology.singular;
   throw new ForgeUnavailable(
     "failed",
