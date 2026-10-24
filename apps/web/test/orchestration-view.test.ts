@@ -61,6 +61,65 @@ describe("a thread's delegated work (D864)", () => {
     ).toBe(EMPTY);
   });
 
+  it("folds a running workflow's patches and drops pruned records (D1503, D1504)", () => {
+    const workflow = {
+      workflowId: "w",
+      parentThreadId: "p",
+      name: "w",
+      description: "w",
+      phases: [],
+      status: "running" as const,
+      agents: [{ index: 0, status: "running" as const }],
+      createdAt: "2026-10-21T10:00:00.000Z",
+      updatedAt: "2026-10-21T10:00:00.000Z",
+    };
+    const started = applyOrchestrationEvent(EMPTY, "p", {
+      type: OrchestrationEvents.workflowUpdated,
+      payload: workflow,
+    });
+    const patched = applyOrchestrationEvent(started, "p", {
+      type: OrchestrationEvents.workflowPatched,
+      payload: {
+        workflowId: "w",
+        parentThreadId: "p",
+        updatedAt: "2026-10-21T10:00:01.000Z",
+        agents: [
+          { index: 0, status: "completed" },
+          { index: 1, status: "running" },
+        ],
+      },
+    });
+    expect(patched.workflows.get("w")?.agents.map((agent) => agent.status)).toEqual([
+      "completed",
+      "running",
+    ]);
+    // A patch of a run never read is nothing to fold into.
+    expect(
+      applyOrchestrationEvent(EMPTY, "p", {
+        type: OrchestrationEvents.workflowPatched,
+        payload: { workflowId: "w", parentThreadId: "p", updatedAt: "x" },
+      }),
+    ).toBe(EMPTY);
+    const withTask = applyOrchestrationEvent(
+      patched,
+      "p",
+      updated(task("completed", "2026-10-21T10:00:02.000Z")),
+    );
+    const pruned = applyOrchestrationEvent(
+      applyOrchestrationEvent(withTask, "p", {
+        type: OrchestrationEvents.taskRemoved,
+        payload: { taskId: "t", parentThreadId: "p" },
+      }),
+      "p",
+      {
+        type: OrchestrationEvents.workflowRemoved,
+        payload: { workflowId: "w", parentThreadId: "p" },
+      },
+    );
+    expect(pruned.tasks.size).toBe(0);
+    expect(pruned.workflows.size).toBe(0);
+  });
+
   it("counts a workflow's agents as T3's headline does", () => {
     expect(workflowAgentsLabel([])).toBeNull();
     expect(

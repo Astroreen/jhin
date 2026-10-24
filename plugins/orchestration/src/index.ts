@@ -13,9 +13,11 @@ import * as Path from "node:path";
 import {
   AGENT_REGISTRY_CAPABILITY,
   DEFAULT_RUNTIME_MODE,
+  applyWorkflowPatch,
   capRuntimeMode,
   ceilingOf,
   INTERACTION_MODES,
+  MAX_WORKFLOW_LOGS,
   ORCHESTRATION_STREAM,
   OrchestrationEvents,
   OrchestrationThreadEvents,
@@ -25,7 +27,9 @@ import {
   threadStream,
   type InteractionMode,
   type RuntimeMode,
+  type WorkflowPatch,
 } from "@jhin/agent-api";
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import {
   definePlugin,
   describePermissions,
@@ -61,12 +65,16 @@ const MAX_ITEMS_PER_CALL = 4096;
 export const WORKFLOWS_RUN_PERMISSION = "workflows.run";
 /** How long a workflow body may run before its first `await` (D374). */
 const SCRIPT_SYNC_TIMEOUT_MS = 1000;
-const MAX_WORKFLOW_LOGS = 200;
 /** How often a workflow agent's answer is sent back for not matching its schema. */
 const SCHEMA_RETRIES = 2;
 /** A saved workflow's name: the file `.jhin/workflows/<name>.js` of the project (D875). */
 const SAVED_NAME = /^[\w][\w.-]*$/;
 const SAVED_DIR = Path.join(".jhin", "workflows");
+/** The node's own saved workflows, under its home (D1505). */
+const NODE_SAVED_DIR = "workflows";
+/** How long a finished record stays (D1503). */
+const DEFAULT_RETENTION_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const Config = z
   .object({
@@ -80,6 +88,17 @@ const Config = z
         description:
           "How many agents of one workflow run at the same time; min(16, CPUs − 2) when unset.",
         examples: [4],
+      }),
+    retentionDays: z
+      .number()
+      .int()
+      .min(0)
+      .default(DEFAULT_RETENTION_DAYS)
+      .meta({
+        title: "Keep finished work for",
+        description:
+          "Days a finished task or workflow keeps its record before it is pruned; 0 keeps them for good.",
+        examples: [30],
       }),
   })
   .meta({
@@ -241,6 +260,18 @@ const Workflow = z.object({
   endedAt: z.string().optional(),
 });
 type Workflow = z.infer<typeof Workflow>;
+
+/** A saved workflow as `workflows.saved` lists it (D1505). */
+const SavedWorkflow = z.object({
+  name: z.string(),
+  source: z.enum(["project", "node"]),
+  file: z.string(),
+  description: z.string().optional(),
+  whenToUse: z.string().optional(),
+  phases: z.array(z.object({ title: z.string(), detail: z.string().optional() })).optional(),
+  /** Why its meta could not be read. */
+  error: z.string().optional(),
+});
 
 const TaskView = z.object({
   taskId: z.string(),
@@ -410,6 +441,71 @@ function jsonOf(text: string): unknown {
 
 const now = () => new Date().toISOString();
 
+/** Whether two JSON values are the same, whatever the order of their keys. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keysA = Object.keys(a).filter((key) => (a as Record<string, unknown>)[key] !== undefined);
+  const keysB = Object.keys(b).filter((key) => (b as Record<string, unknown>)[key] !== undefined);
+  return (
+    keysA.length === keysB.length &&
+    keysA.every((key) =>
+      sameJson((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+    )
+  );
+}
+
+/** Fields a patch never carries in `set`: they have their own parts, or name the record. */
+const PATCH_OWN = new Set(["agents", "logs", "updatedAt", "workflowId", "parentThreadId"]);
+
+/**
+ * What changed from `before` to `after` as a patch (D1504), or `undefined` when the
+ * whole record goes on the stream: a run that started, ended or resumed, a delivery
+ * that changed, or a change the patch could not carry exactly.
+ */
+export function workflowPatch(before: Workflow, after: Workflow): WorkflowPatch | undefined {
+  if (
+    before.status !== after.status ||
+    before.delivery !== after.delivery ||
+    before.resumedFrom !== after.resumedFrom ||
+    after.agents.length < before.agents.length
+  ) {
+    return undefined;
+  }
+  const set: Record<string, unknown> = {};
+  const unset: string[] = [];
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const key of keys) {
+    if (PATCH_OWN.has(key)) continue;
+    const was = (before as Record<string, unknown>)[key];
+    const is = (after as Record<string, unknown>)[key];
+    if (is === undefined) {
+      if (was !== undefined) unset.push(key);
+    } else if (!sameJson(was, is)) set[key] = is;
+  }
+  const agents = after.agents.filter((agent, at) => !sameJson(before.agents[at], agent));
+  // The lines appended: the longest end of the old log that starts the new one.
+  let kept = Math.min(before.logs.length, after.logs.length);
+  while (
+    kept > 0 &&
+    !sameJson(before.logs.slice(before.logs.length - kept), after.logs.slice(0, kept))
+  ) {
+    kept--;
+  }
+  const logs = after.logs.slice(kept);
+  const patch: WorkflowPatch = {
+    workflowId: after.workflowId,
+    parentThreadId: after.parentThreadId,
+    updatedAt: after.updatedAt,
+    ...(Object.keys(set).length === 0 ? {} : { set }),
+    ...(unset.length === 0 ? {} : { unset }),
+    ...(agents.length === 0 ? {} : { agents }),
+    ...(logs.length === 0 ? {} : { logs }),
+  };
+  return sameJson(applyWorkflowPatch(before, patch), after) ? patch : undefined;
+}
+
 /** Output tokens of a thread's turns: the last usage each turn reported (D873). */
 export function outputTokens(events: readonly StoredEvent[]): number {
   const byTurn = new Map<string, number>();
@@ -443,6 +539,7 @@ export default definePlugin({
     context.services.get(AGENT_REGISTRY_CAPABILITY);
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
+    const paths = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY);
     const run = <T>(name: string, input: unknown, invocation?: Invocation) =>
       context.commands.execute(
         name,
@@ -464,14 +561,24 @@ export default definePlugin({
     const seenThreads = new Map<string, ThreadRecord>();
     let disposed = false;
 
-    /** One write after another per record: the store and the stream keep its order. */
-    function persist(key: string, value: Json, type: string): Promise<void> {
+    /**
+     * One write after another per record: the store and the stream keep its order.
+     * The stream gets `payload` (a patch, D1504), the store the whole record; an
+     * `undefined` value deletes the key (D1503).
+     */
+    function persist(
+      key: string,
+      value: Json | undefined,
+      type: string,
+      payload: Json | undefined = value,
+    ): Promise<void> {
       const previous = writes.get(key) ?? Promise.resolve();
       const next = previous
         .catch(() => undefined)
         .then(async () => {
-          await kv.set(NAMESPACE, key, value);
-          await log.append(ORCHESTRATION_STREAM, [{ type, payload: value }]);
+          if (value === undefined) await kv.delete(NAMESPACE, key);
+          else await kv.set(NAMESPACE, key, value);
+          await log.append(ORCHESTRATION_STREAM, [{ type, payload: payload ?? null }]);
         });
       writes.set(key, next);
       void next.finally(() => {
@@ -508,11 +615,16 @@ export default definePlugin({
 
     async function saveWorkflow(workflow: Workflow): Promise<Workflow> {
       const saved = Workflow.parse({ ...workflow, updatedAt: now() });
+      const previous = workflows.get(saved.workflowId);
       workflows.set(saved.workflowId, saved);
+      const patch = previous === undefined ? undefined : workflowPatch(previous, saved);
       await persist(
         `workflow/${saved.workflowId}`,
         saved as unknown as Json,
-        OrchestrationEvents.workflowUpdated,
+        patch === undefined
+          ? OrchestrationEvents.workflowUpdated
+          : OrchestrationEvents.workflowPatched,
+        (patch ?? saved) as unknown as Json,
       );
       return saved;
     }
@@ -1703,33 +1815,86 @@ export default definePlugin({
       return projects.find((project) => project.id === thread.projectId)?.path;
     }
 
+    /** The node's own saved workflows, `<home>/workflows` (D1505); none without `host.paths`. */
+    const nodeWorkflows = paths === undefined ? undefined : Path.join(paths.home, NODE_SAVED_DIR);
+
+    /** Where a saved workflow's file may be, the project's first (D875, D1505). */
+    function savedFiles(dir: string | undefined, name: string): string[] {
+      if (!SAVED_NAME.test(name)) return [];
+      return [
+        ...(dir === undefined ? [] : [Path.join(dir, SAVED_DIR, `${name}.js`)]),
+        ...(nodeWorkflows === undefined ? [] : [Path.join(nodeWorkflows, `${name}.js`)]),
+      ];
+    }
+
     /** A saved workflow's script by name, or a script file (relative to `dir`) (D874, D875). */
     async function loadScript(
       dir: string | undefined,
       ref: string | { readonly scriptPath: string },
     ): Promise<string> {
-      const file =
+      const files =
         typeof ref === "string"
-          ? SAVED_NAME.test(ref) && dir !== undefined
-            ? Path.join(dir, SAVED_DIR, `${ref}.js`)
-            : undefined
+          ? savedFiles(dir, ref)
           : Path.isAbsolute(ref.scriptPath)
-            ? ref.scriptPath
+            ? [ref.scriptPath]
             : dir === undefined
-              ? undefined
-              : Path.join(dir, ref.scriptPath);
+              ? []
+              : [Path.join(dir, ref.scriptPath)];
       const what = typeof ref === "string" ? `saved workflow ${ref}` : `script ${ref.scriptPath}`;
-      if (file === undefined) {
+      if (files.length === 0) {
         throw new OrchestrationError(
           "WORKFLOW_NOT_FOUND",
           `No ${what}: the thread has no project folder.`,
         );
       }
-      try {
-        return await Fs.readFile(file, "utf8");
-      } catch {
-        throw new OrchestrationError("WORKFLOW_NOT_FOUND", `No ${what} (${file}).`, { path: file });
+      for (const file of files) {
+        try {
+          return await Fs.readFile(file, "utf8");
+        } catch {
+          // The next place, if any.
+        }
       }
+      throw new OrchestrationError("WORKFLOW_NOT_FOUND", `No ${what} (${files.join(", ")}).`, {
+        path: files[0],
+      });
+    }
+
+    /** The saved workflows a thread finds, a project's hiding the node's of the same name (D1505). */
+    async function savedWorkflows(dir: string | undefined) {
+      const found = new Map<string, z.input<typeof SavedWorkflow>>();
+      const places: [string | undefined, "project" | "node"][] = [
+        [dir === undefined ? undefined : Path.join(dir, SAVED_DIR), "project"],
+        [nodeWorkflows, "node"],
+      ];
+      for (const [folder, source] of places) {
+        if (folder === undefined) continue;
+        const names = await Fs.readdir(folder).catch(() => [] as string[]);
+        for (const entry of names.toSorted()) {
+          if (!entry.endsWith(".js")) continue;
+          const name = entry.slice(0, -".js".length);
+          if (!SAVED_NAME.test(name) || found.has(name)) continue;
+          const file = Path.join(folder, entry);
+          try {
+            const { meta } = parseWorkflow(await Fs.readFile(file, "utf8"));
+            found.set(name, {
+              name,
+              source,
+              file,
+              description: meta.description,
+              ...(meta.whenToUse === undefined ? {} : { whenToUse: meta.whenToUse }),
+              phases: [...(meta.phases ?? [])],
+            });
+          } catch (error) {
+            found.set(name, {
+              name,
+              source,
+              file,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
+      return [...found.values()].toSorted((a, b) => a.name.localeCompare(b.name));
     }
 
     /** What a run carries besides its record: its journal, what it resumes, its tokens. */
@@ -2242,6 +2407,23 @@ export default definePlugin({
     });
 
     context.commands.register({
+      name: "workflows.saved",
+      description:
+        "Saved workflows the calling thread can run by name (workflows_run with name): its project's .jhin/workflows first, then the node's own. Each comes with its meta (description, whenToUse, phases), read without running it, or the error that kept it from being read.",
+      input: z.object({ threadId: z.string().min(1).optional() }),
+      output: z.object({ workflows: z.array(SavedWorkflow) }),
+      permissions: ["threads.read"],
+      handler: async ({ threadId: named }, invocation) => {
+        const threadId = callerThread(named, invocation);
+        const dir =
+          threadId === undefined
+            ? undefined
+            : await workingDirectory((await getThread(threadId, invocation)).thread);
+        return { workflows: await savedWorkflows(dir) };
+      },
+    });
+
+    context.commands.register({
       name: "workflows.list",
       description:
         "Workflows of the calling thread (or every workflow of the node without one), newest first",
@@ -2280,6 +2462,60 @@ export default definePlugin({
         };
       },
     });
+
+    // --- Pruning (D1503) -----------------------------------------------------------------------
+
+    /** Deletes the records that ended more than `retentionDays` ago and wait for no delivery. */
+    async function prune(): Promise<void> {
+      const days = (context.config.get(CONFIG_SECTION) as { retentionDays?: number } | undefined)
+        ?.retentionDays;
+      const keep = days ?? DEFAULT_RETENTION_DAYS;
+      if (keep === 0) return;
+      const cutoff = Date.now() - keep * DAY_MS;
+      const old = (entry: { endedAt?: string | undefined; delivery: string }) =>
+        entry.endedAt !== undefined &&
+        Date.parse(entry.endedAt) < cutoff &&
+        entry.delivery !== "pending";
+      // A map's iteration survives deleting the entry it is on.
+      for (const workflow of workflows.values()) {
+        if (disposed || !old(workflow)) continue;
+        // Its agents go with it, never before it.
+        for (const task of tasks.values()) {
+          if (task.workflowId === workflow.workflowId) await removeTask(task);
+        }
+        for (const entry of await kv.list(NAMESPACE, {
+          prefix: `journal/${workflow.workflowId}/`,
+        })) {
+          await kv.delete(NAMESPACE, entry.key);
+        }
+        workflows.delete(workflow.workflowId);
+        await persist(
+          `workflow/${workflow.workflowId}`,
+          undefined,
+          OrchestrationEvents.workflowRemoved,
+          { workflowId: workflow.workflowId, parentThreadId: workflow.parentThreadId },
+        );
+      }
+      for (const task of tasks.values()) {
+        if (disposed || !old(task)) continue;
+        if (task.workflowId !== undefined && workflows.has(task.workflowId)) continue;
+        await removeTask(task);
+      }
+    }
+
+    async function removeTask(task: Task): Promise<void> {
+      tasks.delete(task.taskId);
+      for (const [key, value] of requests) if (value === task.taskId) requests.delete(key);
+      await persist(`task/${task.taskId}`, undefined, OrchestrationEvents.taskRemoved, {
+        taskId: task.taskId,
+        parentThreadId: task.parentThreadId,
+      });
+    }
+
+    const pruneNow = () =>
+      prune().catch((error: unknown) =>
+        context.log.warn("could not prune old delegated work", { error: String(error) }),
+      );
 
     // --- Load, reconcile, stop ----------------------------------------------------------------
 
@@ -2349,10 +2585,15 @@ export default definePlugin({
       for (const workflow of workflows.values())
         if (workflow.delivery === "pending") parents.add(workflow.parentThreadId);
       for (const parent of parents) await deliver(parent);
+      await pruneNow();
     })();
+    // Then once a day (D1503).
+    const pruning = setInterval(() => void pruneNow(), DAY_MS);
+    pruning.unref?.();
 
     context.onDeactivate(async () => {
       disposed = true;
+      clearInterval(pruning);
       for (const controller of running.values()) controller.abort();
       await Promise.allSettled(writes.values());
     });

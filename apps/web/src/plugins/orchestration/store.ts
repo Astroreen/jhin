@@ -1,4 +1,9 @@
-import { ORCHESTRATION_STREAM, OrchestrationEvents } from "@jhin/agent-api";
+import {
+  ORCHESTRATION_STREAM,
+  OrchestrationEvents,
+  applyWorkflowPatch,
+  type WorkflowPatch,
+} from "@jhin/agent-api";
 import {
   targetKey,
   type Connections,
@@ -90,6 +95,28 @@ export function applyOrchestrationEvent(
     const workflow = record as WorkflowRecord;
     const workflows = put(view.workflows, workflow.workflowId, workflow);
     return workflows === view.workflows ? view : { ...view, workflows };
+  }
+  if (event.type === OrchestrationEvents.workflowPatched) {
+    // A patch of a run this view has not read yet is nothing to fold into (D1504).
+    const patch = record as WorkflowPatch;
+    const known = view.workflows.get(patch.workflowId);
+    if (known === undefined) return view;
+    const workflows = put(view.workflows, patch.workflowId, applyWorkflowPatch(known, patch));
+    return workflows === view.workflows ? view : { ...view, workflows };
+  }
+  if (event.type === OrchestrationEvents.taskRemoved) {
+    const { taskId } = record as { taskId: string };
+    if (!view.tasks.has(taskId)) return view;
+    const tasks = new Map(view.tasks);
+    tasks.delete(taskId);
+    return { ...view, tasks };
+  }
+  if (event.type === OrchestrationEvents.workflowRemoved) {
+    const { workflowId } = record as { workflowId: string };
+    if (!view.workflows.has(workflowId)) return view;
+    const workflows = new Map(view.workflows);
+    workflows.delete(workflowId);
+    return { ...view, workflows };
   }
   return view;
 }

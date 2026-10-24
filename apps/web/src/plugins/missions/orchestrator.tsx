@@ -1,6 +1,12 @@
 // The orchestrator beside the mission view (docs/plans/agents.md, C2: D1086–D1090),
 // a chunk of its own (D440): loaded once a mission shows.
-import { ORCHESTRATION_STREAM, OrchestrationEvents, type AgentRecord } from "@jhin/agent-api";
+import {
+  ORCHESTRATION_STREAM,
+  OrchestrationEvents,
+  applyWorkflowPatch,
+  type AgentRecord,
+  type WorkflowPatch,
+} from "@jhin/agent-api";
 import type { Connections, ThreadsCatalog } from "@jhin/client-api";
 import { missionProgress } from "@jhin/missions-api";
 import type { Disposable } from "@jhin/sdk";
@@ -93,7 +99,17 @@ function useMissionRun(connections: Connections, connection: string, missionId: 
           ORCHESTRATION_STREAM,
           { after: answer.head, onError: failed },
           (event) => {
-            if (stopped || event.type !== OrchestrationEvents.workflowUpdated) return;
+            if (stopped) return;
+            if (event.type === OrchestrationEvents.workflowPatched) {
+              // What changed in a running run (D1504): folded into the one shown.
+              const patch = event.payload as unknown as WorkflowPatch;
+              if (run !== null && patch.workflowId === run.workflowId) {
+                run = runOf(applyWorkflowPatch(run, patch));
+                set({ status: "ready", run });
+              }
+              return;
+            }
+            if (event.type !== OrchestrationEvents.workflowUpdated) return;
             const record = event.payload as unknown as OrchestratorRun & { name?: string };
             if (record.workflowId === run?.workflowId) {
               run = runOf(record);

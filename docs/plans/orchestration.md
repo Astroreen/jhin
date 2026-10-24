@@ -279,7 +279,8 @@ section lands rather than a second path.
   workflow's journal (D872), its retry key (`clientRequestId`) and its
   place in memory. A workflow's agents go with their workflow, never
   before it. Each deletion appends `orchestration.task.removed
-  { taskId }` or `orchestration.workflow.removed { workflowId }` to the
+  { taskId, parentThreadId }` or `orchestration.workflow.removed
+  { workflowId, parentThreadId }` to the
   `orchestration` stream, so a client following it drops the record.
   The plugin prunes when it activates and then once a day (one timer).
   The marks in the parent's stream stay; their rows say "Status
@@ -288,12 +289,13 @@ section lands rather than a second path.
   `orchestration.workflow.updated` (the whole record) is appended when a
   run starts, ends, is stopped or resumed, and when its delivery changes;
   every other change appends `orchestration.workflow.patched
-  { workflowId, updatedAt, set?, unset?, agents?, logs? }`: `set` the
+  { workflowId, parentThreadId, updatedAt, set?, unset?, agents?, logs? }`: `set` the
   changed top-level fields other than `agents` and `logs`, `unset` the
   names of fields that went away, `agents` the agents that are new or
   changed (by `index`), `logs` the lines appended (the record keeps the
   last 200). `@jhin/agent-api` exports `applyWorkflowPatch(record,
-  patch)`, the one fold the plugin and its clients share. A client that
+  patch)`, the one fold the plugin and its clients share; a change the
+  fold would not reproduce exactly goes out as the whole record. A client that
   starts reading mid-run reads the records first (`orchestration.thread`,
   `workflows.status`) and folds the patches after the stream's head.
 - **D1505. The node's saved workflows.** Besides a project's
@@ -305,8 +307,9 @@ section lands rather than a second path.
   lists both: per workflow its `name`, the `source` (`project` or
   `node`), the file and its meta (`description`, `whenToUse`, `phases`),
   read as D372 reads it without running the body; a file whose meta does
-  not parse is listed with its `error`. Names are `[A-Za-z0-9_-]+`, so a
-  name never leaves its folder.
+  not parse is listed with its `error`. Names are D875's (a word
+  character first, then word characters, `.` and `-`), so a name never
+  leaves its folder.
 - **D1506. `target.node`: a child on another node of the mesh.**
   `tasks.delegate`'s `target` takes `node` (a member's node id) and
   `projectId` (a project of that node; default its scratch project,
@@ -358,11 +361,6 @@ section lands rather than a second path.
   (`t3-parity.md` D805).
 - Delegating to an agent on another mesh node (`target.node`): today a task
   runs on the parent's node.
-- Pruning old task and workflow records: they stay in `storage.kv` (and in
-  memory) for good; `tasks.list` and `workflows.list` without a thread list
-  them all.
-- Smaller workflow events: every change appends the whole record (agents,
-  logs, result) to the `orchestration` stream; deltas would keep it small.
 - A caller's cancel that crosses a mesh call or does not close its
   connection (D1501): the signal aborts when a connection or an HTTP
   request ends; a `mesh.call` abandoned at its origin still runs on the
@@ -743,8 +741,6 @@ child input banner of `ChatView.tsx`.
 
 ### Deferred
 
-- Saved workflows of the node (outside a project) and a command listing
-  them; today they are read from the project only.
 - A thread whose Lineage section is hidden (no rows) still counts as having
   details, so the panel does not say "No details for this thread" then.
 - A delegated task's progress in its hover card: a task carries none (a
