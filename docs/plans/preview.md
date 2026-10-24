@@ -977,6 +977,29 @@ probe of `ServerBrowser.ts`.
   and the file is offered. A download Playwright reports but cannot save is
   logged on the node and not offered.
 
+### A device as a surface of the right panel (W40)
+
+W40 of `t3-roadmap.md` (round 5) takes D408's leftover with a number from its
+range, at T3 Code `eb7b35ac`: `rightPanelStore.ts` (`openDevice`, the
+`device` surface and `dismissedDeviceSurfaceIds`),
+`components/RightPanelTabs.tsx` (the device tab's icon) and
+`components/device/DevicePanel.tsx` in its embedded mode.
+
+- **D1427. Each open device is a surface of the right panel, beside browser
+  tabs,** as in T3. The `devices` surface (T3's `device`, "Device", M in
+  "Add panel surface") lists the node's devices; opening one there turns it
+  into that device's surface `devices:<hostId>:<deviceId>`, as T3's
+  `openDevice` replaces its placeholder, and an already open device's
+  surface shows instead. A device's tab is its name with T3's platform icon
+  (Apple, Android); its body is D408's screen with "Power off device" and
+  "Close device panel". A device an agent opens for the thread adds and
+  shows its surface (`jhin.device.reveal`), unless the user closed that
+  device's surface before: T3's dismissed devices, kept per thread on this
+  device, so an agent cannot bring back what the user put away; opening it
+  by hand again forgets that. Closing a device's surface leaves the device
+  running, as T3's does. T3's renaming of a device's tab and its tooltip
+  (host · version) wait (Deferred).
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -1097,9 +1120,8 @@ probe of `ServerBrowser.ts`.
   - T3's 3D phone models, the iPhone Duo's panels and hinge, Android fold
     controls and the keyboard accessory: only the flat view is ported.
   - Physical iOS devices (agent-device's XCTest runner on a device).
-  - Each device as a surface of its own: since `t3-parity.md` D1424 the
-    devices are one surface `devices` beside browser tabs (the list, or the
-    thread's latest device), where T3 has a surface per device.
+  - A device tab's renaming ("Rename", a double click) and its tooltip with
+    the host and the version (D1427).
   - Hub tickets that follow a caller's grants as they change: the node keeps
     no token to verify again, so a ticket keeps its grants for its five
     minutes, as T3's does.
