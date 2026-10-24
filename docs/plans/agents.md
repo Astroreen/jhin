@@ -2913,3 +2913,8 @@ Each workstream lists its PRs here as they merge.
 - L3 #267, #269, #270, #272: the crew's four missions, 27 Deferred items
   (D1271–D1278, D1381–D1399).
 - L3: the L3 run note, the lore stories "workaround" and "toll road".
+- M2 #297: a slice handed to an assignee of any node keeps its thread link
+  there, every missions command takes the mission's `node` (`onMissionNode`),
+  refocus of a thread of another node on its own node (`refocus.follow`),
+  `missions.stop` on every node, and a lead on another node running the
+  orchestrator (`missions.orchestration.record`) (D1541–D1545).
