@@ -1546,7 +1546,10 @@ and in `apps/web` `components/PullRequestThreadDialog.tsx`,
   `ready`, `close` and `reopen` (GitHub, GitLab and Azure DevOps all four;
   Forgejo merge, close and reopen; Bitbucket merge and close).
 - **D1451. `git.pr.action`** (`git.write`; `{ projectId, url, action,
-  mergeMethod? }` → `{ pullRequest }`), T3's `runAction` for those four:
+  mergeMethod? }` → `{ pullRequest }`), T3's `runAction` for those four. It
+  and `git.pr.detail` take only the project's own pull requests (of any of
+  its remotes) and the ones its threads link, and a merge method the
+  repository does not allow is refused before the forge is asked:
   GitHub through `gh pr merge --merge|--squash|--rebase`, `gh pr ready`,
   `gh pr close` and `gh pr reopen` (T3 sends the same GraphQL mutations);
   GitLab `glab mr merge --yes --auto-merge=false [--squash|--rebase]`,
@@ -1887,7 +1890,8 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   node cannot write (T3's `canWriteSourceControl`).
 - Watching (D274; review thread comments since D1447, required checks off
   GitHub as T3 has them, none, D1448): a GitHub review thread past its first
-  100 comments and threads past the first 100 (T3 pages them), read
+  100 comments and threads past the first 100 (T3 pages them), a failed read
+  of the review threads going unreported (the watch reads the rest), read
   fingerprints, rate limit pauses;
   T3's hover list of a waiting thread's background tasks ("Waiting" for a
   thread on a mesh member is D1289); a member followed for D1289 stays

@@ -129,6 +129,45 @@ describe("git.pr.action (D1451)", () => {
     expect(gh.calls()).toContain(`pr ready ${url}`);
   });
 
+  it("acts only on the project's own pull requests, with a method its repository allows", async () => {
+    const gh = fakeGh();
+    gh.view(7, ghPullRequest());
+    gh.repo({ mergeCommitAllowed: false, squashMergeAllowed: true, rebaseMergeAllowed: false });
+    const dir = repository();
+    git(dir, "remote", "add", "origin", "https://github.com/acme/demo.git");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    await expect(
+      sc.client.call("git.pr.action", {
+        projectId,
+        url: "https://github.com/other/repo/pull/7",
+        action: "close",
+      }),
+    ).rejects.toThrow(
+      "https://github.com/other/repo/pull/7 is not a pull request of this project's repository or of its threads.",
+    );
+    await expect(
+      sc.client.call("git.pr.action", { projectId, url, action: "merge", mergeMethod: "rebase" }),
+    ).rejects.toThrow(
+      "This repository does not allow the rebase merge method (it allows: squash).",
+    );
+    expect(gh.calls().some((call) => call.startsWith("pr merge"))).toBe(false);
+
+    // Another repository's pull request a thread of the project links is the project's too.
+    const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    gh.view(9, ghPullRequest({ number: 9, url: "https://github.com/other/repo/pull/9" }));
+    await sc.client.call("git.pr.link", {
+      threadId: thread.id,
+      url: "https://github.com/other/repo/pull/9",
+    });
+    await sc.client.call("git.pr.action", {
+      projectId,
+      url: "https://github.com/other/repo/pull/9",
+      action: "close",
+    });
+    expect(gh.calls()).toContain("pr close https://github.com/other/repo/pull/9");
+  });
+
   it("refuses an action the forge lacks, with T3's words", async () => {
     const sc = await node({ bitbucketAccessToken: "t" });
     const projectId = await sc.project(repositoryAt("git@bitbucket.org:acme/demo.git"));

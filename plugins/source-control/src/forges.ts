@@ -192,14 +192,14 @@ function gitlabMergeability(raw: Record<string, unknown>): WatchRead["mergeabili
 }
 
 export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Viewers): Forge {
-  const glabRun = (args: readonly string[]) =>
+  const glabRun = (args: readonly string[], timeoutMs?: number) =>
     runCli(glabPath(), args, {
       cwd: site.cwd,
       env: { GLAB_NO_PROMPT: "1", NO_COLOR: "1", GLAB_CHECK_UPDATE: "false" },
       missing: "GitLab CLI (glab) is not installed on this node",
       signedOut: "GitLab CLI is not signed in: run `glab auth login` on this node",
       signedOutPattern: GITLAB_SIGNED_OUT,
-      timeoutMs: 60_000,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
     });
   const glab = async (args: readonly string[]) => json(await glabRun(args), "glab");
   const project = (repository: string) => `projects/${encodeURIComponent(repository)}`;
@@ -422,6 +422,8 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Vi
           : action === "ready"
             ? ["mr", "update", String(number), ...where, "--ready"]
             : ["mr", action, String(number), ...where],
+        // A merge waits for GitLab longer than a read.
+        60_000,
       );
     },
   };

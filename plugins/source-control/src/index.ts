@@ -3162,7 +3162,32 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       );
     }
     const repo = await repoOf(projectId);
-    const { root } = await gitOf(repo);
+    const { git, root } = await gitOf(repo);
+    const key = pullRequestKey(parsed);
+    // Only the project's own pull requests (of any of its remotes) and the ones its threads
+    // link: a caller allowed this project acts on nothing else through the node's account.
+    const remotes = (await git(["remote"])).stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+    let ours = false;
+    for (const remote of remotes) {
+      const remoteUrl = await git(["config", "--get", `remote.${remote}.url`], { ok: [0, 1] });
+      if (remoteUrl.code === 0 && isPullRequestOf(remoteUrl.stdout, url)) ours = true;
+    }
+    if (!ours) {
+      for (const entry of await links.all()) {
+        if (!entry.pullRequests.some((link) => link.key === key)) continue;
+        if ((await projectRepoOfThread(entry.threadId))?.project.id === projectId) ours = true;
+      }
+    }
+    if (!ours) {
+      throw new SourceControlError(
+        "PULL_REQUEST_INVALID",
+        `${url} is not a pull request of this project's repository or of its threads.`,
+        { url },
+      );
+    }
     const kind = kindOfHost(parsed.host);
     const forge = kind === undefined ? undefined : makeForge(kind, root, undefined);
     if (forge === undefined) {
@@ -3170,7 +3195,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         url,
       });
     }
-    return { forge, key: pullRequestKey(parsed) };
+    return { forge, key };
   };
   /** A forge's failure as the commands report it: unavailable, or failed with its words. */
   const forgeFailure = (error: unknown, fields: Record<string, unknown>) => {
@@ -3239,6 +3264,17 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           { url },
         );
       }
+      if (action === "merge" && mergeMethod !== undefined) {
+        // A method the repository refuses is said so, not left to the forge's own error.
+        const allowed = await forge.mergeMethods(url).catch(() => undefined);
+        if (allowed !== undefined && !allowed.includes(mergeMethod)) {
+          throw new SourceControlError(
+            "ACTION_UNAVAILABLE",
+            `This repository does not allow the ${mergeMethod} merge method (it allows: ${allowed.join(", ") || "none"}).`,
+            { url },
+          );
+        }
+      }
       let pullRequest: PullRequest;
       try {
         await forge.act(url, action, mergeMethod ?? "merge");
@@ -3246,9 +3282,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       } catch (error) {
         throw forgeFailure(error, { url, action });
       }
+      // Done on the forge: a link that cannot be updated now is read again by the next sync.
       const syncedAt = new Date().toISOString();
-      for (const threadId of await links.threads()) {
-        await links.modify(threadId, key, (link) => ({ ...link, snapshot: pullRequest, syncedAt }));
+      for (const entry of await links.all()) {
+        if (!entry.pullRequests.some((link) => link.key === key)) continue;
+        await links
+          .modify(entry.threadId, key, (link) => ({ ...link, snapshot: pullRequest, syncedAt }))
+          .catch((error: unknown) =>
+            context.log.warn("updating a link after a pull request action failed", {
+              threadId: entry.threadId,
+              error: String(error),
+            }),
+          );
       }
       return { pullRequest };
     },
