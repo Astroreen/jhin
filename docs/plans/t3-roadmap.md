@@ -229,8 +229,10 @@ A3; it took D901–D920. W22, W25 and W26 first had D660–D679, D720–D739 and
 D740–D759, inside `agents.md`'s D600–D760; they take D921–D940, D941–D960
 and D961–D980. W20 took the
 next block, D981–D1000. `agents.md`'s phase 2 takes D1061–D1120 (C1–C3).
-`agents.md`'s phase 3 takes D1221–D1280 (L1–L3). A workstream that needs
-more numbers takes the next free block of 20 after D1380 and writes it here.
+`agents.md`'s phase 3 takes D1221–D1280 (L1–L3). W36 took D1401–D1420 as
+well, and round 5 takes D1421–D1520 (W40–W44); `agents.md`'s phase 4 starts
+at D1521. A workstream that needs more numbers takes the next free block of
+20 above every range named here and in `agents.md`, and writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
@@ -528,3 +530,75 @@ finishes out of the Deferred lists and leaves the rest there.
   runtime mode ceiling; #257 streams in `auth.permissions.list`; #262
   Windows DPAPI and typed config secrets. What is left is in
   `security.md#deferred` and `terminal.md#deferred`.
+
+## Round 5
+
+Round 4 left its remainder in the plans' Deferred lists. Round 5 takes what
+a T3 Code user still notices, in the same way: each workstream moves what it
+finishes out of the Deferred lists and leaves the rest there. T3's own
+ChatGPT sign-in (an OAuth client the owner registers) and the signed
+desktop releases (the owner's secrets) still wait for the owner and are in
+no workstream.
+
+| Id  | Workstream                                   | Plans                                               | Decisions   |
+| --- | -------------------------------------------- | --------------------------------------------------- | ----------- |
+| W40 | T3's tabbed right panel and its file panel   | `t3-parity.md`, `terminal.md`, `source-control.md`  | D1421–D1440 |
+| W41 | Pull requests: the rest of the panel, forges | `source-control.md`, `t3-parity.md`                 | D1441–D1460 |
+| W42 | Project settings, `t3.json` and scripts      | `source-control.md`, `t3-parity.md`, `config-ui.md` | D1461–D1480 |
+| W43 | Devices over SSH and the desktop app's rest  | `preview.md`, `desktop.md`                          | D1481–D1500 |
+| W44 | Delegated work, the scheduler and security   | `orchestration.md`, `security.md`                   | D1501–D1520 |
+
+W40's tab strip is what W41's rows, W42's script previews and W43's device
+surface open into: those workstreams build on the panel as it lands and
+adapt to it, as the rules for every workstream say.
+
+- **W40:** T3's tab strip of right panels, several surfaces open at once
+  (browser, diff, files, pull requests, terminals) and its proactive
+  opening of a panel; right-panel terminals as surfaces of their own
+  (`terminal.md`, D474); T3's file panel beyond D1342 (several files as
+  tabs, editing and saving, the file explorer, "Open in" an editor, a
+  link's line revealed, file chips in an agent's message); the diff panel's
+  in-app file preview and its pop-out mode; review comments on a file's own
+  contents (`buildFileReviewComment`); a message's file in that panel with
+  T3's CSV and TSV table preview and its virtualized preview past 1 MiB;
+  a device as a surface beside browser tabs.
+- **W41:** listing and watching pull requests on Bitbucket and Forgejo
+  (D849), a typed number found off GitHub, checking a pull request out on
+  forges other than GitHub and the dialog's terms there, forges' names in
+  the client (T3's `providerName`), forge tokens as the node's secrets;
+  the panel's author, diff stat and review decision, Merge, Ready, Fix and
+  Resolve, the checks popover and files count, T3's speed actions under
+  Shift, dragging a row into the composer, the virtualized list; a review
+  comment chip's popover and comments on one line grouped as T3's
+  annotation; review thread comments on lines and required checks off
+  GitHub in watching.
+- **W42:** T3's per-project settings and the checked-in `t3.json`; a
+  project scope on the settings page and with it T3's scope picker for a
+  project's settle settings (`t3-parity.md`); multi-line text in the config
+  form (branch naming's instructions as T3's text area, per project too);
+  T3's scripts menu in the chat header with its "Add action" dialog and
+  keybindings, `runOnSettle` scripts and a script's preview URL (with the
+  preview's `configuredUrls`); "Work locally", a cancel that removes the
+  new worktree, "Retry" of a failed workspace preparation and the finished
+  setup recorded on the thread; per-project "Automatic worktree cleanup",
+  its "Last run" report and T3's orphan report; per-project and `t3.json`
+  submodule settings.
+- **W43:** device hosts over SSH (T3's `SshDeviceHost`, its remote script,
+  tunnels and multi-host proxy); in the desktop app, a tab that outlives its
+  webview (a window reload, DevTools closing), T3's DevTools, element
+  annotation and context menu of a guest, the download toast for a tab the
+  app hosts, popping out a tab the app hosts; attaching to a node of the
+  same home that already runs and another port when 7777 is taken; the
+  release path's hardening that needs no secrets (a protected environment
+  for them, actions pinned to commit SHAs, a dry run when the app's sources
+  change, packaging checked as `pnpm pack:smoke` checks).
+- **W44:** delegating to an agent on another mesh node (`target.node`),
+  ending a `mode: "wait"` delegation when its caller goes away, pruning old
+  task and workflow records, smaller workflow events, saved workflows of the
+  node, waiting subagents surfaced in the parent's sidebar card, live rows
+  in a fork; the scheduler's `releaseStuckRun`, its webhook secret in
+  `secrets.store@1`, one shared `WorkspaceStrategy` contract and the
+  settings page's component tests; in `security.md`: a setting that narrows
+  the `*.ts.net` allowlist to the owner's tailnet, shell access named on
+  `threads.write`, `git.write` and `editors.open`, a repair for an
+  unreadable `clients.json`, and MCP OAuth refresh tokens.
