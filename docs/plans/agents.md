@@ -104,6 +104,22 @@ change was committed without a review after it.
 
 L1 and L2 start together; L3 starts once both have landed.
 
+Phase 3 landed by 2026-10-23. Its long run ([L3 run](#l3-run)) proved a
+team can be left alone for hours, but only on one node: agents, missions,
+the inbox and health stop at the node the client is connected to, and a
+slice handed to an agent of another node drops out of refocus and stop.
+[Phase 4](#phase-4-a-civilization-across-the-mesh) makes one civilization
+span the mesh:
+
+| Id  | Workstream                    | Stacks on | Decisions   |
+| --- | ----------------------------- | --------- | ----------- |
+| M1  | Reading a civilization's mesh | `main`    | D1521–D1540 |
+| M2  | Acting across nodes           | `main`    | D1541–D1560 |
+| M3  | A run across two nodes        | M1, M2    | D1561–D1580 |
+
+M1 and M2 start together; M3 starts once both have landed. Round 5 of
+`t3-roadmap.md` owns D1421–D1520, so phase 4 starts at D1521.
+
 ## Decisions
 
 ### Shared
@@ -2187,6 +2203,59 @@ three agents, and otherwise read the streams.
   machine user's own Claude Code settings, so the crew's closing words and
   answers to asks came in Russian from the owner's personal `CLAUDE.md`. A
   natural compaction was not reached. These are in [Deferred](#deferred).
+
+## Phase 4: a civilization across the mesh
+
+The goal of phase 4: the owner runs one team whose agents live on several
+nodes (a laptop and a server, say) and sees and steers it from any client
+as one civilization. Build on what the mesh already has (`mesh.call`, W17's
+member streams and relays, D702's `elsewhere`); do not build a second
+transport ([reinvent the wheel](../lore/reinvent-the-wheel.md)). Each item
+below names the Deferred entry it takes; move it out of
+[Deferred](#deferred) when it lands.
+
+### M1. Reading a civilization's mesh (D1521–D1540)
+
+- Agents, missions and the inbox of a mesh member reached through another
+  node (`route.remote`), not only of the client's open connections: A1's
+  roster (D617), A3's mission view and a slice's thread on a member
+  (D654, D656).
+- Civilization mode offered for such a member, and as soon as its first
+  agent is defined rather than when the connection reopens (A8, D747).
+- The owner's conversation with an agent on another node, joined from both
+  nodes, and an answer for a message the owner of another node sends here
+  (C1, D1061; L1, D1221).
+- Titles and the assignee picker listing the agents of every node of the
+  mesh (C2, D1082).
+- Health of a team across nodes: the counts of every node, not only this
+  one's streams (A7).
+
+### M2. Acting across nodes (D1541–D1560)
+
+- A slice handed to an assignee on another node keeps its thread link, and
+  refocus follows threads of other nodes linked to a slice (A6, D702,
+  D710).
+- Stopping agents of other nodes that hold a mission's slices, and running
+  the orchestrator from a thread on another node (C2, D1089, D1090).
+- A member moved to another node: `teams.up` leaves no agent defined on
+  the old node (A5).
+- A mesh member that goes away mid-mission: what the orchestrator, the
+  inbox and health say about its slices and asks, so the owner is told
+  rather than left waiting.
+
+### M3. A run across two nodes (D1561–D1580)
+
+- Before the run, the L3 run's leaks that would spoil it: which setting
+  sources a defined agent's runtime loads (the crew answered in the
+  language of the owner's personal `CLAUDE.md`), and a wave's handoffs to
+  one agent as one message (L3 Deferred).
+- The C3 scenario as an E2E test on two nodes through `@jhin/testing`'s
+  in-memory mesh: a team split across both, a mission whose slices run on
+  each, the owner steering from one client.
+- A real run as in L3: two nodes with their own homes on this machine,
+  joined as a mesh, a team split across them, a mission list from Deferred.
+  The thread plays the owner, lands what the run breaks, and writes an
+  "M3 run" note here, with lore if the run earns it.
 
 ## Deferred
 
