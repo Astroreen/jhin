@@ -33,6 +33,7 @@ import { secretsViewPlugin } from "./plugins/secrets/index.tsx";
 import { orchestrationViewPlugin } from "./plugins/orchestration/index.tsx";
 import { previewPanelPlugin } from "./plugins/preview/index.tsx";
 import { rightPanelPlugin } from "./plugins/right-panel/index.tsx";
+import { projectScriptsPlugin } from "./plugins/project-scripts/index.tsx";
 import { sourceControlPlugin } from "./plugins/source-control/index.tsx";
 import { terminalPlugin } from "./plugins/terminal/index.tsx";
 import { threadWorkPlugin } from "./plugins/thread-work.ts";
@@ -176,6 +177,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     sidebarPlugin,
     chatPlugin,
     rightPanelPlugin,
+    projectScriptsPlugin,
     sourceControlPlugin,
     terminalPlugin,
     previewPanelPlugin,

@@ -451,6 +451,10 @@ export type Branch = z.output<typeof Branch>;
 /** Error codes of the source control commands and service. */
 export type SourceControlErrorCode =
   | "PROJECT_NOT_FOUND"
+  /** `scripts.run` named a script the thread's project does not have (D1472). */
+  | "SCRIPT_NOT_FOUND"
+  /** The node runs no terminals for a script to run in. */
+  | "TERMINALS_UNAVAILABLE"
   | "THREAD_NOT_FOUND"
   /** `git.checkout` named a thread of another project. */
   | "THREAD_PROJECT_MISMATCH"
