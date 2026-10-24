@@ -81,6 +81,8 @@ test("D1473–D1475: T3's scripts menu adds an action, runs it in a terminal, im
   // Import the file's script from the menu, then run it by its shortcut.
   await header.getByRole("button", { name: "Script actions" }).click();
   await expect(page.getByRole("group", { name: "From t3.json" })).toBeVisible();
+  // Its shortcut beside it, as T3 shows one.
+  await expect(page.getByRole("menuitem", { name: /^Greet/ })).toContainText(/Alt/);
   await shot(page, info, "scripts-menu");
   await page.getByRole("menuitem", { name: /^Lint/ }).click();
   // Imported: a script of the project now, no longer offered from the file.

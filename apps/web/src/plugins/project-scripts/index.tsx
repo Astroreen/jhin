@@ -32,6 +32,7 @@ import {
 } from "@jhin/ui";
 
 import { builtin } from "../../lib/builtin.ts";
+import { useExternal } from "../../lib/hooks.ts";
 import { readSection } from "../../lib/settings.ts";
 import { ProjectScriptsControl, type ScriptsControlServices } from "./control.tsx";
 
@@ -152,7 +153,11 @@ export const projectScriptsPlugin = builtin(
               }),
       };
 
+      /** Shown again when a shortcut changes, so the menu's labels are current. */
+      const NO_KEYBINDINGS = { subscribe: () => toDisposable(() => undefined) };
+      const NONE: readonly unknown[] = [];
       function ScriptsControl({ target, thread, project }: ChatHeaderActionProps) {
+        useExternal(keybindings ?? NO_KEYBINDINGS, () => keybindings?.list() ?? NONE);
         if (project === undefined || project.scratch) return null;
         return (
           <ProjectScriptsControl
