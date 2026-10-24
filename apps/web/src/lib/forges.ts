@@ -8,7 +8,7 @@ import type { ChangeRequestTerminology, PullRequestProvider } from "@jhin/source
 type ForgeKind = PullRequestProvider["kind"];
 
 /** Each forge's own label, T3's client definitions' `label`. */
-export const FORGE_LABELS: Record<ForgeKind, string> = {
+const FORGE_LABELS: Record<ForgeKind, string> = {
   github: "GitHub",
   gitlab: "GitLab",
   "azure-devops": "Azure DevOps",
