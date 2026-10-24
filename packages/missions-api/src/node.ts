@@ -15,8 +15,11 @@ type Execute = (name: string, input: unknown, invocation?: Invocation) => Promis
 
 /**
  * Runs `method` on `node` through `mesh.call`, as the caller with no more
- * than `permissions` (and `mesh.call`): the caller held them here, and the
- * node there intersects them with what it grants members (security.md D416).
+ * than `permissions`: the caller held them here, and the node there
+ * intersects them with what it grants members (security.md D416). The
+ * forward itself needs no `mesh.call` of the caller, as A2's messages to
+ * another node need none (D628): naming the mission's node is part of the
+ * command, which reaches that node only.
  */
 export function forwardToNode<T = unknown>(
   execute: Execute,
