@@ -44,6 +44,7 @@ const UNAVAILABLE = new Set(["COMMAND_NOT_FOUND", "METHOD_NOT_FOUND", "PERMISSIO
 const runOf = (record: OrchestratorRun): OrchestratorRun => ({
   workflowId: record.workflowId,
   parentThreadId: record.parentThreadId,
+  ...(record.nodeId === undefined ? {} : { nodeId: record.nodeId }),
   status: record.status,
   // A record is read as it comes; a missing list is none.
   logs: Array.isArray(record.logs) ? record.logs.slice(-5) : [],
@@ -175,7 +176,7 @@ const RUN_VARIANT: Readonly<Record<string, "info" | "warning" | "secondary" | "o
 };
 
 export function OrchestratorPanel(props: MissionAsideProps & { services: OrchestratorServices }) {
-  const { target, mission, slices, nodeId, titles, services } = props;
+  const { target, mission, slices, titles, services } = props;
   const { view, reload } = useMissionRun(services.connections, target.node, mission.id);
   const directory = useDirectory(services.threads, target);
   const leads = leadsOf(directory.agents);
@@ -185,10 +186,8 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const selectId = useId();
-  const progress = useMemo(
-    () => missionProgress(slices, nodeId === undefined ? {} : { nodeId }),
-    [slices, nodeId],
-  );
+  // An assignee of any node is handed its slice from the mission's node (D1541).
+  const progress = useMemo(() => missionProgress(slices), [slices]);
   const byId = useMemo(() => new Map(slices.map((slice) => [slice.id, slice])), [slices]);
   const titleOf = (sliceId: string) => byId.get(sliceId)?.title ?? sliceId;
   const who = (sliceId: string) => assigneeLabel(byId.get(sliceId)?.assignee, titles);
@@ -228,6 +227,9 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
     );
   };
   const call = (method: string, input: unknown) => services.threads.call(target, method, input);
+  /** The node a run started from another node's thread runs on (D1545). */
+  const runTarget = (on: OrchestratorRun) =>
+    on.nodeId === undefined ? target : { node: target.node, remote: on.nodeId };
   const start = () => {
     const threadId = lead === undefined ? undefined : currentThread(lead);
     if (threadId === undefined) return;
@@ -236,23 +238,27 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
   const pause = () => {
     if (run == null) return;
     act(() =>
-      call("workflows.stop", { workflowId: run.workflowId, parentThreadId: run.parentThreadId }),
+      services.threads.call(runTarget(run), "workflows.stop", {
+        workflowId: run.workflowId,
+        parentThreadId: run.parentThreadId,
+      }),
     );
   };
-  // Stopping the mission halts its run and this node's agents at work on it (D1090).
+  // Stopping the mission halts its run and the agents at work on it, on every node (D1090, D1544).
   const working = [
     ...new Set(
       slices
-        .filter((slice) => slice.status === "active")
-        .map((slice) => directory.agents.find((agent) => agent.address === slice.assignee))
-        .filter((agent) => agent !== undefined && agent.stoppedAt === undefined)
-        .map((agent) => agent!.agentId),
+        .filter((slice) => slice.status === "active" && slice.assignee?.includes("/agents/"))
+        .map((slice) => slice.assignee!)
+        // This node's agents already stopped need no stop; another node's are asked.
+        .filter(
+          (address) =>
+            directory.agents.find((agent) => agent.address === address)?.stoppedAt === undefined,
+        ),
     ),
   ];
   const stop = async () => {
-    const names = working
-      .map((id) => directory.agents.find((agent) => agent.agentId === id)?.title ?? id)
-      .join(", ");
+    const names = working.map((address) => assigneeLabel(address, titles)).join(", ");
     // Stop is confirmed or not done (D1090): without a dialog host it is unavailable.
     if (services.dialogs === undefined) return;
     const confirmed = await services.dialogs.confirm({
@@ -266,13 +272,18 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
     });
     if (!confirmed) return;
     act(async () => {
-      if (running) {
-        await call("workflows.stop", {
-          workflowId: run.workflowId,
-          parentThreadId: run.parentThreadId,
-        });
+      const stopped = await call("missions.stop", { missionId: mission.id });
+      // A node that refused or cannot be reached is named, so the owner knows who still works.
+      const failed = (
+        stopped as { agents?: { address: string; error?: { message: string } }[] }
+      ).agents?.filter((agent) => agent.error !== undefined);
+      if (failed !== undefined && failed.length > 0) {
+        throw new Error(
+          failed
+            .map((agent) => `${assigneeLabel(agent.address, titles)}: ${agent.error!.message}`)
+            .join("; "),
+        );
       }
-      for (const agentId of working) await call("agents.stop", { agentId });
     });
   };
 
@@ -329,6 +340,11 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
               </ul>
             )}
           </Part>
+          {run?.nodeId === undefined ? null : (
+            <p className="text-xs text-muted-foreground" data-run-node={run.nodeId}>
+              Runs from a thread on node {run.nodeId}.
+            </p>
+          )}
           <Part title="Waits for">
             <p className="text-xs text-foreground">
               {view.status === "loading" ? "…" : waitsFor(run, progress, titleOf)}

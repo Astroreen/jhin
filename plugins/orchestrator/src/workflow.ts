@@ -6,7 +6,8 @@
  * to decide or run (the mission's own steps between waves, the project's
  * after the last), with whether the slices were reviewed after their last
  * change (D1241). Its end wakes the lead like any workflow's (D376); running
- * it again goes on from what the mission says, so it holds no state.
+ * it again goes on from what the mission says, so it holds no state. With
+ * `node` the mission lives on another node, and each command names it (D1545).
  */
 export const ORCHESTRATOR_WORKFLOW = `export const meta = {
   name: "mission",
@@ -14,14 +15,17 @@ export const ORCHESTRATOR_WORKFLOW = `export const meta = {
   whenToUse: "Run through missions.orchestrate, one per mission",
 };
 
-const { missionId, waitMs } = args;
-const STEPS_NOTE = "Take each step with missions_update { missionId, step } before you run it: a step that needs a review (commit, merge) is refused while a slice changed after its last review, as review.unreviewed lists them; have them reviewed again with slices_review first.";
+const { missionId, waitMs, node } = args;
+// A mission of another node is reached there through each command (D1542).
+const on = node === undefined ? {} : { node };
+const nodeNote = node === undefined ? "" : " The mission lives on node " + node + ": pass node: " + JSON.stringify(node) + " with every missions_* and slices_* tool.";
+const STEPS_NOTE = "Take each step with missions_update { missionId, step } before you run it: a step that needs a review (commit, merge) is refused while a slice changed after its last review, as review.unreviewed lists them; have them reviewed again with slices_review first." + nodeNote;
 const handed = [];
 // The wave this run saw at work: once it is over, the mission's steps between waves are the lead's.
 let watched = null;
 for (;;) {
-  const next = await command("missions.next", { missionId });
-  const end = (outcome, more) => ({ outcome, missionId, title: next.mission.title, handed, ...more });
+  const next = await command("missions.next", { missionId, ...on });
+  const end = (outcome, more) => ({ outcome, missionId, ...on, title: next.mission.title, handed, ...more });
   if (next.mission.status === "done" || next.mission.status === "dropped") {
     return end("closed", { status: next.mission.status });
   }
@@ -38,7 +42,7 @@ for (;;) {
     return end("slices-done", {
       steps: next.steps,
       projectSteps: next.projectSteps,
-      review: await command("missions.review.check", { missionId }),
+      review: await command("missions.review.check", { missionId, ...on }),
       note: "Every slice is done or dropped. Run the mission's steps, then close it with missions.close once its outcome holds, saying what was committed or merged and where: the owner gets your report. " + STEPS_NOTE,
     });
   }
@@ -46,7 +50,7 @@ for (;;) {
     return end("wave-done", {
       wave: watched,
       steps: next.steps,
-      review: await command("missions.review.check", { missionId }),
+      review: await command("missions.review.check", { missionId, ...on }),
       note: "Run the mission's steps for this wave, then run the orchestrator again for the next one. " + STEPS_NOTE,
     });
   }
@@ -55,7 +59,7 @@ for (;;) {
   const failed = [];
   for (const sliceId of next.ready) {
     try {
-      const done = await command("slices.handoff", { sliceId });
+      const done = await command("slices.handoff", { sliceId, ...on });
       handed.push(sliceId);
       log("Handed " + done.slice.title + " to " + done.slice.assignee);
     } catch (error) {
@@ -64,6 +68,6 @@ for (;;) {
   }
   const decisions = [...next.decisions, ...failed];
   if (decisions.length > 0) return end("decide", { wave: next.wave, decisions });
-  await command("missions.wait", { missionId, after: next.head, ...(waitMs === undefined ? {} : { timeoutMs: waitMs }) });
+  await command("missions.wait", { missionId, after: next.head, ...on, ...(waitMs === undefined ? {} : { timeoutMs: waitMs }) });
 }
 `;

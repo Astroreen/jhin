@@ -32,6 +32,7 @@
     "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
   },
   "dependencies": {
+    "@jhin/host-api": "workspace:*",
     "@jhin/missions-api": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
@@ -52,6 +53,7 @@
       "storage.eventlog": "^1"
     },
     "optional": {
+      "host.identity": "^1",
       "rpc.streams": "^1.1"
     },
     "entry": "src/index.ts"
