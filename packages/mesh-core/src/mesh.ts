@@ -211,6 +211,8 @@ export function createMesh(options: MeshOptions): Mesh {
   const invites = new Map<string, number>();
   const listeners = new Set<() => void>();
   let closed = false;
+  /** Inbound connections whose dialer has not spoken yet, by node (`accept`). */
+  const quiet = new Map<string, Set<Peer>>();
   const isClosed = () => closed;
 
   const changed = () => {
@@ -882,22 +884,40 @@ export function createMesh(options: MeshOptions): Mesh {
     accept(peer, nodeId) {
       // A new connection from a node replaces its older inbound ones: after a
       // restart the old socket may linger half-open and swallow calls.
+      // So does one whose dialer has not spoken yet (below).
       for (const old of links.get(nodeId) ?? []) old.close?.();
+      for (const old of quiet.get(nodeId) ?? []) old.close(1000, "superseded");
       const server = serveRpc(peer, serveLink(nodeId));
       const caller = createCaller(peer);
-      const link = addLink(
-        nodeId,
-        {
-          call: (method, params, trace) =>
-            caller.call(method, params, trace === undefined ? {} : { trace }),
-          subscribe: (stream, after, onEvent, outcome) =>
-            caller.subscribe(stream, after, onEvent, outcome),
-          close: () => peer.close(1000, "superseded"),
-        },
-        "inbound",
-      );
+      let link: Disposable | undefined;
+      let gone = false;
+      // The link is used once the dialer has spoken on it: until then its side
+      // may not serve requests yet, and one sent the moment the member became
+      // reachable (a relay a plugin starts then, agents.md D1522) would be lost.
+      const waiting = quiet.get(nodeId) ?? new Set<Peer>();
+      waiting.add(peer);
+      quiet.set(nodeId, waiting);
+      const spoken = peer.onMessage(() => {
+        spoken.dispose();
+        waiting.delete(peer);
+        if (gone || closed) return;
+        link = addLink(
+          nodeId,
+          {
+            call: (method, params, trace) =>
+              caller.call(method, params, trace === undefined ? {} : { trace }),
+            subscribe: (stream, after, onEvent, outcome) =>
+              caller.subscribe(stream, after, onEvent, outcome),
+            close: () => peer.close(1000, "superseded"),
+          },
+          "inbound",
+        );
+      });
       peer.onClose(() => {
-        link.dispose();
+        gone = true;
+        waiting.delete(peer);
+        spoken.dispose();
+        link?.dispose();
         caller.dispose();
         server.dispose();
       });
