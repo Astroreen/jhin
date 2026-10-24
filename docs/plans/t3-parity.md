@@ -2011,6 +2011,18 @@ the sidebar's settling. The reference is D53's tag:
   thread is settled now) reads its thread's project's settings. The node
   config form edits the record like any other.
 
+### Settling per project in the settings (W42)
+
+- **D1464. A project's settle settings in T3's scope picker.** The threads
+  section's `projects` record (D1173) is a project settings record
+  (`config-ui.md` D1462): the settings page's project scope (D1463) edits a
+  project's four settle settings as T3's General page does with a project
+  chosen, each showing the node's value it inherits and T3's "Reset to
+  inherited value". The record stays where D1173 put it, so a node config
+  written before keeps working. T3 also keeps
+  `continueThreadsAfterServerUpdate` and `responseStreamingMode` per project;
+  Jhin has neither setting.
+
 ### Regenerating titles (W32)
 
 W32 of `t3-roadmap.md` (round 3, D1161–D1180). The reference is D53's tag:
@@ -2365,10 +2377,7 @@ says. The other W38 decisions land in their own pull requests.
   each thread's texts once per run and one thread after another on the first
   search, D227) and searching again while a query stays typed (T3 asks again
   after 30 s; here the next change of the query or of the nodes does).
-- Sidebar (T3's layout, D70, D75–D79): T3's scope picker for a project's
-  settle settings (D1173 edits them as a record of the node config, by
-  project id; W38 left it: T3 shows them in General with a page-wide scope,
-  all projects or one, and Jhin's settings page has no project scope yet); a test of the selection's partial failure when regenerating
+- Sidebar (T3's layout, D70, D75–D79): a test of the selection's partial failure when regenerating
   titles (D1176), whose toast names only the first error; a title writer
   stopped with the plugin is reported as having taken too long, and an
   unknown `titleAgent` falls back to the thread's agent without a warning

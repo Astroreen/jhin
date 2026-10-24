@@ -124,6 +124,17 @@ Words about Jhin:
 - **Project** — a working directory, usually a git repository, on a specific
   node. Every node has a built-in **scratch project** for chats without a
   project.
+- **Project settings** — a config section's settings kept per project: its
+  `projects` record by project id, edited in the settings page's project
+  scope; a key a project leaves out is the node's
+  (`docs/plans/config-ui.md#D1462`).
+- **`t3.json`** — T3's checked-in project file at a repository's root: its
+  scripts and defaults for everyone who opens the repository
+  (`docs/plans/source-control.md#D1465`).
+- **Project script** — a shell command saved with a project, run in a
+  terminal of a thread; the UI calls it an **action** ("Add action"), as
+  T3 does. The **setup script** runs in a new worktree, the **settle
+  script** when a thread settles.
 - **Thread** — a conversation inside a project, stored as an append-only
   event log owned by one node.
 - **Turn** — one exchange in a thread: a user message and the agent's response.

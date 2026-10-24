@@ -770,8 +770,8 @@ with screenshots).
   `projects.write` (a token that may not run a shell may not save one);
   `projects.update` still only renames. The setup script is the first with
   `runOnWorktreeCreate` (T3's `setupProjectScript`). T3's scripts menu in
-  the chat header, its "Add action" dialog and the checked-in `t3.json` are
-  Deferred, so a script is set through the command (CLI, MCP) for now.
+  the chat header, its "Add action" dialog and the checked-in `t3.json`
+  came with W42 (D1465, D1473, D1474).
 - **D1122. A thread's new worktree runs the setup script**, as T3's
   `ThreadLaunchService` with `ProjectSetupScriptRunner` does: `threads.create`
   with a `worktree` workspace passes its `threadId` to `git.worktree.create`
@@ -809,13 +809,12 @@ with screenshots).
   `terminals.read`: it carries the script's command and output), which keeps
   only the latest snapshot; `git.worktree.setup.get { threadId }` (the same)
   answers it or null. Snapshots live in memory: a restart forgets them,
-  where T3 records the finished one on the thread (Deferred).
+  where T3 records the finished one on the thread (W42's D1479).
 - **D1124. `git.worktree.setup.cancel { threadId }`** (`git.write`, `{
   cancelled }`) stops a running setup: its terminal is closed and the setup
   ends "cancelled", running stages skipped; the agent then starts without
   waiting. T3 also removes the new worktree and hands the first message to
-  the local checkout ("Work locally"); Jhin's thread keeps its worktree
-  (Deferred). Removing the worktree (D255) cancels its setup; a cancel that
+  the local checkout ("Work locally"): W42's D1477. Removing the worktree (D255) cancels its setup; a cancel that
   comes before the script was typed types nothing; deleting the thread
   forgets its setup.
 - **D1125. T3's worktree setup card** (`WorktreeSetupCard`, section "Worktree
@@ -863,8 +862,7 @@ with screenshots).
   worktrees"), `unchanged` ("Delete unchanged worktrees") and `keepWhen`
   ("Keep worktrees with local changes": "Any local files", "Uncommitted
   changes" by default, "Edited tracked files"), with T3's descriptions.
-  T3's per-project override ("Inherit", "Off", "Custom") waits for
-  per-project settings (Deferred).
+  T3's per-project override ("Inherit", "Off", "Custom") is W42's D1468.
 - **D1129. A cleanup sweep applies them**, T3's `cleanWorktrees`: when
   the plugin starts and every hour after, when the group changes, after a thread is deleted while `onDelete`
   is on, and on `git.worktree.cleanup {}` (`git.write`), which answers T3's
@@ -960,8 +958,8 @@ with screenshots).
   worktree", with the reason), since nobody else sees it. Without `force`,
   `git.worktree.remove` says so ("remove it with force"), not git's own
   message. A submodule run git ends without a reason (killed at the
-  timeout) says its exit code. T3's per-project setting and its `t3.json` override,
-  and pull request checkouts (D902), are Deferred. A managed worktree made
+  timeout) says its exit code. T3's per-project setting and its `t3.json` override
+  are W42's D1467; pull request checkouts (D902) are Deferred. A managed worktree made
   again from its branch (D256) gets its submodules the same way; a failure
   there is logged. Cancelling a setup while its
   submodules are still being checked out ends the setup but lets that git
@@ -1420,6 +1418,191 @@ asked and once only, its watched link and its watch ending told, the
 connection's own threads apart, unfollowed with its connection; a member
 whose view already held a watched link tells when that watch ends).
 
+### Project settings, `t3.json` and scripts (W42, D1461–D1480)
+
+W42 of `t3-roadmap.md` (round 5) takes what W30 left of a project's
+settings and scripts. The reference is D53's tag:
+`packages/contracts/src/t3ProjectFile.ts`, `packages/shared/src/projectSettings.ts`
+(`resolveProjectSettings`, `resolveWorktreeCleanup`) and `projectScripts.ts`,
+`apps/server/src/project/ProjectSetupScriptRunner.ts`,
+`orchestration-v2/ThreadLaunchService.ts` (a cancelled preparation),
+`ThreadSettlementService.ts` (`cleanUpSettledThread`) and `storageCleanup.ts`
+(`reportOrphanWorktrees`); in `apps/web` `ProjectScriptsControl.tsx`,
+`projectScriptEditor.tsx`, `chat/WorktreeSetupCard.tsx` and
+`settings/StorageSettings.tsx`. How a section keeps settings per project and
+the settings page's project scope are `config-ui.md`'s D1461–D1463.
+
+#### `t3.json` and settings per project
+
+- **D1465. The checked-in `t3.json` is T3's project file**, read by the same
+  name at a project's root, so a repository set up for T3 works in Jhin
+  unchanged. Its schema is T3's `T3ProjectFile` (`@jhin/agent-api`,
+  `T3ProjectFile` and `parseT3ProjectFile`: `$schema`, `iconPath`,
+  `defaultThreadEnvMode`, `worktreeSubmodules`, at most 50 `scripts` of
+  `name`, `command`, `icon`, `runOnWorktreeCreate`, `runOnSettle`, `async`,
+  `previewUrl`, `autoOpenPreview`, T3's descriptions); a file that is not
+  JSON or not that shape reads as none and says why, as T3's loader logs
+  it. `projects.t3-file.get { projectId }` (`jhin.threads`,
+  `projects.read`) answers `{ file, error? }` (`file` null without one).
+  Jhin uses its `scripts` (D1474) and `worktreeSubmodules` (D1467); its
+  `iconPath` and `defaultThreadEnvMode` wait for a project icon and a
+  node setting for where new threads start (Deferred).
+- **D1466. Source control keeps T3's per-project settings it has.**
+  `jhin.source-control`'s `projects` record (`config-ui.md` D1462) holds
+  `worktreeSubmodules`, `branchNamingMode`, `branchNamePrefix`,
+  `branchNameInstructions` and `worktreeCleanup` (D1468), the keys of T3's
+  `PROJECT_SCOPED_SERVER_SETTING_KEYS` that Jhin's section has. Every rule
+  reads the settings of the project it acts for: the branch rename (D901,
+  D1126) its thread's project, a new worktree's submodule checkout
+  (D1134) the worktree's project, the cleanup (D1129) each worktree's
+  project. "Branch naming instructions" is a text area (D1461), as T3's,
+  per project too.
+- **D1467. Submodules follow the project, then the node, then `t3.json`.**
+  As T3's file-backed `worktreeSubmodules`: a project's own setting wins,
+  then the node's when it sets one, then the `t3.json` checked out in the
+  new worktree (T3 reads the branch's file, not the project root's), then
+  "Recursive". So the node's `worktreeSubmodules` loses its default
+  (unset: "The project's t3.json decides, else Recursive"); a node config
+  that sets it is read as before.
+- **D1468. T3's "Automatic worktree cleanup" per project**: a project's
+  `worktreeCleanup` is `{ mode: "off" }` ("Keep this project's worktrees
+  until you delete them manually.") or `{ mode: "custom", … }` with the
+  rules of D1128 ("Use these rules for this project."); without one it
+  inherits the node's ("Use each machine's worktree cleanup settings."),
+  T3's Inherit. As T3's `resolveWorktreeCleanup`, Off keeps the node's
+  `keepWhen` and turns every rule off, and Custom's rules replace the
+  node's whole. A sweep (D1129) runs when any project's rules or the node's
+  enable a rule and judges each worktree by its project's; a deleted
+  thread's worktree is noted (D1129's store) when its project's
+  `onDelete` is on, and D1130's "asks nothing" reads the thread's project.
+  `git.worktree.list`'s `cleanupOnDelete` becomes per project
+  (`cleanupOnDeleteProjects`, additive, the ids whose rule differs from
+  the node's).
+- **D1469. The last cleanup's report is kept, and shown as T3's "Last run".**
+  Every sweep that judged something (or found nothing to clean) keeps its
+  report with `finishedAt` in the plugin's store, so a restart keeps it;
+  `git.worktree.cleanup.report {}` (`git.read`) answers it or null. A
+  settings section "Storage" (T3's Storage page, contributed by the source
+  control client plugin) has T3's "Cleanup" group: "Delete now" (runs
+  `git.worktree.cleanup` on every connected node, "Turn on a cleanup rule
+  to use this." while no rule is on, failures in a toast "Cleanup failed on
+  <node>") with "Last run <time>." per node ("Cleanup hasn't run yet."), and
+  the fold "Last run" (T3's `CleanupResults`: a row per entry, the
+  worktree's folder name, its thread's title and the reason, "Nothing
+  needed cleanup."). T3 also measures and reports the bytes a sweep freed;
+  Jhin's report has no sizes yet (Deferred).
+- **D1470. T3's orphan report.** A sweep also lists the folders under the
+  worktrees directory (D250, `<root>/<repository>/<branch>` or
+  `<root>/<name>`) that no thread on the node works in, nor one deleted
+  with its worktree noted (D1129), nor a project's own folder, and that
+  nothing changed for an hour (T3's grace): each is a kept entry with T3's
+  reason ("No thread uses this worktree", or "No thread uses this folder,
+  and it isn't a git worktree" without a `.git` file). They are reported,
+  never removed, as in T3; a user deletes them by hand.
+
+#### Scripts
+
+- **D1471. A script has T3's preview URL.** `ProjectScript`
+  (`@jhin/agent-api`, D1121) gains T3's `previewUrl` ("URL opened in the
+  in-app browser preview when this script runs") and `autoOpenPreview`
+  (additive); `projects.scripts.set` keeps them. T3's
+  `projectScriptMenuLabel` (`Name (setup, on settle)`) and
+  `nextProjectScriptId` (an id from the name, unique in the project) are
+  exported beside `setupProjectScript`.
+- **D1472. `scripts.run { threadId, scriptId }` runs a project's script in a
+  thread** (`jhin.source-control`, `terminals.write`), as T3's
+  `runProjectScript`: the script's command is typed into the thread's
+  terminal `script-<id>` in the thread's directory (its worktree, else the
+  project's), opened with `JHIN_PROJECT_ROOT` and `JHIN_WORKTREE_PATH` (T3's
+  `projectScriptRuntimeEnv`); a terminal of that id that still runs a
+  program is left alone and the next free `script-<id>-<n>` is used (T3
+  opens a new terminal when the base one is busy). It answers `{ terminalId
+  }`. A node without terminals refuses it (`TERMINALS_UNAVAILABLE`).
+- **D1473. T3's scripts control in the chat header** (`ProjectScriptsControl`,
+  its toolbar mode; at D53 T3 also shows it in the thread details card,
+  where Jhin's header keeps the git actions), contributed by the new client
+  plugin `jhin.project-scripts` to `chat.header.actions` before the git
+  actions (`jhin.project-scripts.control`). Without scripts it is "Add
+  action"; with them the primary script's button ("Run <name>": the last
+  one run in the project on this device, else T3's `primaryProjectScript`,
+  the first that is no setup script) and the "Script actions" menu: each
+  script with its icon, T3's label, its shortcut and an "Edit <name>" gear,
+  then "From t3.json", the file's scripts not imported yet (by command or
+  name, T3's rule), then "Add action". Running one calls `scripts.run`,
+  shows its terminal in the drawer (`terminal.reveal`) and, with
+  `autoOpenPreview` and a `previewUrl`, opens the preview at it
+  (`preview.md` D1480). A
+  client without `terminals.write` sees the button disabled with T3's
+  "Pair this client again with permission to run terminal commands.".
+- **D1474. T3's "Add Action" dialog** (`ProjectScriptEditorDialog`, its
+  words): Name with the icon picker (Play, Test, Lint, Configure, Build,
+  Debug), Keybinding ("Press shortcut"; Backspace clears), Command (a text
+  area), "Preview URL (optional)", "Run automatically on worktree
+  creation", "Wait for it to finish before the agent starts", "Run in the
+  thread's worktree when the thread settles", "Open preview automatically
+  when this action runs"; "Save action" or "Save changes", "Delete" with
+  T3's "Delete action "<name>"?" ("This action cannot be undone."). Saving
+  sets the project's scripts whole (`projects.scripts.set`): a new one gets
+  `nextProjectScriptId`, and a script that takes the setup or settle role
+  takes it from the one that had it (T3's `releaseClaimedRoles`). Importing
+  a `t3.json` script saves it so, and opens the dialog with T3's "Failed to
+  import action." when the node refuses it.
+- **D1475. A script's shortcut runs it.** Each script id of the loaded
+  projects is the client command `script.<id>.run` (T3's command names;
+  the public id pattern `script.${id}.run`), which runs that script in the
+  open thread's project. The dialog's shortcut is this device's rule for
+  that command in `jhin.keybindings` (as Settings → Keybindings saves one,
+  D487 syncs it), so projects whose scripts share an id share the shortcut,
+  as T3 says ("Shortcuts are environment-wide. Projects using the same
+  action share its shortcut." reads "Shortcuts belong to this device." here).
+- **D1476. `runOnSettle` scripts run when their thread settles**, as T3's
+  `cleanUpSettledThread`: once per settling (its `settledAt`), the
+  project's settle script runs in the thread's own worktree, in a new
+  terminal `settle-<id>-<8 hex>` (a settle shell of an earlier settling may
+  still be busy) with T3's wrapper and the setup's variables (D1122); a
+  thread working in the project's checkout, one whose worktree is gone, or
+  one taken back up meanwhile runs none. Source control hears of a settling
+  from the `threads` stream's updates and, for a thread settled by
+  inactivity (which the threads plugin computes at read time, D444), from
+  its hourly pass over `threads.list`. T3 closes the thread's idle
+  terminals first; Jhin leaves them (Deferred).
+
+#### The workspace's preparation
+
+- **D1477. Cancel removes the new worktree, and "Work locally" works on.**
+  While a setup runs and the agent has not started (its `agent` stage
+  pending or running), `git.worktree.setup.cancel` does what T3's
+  cancelled preparation does: the setup ends "cancelled", its terminal is
+  closed, the new worktree is removed (`--force`; its branch stays), and
+  the thread works in the project's checkout again (`threads.update`'s
+  `worktreePath: null`); the first turn then fails with T3's "Worktree
+  setup cancelled." `workLocally: true` (additive; the card's "Work
+  locally", T3's `LaptopIcon` button beside Cancel while the setup runs)
+  does the same, but the first turn starts in the project's checkout
+  instead of failing, as T3 sends the message again there. For that the
+  threads plugin reads the thread's directory again after its start hooks
+  (a hook may have moved it). Once the agent has started, Cancel only stops
+  the script, as D1124 says (T3 cannot cancel it then).
+- **D1478. T3's "Retry" of a failed preparation.** A first turn that failed
+  because its workspace could not be prepared (a fetch or checkout that
+  failed, an `async: false` setup script that failed, or a cancel) records
+  T3's failure class (`lastTurn.failure.class: "workspace_preparation"`,
+  additive; a start hook says so with the error code
+  `WORKSPACE_PREPARATION_FAILED`, `@jhin/agent-api`). Under its error the
+  timeline shows "Retry" (T3's `RotateCcwIcon` button), which calls
+  `git.worktree.setup.retry { threadId }` (`git.write`): the worktree is
+  made again from the thread's branch when it is gone (D256's way, the
+  setup's stages shown again) and the setup script runs again, then the
+  turn's message is sent again (`threads.regenerate`). One retry at a time
+  per thread; a thread that has a later turn is refused
+  (`WORKSPACE_RETRY_INVALID`), as T3 retries only the failed run.
+- **D1479. The finished setup is recorded on the thread.** A setup that
+  ends (done, failed or cancelled) is kept in the plugin's store under its
+  thread, so `git.worktree.setup.get` answers it and the card shows it
+  after a restart, as T3 records the finished setup on the thread; a
+  running setup a restart cut short is recorded "failed" ("The node
+  restarted during the setup."). It goes with its thread.
+
 ## Deferred
 
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
@@ -1431,27 +1614,25 @@ whose view already held a watched link tells when that watch ends).
   inspector (Jhin has no item inspector yet; it comes with that panel), recreating a missing managed worktree before a rollback, and the
   error strings T3 shows for a disconnected environment or a provider without
   rollback.
-- Worktree setup (D1121–D1125): T3's scripts menu in the chat header with
-  its "Add action" dialog and keybindings, the checked-in `t3.json`,
-  `runOnSettle` scripts, a script's preview URL; "Work locally" and a
-  cancel that removes the new worktree and hands the first message to the
-  local checkout; the finished setup recorded on the thread (a restart
-  forgets it); the card for a thread on a mesh member (its setup stream is
-  not relayed); T3's "Retry" of a failed workspace preparation (a failed
-  `async: false` script fails the first turn only; later turns run in the
-  worktree as it is); a bound of its own on a setup that holds the agent (the
-  threads plugin's turn hook timeout fails the turn, and the script runs on
-  until it exits or is cancelled).
-- Branch naming (D1126, D1127): the instructions are a one-line field where
-  T3 has a text area (the config form has no multi-line text yet), the
-  settings are the node's (T3 also keeps them per project), and the images
-  themselves do not reach the writer, only their names.
-- Worktree cleanup (D1128–D1130): T3's per-project "Automatic worktree
-  cleanup" (Inherit, Off, Custom), its "Last run" report in the settings,
-  folders under the worktrees directory no thread ever used (T3's orphan
-  report), and the checks for a subagent chain sharing a worktree.
+- Worktree setup (D1121–D1125; W42 did the scripts menu, `t3.json`,
+  `runOnSettle`, the preview URL, "Work locally", Retry and the recorded
+  setup, D1465–D1480): the card for a thread on a mesh member (its setup
+  stream is not relayed); a bound of its own on a setup that holds the
+  agent (the threads plugin's turn hook timeout fails the turn, and the
+  script runs on until it exits or is cancelled).
+- `t3.json` (D1465): its `iconPath` (Jhin has no project icon yet) and
+  `defaultThreadEnvMode` (Jhin has no node setting for where new threads
+  start; the composer's workspace selector decides).
+- Settle scripts (D1476): T3 closes a settled thread's idle terminals before
+  the script runs (`closeIdle`); Jhin leaves them open.
+- Branch naming (D1126, D1127; a text area and per project since D1466):
+  the images themselves do not reach the writer, only their names.
+- Worktree cleanup (D1128–D1130; per project, "Last run" and the orphan
+  report since D1468–D1470): the bytes a sweep frees and an orphan's size
+  (T3 measures them, with a 30 s budget per sweep), and the checks for a
+  subagent chain sharing a worktree.
 - Worktree submodules (D1134): those of a pull request's worktree (D902);
-  T3's per-project and `t3.json` submodule settings; stopping a submodule
+  stopping a submodule
   checkout that a cancelled setup leaves running; showing a recreated
   worktree's submodule warning on its turn instead of only logging it; a
   submodule checkout's own timeout; and D255's "Delete the worktree too?"

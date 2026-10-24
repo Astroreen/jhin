@@ -356,6 +356,26 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   from one scan. `lsof`'s exit code 1 after a warning still counts, as in
   T3.
 
+### A script's preview (W42)
+
+W42 of `t3-roadmap.md` (D1461–D1480) gives project scripts T3's preview URL
+(`source-control.md` D1471–D1473). The reference is D53's
+`ChatView.tsx` (`runProjectScript`'s `openUrlInPreview`) and
+`PortScanner.ts` (`configuredUrls`).
+
+- **D1480. A script's preview URL opens in the preview, and is a configured
+  URL of the empty state.** A script run with `autoOpenPreview` and a
+  `previewUrl` opens the preview panel of its thread at that URL (the
+  client's `preview.open-url { url }`, a new client command: the panel's
+  current tab goes there, a new tab when it has none), as T3's
+  `openUrlInPreview`; W40's tab strip takes it as it lands. And as T3's
+  `configuredUrls`, `preview.servers.list` takes `configuredUrls`
+  (additive, the open thread's project's scripts' `previewUrl`s, at most
+  50): each is probed as D950 probes a listener (`0.0.0.0` read as
+  `localhost`), and one that answers is listed first under its configured
+  URL, in place of a listener found on the same host and port. A
+  configured URL needs no terminal of its own: the user named it.
+
 ### The pinned browser (W25)
 
 - **D951. T3's `chrome-headless-shell` on first use.** When no
@@ -996,9 +1016,8 @@ probe of `ServerBrowser.ts`.
   missing libraries and their setup command, close code 4503).
 - A binary channel for frames (T3's WebSocket with per-frame acks); frames
   travel as base64 JSON events.
-- The configured preview URLs of project scripts (T3's `configuredUrls` in
-  the port scan and the empty state), a pushed server list instead of the
-  client's 3 s rescans (T3's subscription), and a favicon per local server.
+- A pushed server list instead of the client's 3 s rescans (T3's
+  subscription), and a favicon per local server (configured URLs: D1480).
 - Tests of the panel's local server polling (backoff, the hidden-page pause)
   and of the node's shared scan; the e2e covers the path end to end.
 - Around the floating mini player (D1202, D1326, D1327): keeping it clear

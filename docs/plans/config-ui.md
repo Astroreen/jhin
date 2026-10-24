@@ -275,6 +275,55 @@ rules of the form below), the decision says so.
   that kind of state.
   Visits are thread state on the node (D485) and always shared, as in T3.
 
+## Project settings and multi-line text (W42)
+
+W42 of `t3-roadmap.md` (round 5, D1461–D1480) gives settings a project
+scope, as T3's per-project settings (`projectSettingsOverrides`,
+`packages/shared/src/projectSettings.ts`, and the settings page's scope
+sentence, `SettingsScopeSentence.tsx`, `SettingInheritance.tsx`, D53), and
+the form its multi-line text. What source control keeps per project, the
+checked-in `t3.json` and the scripts are `source-control.md`'s
+([W42](source-control.md#project-settings-t3json-and-scripts-w42-d1461d1480)).
+
+- **D1461. Multi-line text.** `.meta({ multiline: true })` on a text field
+  renders it as a text area (T3's `Textarea`, rows growing with the text)
+  instead of a one-line input; everything else about the field (its
+  placeholder, `clearWhenEmpty`, its errors) stays as D80, D478 say.
+  Branch naming instructions use it (`source-control.md` D1466).
+- **D1462. A section's project settings are its `projects` key.** A section
+  that keeps some of its settings per project has a key `projects`: a
+  record from a project's id (T3 keys them by id too) to an object of some
+  of the section's own top-level keys, each optional, and marks the record
+  `.meta({ projectSettings: true })`. A key an entry sets replaces the
+  node's value of that key whole (T3: "every other key replaces its
+  `ServerSettings` field whole"); a key it leaves out is the node's. A
+  project's key may have a schema of its own where T3's does (worktree
+  cleanup's Inherit, Off and Custom, `source-control.md` D1468); the plugin
+  resolves such a key itself. `@jhin/agent-api` exports
+  `projectSettingsRecord(shape)`, the record with the marker, and
+  `resolveProjectSettings(config, projectId, keys)`, the section's values
+  for a project. The key `projects` and the marker are public API: plugins
+  and the settings page build on them. The threads section's settle
+  settings (`t3-parity.md` D1173) are one.
+- **D1463. The node config page has T3's project scope.** Above the form,
+  T3's scope sentence: "Applying settings for [All projects ▾]", the
+  projects of the chosen node (T3's project axis; Jhin's node picker is its
+  environment axis, D20) with a search. With a project chosen, a section
+  with project settings shows every field, and only those its `projects`
+  value has edit that project's entry (`projects.<id>.<key>` of the node
+  file, saved as any change, D84); the others are inert, with T3's words
+  for them ("Node-wide setting. Choose All projects to change it.", T3's
+  "Environment-wide setting. Select an environment to change it."). A
+  project field shows the value it inherits as its default and T3's layers
+  button (`SettingInheritance`): Project, Node, `t3.json` for a key it
+  backs (`source-control.md` D1467), Default, the one in effect checked;
+  "Reset to inherited value" removes the project's key, and an entry left
+  empty goes. A section without project settings says so ("This section
+  has no project settings."). With All projects chosen, the `projects`
+  record is not a field of its own: each field it holds keys of says in
+  its layers button's label how many projects override it (T3's "· N
+  project overrides"). The JSON view (D80) still shows the whole file.
+
 ## How to write a config schema (for plugin authors)
 
 The settings page renders the section a plugin declares; the schema is all
@@ -341,6 +390,11 @@ context.config.define("acme.http", Config);
 - `.meta({ control: "color" })` asks for a control another plugin
   contributes to the slot `settings.config.control.color` with
   `ConfigControlProps`; without one the built-in control shows (D482).
+- `.meta({ multiline: true })` makes a text field a text area (D1461).
+- Settings a user may set per project go into a `projects` key built with
+  `projectSettingsRecord({ … })` from `@jhin/agent-api`, and are read with
+  `resolveProjectSettings(config, projectId, keys)`; the settings page then
+  offers them in its project scope (D1462, D1463).
 
 ## Deferred
 
