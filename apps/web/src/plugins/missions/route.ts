@@ -167,7 +167,7 @@ export interface MissionAsideProps {
   readonly target: NodeTarget;
   readonly mission: Mission;
   readonly slices: readonly Slice[];
-  /** The node's id, for `missionProgress` (D702); undefined until known. */
+  /** The node's id; undefined until known. Readiness no longer needs it (D1541). */
   readonly nodeId: string | undefined;
   /** Assignee titles by address (D1082). */
   readonly titles: ReadonlyMap<string, string>;
@@ -177,6 +177,8 @@ export interface MissionAsideProps {
 export interface OrchestratorRun {
   readonly workflowId: string;
   readonly parentThreadId: string;
+  /** The node it runs on, when a thread of another node started it (D1545). */
+  readonly nodeId?: string;
   readonly status: string;
   readonly currentPhase?: string;
   readonly logs: readonly string[];

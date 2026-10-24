@@ -1,6 +1,7 @@
 import * as Crypto from "node:crypto";
 
 import {
+  INBOX_PERMISSION,
   MAX_MESSAGE_LENGTH,
   MESSAGE_PERMISSION,
   ORCHESTRATION_STREAM,
@@ -9,6 +10,7 @@ import {
   agentAddress,
   ownerAddress,
   parseAgentAddress,
+  parseMessageAddress,
   threadAddress,
   threadStream,
   type InboxItem,
@@ -27,15 +29,25 @@ import {
   Slice,
   Step,
   applyMissionEvent,
+  forwardToNode,
   intentChain,
+  MissionNode,
   missionProgress,
+  onMissionNode,
+  type MissionNodeOptions,
   REVIEW_TREE_EXCLUDE,
   reviewCheck,
   reviewedWork,
   slicesOf,
   type MissionsState,
 } from "@jhin/missions-api";
-import { definePlugin, z, type Disposable, type Invocation } from "@jhin/sdk";
+import {
+  definePlugin,
+  z,
+  type CommandDefinition,
+  type Disposable,
+  type Invocation,
+} from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -62,6 +74,8 @@ const NAMESPACE = "jhin.orchestrator";
 const CONFIG_SECTION = "jhin.orchestrator";
 export const DEFAULT_WAIT_MS = 10 * 60 * 1000;
 const MAX_WAIT_MS = 60 * 60 * 1000;
+/** One part of a wait on another node, under `mesh.call`'s 30-second deadline (D1545). */
+const REMOTE_WAIT_MS = 20 * 1000;
 /** The permission W10 asks of `workflows.run` (orchestration.md D375). */
 const WORKFLOWS_RUN = "workflows.run";
 
@@ -117,7 +131,9 @@ export type OrchestratorErrorCode =
   /** An orchestrator run of the mission is active: stop it before deleting (D1395). */
   | "RUN_ACTIVE"
   /** The slice reviews no slice (D1244). */
-  | "NOT_A_REVIEW";
+  | "NOT_A_REVIEW"
+  /** Only another node of the mesh records a run it started (D1545). */
+  | "MESH_ONLY";
 
 class OrchestratorError extends Error {
   readonly code: OrchestratorErrorCode;
@@ -167,6 +183,8 @@ const ThreadView = z
 const OrchestratorRun = z.object({
   workflowId: z.string(),
   parentThreadId: z.string(),
+  /** The node it runs on, when not the mission's (D1545). */
+  nodeId: z.string().optional(),
   status: z.string(),
   currentPhase: z.string().optional(),
   /** Its last five log lines. */
@@ -188,6 +206,30 @@ export default definePlugin({
     /** As the node: lookups this plugin's own commands promise (D703). */
     const run = <T>(name: string, input: unknown, invocation?: Invocation) =>
       context.commands.execute(name, input, invocation) as Promise<T>;
+    const execute = (name: string, input: unknown, invocation?: Invocation) =>
+      context.commands.execute(name, input, invocation);
+    /** Runs a command on another node as the caller, with the permissions it needs (D1542). */
+    const onNode = <T>(
+      node: string,
+      method: string,
+      params: unknown,
+      permissions: readonly string[],
+      invocation: Invocation = {},
+    ) =>
+      forwardToNode<T>(execute, node, method, params, invocation, permissions, context.plugin.id);
+    /** Registers a command about a mission: it takes the mission's `node` (D1542). */
+    const register = <I extends z.ZodType, O extends z.ZodType>(
+      definition: CommandDefinition<I, O>,
+      remote?: MissionNodeOptions<I, O>["remote"],
+    ) =>
+      context.commands.register(
+        onMissionNode(definition, {
+          nodeId,
+          execute,
+          callerId: context.plugin.id,
+          ...(remote === undefined ? {} : { remote }),
+        }),
+      );
     let disposed = false;
     /** Waits of `missions.wait` still open: they end with the plugin. */
     const waits = new Set<() => void>();
@@ -252,15 +294,50 @@ export default definePlugin({
       });
       return { thread: ThreadView.parse(thread), running };
     };
+    /** Who a thread of this node sends as: its agent for a generation, else the thread (D622). */
+    const senderOf = (threadId: string, thread: z.infer<typeof ThreadView>) =>
+      thread.generationOf === undefined
+        ? threadAddress(nodeId, threadId)
+        : agentAddress(nodeId, thread.generationOf);
+
+    /**
+     * A mission's last run: its workflow and thread, and for a run another
+     * node started (D1545) that node and the lead's address.
+     */
+    interface RunRecord {
+      readonly workflowId?: string;
+      readonly parentThreadId?: string;
+      readonly nodeId?: string;
+      readonly lead?: string;
+    }
+    const runOf = async (missionId: string) =>
+      (await kv.get(NAMESPACE, `run/${missionId}`)) as RunRecord | undefined;
+    const elsewhere = (record: RunRecord): string | undefined =>
+      record.nodeId === undefined || record.nodeId === nodeId ? undefined : record.nodeId;
+    type WorkflowView = z.input<typeof OrchestratorRun> & { name: string };
+    /** The workflows of the node a run is on: this one's, or another's through the mesh. */
+    const workflowsOf = (record: RunRecord, invocation?: Invocation) => {
+      const node = elsewhere(record);
+      return node === undefined
+        ? run<WorkflowView[]>("workflows.list", {})
+        : onNode<WorkflowView[]>(node, "workflows.list", {}, ["threads.read"], invocation);
+    };
 
     // --- The lead and the owner (L1: D1222, D1223) ------------------------------
     /** The mission's lead: the thread its last orchestrator run started from, and its address. */
-    const leadOf = async (missionId: string) => {
-      const last = (await kv.get(NAMESPACE, `run/${missionId}`)) as
-        | { parentThreadId?: string }
-        | undefined;
+    const leadOf = async (
+      missionId: string,
+    ): Promise<{ threadId: string; address: string; nodeId?: string } | undefined> => {
+      const last = await runOf(missionId);
       const threadId = last?.parentThreadId;
       if (threadId === undefined) return undefined;
+      // A lead on another node: its node recorded who it is (D1545).
+      const node = elsewhere(last!);
+      if (node !== undefined) {
+        return last!.lead === undefined
+          ? undefined
+          : { threadId, address: last!.lead, nodeId: node };
+      }
       const thread = await getThread(threadId).then(
         (found) => found.thread,
         () => undefined,
@@ -268,21 +345,32 @@ export default definePlugin({
       // A lead's thread that is gone has nobody to report or wait for.
       if (thread === undefined) return undefined;
       // A thread sends as its agent when it is one of its generations (D622).
-      const address =
-        thread.generationOf === undefined
-          ? threadAddress(nodeId, threadId)
-          : agentAddress(nodeId, thread.generationOf);
-      return { threadId, address };
+      return { threadId, address: senderOf(threadId, thread) };
     };
     /** The lead's asks to the owner still open in the inbox (D1223). */
     const escalationsOf = async (missionId: string): Promise<string[]> => {
       if (!hasCommand("agents.inbox.list")) return [];
       const lead = await leadOf(missionId);
       if (lead === undefined) return [];
-      const { items } = await run<{ items: InboxItem[] }>("agents.inbox.list", {
-        status: "open",
-        from: lead.address,
-      });
+      const query = { status: "open", from: lead.address };
+      const { items } = await run<{ items: InboxItem[] }>("agents.inbox.list", query);
+      // A lead on another node may ask its own node's owner too (D688, D1545).
+      if (lead.nodeId !== undefined) {
+        const there = await onNode<{ items: InboxItem[] }>(
+          lead.nodeId,
+          "agents.inbox.list",
+          query,
+          [INBOX_PERMISSION],
+        ).catch((error: unknown) => {
+          context.log.warn("the lead's node's inbox could not be read", {
+            missionId,
+            node: lead.nodeId,
+            error: String(error),
+          });
+          return { items: [] };
+        });
+        items.push(...there.items);
+      }
       return (
         items
           // Checked here too, so a node whose inbox ignores `from` holds nothing it should not.
@@ -324,9 +412,11 @@ export default definePlugin({
           to: ownerAddress(nodeId),
           messageId: `report-${missionId}-${id}`,
           body: reportText({ mission, slices: slicesOf(state, missionId), end, summary, error }),
+          // A lead on another node is named; this node may send as anyone (D1545).
+          ...(lead.nodeId === undefined ? {} : { from: lead.address }),
         },
         // As the lead's thread, so the owner hears it from the lead (D622).
-        { threadId: lead.threadId },
+        lead.nodeId === undefined ? { threadId: lead.threadId } : {},
       );
     }
     let reporting: Promise<unknown> = Promise.resolve();
@@ -358,13 +448,26 @@ export default definePlugin({
         reporting = reporting
           .then(async () => {
             const owned = (await kv.get(NAMESPACE, `workflow/${workflowId}`)) as
-              | { missionId?: string }
+              | { missionId?: string; node?: string }
               | undefined;
             if (owned?.missionId === undefined) return;
+            // A run of another node's mission: that node reports it (D1545).
+            if (owned.node !== undefined) {
+              await onNode(
+                owned.node,
+                "missions.orchestration.record",
+                {
+                  missionId: owned.missionId,
+                  workflowId,
+                  status,
+                  ...(error === undefined ? {} : { error }),
+                },
+                ["missions.write"],
+              );
+              return;
+            }
             // Only the mission's current run speaks for it: an older one ending late is no news.
-            const current = (await kv.get(NAMESPACE, `run/${owned.missionId}`)) as
-              | { workflowId?: string }
-              | undefined;
+            const current = await runOf(owned.missionId);
             if (current?.workflowId !== workflowId) return;
             await sync();
             const mission = state.missions[owned.missionId];
@@ -374,11 +477,11 @@ export default definePlugin({
           .catch(() => undefined);
       }),
     );
-    const progressOf = (mission: Mission) =>
-      missionProgress(slicesOf(state, mission.id), { nodeId });
+    // An assignee of any node is handed its slice from here (D1541).
+    const progressOf = (mission: Mission) => missionProgress(slicesOf(state, mission.id));
 
     // --- Where a mission is (D702) ---------------------------------------------
-    context.commands.register({
+    register({
       name: "missions.next",
       description:
         "Where a mission is: its current wave, the slices ready to hand to their assignee, those at work, and what waits for a decision (no assignee, blocked, a dropped dependency, an assignee on another node)",
@@ -412,45 +515,62 @@ export default definePlugin({
       };
       return payload.mission?.id === missionId || payload.slice?.missionId === missionId;
     };
-    context.commands.register({
-      name: "missions.wait",
-      description:
-        "Waits until a mission or one of its slices changes after the `missions` stream's sequence `after` (from missions.next's head), or until timeoutMs passes",
-      input: z.object({
-        missionId: z.string(),
-        after: z.number().int().min(0),
-        timeoutMs: z.number().int().min(1).max(MAX_WAIT_MS).default(DEFAULT_WAIT_MS),
-      }),
-      output: z.object({ head: z.number(), changed: z.boolean() }),
-      permissions: ["missions.read"],
-      handler: async ({ missionId, after, timeoutMs }) => {
-        let listener: ((event: StoredEvent) => void) | undefined;
-        let end: (() => void) | undefined;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const moved = new Promise<boolean>((resolve) => {
-          listener = (event) => {
-            if (event.sequence > after && concerns(missionId, event)) resolve(true);
-          };
-          end = () => resolve(false);
-          changed.add(listener);
-          waits.add(end);
-          timer = setTimeout(end, timeoutMs);
-        });
-        try {
-          // What came before this call, and what another process appended meanwhile.
-          const missed = await log.read(MISSIONS_STREAM, { after });
-          apply(missed);
-          if (missed.some((event) => concerns(missionId, event))) return { head, changed: true };
-          if (disposed) return { head, changed: false };
-          const hit = await moved;
-          return { head, changed: hit };
-        } finally {
-          if (listener !== undefined) changed.delete(listener);
-          if (end !== undefined) waits.delete(end);
-          clearTimeout(timer);
+    register(
+      {
+        name: "missions.wait",
+        description:
+          "Waits until a mission or one of its slices changes after the `missions` stream's sequence `after` (from missions.next's head), or until timeoutMs passes",
+        input: z.object({
+          missionId: z.string(),
+          after: z.number().int().min(0),
+          timeoutMs: z.number().int().min(1).max(MAX_WAIT_MS).default(DEFAULT_WAIT_MS),
+        }),
+        output: z.object({ head: z.number(), changed: z.boolean() }),
+        permissions: ["missions.read"],
+        handler: async ({ missionId, after, timeoutMs }) => {
+          let listener: ((event: StoredEvent) => void) | undefined;
+          let end: (() => void) | undefined;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const moved = new Promise<boolean>((resolve) => {
+            listener = (event) => {
+              if (event.sequence > after && concerns(missionId, event)) resolve(true);
+            };
+            end = () => resolve(false);
+            changed.add(listener);
+            waits.add(end);
+            timer = setTimeout(end, timeoutMs);
+          });
+          try {
+            // What came before this call, and what another process appended meanwhile.
+            const missed = await log.read(MISSIONS_STREAM, { after });
+            apply(missed);
+            if (missed.some((event) => concerns(missionId, event))) return { head, changed: true };
+            if (disposed) return { head, changed: false };
+            const hit = await moved;
+            return { head, changed: hit };
+          } finally {
+            if (listener !== undefined) changed.delete(listener);
+            if (end !== undefined) waits.delete(end);
+            clearTimeout(timer);
+          }
+        },
+      },
+      // On another node the wait goes in parts under mesh.call's deadline (D1545).
+      async (node, { missionId, after, timeoutMs }, invocation) => {
+        const until = Date.now() + timeoutMs;
+        for (;;) {
+          const part = Math.max(1, Math.min(REMOTE_WAIT_MS, until - Date.now()));
+          const answer = await onNode<{ head: number; changed: boolean }>(
+            node,
+            "missions.wait",
+            { missionId, after, timeoutMs: part },
+            ["missions.read"],
+            invocation,
+          );
+          if (answer.changed || disposed || Date.now() >= until) return answer;
         }
       },
-    });
+    );
 
     // --- The reviewer's brief (D1244–D1246) ------------------------------------
     /** A command's output as the node, or why there is none: a missing plugin is no failure. */
@@ -524,7 +644,7 @@ export default definePlugin({
         })),
       };
     };
-    context.commands.register({
+    register({
       name: "review.brief",
       description:
         "What the reviewer of a review slice reads: the project's rules (its trailhead), the plans that own the changed files, the lore, the reviewed slices with their proof and diff, and the lead's notes after them, as Markdown. Its handoff sends it",
@@ -549,118 +669,200 @@ export default definePlugin({
       },
     });
 
-    // --- Handing a slice to its assignee (D703) --------------------------------
-    context.commands.register({
-      name: "slices.handoff",
-      description:
-        "Hands a ready slice to its assignee with agents.send: an agent of this node gets it in its current generation (the first one is started when it has none), which is linked to the slice; the owner gets it in the inbox. The slice becomes active at its process's first step. Handing an active slice again changes nothing",
-      input: z.object({ sliceId: z.string() }),
-      output: z.object({
-        slice: Slice,
-        delivered: z.enum(["agent", "owner"]),
-        threadId: z.string().optional(),
-        /** False when the slice was already handed. */
-        handed: z.boolean(),
-      }),
-      permissions: ["missions.write", MESSAGE_PERMISSION],
-      handler: async ({ sliceId }, invocation) => {
-        await sync();
-        const slice = getSlice(sliceId);
-        const mission = getMission(slice.missionId);
-        if (mission.status === "done" || mission.status === "dropped") {
-          throw new OrchestratorError(
-            "MISSION_CLOSED",
-            `Mission ${mission.id} is ${mission.status}`,
-            {
-              missionId: mission.id,
-            },
-          );
-        }
-        const agent = slice.assignee === undefined ? undefined : parseAgentAddress(slice.assignee);
-        if (slice.status === "active") {
-          const linked = slice.threads.find((thread) => thread.nodeId === undefined);
-          return {
-            slice,
-            delivered: agent === undefined ? ("owner" as const) : ("agent" as const),
-            ...(agent === undefined || linked === undefined ? {} : { threadId: linked.threadId }),
-            handed: false,
-          };
-        }
-        const progress = progressOf(mission);
-        if (!progress.ready.includes(slice.id)) {
-          const decision = progress.decisions.find((item) => item.sliceId === slice.id);
-          if (decision?.reason === "elsewhere") {
-            throw new OrchestratorError(
-              "AGENT_ELSEWHERE",
-              `${slice.assignee} is on another node: its node orchestrates it`,
-              { sliceId, assignee: slice.assignee },
-            );
-          }
-          throw new OrchestratorError(
-            "SLICE_NOT_READY",
-            decision === undefined
-              ? `Slice ${sliceId} is ${slice.status} in wave ${slice.wave}; wave ${progress.wave ?? "none"} runs now`
-              : `Slice ${sliceId} waits for a decision: ${decision.reason}`,
-            {
-              sliceId,
-              status: slice.status,
-              wave: slice.wave,
-              current: progress.wave,
-              ...(decision === undefined ? {} : { reason: decision.reason }),
-            },
-          );
-        }
-        const { escalations, held } = await holdOf(mission);
-        if (held) {
-          throw new OrchestratorError(
-            "ESCALATION_OPEN",
-            `The lead asked the owner and waits for the answer: no slice is handed meanwhile (block the slices the ask is about to let the rest go on)`,
-            { missionId: mission.id, escalations },
-          );
-        }
-        const step = slice.step ?? mission.process.slice[0]?.id;
-        // A2's agents.send delivers it: an agent's current generation (its first is
-        // started then, D606), queued while it works; the owner's inbox. The id is
-        // the slice as it was planned, so a retry delivers it once.
-        const { delivery } = await run<{ delivery?: { threadId: string } }>(
-          "agents.send",
-          {
-            to: slice.assignee,
-            messageId: `handoff-${slice.id}-${slice.updatedAt}`,
-            body: cut(
-              [
-                handoffText({
-                  slice,
-                  mission,
-                  intent: state.intents[mission.projectId]?.intent,
-                  step,
-                }),
-                // A review slice gets the project to review against (D1246).
-                ...(slice.reviews === undefined || slice.reviews.length === 0
-                  ? []
-                  : [(await reviewBrief(slice)).markdown]),
-              ].join("\n"),
-              MAX_MESSAGE_LENGTH,
-              `review_brief { sliceId: "${slice.id}" }`,
-            ),
-          },
-          invocation,
-        );
-        const threadId = agent === undefined ? undefined : delivery?.threadId;
-        if (threadId !== undefined) await run("slices.link", { sliceId, threadId }, invocation);
-        const updated = await run<Slice>(
-          "slices.update",
-          { sliceId, status: "active", ...(step === undefined ? {} : { step }) },
-          invocation,
-        );
+    // --- Handing a slice to its assignee (D703, D1541, D1545) ------------------
+    interface HandoffInput {
+      readonly slice: Slice;
+      readonly mission: Mission;
+      readonly slices: readonly Slice[];
+      readonly intent: string | undefined;
+    }
+    /**
+     * Where a handoff reads and writes the mission: this node's fold, or, for a
+     * lead's node handing a slice of another node's mission, that node through
+     * the mesh (D1545). The message itself is always sent from here, as the
+     * caller: a node may send only as its own parties (D622).
+     */
+    const placeOf = (node: string | undefined, invocation: Invocation) => {
+      if (node === undefined) {
         return {
-          slice: updated,
-          delivered: agent === undefined ? ("owner" as const) : ("agent" as const),
-          ...(threadId === undefined ? {} : { threadId }),
-          handed: true,
+          load: async (sliceId: string): Promise<HandoffInput> => {
+            await sync();
+            const slice = getSlice(sliceId);
+            const mission = getMission(slice.missionId);
+            return {
+              slice,
+              mission,
+              slices: slicesOf(state, mission.id),
+              intent: state.intents[mission.projectId]?.intent,
+            };
+          },
+          hold: (mission: Mission) => holdOf(mission),
+          reviewBrief: async (slice: Slice) => (await reviewBrief(slice)).markdown,
+          write: <T>(name: string, input: unknown) => run<T>(name, input, invocation),
         };
+      }
+      const read = <T>(name: string, input: unknown) =>
+        onNode<T>(node, name, input, ["missions.read"], invocation);
+      return {
+        load: async (sliceId: string): Promise<HandoffInput> => {
+          const slice = await read<Slice>("slices.get", { sliceId });
+          const { mission, slices } = await read<{ mission: Mission; slices: Slice[] }>(
+            "missions.get",
+            { missionId: slice.missionId },
+          );
+          const { intent } = await read<{ intent: string }>("missions.intent.get", {
+            projectId: mission.projectId,
+          });
+          return { slice, mission, slices, intent };
+        },
+        hold: (mission: Mission) =>
+          read<{ escalations: string[]; held: boolean }>("missions.next", {
+            missionId: mission.id,
+          }),
+        reviewBrief: async (slice: Slice) =>
+          (await read<{ markdown: string }>("review.brief", { sliceId: slice.id })).markdown,
+        write: <T>(name: string, input: unknown) =>
+          onNode<T>(node, name, input, ["missions.write"], invocation),
+      };
+    };
+    async function handOff(sliceId: string, invocation: Invocation, node?: string) {
+      const place = placeOf(node, invocation);
+      const missionNode = node ?? nodeId;
+      const { slice, mission, slices, intent } = await place.load(sliceId);
+      if (isClosed(mission.status)) {
+        throw new OrchestratorError(
+          "MISSION_CLOSED",
+          `Mission ${mission.id} is ${mission.status}`,
+          {
+            missionId: mission.id,
+          },
+        );
+      }
+      const agent = slice.assignee === undefined ? undefined : parseAgentAddress(slice.assignee);
+      /** A linked thread's node, when not the mission's. */
+      const linkedOn = (thread: { nodeId?: string | undefined }) =>
+        thread.nodeId === undefined || thread.nodeId === missionNode
+          ? {}
+          : { nodeId: thread.nodeId };
+      if (slice.status === "active") {
+        // Its thread on the assignee's node first, on whatever node that is (D1541).
+        const linked =
+          slice.threads.find((thread) => (thread.nodeId ?? missionNode) === agent?.nodeId) ??
+          slice.threads[0];
+        return {
+          slice,
+          delivered: agent === undefined ? ("owner" as const) : ("agent" as const),
+          ...(agent === undefined || linked === undefined
+            ? {}
+            : { threadId: linked.threadId, ...linkedOn(linked) }),
+          handed: false,
+        };
+      }
+      // An assignee of any node is handed its slice (D1541).
+      const progress = missionProgress(slices);
+      if (!progress.ready.includes(slice.id)) {
+        const decision = progress.decisions.find((item) => item.sliceId === slice.id);
+        throw new OrchestratorError(
+          "SLICE_NOT_READY",
+          decision === undefined
+            ? `Slice ${sliceId} is ${slice.status} in wave ${slice.wave}; wave ${progress.wave ?? "none"} runs now`
+            : `Slice ${sliceId} waits for a decision: ${decision.reason}`,
+          {
+            sliceId,
+            status: slice.status,
+            wave: slice.wave,
+            current: progress.wave,
+            ...(decision === undefined ? {} : { reason: decision.reason }),
+          },
+        );
+      }
+      const { escalations, held } = await place.hold(mission);
+      if (held) {
+        throw new OrchestratorError(
+          "ESCALATION_OPEN",
+          `The lead asked the owner and waits for the answer: no slice is handed meanwhile (block the slices the ask is about to let the rest go on)`,
+          { missionId: mission.id, escalations },
+        );
+      }
+      const step = slice.step ?? mission.process.slice[0]?.id;
+      const assigneeNode = parseMessageAddress(slice.assignee!)?.nodeId;
+      // A2's agents.send delivers it: an agent's current generation (its first is
+      // started then, D606), queued while it works; an owner's inbox; on another
+      // node through the mesh (D1541). The id is the slice as it was planned, so a
+      // retry delivers it once.
+      const { delivery } = await run<{ delivery?: { threadId: string; nodeId?: string } }>(
+        "agents.send",
+        {
+          to: slice.assignee,
+          messageId: `handoff-${slice.id}-${slice.updatedAt}`,
+          body: cut(
+            [
+              handoffText({
+                slice,
+                mission,
+                intent,
+                step,
+                // An assignee elsewhere names the mission's node with its tools (D1542).
+                ...(assigneeNode === undefined || assigneeNode === missionNode
+                  ? {}
+                  : { node: missionNode }),
+              }),
+              // A review slice gets the project to review against (D1246).
+              ...(slice.reviews === undefined || slice.reviews.length === 0
+                ? []
+                : [await place.reviewBrief(slice)]),
+            ].join("\n"),
+            MAX_MESSAGE_LENGTH,
+            `review_brief { sliceId: "${slice.id}" }`,
+          ),
+        },
+        invocation,
+      );
+      const thread =
+        agent === undefined || delivery === undefined
+          ? undefined
+          : { threadId: delivery.threadId, ...linkedOn(delivery) };
+      if (thread !== undefined) {
+        await place.write("slices.link", { sliceId, ...thread });
+        // Its node follows it for refocus from here on (D1543); the mission's
+        // node asks itself when the link reaches its fold.
+        if (node === undefined && "nodeId" in thread) {
+          await askToFollow(thread.nodeId, thread.threadId);
+        }
+      }
+      const updated = await place.write<Slice>("slices.update", {
+        sliceId,
+        status: "active",
+        ...(step === undefined ? {} : { step }),
+      });
+      return {
+        slice: updated,
+        delivered: agent === undefined ? ("owner" as const) : ("agent" as const),
+        ...thread,
+        handed: true,
+      };
+    }
+    register(
+      {
+        name: "slices.handoff",
+        description:
+          "Hands a ready slice to its assignee, on any node, with agents.send: an agent gets it in its current generation (the first one is started when it has none), which is linked to the slice; an owner gets it in the inbox. The slice becomes active at its process's first step. Handing an active slice again changes nothing. With node, the mission lives there and the caller sends the message from here",
+        input: z.object({ sliceId: z.string() }),
+        output: z.object({
+          slice: Slice,
+          delivered: z.enum(["agent", "owner"]),
+          threadId: z.string().optional(),
+          /** The node of that thread, when not the mission's (D1541). */
+          nodeId: z.string().optional(),
+          /** False when the slice was already handed. */
+          handed: z.boolean(),
+        }),
+        permissions: ["missions.write", MESSAGE_PERMISSION],
+        handler: ({ sliceId }, invocation) => handOff(sliceId, invocation),
       },
-    });
+      // A lead's node hands a slice of another node's mission itself, as the lead (D1545).
+      (node, { sliceId }, invocation) => handOff(sliceId, invocation, node),
+    );
 
     // --- Review after the last change (D1241) -------------------------------------
     /** Whether taking `step` needs the mission's work reviewed after its last change. */
@@ -690,7 +892,7 @@ export default definePlugin({
       }
       return reviewCheck(slices, trees);
     };
-    context.commands.register({
+    register({
       name: "missions.review.check",
       description:
         "Whether every done slice of a mission was reviewed after its last change (its files are still those its latest review saw), and, with a step, whether that step needs it: a step that needs a review is refused until this is clear",
@@ -731,11 +933,17 @@ export default definePlugin({
       context.hooks.before<{ mission: Mission; sliceId?: string }>(
         MISSION_DELETE_HOOK,
         async (input) => {
-          const last = (await kv.get(NAMESPACE, `run/${input.mission.id}`)) as
-            | { workflowId?: string }
-            | undefined;
+          const last = await runOf(input.mission.id);
           if (last?.workflowId === undefined) return input;
-          const runs = await run<{ workflowId: string; status: string }[]>("workflows.list", {});
+          // A run on a node that cannot be reached holds no delete back.
+          const runs = await workflowsOf(last).catch((error: unknown) => {
+            context.log.warn("the run's node could not be asked before a delete", {
+              missionId: input.mission.id,
+              node: last.nodeId,
+              error: String(error),
+            });
+            return [];
+          });
           if (
             runs.some((item) => item.workflowId === last.workflowId && item.status === "running")
           ) {
@@ -750,16 +958,26 @@ export default definePlugin({
       ),
     );
 
-    // --- The orchestrator workflow (D706) ----------------------------------------
+    // --- The orchestrator workflow (D706, D1545) -----------------------------------
+    type Started = { workflowId: string; name: string; status: string };
+    /** The mission's running workflow, on whatever node it runs, if any. */
+    const runningOf = async (record: RunRecord | undefined, invocation?: Invocation) => {
+      if (record?.workflowId === undefined) return undefined;
+      const runs = await workflowsOf(record, invocation);
+      return runs.find(
+        (item) => item.workflowId === record.workflowId && item.status === "running",
+      );
+    };
     context.commands.register({
       name: "missions.orchestrate",
       description:
-        "Runs the orchestrator workflow for a mission from the calling thread (its lead): it hands each ready slice of the current wave to its assignee, waits for their proofs, moves on, and ends with what the lead must decide or run, which wakes the thread. A mission already being orchestrated returns its running workflow. Running it again goes on from where the mission is",
+        "Runs the orchestrator workflow for a mission from the calling thread (its lead): it hands each ready slice of the current wave to its assignee, waits for their proofs, moves on, and ends with what the lead must decide or run, which wakes the thread. A mission already being orchestrated returns its running workflow. Running it again goes on from where the mission is. With node, the mission lives on another node and the workflow runs here, from this node's thread",
       input: z.object({
         missionId: z.string(),
         parentThreadId: z.string().min(1).optional(),
         /** How long each wait for the mission to move lasts before it looks again. */
         waitMs: z.number().int().min(1).max(MAX_WAIT_MS).optional(),
+        node: MissionNode,
       }),
       output: z.object({
         workflowId: z.string(),
@@ -769,7 +987,7 @@ export default definePlugin({
         existing: z.boolean(),
       }),
       permissions: ["missions.write", "threads.write"],
-      handler: async ({ missionId, parentThreadId: named, waitMs }, invocation) => {
+      handler: async ({ missionId, parentThreadId: named, waitMs, node: given }, invocation) => {
         const parentThreadId = named ?? invocation.threadId;
         if (parentThreadId === undefined) {
           throw new OrchestratorError(
@@ -787,35 +1005,54 @@ export default definePlugin({
             `parentThreadId ${named} is not the calling thread ${invocation.threadId}`,
           );
         }
-        await sync();
-        const mission = getMission(missionId);
-        if (mission.status === "done" || mission.status === "dropped") {
-          throw new OrchestratorError(
-            "MISSION_CLOSED",
-            `Mission ${missionId} is ${mission.status}`,
-            {
-              missionId,
-            },
-          );
-        }
+        // The mission's node: this one, or the one named, which keeps its run (D1545).
+        const node = given === undefined || given === nodeId ? undefined : given;
         const key = `run/${missionId}`;
-        const last = (await kv.get(NAMESPACE, key)) as { workflowId?: string } | undefined;
-        if (last?.workflowId !== undefined) {
-          const runs = await run<{ workflowId: string; name: string; status: string }[]>(
-            "workflows.list",
-            {},
-          );
-          const running = runs.find(
-            (item) => item.workflowId === last.workflowId && item.status === "running",
-          );
-          if (running !== undefined) {
-            return {
-              workflowId: running.workflowId,
-              name: running.name,
-              status: running.status,
-              existing: true,
-            };
+        let existing: Started | undefined;
+        if (node === undefined) {
+          await sync();
+          const mission = getMission(missionId);
+          if (isClosed(mission.status)) {
+            throw new OrchestratorError(
+              "MISSION_CLOSED",
+              `Mission ${missionId} is ${mission.status}`,
+              {
+                missionId,
+              },
+            );
           }
+          existing = await runningOf(await runOf(missionId), invocation);
+        } else {
+          const next = await onNode<{ mission: { status: Mission["status"] } }>(
+            node,
+            "missions.next",
+            { missionId },
+            ["missions.read"],
+            invocation,
+          );
+          if (isClosed(next.mission.status)) {
+            throw new OrchestratorError(
+              "MISSION_CLOSED",
+              `Mission ${missionId} is ${next.mission.status}`,
+              { missionId },
+            );
+          }
+          const there = await onNode<{ run: (Started & { nodeId?: string }) | null }>(
+            node,
+            "missions.orchestration",
+            { missionId },
+            ["missions.read", "threads.read"],
+            invocation,
+          );
+          if (there.run?.status === "running") existing = { ...there.run, name: "mission" };
+        }
+        if (existing !== undefined) {
+          return {
+            workflowId: existing.workflowId,
+            name: existing.name,
+            status: existing.status,
+            existing: true,
+          };
         }
         // The script is this plugin's own and its only argument a mission id, so
         // the caller may start it without holding workflows.run itself; its
@@ -824,11 +1061,15 @@ export default definePlugin({
         const actsFrom =
           invocation.threadId ??
           (caller === undefined || caller.permissions.includes("*") ? parentThreadId : undefined);
-        const started = await run<{ workflowId: string; name: string; status: string }>(
+        const started = await run<Started>(
           "workflows.run",
           {
             script: ORCHESTRATOR_WORKFLOW,
-            args: { missionId, ...(waitMs === undefined ? {} : { waitMs }) },
+            args: {
+              missionId,
+              ...(waitMs === undefined ? {} : { waitMs }),
+              ...(node === undefined ? {} : { node }),
+            },
             parentThreadId,
           },
           {
@@ -842,15 +1083,172 @@ export default definePlugin({
               : { caller: { id: caller.id, permissions: [...caller.permissions, WORKFLOWS_RUN] } }),
           },
         );
-        // The thread it runs from is the mission's lead (D1222), and the run's end is the mission's.
-        await kv.set(NAMESPACE, key, { workflowId: started.workflowId, parentThreadId });
-        await kv.set(NAMESPACE, `workflow/${started.workflowId}`, { missionId });
+        await kv.set(NAMESPACE, `workflow/${started.workflowId}`, {
+          missionId,
+          ...(node === undefined ? {} : { node }),
+        });
+        if (node === undefined) {
+          // The thread it runs from is the mission's lead (D1222), and the run's end is the mission's.
+          await kv.set(NAMESPACE, key, { workflowId: started.workflowId, parentThreadId });
+        } else {
+          // The mission's node keeps the run: its panel, reports and escalations find it (D1545).
+          const { thread } = await getThread(parentThreadId);
+          await onNode(
+            node,
+            "missions.orchestration.record",
+            {
+              missionId,
+              workflowId: started.workflowId,
+              parentThreadId,
+              lead: senderOf(parentThreadId, thread),
+              status: started.status,
+            },
+            ["missions.write"],
+            invocation,
+          );
+        }
         return { ...started, existing: false };
       },
     });
 
-    // --- Closing a mission with the lead's word for the owner (D1222) -------------
     context.commands.register({
+      name: "missions.orchestration.record",
+      description:
+        "Records on the mission's node a run of its orchestrator that another node of the mesh started from its own thread (the lead's), and that run's end: its panel, the lead's reports and escalations find it there. Only another node calls it",
+      input: z.object({
+        missionId: z.string(),
+        workflowId: z.string(),
+        status: z.string(),
+        /** The lead's thread on the calling node; with a run that starts. */
+        parentThreadId: z.string().optional(),
+        /** The lead's address, as it sends (D622); with a run that starts. */
+        lead: z.string().optional(),
+        error: z.string().optional(),
+      }),
+      output: z.object({ recorded: z.boolean() }),
+      permissions: ["missions.write"],
+      handler: async (
+        { missionId, workflowId, status, parentThreadId, lead, error },
+        invocation,
+      ) => {
+        const caller = invocation.caller?.id;
+        if (caller?.startsWith("node:") !== true) {
+          throw new OrchestratorError(
+            "MESH_ONLY",
+            "Only another node of the mesh records a run it started: run missions.orchestrate here",
+          );
+        }
+        const runNode = caller.slice("node:".length);
+        await sync();
+        const mission = getMission(missionId);
+        const current = await runOf(missionId);
+        if (parentThreadId !== undefined && lead !== undefined) {
+          // A run that starts is the mission's current one.
+          await kv.set(NAMESPACE, `run/${missionId}`, {
+            workflowId,
+            parentThreadId,
+            nodeId: runNode,
+            lead,
+          });
+          return { recorded: true };
+        }
+        // An end: only the current run speaks for the mission (D1222).
+        if (current?.workflowId !== workflowId || current.nodeId !== runNode) {
+          return { recorded: false };
+        }
+        if ((status === "failed" || status === "stopped") && !isClosed(mission.status)) {
+          reportLater(missionId, status, workflowId, error);
+        }
+        return { recorded: true };
+      },
+    });
+
+    // --- Stopping a mission's work on every node (D1544) -------------------------
+    const StoppedAgent = z.object({
+      address: z.string(),
+      stoppedAt: z.string().optional(),
+      interrupted: z.boolean().optional(),
+      /** Why this agent's node did not stop it. */
+      error: z.object({ code: z.string().optional(), message: z.string() }).optional(),
+    });
+    register({
+      name: "missions.stop",
+      description:
+        "Stops a mission's work: its orchestrator run, on the node it runs on, and every agent assigned an active slice of it, on its node. Each agent stops as a whole, in every mission, until resumed. The mission's status stays",
+      input: z.object({ missionId: z.string() }),
+      output: z.object({
+        /** The run that was stopped; null when none was running. */
+        run: z
+          .object({ workflowId: z.string(), status: z.string(), nodeId: z.string().optional() })
+          .nullable(),
+        agents: z.array(StoppedAgent),
+      }),
+      permissions: ["missions.write", "agents.write", "threads.write"],
+      handler: async ({ missionId }, invocation) => {
+        await sync();
+        getMission(missionId);
+        const last = await runOf(missionId);
+        const running = await runningOf(last, invocation);
+        let stopped: { workflowId: string; status: string; nodeId?: string } | null = null;
+        if (running !== undefined && last?.parentThreadId !== undefined) {
+          const input = { workflowId: running.workflowId, parentThreadId: last.parentThreadId };
+          const node = elsewhere(last);
+          const answer =
+            node === undefined
+              ? await run<{ workflowId: string; status: string }>("workflows.stop", input)
+              : await onNode<{ workflowId: string; status: string }>(
+                  node,
+                  "workflows.stop",
+                  input,
+                  ["threads.write"],
+                  invocation,
+                );
+          stopped = { ...answer, ...(node === undefined ? {} : { nodeId: node }) };
+        }
+        const assignees = [
+          ...new Set(
+            slicesOf(state, missionId)
+              .filter((slice) => slice.status === "active" && slice.assignee !== undefined)
+              .map((slice) => slice.assignee!),
+          ),
+        ];
+        const agents: z.input<typeof StoppedAgent>[] = [];
+        for (const address of assignees) {
+          const agent = parseAgentAddress(address);
+          if (agent === undefined) continue;
+          try {
+            const answer =
+              agent.nodeId === nodeId
+                ? await run<{ stoppedAt: string; interrupted: boolean }>(
+                    "agents.stop",
+                    { agentId: agent.agentId },
+                    invocation,
+                  )
+                : await onNode<{ stoppedAt: string; interrupted: boolean }>(
+                    agent.nodeId,
+                    "agents.stop",
+                    { agentId: agent.agentId },
+                    ["agents.write"],
+                    invocation,
+                  );
+            agents.push({ address, ...answer });
+          } catch (error) {
+            const { code, message } = error as { code?: unknown; message?: unknown };
+            agents.push({
+              address,
+              error: {
+                ...(typeof code === "string" ? { code } : {}),
+                message: String(message ?? error),
+              },
+            });
+          }
+        }
+        return { run: stopped, agents };
+      },
+    });
+
+    // --- Closing a mission with the lead's word for the owner (D1222) -------------
+    register({
       name: "missions.close",
       description:
         "Closes a mission as done or dropped, with what the lead says was committed or merged and where: the owner gets the lead's report with the mission, its slices and their proof",
@@ -891,7 +1289,7 @@ export default definePlugin({
     });
 
     // --- A mission's run, for the owner's client (C2: D1086) ----------------------
-    context.commands.register({
+    register({
       name: "missions.orchestration",
       description:
         "The orchestrator run of a mission, the last one missions.orchestrate started: its workflow, the thread it runs from, its status, last log lines and result. With the head of the `orchestration` stream it reflects, to follow the run from there",
@@ -902,19 +1300,26 @@ export default definePlugin({
         run: OrchestratorRun.nullable(),
       }),
       permissions: ["missions.read", "threads.read"],
-      handler: async ({ missionId }) => {
+      handler: async ({ missionId }, invocation) => {
         await sync();
         getMission(missionId);
         const streamHead = await log.head(ORCHESTRATION_STREAM);
-        const last = (await kv.get(NAMESPACE, `run/${missionId}`)) as
-          | { workflowId?: string }
-          | undefined;
+        const last = await runOf(missionId);
         if (last?.workflowId === undefined) return { head: streamHead, run: null };
-        const runs = await run<z.input<typeof OrchestratorRun>[]>("workflows.list", {});
+        // A run of another node is read there (D1545).
+        const runs = await workflowsOf(last, invocation);
         const found = runs.find((item) => item.workflowId === last.workflowId);
         if (found === undefined) return { head: streamHead, run: null };
         const view = OrchestratorRun.parse(found);
-        return { head: streamHead, run: { ...view, logs: view.logs.slice(-5) } };
+        const node = elsewhere(last);
+        return {
+          head: streamHead,
+          run: {
+            ...view,
+            logs: view.logs.slice(-5),
+            ...(node === undefined ? {} : { nodeId: node }),
+          },
+        };
       },
     });
 
@@ -990,12 +1395,76 @@ export default definePlugin({
       handler: ({ reason, ...target }) => brief(target, reason),
     });
 
+    // --- Threads of this node working on another node's slices (D1543) ----------
+    /** The threads followed for another node's mission, by thread id: that node. */
+    const following = new Map<string, string>();
+    const unfollow = async (threadId: string) => {
+      following.delete(threadId);
+      await kv.delete(NAMESPACE, `follow/${threadId}`);
+      watchThreads();
+    };
+    /**
+     * The brief of a thread of this node: from this node's slices, else from
+     * the node whose slice it follows, with this node's lore after a
+     * compaction. A brief naming no open slice there ends the following.
+     */
+    async function threadBrief(threadId: string, reason: RefocusReason) {
+      await sync();
+      const node = following.get(threadId);
+      if (node === undefined || sliceOfThread(threadId, nodeId) !== undefined) {
+        return brief({ threadId, nodeId }, reason);
+      }
+      let answer: { markdown: string; chain: IntentChain };
+      try {
+        answer = await onNode(node, "refocus.brief", { threadId, nodeId, reason }, [
+          "missions.read",
+        ]);
+      } catch (error) {
+        if ((error as { code?: unknown }).code !== "SLICE_NOT_FOUND") throw error;
+        await unfollow(threadId);
+        throw error;
+      }
+      const status = answer.chain.slice.status;
+      if (status === "done" || status === "dropped") {
+        await unfollow(threadId);
+        throw new OrchestratorError(
+          "SLICE_NOT_FOUND",
+          `No open slice of node ${node} links thread ${threadId}`,
+          { threadId, node },
+        );
+      }
+      const lore = reason === "compaction" ? await loreAfterCompaction(threadId) : "";
+      return { markdown: answer.markdown + lore, chain: answer.chain };
+    }
+
+    context.commands.register({
+      name: "refocus.follow",
+      description:
+        "Follows a thread of this node that works on a slice of another node's mission, for refocus: after a compaction and every few turns it gets that slice's brief from that node. The mission's node asks for it when it links the thread",
+      input: z.object({
+        threadId: z.string(),
+        node: z.string().min(1).meta({ description: "The node the slice's mission lives on" }),
+      }),
+      output: z.object({ following: z.boolean() }),
+      permissions: ["threads.write"],
+      handler: async ({ threadId, node }) => {
+        if (node === nodeId) return { following: false };
+        await getThread(threadId);
+        if (following.get(threadId) !== node) {
+          await kv.set(NAMESPACE, `follow/${threadId}`, node);
+          following.set(threadId, node);
+          watchThreads();
+        }
+        return { following: true };
+      },
+    });
+
     /**
      * Hands a thread of this node its brief: into the running turn when its
      * agent steers, else as the next message of its queue (D710).
      */
     async function refocus(threadId: string, reason: RefocusReason, invocation?: Invocation) {
-      const { markdown } = await brief({ threadId, nodeId }, reason);
+      const { markdown } = await threadBrief(threadId, reason);
       const { thread, running } = await getThread(threadId);
       const agentId = thread.lastTurn?.agentId ?? thread.agentId;
       const agents = await run<{ agentId: string; steering?: boolean }[]>("agents.list", {});
@@ -1020,7 +1489,7 @@ export default definePlugin({
     context.commands.register({
       name: "refocus.send",
       description:
-        "Hands a thread of this node the refocus brief of the slice it works on: steered into its running turn when its agent can take it, else queued as its next message",
+        "Hands a thread of this node the refocus brief of the slice it works on, on this node or the one it follows (refocus.follow): steered into its running turn when its agent can take it, else queued as its next message",
       input: z.object({ threadId: z.string(), reason: Reason }),
       output: z.object({
         messageId: z.string(),
@@ -1040,6 +1509,8 @@ export default definePlugin({
     const lanes = new Map<string, Promise<unknown>>();
     const inLane = (threadId: string, work: () => Promise<unknown>) => {
       const next = (lanes.get(threadId) ?? Promise.resolve()).then(work).catch((error: unknown) => {
+        // A followed thread whose slice closed on its node is no failure (D1543).
+        if ((error as { code?: unknown }).code === "SLICE_NOT_FOUND") return;
         if (!disposed) context.log.warn("refocus failed", { threadId, error: String(error) });
       });
       lanes.set(threadId, next);
@@ -1068,13 +1539,39 @@ export default definePlugin({
         });
       }
     };
+    /** Threads of other nodes asked to follow their slice, by `<node>/<thread>` (D1543). */
+    const asked = new Map<string, Promise<void>>();
+    function askToFollow(node: string, threadId: string): Promise<void> {
+      const key = `${node}/${threadId}`;
+      const known = asked.get(key);
+      if (known !== undefined) return known;
+      const asking = onNode(node, "refocus.follow", { threadId, node: nodeId }, [
+        "threads.write",
+      ]).then(
+        () => undefined,
+        (error: unknown) => {
+          // Asked again on the next change of the missions or the mesh.
+          asked.delete(key);
+          if (!disposed) {
+            context.log.warn("a thread of another node is not refocused", {
+              node,
+              threadId,
+              error: String(error),
+            });
+          }
+        },
+      );
+      asked.set(key, asking);
+      return asking;
+    }
     function watchThreads() {
       if (disposed) return;
-      const wanted = new Set<string>();
+      const wanted = new Set<string>(following.keys());
       for (const slice of Object.values(state.slices)) {
         if (!isOpen(slice)) continue;
         for (const thread of slice.threads) {
           if (thread.nodeId === undefined || thread.nodeId === nodeId) wanted.add(thread.threadId);
+          else askToFollow(thread.nodeId, thread.threadId);
         }
       }
       for (const [threadId, subscription] of watched) {
@@ -1097,6 +1594,11 @@ export default definePlugin({
       },
     });
 
+    for (const entry of await kv.list(NAMESPACE, { prefix: "follow/" })) {
+      if (typeof entry.value === "string") {
+        following.set(entry.key.slice("follow/".length), entry.value);
+      }
+    }
     await sync();
     caughtUp = true;
   },

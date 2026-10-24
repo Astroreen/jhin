@@ -21,8 +21,11 @@ export function handoffText(input: {
   readonly mission: Mission;
   readonly intent: string | undefined;
   readonly step: string | undefined;
+  /** The mission's node, for an assignee of another node: its tools name it (D1542). */
+  readonly node?: string;
 }): string {
   const { slice, mission } = input;
+  const on = input.node === undefined ? "" : `, node: "${input.node}"`;
   return [
     "[Slice handed to you]",
     "",
@@ -31,6 +34,12 @@ export function handoffText(input: {
     `## Slice: ${slice.title}`,
     "",
     `Slice \`${slice.id}\`, wave ${slice.wave}.`,
+    ...(input.node === undefined
+      ? []
+      : [
+          "",
+          `The mission lives on node \`${input.node}\`, not yours: pass \`node: "${input.node}"\` with every slices_* and missions_* tool you call about it.`,
+        ]),
     "",
     slice.spec.trim(),
     "",
@@ -42,16 +51,16 @@ export function handoffText(input: {
     "",
     "## Process",
     "",
-    `The slice goes through ${steps(mission)}${input.step === undefined ? "" : `; it is at ${input.step}`}. Record each step you reach with slices_update { sliceId, step }.`,
-    "When the spec works, record the proof once with slices_prove { sliceId, items }: the smallest proof that shows it works (a command with its output, a screenshot, a link).",
-    `If you cannot go on, set the slice blocked with slices_update { sliceId, status: "blocked" } and say why: whoever runs the mission decides.`,
+    `The slice goes through ${steps(mission)}${input.step === undefined ? "" : `; it is at ${input.step}`}. Record each step you reach with slices_update { sliceId, step${on} }.`,
+    `When the spec works, record the proof once with slices_prove { sliceId, items${on} }: the smallest proof that shows it works (a command with its output, a screenshot, a link).`,
+    `If you cannot go on, set the slice blocked with slices_update { sliceId, status: "blocked"${on} } and say why: whoever runs the mission decides.`,
     ...(slice.reviews === undefined || slice.reviews.length === 0
       ? []
       : [
           "",
           "## Review",
           "",
-          `This slice reviews the work of ${slice.reviews.map((id) => `\`${id}\``).join(", ")}. Record each review with slices_review { sliceId, verdict, notes }: approved or changes-requested, and in notes what you checked and what you found. A commit or merge of the mission is refused until each is approved after its last change.`,
+          `This slice reviews the work of ${slice.reviews.map((id) => `\`${id}\``).join(", ")}. Record each review with slices_review { sliceId, verdict, notes${on} }: approved or changes-requested, and in notes what you checked and what you found. A commit or merge of the mission is refused until each is approved after its last change.`,
         ]),
     "",
   ].join("\n");

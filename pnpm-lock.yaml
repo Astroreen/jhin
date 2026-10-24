@@ -1259,6 +1259,9 @@ importers:
 
   plugins/missions:
     dependencies:
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
       '@jhin/mesh-api':
         specifier: workspace:*
         version: link:../../packages/mesh-api
@@ -1328,9 +1331,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/storage-api
     devDependencies:
+      '@jhin/plugin-agent-fake':
+        specifier: workspace:*
+        version: link:../agent-fake
+      '@jhin/plugin-threads':
+        specifier: workspace:*
+        version: link:../threads
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
