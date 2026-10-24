@@ -165,6 +165,20 @@ What the node does today (2026-10-24, `08eeb571`):
   it was deleted is dropped as the event arrives. The entry's size is the
   UTF-8 size of its events' JSON: an estimate, as `history-cache.status` says.
 
+- **D1609. The setting is the device section `jhin.history-cache`.** One
+  key, `enabled` (default `true`), defined by `jhin.history-cache` and shown
+  as a row of the general settings' Behavior section
+  (`settings.general.behavior`, contribution `jhin.history-cache.setting`),
+  with how many threads are kept and about how large they are. Device sync
+  never shares it (D488's rule for `jhin.sync`): each device decides for
+  itself. Turned off, here or in another tab, everything is deleted;
+  turned on again, threads are kept from their next open.
+- **D1610. Room is made a quarter at a time.** A write over the quota deletes
+  the least recently opened quarter (at least one) of the other kept
+  streams, then is tried once more. The 30 days of D1593 count from when a
+  thread last opened from the cache, kept per stream; the sidebar's catalog
+  of a node goes only with the node (D1593) or the setting.
+
 ### P3. Chunks and prefetch
 
 - **D1595. What the first screen does not show is a chunk of its own.** The
