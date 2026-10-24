@@ -706,7 +706,7 @@ test("the Device panel streams a simulator from the device hub in the app, with 
 
   // An agent opens the simulator: the app's node installs and starts the hub, the panel streams it.
   await client.call("device.open", { threadId: thread.id, deviceId: "SIM-1" });
-  const panel = window.getByRole("complementary", { name: "Device panel" });
+  const panel = window.getByRole("region", { name: "Device panel" });
   const screen = panel.getByRole("application", { name: "iOS Simulator screen" });
   await expect(screen).toBeVisible();
   await expect(panel.getByText("Connecting video…")).toBeHidden();

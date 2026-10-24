@@ -2,7 +2,7 @@
 // apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx (its rows, menu, empty
 // state and footer) and PullRequestListRow.tsx (a row's two lines). A chunk of its own
 // (D440), loaded when the panel first opens. docs/plans/source-control.md, D1281.
-import type { NodeTarget } from "@jhin/client-api";
+import type { NodeTarget, RightPanelSurfaceProps } from "@jhin/client-api";
 import type { ThreadPullRequest } from "@jhin/source-control-api";
 import {
   Button,
@@ -336,7 +336,16 @@ export function createPullRequestsPanel(
       description: error instanceof Error ? error.message : "An error occurred.",
     });
 
-  function Panel({ target, threadId }: { target: NodeTarget; threadId: string }) {
+  function Panel({
+    target,
+    threadId,
+    embedded,
+  }: {
+    target: NodeTarget;
+    threadId: string;
+    /** A surface of the right panel (t3-parity.md D1424): its strip names it and closes it. */
+    embedded: boolean;
+  }) {
     const catalog = useCatalog(threads, target);
     const view = useSourceControl(store, target);
     const thread = catalog?.threads.find((item) => item.id === threadId);
@@ -362,6 +371,25 @@ export function createPullRequestsPanel(
       linkPrompt === undefined || status === undefined || !status.isRepo
         ? undefined
         : () => void linkPrompt(target, threadId, status.remoteUrl);
+    const list = (
+      <div className="min-h-0 flex-1">
+        {/* Until the thread is known, its empty state would be a guess. */}
+        {thread === undefined ? null : (
+          <ThreadPullRequestsList actions={actions} links={links} onLink={onLink} />
+        )}
+      </div>
+    );
+    if (embedded) {
+      return (
+        <section
+          aria-label="Pull requests"
+          className="flex min-h-0 flex-1 flex-col"
+          data-pull-requests-panel
+        >
+          {list}
+        </section>
+      );
+    }
     return (
       <aside
         aria-label="Pull requests"
@@ -379,17 +407,18 @@ export function createPullRequestsPanel(
             <XIcon />
           </Button>
         </div>
-        <div className="min-h-0 flex-1">
-          {/* Until the thread is known, its empty state would be a guess. */}
-          {thread === undefined ? null : (
-            <ThreadPullRequestsList actions={actions} links={links} onLink={onLink} />
-          )}
-        </div>
+        {list}
       </aside>
     );
   }
 
-  return function PullRequestsPanel() {
+  /** The right panel's `pull-requests` surface (D1424). */
+  function PullRequestsSurface({ place }: RightPanelSurfaceProps) {
+    if (place.threadId === undefined) return null;
+    return <Panel embedded key={place.threadId} target={place.target} threadId={place.threadId} />;
+  }
+
+  function PullRequestsPanel() {
     const route = useExternal(navigation, navigation.current);
     if (route.node === undefined || route.thread === undefined) return null;
     if (route.panel !== PULL_REQUESTS_PANEL) return null;
@@ -397,6 +426,8 @@ export function createPullRequestsPanel(
       node: route.node,
       ...(route.remote === undefined ? {} : { remote: route.remote }),
     };
-    return <Panel key={route.thread} target={target} threadId={route.thread} />;
-  };
+    return <Panel embedded={false} key={route.thread} target={target} threadId={route.thread} />;
+  }
+
+  return { PullRequestsPanel, PullRequestsSurface };
 }

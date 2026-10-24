@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
+import { openSurface } from "./support/ui.ts";
 
 const PAGES: Record<string, string> = {
   "/": `<!doctype html><title>Preview page</title>
@@ -180,8 +181,7 @@ test("D950: a server a terminal started shows under Local servers and opens", as
     await expect(
       page.getByRole("button", { name: "1 terminal process running. Open terminal" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Toggle right panel" }).click();
-    const panel = page.getByRole("complementary", { name: "Right panel" });
+    const panel = await openSurface(page, "Browser");
     const servers = panel.getByRole("region", { name: "Local servers" });
     // The process name is the OS's: `node`, or `MainThread` for Node 24 on Linux.
     const row = servers.getByRole("button", { name: /^\S+ localhost:\d+$/ });
@@ -216,11 +216,12 @@ test("D953: a profile made in the settings opens a tab of its own, marked with i
   await shot(page, info, "browser-profiles");
   await page.getByRole("button", { name: "Back" }).click();
 
+  // "Open a surface" offers the browser in each profile, as T3's does.
   await page.getByRole("button", { name: "Toggle right panel" }).click();
   const panel = page.getByRole("complementary", { name: "Right panel" });
   await panel.getByRole("button", { name: "Open browser in a profile" }).click();
   await page.getByRole("menuitem", { name: "Work" }).click();
-  await expect(panel.getByRole("tab", { name: "Browser Work" })).toBeVisible();
+  await expect(panel.getByRole("tab", { name: "Browser" })).toBeVisible();
   const address = panel.getByRole("textbox", { name: "Address" });
   await address.fill(`${origin}/second`);
   await address.press("Enter");
@@ -324,8 +325,8 @@ test("D403: the user opens a page from the address bar and sizes it like a devic
   page,
 }, info) => {
   await startThread(page, "browse please");
-  await page.getByRole("button", { name: "Toggle right panel" }).click();
-  const panel = page.getByRole("complementary", { name: "Right panel" });
+  // T3's right panel (t3-parity.md D1424): "Browser" opens a new tab.
+  const panel = await openSurface(page, "Browser");
   await expect(panel.getByText("No preview yet")).toBeVisible();
 
   const address = panel.getByRole("textbox", { name: "Address" });
@@ -364,9 +365,11 @@ test("D403: the user opens a page from the address bar and sizes it like a devic
   await expect(panel.getByRole("tab", { name: "Confirmed" })).toBeVisible();
   await expect(dialog).toBeHidden();
 
-  // The tab closes from its strip; the header toggle hides the panel.
+  // The tab closes from its strip, and with the last surface the panel (D1422).
   await panel.getByRole("button", { name: "Close Confirmed" }).click();
-  // Back to a new tab, which offers the page just visited.
+  await expect(panel).toBeHidden();
+  // A new tab offers the page just visited; the header toggle hides the panel.
+  await openSurface(page, "Browser");
   await expect(panel.getByRole("region", { name: "Recently used" })).toContainText("Second page");
   await page.getByRole("button", { name: "Toggle right panel" }).click();
   await expect(panel).toBeHidden();
@@ -377,8 +380,7 @@ test("D1202: a tab floats over the chat, moves, and goes back to the right panel
 }, info) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   const threadId = await startThread(page, "float please");
-  await page.getByRole("button", { name: "Toggle right panel" }).click();
-  const panel = page.getByRole("complementary", { name: "Right panel" });
+  const panel = await openSurface(page, "Browser");
   const address = panel.getByRole("textbox", { name: "Address" });
   await address.fill(`${origin}/second`);
   await address.press("Enter");
@@ -470,8 +472,7 @@ test("D1331: a page's download is offered to the user, who saves it to this devi
   page,
 }, info) => {
   await startThread(page, "download please");
-  await page.getByRole("button", { name: "Toggle right panel" }).click();
-  const panel = page.getByRole("complementary", { name: "Right panel" });
+  const panel = await openSurface(page, "Browser");
   const address = panel.getByRole("textbox", { name: "Address" });
   await address.fill(`${origin}/second`);
   await address.press("Enter");
@@ -527,8 +528,7 @@ test("D1326–D1327: the chat makes room beside a floating tab, which pops into 
   // Wide enough for a readable chat lane beside the player, too narrow for the lane to stay centred.
   await page.setViewportSize({ width: 1400, height: 900 });
   await startThread(page, "canvas please");
-  await page.getByRole("button", { name: "Toggle right panel" }).click();
-  const panel = page.getByRole("complementary", { name: "Right panel" });
+  const panel = await openSurface(page, "Browser");
   const address = panel.getByRole("textbox", { name: "Address" });
   await address.fill(`${origin}/second`);
   await address.press("Enter");
@@ -581,8 +581,7 @@ test.describe("on a touch screen", () => {
     page,
   }, info) => {
     await startThread(page, "pick please");
-    await page.getByRole("button", { name: "Toggle right panel" }).click();
-    const panel = page.getByRole("complementary", { name: "Right panel" });
+    const panel = await openSurface(page, "Browser");
     const address = panel.getByRole("textbox", { name: "Address" });
     await address.fill(`${origin}/pick`);
     await address.press("Enter");

@@ -6,6 +6,7 @@ import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  RIGHT_PANEL_CAPABILITY,
   THREADS_CAPABILITY,
   targetKey,
   type ChatDrawerProps,
@@ -14,6 +15,8 @@ import {
   type Keybindings,
   type Navigation,
   type NodeTarget,
+  type RightPanel,
+  type RightPanelSurfaceProps,
   type ThreadIndicatorProps,
   type ThreadsCatalog,
 } from "@jhin/client-api";
@@ -32,7 +35,7 @@ import {
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { PanelRightIcon, TerminalIcon } from "lucide-react";
+import { PanelRightIcon, TerminalIcon, TerminalSquareIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { useCatalog, useConfig, useExternal, useShortcutLabels } from "../../lib/hooks.ts";
@@ -123,6 +126,8 @@ export const terminalPlugin = builtin(
       [KEYBINDINGS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
       [UI_TOASTS_CAPABILITY]: "^1",
+      // The thread's terminals as a surface of the right panel (t3-parity.md D1424).
+      [RIGHT_PANEL_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -134,6 +139,7 @@ export const terminalPlugin = builtin(
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
+      const rightPanel = context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY);
       context.config.define(SETTINGS_SECTION, TerminalSettings);
       /** Without the chat plugin there is no composer: the menus leave the item out. */
       const hasCommand = (name: string) =>
@@ -396,6 +402,7 @@ export const terminalPlugin = builtin(
         threadId: string;
         cwd: string;
         placement: "drawer" | "panel";
+        embedded?: boolean;
         visible: boolean;
       }) {
         const { target, threadId } = props;
@@ -467,6 +474,7 @@ export const terminalPlugin = builtin(
                 splitThreadTerminal(current, nextTerminalId(current.terminalIds), "vertical"),
               )
             }
+            embedded={props.embedded === true}
             placement={props.placement}
             shortcuts={{
               split: shortcut("terminal.split"),
@@ -501,11 +509,30 @@ export const terminalPlugin = builtin(
         );
       }
 
+      /** The right panel's `terminal` surface (t3-parity.md D1424). */
+      function TerminalSurface({ place }: RightPanelSurfaceProps) {
+        const catalog = useCatalog(threads, place.target);
+        if (place.threadId === undefined) return null;
+        const thread = catalog?.threads.find((item) => item.id === place.threadId);
+        const project = catalog?.projects.find((item) => item.id === thread?.projectId);
+        if (project === undefined) return null;
+        return (
+          <Terminals
+            cwd={project.path}
+            embedded
+            placement="panel"
+            target={place.target}
+            threadId={place.threadId}
+            visible
+          />
+        );
+      }
+
       /** Right of the chat (`app.panel`), while the route's panel is `terminal` (D474). */
       function Panel() {
         const route = useExternal(navigation, navigation.current);
         const target: NodeTarget | undefined =
-          route.node === undefined || route.panel !== TERMINAL_PANEL
+          rightPanel !== undefined || route.node === undefined || route.panel !== TERMINAL_PANEL
             ? undefined
             : { node: route.node, ...(route.remote === undefined ? {} : { remote: route.remote }) };
         const catalog = useCatalog(threads, target);
@@ -528,7 +555,8 @@ export const terminalPlugin = builtin(
       function PanelToggle({ thread }: ChatHeaderActionProps) {
         const route = useExternal(navigation, navigation.current);
         const shortcut = useShortcutLabels(keybindings)("terminal.panel.toggle");
-        if (thread === undefined) return null;
+        // Beside the right panel, its "Add panel surface" opens the terminals (D1424).
+        if (thread === undefined || rightPanel !== undefined) return null;
         const open = route.panel === TERMINAL_PANEL;
         return (
           <Tooltip>
@@ -608,6 +636,41 @@ export const terminalPlugin = builtin(
       context.subscriptions.add(
         slots.contribute("app.panel", { id: "jhin.terminal.panel", component: Panel }),
       );
+      if (rightPanel !== undefined) {
+        context.subscriptions.add(
+          rightPanel.register({
+            id: TERMINAL_PANEL,
+            title: "Terminal",
+            icon: TerminalSquareIcon,
+            offer: {
+              label: "Terminal",
+              shortcut: "T",
+              order: 20,
+              // T3's `terminalAvailable`: a thread of a project.
+              useAvailability: (place) =>
+                place.threadId === undefined
+                  ? {
+                      available: false,
+                      reason: "Terminal surfaces are only available from a project thread.",
+                      hint: "Available when a project is open.",
+                    }
+                  : { available: true },
+              // A thread without a terminal gets one, as T3's addTerminalSurface launches one.
+              add: (place) => {
+                if (place.threadId === undefined) return;
+                ui.update(terminalThreadKey(place.target, place.threadId), (state) =>
+                  state.terminalIds.length === 0
+                    ? newThreadTerminal(state, nextTerminalId(state.terminalIds))
+                    : state,
+                );
+                rightPanel.open(place, { kind: TERMINAL_PANEL });
+                requestFocus();
+              },
+            },
+            component: TerminalSurface,
+          }),
+        );
+      }
       context.subscriptions.add(
         slots.contribute<ChatHeaderActionProps>("chat.header.actions", {
           id: "jhin.terminal.panel-toggle",

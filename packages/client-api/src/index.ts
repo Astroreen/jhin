@@ -107,10 +107,17 @@ export interface Route {
   readonly mode?: string;
 }
 
+/** How `Navigation.navigate` goes there (1.1). */
+export interface NavigateOptions {
+  /** In place of the current history entry, so Back does not come to it (t3-parity.md D1421). */
+  readonly replace?: boolean;
+}
+
 /** `client.navigation@1`: where the user is; kept in the URL. */
 export interface Navigation {
   current(): Route;
-  navigate(route: Route): void;
+  /** Since 1.1: `options`. */
+  navigate(route: Route, options?: NavigateOptions): void;
   subscribe(listener: () => void): Disposable;
 }
 
@@ -959,3 +966,176 @@ export interface NodeConfigChanged {
 /** Whether `changed` covers `section` of connection `connection`. */
 export const coversSection = (changed: NodeConfigChanged, connection: string, section: string) =>
   changed.connection === connection && (changed.all === true || changed.sections.includes(section));
+
+// --- The right panel (t3-parity.md D1421–D1424) -------------------------------------------
+
+/** `ui.right-panel@1`: T3's tabbed right panel, whose tabs other plugins' surfaces are. */
+export const RIGHT_PANEL_CAPABILITY = "ui.right-panel";
+
+/** The route's `panel` while the right panel is open on no surface (T3's "Open a surface"). */
+export const RIGHT_PANEL_EMPTY = "right-panel";
+
+/** What a right panel belongs to: a thread, or the draft of a project, on its node. */
+export interface RightPanelPlace {
+  readonly target: NodeTarget;
+  readonly threadId?: string;
+  /** A draft's project, while no thread is open. */
+  readonly projectId?: string;
+}
+
+/** One tab of the right panel. */
+export interface RightPanelSurface {
+  /** `kind` for one of a kind, else `kind:resource`. */
+  readonly id: string;
+  /** The surface kind's id, the route's `panel` while it is active. */
+  readonly kind: string;
+  /** What it shows (a browser tab's id, a file's path): the route's `section`. */
+  readonly resource?: string;
+}
+
+/** A React component, function or class, taking `P`. */
+export type RightPanelComponent<P> = ((props: P) => unknown) | (new (props: P) => unknown);
+
+/** What a surface kind's component and hooks get. */
+export interface RightPanelSurfaceProps {
+  readonly place: RightPanelPlace;
+  readonly surface: RightPanelSurface;
+}
+
+/** What an icon gets: a component of the client's UI kit (React). */
+export interface RightPanelIconProps {
+  readonly className?: string;
+}
+
+/** A tab's title and icon, as the kind's `useTab` gives them. */
+export interface RightPanelTab {
+  readonly title: string;
+  /** A React node; the kind's icon without it. */
+  readonly icon?: unknown;
+}
+
+/** Whether "Add panel surface" may add a kind's surface here (T3's `*Available`). */
+export interface RightPanelAvailability {
+  readonly available: boolean;
+  /** T3's reason, shown on the disabled entry of "Add panel surface". */
+  readonly reason?: string;
+  /** T3's shorter hint, shown on the disabled entry of "Open a surface"; `reason` without it. */
+  readonly hint?: string;
+}
+
+/** An item a kind adds to its tabs' context menu (T3's "Copy path"). */
+export interface RightPanelMenuItem {
+  readonly id: string;
+  readonly label: string;
+  readonly disabled?: boolean;
+  onSelect(): void;
+}
+
+/** A kind's entry in "Add panel surface" and "Open a surface" (T3's surface actions). */
+export interface RightPanelSurfaceOffer {
+  readonly label: string;
+  /** The letter that picks it in the menu (T3's `B`, `T`, `F`…). */
+  readonly shortcut?: string;
+  /** Lower first; T3's order is Browser 10, Terminal 20, Files 30, Diff 40, pull requests 50–60, Device 70. */
+  readonly order?: number;
+  /** A React hook: whether it can be added to `place` now. Always, without it. */
+  useAvailability?(place: RightPanelPlace): RightPanelAvailability;
+  /**
+   * A React hook: ways to add one (T3's browser profiles), a submenu of the entry when there
+   * are more than one; `add` gets the chosen one's id.
+   */
+  useOptions?(place: RightPanelPlace): readonly RightPanelOfferOption[];
+  /** The options' button in "Open a surface" (T3's "Open browser in a profile"). */
+  readonly optionsLabel?: string;
+  /** Adds one to `place` (and shows it); `RightPanel.open` of the kind alone without it. */
+  add?(place: RightPanelPlace, option?: string): void;
+}
+
+/** One of an offer's ways to add a surface. */
+export interface RightPanelOfferOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+/** A surface kind (D1421): its id is public API, like a slot id. */
+export interface RightPanelSurfaceKind {
+  readonly id: string;
+  /** The tab's title and the menu's label when the kind gives no other. */
+  readonly title: string;
+  /** A React component. */
+  readonly icon: RightPanelComponent<RightPanelIconProps>;
+  /** Offered by "Add panel surface" (D1422); not offered without it. */
+  readonly offer?: RightPanelSurfaceOffer;
+  /** A React hook: the tab's title and icon, when they follow what it shows. */
+  useTab?(props: RightPanelSurfaceProps): RightPanelTab;
+  /** Items of its tab's context menu, before "Close". */
+  menuItems?(props: RightPanelSurfaceProps): readonly RightPanelMenuItem[];
+  /** Toggling the panel closed on this surface (T3 floats a browser tab over the chat). */
+  onPanelClose?(props: RightPanelSurfaceProps): void;
+  /**
+   * Before the user closes some of its surfaces (T3's `useRightPanelSurfaceClose`): releases
+   * what they hold, such as a browser tab; false (or a promise of it) keeps every one open.
+   */
+  release?(
+    place: RightPanelPlace,
+    surfaces: readonly RightPanelSurface[],
+  ): boolean | Promise<boolean>;
+  /** A React component filling the panel below the strip while the surface is active. */
+  readonly component: RightPanelComponent<RightPanelSurfaceProps>;
+}
+
+/** One place's right panel, as `RightPanel.state` gives it. */
+export interface RightPanelState {
+  readonly surfaces: readonly RightPanelSurface[];
+  readonly activeId: string | null;
+  readonly open: boolean;
+  readonly maximized: boolean;
+}
+
+/** The service of `ui.right-panel@1`. */
+export interface RightPanel {
+  register(kind: RightPanelSurfaceKind): Disposable;
+  /** Every kind, in their offer's order; the same array until one comes or goes. */
+  kinds(): readonly RightPanelSurfaceKind[];
+  /** A place's panel; the same object until it changes. */
+  state(place: RightPanelPlace): RightPanelState;
+  /** The place on screen (the route's thread, or draft), if any. */
+  current(): RightPanelPlace | undefined;
+  /**
+   * Shows a surface of `place` (added at the end if new) and brings the place on screen if
+   * it is not: the route names it.
+   */
+  open(place: RightPanelPlace, surface: { kind: string; resource?: string }): void;
+  /**
+   * T3's `openProactive`: opens it unless the user changed this place's panel since
+   * `revision` (from `revision(place)`); whether it opened.
+   */
+  openProactive(
+    place: RightPanelPlace,
+    surface: { kind: string; resource?: string },
+    revision: number,
+  ): boolean;
+  /** Bumped by every change the user makes to the place's panel. */
+  revision(place: RightPanelPlace): number;
+  /**
+   * The kind's surfaces of `place` become `resources`, in place of the ones it had, without
+   * activating any (T3's `reconcileBrowserSurfaces`); new ones go at the end.
+   */
+  reconcile(place: RightPanelPlace, kind: string, resources: readonly string[]): void;
+  /**
+   * Closes a surface, once its kind released it (T3's fallback activates its neighbour; the
+   * last one closes the panel); whether it closed.
+   */
+  close(place: RightPanelPlace, surfaceId: string): Promise<boolean>;
+  /** Opens the place's panel on its active surface, or closes it. */
+  toggle(place: RightPanelPlace): void;
+  subscribe(listener: () => void): Disposable;
+}
+
+/** A surface's id: the kind alone, or `kind:resource` (D1421). */
+export const rightPanelSurfaceId = (kind: string, resource?: string): string =>
+  resource === undefined ? kind : `${kind}:${resource}`;
+
+/** A place's key, unique among every node's threads and drafts. */
+export const rightPanelPlaceKey = (place: RightPanelPlace): string =>
+  `${targetKey(place.target)}|${place.threadId === undefined ? `p:${place.projectId ?? ""}` : `t:${place.threadId}`}`;

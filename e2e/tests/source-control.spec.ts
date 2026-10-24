@@ -5,7 +5,7 @@ import * as Path from "node:path";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
-import { threadRow } from "./support/ui.ts";
+import { openSurface, threadRow } from "./support/ui.ts";
 
 const running: RunningNode[] = [];
 test.afterEach(async () => {
@@ -128,8 +128,8 @@ test("D113–D120: a card shows its thread's branch, pull request and diff; the 
   await shot(page, info, "source-control-card");
 
   await card.click();
-  await page.getByRole("button", { name: "Toggle diff panel" }).click();
-  const panel = page.getByRole("complementary", { name: "Diff panel" });
+  // T3's right panel (t3-parity.md D1424): its "Diff" surface.
+  const panel = (await openSurface(page, "Diff")).getByRole("region", { name: "Diff panel" });
   // T3's default scope: the branch's changes against the default branch, files folded.
   await expect(panel.getByRole("button", { name: "Diff scope: Changes" })).toBeVisible();
   await expect(panel.getByLabel("Comparing feature/toolbar against main")).toBeVisible();
@@ -152,7 +152,7 @@ test("D113–D120: a card shows its thread's branch, pull request and diff; the 
   await expect(panel.getByLabel("Comparing main against main")).toBeVisible();
   await shot(page, info, "source-control-switched");
 
-  await page.getByRole("button", { name: "Toggle diff panel" }).click();
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
   await expect(panel).toBeHidden();
 
   // D443: checked out elsewhere (not by the thread), the hover card warns, as T3's does.
@@ -180,8 +180,7 @@ test("D280–D285: the diff panel renders with @pierre/diffs, splits, lists file
 }, info) => {
   await startWithRepository(page);
   await threadRow(page, "New thread").click();
-  await page.getByRole("button", { name: "Toggle diff panel" }).click();
-  const panel = page.getByRole("complementary", { name: "Diff panel" });
+  const panel = (await openSurface(page, "Diff")).getByRole("region", { name: "Diff panel" });
   await expect(panel.getByRole("button", { name: "Expand src/greet.ts" })).toBeVisible();
   await panel.getByRole("button", { name: "Expand all files" }).click();
   // Highlighted by @pierre/diffs: the added line, token by token.

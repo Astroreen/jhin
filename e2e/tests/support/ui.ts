@@ -67,3 +67,23 @@ export async function hideThreadDetails(page: Page): Promise<void> {
   await toggle.click();
   await expect(page.getByRole("region", { name: "Thread details" })).toHaveCount(0);
 }
+
+/**
+ * Opens a surface of the right panel as T3's user does (t3-parity.md D1422): from "Open a surface"
+ * when the panel has none, else from "Add panel surface". `label` is the menu's ("Browser",
+ * "Diff", "Linked pull requests", "Terminal", "Device").
+ */
+export async function openSurface(page: Page, label: string): Promise<Locator> {
+  const panel = page.getByRole("complementary", { name: "Right panel" });
+  if (!(await panel.isVisible())) {
+    await page.getByRole("button", { name: "Toggle right panel" }).click();
+  }
+  const launcher = panel.getByLabel("Open a surface");
+  if (await launcher.isVisible()) {
+    await launcher.getByRole("button", { name: label }).click();
+  } else {
+    await panel.getByRole("button", { name: "Add panel surface" }).click();
+    await page.getByRole("menuitem", { name: label }).click();
+  }
+  return panel;
+}

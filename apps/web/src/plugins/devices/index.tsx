@@ -1,10 +1,13 @@
 import {
   CONNECTIONS_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  RIGHT_PANEL_CAPABILITY,
   THREADS_CAPABILITY,
   type ChatHeaderActionProps,
   type Connections,
   type Navigation,
+  type RightPanel,
+  type RightPanelSurfaceProps,
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import { DEVICES_STREAM, DeviceEvents, type DeviceState } from "@jhin/preview-api";
@@ -31,7 +34,15 @@ import type { DevicePanelProps } from "./panel.tsx";
 /** The route's `panel` while the Device panel shows. */
 const DEVICE_PANEL = "devices";
 
-function PanelShell(props: { children?: ReactNode }) {
+function PanelShell(props: { children?: ReactNode; embedded?: boolean }) {
+  // A surface of the right panel (t3-parity.md D1424) fills it below its strip.
+  if (props.embedded === true) {
+    return (
+      <section aria-label="Device panel" className="flex min-h-0 flex-1 flex-col">
+        {props.children}
+      </section>
+    );
+  }
   return (
     <aside
       aria-label="Device panel"
@@ -120,7 +131,7 @@ export const devicePanelPlugin = builtin(
       [NAVIGATION_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
     },
-    optional: { [UI_TOASTS_CAPABILITY]: "^1" },
+    optional: { [UI_TOASTS_CAPABILITY]: "^1", [RIGHT_PANEL_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
@@ -129,6 +140,7 @@ export const devicePanelPlugin = builtin(
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
+      const rightPanel = context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY);
       const states = context.subscriptions.add(createDeviceStates(connections));
       const onError = (title: string, error: unknown) =>
         toasts?.show({
@@ -161,8 +173,16 @@ export const devicePanelPlugin = builtin(
       function DeviceToggle({ target, thread }: ChatHeaderActionProps) {
         const route = useExternal(navigation, navigation.current);
         const state = useState(target.node);
-        // A node without the devices plugin never answers: no toggle there.
-        if (thread === undefined || target.remote !== undefined || state === undefined) return null;
+        // A node without the devices plugin never answers: no toggle there. Beside the right
+        // panel, its "Add panel surface" opens the devices (D1424), as T3's header has no toggle.
+        if (
+          rightPanel !== undefined ||
+          thread === undefined ||
+          target.remote !== undefined ||
+          state === undefined
+        ) {
+          return null;
+        }
         return (
           <Tooltip>
             <TooltipTrigger render={<span className="flex shrink-0" />}>
@@ -206,6 +226,28 @@ export const devicePanelPlugin = builtin(
         return null;
       }
 
+      /** The right panel's `devices` surface (D1424). */
+      function DeviceSurface({ place, surface }: RightPanelSurfaceProps) {
+        const node = place.target.node;
+        const state = useState(node);
+        const connection = useExternal(connections, () => connections.get(node));
+        if (place.threadId === undefined || place.target.remote !== undefined) return null;
+        if (connection === undefined) return null;
+        return (
+          <PanelShell embedded>
+            <DevicePanel
+              call={(method, params) => threads.call({ node }, method, params)}
+              client={connection.client}
+              nodeUrl={connection.url}
+              onClose={() => void rightPanel?.close(place, surface.id)}
+              onError={onError}
+              state={state}
+              threadId={place.threadId}
+            />
+          </PanelShell>
+        );
+      }
+
       function Panel() {
         const route = useExternal(navigation, navigation.current);
         const node = route.node;
@@ -213,7 +255,12 @@ export const devicePanelPlugin = builtin(
         const connection = useExternal(connections, () =>
           node === undefined ? undefined : connections.get(node),
         );
-        if (route.panel !== DEVICE_PANEL || node === undefined || route.thread === undefined) {
+        if (
+          rightPanel !== undefined ||
+          route.panel !== DEVICE_PANEL ||
+          node === undefined ||
+          route.thread === undefined
+        ) {
           return null;
         }
         if (route.remote !== undefined || connection === undefined) return null;
@@ -248,6 +295,36 @@ export const devicePanelPlugin = builtin(
       context.subscriptions.add(
         slots.contribute("app.panel", { id: "jhin.device.panel", component: Panel }),
       );
+      if (rightPanel !== undefined) {
+        context.subscriptions.add(
+          rightPanel.register({
+            id: DEVICE_PANEL,
+            title: "Device",
+            icon: SmartphoneIcon,
+            offer: {
+              label: "Device",
+              shortcut: "M",
+              order: 70,
+              // T3's `deviceAvailable`: a thread; here also one on a node this client reaches.
+              useAvailability: (place) =>
+                place.threadId === undefined
+                  ? {
+                      available: false,
+                      reason: "Devices are only available from a thread.",
+                      hint: "Available from a thread.",
+                    }
+                  : place.target.remote !== undefined
+                    ? {
+                        available: false,
+                        reason:
+                          "Devices open on nodes this client connects to; this thread is on another node of the mesh.",
+                      }
+                    : { available: true },
+            },
+            component: DeviceSurface,
+          }),
+        );
+      }
     },
   }),
 );
