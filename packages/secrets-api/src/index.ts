@@ -114,7 +114,27 @@ export interface SecretStore {
    * Throws `SECRET_STORE_UNREADABLE` when the store cannot be opened.
    */
   getOrCreateRandom?(name: string, bytes: number): string;
+  /**
+   * Since 1.2 (orchestration.md D1512): keeps `value` as the plugin's own
+   * secret `name` (a plugin id, `/`, a name that may hold further `/`, as
+   * `getOrCreateRandom`'s), sealed like every other value, over any value it
+   * had. Throws `SECRET_STORE_UNREADABLE` when the store cannot be opened.
+   */
+  putSecret?(name: string, value: string): void;
+  /**
+   * Since 1.2: the value `putSecret` kept as `name`, or `undefined`. Throws
+   * `SECRET_STORE_UNREADABLE` when the store cannot be opened.
+   */
+  getSecret?(name: string): string | undefined;
+  /**
+   * Since 1.2: forgets the secret `name`; nothing happens for an unknown one.
+   * Throws `SECRET_STORE_UNREADABLE` when the store cannot be opened.
+   */
+  deleteSecret?(name: string): void;
 }
+
+/** A plugin's own secret name (D1192, D1512): a plugin id, `/`, then one or more `/`-separated parts. */
+export const SECRET_NAME_PATTERN = /^[a-z0-9.-]+(?:\/[A-Za-z0-9._:-]+)+$/;
 
 // --- Commands ---------------------------------------------------------------
 

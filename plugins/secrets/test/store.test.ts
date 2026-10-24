@@ -181,3 +181,40 @@ describe("the node's own random secrets (security.md D1192)", () => {
     expect(() => store.getOrCreateRandom("jhin.x/short", 8)).toThrow();
   });
 });
+
+describe("a plugin's own named secrets (orchestration.md D1512)", () => {
+  const name = "jhin.scheduler/webhook/0b5e2c1a-7d4f-4c1e-9a3b-2f6d8e9c0a11";
+
+  it("are kept sealed, read back after reopening, replaced and forgotten", async () => {
+    const dir = tempDir();
+    const store = await openStore({ dir, keychain: undefined });
+    expect(store.getSecret(name)).toBeUndefined();
+    store.putSecret(name, VALUE);
+    expect(store.getSecret(name)).toBe(VALUE);
+    expect(Fs.readFileSync(Path.join(dir, "store.json"), "utf8")).not.toContain(VALUE);
+
+    const reopened = await openStore({ dir, keychain: undefined });
+    expect(reopened.getSecret(name)).toBe(VALUE);
+    reopened.putSecret(name, "replaced");
+    expect(reopened.getSecret(name)).toBe("replaced");
+    reopened.deleteSecret(name);
+    reopened.deleteSecret(name);
+    expect(reopened.getSecret(name)).toBeUndefined();
+    expect((await openStore({ dir, keychain: undefined })).getSecret(name)).toBeUndefined();
+  });
+
+  it("take a plugin id and a name, and throw on a store that cannot be opened", async () => {
+    const dir = tempDir();
+    const store = await openStore({ dir, keychain: undefined });
+    expect(() => store.putSecret("no-plugin", VALUE)).toThrow();
+    expect(() => store.putSecret("jhin.scheduler/", VALUE)).toThrow();
+    expect(() => store.getSecret("Jhin/x")).toThrow();
+
+    Fs.writeFileSync(Path.join(dir, "store.key"), "not a key\n");
+    const unreadable = await openStore({ dir, keychain: undefined });
+    expect(unreadable.readable).toBe(false);
+    expect(() => unreadable.putSecret(name, VALUE)).toThrow(SecretsError);
+    expect(() => unreadable.getSecret(name)).toThrow(SecretsError);
+    expect(() => unreadable.deleteSecret(name)).toThrow(SecretsError);
+  });
+});

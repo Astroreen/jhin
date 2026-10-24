@@ -66,7 +66,7 @@ export async function node(
     storage?: MemoryStorage;
     http?: boolean;
     threads?: HeldThreads;
-    /** A `secrets.store@1` for the scheduler to consume secretRefs from. */
+    /** A `secrets.store@1.2` for the scheduler: secretRefs and its signing secrets (D1512). */
     secrets?: unknown;
   } = {},
 ): Promise<Node> {
@@ -101,7 +101,9 @@ export async function node(
             { manifest: manifest("agent-fake"), definition: agent },
           ]
         : [options.threads.plugin]),
-      ...(options.secrets === undefined ? [] : [mockCapability("secrets.store", options.secrets)]),
+      ...(options.secrets === undefined
+        ? []
+        : [mockCapability("secrets.store", options.secrets, "1.2.0")]),
       { manifest: manifest("scheduler"), definition: scheduler },
     ],
     config: { node: { "jhin.http": { port: 0 } } },

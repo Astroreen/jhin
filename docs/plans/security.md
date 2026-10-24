@@ -315,7 +315,8 @@ The reference is T3 Code at D53 (`eb7b35ac`):
   (it can read the key file, or ask the keychain the way the node does). A
   plugin of the node receives a value through the capability (D1022) and
   must keep it the same way; a secret a plugin keeps elsewhere (the
-  scheduler's signing secrets in `storage.kv`, D386) is outside the store.
+  scheduler's signing secrets in `storage.kv` on a node whose store cannot
+  keep them, D386, orchestration.md D1512) is outside the store.
 - **D1022. `jhin.secrets` provides `secrets.store@1`.** Its contract is
   `@jhin/secrets-api`. Other code depends on the capability, never on the
   plugin. Every operation is a command except the two that hand out a
