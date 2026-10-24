@@ -1706,7 +1706,8 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
 - **D1469. The last cleanup's report is kept, and shown as T3's "Last run".**
   Every sweep that judged something (or found nothing to clean) keeps its
   report with `finishedAt` in the plugin's store, so a restart keeps it;
-  `git.worktree.cleanup.report {}` (`git.read`) answers it or null. A
+  `git.worktree.cleanup.report {}` (`git.read`) answers `{ report,
+  rulesOn }`: it or null, and whether a rule of the node or a project is on. A
   settings section "Storage" (T3's Storage page, contributed by the source
   control client plugin) has T3's "Cleanup" group: "Delete now" (runs
   `git.worktree.cleanup` on every connected node, "Turn on a cleanup rule
