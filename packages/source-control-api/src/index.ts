@@ -111,6 +111,24 @@ export const PullRequestChecks = z.object({
 });
 export type PullRequestChecks = z.output<typeof PullRequestChecks>;
 
+/** Who opened a pull request (T3's `PullRequestActor`, D1449). */
+export const PullRequestActor = z.object({
+  login: z.string(),
+  name: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
+});
+export type PullRequestActor = z.output<typeof PullRequestActor>;
+
+export const PullRequestReviewDecision = z.enum([
+  "approved",
+  "changes-requested",
+  "review-required",
+]);
+export type PullRequestReviewDecision = z.output<typeof PullRequestReviewDecision>;
+
+export const PullRequestMergeability = z.enum(["mergeable", "conflicting", "unknown"]);
+export type PullRequestMergeability = z.output<typeof PullRequestMergeability>;
+
 export const PullRequest = z.object({
   number: z.number().int().positive(),
   title: z.string(),
@@ -126,8 +144,53 @@ export const PullRequest = z.object({
   /** The head branch's commit the forge knows, where it tells it. */
   headSha: z.string().optional(),
   checks: PullRequestChecks,
+  // T3's row details (D1449), where the forge tells them.
+  author: PullRequestActor.optional(),
+  additions: z.number().int().nonnegative().optional(),
+  deletions: z.number().int().nonnegative().optional(),
+  changedFiles: z.number().int().nonnegative().optional(),
+  /** GitHub's alone, as in T3. */
+  reviewDecision: PullRequestReviewDecision.optional(),
+  mergeability: PullRequestMergeability.optional(),
 });
 export type PullRequest = z.output<typeof PullRequest>;
+
+/** A check of a pull request's head, one by one (T3's `PullRequestCheck`, D1450). */
+export const PullRequestCheck = z.object({
+  name: z.string(),
+  status: z.enum([
+    "pending",
+    "action-required",
+    "success",
+    "failure",
+    "skipped",
+    "neutral",
+    "cancelled",
+  ]),
+  description: z.string().nullable(),
+  url: z.string().nullable(),
+  /** Required by the base branch, where the forge says (GitHub, D908). */
+  required: z.boolean().optional(),
+});
+export type PullRequestCheck = z.output<typeof PullRequestCheck>;
+
+export const PullRequestMergeMethod = z.enum(["merge", "squash", "rebase"]);
+export type PullRequestMergeMethod = z.output<typeof PullRequestMergeMethod>;
+
+/** What `git.pr.action` does (T3's `PullRequestAction`, the four W41 ports, D1451). */
+export const PullRequestAction = z.enum(["merge", "ready", "close", "reopen"]);
+export type PullRequestAction = z.output<typeof PullRequestAction>;
+
+/** `git.pr.detail` (D1450): T3's pull request detail for the details rows and checks popover. */
+export const PullRequestDetail = z.object({
+  pullRequest: PullRequest,
+  checks: z.array(PullRequestCheck),
+  /** The merge methods the repository allows, in T3's order. */
+  mergeMethods: z.array(PullRequestMergeMethod),
+  /** The actions the forge has (T3's `changeRequestActions`). */
+  actions: z.array(PullRequestAction),
+});
+export type PullRequestDetail = z.output<typeof PullRequestDetail>;
 
 /** A pull request checked out for a thread (`git.pr.checkout`, D902). */
 export const PreparedPullRequest = z.object({
