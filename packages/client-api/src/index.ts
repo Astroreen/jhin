@@ -325,6 +325,8 @@ export interface ThreadRecord {
   readonly parentThreadId?: string;
   /** Why it has a parent: a delegated task's thread is a `subagent` (D865). */
   readonly relationshipToParent?: "subagent";
+  /** The mesh node its parent lives on, when it is not this thread's (orchestration.md D1506). */
+  readonly parentNode?: string;
   /** A subagent its parent's agent ran itself (Claude Code's `Agent` tool), not a delegated task (D877). */
   readonly subagentOrigin?: "provider";
   /** The thread and turn it was forked at. */

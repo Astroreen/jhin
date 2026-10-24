@@ -33,6 +33,7 @@ import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import {
   definePlugin,
   describePermissions,
+  holdsPermission,
   z,
   type CancelSignal,
   type Invocation,
@@ -75,6 +76,8 @@ const NODE_SAVED_DIR = "workflows";
 /** How long a finished record stays (D1503). */
 const DEFAULT_RETENTION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Every node's scratch project (`jhin.threads`), where a child on another node runs by default (D1506). */
+const SCRATCH_PROJECT = "scratch";
 
 const Config = z
   .object({
@@ -152,6 +155,11 @@ const AgentInfo = z
   .loose();
 type AgentInfo = z.infer<typeof AgentInfo>;
 
+/** A mesh member as `mesh.nodes` lists it: what delegating needs (D1506). */
+const MeshNode = z
+  .object({ nodeId: z.string(), name: z.string(), self: z.boolean(), reachable: z.boolean() })
+  .loose();
+
 // --- Records -------------------------------------------------------------------
 
 /** A model option chosen for a turn (D297). */
@@ -201,6 +209,8 @@ const Task = z.object({
   taskId: z.string(),
   parentThreadId: z.string(),
   childThreadId: z.string(),
+  /** The mesh member the child thread lives on; absent: this node (D1506). */
+  node: z.string().optional(),
   /** The child's first turn: the task's own run. */
   childTurnId: z.string().optional(),
   clientRequestId: z.string().optional(),
@@ -277,6 +287,7 @@ const TaskView = z.object({
   taskId: z.string(),
   parentThreadId: z.string(),
   childThreadId: z.string(),
+  node: z.string().optional(),
   childTurnId: z.string().nullable(),
   title: z.string(),
   status: TaskStatus,
@@ -670,6 +681,157 @@ export default definePlugin({
     const agentsList = async (invocation?: Invocation) =>
       z.array(AgentInfo).parse(await run("agents.list", {}, invocation));
 
+    // --- Children on other nodes (D1506, D1507) -----------------------------------------
+
+    /**
+     * Runs `method` on `node` through the mesh with no more than the caller holds of
+     * what delegating needs, and its mode ceiling (security.md D416, D1370). The mesh
+     * call itself is this plugin's way there, as messaging's is (agents.md D623).
+     */
+    const remote = <T>(node: string, method: string, params: unknown, invocation?: Invocation) =>
+      context.commands.execute(
+        "mesh.call",
+        { node, method, params },
+        {
+          ...(invocation?.traceId === undefined ? {} : { traceId: invocation.traceId }),
+          caller: {
+            id: invocation?.caller?.id ?? context.plugin.id,
+            permissions: [
+              "mesh.call",
+              ...["threads.read", "threads.write"].filter(
+                (permission) =>
+                  invocation?.caller === undefined ||
+                  holdsPermission(invocation.caller.permissions, permission),
+              ),
+              ...(invocation?.caller?.permissions ?? []).filter((grant) =>
+                grant.startsWith("threads.mode."),
+              ),
+            ],
+          },
+        },
+      ) as Promise<T>;
+
+    /** The mesh's members (`mesh.nodes`), or none on a node without a mesh. */
+    async function meshNodes(): Promise<z.output<typeof MeshNode>[]> {
+      try {
+        return z.array(MeshNode).parse(await run("mesh.nodes", {}));
+      } catch (error) {
+        if (codeOf(error) === "COMMAND_NOT_FOUND") return [];
+        throw error;
+      }
+    }
+
+    /** This node's id in its mesh. */
+    async function selfNode(): Promise<string> {
+      const self = (await meshNodes()).find((entry) => entry.self);
+      if (self === undefined) {
+        throw new OrchestrationError("NODE_UNREACHABLE", "This node is in no mesh.");
+      }
+      return self.nodeId;
+    }
+
+    /** The member `node` names, or `undefined` for this node (D1506). */
+    async function memberNode(node: string | undefined): Promise<string | undefined> {
+      if (node === undefined) return undefined;
+      const member = (await meshNodes()).find((entry) => entry.nodeId === node);
+      if (member?.self === true) return undefined;
+      if (member === undefined) {
+        throw new OrchestrationError("NODE_NOT_FOUND", `No node ${node} in this node's mesh.`, {
+          node,
+        });
+      }
+      if (!member.reachable) {
+        throw new OrchestrationError("NODE_UNREACHABLE", `Node ${node} cannot be reached now.`, {
+          node,
+        });
+      }
+      return node;
+    }
+
+    /** Members whose `threads` index is followed here, as a mirror (D1507). */
+    const followedNodes = new Map<string, Promise<void>>();
+
+    /** Follows `node`'s index of threads, kept here as a mirror, for its children's status. */
+    function followNode(node: string): Promise<void> {
+      let following = followedNodes.get(node);
+      if (following === undefined) {
+        following = (async () => {
+          const { stream } = await run<{ stream: string }>("mesh.open", {
+            node,
+            stream: THREADS_STREAM,
+          });
+          context.subscriptions.add(
+            log.subscribe(stream, (event) => {
+              if (!disposed) onMemberThread(node, event);
+            }),
+          );
+        })();
+        followedNodes.set(node, following);
+        following.catch(() => followedNodes.delete(node));
+      }
+      return following;
+    }
+
+    function onMemberThread(node: string, event: StoredEvent): void {
+      const id = (event.payload as { id?: unknown } | null)?.id;
+      const children = [...tasks.values()].filter(
+        (task) => task.node === node && task.childThreadId === id && task.endedAt === undefined,
+      );
+      if (children.length === 0) return;
+      const failed = (task: Task) => (error: unknown) =>
+        context.log.warn("could not follow a delegated task on another node", {
+          taskId: task.taskId,
+          node,
+          error: String(error),
+        });
+      if (event.type === ThreadEvents.threadDeleted) {
+        for (const task of children) void reconcile(task).catch(failed(task));
+        return;
+      }
+      if (event.type !== ThreadEvents.threadUpdated && event.type !== ThreadEvents.threadCreated)
+        return;
+      const parsed = ThreadRecord.safeParse(event.payload);
+      if (!parsed.success) return;
+      for (const task of children) void follow(task, parsed.data).catch(failed(task));
+    }
+
+    /** A child's thread record, on its node. */
+    async function childThread(task: Task): Promise<ThreadRecord> {
+      if (task.node === undefined) return (await getThread(task.childThreadId)).thread;
+      try {
+        const got = await remote<{ thread: unknown }>(task.node, "threads.get", {
+          threadId: task.childThreadId,
+        });
+        return ThreadRecord.parse(got.thread);
+      } catch (error) {
+        if (codeOf(error) === "THREAD_NOT_FOUND") {
+          throw new OrchestrationError("THREAD_NOT_FOUND", `No thread ${task.childThreadId}`, {
+            threadId: task.childThreadId,
+          });
+        }
+        throw error;
+      }
+    }
+
+    /** A child's events, read on its node (D1507). */
+    async function childEvents(task: Task): Promise<StoredEvent[]> {
+      if (task.node === undefined) return log.read(threadStream(task.childThreadId));
+      const events: StoredEvent[] = [];
+      for (;;) {
+        const page = await remote<StoredEvent[]>(task.node, "threads.events", {
+          threadId: task.childThreadId,
+          after: events.at(-1)?.sequence ?? 0,
+          limit: 1000,
+        });
+        events.push(...page);
+        if (page.length < 1000) return events;
+      }
+    }
+
+    /** Runs a thread command for a child, on its node. */
+    const onChild = <T>(task: Pick<Task, "node">, method: string, params: unknown) =>
+      task.node === undefined ? run<T>(method, params) : remote<T>(task.node, method, params);
+
     /** Whether `threads.create` takes a `workspace` (W3, D371). */
     const workspaceSupported = () => {
       const create = context.commands.list().find((command) => command.name === "threads.create");
@@ -726,7 +888,7 @@ export default definePlugin({
         if (current.endedAt !== undefined) return;
         const status: TaskStatus =
           current.status === "cancelled" ? "cancelled" : (turn.status as TaskStatus);
-        const events = await log.read(threadStream(thread.id));
+        const events = await childEvents(current);
         await finish(current, status, resultOfTurn(events, turn.turnId, status));
         return;
       }
@@ -767,10 +929,10 @@ export default definePlugin({
      */
     async function reconcile(task: Task, startup = false): Promise<void> {
       try {
-        const { thread } = await getThread(task.childThreadId);
+        const thread = await childThread(task);
         let current = tasks.get(task.taskId) ?? task;
         if (current.endedAt !== undefined) return;
-        const events = await log.read(threadStream(task.childThreadId));
+        const events = await childEvents(current);
         const turnOf = (event: StoredEvent) =>
           (event.payload as { turnId?: unknown } | null)?.turnId;
         let turnId = current.childTurnId;
@@ -831,7 +993,7 @@ export default definePlugin({
         if (thread.parentThreadId !== undefined) seenThreads.set(thread.id, thread);
         for (const listener of threadListeners) listener(thread);
         for (const task of tasks.values()) {
-          if (task.childThreadId === thread.id) {
+          if (task.node === undefined && task.childThreadId === thread.id) {
             void follow(task, thread).catch((error: unknown) =>
               context.log.error("could not follow a delegated task", {
                 taskId: task.taskId,
@@ -855,7 +1017,8 @@ export default definePlugin({
     async function onThreadGone(threadId: string) {
       await dispose(threadId);
       for (const task of tasks.values()) {
-        if (task.childThreadId === threadId) await reconcile(task).catch(() => undefined);
+        if (task.node === undefined && task.childThreadId === threadId)
+          await reconcile(task).catch(() => undefined);
         // Nobody is left to read their results: the work of a deleted thread stops.
         if (task.parentThreadId === threadId && !isTerminal(task)) {
           await cancelTask(task, "The parent thread was deleted");
@@ -990,7 +1153,7 @@ export default definePlugin({
             workflow.parentThreadId === task.childThreadId && workflow.status === "running",
         );
       let hasPendingChildRuns = false;
-      if (isTerminal(task)) {
+      if (isTerminal(task) && task.node === undefined) {
         if (fresh) {
           const child = await getThread(task.childThreadId).catch(() => undefined);
           hasPendingChildRuns = child?.running !== undefined && child.running !== task.childTurnId;
@@ -1007,6 +1170,7 @@ export default definePlugin({
           : "result_available";
       return {
         taskId: task.taskId,
+        ...(task.node === undefined ? {} : { node: task.node }),
         parentThreadId: task.parentThreadId,
         childThreadId: task.childThreadId,
         childTurnId: task.childTurnId ?? null,
@@ -1078,6 +1242,9 @@ export default definePlugin({
         readonly agentId?: string | undefined;
         readonly model?: string | undefined;
         readonly options?: readonly ModelOption[] | undefined;
+        /** A mesh member to run the child on, and a project of it (D1506). */
+        readonly node?: string | undefined;
+        readonly projectId?: string | undefined;
       };
       readonly runtimeMode?: RuntimeMode | "inherit";
       readonly interactionMode?: InteractionMode | "inherit";
@@ -1117,7 +1284,26 @@ export default definePlugin({
             .length) + 1;
       ordinals.set(request.parentThreadId, ordinal);
       const { thread: parent } = await getThread(request.parentThreadId, invocation);
-      const agents = await agentsList(invocation);
+      // A child on another node of the mesh, or here (D1506).
+      const node = await memberNode(request.target?.node);
+      if (node === undefined && request.target?.projectId !== undefined) {
+        throw new OrchestrationError(
+          "INVALID_REQUEST",
+          "target.projectId names a project of target.node; a child here runs in the parent's project.",
+        );
+      }
+      if (node !== undefined && request.isolation === "worktree") {
+        throw new OrchestrationError(
+          "WORKSPACE_UNSUPPORTED",
+          `A child on node ${node} runs in that node's project; isolation: "worktree" is not available there.`,
+          { strategy: "worktree" },
+        );
+      }
+      const place = node === undefined ? {} : { node };
+      const agents =
+        node === undefined
+          ? await agentsList(invocation)
+          : z.array(AgentInfo).parse(await remote(node, "agents.list", {}, invocation));
       const fallback = agents.find((agent) => agent.default) ?? agents[0];
       const parentAgent =
         (parent.agentId === undefined
@@ -1192,29 +1378,34 @@ export default definePlugin({
         request.role === undefined || request.role === "general"
           ? request.task
           : `Act as the ${request.role} sub-agent for this task.\n\n${request.task}`;
+      if (node !== undefined) await followNode(node);
+      /** A thread command on the child's node. */
+      const onNode = <T>(name: string, input: unknown) =>
+        node === undefined
+          ? run<T>(name, input, invocation)
+          : remote<T>(node, name, input, invocation);
       const child = ThreadRecord.parse(
-        await run(
-          "threads.create",
-          {
-            projectId: parent.projectId,
-            title,
-            agentId: agent.agentId,
-            ...(model === undefined ? {} : { model }),
-            ...(modelOptions === undefined ? {} : { modelOptions }),
-            runtimeMode,
-            interactionMode,
-            parentThreadId: parent.id,
-            relationshipToParent: "subagent",
-            ...workspace,
-          },
-          invocation,
-        ),
+        await onNode("threads.create", {
+          projectId:
+            node === undefined ? parent.projectId : (request.target?.projectId ?? SCRATCH_PROJECT),
+          title,
+          agentId: agent.agentId,
+          ...(model === undefined ? {} : { model }),
+          ...(modelOptions === undefined ? {} : { modelOptions }),
+          runtimeMode,
+          interactionMode,
+          parentThreadId: parent.id,
+          relationshipToParent: "subagent",
+          ...(node === undefined ? {} : { parentNode: await selfNode() }),
+          ...workspace,
+        }),
       );
       const createdAt = now();
       let task = await saveTask({
         taskId: Crypto.randomUUID(),
         parentThreadId: parent.id,
         childThreadId: child.id,
+        ...place,
         ...(request.clientRequestId === undefined
           ? {}
           : { clientRequestId: request.clientRequestId }),
@@ -1240,15 +1431,15 @@ export default definePlugin({
           title,
           agentId: agent.agentId,
           ...(model === undefined ? {} : { model }),
+          ...place,
         });
       }
       let turnId: string;
       try {
-        ({ turnId } = await run<{ turnId: string }>(
-          "threads.send",
-          { threadId: child.id, text: prompt },
-          invocation,
-        ));
+        ({ turnId } = await onNode<{ turnId: string }>("threads.send", {
+          threadId: child.id,
+          text: prompt,
+        }));
       } catch (error) {
         // The caller gets the error: the parent is not woken for it as well.
         task = await saveTask({
@@ -1266,7 +1457,7 @@ export default definePlugin({
       task = await saveTask({ ...(tasks.get(task.taskId) ?? task), childTurnId: turnId });
       // Cancelled while it was starting: stop the turn it just started.
       if (task.status === "cancelled")
-        await run("threads.interrupt", { threadId: child.id }).catch(() => undefined);
+        await onNode("threads.interrupt", { threadId: child.id }).catch(() => undefined);
       // The turn may have ended before the task knew its id.
       await reconcile(task);
       return tasks.get(task.taskId) ?? task;
@@ -1301,11 +1492,22 @@ export default definePlugin({
       if (latest.delivery === "pending")
         latest = await saveTask({ ...latest, delivery: "disposed" });
       if (latest.childTurnId !== undefined || isTerminal(latest)) {
-        await run("threads.interrupt", { threadId: latest.childThreadId }).catch(
-          (error: unknown) => {
-            if (codeOf(error) !== "THREAD_NOT_FOUND") throw error;
-          },
-        );
+        try {
+          await onChild(latest, "threads.interrupt", { threadId: latest.childThreadId });
+        } catch (error) {
+          if (codeOf(error) === "THREAD_NOT_FOUND") {
+            // Gone already: nothing to stop.
+          } else if (latest.node !== undefined && codeOf(error) === "NODE_UNREACHABLE") {
+            // It goes on there until someone stops it on its node (D1507).
+            await saveTask({
+              ...(tasks.get(latest.taskId) ?? latest),
+              cancelReason: `${reason ?? "Cancelled"}; node ${latest.node} could not be reached, so the child goes on there`,
+            });
+            return;
+          } else {
+            throw error;
+          }
+        }
       }
       for (const nested of tasks.values()) {
         if (nested.parentThreadId === latest.childThreadId && !isTerminal(nested)) {
@@ -1346,6 +1548,20 @@ export default definePlugin({
             options: TargetOptions.optional().describe(
               "Model option selections advertised by orchestration_capabilities, as [{id, value}] or {id: value}: at most 20 distinct ids, the last value of an id winning. Options the model does not declare are dropped.",
             ),
+            node: z
+              .string()
+              .min(1)
+              .optional()
+              .describe(
+                "A node of the mesh (nodeId from orchestration_capabilities' nodes) to run the child on; its agents come from orchestration_capabilities with that node. Omit it for this node.",
+              ),
+            projectId: z
+              .string()
+              .min(1)
+              .optional()
+              .describe(
+                "With node: a project of that node to run the child in; that node's scratch project when omitted.",
+              ),
           })
           .optional(),
         title: z.string().max(MAX_TITLE_LENGTH).optional(),
@@ -1477,9 +1693,13 @@ export default definePlugin({
     context.commands.register({
       name: "orchestration.capabilities",
       description:
-        "Lists the agent runtimes of this node with their models and modes, whether each can run a child task, the calling thread's agent, model and modes, and the orchestration features available. For a separate top-level thread use orchestration_launch.",
-      input: z.object({ threadId: z.string().min(1).optional() }),
+        "Lists the agent runtimes of this node (or of the mesh's node given as node) with their models and modes, whether each can run a child task, the calling thread's agent, model and modes, the mesh's other nodes a child can run on (tasks_delegate's target.node), and the orchestration features available. For a separate top-level thread use orchestration_launch.",
+      input: z.object({
+        threadId: z.string().min(1).optional(),
+        node: z.string().min(1).optional(),
+      }),
       output: z.object({
+        nodes: z.array(z.object({ nodeId: z.string(), name: z.string(), reachable: z.boolean() })),
         parentThreadId: z.string().nullable(),
         inheritedAgentId: z.string().nullable(),
         inheritedModel: z.string().nullable(),
@@ -1516,17 +1736,25 @@ export default definePlugin({
         }),
       }),
       permissions: ["threads.read"],
-      handler: async ({ threadId: named }, invocation) => {
+      handler: async ({ threadId: named, node: namedNode }, invocation) => {
         const threadId = callerThread(named, invocation);
         const thread =
           threadId === undefined ? undefined : (await getThread(threadId, invocation)).thread;
-        const agents = await agentsList(invocation);
+        const members = await meshNodes();
+        const node = await memberNode(namedNode);
+        const agents =
+          node === undefined
+            ? await agentsList(invocation)
+            : z.array(AgentInfo).parse(await remote(node, "agents.list", {}, invocation));
         const inherited =
           (thread?.agentId === undefined
             ? undefined
             : agents.find((agent) => agent.agentId === thread.agentId)) ??
           agents.find((agent) => agent.default);
         return {
+          nodes: members
+            .filter((member) => !member.self)
+            .map(({ nodeId, name, reachable }) => ({ nodeId, name, reachable })),
           parentThreadId: thread?.id ?? null,
           inheritedAgentId: inherited?.agentId ?? null,
           inheritedModel:
@@ -2578,6 +2806,15 @@ export default definePlugin({
       }
       for (const task of tasks.values()) {
         if (task.endedAt === undefined) {
+          // A child on another node is followed through its index again (D1507).
+          if (task.node !== undefined) {
+            await followNode(task.node).catch((error: unknown) =>
+              context.log.warn("could not follow another node's threads", {
+                node: task.node,
+                error: String(error),
+              }),
+            );
+          }
           await reconcile(task, true).catch((error: unknown) =>
             context.log.warn("could not reconcile a delegated task", {
               taskId: task.taskId,

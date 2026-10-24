@@ -13,12 +13,16 @@ import {
 } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import {
+  NodeView,
   createMesh,
+  describeMember,
   meshCallCommand,
+  meshCloseCommand,
+  meshNodesCommand,
+  meshOpenCommand,
   meshRelayCommand,
   serveRelays,
   type MemberRecord,
-  type MemberView,
   type MeshTransport,
 } from "@jhin/mesh-core";
 import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
@@ -142,25 +146,7 @@ function readJson(request: IncomingMessage): Promise<unknown> {
 /** `ws://host:port/mesh` → `http://host:port`: where a member's HTTP routes live. */
 const httpBase = (meshUrl: string) => meshUrl.replace(/^ws/, "http").replace(/\/mesh$/, "");
 
-const describe = (member: MemberView) => ({
-  nodeId: member.record.nodeId,
-  name: member.record.name,
-  urls: [...member.record.urls],
-  self: member.self,
-  linked: member.linked,
-  reachable: member.reachable,
-  ...(member.route === undefined ? {} : { route: [...member.route] }),
-});
-
-const NodeView = z.object({
-  nodeId: z.string(),
-  name: z.string(),
-  urls: z.array(z.string()),
-  self: z.boolean(),
-  linked: z.boolean(),
-  reachable: z.boolean(),
-  route: z.array(z.string()).optional(),
-});
+const describe = describeMember;
 
 export default definePlugin({
   async activate(context) {
@@ -392,27 +378,9 @@ export default definePlugin({
         description: "Run commands on other nodes of the mesh, within this client's permissions.",
       },
     });
-    context.commands.register({
-      name: "mesh.open",
-      description:
-        "Starts keeping a copy of another node's stream here (D26) and names the local stream to read",
-      input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
-      output: z.object({ stream: z.string() }),
-      permissions: ["mesh.open"],
-      handler: ({ node, stream }) => ({ stream: mesh.mirror(node, stream) }),
-    });
+    context.commands.register(meshOpenCommand(mesh));
     if (live !== undefined) context.commands.register(meshRelayCommand(mesh));
-    context.commands.register({
-      name: "mesh.close",
-      description: "Stops keeping a copy of another node's stream; what was copied stays readable",
-      input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
-      output: z.object({}),
-      permissions: ["mesh.open"],
-      handler: ({ node, stream }) => {
-        mesh.unmirror(node, stream);
-        return {};
-      },
-    });
+    context.commands.register(meshCloseCommand(mesh));
 
     if (config.history === "eager") {
       // Follow every node's index of threads and mirror each thread it lists.
@@ -601,14 +569,7 @@ export default definePlugin({
         return { nodeId: record.nodeId, name: record.name };
       },
     });
-    context.commands.register({
-      name: "mesh.nodes",
-      description: "Every node of the mesh, whether it is reachable, and the route to it",
-      input: z.object({}),
-      output: z.array(NodeView),
-      permissions: ["mesh.read"],
-      handler: () => mesh.members().map(describe),
-    });
+    context.commands.register(meshNodesCommand(mesh));
     context.commands.register(meshCallCommand(mesh));
     context.commands.register({
       name: "mesh.resolve",

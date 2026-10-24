@@ -4,6 +4,9 @@ import {
   createMemoryNetwork,
   createMesh,
   meshCallCommand,
+  meshCloseCommand,
+  meshNodesCommand,
+  meshOpenCommand,
   meshRelayCommand,
   serveRelays,
   type Mesh,
@@ -38,8 +41,9 @@ export interface MemoryMeshNode {
 /**
  * A mesh node on the in-memory network (D38, D505), wired as `jhin.mesh`
  * wires one: its kernel provides `rpc.streams@1.2`, `storage.*` and
- * `mesh.streams@1`, and registers the plugin's own `mesh.call` and
- * `mesh.relay`; `plugins` run next to them. Signatures are not
+ * `mesh.streams@1`, and registers the plugin's own `mesh.call`,
+ * `mesh.relay`, `mesh.nodes`, `mesh.open` and `mesh.close`; `plugins` run
+ * next to them. Signatures are not
  * cryptographic: one owner's nodes in one process.
  */
 export async function startMeshNode(
@@ -91,6 +95,9 @@ export async function startMeshNode(
         context.subscriptions.add(serveRelays(mesh, live));
         context.commands.register(meshCallCommand(mesh));
         context.commands.register(meshRelayCommand(mesh));
+        context.commands.register(meshNodesCommand(mesh));
+        context.commands.register(meshOpenCommand(mesh));
+        context.commands.register(meshCloseCommand(mesh));
       },
     }),
   };

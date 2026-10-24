@@ -261,7 +261,7 @@ function WorkflowRow(props: {
 export function DelegationLineage({ target, thread, services, view }: Props) {
   const catalog = useCatalog(services.threads, target);
   const [stopping, setStopping] = useState<string | null>(null);
-  const open = (threadId: string) => services.open(target, threadId);
+  const open = (threadId: string, node?: string) => services.open(target, threadId, node);
   const stop = async (key: string, method: string, input: Record<string, string>) => {
     if (stopping !== null) return;
     setStopping(key);
@@ -319,7 +319,7 @@ export function DelegationLineage({ target, thread, services, view }: Props) {
             <TipButton
               className={ROW}
               label={`Open ${task.title} chat`}
-              onClick={() => open(task.childThreadId)}
+              onClick={() => open(task.childThreadId, task.node)}
               tip="Open subagent in this chat"
               unavailable={false}
             >

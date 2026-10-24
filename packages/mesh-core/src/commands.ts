@@ -3,6 +3,7 @@ import type { LiveStreams } from "@jhin/rpc";
 import { z, type CommandDefinition } from "@jhin/sdk";
 
 import type { Mesh } from "./mesh.ts";
+import type { MemberView } from "./types.ts";
 
 /**
  * `mesh.call`, as `jhin.mesh` registers it: the target runs the command with
@@ -53,4 +54,65 @@ export function serveRelays(mesh: Mesh, live: Pick<LiveStreams, "serve" | "sourc
       return ["mesh.call", ...needs];
     },
   });
+}
+
+/** A member as `mesh.nodes` and `mesh.resolve` show it. */
+export const NodeView = z.object({
+  nodeId: z.string(),
+  name: z.string(),
+  urls: z.array(z.string()),
+  self: z.boolean(),
+  linked: z.boolean(),
+  reachable: z.boolean(),
+  route: z.array(z.string()).optional(),
+});
+
+export const describeMember = (member: MemberView): z.output<typeof NodeView> => ({
+  nodeId: member.record.nodeId,
+  name: member.record.name,
+  urls: [...member.record.urls],
+  self: member.self,
+  linked: member.linked,
+  reachable: member.reachable,
+  ...(member.route === undefined ? {} : { route: [...member.route] }),
+});
+
+/** `mesh.nodes`, as `jhin.mesh` registers it. */
+export function meshNodesCommand(mesh: Mesh) {
+  return {
+    name: "mesh.nodes",
+    description: "Every node of the mesh, whether it is reachable, and the route to it",
+    input: z.object({}),
+    output: z.array(NodeView),
+    permissions: ["mesh.read"],
+    handler: () => mesh.members().map(describeMember),
+  } satisfies CommandDefinition<z.ZodType, z.ZodType>;
+}
+
+/** `mesh.open` (D26), as `jhin.mesh` registers it. */
+export function meshOpenCommand(mesh: Mesh) {
+  return {
+    name: "mesh.open",
+    description:
+      "Starts keeping a copy of another node's stream here (D26) and names the local stream to read",
+    input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
+    output: z.object({ stream: z.string() }),
+    permissions: ["mesh.open"],
+    handler: ({ node, stream }) => ({ stream: mesh.mirror(node, stream) }),
+  } satisfies CommandDefinition<z.ZodType, z.ZodType>;
+}
+
+/** `mesh.close`, as `jhin.mesh` registers it. */
+export function meshCloseCommand(mesh: Mesh) {
+  return {
+    name: "mesh.close",
+    description: "Stops keeping a copy of another node's stream; what was copied stays readable",
+    input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
+    output: z.object({}),
+    permissions: ["mesh.open"],
+    handler: ({ node, stream }) => {
+      mesh.unmirror(node, stream);
+      return {};
+    },
+  } satisfies CommandDefinition<z.ZodType, z.ZodType>;
 }

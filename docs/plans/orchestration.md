@@ -320,16 +320,21 @@ section lands rather than a second path.
   resolve the agent, model and modes as D364 does against the member's
   agents (the parent's agent and model when the member has them, else
   the member's default agent), then `threads.create` and `threads.send`
-  as for a local child, with `parentThreadId` and `relationshipToParent:
-  "subagent"`. The call carries the caller's grants (security.md D416)
+  as for a local child, with `parentThreadId`, `relationshipToParent:
+  "subagent"` and `parentNode` (this node's id): `threads.create` takes
+  `parentNode` (additive) and then does not look the parent up there, and
+  the thread record keeps it. The call carries the caller's grants (security.md D416)
   narrowed to what delegating needs (`mesh.call`, `threads.read`,
   `threads.write` and the caller's `threads.mode.*`), so a ceiling
   (D1370) travels with it and the member applies its own
   `memberPermissions`. `target.node` naming this node is a local
   delegation; an unknown node answers `NODE_NOT_FOUND`, an unreachable
   one `NODE_UNREACHABLE` before anything is created; `isolation:
-  "worktree"` is refused there (`WORKSPACE_UNSUPPORTED`). A workflow's
-  `agent()` takes `node` too. `orchestration.capabilities` lists the
+  "worktree"` is refused there (`WORKSPACE_UNSUPPORTED`), and
+  `target.projectId` without `node` is `INVALID_REQUEST`. `mesh.nodes`,
+  `mesh.open` and `mesh.close` move into `@jhin/mesh-core` beside
+  `mesh.call`, so `@jhin/testing`'s mesh nodes have them too.
+  `orchestration.capabilities` lists the
   mesh's other members (`nodes`: `nodeId`, `name`, `reachable`), and
   `{ node }` lists that node's agents instead of this one's.
 - **D1507. Following a child on another node.** The task records `node`;
@@ -359,8 +364,15 @@ section lands rather than a second path.
   restarts is lost, and its thread ends `interrupted` (D1164); T3's
   continuation turns, which read a result into an idle parent, stay out
   (`t3-parity.md` D805).
-- Delegating to an agent on another mesh node (`target.node`): today a task
-  runs on the parent's node.
+- A child on another node (D1506, D1507): `hasPendingChildRuns` is not
+  read there; `parentNode` on `threads.create` is not checked against the
+  mesh's members; a member's index that could not be mirrored at start is
+  followed again only by the next delegation to it.
+- A workflow `agent()` on another node (D1506): its schema retries and
+  its wait follow a thread of this node.
+- The hover card of a child on another node (D1162): its details come
+  from this node's catalog, which does not hold that thread, so it shows
+  the task's agent and model only.
 - A caller's cancel that crosses a mesh call or does not close its
   connection (D1501): the signal aborts when a connection or an HTTP
   request ends; a `mesh.call` abandoned at its origin still runs on the

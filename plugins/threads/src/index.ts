@@ -328,6 +328,8 @@ const Thread = z.object({
   parentThreadId: z.string().optional(),
   /** How it relates to `parentThreadId`: a delegated child task's thread is a `subagent`. */
   relationshipToParent: z.enum(["subagent"]).optional(),
+  /** The mesh node `parentThreadId` lives on, when it is not this one (orchestration.md D1506). */
+  parentNode: z.string().optional(),
   /** A subagent the parent's agent ran itself (Claude Code's `Agent` tool), not a delegated task (D877). */
   subagentOrigin: z.enum(["provider"]).optional(),
   /** The runtime's id of the subagent this thread shows, to stop it (D1166). */
@@ -2987,6 +2989,10 @@ export default definePlugin({
         ...AgentSettings,
         parentThreadId: z.string().min(1).optional(),
         relationshipToParent: z.enum(["subagent"]).optional(),
+        parentNode: z.string().min(1).optional().meta({
+          description:
+            "The mesh node parentThreadId lives on, for a child delegated from another node (D1506); its parent is not looked up here",
+        }),
         generationOf: GenerationOf.optional().meta({
           description: "The defined agent whose generation the thread is (D606); set once, here",
         }),
@@ -3020,7 +3026,13 @@ export default definePlugin({
           );
         }
         await getProject(projectId);
-        if (rest.parentThreadId !== undefined) {
+        if (rest.parentNode !== undefined && rest.parentThreadId === undefined) {
+          throw new ThreadsError(
+            "PARENT_REQUIRED",
+            "parentNode names the node of a parentThreadId",
+          );
+        }
+        if (rest.parentThreadId !== undefined && rest.parentNode === undefined) {
           // A child shares its parent's project (docs/plans/orchestration.md, D363).
           const parent = await getThread(rest.parentThreadId);
           if (parent.projectId !== projectId) {
