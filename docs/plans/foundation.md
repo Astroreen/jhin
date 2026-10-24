@@ -241,7 +241,8 @@ and engineering practices.
   CLI.
 - Discovery plugins: mDNS, Tailscale.
 - Hiding selected nodes on a specific client.
-- History sync into on-device storage (IndexedDB, SQLite in Electron/mobile).
+- History sync into on-device storage (IndexedDB, SQLite in Electron/mobile). The web client's IndexedDB cache is `loading.md`
+  (D1588–D1594); SQLite on mobile stays deferred.
 - Settings UI with the scope picker (the config commands and fan-out exist in
   the foundation). Done in `t3-parity.md` (D66).
 - Source-control plugin: linking PRs to threads, watching PRs; matching MCP

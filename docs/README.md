@@ -39,6 +39,7 @@ what is deferred, and how it landed. Plans are canon once implemented.
 | [`agents.md`](plans/agents.md)                 | Civilization mode: persistent agents, messaging, missions, teams, refocus, health (A1–A8); phase 2 makes it runnable (C1–C3), phase 3 safe to leave alone (L1–L3) | in progress |
 | [`security.md`](plans/security.md)             | permissions and grants, device tokens, pairing, secrets in config, browser origins (W13)                                                                          | implemented |
 | [`mesh-streams.md`](plans/mesh-streams.md)     | relays of members' streams, trimming event log streams (W17)                                                                                                      | implemented |
+| [`loading.md`](plans/loading.md)               | compressing what the node sends, the history cache on devices, chunks and prefetch (P1–P3)                                                                        | in progress |
 | [`t3-roadmap.md`](plans/t3-roadmap.md)         | the W1–W18 workstreams porting the rest of T3 Code                                                                                                                | in progress |
 
 Workstreams add new plans (`preview.md`, `mesh-streams.md`,

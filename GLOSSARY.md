@@ -282,6 +282,9 @@ Words about Jhin:
   Its output is a live stream; the node keeps its **scrollback** for clients
   that open it later. Several terminals of a thread show in the **terminal
   drawer** under the chat, as tabs and split groups (T3 Code's terms).
+- **History cache** — the events of streams a web client has already read,
+  kept on the device (IndexedDB) so a thread opens from it and asks the node
+  only for what is new (`loading.md` D1588).
 - **Sequence** — the position of an event in its stream; used to catch up
   after a disconnect without gaps or duplicates.
 - **Trim** — forgetting the oldest events of an event log stream while its
