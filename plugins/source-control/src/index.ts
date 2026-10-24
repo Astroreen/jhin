@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
+import { constants as FsConstants } from "node:fs";
 import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
   ProjectScript,
+  T3_PROJECT_FILE_MAX_BYTES,
   T3_PROJECT_FILE_NAME,
   parseT3ProjectFile,
+  type T3ProjectFileRead,
   projectSettingsRecord,
   resolveProjectSettings,
   setupProjectScript,
@@ -432,6 +435,35 @@ const sameStatus = (a: ProjectStatus | undefined, b: ProjectStatus) =>
 const isCommandMissing = (error: unknown) =>
   (error as { code?: unknown } | null)?.code === "COMMAND_NOT_FOUND";
 
+/**
+ * A branch's `t3.json` read once, from one open file: none without one, why
+ * not when it is no regular file of at most 1 MiB, cannot be read, or is no
+ * T3 project file (D1467). The threads plugin reads a project's the same way.
+ */
+async function readT3File(
+  file: string,
+): Promise<T3ProjectFileRead | { file: null; error?: undefined }> {
+  let handle: Fs.FileHandle;
+  try {
+    handle = await Fs.open(file, FsConstants.O_RDONLY | FsConstants.O_NOFOLLOW);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { file: null };
+    return {
+      file: null,
+      error: `${T3_PROJECT_FILE_NAME} cannot be read: ${(error as Error).message}`,
+    };
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > T3_PROJECT_FILE_MAX_BYTES) {
+      return { file: null, error: `${T3_PROJECT_FILE_NAME} is not a file of at most 1 MiB` };
+    }
+    return parseT3ProjectFile(await handle.readFile("utf8"));
+  } finally {
+    await handle.close();
+  }
+}
+
 export function activateSourceControl(context: PluginContext): SourceControl {
   const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
   const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
@@ -461,12 +493,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const submodulesOf = (projectId: string) => async (worktree: string) => {
     const configured = projectConfig(projectId).worktreeSubmodules;
     if (configured !== undefined) return configured;
-    const contents = await Fs.readFile(Path.join(worktree, T3_PROJECT_FILE_NAME), "utf8").catch(
-      () => undefined,
-    );
-    if (contents === undefined) return "recursive";
-    const read = parseT3ProjectFile(contents);
-    if (read.file === null) {
+    const read = await readT3File(Path.join(worktree, T3_PROJECT_FILE_NAME));
+    if (read.error !== undefined) {
       context.log.warn("ignored a worktree's t3.json", { worktree, error: read.error });
     }
     return read.file?.worktreeSubmodules ?? "recursive";

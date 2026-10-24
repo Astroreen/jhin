@@ -81,28 +81,29 @@ export const T3ProjectFile = z
   });
 export type T3ProjectFile = z.output<typeof T3ProjectFile>;
 
-/** Outside a string: a line comment, a block comment, or a comma before a closing bracket. */
-const OUTSIDE_STRINGS = [
-  /("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g,
-  /("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\//g,
-] as const;
+/**
+ * In one pass, so each is read where it starts: a string (kept), a line
+ * comment or a block comment (dropped). A `//` inside a block comment or a
+ * string is no comment of its own.
+ */
+const STRING_OR_COMMENT = /("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g;
+/** A comma before a closing bracket, once the comments are gone; strings are kept. */
 const TRAILING_COMMA = /("(?:[^"\\]|\\.)*")|,(\s*[}\]])/g;
 
 /** T3's lenient JSON: comments and trailing commas are dropped first. */
 function parseLenientJson(text: string): unknown {
-  let stripped = text;
-  for (const pattern of OUTSIDE_STRINGS) {
-    stripped = stripped.replace(pattern, (match, literal: string | undefined) =>
+  const stripped = text
+    .replace(STRING_OR_COMMENT, (match, literal: string | undefined) =>
       literal === undefined ? "" : match,
-    );
-  }
-  stripped = stripped.replace(
-    TRAILING_COMMA,
-    (match, literal: string | undefined, bracket: string | undefined) =>
+    )
+    .replace(TRAILING_COMMA, (match, literal: string | undefined, bracket: string | undefined) =>
       literal === undefined ? (bracket ?? "") : match,
-  );
+    );
   return JSON.parse(stripped);
 }
+
+/** A `t3.json` larger than this is not read: T3's file holds a few scripts. */
+export const T3_PROJECT_FILE_MAX_BYTES = 1024 * 1024;
 
 /** A `t3.json`'s contents read: the file, or why it is none (T3 logs it and reads none). */
 export type T3ProjectFileRead =

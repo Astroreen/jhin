@@ -5,6 +5,7 @@ import {
   PROJECT_SETTINGS_META,
   commandForProjectScript,
   nextProjectScriptId,
+  parseT3ProjectFile,
   primaryProjectScript,
   projectScriptMenuLabel,
   projectSettingsRecord,
@@ -76,5 +77,33 @@ describe("project scripts (source-control.md D1471, D1474, D1475)", () => {
       runOnWorktreeCreate: false,
     });
     expect(releaseClaimedRoles(old, { runOnWorktreeCreate: false })).toBe(old);
+  });
+});
+
+describe("the checked-in t3.json (source-control.md D1465)", () => {
+  it("reads T3's lenient JSON: comments, trailing commas, a URL in a comment or a string", () => {
+    expect(
+      parseT3ProjectFile(
+        [
+          "/* see https://t3.codes/docs // not a line comment */",
+          "{",
+          '  "$schema": "https://t3.codes/schema/t3.json", // the schema',
+          '  "scripts": [{ "name": "a /* b */ c", "command": "echo \\"//\\"", },],',
+          "}",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      file: {
+        $schema: "https://t3.codes/schema/t3.json",
+        scripts: [{ name: "a /* b */ c", command: 'echo "//"' }],
+      },
+    });
+  });
+
+  it("says why a file is none", () => {
+    expect(parseT3ProjectFile("{ nope").error).toMatch(/^t3\.json is not JSON/);
+    expect(parseT3ProjectFile('{ "worktreeSubmodules": "all" }').error).toMatch(
+      /^t3\.json is not a T3 project file at worktreeSubmodules/,
+    );
   });
 });

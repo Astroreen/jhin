@@ -29,6 +29,7 @@ import {
   MessageContextSchema,
   MessageOrigin,
   ProjectScript,
+  T3_PROJECT_FILE_MAX_BYTES,
   T3_PROJECT_FILE_NAME,
   T3ProjectFile,
   parseT3ProjectFile,
@@ -245,8 +246,34 @@ const EpochOutput = z.string().meta({
     "The id of this node's database, written when it was created: a copy of a stream kept under another epoch is not of this database",
 });
 
-/** A `t3.json` larger than this is not read: T3's file holds a few scripts. */
-const T3_FILE_MAX_BYTES = 1024 * 1024;
+/**
+ * A `t3.json` read once, from one open file (no race between a check and the
+ * read): none without one, why not when it is no regular file of at most
+ * 1 MiB, cannot be read, or is no T3 project file (D1465).
+ */
+async function readT3File(
+  file: string,
+): Promise<{ file: T3ProjectFile | null; error?: string | undefined }> {
+  let handle: Fs.promises.FileHandle;
+  try {
+    handle = await Fs.promises.open(file, Fs.constants.O_RDONLY | Fs.constants.O_NOFOLLOW);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { file: null };
+    return {
+      file: null,
+      error: `${T3_PROJECT_FILE_NAME} cannot be read: ${(error as Error).message}`,
+    };
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > T3_PROJECT_FILE_MAX_BYTES) {
+      return { file: null, error: `${T3_PROJECT_FILE_NAME} is not a file of at most 1 MiB` };
+    }
+    return parseT3ProjectFile(await handle.readFile("utf8"));
+  } finally {
+    await handle.close();
+  }
+}
 
 const Project = z.object({
   id: z.string(),
@@ -2468,18 +2495,13 @@ export default definePlugin({
             threadId,
           });
         }
-        const file = Path.join(thread?.worktreePath ?? project.path, T3_PROJECT_FILE_NAME);
-        const stat = await Fs.promises.stat(file).catch(() => undefined);
-        if (stat === undefined) return { file: null };
-        if (!stat.isFile() || stat.size > T3_FILE_MAX_BYTES) {
-          return { file: null, error: `${T3_PROJECT_FILE_NAME} is not a file of at most 1 MiB` };
-        }
-        const read = parseT3ProjectFile(await Fs.promises.readFile(file, "utf8"));
-        if (read.file === null) {
+        const read = await readT3File(
+          Path.join(thread?.worktreePath ?? project.path, T3_PROJECT_FILE_NAME),
+        );
+        if (read.file === null && read.error !== undefined) {
           context.log.warn("ignored a project's t3.json", { projectId, error: read.error });
-          return { file: null, error: read.error };
         }
-        return { file: read.file };
+        return read.error === undefined ? { file: read.file } : read;
       },
     });
 
