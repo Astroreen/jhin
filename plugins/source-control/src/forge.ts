@@ -109,9 +109,6 @@ export interface Forge {
   act(url: string, action: PullRequestAction, method: PullRequestMergeMethod): Promise<void>;
 }
 
-/** T3's merge methods, in its order. */
-export const MERGE_METHODS: readonly PullRequestMergeMethod[] = ["merge", "squash", "rebase"];
-
 export const PULL_REQUEST: ChangeRequestTerminology = {
   singular: "pull request",
   shortLabel: "PR",
