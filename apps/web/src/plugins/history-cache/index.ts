@@ -5,10 +5,7 @@ import { builtin } from "../../lib/builtin.ts";
 import { openHistoryStore, type HistoryStore } from "./store.ts";
 
 /** The service over a store; a store that fails costs a replay from 0, never the thread. */
-export function createHistoryCache(
-  store: HistoryStore,
-  now: () => number = Date.now,
-): HistoryCache {
+function createHistoryCache(store: HistoryStore, now: () => number = Date.now): HistoryCache {
   return {
     enabled: () => true,
     read: (connection, stream) => store.read(connection, stream, now()),
