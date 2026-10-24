@@ -1829,6 +1829,28 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   running setup a restart cut short is recorded "failed" ("The node
   restarted during the setup."). It goes with its thread.
 
+### The right panel opening itself (W40, D1426)
+
+W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
+`hooks/useProactivePanels.ts`, the proactive helpers of
+`components/ChatView.logic.ts` and the "Proactive panels" row of
+`components/settings/SettingsPanels.tsx`.
+
+- **D1426. T3's proactive panels.** With the client setting "Proactive
+  panels" on (`jhin.diff`'s `proactivePanels`, off by default as in T3, its
+  row under the diff's in the settings page's Behavior section with T3's
+  "Open linked pull requests first. Otherwise, open Changes for edits to at
+  least 3 files or 50 lines."), the right panel of the thread on screen
+  opens by itself: when a pull request is linked to it, on its pull
+  requests (`pull-requests`, T3's list; a single pull request's own surface
+  is W41's), and when one of its turns ends with a ready checkpoint of at
+  least 3 files or 50 changed lines in a git repository, on the diff's
+  "Changes" scope, unless a pull request was linked meanwhile or the panel
+  already shows the diff or the pull requests. Neither opens once the user
+  changed that thread's panel since the turn began or the thread came on
+  screen (`RightPanel.openProactive` with the revision read then, T3's
+  `observeProactivePanelUserChoice`).
+
 ## Deferred
 
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
@@ -1904,8 +1926,8 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
 - The pull request panel and rows (D1281–D1283; the rows' details, speed
   actions, drag, virtualized list, details row actions and checks popover
   since D1452–D1457; its tab strip is `t3-parity.md` D1421–D1424, the pull
-  requests being its surface `pull-requests`): T3's proactive opening of the
-  panel (W40), T3's sweep that closes several rows by dragging across them,
+  requests being its surface `pull-requests`, its proactive opening D1426):
+  T3's sweep that closes several rows by dragging across them,
   the details rows' periodic reads (T3 reads every ten minutes and polls
   running checks; Jhin reads again when the link's snapshot moves), native
   stacks of a forge (and their "Dismiss from thread") and the instructions

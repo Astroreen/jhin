@@ -75,6 +75,7 @@ import {
   type SourceControlServices,
 } from "./services.ts";
 import { createSourceControlStore } from "./store.ts";
+import { createProactivePanels } from "./proactive.tsx";
 
 /**
  * Source control in the web client (docs/plans/source-control.md): the thread
@@ -433,6 +434,13 @@ export const sourceControlPlugin = builtin(
             };
       };
       if (rightPanel !== undefined) {
+        // T3's proactive panels (D1426): watches the thread on screen, shows nothing.
+        context.subscriptions.add(
+          slots.contribute<ChatHeaderActionProps>("chat.header.actions", {
+            id: "jhin.source-control.proactive-panels",
+            component: createProactivePanels(services, rightPanel),
+          }),
+        );
         context.subscriptions.add(
           rightPanel.register({
             id: DIFF_PANEL,

@@ -94,6 +94,18 @@ type TerminalSettings = z.output<typeof TerminalSettings>;
 const terminalThreadKey = (target: NodeTarget, threadId: string): string =>
   `${targetKey(target)}|${threadId}`;
 
+/** Where a right-panel terminal surface keeps its layout (D1425): its thread's key and its id. */
+const terminalSurfaceKey = (threadKey: string, resource: string): string =>
+  `${threadKey}#${resource}`;
+
+/** Focus is in a terminal of the right panel (T3's `terminalFocusOwner === "right-panel"`). */
+function panelTerminalFocused(): boolean {
+  const active = document.activeElement;
+  return (
+    active instanceof HTMLElement && active.closest('[data-terminal-owner="right-panel"]') !== null
+  );
+}
+
 /** Focus is in a terminal (T3's `terminalFocus`): on or in an element of `[data-terminal-owner]`. */
 function isTerminalFocused(): boolean {
   const active = document.activeElement;
@@ -210,14 +222,79 @@ export const terminalPlugin = builtin(
         requestFocus();
       };
 
-      /** Drops the tab of a terminal the node closed already. */
-      const dropTab = (target: NodeTarget, threadId: string, terminalId: string) =>
-        ui.update(terminalThreadKey(target, threadId), (state) =>
-          closeThreadTerminal(state, terminalId),
+      /**
+       * The terminal surfaces of a thread's right panel, by their id (D1425); none without the
+       * right panel.
+       */
+      const surfaceResources = (target: NodeTarget, threadId: string): string[] =>
+        rightPanel === undefined
+          ? []
+          : rightPanel
+              .state({ target, threadId })
+              .surfaces.filter((surface) => surface.kind === TERMINAL_PANEL)
+              .flatMap((surface) => (surface.resource === undefined ? [] : [surface.resource]));
+      /** The panel surface holding a terminal of the thread, if one does. */
+      const surfaceOfTerminal = (target: NodeTarget, threadId: string, terminalId: string) => {
+        const key = terminalThreadKey(target, threadId);
+        return surfaceResources(target, threadId).find((resource) =>
+          ui.get(terminalSurfaceKey(key, resource)).terminalIds.includes(terminalId),
         );
+      };
+      /** A new terminal's id, unique across the drawer, the panel's surfaces and the node. */
+      const nextId = (target: NodeTarget, threadId: string): string => {
+        const key = terminalThreadKey(target, threadId);
+        return nextTerminalId([
+          ...ui.get(key).terminalIds,
+          ...surfaceResources(target, threadId).flatMap((resource) => [
+            resource,
+            ...ui.get(terminalSurfaceKey(key, resource)).terminalIds,
+          ]),
+          ...terminals
+            .of(target)
+            .sessions()
+            .filter((item) => item.threadId === threadId)
+            .map((item) => item.terminalId),
+        ]);
+      };
+      /** T3's addTerminalSurface: a new terminal in a right-panel surface of its own (D1425). */
+      const addTerminalSurface = (target: NodeTarget, threadId: string) => {
+        if (rightPanel === undefined) return;
+        const id = nextId(target, threadId);
+        ui.update(terminalSurfaceKey(terminalThreadKey(target, threadId), id), (state) =>
+          newThreadTerminal(state, id),
+        );
+        rightPanel.open({ target, threadId }, { kind: TERMINAL_PANEL, resource: id });
+        requestFocus();
+      };
+      /** A surface whose last terminal went closes with it, as T3's closeTerminal does. */
+      const closeEmptySurface = (target: NodeTarget, threadId: string, stateKey: string) => {
+        if (rightPanel === undefined) return;
+        const threadKey = terminalThreadKey(target, threadId);
+        if (stateKey === threadKey || ui.get(stateKey).terminalIds.length > 0) return;
+        void rightPanel.close(
+          { target, threadId },
+          `${TERMINAL_PANEL}:${stateKey.slice(threadKey.length + 1)}`,
+        );
+      };
+
+      /** Drops the tab of a terminal the node closed already. */
+      const dropTab = (
+        target: NodeTarget,
+        threadId: string,
+        terminalId: string,
+        stateKey = terminalThreadKey(target, threadId),
+      ) => {
+        ui.update(stateKey, (state) => closeThreadTerminal(state, terminalId));
+        closeEmptySurface(target, threadId, stateKey);
+      };
       /** Stops the terminal on its node and drops its tab. */
-      const closeTerminal = (target: NodeTarget, threadId: string, terminalId: string) => {
-        dropTab(target, threadId, terminalId);
+      const closeTerminal = (
+        target: NodeTarget,
+        threadId: string,
+        terminalId: string,
+        stateKey = terminalThreadKey(target, threadId),
+      ) => {
+        dropTab(target, threadId, terminalId, stateKey);
         const client = connections.get(target.node)?.client;
         if (client === undefined) return;
         void terminalChannel(client, target.remote)
@@ -232,6 +309,7 @@ export const terminalPlugin = builtin(
         threadId: string,
         terminalId: string,
         label: string,
+        stateKey = terminalThreadKey(target, threadId),
       ) => {
         const confirmed =
           dialogs === undefined ||
@@ -241,7 +319,7 @@ export const terminalPlugin = builtin(
             confirmLabel: "Close",
             variant: "destructive",
           }));
-        if (confirmed) closeTerminal(target, threadId, terminalId);
+        if (confirmed) closeTerminal(target, threadId, terminalId, stateKey);
       };
       const labelIn = (target: NodeTarget, threadId: string) => (terminalId: string) =>
         terminalSessionLabel(
@@ -272,9 +350,9 @@ export const terminalPlugin = builtin(
         () => {
           const place = openThread();
           if (place === undefined) return;
-          // Shown in the right panel: the toggle hides the panel.
+          // Shown in the right panel (D474, without the tabbed panel): the toggle hides it.
           const route = navigation.current();
-          if (route.panel === TERMINAL_PANEL) {
+          if (rightPanel === undefined && route.panel === TERMINAL_PANEL) {
             const { panel: _panel, section: _section, ...rest } = route;
             navigation.navigate(rest);
             return;
@@ -292,6 +370,19 @@ export const terminalPlugin = builtin(
           navigation.navigate(rest);
           return;
         }
+        if (rightPanel !== undefined) {
+          // The thread's first terminal surface, else a new one (D1425).
+          const first = surfaceResources(place.target, place.threadId)[0];
+          if (first === undefined) addTerminalSurface(place.target, place.threadId);
+          else {
+            rightPanel.open(
+              { target: place.target, threadId: place.threadId },
+              { kind: TERMINAL_PANEL, resource: first },
+            );
+            requestFocus();
+          }
+          return;
+        }
         ui.update(place.key, (state) =>
           state.terminalIds.length === 0
             ? newThreadTerminal(state, nextTerminalId(state.terminalIds))
@@ -306,11 +397,27 @@ export const terminalPlugin = builtin(
         "Shows the open thread's terminals in the panel right of the chat, or hides the panel",
         togglePanel,
       );
+      /** The right-panel terminal surface on screen while focus is in it (D1425). */
+      const focusedSurface = () => {
+        const place = openThread();
+        const route = navigation.current();
+        if (
+          place === undefined ||
+          rightPanel === undefined ||
+          route.panel !== TERMINAL_PANEL ||
+          route.section === undefined ||
+          !panelTerminalFocused()
+        ) {
+          return undefined;
+        }
+        return { ...place, stateKey: terminalSurfaceKey(place.key, route.section) };
+      };
       const split = (direction: "horizontal" | "vertical") => () => {
         const place = openThread();
         if (place === undefined) return;
-        change(place.key, (state) =>
-          splitThreadTerminal(state, nextTerminalId(state.terminalIds), direction),
+        const key = focusedSurface()?.stateKey ?? place.key;
+        change(key, (state) =>
+          splitThreadTerminal(state, nextId(place.target, place.threadId), direction),
         );
       };
       register(
@@ -349,18 +456,28 @@ export const terminalPlugin = builtin(
       register("terminal.new", "New terminal", "Opens another terminal in its own group", () => {
         const place = openThread();
         if (place === undefined) return;
-        change(place.key, (state) => newThreadTerminal(state, nextTerminalId(state.terminalIds)));
+        // In the right panel: a surface of its own, as T3's onNewTerminal (D1425).
+        if (focusedSurface() !== undefined) {
+          addTerminalSurface(place.target, place.threadId);
+          return;
+        }
+        change(place.key, (state) =>
+          newThreadTerminal(state, nextId(place.target, place.threadId)),
+        );
       });
       register("terminal.close", "Close terminal", "Closes the active terminal", () => {
         const place = openThread();
         if (place === undefined) return;
-        const state = ui.get(place.key);
-        if (!state.terminalOpen || state.activeTerminalId === "") return;
+        const surface = focusedSurface();
+        const key = surface?.stateKey ?? place.key;
+        const state = ui.get(key);
+        if ((surface === undefined && !state.terminalOpen) || state.activeTerminalId === "") return;
         return confirmClose(
           place.target,
           place.threadId,
           state.activeTerminalId,
           labelIn(place.target, place.threadId)(state.activeTerminalId),
+          key,
         );
       });
 
@@ -403,10 +520,13 @@ export const terminalPlugin = builtin(
         cwd: string;
         placement: "drawer" | "panel";
         embedded?: boolean;
+        /** A right-panel surface's id: its own terminals and layout (D1425). */
+        surface?: string;
         visible: boolean;
       }) {
-        const { target, threadId } = props;
-        const key = terminalThreadKey(target, threadId);
+        const { target, threadId, surface } = props;
+        const threadKey = terminalThreadKey(target, threadId);
+        const key = surface === undefined ? threadKey : terminalSurfaceKey(threadKey, surface);
         const state = useExternal(ui, () => ui.get(key));
         const connection = useExternal(connections, () => connections.get(target.node));
         const feed = terminals.of(target);
@@ -447,31 +567,34 @@ export const terminalPlugin = builtin(
                 : undefined
             }
             onCloseRequest={(terminalId) =>
-              void confirmClose(target, threadId, terminalId, labelOf(terminalId))
+              void confirmClose(target, threadId, terminalId, labelOf(terminalId), key)
             }
             onClosed={(terminalId, reason) =>
               // A closed session is gone on the node already: closing it again
               // could end a terminal another client opened since under that id.
               reason === "exited"
-                ? closeTerminal(target, threadId, terminalId)
-                : dropTab(target, threadId, terminalId)
+                ? closeTerminal(target, threadId, terminalId, key)
+                : dropTab(target, threadId, terminalId, key)
             }
             onHeightChange={(height) =>
               ui.update(key, (current) => setThreadTerminalHeight(current, height))
             }
-            onNew={() =>
-              change(key, (current) =>
-                newThreadTerminal(current, nextTerminalId(current.terminalIds)),
-              )
-            }
+            onNew={() => {
+              // In the right panel another surface, as T3's; an empty surface starts its own.
+              if (surface !== undefined && state.terminalIds.length > 0) {
+                addTerminalSurface(target, threadId);
+                return;
+              }
+              change(key, (current) => newThreadTerminal(current, nextId(target, threadId)));
+            }}
             onSplit={() =>
               change(key, (current) =>
-                splitThreadTerminal(current, nextTerminalId(current.terminalIds), "horizontal"),
+                splitThreadTerminal(current, nextId(target, threadId), "horizontal"),
               )
             }
             onSplitVertical={() =>
               change(key, (current) =>
-                splitThreadTerminal(current, nextTerminalId(current.terminalIds), "vertical"),
+                splitThreadTerminal(current, nextId(target, threadId), "vertical"),
               )
             }
             embedded={props.embedded === true}
@@ -497,7 +620,9 @@ export const terminalPlugin = builtin(
       function Drawer({ target, thread, project }: ChatDrawerProps) {
         const route = useExternal(navigation, navigation.current);
         const state = useExternal(ui, () => ui.get(terminalThreadKey(target, thread.id)));
-        if (route.panel === TERMINAL_PANEL) return null;
+        // D474 without the tabbed panel: the drawer gives its terminals up to the panel. With
+        // it, the panel's terminals are its own (D1425).
+        if (rightPanel === undefined && route.panel === TERMINAL_PANEL) return null;
         return (
           <Terminals
             cwd={project.path}
@@ -510,9 +635,9 @@ export const terminalPlugin = builtin(
       }
 
       /** The right panel's `terminal` surface (t3-parity.md D1424). */
-      function TerminalSurface({ place }: RightPanelSurfaceProps) {
+      function TerminalSurface({ place, surface }: RightPanelSurfaceProps) {
         const catalog = useCatalog(threads, place.target);
-        if (place.threadId === undefined) return null;
+        if (place.threadId === undefined || surface.resource === undefined) return null;
         const thread = catalog?.threads.find((item) => item.id === place.threadId);
         const project = catalog?.projects.find((item) => item.id === thread?.projectId);
         if (project === undefined) return null;
@@ -520,7 +645,9 @@ export const terminalPlugin = builtin(
           <Terminals
             cwd={project.path}
             embedded
+            key={surface.resource}
             placement="panel"
+            surface={surface.resource}
             target={place.target}
             threadId={place.threadId}
             visible
@@ -604,6 +731,16 @@ export const terminalPlugin = builtin(
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    // A terminal of the right panel shows in its surface (D1425).
+                    const resource = surfaceOfTerminal(target, thread.id, first.terminalId);
+                    if (rightPanel !== undefined && resource !== undefined) {
+                      rightPanel.open(
+                        { target, threadId: thread.id },
+                        { kind: TERMINAL_PANEL, resource },
+                      );
+                      requestFocus();
+                      return;
+                    }
                     ui.update(terminalThreadKey(target, thread.id), (state) =>
                       revealThreadTerminal(state, first.terminalId),
                     );
@@ -655,17 +792,77 @@ export const terminalPlugin = builtin(
                       hint: "Available when a project is open.",
                     }
                   : { available: true },
-              // A thread without a terminal gets one, as T3's addTerminalSurface launches one.
+              // T3's addTerminalSurface: a new terminal in a surface of its own (D1425).
               add: (place) => {
-                if (place.threadId === undefined) return;
-                ui.update(terminalThreadKey(place.target, place.threadId), (state) =>
-                  state.terminalIds.length === 0
-                    ? newThreadTerminal(state, nextTerminalId(state.terminalIds))
-                    : state,
-                );
-                rightPanel.open(place, { kind: TERMINAL_PANEL });
-                requestFocus();
+                if (place.threadId !== undefined) addTerminalSurface(place.target, place.threadId);
               },
+            },
+            // T3's tab: its active terminal's name.
+            useTab: ({ place, surface }) => {
+              const key = terminalSurfaceKey(
+                terminalThreadKey(place.target, place.threadId ?? ""),
+                surface.resource ?? "",
+              );
+              const state = useExternal(ui, () => ui.get(key));
+              const feed = terminals.of(place.target);
+              const sessions = useExternal(feed, feed.sessions);
+              const id = state.activeTerminalId || surface.resource || "";
+              return {
+                title: terminalSessionLabel(
+                  id,
+                  sessions.find(
+                    (item) => item.threadId === place.threadId && item.terminalId === id,
+                  ),
+                ),
+              };
+            },
+            // T3's useRightPanelSurfaceClose: a surface's terminals close with it, after asking.
+            release: async (place, closing) => {
+              if (place.threadId === undefined) return true;
+              const threadId = place.threadId;
+              const threadKey = terminalThreadKey(place.target, threadId);
+              const groups = closing.flatMap((surface) =>
+                surface.resource === undefined
+                  ? []
+                  : [terminalSurfaceKey(threadKey, surface.resource)],
+              );
+              const ids = groups.flatMap((key) =>
+                ui.get(key).terminalIds.map((terminalId) => ({ key, terminalId })),
+              );
+              const labels = ids.map(({ terminalId }) =>
+                labelIn(place.target, threadId)(terminalId),
+              );
+              if (labels.length > 0 && dialogs !== undefined) {
+                const confirmed = await dialogs.confirm(
+                  labels.length === 1
+                    ? {
+                        title: `Close terminal "${labels[0]}"?`,
+                        description: "This stops the running process and clears its history.",
+                        confirmLabel: "Close",
+                        variant: "destructive",
+                      }
+                    : {
+                        title: `Close ${labels.length} terminals?`,
+                        description: `This stops their running processes and clears their histories: ${labels
+                          .map((label) => `"${label}"`)
+                          .join(", ")}.`,
+                        confirmLabel: "Close",
+                        variant: "destructive",
+                      },
+                );
+                if (!confirmed) return false;
+              }
+              for (const { key, terminalId } of ids) {
+                ui.update(key, (state) => closeThreadTerminal(state, terminalId));
+                const client = connections.get(place.target.node)?.client;
+                if (client === undefined) continue;
+                void terminalChannel(client, place.target.remote)
+                  .call("terminals.close", { threadId, terminalId })
+                  .catch((error: unknown) =>
+                    context.log.warn("terminal not closed", { terminalId, error: String(error) }),
+                  );
+              }
+              return true;
             },
             component: TerminalSurface,
           }),
