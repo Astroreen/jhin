@@ -362,7 +362,8 @@ test("D1172–D1173: the Threads section keeps threads with a PR, and per projec
       "Inactivity does not settle threads with a pull request. Merge and close still do.",
     ),
   ).toBeVisible();
-  await expect(section.getByText("Settling per project")).toBeVisible();
+  // The record of projects is edited in the page's project scope, not as a field (D1463).
+  await expect(section.getByText("Settling per project")).toHaveCount(0);
   await section.getByRole("switch", { name: "Keep threads with a PR" }).click();
   await section.getByText("Keep threads with a PR").scrollIntoViewIfNeeded();
   const shot = info.outputPath("keep-threads-with-a-pr.png");

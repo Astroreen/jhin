@@ -110,7 +110,7 @@ export interface InheritanceLayer {
 }
 
 /** A value as the layers popover shows it (T3's `formatValue`). */
-export function formatValue(field: Field | undefined, value: unknown): string {
+function formatValue(field: Field | undefined, value: unknown): string {
   if (value === undefined || value === null) return "Not set";
   if (field?.control.kind === "select") {
     const option = field.control.options.find((candidate) => equal(candidate.value, value));
