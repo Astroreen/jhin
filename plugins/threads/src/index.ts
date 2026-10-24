@@ -93,6 +93,9 @@ import { formatThreadTitleContext, regenerateTitlePrompt, titleMessages } from "
 export { THREADS_STREAM };
 
 const NAMESPACE = "jhin.threads";
+/** Where the database's epoch is kept (loading.md D1590), and the stream whose first append wrote it. */
+const EPOCH_KEY = "epoch";
+const EPOCH_STREAM = "threads/epoch";
 const CONFIG_SECTION = "jhin.threads";
 const DRAIN_TIMEOUT_MS = 5000;
 /** How long archiving or deleting a thread waits for its turn to end after the interrupt. */
@@ -220,6 +223,12 @@ const Config = z
     description: "Projects, threads and the agents that run their turns.",
   });
 type Config = z.output<typeof Config>;
+
+/** The id of the node's database (loading.md D1590): another one means other data. */
+const EpochOutput = z.string().meta({
+  description:
+    "The id of this node's database, written when it was created: a copy of a stream kept under another epoch is not of this database",
+});
 
 const Project = z.object({
   id: z.string(),
@@ -985,6 +994,37 @@ export default definePlugin({
       context.subscriptions.add(live.guard("thread/", ["threads.read"]));
     }
     registerDrafts(context, kv, live);
+    /**
+     * The id of this node's database (loading.md D1590): written once, when the
+     * threads plugin first runs on it, so a node reinstalled under the same id
+     * is told apart. An append with `expectedHead: 0` writes it, so two
+     * processes sharing the storage agree on one.
+     */
+    let epochOf: Promise<string> | undefined;
+    const epoch = (): Promise<string> =>
+      (epochOf ??= (async () => {
+        const kept = await kv.get(NAMESPACE, EPOCH_KEY);
+        if (typeof kept === "string") return kept;
+        const id = Crypto.randomUUID();
+        try {
+          await log.append(
+            EPOCH_STREAM,
+            [{ type: ThreadEvents.epochCreated, payload: { epoch: id } }],
+            {
+              expectedHead: 0,
+              records: [{ namespace: NAMESPACE, key: EPOCH_KEY, value: id }],
+            },
+          );
+          return id;
+        } catch (error) {
+          const written = await kv.get(NAMESPACE, EPOCH_KEY);
+          if (typeof written === "string") return written;
+          throw error;
+        }
+      })().catch((error: unknown) => {
+        epochOf = undefined;
+        throw error;
+      }));
     const active = new Map<string, Running>();
     /** Restart messages awaited (D803), by `threadId:messageId`: the turn each started, once it has. */
     const restartStarts = new Map<string, string | undefined>();
@@ -2959,7 +2999,12 @@ export default definePlugin({
       description:
         "Every project and thread of this node (agents' generations only with `includeGenerations`, D745), and the head of the `threads` index they reflect: follow the index after `head` to keep them current",
       input: z.object({ includeGenerations: IncludeGenerations }),
-      output: z.object({ head: z.number(), projects: z.array(Project), threads: z.array(Thread) }),
+      output: z.object({
+        head: z.number(),
+        epoch: EpochOutput,
+        projects: z.array(Project),
+        threads: z.array(Thread),
+      }),
       permissions: ["threads.read"],
       handler: async ({ includeGenerations }) => {
         // The head first: a change made while the lists are read is then also
@@ -2974,8 +3019,18 @@ export default definePlugin({
         const threads = (await listThreads()).filter(
           (thread) => includeGenerations || thread.generationOf === undefined,
         );
-        return { head, projects, threads };
+        return { head, epoch: await epoch(), projects, threads };
       },
+    });
+
+    context.commands.register({
+      name: "threads.epoch",
+      description:
+        "This node's epoch (the id of its database, loading.md D1590) and the head of the `threads` index: what a client checks before following the index from a catalog it kept",
+      input: z.object({}),
+      output: z.object({ epoch: EpochOutput, head: z.number() }),
+      permissions: ["threads.read"],
+      handler: async () => ({ epoch: await epoch(), head: await log.head(THREADS_STREAM) }),
     });
 
     context.commands.register({
@@ -3273,12 +3328,14 @@ export default definePlugin({
 
     context.commands.register({
       name: "threads.get",
-      description: "A thread, its stream name and the sequence of its last event",
+      description:
+        "A thread, its stream name, the sequence of its last event and the node's epoch (a cached copy of the stream from another epoch is not this one's)",
       input: z.object({ threadId: z.string() }),
       output: z.object({
         thread: Thread,
         stream: z.string(),
         head: z.number(),
+        epoch: EpochOutput,
         running: z.string().optional(),
       }),
       permissions: ["threads.read"],
@@ -3289,6 +3346,7 @@ export default definePlugin({
           thread,
           stream: threadStream(threadId),
           head: await log.head(threadStream(threadId)),
+          epoch: await epoch(),
           ...(turn === undefined ? {} : { running: turn.turnId }),
         };
       },

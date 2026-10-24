@@ -1,5 +1,5 @@
 import { ThreadEvents } from "@jhin/agent-api";
-import type { Connections, NodeConnection } from "@jhin/client-api";
+import type { Connections, HistoryCache, NodeConnection, ThreadsCatalog } from "@jhin/client-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { messageText } from "@jhin/agent-api";
 import { UserMessage } from "../src/plugins/chat/timeline.tsx";
+import { DATABASE, openHistoryStore } from "../src/plugins/history-cache/store.ts";
 import {
   useThreadTimeline,
   type ThreadTimelineState,
@@ -87,7 +88,10 @@ describe("a thread's timeline", () => {
     const first = fakeClient();
     const second = fakeClient();
     const nodes = fakeConnections(first.client);
-    const threads = { open: async (_target: unknown, threadId: string) => `thread/${threadId}` };
+    const threads = {
+      open: async (_target: unknown, threadId: string) => `thread/${threadId}`,
+      call: () => Promise.reject(new Error("not asked without a history cache")),
+    } as unknown as Pick<ThreadsCatalog, "open" | "call">;
     const seen: { state?: ThreadTimelineState } = {};
     function View() {
       seen.state = useThreadTimeline(threads, nodes.connections, target, "t1");
@@ -113,11 +117,109 @@ describe("a thread's timeline", () => {
   });
 });
 
+describe("a thread's timeline from the history cache (loading.md D1589)", () => {
+  /** A client that records each subscription's `after` and hands the test its events. */
+  function recordingClient() {
+    const subscriptions: { after: number; push(event: StoredEvent): void }[] = [];
+    const waiters: (() => void)[] = [];
+    const client = {
+      subscribe(
+        _stream: string,
+        options: { after?: number },
+        onEvent: (event: StoredEvent) => void,
+      ) {
+        subscriptions.push({ after: options.after ?? 0, push: onEvent });
+        for (const waiter of waiters.splice(0)) waiter();
+        return { lastSequence: 0, dispose: () => undefined };
+      },
+    } as unknown as NodeConnection["client"];
+    const subscribed = () =>
+      new Promise<void>((resolve) =>
+        subscriptions.length > 0 ? resolve() : waiters.push(resolve),
+      );
+    return { client, subscriptions, subscribed };
+  }
+  const turn = (sequence: number, turnId: string, text: string): StoredEvent => ({
+    stream: "thread/t1",
+    sequence,
+    type: ThreadEvents.turnStarted,
+    payload: { turnId, agentId: "jhin.agent-fake", input: { text } },
+    at: "2026-10-19T00:00:00.000Z",
+  });
+  /** The real IndexedDB store, as the plugin serves it; `written` settles every write so far. */
+  function cacheOnDisk() {
+    const store = openHistoryStore();
+    const writes: Promise<void>[] = [];
+    const cache: HistoryCache = {
+      enabled: () => true,
+      read: (connection, stream) => store.read(connection, stream, Date.now()),
+      append: (connection, stream, epoch, events) => {
+        const write = store.append(connection, stream, epoch, events, Date.now());
+        writes.push(write);
+        return write;
+      },
+      drop: (connection, stream) => store.drop(connection, stream),
+    };
+    return { cache, store, written: () => Promise.all(writes) };
+  }
+  const threads = {
+    open: async (_target: unknown, threadId: string) => `thread/${threadId}`,
+    call: async () => ({ epoch: "e1", head: 2 }),
+  } as unknown as Pick<ThreadsCatalog, "open" | "call">;
+
+  it("after a reload shows the kept turns at once and asks only for what follows them", async () => {
+    // The first visit reads the thread from 0 and keeps it.
+    const before = recordingClient();
+    const disk = cacheOnDisk();
+    const seen: { state?: ThreadTimelineState } = {};
+    const texts = () => seen.state?.timeline.turns.map((item) => item.text);
+    let nodes = fakeConnections(before.client);
+    let cache = disk.cache;
+    function View() {
+      seen.state = useThreadTimeline(threads, nodes.connections, target, "t1", cache);
+      return null;
+    }
+    let root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<View />));
+    await before.subscribed();
+    expect(before.subscriptions[0]!.after).toBe(0);
+    before.subscriptions[0]!.push(turn(1, "u1", "hello"));
+    before.subscriptions[0]!.push(turn(2, "u2", "again"));
+    await nextFrame();
+    await disk.written();
+    act(() => root.unmount());
+    disk.store.close();
+
+    // The page again, with the database opened anew.
+    const after = recordingClient();
+    const reopened = cacheOnDisk();
+    nodes = fakeConnections(after.client);
+    cache = reopened.cache;
+    root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<View />));
+    await act(() => after.subscribed());
+    expect(after.subscriptions[0]!.after).toBe(2);
+    expect(texts()).toEqual(["hello", "again"]);
+    after.subscriptions[0]!.push(turn(3, "u3", "new"));
+    await nextFrame();
+    expect(texts()).toEqual(["hello", "again", "new"]);
+    act(() => root.unmount());
+    reopened.store.close();
+    await new Promise<void>((resolve) => {
+      const deleting = indexedDB.deleteDatabase(DATABASE);
+      deleting.addEventListener("success", () => resolve());
+    });
+  });
+});
+
 describe("a thread's timeline errors", () => {
   it("clear once the stream delivers again", async () => {
     const node = fakeClient();
     const nodes = fakeConnections(node.client);
-    const threads = { open: async (_target: unknown, threadId: string) => `thread/${threadId}` };
+    const threads = {
+      open: async (_target: unknown, threadId: string) => `thread/${threadId}`,
+      call: () => Promise.reject(new Error("not asked without a history cache")),
+    } as unknown as Pick<ThreadsCatalog, "open" | "call">;
     const seen: { state?: ThreadTimelineState } = {};
     function View() {
       seen.state = useThreadTimeline(threads, nodes.connections, target, "t1");
@@ -137,7 +239,10 @@ describe("a thread's timeline errors", () => {
 
   it("say so when the thread's node is not connected", async () => {
     const nodes = fakeConnections(fakeClient().client);
-    const threads = { open: async (_target: unknown, threadId: string) => `thread/${threadId}` };
+    const threads = {
+      open: async (_target: unknown, threadId: string) => `thread/${threadId}`,
+      call: () => Promise.reject(new Error("not asked without a history cache")),
+    } as unknown as Pick<ThreadsCatalog, "open" | "call">;
     const seen: { state?: ThreadTimelineState } = {};
     function View() {
       seen.state = useThreadTimeline(threads, nodes.connections, { node: "ws://other/rpc" }, "t1");
