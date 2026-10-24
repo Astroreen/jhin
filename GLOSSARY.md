@@ -293,6 +293,9 @@ Words about Jhin:
 - **History cache** — the events of streams a web client has already read,
   kept on the device (IndexedDB) so a thread opens from it and asks the node
   only for what is new (`loading.md` D1588).
+- **Epoch** — the id of a node's database, written once when it is created
+  (`threads.epoch`, `loading.md` D1590): a node reinstalled under the same
+  node id has another epoch, so what a device kept of it is not its history.
 - **Sequence** — the position of an event in its stream; used to catch up
   after a disconnect without gaps or duplicates.
 - **Trim** — forgetting the oldest events of an event log stream while its

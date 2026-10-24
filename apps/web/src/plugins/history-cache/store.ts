@@ -14,7 +14,7 @@ interface StreamEntry {
   readonly lastSequence: number;
   /** When a thread last opened it (ms since the epoch); eviction goes by it (D1593). */
   readonly openedAt: number;
-  /** About how much its events take: the length of their JSON. */
+  /** About how much its events take: the UTF-8 size of their JSON. */
   readonly bytes: number;
 }
 
@@ -48,6 +48,8 @@ const done = (transaction: IDBTransaction) =>
       reject(transaction.error ?? new DOMException("The write was aborted", "AbortError")),
     );
   });
+
+const utf8 = new TextEncoder();
 
 /** The keys of every event of a stream. */
 const eventRange = (connection: string, stream: string) =>
@@ -130,7 +132,7 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
           let bytes = entry?.bytes ?? 0;
           for (const event of fresh) {
             store.put(event, [connection, stream, event.sequence]);
-            bytes += JSON.stringify(event).length;
+            bytes += utf8.encode(JSON.stringify(event)).length;
           }
           streams.put({
             connection,

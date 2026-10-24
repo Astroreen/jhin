@@ -112,9 +112,14 @@ export function followCachedStream(options: FollowOptions): Disposable {
       if (notFound) drop();
     }
     if (disposed) return;
+    // A failed question (a dropped connection) proves nothing: what is kept is
+    // followed, and nothing new is kept until the next open. Only an answer that
+    // disagrees, or a thread that is gone, drops it.
     if (
       kept !== undefined &&
-      (info?.epoch === undefined || info.epoch !== kept.epoch || info.head < kept.lastSequence)
+      (notFound ||
+        (info !== undefined &&
+          (info.epoch === undefined || info.epoch !== kept.epoch || info.head < kept.lastSequence)))
     ) {
       drop();
       kept = undefined;

@@ -10,7 +10,8 @@ export interface ThreadTimelineState {
   readonly timeline: Timeline;
   /**
    * How many events arrived, also ones delivered again: a marker that changes
-   * whenever the timeline may have grown, not a count of its events.
+   * whenever the timeline may have grown, not a count of its events. It
+   * starts over with the timeline when a kept history is dropped.
    */
   readonly count: number;
   readonly error?: string;
@@ -50,7 +51,10 @@ export function useThreadTimeline(
     let fold = createTimeline();
     let count = 0;
     const onBatch = (batch: readonly StoredEvent[], reset: boolean) => {
-      if (reset) fold = createTimeline();
+      if (reset) {
+        fold = createTimeline();
+        count = 0;
+      }
       count += batch.length;
       // Events again: whatever went wrong with the stream is over.
       setState({ timeline: fold.apply(batch), count });

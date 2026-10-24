@@ -155,7 +155,7 @@ What the node does today (2026-10-24, `08eeb571`):
   the same thread write it once. A read that finds fewer events than its
   last sequence (a write cut short) drops it. A thread whose own stream says
   it was deleted is dropped as the event arrives. The entry's size is the
-  length of its events' JSON: an estimate, as `history-cache.status` says.
+  UTF-8 size of its events' JSON: an estimate, as `history-cache.status` says.
 
 ### P3. Chunks and prefetch
 

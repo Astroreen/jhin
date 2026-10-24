@@ -264,4 +264,19 @@ describe("a thread opens from the history cache (loading.md D1589, D1590)", () =
     run.frame();
     expect(streams.get(`node|${STREAM}`)?.lastSequence).toBe(3);
   });
+
+  it("follows what is kept when the node cannot be asked, and keeps nothing new", async () => {
+    const { cache, calls } = memoryCache({ epoch: "e1", lastSequence: 3, events: range(1, 3) });
+    const run = follow(cache, () =>
+      Promise.reject(Object.assign(new Error("closed"), { code: "DISCONNECTED" })),
+    );
+    await run.subscribed(1);
+    expect(run.subscriptions[0]!.after).toBe(3);
+    expect(calls).not.toContain("drop thread/t1");
+    run.subscriptions[0]!.push(event(4));
+    run.frame();
+    expect(run.batches.at(-1)).toEqual({ sequences: [4], reset: false });
+    await Promise.resolve();
+    expect(calls.filter((call) => call.startsWith("append"))).toEqual([]);
+  });
 });
