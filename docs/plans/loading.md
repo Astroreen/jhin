@@ -1,6 +1,6 @@
 # Loading and caching
 
-Status: **in progress** (P2: the history cache, the sidebar cache and the setting in review, #304–#306). The owner asked (2026-10-24) that the web client
+Status: **in progress** (P2 done: #304–#306). The owner asked (2026-10-24) that the web client
 reach the screen faster and move fewer bytes. Three ways: compress what the
 node sends, keep what a device has already received and ask only for what is
 new, and load first what the first screen shows. Decisions D1581–D1620
