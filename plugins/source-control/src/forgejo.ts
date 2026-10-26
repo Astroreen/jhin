@@ -71,11 +71,46 @@ function forgejoRequest(raw: Raw, checks: readonly CheckWord[]): ForgePullReques
       ...(merged && mergedAt ? { mergedAt } : {}),
       ...(!merged && closedAt ? { closedAt } : {}),
       checks: rollup(checks),
+      ...forgejoDetails(raw),
     },
     ...(from !== undefined && into !== undefined
       ? { crossRepository: from.toLowerCase() !== into.toLowerCase() }
       : {}),
     ...(owner === undefined ? {} : { headOwner: owner }),
+  };
+}
+
+/** T3's row details of a Forgejo pull request (D1449), straight from its JSON. */
+function forgejoDetails(raw: Raw): Partial<PullRequest> {
+  const user = raw["user"] as
+    | { login?: unknown; full_name?: unknown; avatar_url?: unknown }
+    | null
+    | undefined;
+  const login = text(user?.login);
+  const count = (key: string) => {
+    const value = raw[key];
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+  };
+  const additions = count("additions");
+  const deletions = count("deletions");
+  const changedFiles = count("changed_files");
+  return {
+    ...(login === undefined
+      ? {}
+      : {
+          author: {
+            login,
+            name: text(user?.full_name) || null,
+            avatarUrl: text(user?.avatar_url) ?? null,
+          },
+        }),
+    ...(additions === undefined ? {} : { additions }),
+    ...(deletions === undefined ? {} : { deletions }),
+    ...(changedFiles === undefined ? {} : { changedFiles }),
+    // T3: Forgejo says mergeable or nothing; it never says conflicting.
+    ...(raw["mergeable"] === undefined
+      ? {}
+      : { mergeability: raw["mergeable"] === true ? "mergeable" : "unknown" }),
   };
 }
 
@@ -115,26 +150,29 @@ function forgejoRemark(raw: Raw, kind: "comment" | "review" | "line"): Remark | 
 const MAX_PAGES = 10;
 
 export function forgejoForge(teaPath: () => string, site: ForgeSite, viewers: Viewers): Forge {
-  const tea = async (endpoint: string, init: { method?: string; body?: unknown } = {}) => {
-    const answer = json(
-      await runCli(
-        teaPath(),
-        [
-          "api",
-          ...(init.method === undefined ? [] : ["--method", init.method]),
-          ...(init.body === undefined ? [] : ["--data", "@-"]),
-          endpoint,
-        ],
-        {
-          cwd: site.cwd,
-          ...(init.body === undefined ? {} : { input: JSON.stringify(init.body) }),
-          missing: "Forgejo or Gitea CLI (tea) is not installed on this node",
-          signedOut: SIGNED_OUT,
-          signedOutPattern: TEA_SIGNED_OUT,
-        },
-      ),
-      "tea",
+  const tea = async (
+    endpoint: string,
+    init: { method?: string; body?: unknown; empty?: boolean } = {},
+  ) => {
+    const result = await runCli(
+      teaPath(),
+      [
+        "api",
+        ...(init.method === undefined ? [] : ["--method", init.method]),
+        ...(init.body === undefined ? [] : ["--data", "@-"]),
+        endpoint,
+      ],
+      {
+        cwd: site.cwd,
+        ...(init.body === undefined ? {} : { input: JSON.stringify(init.body) }),
+        missing: "Forgejo or Gitea CLI (tea) is not installed on this node",
+        signedOut: SIGNED_OUT,
+        signedOutPattern: TEA_SIGNED_OUT,
+      },
     );
+    // A merge answers nothing on success.
+    if (init.empty === true && result.stdout.trim() === "") return null;
+    const answer = json(result, "tea");
     // tea exits 0 on an HTTP error and prints the server's error body.
     const message = text((answer as { message?: unknown } | null)?.message);
     if (
@@ -305,6 +343,32 @@ export function forgejoForge(teaPath: () => string, site: ForgeSite, viewers: Vi
       ".github/pull_request_template.md",
       "docs/pull_request_template.md",
     ],
+    actions: ["merge", "close", "reopen"],
+    // T3's Forgejo merge capabilities: the repository's `allow_*` flags (D1450).
+    mergeMethods: async (url) => {
+      const { repository = site.repository } = numberedReference(url, forge, 2, site.host);
+      const raw = ((await tea(`/repos/${repository}`)) ?? {}) as Raw;
+      return [
+        ...(raw["allow_merge_commits"] !== false ? (["merge"] as const) : []),
+        ...(raw["allow_squash_merge"] !== false ? (["squash"] as const) : []),
+        ...(raw["allow_rebase"] !== false ? (["rebase"] as const) : []),
+      ];
+    },
+    // T3's `POST pulls/<n>/merge` and `PATCH pulls/<n>` (D1451).
+    act: async (url, action, method) => {
+      const { repository = site.repository, number } = numberedReference(url, forge, 2, site.host);
+      const path = `/repos/${repository}/pulls/${number}`;
+      if (action === "merge") {
+        await tea(`${path}/merge`, { method: "POST", body: { Do: method }, empty: true });
+      } else if (action === "close" || action === "reopen") {
+        await tea(path, {
+          method: "PATCH",
+          body: { state: action === "close" ? "closed" : "open" },
+        });
+      } else {
+        throw new ForgeUnavailable("failed", `Forgejo does not expose ${action} through its API.`);
+      }
+    },
   };
   return forge;
 }

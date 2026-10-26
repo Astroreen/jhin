@@ -28,6 +28,9 @@ import {
   ProjectStatus,
   PreparedPullRequest,
   PullRequest,
+  PullRequestAction,
+  PullRequestDetail,
+  PullRequestMergeMethod,
   PullResult,
   SOURCE_CONTROL_ACTIONS_STREAM,
   PULL_REQUESTS_CAPABILITY,
@@ -38,7 +41,9 @@ import {
   CreatedWorktree,
   ThreadBranch,
   ThreadPullRequest,
+  parsePullRequestUrl,
   pullRequestChains,
+  pullRequestKey,
   type GitActionProgress,
   TurnCheckpoint,
   Worktree,
@@ -3143,6 +3148,173 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           { projectId },
         );
       }
+    },
+  });
+
+  /** The forge of a pull request's URL, working in its project's repository (D1450, D1451). */
+  const forgeOfUrl = async (projectId: string, url: string) => {
+    const parsed = parsePullRequestUrl(url);
+    if (parsed === undefined) {
+      throw new SourceControlError(
+        "PULL_REQUEST_INVALID",
+        "This is not a recognised pull request URL. Pass repository and number instead.",
+        { url },
+      );
+    }
+    const repo = await repoOf(projectId);
+    const { git, root } = await gitOf(repo);
+    const key = pullRequestKey(parsed);
+    // Only the project's own pull requests (of any of its remotes) and the ones its threads
+    // link: a caller allowed this project acts on nothing else through the node's account.
+    const remotes = (await git(["remote"])).stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+    let ours = false;
+    for (const remote of remotes) {
+      const remoteUrl = await git(["config", "--get", `remote.${remote}.url`], { ok: [0, 1] });
+      if (remoteUrl.code === 0 && isPullRequestOf(remoteUrl.stdout, url)) ours = true;
+    }
+    if (!ours) {
+      for (const entry of await links.all()) {
+        if (!entry.pullRequests.some((link) => link.key === key)) continue;
+        if ((await projectRepoOfThread(entry.threadId))?.project.id === projectId) ours = true;
+      }
+    }
+    if (!ours) {
+      throw new SourceControlError(
+        "PULL_REQUEST_INVALID",
+        `${url} is not a pull request of this project's repository or of its threads.`,
+        { url },
+      );
+    }
+    const kind = kindOfHost(parsed.host);
+    const forge = kind === undefined ? undefined : makeForge(kind, root, undefined);
+    if (forge === undefined) {
+      throw new SourceControlError("ACTION_UNAVAILABLE", `${parsed.host} is not a known forge.`, {
+        url,
+      });
+    }
+    return { forge, key };
+  };
+  /** A forge's failure as the commands report it: unavailable, or failed with its words. */
+  const forgeFailure = (error: unknown, fields: Record<string, unknown>) => {
+    if (error instanceof SourceControlError) return error;
+    const unavailable = error instanceof ForgeUnavailable && error.kind !== "failed";
+    return new SourceControlError(
+      unavailable ? "ACTION_UNAVAILABLE" : "PULL_REQUEST_FAILED",
+      (error as Error).message,
+      fields,
+    );
+  };
+
+  context.commands.register({
+    name: "git.pr.detail",
+    title: "Pull request detail",
+    description:
+      "A pull request's details by URL: its snapshot with author, diff stat, review decision and mergeability, its head's checks one by one, the merge methods its repository allows and the actions its forge has",
+    input: z.object({ projectId: z.string().min(1), url: z.string().min(1) }),
+    output: PullRequestDetail,
+    permissions: ["git.read"],
+    handler: async ({ projectId, url }) => {
+      const { forge } = await forgeOfUrl(projectId, url);
+      try {
+        const [pullRequest, checks, mergeMethods] = await Promise.all([
+          forge.at(url),
+          forge.checks !== undefined
+            ? forge.checks(url)
+            : // A watch read that fails leaves the checks unknown, as a failed merge-methods read.
+              (forge.watch?.(url) ?? Promise.resolve(undefined))
+                .catch(() => undefined)
+                .then((watched) =>
+                  (watched?.checks ?? []).map((check) => ({
+                    name: check.name,
+                    status: check.status,
+                    description: null,
+                    url: check.url ?? null,
+                    ...(check.required === undefined ? {} : { required: check.required }),
+                  })),
+                ),
+          // Without them only Merge is missing; the rest of the detail stands.
+          forge.mergeMethods(url).catch((): PullRequestMergeMethod[] => []),
+        ]);
+        return { pullRequest, checks, mergeMethods, actions: [...forge.actions] };
+      } catch (error) {
+        throw forgeFailure(error, { url });
+      }
+    },
+  });
+
+  context.commands.register({
+    name: "git.pr.action",
+    title: "Act on pull request",
+    description:
+      "Merges a pull request (with mergeMethod, `merge` by default), marks a draft ready for review, closes or reopens it, by URL; every thread that links it gets its new state",
+    input: z.object({
+      projectId: z.string().min(1),
+      url: z.string().min(1),
+      action: PullRequestAction,
+      mergeMethod: PullRequestMergeMethod.optional(),
+    }),
+    output: z.object({
+      /** `null` when the pull request could not be read again after the action, which was done. */
+      pullRequest: PullRequest.nullable(),
+    }),
+    permissions: ["git.write"],
+    handler: async ({ projectId, url, action, mergeMethod }) => {
+      const { forge, key } = await forgeOfUrl(projectId, url);
+      if (!forge.actions.includes(action)) {
+        throw new SourceControlError(
+          "ACTION_UNAVAILABLE",
+          `${forge.name} does not expose ${action} through its API.`,
+          { url },
+        );
+      }
+      // A merge takes a method the repository allows: the one asked for, refused when not
+      // allowed, else "merge" when allowed, else the first allowed (T3's
+      // resolveSelectedMergeMethod).
+      let method = mergeMethod ?? "merge";
+      if (action === "merge") {
+        const allowed = await forge.mergeMethods(url).catch(() => undefined);
+        if (allowed !== undefined && !allowed.includes(method)) {
+          if (mergeMethod !== undefined || allowed.length === 0) {
+            throw new SourceControlError(
+              "ACTION_UNAVAILABLE",
+              `This repository does not allow the ${method} merge method (it allows: ${allowed.join(", ") || "none"}).`,
+              { url },
+            );
+          }
+          method = allowed[0]!;
+        }
+      }
+      try {
+        await forge.act(url, action, method);
+      } catch (error) {
+        throw forgeFailure(error, { url, action });
+      }
+      // Done on the forge: a read that fails now answers null, and the next sync reads it.
+      const pullRequest = await forge.at(url).catch((error: unknown) => {
+        context.log.warn("reading a pull request after its action failed", {
+          url,
+          error: String(error),
+        });
+        return null;
+      });
+      if (pullRequest === null) return { pullRequest };
+      // Done on the forge: a link that cannot be updated now is read again by the next sync.
+      const syncedAt = new Date().toISOString();
+      for (const entry of await links.all()) {
+        if (!entry.pullRequests.some((link) => link.key === key)) continue;
+        await links
+          .modify(entry.threadId, key, (link) => ({ ...link, snapshot: pullRequest, syncedAt }))
+          .catch((error: unknown) =>
+            context.log.warn("updating a link after a pull request action failed", {
+              threadId: entry.threadId,
+              error: String(error),
+            }),
+          );
+      }
+      return { pullRequest };
     },
   });
 

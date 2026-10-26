@@ -1546,7 +1546,13 @@ and in `apps/web` `components/PullRequestThreadDialog.tsx`,
   `ready`, `close` and `reopen` (GitHub, GitLab and Azure DevOps all four;
   Forgejo merge, close and reopen; Bitbucket merge and close).
 - **D1451. `git.pr.action`** (`git.write`; `{ projectId, url, action,
-  mergeMethod? }` → `{ pullRequest }`), T3's `runAction` for those four:
+  mergeMethod? }` → `{ pullRequest }`), T3's `runAction` for those four. It
+  and `git.pr.detail` take only the project's own pull requests (of any of
+  its remotes) and the ones its threads link, and a merge method the
+  repository does not allow is refused before the forge is asked; without one
+  a merge takes "merge" when allowed, else the first allowed method (T3's
+  `resolveSelectedMergeMethod`). `pullRequest` is `null` when the pull
+  request could not be read again after the action, which was done:
   GitHub through `gh pr merge --merge|--squash|--rebase`, `gh pr ready`,
   `gh pr close` and `gh pr reopen` (T3 sends the same GraphQL mutations);
   GitLab `glab mr merge --yes --auto-merge=false [--squash|--rebase]`,
@@ -1885,8 +1891,11 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   panel, a draft that is not the current one: Jhin fills the draft the
   branch picker belongs to), and a "Checkout pull request" offered while the
   node cannot write (T3's `canWriteSourceControl`).
-- Watching (D274): review thread comments on lines, required checks of
-  forges other than GitHub (D908), read fingerprints, rate limit pauses;
+- Watching (D274; review thread comments since D1447, required checks off
+  GitHub as T3 has them, none, D1448): a GitHub review thread past its first
+  100 comments and threads past the first 100 (T3 pages them), a failed read
+  of the review threads going unreported (the watch reads the rest), read
+  fingerprints, rate limit pauses;
   T3's hover list of a waiting thread's background tasks ("Waiting" for a
   thread on a mesh member is D1289); a member followed for D1289 stays
   followed until its connection goes, also after it leaves the mesh or no
@@ -1899,6 +1908,13 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   Resolve, checks popover and files count (T3's pull request detail
   queries); native stacks of a forge (and their "Dismiss from thread") and
   the instructions that tell agents to link what they open.
+- A pull request's details and actions (D1449–D1451): GitHub's avatars (`gh pr
+  view` names no avatar; the row shows the login's initial, T3's fallback),
+  T3's other actions (draft, update branch, auto-merge, revert, delete
+  branch, approve workflows), GitHub's merge queue (T3 enables auto-merge
+  there), a per-project default merge method and the last one chosen (T3's
+  `pullRequestMergeMethod`), and the review decision off GitHub (T3 has none
+  either).
 - Git actions (D266): T3's "Publish repository", writing style settings, the
   thread details panel and opening a file from the commit dialog. Writer
   turns go through `agent.runtime@1`'s `startTurn` under a throwaway thread

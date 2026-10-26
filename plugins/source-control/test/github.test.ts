@@ -58,7 +58,7 @@ describe("jhin.source-control: pull requests through the GitHub CLI", () => {
       },
     });
     expect(gh.calls()).toContain(
-      "pr list --head feature --state all --limit 10 --json number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup,isCrossRepository,headRepositoryOwner",
+      "pr list --head feature --state all --limit 10 --json number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup,author,additions,deletions,changedFiles,reviewDecision,mergeable,isCrossRepository,headRepositoryOwner",
     );
   });
 

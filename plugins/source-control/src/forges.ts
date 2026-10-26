@@ -119,9 +119,36 @@ function gitlabRequest(raw: Record<string, unknown>): ForgePullRequest | undefin
       ...(merged ? { mergedAt: merged } : {}),
       ...(closed ? { closedAt: closed } : {}),
       checks: rollup(pipeline?.status === undefined ? [] : [pipelineWord(text(pipeline.status))]),
+      ...gitlabDetails(raw),
     },
     ...(typeof source === "number" && typeof target === "number"
       ? { crossRepository: source !== target }
+      : {}),
+  };
+}
+
+/** T3's row details of a merge request (D1449): its author, files count and mergeability. */
+function gitlabDetails(raw: Record<string, unknown>): Partial<PullRequest> {
+  const author = raw["author"] as
+    | { username?: unknown; name?: unknown; avatar_url?: unknown }
+    | null
+    | undefined;
+  const login = text(author?.username);
+  // "1000+" past GitLab's count.
+  const files = Number.parseInt(text(raw["changes_count"]) ?? "", 10);
+  return {
+    ...(login === undefined
+      ? {}
+      : {
+          author: {
+            login,
+            name: text(author?.name) ?? null,
+            avatarUrl: text(author?.avatar_url) ?? null,
+          },
+        }),
+    ...(Number.isInteger(files) && files >= 0 ? { changedFiles: files } : {}),
+    ...(raw["has_conflicts"] !== undefined || raw["merge_status"] !== undefined
+      ? { mergeability: gitlabMergeability(raw) }
       : {}),
   };
 }
@@ -165,17 +192,16 @@ function gitlabMergeability(raw: Record<string, unknown>): WatchRead["mergeabili
 }
 
 export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Viewers): Forge {
-  const glab = async (args: readonly string[]) =>
-    json(
-      await runCli(glabPath(), args, {
-        cwd: site.cwd,
-        env: { GLAB_NO_PROMPT: "1", NO_COLOR: "1", GLAB_CHECK_UPDATE: "false" },
-        missing: "GitLab CLI (glab) is not installed on this node",
-        signedOut: "GitLab CLI is not signed in: run `glab auth login` on this node",
-        signedOutPattern: GITLAB_SIGNED_OUT,
-      }),
-      "glab",
-    );
+  const glabRun = (args: readonly string[], timeoutMs?: number) =>
+    runCli(glabPath(), args, {
+      cwd: site.cwd,
+      env: { GLAB_NO_PROMPT: "1", NO_COLOR: "1", GLAB_CHECK_UPDATE: "false" },
+      missing: "GitLab CLI (glab) is not installed on this node",
+      signedOut: "GitLab CLI is not signed in: run `glab auth login` on this node",
+      signedOutPattern: GITLAB_SIGNED_OUT,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    });
+  const glab = async (args: readonly string[]) => json(await glabRun(args), "glab");
   const project = (repository: string) => `projects/${encodeURIComponent(repository)}`;
   const read = async (host: string, repository: string, number: number) => {
     const raw = await glab([
@@ -360,6 +386,46 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Vi
       ".gitlab/merge_request_templates/Default.md",
       ".gitlab/merge_request_templates/default.md",
     ],
+    actions: ["merge", "ready", "close", "reopen"],
+    // T3's GitLab merge capabilities: the project's merge method and squash option (D1450).
+    mergeMethods: async (url) => {
+      const { host, repository } = reference(url);
+      const raw = ((await glab(["api", "--hostname", host, project(repository)])) ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const method = text(raw["merge_method"]);
+      const squash = text(raw["squash_option"]);
+      return [
+        ...(method === "merge" ? (["merge"] as const) : []),
+        ...(squash === "always" || squash === "default_on" || squash === "default_off"
+          ? (["squash"] as const)
+          : []),
+        ...(method === "rebase_merge" || method === "ff" ? (["rebase"] as const) : []),
+      ];
+    },
+    // T3's `glab mr <action> <iid> --repo <project>` (D1451).
+    act: async (url, action, method) => {
+      const { host, repository, number } = reference(url);
+      const where = ["--repo", `https://${host}/${repository}`];
+      await glabRun(
+        action === "merge"
+          ? [
+              "mr",
+              "merge",
+              String(number),
+              ...where,
+              "--yes",
+              "--auto-merge=false",
+              ...(method === "squash" ? ["--squash"] : method === "rebase" ? ["--rebase"] : []),
+            ]
+          : action === "ready"
+            ? ["mr", "update", String(number), ...where, "--ready"]
+            : ["mr", action, String(number), ...where],
+        // A merge waits for GitLab longer than a read.
+        60_000,
+      );
+    },
   };
   return forge;
 }
@@ -391,8 +457,31 @@ function azureRequest(raw: Record<string, unknown>): ForgePullRequest | undefine
       ...(status === "abandoned" && closed ? { closedAt: closed } : {}),
       // T3 reads no checks from Azure DevOps either.
       checks: rollup([]),
+      ...azureDetails(raw),
     },
     crossRepository: raw["forkSource"] !== null && raw["forkSource"] !== undefined,
+  };
+}
+
+/** T3's row details of an Azure DevOps pull request (D1449): its author and mergeability. */
+function azureDetails(raw: Record<string, unknown>): Partial<PullRequest> {
+  const author = raw["createdBy"] as
+    | { uniqueName?: unknown; displayName?: unknown; imageUrl?: unknown }
+    | null
+    | undefined;
+  const login = text(author?.uniqueName) ?? text(author?.displayName);
+  const status = text(raw["mergeStatus"]);
+  return {
+    ...(login === undefined
+      ? {}
+      : {
+          author: {
+            login,
+            name: text(author?.displayName) ?? null,
+            avatarUrl: text(author?.imageUrl) ?? null,
+          },
+        }),
+    ...(status === undefined ? {} : { mergeability: azureMergeability(status) }),
   };
 }
 
@@ -682,6 +771,31 @@ export function azureForge(azPath: () => string, site: ForgeSite, viewers: Viewe
       "docs/pull_request_template.md",
       "pull_request_template.md",
     ],
+    actions: ["merge", "ready", "close", "reopen"],
+    // T3's Azure DevOps merge capabilities: a merge or a squash.
+    mergeMethods: () => Promise.resolve(["merge", "squash"]),
+    // T3's `az repos pr update --id <n>` (D1451).
+    act: async (url, action, method) => {
+      const { host, repository, number } = reference(url);
+      const location = azureLocation(host, repository);
+      if (location === undefined) {
+        throw new ForgeUnavailable("failed", `${url} names no Azure DevOps repository`);
+      }
+      await az([
+        "repos",
+        "pr",
+        "update",
+        "--id",
+        String(number),
+        "--organization",
+        location.organization,
+        ...(action === "merge"
+          ? ["--status", "completed", "--squash", method === "squash" ? "true" : "false"]
+          : action === "ready"
+            ? ["--draft", "false"]
+            : ["--status", action === "close" ? "abandoned" : "active"]),
+      ]);
+    },
   };
   return forge;
 }
