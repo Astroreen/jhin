@@ -1,6 +1,6 @@
 # Loading and caching
 
-Status: **in progress** (P2 done: #304–#306). The owner asked (2026-10-24) that the web client
+Status: **in progress** (P2 done: #304–#306; P3 done: #323). The owner asked (2026-10-24) that the web client
 reach the screen faster and move fewer bytes. Three ways: compress what the
 node sends, keep what a device has already received and ask only for what is
 new, and load first what the first screen shows. Decisions D1581–D1620
@@ -261,7 +261,7 @@ What the node does today (2026-10-24, `08eeb571`):
 | --- | ------------------------------------------------------ | ---------------------------------------------- |
 | P1  | HTTP compression and validators, WebSocket compression | D1582–D1587, D1597, D1598; landed (#303, #309) |
 | P2  | the history cache: threads, the sidebar, its setting   | D1588–D1594                                    |
-| P3  | chunks for routes off the first screen, idle prefetch  | D1595–D1596, D1615–D1616                       |
+| P3  | chunks for routes off the first screen, idle prefetch  | D1595–D1596, D1615–D1616; landed (#323)        |
 
 D1597–D1620 are free for decisions the workstreams find they need.
 
