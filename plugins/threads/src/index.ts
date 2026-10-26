@@ -29,6 +29,11 @@ import {
   MessageContextSchema,
   MessageOrigin,
   ProjectScript,
+  T3_PROJECT_FILE_MAX_BYTES,
+  T3_PROJECT_FILE_NAME,
+  T3ProjectFile,
+  parseT3ProjectFile,
+  projectSettingsRecord,
   projectMessageContext,
   referencedContext,
   ThreadEvents,
@@ -199,25 +204,35 @@ const Config = z
       description:
         "Snooze usage-limit stops until the reported reset time. Combine with auto-resume to continue when they wake.",
     }),
-    // T3's projectSettingsOverrides of the settle settings (D1173).
-    projects: z
-      .record(
-        z.string(),
-        z
-          .object({
-            autoSettleOnMerge: z.boolean().optional(),
-            autoSettleInactive: z.boolean().optional(),
-            autoSettleAfterDays: z.number().int().min(1).max(90).optional(),
-            autoSettleKeepPullRequests: z.boolean().optional(),
-          })
-          .strict(),
-      )
-      .default({})
-      .meta({
+    // T3's projectSettingsOverrides of the settle settings (D1173), a project
+    // settings record the settings page's project scope edits (D1464).
+    projects: projectSettingsRecord(
+      {
+        autoSettleOnMerge: z.boolean().optional().meta({
+          title: "Auto-settle merged threads",
+          description:
+            "Settle a thread when its pull request merges. Closed pull requests still settle automatically.",
+        }),
+        autoSettleInactive: z.boolean().optional().meta({
+          title: "Auto-settle inactive threads",
+          description: "Sidebar threads with no activity for this long settle automatically.",
+        }),
+        autoSettleAfterDays: z.number().int().min(1).max(90).optional().meta({
+          title: "Days of inactivity before auto-settle",
+          description: "Any new activity un-settles a thread automatically.",
+        }),
+        autoSettleKeepPullRequests: z.boolean().optional().meta({
+          title: "Keep threads with a PR",
+          description:
+            "Inactivity does not settle threads with a pull request. Merge and close still do.",
+        }),
+      },
+      {
         title: "Settling per project",
         description:
           "A project's own settle settings, by its id. A setting its entry leaves out is the node's.",
-      }),
+      },
+    ),
   })
   .meta({
     title: "Threads",
@@ -230,6 +245,35 @@ const EpochOutput = z.string().meta({
   description:
     "The id of this node's database, written when it was created: a copy of a stream kept under another epoch is not of this database",
 });
+
+/**
+ * A `t3.json` read once, from one open file (no race between a check and the
+ * read): none without one, why not when it is no regular file of at most
+ * 1 MiB, cannot be read, or is no T3 project file (D1465).
+ */
+async function readT3File(
+  file: string,
+): Promise<{ file: T3ProjectFile | null; error?: string | undefined }> {
+  let handle: Fs.promises.FileHandle;
+  try {
+    handle = await Fs.promises.open(file, Fs.constants.O_RDONLY | Fs.constants.O_NOFOLLOW);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { file: null };
+    return {
+      file: null,
+      error: `${T3_PROJECT_FILE_NAME} cannot be read: ${(error as Error).message}`,
+    };
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > T3_PROJECT_FILE_MAX_BYTES) {
+      return { file: null, error: `${T3_PROJECT_FILE_NAME} is not a file of at most 1 MiB` };
+    }
+    return parseT3ProjectFile(await handle.readFile("utf8"));
+  } finally {
+    await handle.close();
+  }
+}
 
 const Project = z.object({
   id: z.string(),
@@ -2428,6 +2472,36 @@ export default definePlugin({
           await file.close();
         }
         return { path: target, relativePath: relativePath.split(Path.sep).join("/") };
+      },
+    });
+
+    // T3's checked-in project file (source-control.md D1465).
+    context.commands.register({
+      name: "projects.t3-file.get",
+      description:
+        "Reads a project's checked-in t3.json (T3's project file: its scripts and defaults), at the project's root or a thread's worktree; file is null without one, and error says why one could not be read",
+      input: z.object({
+        projectId: z.string(),
+        /** Its worktree, when it has one, is where the file is read (the branch's own file). */
+        threadId: z.string().optional(),
+      }),
+      output: z.object({ file: T3ProjectFile.nullable(), error: z.string().optional() }),
+      permissions: ["projects.read"],
+      handler: async ({ projectId, threadId }) => {
+        const project = await getProject(projectId);
+        const thread = threadId === undefined ? undefined : await getThread(threadId);
+        if (thread !== undefined && thread.projectId !== projectId) {
+          throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId} in this project`, {
+            threadId,
+          });
+        }
+        const read = await readT3File(
+          Path.join(thread?.worktreePath ?? project.path, T3_PROJECT_FILE_NAME),
+        );
+        if (read.file === null && read.error !== undefined) {
+          context.log.warn("ignored a project's t3.json", { projectId, error: read.error });
+        }
+        return read.error === undefined ? { file: read.file } : read;
       },
     });
 

@@ -535,6 +535,45 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     }
   });
 
+  it("takes a worktree's submodules from the project, then the node, then the branch's t3.json (D1467)", async () => {
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "protocol.file.allow");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "always");
+    try {
+      const library = repository();
+      const dir = repository();
+      git(dir, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", library, "lib");
+      // The branch's own file, comments and a trailing comma as T3 reads them.
+      Fs.writeFileSync(
+        Path.join(dir, "t3.json"),
+        '{\n  // submodules for a setup script\n  "worktreeSubmodules": "none",\n}\n',
+      );
+      git(dir, "add", "t3.json");
+      git(dir, "commit", "--quiet", "-m", "lib");
+      const sc = await node({ watch: false });
+      const projectId = await sc.project(dir);
+      const create = (threadId: string) =>
+        sc.client.call<{ worktreePath: string }>("threads.create", {
+          projectId,
+          threadId,
+          workspace: { type: "worktree", baseRef: "main" },
+        });
+      const checkedOut = (worktree: string) =>
+        Fs.existsSync(Path.join(worktree, "lib", "README.md"));
+
+      expect(checkedOut((await create("file")).worktreePath)).toBe(false);
+      sc.configure({ worktreeSubmodules: "recursive" });
+      expect(checkedOut((await create("node")).worktreePath)).toBe(true);
+      sc.configure({
+        worktreeSubmodules: "recursive",
+        projects: { [projectId]: { worktreeSubmodules: "none" } },
+      });
+      expect(checkedOut((await create("project")).worktreePath)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("lets the cleanup remove a deleted thread's worktree with clean submodules, and keep a dirty one (D1134)", async () => {
     vi.stubEnv("GIT_CONFIG_COUNT", "1");
     vi.stubEnv("GIT_CONFIG_KEY_0", "protocol.file.allow");

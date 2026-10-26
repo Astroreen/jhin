@@ -21,6 +21,8 @@ export * from "./context-schema.ts";
 export * from "./writer.ts";
 export * from "./project-scripts.ts";
 export * from "./workspace-strategy.ts";
+export * from "./project-settings.ts";
+export * from "./t3-project-file.ts";
 
 import { contextReferencesAsLabels } from "./context.ts";
 import type { InteractionMode, RuntimeMode } from "./modes.ts";
