@@ -1045,7 +1045,14 @@ export default definePlugin({
           followed?.dispose();
           resolve(event);
         };
-        const following = meshStreams.follow(node, stream, sequence - 1, (event) => finish(event));
+        // A relay that ends (the member refused it, the mesh closed) reads nothing.
+        const following = meshStreams.follow(
+          node,
+          stream,
+          sequence - 1,
+          (event) => finish(event),
+          () => finish(),
+        );
         followed = following;
         if (done) following.dispose();
         following.ready.then(

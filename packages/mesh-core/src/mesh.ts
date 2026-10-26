@@ -901,6 +901,7 @@ export function createMesh(options: MeshOptions): Mesh {
       const spoken = peer.onMessage(() => {
         spoken.dispose();
         waiting.delete(peer);
+        if (waiting.size === 0 && quiet.get(nodeId) === waiting) quiet.delete(nodeId);
         if (gone || closed) return;
         link = addLink(
           nodeId,
@@ -917,6 +918,7 @@ export function createMesh(options: MeshOptions): Mesh {
       peer.onClose(() => {
         gone = true;
         waiting.delete(peer);
+        if (waiting.size === 0 && quiet.get(nodeId) === waiting) quiet.delete(nodeId);
         spoken.dispose();
         link?.dispose();
         caller.dispose();
