@@ -37,6 +37,18 @@ import { onExpiry } from "./expiry.ts";
 /** Path of the WebSocket endpoint on the node's HTTP server. */
 export const RPC_PATH = "/rpc";
 
+/**
+ * `permessage-deflate` (loading.md D1587): messages from 1 KiB, zlib level 3,
+ * and no context takeover either way, so a connection keeps no compression
+ * window between messages.
+ */
+export const PER_MESSAGE_DEFLATE = {
+  threshold: 1024,
+  zlibDeflateOptions: { level: 3 },
+  serverNoContextTakeover: true,
+  clientNoContextTakeover: true,
+} as const;
+
 /** Tells clients to come back: used when this plugin stops or reloads. */
 const CLOSE_SERVICE_RESTART = 1012;
 
@@ -70,8 +82,15 @@ export const TransportConfig = z
         examples: ["https://jhin.example.com"],
         advanced: true,
       }),
+    /** loading.md D1587. */
+    compression: z.boolean().default(true).meta({
+      title: "Compression",
+      description:
+        "Compress messages of 1 KiB and more (permessage-deflate) for clients that support it.",
+      advanced: true,
+    }),
   })
-  .default({ allowedOrigins: [] })
+  .default({ allowedOrigins: [], compression: true })
   .meta({ title: "Browser access", description: "Which web pages may connect to this node." });
 
 /**
@@ -182,11 +201,16 @@ export default definePlugin({
       authClients.append(AUTH_CLIENTS_STREAM, AuthEvents.clientsChanged, {});
     });
 
-    // Only the protocol is echoed back, never the token subprotocol.
-    const server = new WebSocketServer({
-      noServer: true,
-      handleProtocols: (protocols) => (protocols.has(PROTOCOL) ? PROTOCOL : false),
-    });
+    // Only the protocol is echoed back, never the token subprotocol. One server
+    // per `compression` value, so a change applies to the next connection.
+    const servers = [true, false].map(
+      (compressed) =>
+        new WebSocketServer({
+          noServer: true,
+          handleProtocols: (protocols) => (protocols.has(PROTOCOL) ? PROTOCOL : false),
+          perMessageDeflate: compressed ? PER_MESSAGE_DEFLATE : false,
+        }),
+    );
 
     async function accept(socket: WebSocket, token: string | undefined): Promise<void> {
       sockets.set(socket, undefined);
@@ -237,7 +261,7 @@ export default definePlugin({
 
     context.subscriptions.add(
       http.upgrade(RPC_PATH, (request, socket, head) => {
-        const { allowedOrigins } =
+        const { allowedOrigins, compression } =
           context.config.get<z.output<typeof TransportConfig>>(CONFIG_SECTION);
         const origin = request.headers.origin;
         // A token in the subprotocol first; else the page's own session cookie (security.md D421).
@@ -254,6 +278,7 @@ export default definePlugin({
           socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
           return;
         }
+        const server = servers[compression === false ? 1 : 0]!;
         server.handleUpgrade(request, socket, head, (ws) => {
           void accept(ws, token).catch((error: unknown) => {
             context.log.error("connection setup failed", { error: String(error) });
@@ -273,7 +298,7 @@ export default definePlugin({
         for (const socket of sockets.keys()) {
           socket.close(CLOSE_SERVICE_RESTART, "transport restarting");
         }
-        server.close();
+        for (const server of servers) server.close();
       },
     });
     context.log.info("rpc endpoint ready", {

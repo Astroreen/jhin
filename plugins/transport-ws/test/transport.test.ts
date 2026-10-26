@@ -74,6 +74,7 @@ async function startNode(
     allowedOrigins?: string[];
     trustProxy?: string[];
     allowedHosts?: string[];
+    compression?: boolean;
     plugins?: { manifest: unknown; definition: PluginDefinition }[];
   } = {},
 ): Promise<Node> {
@@ -110,9 +111,12 @@ async function startNode(
           ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
           ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
         },
-        ...(options.allowedOrigins === undefined
-          ? {}
-          : { "jhin.transport-ws": { allowedOrigins: options.allowedOrigins } }),
+        "jhin.transport-ws": {
+          ...(options.allowedOrigins === undefined
+            ? {}
+            : { allowedOrigins: options.allowedOrigins }),
+          ...(options.compression === undefined ? {} : { compression: options.compression }),
+        },
       },
     },
   });
@@ -167,6 +171,65 @@ describe("jhin.transport-ws", () => {
     await expect(owner.call("app.echo", { text: 1 })).rejects.toMatchObject({
       code: "COMMAND_INPUT_INVALID",
     });
+  });
+
+  it("deflates large messages without context takeover, unless compression is off (loading.md D1587)", async () => {
+    // Words of a chat, so the payload compresses like one and not like a repeated string.
+    const words =
+      "the agent reads file and writes a test then runs it again because output changed".split(" ");
+    let seed = 7;
+    const text = (length: number) =>
+      Array.from({ length }, () => words[(seed = (seed * 48271) % 2147483647) % words.length]).join(
+        " ",
+      );
+    const replay = async (compression: boolean) => {
+      const node = await startNode({ compression });
+      await node.storage.log.append(
+        "thread/1",
+        Array.from({ length: 50 }, (_, index) => ({
+          type: "app.turn",
+          payload: { index, text: text(400) },
+        })),
+      );
+      let extensions: string | undefined;
+      let socket: { readonly bytesRead: number } | undefined;
+      class Recorded extends WebSocket {
+        constructor(url: string, protocols: string[]) {
+          super(url, protocols);
+          this.on("upgrade", (response) => {
+            extensions = response.headers["sec-websocket-extensions"];
+            socket = response.socket;
+          });
+        }
+      }
+      const created = createRpcClient({
+        connect: () => connectWebSocket(node.url, node.token, Recorded as never),
+        retryDelay: () => 0,
+      });
+      clients.push(created);
+      const events: StoredEvent[] = [];
+      await new Promise<void>((resolve) =>
+        created.subscribe("thread/1", {}, (event) => {
+          events.push(event);
+          if (events.length === 50) resolve();
+        }),
+      );
+      expect(events.map((event) => (event.payload as { index: number }).index)).toEqual(
+        Array.from({ length: 50 }, (_, index) => index),
+      );
+      // A large request over the negotiated socket arrives whole.
+      const large = text(400);
+      expect(await created.call("app.echo", { text: large })).toEqual({ text: large });
+      return { extensions, bytes: socket!.bytesRead };
+    };
+
+    const on = await replay(true);
+    const off = await replay(false);
+    expect(on.extensions).toBe(
+      "permessage-deflate; server_no_context_takeover; client_no_context_takeover",
+    );
+    expect(off.extensions).toBeUndefined();
+    expect(on.bytes).toBeLessThan(off.bytes / 2);
   });
 
   it("resumes a subscription after the transport restarts, without gaps or duplicates", async () => {
@@ -640,8 +703,11 @@ describe("Origin allowlist (security.md D418)", () => {
       TransportConfig.parse({
         allowedOrigins: ["https://Jhin.example.com/", "http://a.example:8080"],
       }),
-    ).toEqual({ allowedOrigins: ["https://jhin.example.com", "http://a.example:8080"] });
-    expect(TransportConfig.parse(undefined)).toEqual({ allowedOrigins: [] });
+    ).toEqual({
+      allowedOrigins: ["https://jhin.example.com", "http://a.example:8080"],
+      compression: true,
+    });
+    expect(TransportConfig.parse(undefined)).toEqual({ allowedOrigins: [], compression: true });
     for (const entry of [
       "https://jhin.example.com/path",
       "https://jhin.example.com/?q=1",

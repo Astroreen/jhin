@@ -77,6 +77,13 @@ What the node does today (2026-10-24, `08eeb571`):
   `compress: false`. `jhin.transport-ws.compression` (boolean, default
   `true`) turns it off. The PR reports the bytes of replaying a large
   thread with and without it, and the memory of 50 idle connections.
+- **D1597. Every RPC message is text, so D1587's `compress: false` has
+  nothing to skip yet.** `@jhin/rpc` sends JSON text frames only; preview
+  frames and images travel as base64 inside JSON, and deflate still saves
+  about a quarter of base64 (it uses 6 of 8 bits per byte), so they are
+  deflated like any other message of 1 KiB and more. A binary frame of
+  already compressed bytes, once a plugin sends one, is sent with
+  `compress: false`.
 
 ### P2. The history cache
 
@@ -207,6 +214,11 @@ loading one.
   epoch of the copy the connected node reads it from.
 - `permessage-deflate` with context takeover, if P1's numbers show a large
   gain worth the memory.
+- A smaller `maxPayload` for `jhin.transport-ws` (today `ws`'s 100 MiB,
+  counted after inflation), and fewer bytes held per connection
+  (`memLevel`, `serverMaxWindowBits`): P1 measured about 100 KiB per
+  connection that has received one compressed message. A lower limit needs
+  the largest legitimate request first (inline images of `threads.send`).
 - `zstd` content encoding.
 - Compressing the responses of other plugins' HTTP routes.
 - A service worker that serves the app shell offline.
