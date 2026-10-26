@@ -1341,3 +1341,12 @@ A slice a PR, in the order of D1361's risks:
   `clients.json` is; a failed write answers the request with an error
   rather than `invalid_grant`. An unreadable `refresh.json` is not
   repaired: every MCP client signs in again.
+- W44's leftovers (D1515–D1519): `workflows.run` runs code on the node as
+  its user, but is not described with `shellAccess` (D1517 names
+  `threads.write`, `git.write` and `editor.open` only). `jhin pair
+  --tailscale` does not warn when `jhin.http.tailnet` names another tailnet
+  than the one it publishes on, so its link answers 403. The repair of a
+  `clients.json` that is not JSON scans from every unclosed `{` to the end,
+  quadratic on a hostile file (D1518). A refresh whose answer is lost
+  leaves the client a spent token, whose reuse ends the sign-in (RFC 9700
+  §4.14.2); a grace window for an identical retry is not added (D1519).

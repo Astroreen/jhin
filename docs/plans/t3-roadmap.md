@@ -602,3 +602,14 @@ adapt to it, as the rules for every workstream say.
   the `*.ts.net` allowlist to the owner's tailnet, shell access named on
   `threads.write`, `git.write` and `editors.open`, a repair for an
   unreadable `clients.json`, and MCP OAuth refresh tokens.
+  Done (D1501–D1519, D1520 unused): #286 a command's cancellation signal
+  and a waited delegation that ends with its caller; #292 pruning, workflow
+  patches, the node's saved workflows; #296 a child on another mesh node;
+  #308 waiting subagents on the parent's card and composer, live fork rows;
+  #295 `releaseStuckRun`, signing secrets in `secrets.store` 1.2, one
+  `WorkspaceStrategy`; #288 the settings page's component tests; #293 the
+  tailnet setting, named shell access, the `clients.json` repair; #290 MCP
+  OAuth refresh tokens. Left in `orchestration.md` (W10, W20 and W11
+  Deferred: a cancel across `mesh.call`, a workflow `agent()` and the hover
+  card on another node, an orphaned signing secret, …) and `security.md`
+  (Deferred: `workflows.run` as shell access, a refresh's lost answer, …).

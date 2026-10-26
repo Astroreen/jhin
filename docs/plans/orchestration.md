@@ -1018,3 +1018,6 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.
 - Metrics of deliveries (T3 counts them per outcome).
+- A signing secret the store could not delete (unreadable then, or a
+  failed delete) stays in it under its task's name; nothing sweeps names
+  whose task is gone (D1512).
