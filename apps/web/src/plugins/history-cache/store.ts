@@ -1,10 +1,12 @@
 // The history cache's IndexedDB database (loading.md D1588, D1609): what this
 // device has read of each node's streams, kept per connection.
-import type { CachedStream, StreamEvent } from "@jhin/client-api";
+import type { CachedCatalog, CachedStream, StreamEvent } from "@jhin/client-api";
 
 export const DATABASE = "jhin.history-cache";
 const STREAMS = "streams";
 const EVENTS = "events";
+/** Since version 2: each connection's catalog (D1591). */
+const CATALOGS = "catalogs";
 
 /** One kept stream, without its events. */
 interface StreamEntry {
@@ -28,6 +30,8 @@ export interface HistoryStore {
     now: number,
   ): Promise<void>;
   drop(connection?: string, stream?: string): Promise<void>;
+  readCatalog(connection: string): Promise<CachedCatalog | undefined>;
+  writeCatalog(connection: string, catalog: CachedCatalog): Promise<void>;
   /** Every kept stream, without its events. */
   entries(): Promise<StreamEntry[]>;
   close(): void;
@@ -63,20 +67,21 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
   let opened: Promise<IDBDatabase> | undefined;
   const database = () =>
     (opened ??= new Promise<IDBDatabase>((resolve, reject) => {
-      const opening = factory.open(DATABASE, 1);
-      opening.addEventListener("upgradeneeded", () => {
+      const opening = factory.open(DATABASE, 2);
+      opening.addEventListener("upgradeneeded", (change) => {
         const db = opening.result;
-        db.createObjectStore(STREAMS, { keyPath: ["connection", "stream"] });
-        db.createObjectStore(EVENTS);
+        if (change.oldVersion < 1) {
+          db.createObjectStore(STREAMS, { keyPath: ["connection", "stream"] });
+          db.createObjectStore(EVENTS);
+        }
+        if (change.oldVersion < 2) db.createObjectStore(CATALOGS);
       });
       opening.addEventListener("error", () => {
         opened = undefined;
         reject(opening.error);
       });
-      opening.addEventListener("blocked", () => {
-        opened = undefined;
-        reject(new Error("The history cache is held open by another tab"));
-      });
+      // "blocked" is no failure: another tab holds the older version open, and
+      // its `versionchange` handler closes it, so the open goes on and succeeds.
       opening.addEventListener("success", () => {
         const db = opening.result;
         // A newer version in another tab: let it upgrade, open again next time.
@@ -88,8 +93,9 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
       });
     }));
 
-  const transaction = async (mode: IDBTransactionMode) =>
-    (await database()).transaction([STREAMS, EVENTS], mode);
+  /** A transaction over only the stores it names, so a catalog write never waits on a stream's. */
+  const transaction = async (mode: IDBTransactionMode, stores: string[] = [STREAMS, EVENTS]) =>
+    (await database()).transaction(stores, mode);
 
   return {
     async read(connection, stream, now) {
@@ -150,19 +156,41 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
     },
 
     async drop(connection, stream) {
-      const tx = await transaction("readwrite");
+      const tx = await transaction("readwrite", [STREAMS, EVENTS, CATALOGS]);
       const streams = tx.objectStore(STREAMS);
       const store = tx.objectStore(EVENTS);
       if (connection === undefined) {
         streams.clear();
         store.clear();
+        tx.objectStore(CATALOGS).clear();
       } else if (stream === undefined) {
         streams.delete(connectionRange(connection));
         store.delete(connectionRange(connection));
+        tx.objectStore(CATALOGS).delete(connection);
       } else {
         streams.delete([connection, stream]);
         store.delete(eventRange(connection, stream));
       }
+      await done(tx);
+    },
+
+    async readCatalog(connection) {
+      const tx = await transaction("readonly", [CATALOGS]);
+      const kept = (await promised(tx.objectStore(CATALOGS).get(connection))) as unknown;
+      await done(tx);
+      // Only what this version writes is read back; anything else is no catalog.
+      const catalog = kept as Partial<CachedCatalog> | undefined;
+      return typeof catalog?.epoch === "string" &&
+        typeof catalog.head === "number" &&
+        Array.isArray(catalog.projects) &&
+        Array.isArray(catalog.threads)
+        ? (catalog as CachedCatalog)
+        : undefined;
+    },
+
+    async writeCatalog(connection, catalog) {
+      const tx = await transaction("readwrite", [CATALOGS]);
+      tx.objectStore(CATALOGS).put(catalog, connection);
       await done(tx);
     },
 

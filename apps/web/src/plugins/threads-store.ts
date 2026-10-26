@@ -1,10 +1,12 @@
-import { ThreadEvents, THREADS_STREAM } from "@jhin/agent-api";
+import { ThreadEvents, THREADS_STREAM, threadStream } from "@jhin/agent-api";
 import {
   CONNECTIONS_CAPABILITY,
+  HISTORY_CACHE_CAPABILITY,
   MESH_CAPABILITY,
   THREADS_CAPABILITY,
   targetKey,
   type Connections,
+  type HistoryCache,
   type MeshMembership,
   type NodeCatalog,
   type NodeTarget,
@@ -87,11 +89,13 @@ export const threadsStorePlugin = builtin(
   {
     provides: { [THREADS_CAPABILITY]: "1.0.0" },
     requires: { [CONNECTIONS_CAPABILITY]: "^1", [MESH_CAPABILITY]: "^1" },
+    optional: { [HISTORY_CACHE_CAPABILITY]: "^1.1" },
   },
   definePlugin({
     activate(context) {
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const mesh = context.services.get<MeshMembership>(MESH_CAPABILITY);
+      const cache = context.services.tryGet<HistoryCache>(HISTORY_CACHE_CAPABILITY);
       const feeds = new Map<string, Feed>();
 
       const clientOf = (target: NodeTarget): RpcClient | undefined => {
@@ -138,78 +142,195 @@ export const threadsStorePlugin = builtin(
         notify(feed);
       };
 
-      /** Loads the catalog, then follows the index from the head it reflects. */
+      /**
+       * Loads the catalog, then follows the index from the head it reflects.
+       * A target of the connected node starts from the catalog the history
+       * cache kept, when the node's epoch is still that one and its index has
+       * not gone back, and follows the index after the kept head; a gap or a
+       * refused subscription then reads the catalog after all (D1591).
+       */
       const start = (feed: Feed, client: RpcClient) => {
         const generation = ++feed.generation;
         let subscription: Disposable | undefined;
         let stopped = false;
-        const current = () => !stopped && feed.generation === generation;
-        void (async () => {
-          let head = 0;
-          let refetchOnEvent = false;
-          try {
+        /** Bumped when a start from the cache gives way to reading the catalog. */
+        let attempt = 0;
+        const connection = feed.target.node;
+        const cacheable =
+          feed.target.remote === undefined &&
+          cache?.readCatalog !== undefined &&
+          cache.writeCatalog !== undefined &&
+          cache.enabled();
+        /** The epoch the catalog is kept under; undefined while it is not kept. */
+        let keeping: string | undefined;
+        let keptHead = 0;
+        let writing = false;
+        /**
+         * Keeps the catalog as of `head`: one write for what changed within a tick.
+         * Writes land in the order they are made: each opens its transaction on
+         * the same database after the same wait, and IndexedDB runs read-write
+         * transactions over one store in the order they were created. A write
+         * that fails costs an older catalog at the next boot, which its head then
+         * brings up to date.
+         */
+        const keep = (head: number) => {
+          if (keeping === undefined) return;
+          keptHead = head;
+          if (writing) return;
+          writing = true;
+          queueMicrotask(() => {
+            writing = false;
+            if (stopped || feed.generation !== generation || keeping === undefined) return;
+            void cache
+              ?.writeCatalog?.(connection, {
+                epoch: keeping,
+                head: keptHead,
+                projects: feed.catalog.projects,
+                threads: feed.catalog.threads,
+              })
+              .catch(() => undefined);
+          });
+        };
+        /** A thread gone from the catalog takes what the cache keeps of it along (D1590). */
+        const forget = (before: NodeCatalog, after: NodeCatalog) => {
+          if (!cacheable || before.threads.length === 0) return;
+          const kept = new Set(after.threads.map((thread) => thread.id));
+          for (const thread of before.threads) {
+            if (!kept.has(thread.id))
+              void cache?.drop(connection, threadStream(thread.id)).catch(() => undefined);
+          }
+        };
+        const update = (catalog: NodeCatalog) => {
+          forget(feed.catalog, catalog);
+          set(feed, catalog);
+        };
+
+        const run = (fromCache: boolean) => {
+          const round = ++attempt;
+          const current = () => !stopped && feed.generation === generation && attempt === round;
+          /** Reads the catalog after all: what the cache kept cannot be followed. */
+          const fallBack = () => {
+            subscription?.dispose();
+            subscription = undefined;
+            keeping = undefined;
+            run(false);
+          };
+          void (async () => {
+            let head = 0;
+            let refetchOnEvent = false;
+            let followingKept = false;
             try {
-              const loaded = await call<{
-                head: number;
-                projects: ProjectRecord[];
-                threads: ThreadRecord[];
-              }>(feed.target, "threads.catalog");
-              head = loaded.head;
-              if (!current()) return;
-              set(feed, {
-                status: "ready",
-                projects: sortProjects(loaded.projects),
-                threads: sortThreads(loaded.threads),
-              });
-            } catch (error) {
-              // A node from before threads.catalog: lists, then a refetch on every change.
-              if ((error as { code?: unknown }).code !== "COMMAND_NOT_FOUND") throw error;
-              refetchOnEvent = true;
-              await reload(feed, generation);
-            }
-            const stream = await open(feed.target, THREADS_STREAM);
-            if (!current()) return;
-            let pending = false;
-            subscription = client.subscribe(
-              stream,
-              {
-                after: head,
-                onError: (error: unknown) =>
-                  current() &&
-                  set(feed, { ...feed.catalog, status: "error", error: String(error) }),
-              },
-              (event) => {
+              if (fromCache && cacheable) {
+                const kept = await cache!.readCatalog!(connection).catch(() => undefined);
                 if (!current()) return;
-                if (!refetchOnEvent) {
-                  set(feed, applyIndexEvent(feed.catalog, event));
-                  return;
+                if (kept !== undefined) {
+                  set(feed, {
+                    status: "ready",
+                    projects: sortProjects([...kept.projects]),
+                    threads: sortThreads([...kept.threads]),
+                  });
+                  const now = await call<{ epoch: string; head: number }>(
+                    feed.target,
+                    "threads.epoch",
+                  ).catch(() => undefined);
+                  if (!current()) return;
+                  if (now !== undefined && now.epoch === kept.epoch && now.head >= kept.head) {
+                    head = kept.head;
+                    keeping = kept.epoch;
+                    followingKept = true;
+                  } else if (now !== undefined) {
+                    // Another database (or one gone back): its catalog is not this node's.
+                    set(feed, LOADING);
+                  }
                 }
-                if (pending) return;
-                pending = true;
-                queueMicrotask(() => {
-                  pending = false;
-                  void reload(feed, generation).catch((error: unknown) => {
+              }
+              if (!followingKept) {
+                try {
+                  const loaded = await call<{
+                    head: number;
+                    epoch?: string;
+                    projects: ProjectRecord[];
+                    threads: ThreadRecord[];
+                  }>(feed.target, "threads.catalog");
+                  head = loaded.head;
+                  if (!current()) return;
+                  update({
+                    status: "ready",
+                    projects: sortProjects(loaded.projects),
+                    threads: sortThreads(loaded.threads),
+                  });
+                  if (cacheable && loaded.epoch !== undefined) {
+                    keeping = loaded.epoch;
+                    keep(head);
+                  } else if (cacheable) {
+                    // A node with no epoch has nothing kept (D1607): no stale catalog first next boot.
+                    void cache!.drop(connection).catch(() => undefined);
+                  }
+                } catch (error) {
+                  // A node from before threads.catalog: lists, then a refetch on every change.
+                  if ((error as { code?: unknown }).code !== "COMMAND_NOT_FOUND") throw error;
+                  if (cacheable) void cache!.drop(connection).catch(() => undefined);
+                  refetchOnEvent = true;
+                  await reload(feed, generation);
+                }
+              }
+              const stream = await open(feed.target, THREADS_STREAM);
+              if (!current()) return;
+              let pending = false;
+              let last = head;
+              subscription = client.subscribe(
+                stream,
+                {
+                  after: head,
+                  onError: (error: unknown) => {
                     if (!current()) return;
-                    set(feed, {
-                      ...feed.catalog,
-                      status: "error",
-                      error: (error as Error).message ?? String(error),
+                    if (followingKept) fallBack();
+                    else set(feed, { ...feed.catalog, status: "error", error: String(error) });
+                  },
+                },
+                (event) => {
+                  if (!current()) return;
+                  // A gap (D498): what was kept cannot be brought up to date.
+                  if (followingKept && event.sequence !== last + 1) {
+                    fallBack();
+                    return;
+                  }
+                  last = event.sequence;
+                  if (!refetchOnEvent) {
+                    update(applyIndexEvent(feed.catalog, event));
+                    keep(event.sequence);
+                    return;
+                  }
+                  if (pending) return;
+                  pending = true;
+                  queueMicrotask(() => {
+                    pending = false;
+                    void reload(feed, generation).catch((error: unknown) => {
+                      if (!current()) return;
+                      set(feed, {
+                        ...feed.catalog,
+                        status: "error",
+                        error: (error as Error).message ?? String(error),
+                      });
                     });
                   });
+                },
+              );
+              if (!current()) subscription.dispose();
+            } catch (error) {
+              if (current()) {
+                set(feed, {
+                  ...feed.catalog,
+                  status: "error",
+                  error: (error as Error).message ?? String(error),
                 });
-              },
-            );
-            if (stopped) subscription.dispose();
-          } catch (error) {
-            if (current()) {
-              set(feed, {
-                ...feed.catalog,
-                status: "error",
-                error: (error as Error).message ?? String(error),
-              });
+              }
             }
-          }
-        })();
+          })();
+        };
+        // Only the first start of a feed uses the kept catalog: after a reconnect the
+        // feed still has the catalog it followed, newer than what was kept.
+        run(feed.catalog.status === "loading");
         return () => {
           stopped = true;
           subscription?.dispose();
