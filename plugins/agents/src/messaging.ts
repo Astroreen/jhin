@@ -667,7 +667,7 @@ export function registerMessaging(
       const here = await conversationHere(owner, other);
       const keep = limit ?? 200;
       // Asked by another node for the half recorded here: no further hop.
-      if (party.nodeId === nodeId || asked !== undefined) {
+      if (party.nodeId === nodeId || owner !== ownerAddress(nodeId)) {
         return { head: here.head, owner, with: other, entries: here.entries.slice(-keep) };
       }
       // The owner's messages to an agent of another node are recorded there

@@ -89,7 +89,10 @@ export default definePlugin({
     }
     // Members read it through relays, within their grants and that guard (M1, D1521).
     const shared = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
-    if (shared !== undefined) context.subscriptions.add(shared.share(MISSIONS_STREAM));
+    // Never shared without its guard.
+    if (shared !== undefined && live?.guard !== undefined) {
+      context.subscriptions.add(shared.share(MISSIONS_STREAM));
+    }
 
     // --- State: the fold of the stream ------------------------------------------
     let state: MissionsState = EMPTY_MISSIONS;

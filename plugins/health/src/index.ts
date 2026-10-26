@@ -88,7 +88,10 @@ export default definePlugin({
     }
     // Members read it through relays, within their grants and that guard (M1, D1521).
     const meshStreams = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
-    if (meshStreams !== undefined) context.subscriptions.add(meshStreams.share(HEALTH_STREAM));
+    // Never shared without its guard.
+    if (meshStreams !== undefined && live?.guard !== undefined) {
+      context.subscriptions.add(meshStreams.share(HEALTH_STREAM));
+    }
     context.subscriptions.add(context.config.define(HEALTH_CONFIG_SECTION, HealthConfig));
     let lastGood = HealthConfig.parse({});
     const config = (): HealthConfig => {

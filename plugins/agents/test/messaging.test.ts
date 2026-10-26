@@ -802,6 +802,25 @@ describe("messages across the mesh (D623)", () => {
         { caller: { id: "client:phone", permissions: ["agents.inbox", "agents.read"] } },
       ),
     ).rejects.toMatchObject({ code: "OWNER_MISMATCH" });
+    // Naming a's own owner is the same as naming none: both halves.
+    const named = await client.call<Conversation>("agents.conversation", {
+      with: address("builder", "b"),
+      owner: "jhin://a/owner",
+    });
+    expect(named.entries).toHaveLength(joined.entries.length);
+    expect(named.elsewhere?.head).toBe(joined.elsewhere?.head);
+    // A caller that may read the conversation but not call other nodes gets a's half, and why.
+    const local = (await a.node.kernel.commands.execute(
+      "agents.conversation",
+      { with: address("builder", "b") },
+      { caller: { id: "client:phone", permissions: ["agents.inbox", "agents.read"] } },
+    )) as Conversation;
+    expect(local.entries.map((entry) => entry.message.messageId)).toEqual([
+      (reply.payload as unknown as Sent).message.messageId,
+      escalated.message.messageId,
+    ]);
+    expect(local.elsewhere).toMatchObject({ nodeId: "b" });
+    expect(local.elsewhere!.error).toBeDefined();
 
     // b out of reach: a's half comes alone, and says why.
     await new Promise<void>((resolve) => {
@@ -847,5 +866,11 @@ describe("messages across the mesh (D623)", () => {
       code: "PERMISSION_DENIED",
       details: { stream: "agents/inbox" },
     });
+    // The agents stream takes agents.read now, not only events.read (D1521).
+    const reader = a.node.connect({ id: "client:events", permissions: ["events.read"] }).client;
+    const denied = await new Promise<unknown>((resolve) => {
+      reader.subscribe("agents", { onError: resolve }, () => {});
+    });
+    expect(denied).toMatchObject({ code: "PERMISSION_DENIED" });
   });
 });
