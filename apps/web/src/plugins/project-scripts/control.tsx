@@ -194,11 +194,25 @@ export interface ScriptsControlServices {
   /** The script last run in the project on this device. */
   lastRun(target: NodeTarget, projectId: string): string | undefined;
   /** The shortcut of a client command, as shown, and as a rule's key. */
-  shortcutLabel(command: string): string | undefined;
+  /** The shortcut of a client command as shown, kept current as shortcuts change. */
+  useShortcutLabel(command: string | undefined): string | undefined;
   shortcutKey(command: string): string | null;
   /** Sets this device's rule for the command; null unbinds it. */
   setShortcut(command: string, key: string | null): Promise<void>;
   confirmDelete(name: string): Promise<boolean>;
+}
+
+/** A script's shortcut beside it in the menu (T3's `MenuShortcut`), current as shortcuts change. */
+function ScriptShortcut(props: {
+  readonly command: string | undefined;
+  readonly useLabel: (command: string | undefined) => string | undefined;
+}) {
+  const label = props.useLabel(props.command);
+  return label === undefined ? null : (
+    <span className="transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0">
+      <MenuShortcut className="ms-0">{label}</MenuShortcut>
+    </span>
+  );
 }
 
 interface EditorRequest {
@@ -290,8 +304,6 @@ export function ProjectScriptsControl(props: {
   const items = (
     <>
       {scripts.map((script) => {
-        const command = commandForProjectScript(script.id);
-        const shortcut = command === undefined ? undefined : services.shortcutLabel(command);
         return (
           <MenuItem
             className="group"
@@ -302,11 +314,10 @@ export function ProjectScriptsControl(props: {
             <ScriptIcon className="size-4" icon={script.icon} />
             <MenuItemLabel>{projectScriptMenuLabel(script)}</MenuItemLabel>
             <span className="relative ms-auto flex h-6 min-w-6 items-center justify-end">
-              {shortcut === undefined ? null : (
-                <span className="transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0">
-                  <MenuShortcut className="ms-0">{shortcut}</MenuShortcut>
-                </span>
-              )}
+              <ScriptShortcut
+                command={commandForProjectScript(script.id)}
+                useLabel={services.useShortcutLabel}
+              />
               <span className="pointer-events-none absolute top-1/2 right-0 flex -translate-y-1/2 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-visible:pointer-events-auto group-focus-visible:opacity-100">
                 <Button
                   aria-label={`Edit ${script.name}`}

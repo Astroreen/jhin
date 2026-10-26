@@ -113,6 +113,7 @@ export const projectScriptsPlugin = builtin(
         }
       };
 
+      const NO_KEYBINDINGS = { subscribe: () => toDisposable(() => undefined) };
       const customRules = () =>
         readSection(context, KEYBINDINGS_CONFIG_SECTION, KeybindingsConfig).rules;
       const services: ScriptsControlServices = {
@@ -129,7 +130,10 @@ export const projectScriptsPlugin = builtin(
           return answer.file?.scripts ?? [];
         },
         lastRun: (target, projectId) => lastRun[projectKey(target, projectId)],
-        shortcutLabel: (command) => keybindings?.labelFor(command),
+        useShortcutLabel: (command) =>
+          useExternal(keybindings ?? NO_KEYBINDINGS, () =>
+            command === undefined ? undefined : keybindings?.labelFor(command),
+          ),
         shortcutKey: (command) =>
           keybindings?.list().findLast((rule) => rule.command === command)?.key ?? null,
         // This device's rule, as Settings → Keybindings records one (D1475).
@@ -153,11 +157,7 @@ export const projectScriptsPlugin = builtin(
               }),
       };
 
-      /** Shown again when a shortcut changes, so the menu's labels are current. */
-      const NO_KEYBINDINGS = { subscribe: () => toDisposable(() => undefined) };
-      const NONE: readonly unknown[] = [];
       function ScriptsControl({ target, thread, project }: ChatHeaderActionProps) {
-        useExternal(keybindings ?? NO_KEYBINDINGS, () => keybindings?.list() ?? NONE);
         if (project === undefined || project.scratch) return null;
         return (
           <ProjectScriptsControl
