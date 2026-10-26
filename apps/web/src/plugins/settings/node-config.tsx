@@ -303,8 +303,10 @@ function ConfigEditor({
   /** T3's project scope (D1463): a project of this node, or all of them. */
   const [projectScope, setProjectScope] = useState<string | undefined>();
   const [projects, setProjects] = useState<readonly ScopeProject[]>([]);
-  /** The chosen project's `t3.json`, for the settings it backs (D1467). */
-  /** `failed`: it could not be read, so its layer is not shown (rather than read as empty). */
+  /**
+   * The chosen project's `t3.json`, for the settings it backs (D1467); `failed`: it could not
+   * be read, so its layer is not shown (rather than read as empty).
+   */
   const [t3File, setT3File] = useState<{
     readonly projectId: string;
     readonly file: unknown;
@@ -561,8 +563,12 @@ function ConfigEditor({
   const keys = entry === undefined ? [] : projectKeys(entry);
   const entryPath = scoped === undefined ? [] : [PROJECT_SETTINGS_KEY, scoped];
   /** What a file sets for a top-level key: the edited file as edited, the other as read. */
-  const nodeSets = (key: string) =>
-    getAt(loaded?.value, [key]) ?? getAt(read?.layers[other], [key]);
+  // The project file wins over the node file (D19), whichever of them is edited.
+  const nodeSets = (key: string) => {
+    const edited = getAt(loaded?.value, [key]);
+    const otherFile = getAt(read?.layers[other], [key]);
+    return layer === "project" ? (edited ?? otherFile) : (otherFile ?? edited);
+  };
   const t3Value = (key: string) => {
     const field = backedBy.get(key);
     return field === undefined || t3File?.projectId !== scoped

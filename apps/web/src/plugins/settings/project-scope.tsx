@@ -301,7 +301,8 @@ export function ProjectScopeSentence(props: {
   const choices = [all, ...options];
   const value = props.value ?? ALL_PROJECTS;
   const selected = choices.find((option) => option.value === value);
-  const label = selected?.label ?? "Unavailable project";
+  // A project no longer listed reads as all projects: the page drops a scope it cannot show.
+  const label = selected?.label ?? "All projects";
   const choose = (next: string) => props.onChange(next === ALL_PROJECTS ? undefined : next);
   const triggerClass = "min-w-0 max-w-72";
   const triggerContent = (
