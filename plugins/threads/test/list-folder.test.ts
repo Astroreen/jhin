@@ -43,6 +43,7 @@ describe("jhin.threads: listing a project's folder (D1428)", () => {
       { path: "src/lib", kind: "directory" },
     ]);
     await expect(listFolder(root, ".git")).rejects.toThrow("FOLDER_OUTSIDE");
+    await expect(listFolder(root, ".GIT/objects")).rejects.toThrow("FOLDER_OUTSIDE");
   });
 
   it("lists without git, and refuses a link out of the project", async () => {

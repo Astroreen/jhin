@@ -220,6 +220,9 @@ function checkIgnore(root: string, paths: readonly string[]): Promise<Set<string
   });
 }
 
+/** `.git` in any case: a case-insensitive file system (macOS, Windows) reaches it as `.GIT` too. */
+const isGitDir = (name: string) => name.toLowerCase() === ".git";
+
 /**
  * The files and folders directly in `folder` of `root` (T3's `WorkspaceEntries.list` of a
  * directory): never through `.git`, never out of the root through a link, ignored ones marked.
@@ -227,7 +230,7 @@ function checkIgnore(root: string, paths: readonly string[]): Promise<Set<string
 export async function listFolder(root: string, folder: string): Promise<ListedEntry[]> {
   const parts = folder.split("/").filter((part) => part !== "");
   const relative = parts.join("/");
-  if (parts.includes(".git") || parts.includes("..")) throw new Error("FOLDER_OUTSIDE");
+  if (parts.some(isGitDir) || parts.includes("..")) throw new Error("FOLDER_OUTSIDE");
   const realRoot = await Fs.promises.realpath(root);
   const directory = await Fs.promises.realpath(Path.join(root, ...parts));
   const inside = Path.relative(realRoot, directory);
@@ -235,13 +238,13 @@ export async function listFolder(root: string, folder: string): Promise<ListedEn
     inside === ".." ||
     inside.startsWith(`..${Path.sep}`) ||
     Path.isAbsolute(inside) ||
-    inside.split(Path.sep).includes(".git")
+    inside.split(Path.sep).some(isGitDir)
   ) {
     throw new Error("FOLDER_OUTSIDE");
   }
   const children = await Fs.promises.readdir(directory, { withFileTypes: true });
   const entries: ProjectEntry[] = children.flatMap((child): ProjectEntry[] => {
-    if (child.name === ".git" || (!child.isDirectory() && !child.isFile())) return [];
+    if (isGitDir(child.name) || (!child.isDirectory() && !child.isFile())) return [];
     return [
       {
         path: relative === "" ? child.name : `${relative}/${child.name}`,
