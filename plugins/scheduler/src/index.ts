@@ -218,6 +218,9 @@ function activateScheduler(context: PluginContext): void {
 
   // --- Signing secrets (D1512) ----------------------------------------------
 
+  /** How to put back a task's secret in the store, while the change that wrote it is unsaved. */
+  const unsaved = new Map<string, () => void>();
+
   /** The store's named secrets (1.2), when the node has a store that can be read. */
   const namedSecrets = ():
     | Required<Pick<SecretStore, "putSecret" | "getSecret" | "deleteSecret">>
@@ -255,7 +258,13 @@ function activateScheduler(context: PluginContext): void {
     if (plan.secret === undefined) return token;
     const store = namedSecrets();
     if (store === undefined) return { ...token, webhookSecret: plan.secret };
-    store.putSecret(secretName(id), plan.secret);
+    const name = secretName(id);
+    // Put back as it was if the change that wrote it fails before the task is saved.
+    const previous = store.getSecret(name);
+    unsaved.set(id, () =>
+      previous === undefined ? store.deleteSecret(name) : store.putSecret(name, previous),
+    );
+    store.putSecret(name, plan.secret);
     return { ...token, webhookSecretInStore: true };
   };
 
@@ -308,7 +317,25 @@ function activateScheduler(context: PluginContext): void {
   const locks = new Map<string, Promise<unknown>>();
   const locked = <T>(id: string, work: () => Promise<T>): Promise<T> => {
     const previous = locks.get(id) ?? Promise.resolve();
-    const next = previous.then(work, work);
+    // A secret written into the store by a change that then failed is put back (D1512).
+    const guarded = async () => {
+      try {
+        return await work();
+      } catch (error) {
+        try {
+          unsaved.get(id)?.();
+        } catch (undoError) {
+          context.log.warn("could not put back a webhook's signing secret", {
+            taskId: id,
+            error: messageOf(undoError),
+          });
+        }
+        throw error;
+      } finally {
+        unsaved.delete(id);
+      }
+    };
+    const next = previous.then(guarded, guarded);
     const tail = next.then(
       () => undefined,
       () => undefined,

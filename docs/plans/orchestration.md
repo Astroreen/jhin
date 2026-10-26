@@ -987,7 +987,10 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
   removed, deletes it. On activation, the secrets `storage.kv` still holds
   move into the store, each removed from `storage.kv` only once the store
   kept it. A node without the store, or whose store cannot be read, keeps
-  them in `storage.kv` as before (D386). A signed delivery whose secret
+  them in `storage.kv` as before (D386). A save that fails after its
+  secret went into the store puts the store back as it was. Named secrets
+  are not kept apart per plugin: the node's plugins run as one process
+  and owner, so the plugin id in a name is a convention, not a boundary. A signed delivery whose secret
   cannot be read answers 503 ("The webhook's signing secret cannot be
   read.") before its body is read, and is not logged as a delivery.
 - **D1513. One `WorkspaceStrategy`.** T3's three launch strategies

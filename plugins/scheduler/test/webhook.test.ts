@@ -570,6 +570,31 @@ describe("jhin.scheduler: signing secrets in the secret store (D1512)", () => {
     expect(secrets.named.has(`jhin.scheduler/webhook/${other.id}`)).toBe(false);
   });
 
+  it("puts the store back when a save that changed the secret fails", async () => {
+    const secrets = memorySecrets();
+    const { client, storage } = await node({ http: true, secrets });
+    const created = await webhookTask(client, {
+      schedule: { type: "webhook", signature: { ...signature, secret: "s3cret" } },
+    });
+    const name = `jhin.scheduler/webhook/${created.id}`;
+    const set = storage.kv.set.bind(storage.kv);
+    storage.kv.set = async (namespace, key, value) => {
+      if (key === `task/${created.id}`) throw new Error("disk full");
+      return set(namespace, key, value);
+    };
+    try {
+      await expect(
+        client.call("scheduler.tasks.update", {
+          id: created.id,
+          schedule: { type: "webhook", signature: { ...signature, secret: "n3w" } },
+        }),
+      ).rejects.toThrow("disk full");
+    } finally {
+      storage.kv.set = set;
+    }
+    expect(secrets.named.get(name)).toBe("s3cret");
+  });
+
   it("answers 503 for a signed delivery whose secret cannot be read, and logs none", async () => {
     const secrets = memorySecrets();
     const { client } = await node({ http: true, secrets });
