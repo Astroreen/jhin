@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 
 import { builtin } from "../lib/builtin.ts";
+import { pendingSubagentRequests, type SubagentRequest } from "../lib/sidebar-order.ts";
 import { ChunkFailed, lazyChunk } from "../lib/lazy-chunk.tsx";
 
 /** The `jhin.notifications` settings section. */
@@ -227,6 +228,8 @@ export const notificationsPlugin = builtin(
 
       /** The last turn of every thread seen so far, per target; first sight is the baseline. */
       const seen = new Map<string, Map<string, ThreadRecord["lastTurn"]>>();
+      /** What each thread's waiting subagents asked of it at the last look, per target (D1508). */
+      const seenRequests = new Map<string, ReadonlyMap<string, SubagentRequest>>();
       const watchers = new Map<string, Disposable>();
       const watch = (target: NodeTarget) => {
         const key = targetKey(target);
@@ -247,6 +250,16 @@ export const notificationsPlugin = builtin(
             if (kind !== undefined) notify(target, thread, kind);
           }
           seen.set(key, next);
+          // A subagent that waits for the user raises its parent's notification, once per request.
+          const requests = pendingSubagentRequests(catalog.threads);
+          const asked = seenRequests.get(key);
+          seenRequests.set(key, requests);
+          if (first || asked === undefined) return;
+          for (const thread of catalog.threads) {
+            const request = requests.get(thread.id);
+            if (request === undefined || asked.get(thread.id) === request) continue;
+            if (notifiesUser(thread)) notify(target, thread, request);
+          }
         };
         watchers.set(key, threads.subscribe(target, check));
         check();
@@ -267,6 +280,7 @@ export const notificationsPlugin = builtin(
           watcher.dispose();
           watchers.delete(key);
           seen.delete(key);
+          seenRequests.delete(key);
         }
         for (const target of targets) watch(target);
       };

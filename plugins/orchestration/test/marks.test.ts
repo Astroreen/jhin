@@ -51,6 +51,38 @@ describe("delegated work in the calling thread (D862, D863)", () => {
     ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
   });
 
+  it("gives a fork its source's records made before it, so its rows are live (D1510)", async () => {
+    const { client } = await node();
+    const feed = orchestrationFeed(client);
+    const parent = await parentThread(client);
+    const parentEvents = watch(client, parent.id);
+    const before = await client.call<TaskView>("tasks.delegate", {
+      task: "look around",
+      parentThreadId: parent.id,
+    });
+    await feed.task(before.taskId, (record) => record.delivery === "delivered");
+    // The wake-up's turn ends, so there is a turn to fork at.
+    await parentEvents.until("agent.turn.completed");
+    const fork = await client.call<{ id: string }>("threads.fork", { threadId: parent.id });
+    const after = await client.call<TaskView>("tasks.delegate", {
+      task: "later",
+      parentThreadId: parent.id,
+    });
+
+    const snapshot = await client.call<ThreadSnapshot & { inherited: string[] }>(
+      "orchestration.thread",
+      { threadId: fork.id },
+    );
+    expect(snapshot.inherited).toEqual([parent.id]);
+    expect(snapshot.tasks.map((task) => task.taskId)).toEqual([before.taskId]);
+    expect(snapshot.tasks.map((task) => task.taskId)).not.toContain(after.taskId);
+    const own = await client.call<ThreadSnapshot & { inherited: string[] }>(
+      "orchestration.thread",
+      { threadId: parent.id },
+    );
+    expect(own.inherited).toEqual([]);
+  });
+
   it("marks a workflow with its script, and its agents' threads in its record", async () => {
     const { client } = await node();
     const feed = orchestrationFeed(client);

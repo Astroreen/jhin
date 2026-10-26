@@ -761,15 +761,6 @@ child input banner of `ChatView.tsx`.
   thread's branch).
 - A workflow's member rows have no hover card; T3's opening block has none
   either, but its Lineage rows do.
-- A subagent thread that waits for the user (an approval or an answer) is
-  reached only through its row in the parent's chat, as in T3: the sidebar
-  hides it and it raises no notification. Without its row (a thread from
-  before D862, or a mark that could not be written) it is reachable only by
-  its id. A workflow's agents never wait (D373). Surfacing waiting subagents
-  in the parent's sidebar card would close this.
-- Live rows in a fork: the marks it copied from its source show "Status
-  unavailable", because the records belong to the source thread; following
-  them through `forkedFrom` would make them live.
 - Following a mesh member's `orchestration` stream itself: its rows are read
   again on each change of its threads, not per record.
 

@@ -187,6 +187,7 @@ import {
   searchSidebarThreads,
   shouldRecede,
   shownSettled,
+  pendingSubagentRequests,
   sidebarThreadStatus,
   sidebarThreads,
   sidebarTopStatus,
@@ -1413,7 +1414,11 @@ export const sidebarPlugin = builtin(
         const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false);
         const committed = useRef(false);
         useExternal(workVersion, workVersion.get);
-        const status = sidebarThreadStatus(thread, waitingOn(target, thread.id));
+        const status = sidebarThreadStatus(
+          thread,
+          waitingOn(target, thread.id),
+          pendingSubagentRequests(node.catalog.threads).get(thread.id),
+        );
         // The node's record wins: it is what every device saw (D485).
         const lastVisit = lastVisitOf(thread, seen[visitKey(target, thread.id)]);
         const unread = isUnread(thread, lastVisit);

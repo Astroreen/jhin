@@ -120,6 +120,23 @@ describe("a thread's delegated work (D864)", () => {
     expect(pruned.workflows.size).toBe(0);
   });
 
+  it("holds a fork's source records with a set of parents (D1510)", () => {
+    const parents = new Set(["fork", "p"]);
+    const view = applyOrchestrationEvent(
+      EMPTY,
+      parents,
+      updated(task("running", "2026-10-21T10:00:01.000Z")),
+    );
+    expect(view.tasks.get("t")?.parentThreadId).toBe("p");
+    expect(
+      applyOrchestrationEvent(
+        EMPTY,
+        parents,
+        updated(task("running", "2026-10-21T10:00:01.000Z", "q")),
+      ),
+    ).toBe(EMPTY);
+  });
+
   it("counts a workflow's agents as T3's headline does", () => {
     expect(workflowAgentsLabel([])).toBeNull();
     expect(

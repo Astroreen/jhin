@@ -40,6 +40,103 @@ export type SidebarThreadStatus =
   | "failed"
   | "ready";
 
+/** What a thread waiting for the user waits for: an approval, or an answer. */
+export type SubagentRequest = "approval" | "input";
+
+const requestOf = (turn: NonNullable<ThreadRecord["lastTurn"]>): SubagentRequest =>
+  turn.waitingFor === "user-input" ? "input" : "approval";
+
+/**
+ * What a subagent thread asks of its parent: a delegated task's thread whose
+ * turn waits for the user. A runtime's own subagent asks on its parent, so it
+ * asks nothing here (T3's subagentRequest).
+ */
+function subagentRequest(thread: ThreadRecord): SubagentRequest | undefined {
+  if (
+    thread.relationshipToParent !== "subagent" ||
+    thread.subagentOrigin === "provider" ||
+    thread.archivedAt !== undefined ||
+    thread.lastTurn?.status !== "waiting"
+  ) {
+    return undefined;
+  }
+  return requestOf(thread.lastTurn);
+}
+
+const NO_REQUESTS: ReadonlyMap<string, SubagentRequest> = new Map();
+const requestsByCatalog = new WeakMap<
+  readonly ThreadRecord[],
+  ReadonlyMap<string, SubagentRequest>
+>();
+
+/**
+ * The threads whose subagents wait for the user, with what they wait for
+ * (orchestration.md D1508, T3's pendingSubagentRequestsByThread): a waiting
+ * subagent's request goes to its parent, and on to each ancestor while they
+ * are subagents too; an approval wins over an answer. A parent on another
+ * node (`parentNode`) is not in this list. The same map for the same list.
+ */
+export function pendingSubagentRequests(
+  threads: readonly ThreadRecord[],
+): ReadonlyMap<string, SubagentRequest> {
+  const cached = requestsByCatalog.get(threads);
+  if (cached !== undefined) return cached;
+  const requests = new Map<string, SubagentRequest>();
+  let byId: ReadonlyMap<string, ThreadRecord> | undefined;
+  for (const child of threads) {
+    const request = subagentRequest(child);
+    if (request === undefined) continue;
+    byId ??= new Map(threads.map((thread) => [thread.id, thread]));
+    const seen = new Set([child.id]);
+    let current: ThreadRecord | undefined = child;
+    while (current?.relationshipToParent === "subagent") {
+      const parentId: string | undefined = current.parentThreadId;
+      if (parentId === undefined || current.parentNode !== undefined || seen.has(parentId)) break;
+      seen.add(parentId);
+      if (requests.get(parentId) !== "approval") requests.set(parentId, request);
+      current = byId.get(parentId);
+    }
+  }
+  const result = requests.size === 0 ? NO_REQUESTS : requests;
+  requestsByCatalog.set(threads, result);
+  return result;
+}
+
+/** A subagent of the thread that waits for the user (D1509). */
+export interface ChildInput {
+  readonly id: string;
+  readonly title: string;
+  /** It waits for an approval, not an answer. */
+  readonly approval: boolean;
+}
+
+const NO_INPUTS: readonly ChildInput[] = [];
+
+/** The direct subagents of `parentId` in `threads` that wait for the user, oldest first. */
+export function waitingChildren(
+  threads: readonly ThreadRecord[] | undefined,
+  parentId: string | undefined,
+): readonly ChildInput[] {
+  if (threads === undefined || parentId === undefined) return NO_INPUTS;
+  const inputs: ChildInput[] = [];
+  for (const thread of threads) {
+    if (thread.parentThreadId !== parentId || thread.parentNode !== undefined) continue;
+    const request = subagentRequest(thread);
+    if (request !== undefined)
+      inputs.push({ id: thread.id, title: thread.title, approval: request === "approval" });
+  }
+  return inputs.length === 0 ? NO_INPUTS : inputs;
+}
+
+/** T3's title of the waiting subagents' banner (`childThreadInputsTitle`, D1509). */
+export function childInputsTitle(children: readonly { readonly approval: boolean }[]): string {
+  const approvals = children.filter((child) => child.approval).length;
+  const need = approvals === 0 ? "input" : approvals === children.length ? "approval" : "you";
+  return children.length === 1
+    ? `Subagent needs ${need}`
+    : `${children.length} subagents need ${need}`;
+}
+
 /** Whether the thread's latest turn failed on a usage limit (D1306). */
 export const isUsageLimited = (thread: ThreadRecord): boolean =>
   thread.lastTurn?.status === "failed" && thread.lastTurn.failure?.class === "usage_limit";
@@ -48,9 +145,16 @@ export const isUsageLimited = (thread: ThreadRecord): boolean =>
  * `waiting`: between its turns the thread waits on background work, such as a
  * watched pull request (T3's `backgroundWorkHoldsCompletion`, D1131).
  */
-export function sidebarThreadStatus(thread: ThreadRecord, waiting = false): SidebarThreadStatus {
+export function sidebarThreadStatus(
+  thread: ThreadRecord,
+  waiting = false,
+  /** What its waiting subagents ask of it (D1508). */
+  subagents?: SubagentRequest,
+): SidebarThreadStatus {
   const turn = thread.lastTurn;
-  if (turn?.status === "waiting") return turn.waitingFor === "user-input" ? "input" : "approval";
+  const own = turn?.status === "waiting" ? requestOf(turn) : undefined;
+  if (own === "approval" || subagents === "approval") return "approval";
+  if (own === "input" || subagents === "input") return "input";
   if (turn?.status === "running") return "working";
   if (waiting) return "waiting";
   // A turn that hit a usage limit is "limited", not "failed" (t3-parity.md D1307).

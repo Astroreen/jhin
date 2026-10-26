@@ -3,6 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   canSnooze,
+  childInputsTitle,
+  pendingSubagentRequests,
+  waitingChildren,
   formatWorkingDurationLabel,
   isSnoozed,
   isUnread,
@@ -85,6 +88,58 @@ describe("a thread's status in the sidebar (D70)", () => {
       sidebarThreadStatus(thread("t", ago(1), { lastTurn: turn("interrupted", ago(1)) })),
     ).toBe("ready");
     expect(sidebarThreadStatus(thread("t", ago(1)))).toBe("ready");
+  });
+
+  it("takes the request of a subagent that waits for the user, an approval first (D1508)", () => {
+    const sub = (id: string, parent: string, extra: Partial<ThreadRecord> = {}) =>
+      thread(id, ago(1), { parentThreadId: parent, relationshipToParent: "subagent", ...extra });
+    const threads = [
+      thread("root", ago(2), { lastTurn: turn("running", ago(1)) }),
+      sub("asks", "root", { lastTurn: turn("waiting", ago(1), "user-input") }),
+      sub("nested", "asks"),
+      sub("deep", "nested", { lastTurn: turn("waiting", ago(1), "approval") }),
+      // A runtime's own subagent asks on its parent; an archived one asks nothing.
+      sub("provider", "other", {
+        subagentOrigin: "provider",
+        lastTurn: turn("waiting", ago(1), "approval"),
+      }),
+      sub("archived", "other", {
+        archivedAt: ago(1),
+        lastTurn: turn("waiting", ago(1), "approval"),
+      }),
+      // Its parent lives on another node.
+      sub("remote", "away", { parentNode: "b", lastTurn: turn("waiting", ago(1), "approval") }),
+      thread("other", ago(2)),
+    ];
+    const requests = pendingSubagentRequests(threads);
+    expect(Object.fromEntries(requests)).toEqual({
+      root: "approval",
+      asks: "approval",
+      nested: "approval",
+    });
+    expect(pendingSubagentRequests(threads)).toBe(requests);
+    expect(sidebarThreadStatus(threads[0]!, false, requests.get("root"))).toBe("approval");
+    expect(sidebarThreadStatus(thread("t", ago(1)), false, "input")).toBe("input");
+    // Its own approval wins over a subagent's question.
+    expect(
+      sidebarThreadStatus(
+        thread("t", ago(1), { lastTurn: turn("waiting", ago(1), "approval") }),
+        false,
+        "input",
+      ),
+    ).toBe("approval");
+
+    expect(waitingChildren(threads, "root")).toEqual([
+      { id: "asks", title: "asks", approval: false },
+    ]);
+    expect(waitingChildren(threads, "other")).toEqual([]);
+    expect(childInputsTitle([{ approval: true }])).toBe("Subagent needs approval");
+    expect(childInputsTitle([{ approval: false }, { approval: false }])).toBe(
+      "2 subagents need input",
+    );
+    expect(childInputsTitle([{ approval: true }, { approval: false }])).toBe(
+      "2 subagents need you",
+    );
   });
 
   it("says Waiting for a thread that waits on background work between its turns (D1131)", () => {

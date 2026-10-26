@@ -104,6 +104,7 @@ import { formatTokens } from "../../lib/format.ts";
 import { parseFeedbackCommand, type FeedbackSubmission } from "../../lib/feedback.ts";
 import { isUsageLimitsCommand } from "../../lib/usage-limits.ts";
 import { useCatalog } from "../../lib/hooks.ts";
+import { waitingChildren } from "../../lib/sidebar-order.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import {
   currentOptionValue,
@@ -199,6 +200,10 @@ const FeedbackBanner = lazyChunk(
 );
 const LimitRecoveryBanner = lazyChunk(
   () => bannersChunk().then((module) => module.LimitRecoveryBanner),
+  quiet,
+);
+const ChildInputsBanner = lazyChunk(
+  () => bannersChunk().then((module) => module.ChildInputsBanner),
   quiet,
 );
 const UsageLimitsBanner = lazyChunk(
@@ -995,6 +1000,13 @@ export function Composer(props: ComposerProps) {
   const planMode = props.selection.interactionMode === "plan";
   const approval = props.requests.find((request) => request.request.kind === "approval");
   const question = props.requests.find((request) => request.request.kind === "user-input");
+  // The thread's subagents that wait for the user (T3's child input banner, D1509).
+  const ownThread = props.context?.thread;
+  const familyCatalog = useCatalog(
+    chat.threads,
+    ownThread === undefined ? undefined : props.target,
+  );
+  const childInputs = waitingChildren(familyCatalog?.threads, ownThread?.id);
   const questions = question?.request.kind === "user-input" ? question.request.questions : [];
   const mod = isMacPlatform(currentPlatform()) ? "⌘" : "Ctrl+";
 
@@ -1653,6 +1665,11 @@ export function Composer(props: ComposerProps) {
             onToggle={toggleAnswer}
             questions={questions}
             selected={answers}
+          />
+        ) : childInputs.length > 0 ? (
+          <ChildInputsBanner
+            inputs={childInputs}
+            onOpen={(threadId) => chat.navigation.navigate({ ...props.target, thread: threadId })}
           />
         ) : props.queue !== undefined &&
           props.queue.messages.length > 0 &&

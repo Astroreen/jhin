@@ -33,7 +33,9 @@ import {
   GripVerticalIcon,
   ListOrderedIcon,
   PencilIcon,
+  MessageCircleIcon,
   ShieldIcon,
+  ShieldQuestionIcon,
   TargetIcon,
 } from "lucide-react";
 import { Fragment, useId, useRef, useState, type ComponentProps } from "react";
@@ -50,6 +52,7 @@ import {
   paceOf,
   remainingPercent,
 } from "../../lib/usage-limits.ts";
+import { childInputsTitle, type ChildInput } from "../../lib/sidebar-order.ts";
 import type { RequestItem, ThreadQueue } from "../../lib/timeline.ts";
 import { useAttachmentUrl, type AttachmentLoader } from "./attachment-media.tsx";
 import { ComposerBanner } from "./banner.tsx";
@@ -269,6 +272,57 @@ export function PlanFollowUpBanner({ planTitle }: { planTitle: string | null }) 
               <span className="min-w-0 flex-1 truncate text-foreground/85">{planTitle}</span>
             ) : null}
           </ComposerBanner.Content>
+        </ComposerBanner.Row>
+      </ComposerBanner.Root>
+    </ComposerBanner.Attachment>
+  );
+}
+
+/**
+ * The thread's subagents that wait for the user (T3's child input banner in
+ * ChatView.tsx, orchestration.md D1509): each opens its thread, and the first
+ * one's approval or question is a click away.
+ */
+export function ChildInputsBanner(props: {
+  readonly inputs: readonly ChildInput[];
+  onOpen(threadId: string): void;
+}) {
+  const first = props.inputs[0];
+  if (first === undefined) return null;
+  const Icon = first.approval ? ShieldQuestionIcon : MessageCircleIcon;
+  const title = childInputsTitle(props.inputs);
+  return (
+    <ComposerBanner.Attachment>
+      <ComposerBanner.Root aria-label={title} role="region" variant="info">
+        <ComposerBanner.Row>
+          <ComposerBanner.Icon>
+            <Icon />
+          </ComposerBanner.Icon>
+          <ComposerBanner.Content>
+            <span className="shrink-0 font-medium">{title}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              {props.inputs.map((child, index) => (
+                <Fragment key={child.id}>
+                  {index > 0 ? " " : null}
+                  <span className="whitespace-nowrap">
+                    <button
+                      className="cursor-pointer underline-offset-2 hover:underline"
+                      onClick={() => props.onOpen(child.id)}
+                      type="button"
+                    >
+                      {child.title}
+                    </button>
+                    {index < props.inputs.length - 1 ? "," : null}
+                  </span>
+                </Fragment>
+              ))}
+            </span>
+          </ComposerBanner.Content>
+          <ComposerBanner.Actions>
+            <Button onClick={() => props.onOpen(first.id)} size="xs" variant="ghost">
+              {first.approval ? "Open approval" : "Open question"}
+            </Button>
+          </ComposerBanner.Actions>
         </ComposerBanner.Row>
       </ComposerBanner.Root>
     </ComposerBanner.Attachment>
