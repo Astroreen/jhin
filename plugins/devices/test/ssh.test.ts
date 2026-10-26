@@ -20,14 +20,17 @@ afterEach(async () => {
 });
 
 /** The hosts, and a way to wait for a status the node publishes. */
-function hosts(tools: FakeTools, overrides: { agentAccess?: boolean } = {}) {
+function hosts(
+  tools: FakeTools,
+  overrides: { agentAccess?: boolean; configs?: () => (typeof MAC)[] } = {},
+) {
   const seen: Record<string, DeviceHostStatus>[] = [];
   const waiters: {
     test: (status: Record<string, DeviceHostStatus>) => boolean;
     done: () => void;
   }[] = [];
   const remote = createRemoteHosts({
-    configs: () => [MAC],
+    configs: overrides.configs ?? (() => [MAC]),
     enabled: () => true,
     agentAccess: () => overrides.agentAccess ?? true,
     owner: () => OWNER,
@@ -51,7 +54,9 @@ function hosts(tools: FakeTools, overrides: { agentAccess?: boolean } = {}) {
   return { remote, seen, until };
 }
 
-describe("device hosts over SSH (D1494–D1499)", () => {
+// Each test runs ssh, node and the fake hub as real processes: the limit is a ceiling for their
+// startups on a loaded runner, nothing waits on it.
+describe("device hosts over SSH (D1494–D1499)", { timeout: 60_000 }, () => {
   it("probes a host: its platforms and whether its tools are there (T3's probe)", async () => {
     const tools = fakeTools();
     const probe = await probeSshHost(MAC, OWNER, { ssh: tools.ssh });
@@ -67,7 +72,7 @@ describe("device hosts over SSH (D1494–D1499)", () => {
       { id: "mac", kind: "ssh", label: "Mac mini", platforms: [] },
     ]);
 
-    await remote.refresh();
+    await remote.refresh("mac");
     expect(remote.statuses().mac?.status).toBe("ready");
     // Installing first, then starting: T3's phases.
     expect(seen.map((each) => each.mac?.status)).toContain("installing");
@@ -111,7 +116,7 @@ describe("device hosts over SSH (D1494–D1499)", () => {
     const tools = fakeTools();
     const { remote } = hosts(tools, { agentAccess: false });
     await remote.reconcile();
-    await remote.refresh();
+    await remote.refresh("mac");
     const device = remote.devices()[0]!;
     expect(await remote.input("thread-1", device, { type: "text", text: "hi there" })).toBe("adb");
     expect(tools.adbInputs()).toEqual(["shell input text 'hi%sthere'"]);
@@ -121,7 +126,7 @@ describe("device hosts over SSH (D1494–D1499)", () => {
     const tools = fakeTools();
     const { remote, until } = hosts(tools);
     await remote.reconcile();
-    await remote.refresh();
+    await remote.refresh("mac");
     const [tunnel] = tools.tunnels();
     process.kill(tunnel!, "SIGKILL");
     await until((statuses) => statuses.mac?.detail === "Reconnecting to device host…");
@@ -130,12 +135,44 @@ describe("device hosts over SSH (D1494–D1499)", () => {
     expect((await fetch(`${remote.origin("mac")!}/readyz`)).ok).toBe(true);
   });
 
+  it("answers the list at once while a host still connects, and lists it once it is up", async () => {
+    const tools = fakeTools();
+    const { remote, until } = hosts(tools);
+    await remote.reconcile();
+    // Not connected yet: the list does not wait for its install and start.
+    await remote.refresh();
+    expect(remote.devices()).toEqual([]);
+    await until((statuses) => statuses.mac?.status === "ready");
+    await remote.refresh();
+    expect(remote.devices()).toContainEqual(expect.objectContaining({ hostId: "mac" }));
+  });
+
+  it("stops every host's hub when the device hub is turned off, and never restarts a removed host", async () => {
+    const tools = fakeTools();
+    let configured = [MAC];
+    const { remote } = hosts(tools, { configs: () => configured });
+    await remote.reconcile();
+    await remote.refresh("mac");
+    const hubFile = Path.join(tools.remoteHome, ".jhin", "device", "hosts", OWNER, "hub.json");
+    expect(Fs.existsSync(hubFile)).toBe(true);
+    await remote.disable();
+    expect(remote.origin("mac")).toBeUndefined();
+    // The host's script stopped its hub and forgot it before it answered.
+    expect(Fs.existsSync(hubFile)).toBe(false);
+    expect(remote.statuses()).toEqual({});
+
+    configured = [];
+    await remote.reconcile();
+    expect(remote.has("mac")).toBe(false);
+    await expect(remote.ensure("mac")).rejects.toThrow("No device host mac.");
+  });
+
   it("a host that cannot be reached fails alone, with ssh's own words", async () => {
     const tools = fakeTools();
     tools.unreachable();
     const { remote } = hosts(tools);
     await remote.reconcile();
-    await remote.refresh();
+    await remote.refresh("mac");
     expect(remote.devices()).toEqual([]);
     expect(remote.statuses().mac).toBeUndefined();
     await expect(probeSshHost(MAC, OWNER, { ssh: tools.ssh })).rejects.toThrow(
@@ -143,31 +180,15 @@ describe("device hosts over SSH (D1494–D1499)", () => {
     );
   });
 
-  it("stops the host's hub when it is removed or the node goes", async () => {
+  it("stops the host's hub when the node goes", async () => {
     const tools = fakeTools();
     const { remote } = hosts(tools);
     await remote.reconcile();
-    await remote.refresh();
-    const hub = tools.hubArgs()!;
-    const exited = new Promise<void>((resolve) => {
-      const check = () => {
-        try {
-          process.kill(hub.pid, 0);
-          return false;
-        } catch {
-          return true;
-        }
-      };
-      if (check()) resolve();
-      else {
-        // The stop below runs the script's `stop`, which ends the hub before it answers.
-        void remote.stop().then(() => {
-          expect(check()).toBe(true);
-          resolve();
-        });
-      }
-    });
-    await exited;
+    await remote.refresh("mac");
+    const hubFile = Path.join(tools.remoteHome, ".jhin", "device", "hosts", OWNER, "hub.json");
+    expect(Fs.existsSync(hubFile)).toBe(true);
+    await remote.stop();
+    expect(Fs.existsSync(hubFile)).toBe(false);
     running = undefined;
   });
 });

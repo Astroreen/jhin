@@ -127,7 +127,8 @@ export function createRemoteHosts(options: RemoteHostsOptions) {
         hosts.delete(id);
         statuses.delete(id);
         lists.delete(id);
-        await host.stop();
+        // Removed for good: a command that still holds it cannot start it again.
+        await host.retire();
       }
       for (const config of remote) {
         if (hosts.has(config.id)) continue;
@@ -210,25 +211,38 @@ export function createRemoteHosts(options: RemoteHostsOptions) {
 
     /**
      * Lists every host's devices while the hub is allowed; a host that fails keeps its
-     * `failed` status and lists nothing, the others go on (T3's multi-host).
+     * `failed` status and lists nothing, the others go on (T3's multi-host). A host still
+     * connecting (an install takes minutes) is listed once it is up, without holding the
+     * answer for the others; `only` waits for that one host.
      */
     async refresh(only?: string): Promise<void> {
       if (!options.enabled()) {
         lists.clear();
         return;
       }
-      await Promise.all(
-        [...hosts.values()]
-          .filter((host) => only === undefined || host.id === only)
-          .map(async (host) => {
-            try {
-              lists.set(host.id, await list(host));
-            } catch (error) {
-              lists.delete(host.id);
-              options.log("device host not listed", { hostId: host.id, error: String(error) });
-            }
-          }),
-      );
+      const listOne = async (host: SshHost) => {
+        try {
+          lists.set(host.id, await list(host));
+        } catch (error) {
+          lists.delete(host.id);
+          options.log("device host not listed", { hostId: host.id, error: String(error) });
+        }
+        options.onChange();
+      };
+      const waited: Promise<void>[] = [];
+      for (const host of hosts.values()) {
+        if (only !== undefined && host.id !== only) continue;
+        const listing = listOne(host);
+        if (only !== undefined || host.current() !== undefined) waited.push(listing);
+      }
+      await Promise.all(waited);
+    },
+
+    /** The hub was turned off (D1206): every host's tunnel and helpers stop at once. */
+    async disable(): Promise<void> {
+      lists.clear();
+      await Promise.all([...hosts.values()].map((host) => host.stop()));
+      statuses.clear();
       options.onChange();
     },
 
@@ -370,10 +384,15 @@ export function createRemoteHosts(options: RemoteHostsOptions) {
     /** How an agent drives the device from this node: through ssh (D1497). */
     control(device: DeviceSummary): { command: string; targetArgs: string[]; quickStart: string } {
       const host = hostOf(device.hostId);
+      // Quoted where a shell would split them (an identity file's path with spaces).
+      const shellWord = (word: string) =>
+        /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'"'"'`)}'`;
       const sshArgs = [
         ...(host.config.port === undefined ? [] : ["-p", String(host.config.port)]),
-        ...(host.config.identityFile === undefined ? [] : ["-i", host.config.identityFile]),
-        host.config.target,
+        ...(host.config.identityFile === undefined
+          ? []
+          : ["-i", shellWord(host.config.identityFile)]),
+        shellWord(host.config.target),
       ];
       const targetArgs =
         device.platform === "ios"

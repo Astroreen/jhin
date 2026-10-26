@@ -311,6 +311,8 @@ export function createSshHost(options: SshHostOptions) {
   let wantsAgent = false;
   let activated = false;
   let stopped = false;
+  /** Removed from the settings: never started again. */
+  let retired = false;
   /** One start, stop or reconnect at a time (T3's semaphore). */
   let queue: Promise<unknown> = Promise.resolve();
   const exclusive = <A>(work: () => Promise<A>): Promise<A> => {
@@ -458,6 +460,7 @@ export function createSshHost(options: SshHostOptions) {
 
   const ensure = (agent: boolean) =>
     exclusive(async () => {
+      if (retired) throw new Error(`Device host ${config.id} was removed.`);
       stopped = false;
       if (agent && !wantsAgent) {
         // The daemon starts with the next connection, as T3's `changeAgent(true)`.
@@ -526,19 +529,27 @@ export function createSshHost(options: SshHostOptions) {
         closeTunnel();
         await bootstrap(config, owner, "stop-agent", options).catch(() => undefined);
       }),
+    /** Stops it for good: the host was removed from the settings. */
+    retire: () => {
+      retired = true;
+      return stop();
+    },
     /** Stops the tunnel and the host's helpers; devices keep running, the user owns those. */
-    stop: () =>
-      exclusive(async () => {
-        stopped = true;
-        ready = undefined;
-        if (reconnecting !== undefined) clearTimeout(reconnecting);
-        reconnecting = undefined;
-        closeTunnel();
-        if (activated) await bootstrap(config, owner, "stop", options).catch(() => undefined);
-        activated = false;
-        wantsAgent = false;
-      }),
+    stop: () => stop(),
   };
+
+  function stop(): Promise<void> {
+    return exclusive(async () => {
+      stopped = true;
+      ready = undefined;
+      if (reconnecting !== undefined) clearTimeout(reconnecting);
+      reconnecting = undefined;
+      closeTunnel();
+      if (activated) await bootstrap(config, owner, "stop", options).catch(() => undefined);
+      activated = false;
+      wantsAgent = false;
+    });
+  }
 }
 
 export type SshHost = ReturnType<typeof createSshHost>;

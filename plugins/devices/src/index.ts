@@ -123,12 +123,13 @@ const Config = z
       .meta({
         title: "Device hosts",
         description:
-          "Add remote machines with simulator or emulator runtimes installed, and this node will connect over SSH and set up device tools automatically (with the device hub on).",
+          "Add remote machines with simulator or emulator runtimes installed, and this node will connect over SSH and set up device tools automatically (with the device hub on). Changes apply at once.",
         advanced: true,
       }),
     ssh: Path.meta({
       title: "ssh",
-      description: "The ssh that reaches device hosts; ssh on PATH when unset.",
+      description:
+        "The ssh that reaches device hosts; ssh on PATH when unset. Takes effect when the plugin restarts.",
       advanced: true,
     }),
   })
@@ -267,6 +268,12 @@ export default definePlugin({
       context.config.onDidChange(CONFIG_SECTION, () => {
         void remote.reconcile();
         if (!config().hub) {
+          // The consent goes for the hosts over SSH too (D1206, D1494).
+          void remote
+            .disable()
+            .catch((error: unknown) =>
+              context.log.warn("device hosts not stopped", { error: String(error) }),
+            );
           void hub
             .disable()
             .catch((error: unknown) =>
