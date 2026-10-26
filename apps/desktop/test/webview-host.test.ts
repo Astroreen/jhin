@@ -263,10 +263,17 @@ describe("the app's webview relay (D1322)", () => {
     const downloads = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-user-downloads-"));
     Fs.writeFileSync(Path.join(downloads, "report.pdf"), "already there");
     const revealed: string[] = [];
+    let shown: (path: string) => void = () => undefined;
     const webviews = createWebviewHost({
       openLink: () => undefined,
       log: () => undefined,
-      downloads: { folder: () => downloads, reveal: (path) => void revealed.push(path) },
+      downloads: {
+        folder: () => downloads,
+        reveal: (path) => {
+          revealed.push(path);
+          shown(path);
+        },
+      },
     });
     const partition = "persist:jhin-preview-ZGVmYXVsdA";
     webviews.willAttach({ preventDefault() {} } as never, {}, { partition, src: "about:blank" });
@@ -307,7 +314,9 @@ describe("the app's webview relay (D1322)", () => {
       item.emit("done", {}, "completed");
     };
     // The user clicked a link: no input from the node lately.
+    const copied = new Promise<string>((resolve) => (shown = resolve));
     download("human");
+    await copied;
     expect(revealed).toEqual([Path.join(downloads, "report (1).pdf")]);
     expect(Fs.readFileSync(revealed[0]!, "utf8")).toBe("human");
     // The agent clicked: the file stays on the node, for the agent.

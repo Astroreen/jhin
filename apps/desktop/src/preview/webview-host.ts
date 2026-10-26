@@ -120,18 +120,22 @@ export function createWebviewHost(options: WebviewHostOptions) {
       if (human && downloads !== undefined) {
         item.once("done", (_done, state) => {
           if (state !== "completed") return;
-          try {
-            const folder = downloads.folder();
-            Fs.mkdirSync(folder, { recursive: true });
-            const target = freeDownloadPath(
-              folder,
-              Path.basename(item.getFilename()) || "download",
+          // Copied without holding the main process, however large the file.
+          const folder = downloads.folder();
+          void Fs.promises
+            .mkdir(folder, { recursive: true })
+            .then(async () => {
+              const target = freeDownloadPath(
+                folder,
+                Path.basename(item.getFilename()) || "download",
+              );
+              // COPYFILE_EXCL: a file that appeared meanwhile is never replaced.
+              await Fs.promises.copyFile(item.getSavePath(), target, Fs.constants.COPYFILE_EXCL);
+              downloads.reveal(target);
+            })
+            .catch((error: unknown) =>
+              options.log("preview download not copied", { error: String(error) }),
             );
-            Fs.copyFileSync(item.getSavePath(), target);
-            downloads.reveal(target);
-          } catch (error) {
-            options.log("preview download not copied", { error: String(error) });
-          }
         });
       }
     });
@@ -296,9 +300,14 @@ export function createWebviewHost(options: WebviewHostOptions) {
       );
       socket.on("message", (data) => {
         const message = String(data);
-        // Only the method is read, to tell the agent's downloads from the user's (D1492).
-        const method = /"method"\s*:\s*"([^"]+)"/.exec(message)?.[1];
-        if (method !== undefined && AGENT_ACTION.test(method)) tab.agentActedAt = Date.now();
+        // The node's command, to tell the agent's downloads from the user's (D1492).
+        let method: unknown;
+        try {
+          method = (JSON.parse(message) as { method?: unknown }).method;
+        } catch {
+          method = undefined;
+        }
+        if (typeof method === "string" && AGENT_ACTION.test(method)) tab.agentActedAt = Date.now();
         relay?.receive(message);
       });
       // The node let go: so does the app.
