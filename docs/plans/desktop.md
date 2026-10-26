@@ -275,7 +275,9 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   behind (racing runs leave one each): delete the draft on the releases page,
   then run again. Only publishing runs, which build from `main`, get the
   signing secrets; a dry run is unsigned, and packaging gives the secrets to
-  electron-builder only, never to the install's scripts.
+  electron-builder only, never to the install's scripts. Since W43 the signing jobs name the protected environment
+  `release` (D1482), and the app's own sources and a weekly run of `main`
+  start dry runs too (D1484).
 
 - **D946. Paste as Text is T3's Edit menu item.** "Paste as Text"
   (`CmdOrCtrl+Shift+V`, id `jhin.paste-as-text`) follows Paste. Its shortcut
@@ -429,7 +431,7 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   and the tab's title follows as after the node's own actions. Closing the tab disconnects Playwright (the webview's
   page is the app's to close) and drops the tab from the stream, so the app
   removes the webview; a webview that goes away (closed, crashed, a reload of
-  the window) drops its tab, where T3 reconnects (Deferred).
+  the window) drops its tab, where T3 reconnects (until D1488, which reconnects it too).
 
 - **D1322. The relay is T3's, in the app's main process.** Electron allows
   one debugger per `webContents`, and Playwright speaks to a browser, so the
@@ -447,7 +449,7 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   process attaches only a webview guest of the app's window whose embedder
   is the asking page, and refuses one DevTools or another debugger holds;
   the endpoint closes with the guest, and the debugger is let go when the
-  node disconnects. A dropped connection is final: the node drops the tab
+  node disconnects. A dropped connection was final until D1488: the node drops the tab
   with it (D1321), so nothing reconnects to the endpoint; the app's page
   removes the webview, and a new tab attaches anew. Two app pages of one node
   both host a new tab; the first attach wins, and the other page drops its
@@ -560,7 +562,8 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   proven by a scheduled dry run of `main` every Monday (04:00 UTC) instead,
   which builds as a release would and publishes nothing. The app installs
   nearly every workspace package (the CLI's distribution), so the manifest
-  filter names them all rather than a list that would drift.
+  filter names them all rather than a list that would drift; a dependency
+  change in any package then costs a dry run of six installers.
 
 - **D1485. Packaging checks what it installed, as `pnpm pack:smoke`
   does.** `scripts/package-desktop.ts` prints the third-party packages the
@@ -581,7 +584,9 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   home's token, as D512 reads it. One that does not serve the web client (a
   `jhin serve` without `--ui`) gets D512's dialog with "A Jhin node of this
   home already runs at <url> without the web client. Stop it, or start it
-  with `jhin serve --ui`." (Try Again, Quit). Such a node is not the app's:
+  with `jhin serve --ui`." (Try Again, Quit); since `runtime.json` is
+  written once `jhin.http` listens, before the web client may serve, the
+  text adds "or is still starting", and Try Again finds such a node ready. Such a node is not the app's:
   quitting leaves it running, and D1201's restart does not apply. While it
   runs, the app checks its process every 2 s. Once the process is gone, the
   app relaunches itself, which starts the app's own node. The node does not
@@ -612,10 +617,62 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   fails the same way, and nothing is kept. `--port` takes 1 to 65535, never
   0, whose port would change with every start. The choice is
   `startOnFreePort` in `apps/desktop/src/local-node.ts`, unit tested with
-  injected starts.
-  T3 scans for a free port from its default on every launch
+  injected starts. T3 scans for a free port from its default on every launch
   (`resolveDesktopBackendPort`); its client's origin is a custom protocol,
   so the port can change, while here it must be kept.
+
+- **D1488. A desktop tab outlives its webview, as T3 reconnects one.** In
+  T3 a preview session lives on the server apart from the page that
+  renders it: when a desktop page goes (a reload of the window, its
+  DevTools opening), the server drops only the page and connects the next
+  one (`dropTab`'s `"reconnect"`, `restoreControlSession`). Here, the
+  node's desktop tab whose page closes without the tab being closed (its
+  relay dropped, D1322) keeps its id, its place in the list, its
+  downloads, console, network and action history, its viewport, colour
+  scheme and owner. It is listed with `reconnecting: true` (`PreviewTab`,
+  additive) and announced on `preview-desktop` again, not attached. A page
+  that hosts it attaches its webview again: the same webview once its
+  DevTools close, or a new one after a reload of the window, which hosts
+  every tab announced as not attached (D1321). The node connects to the
+  new endpoint and navigates a fresh webview (`about:blank`) to the tab's
+  last address. While a page hosts tabs, a reconnecting tab waits for it
+  without a limit, since DevTools may stay open for long. While none does,
+  it waits T3's 10 s for one to subscribe (a reloaded window comes back
+  within it), then opens headless at its last address (D394), as a new
+  tab does without the app. Meanwhile commands on the tab, an agent's or
+  the panel's, answer `PREVIEW_TAB_RECONNECTING` with T3's wording, "Close
+  preview DevTools before using agent browser control." followed by
+  "The tab is waiting for the desktop app's webview." Closing the tab still
+  works and ends the wait. A recording, the human's control and a pending
+  dialog or file chooser end with the old page, as a recording ends with a
+  closed tab. A page that crashes still ends its tab (D1321). This replaces D1321's last sentence and D1322's "A dropped
+  connection is final", and solves the window reload of D1321's Deferred
+  item.
+
+- **D1489. T3's "Open DevTools" for a tab the app hosts.** T3's More menu
+  of the preview has "Open DevTools" for a desktop tab
+  (`PreviewMoreMenu.tsx`), which lets the control session go and opens the
+  guest's DevTools detached; once they close, the session is restored
+  (`Manager.ts`'s `openDevTools`). Here the panel's More menu gets
+  "Open DevTools" for a tab whose page is the app's (`desktop: true`, its
+  webview on this page). It calls the bridge's new
+  `preview.openDevTools(webContentsId)` (`desktop.shell@1` 1.2), which
+  focuses DevTools already open, else ends the guest's relay and opens
+  DevTools in a window of their own (`mode: "detach"`). The node's tab
+  reconnects (D1488), and the page attaches its webview again once the
+  bridge's `onDevToolsClosed` says they closed, never while they are open:
+  Electron gives a guest one debugger, which DevTools then hold.
+
+- **D1490. A guest's context menu is the window's (T3).** T3 installs
+  the window's context menu on every guest as it attaches
+  (`DesktopWindow.ts`, `did-attach-webview`). Here the window's handler of
+  D517 becomes `installContextMenu(window, contents)` and is installed on each
+  preview webview's guest too, which first takes focus so the editing
+  items act in the page. The items are D517's: spelling suggestions, Copy
+  Link, Copy Image (`copyImageAt`, in the guest's own frame), then Cut,
+  Copy, Paste and Select All as the page allows. T3's copy of an image
+  inside a subframe (`ContextMenuImage.ts`, fetching and decoding it) is
+  Deferred.
 
 ## Deferred
 
@@ -674,15 +731,11 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   the file lands in the node's folder as for any tab, but the webview's
   surface does not show the offer the frames stream carries, so it is saved
   through the agent or the headless panel only.
-- A reload of the window whose new page subscribes to `preview-desktop`
-  before the old one leaves (D1321): the stream keeps the old page's tabs
-  as attached, the new page does not host them, and each ends on the node
-  as the old page's webview goes and its relay drops (D1322), rather than
-  moving to the new page.
-- Around the preview in the app (D1321–D1324): a desktop tab that outlives
-  its webview (T3 reconnects a tab after a reload of the window or once its
-  DevTools close; here the tab closes); T3's DevTools, element annotation,
-  passkeys, favicon capture and context menu of a guest; T3's desktop-only
+- Around the preview in the app (D1321–D1324): T3's element annotation,
+  passkeys and favicon capture of a guest; Copy Image of an image inside a
+  guest's subframe (T3's `ContextMenuImage.ts`, D1490); a reconnected tab
+  keeping its recording, the human's control and the popups it opened
+  (D1488); T3's desktop-only
   tabs (`runtime: "desktop"`) of a remote environment; importing cookies
   into the app's partitions (D1204 fills the node's headless profiles); a
   recording of a desktop tab nobody shows (Electron stops compositing a

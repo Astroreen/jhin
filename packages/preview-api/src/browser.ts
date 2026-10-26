@@ -59,7 +59,9 @@ export type PreviewErrorCode =
   | "PREVIEW_UNAVAILABLE"
   | "PREVIEW_RECORDING"
   /** `details.reason`: why a cookie import stopped (`BrowserImportFailureReason`, D1204). */
-  | "PREVIEW_IMPORT_FAILED";
+  | "PREVIEW_IMPORT_FAILED"
+  /** A desktop tab waits for the app's webview again (desktop.md D1488). */
+  | "PREVIEW_TAB_RECONNECTING";
 
 export const PreviewControlReason = z.enum([
   "agentMismatch",
@@ -757,6 +759,8 @@ export const PreviewTab = z.object({
   updatedAt: z.string(),
   /** The page runs in the desktop app's webview, not in the node's headless browser (D1321). */
   desktop: z.literal(true).optional(),
+  /** Its desktop page went; it waits for the app's webview again (desktop.md D1488). */
+  reconnecting: z.literal(true).optional(),
 });
 export type PreviewTab = z.infer<typeof PreviewTab>;
 

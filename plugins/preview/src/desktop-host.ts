@@ -39,6 +39,8 @@ interface Entry {
 export function createDesktopHost(streams: MemoryStreams) {
   const entries = new Map<string, Entry>();
   let hosts = 0;
+  /** Waiting for a page to host tabs again (D1488). */
+  const waiters = new Set<() => void>();
 
   const publish = () => {
     streams.clear(PREVIEW_DESKTOP_STREAM);
@@ -53,6 +55,7 @@ export function createDesktopHost(streams: MemoryStreams) {
     subscribe(stream, listener) {
       const subscription = streams.subscribe(stream, listener);
       hosts += 1;
+      for (const wake of waiters) wake();
       let open = true;
       return toDisposable(() => {
         subscription.dispose();
@@ -77,20 +80,40 @@ export function createDesktopHost(streams: MemoryStreams) {
     active: () => hosts > 0,
 
     /**
+     * Resolves true once a page hosts tabs (at once if one does), false when
+     * none subscribed within `timeoutMs` (D1488).
+     */
+    whenActive(timeoutMs = DESKTOP_ATTACH_TIMEOUT_MS): Promise<boolean> {
+      if (hosts > 0) return Promise.resolve(true);
+      return new Promise((resolve) => {
+        const wake = () => {
+          clearTimeout(timer);
+          waiters.delete(wake);
+          resolve(true);
+        };
+        const timer = setTimeout(() => {
+          waiters.delete(wake);
+          resolve(false);
+        }, timeoutMs);
+        waiters.add(wake);
+      });
+    },
+
+    /**
      * Announces a tab to the app and waits for its webview's endpoint; null
-     * when none attaches within `timeoutMs` or the app goes. Whatever the
-     * outcome, the caller `forget`s or `confirm`s the tab.
+     * when none attaches within `timeoutMs` (null: no limit, D1488) or the
+     * app goes. Whatever the outcome, the caller `forget`s or `confirm`s the tab.
      */
     request(
       tab: Omit<PreviewDesktopTab, "attached">,
-      timeoutMs = DESKTOP_ATTACH_TIMEOUT_MS,
+      timeoutMs: number | null = DESKTOP_ATTACH_TIMEOUT_MS,
     ): Promise<string | null> {
       if (hosts === 0) return Promise.resolve(null);
       const key = keyOf(tab.threadId, tab.tabId);
       // A tab asked for again: the earlier wait gives up first.
       entries.get(key)?.settle?.(null);
       return new Promise((resolve) => {
-        const timer = setTimeout(() => settle(null), timeoutMs);
+        const timer = timeoutMs === null ? undefined : setTimeout(() => settle(null), timeoutMs);
         const settle = (endpoint: string | null) => {
           clearTimeout(timer);
           const entry = entries.get(key);
@@ -135,6 +158,7 @@ export function createDesktopHost(streams: MemoryStreams) {
     },
 
     dispose(): void {
+      for (const wake of waiters) wake();
       for (const entry of entries.values()) entry.settle?.(null);
       entries.clear();
       streams.delete(PREVIEW_DESKTOP_STREAM);

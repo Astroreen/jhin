@@ -323,6 +323,8 @@ async function main(): Promise<void> {
   // The preview's webviews, driven by the node (D1322).
   const webviews = createWebviewHost({
     openLink: (link) => sendToPage(DESKTOP_CHANNELS.previewOpenLink, link),
+    devToolsClosed: (webContentsId) =>
+      sendToPage(DESKTOP_CHANNELS.previewDevToolsClosed, webContentsId),
     log,
   });
   handle(DESKTOP_CHANNELS.previewAttach, z.number().int().positive(), (webContentsId) => {
@@ -331,6 +333,12 @@ async function main(): Promise<void> {
       throw new Error("The app's window is closed.");
     }
     return webviews.attach(mainWindow.webContents, webContentsId);
+  });
+  handle(DESKTOP_CHANNELS.previewOpenDevTools, z.number().int().positive(), (webContentsId) => {
+    if (mainWindow === undefined || mainWindow.isDestroyed()) {
+      throw new Error("The app's window is closed.");
+    }
+    webviews.openDevTools(mainWindow.webContents, webContentsId);
   });
   handle(DESKTOP_CHANNELS.previewClearPartition, z.string().max(400), (partition) =>
     webviews.clearPartition(partition),

@@ -30,6 +30,9 @@ export function createNativeSurfaces() {
   let hostClient: RpcClient | undefined;
   /** Per tab, every surface's placement in the order they came; the newest surface wins. */
   const placements = new Map<string, Map<symbol, NativePlacement>>();
+  /** Each hosted tab's guest, for its DevTools (D1489). */
+  const guests = new Map<string, number>();
+  let devTools: ((webContentsId: number) => Promise<void>) | undefined;
   const listeners = new Set<() => void>();
   let version = 0;
   const changed = () => {
@@ -80,6 +83,35 @@ export function createNativeSurfaces() {
     placement(threadId: string, tabId: string): NativePlacement | undefined {
       const forTab = placements.get(keyOf(threadId, tabId));
       return forTab === undefined ? undefined : [...forTab.values()].at(-1);
+    },
+    /** The host's tab has this guest now (undefined: none). */
+    guest(threadId: string, tabId: string, webContentsId: number | undefined) {
+      const key = keyOf(threadId, tabId);
+      if (guests.get(key) === webContentsId) return;
+      if (webContentsId === undefined) guests.delete(key);
+      else guests.set(key, webContentsId);
+      changed();
+    },
+    /** The app's DevTools of a guest, while the host has them (D1489). */
+    devTools(open: ((webContentsId: number) => Promise<void>) | undefined): Disposable {
+      devTools = open;
+      changed();
+      return toDisposable(() => {
+        if (devTools !== open) return;
+        devTools = undefined;
+        changed();
+      });
+    },
+    /** Whether "Open DevTools" can open the tab's (D1489). */
+    canOpenDevTools(threadId: string, tabId: string): boolean {
+      return devTools !== undefined && guests.has(keyOf(threadId, tabId));
+    },
+    openDevTools(threadId: string, tabId: string): Promise<void> {
+      const id = guests.get(keyOf(threadId, tabId));
+      if (devTools === undefined || id === undefined) {
+        return Promise.reject(new Error("This tab's page is not shown in the app."));
+      }
+      return devTools(id);
     },
     version: () => version,
     subscribe(listener: () => void): () => void {

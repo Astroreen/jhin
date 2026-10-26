@@ -243,6 +243,16 @@ export default definePlugin({
               onOpenLink: (listener: Parameters<DesktopPreviewBridge["onOpenLink"]>[0]) =>
                 toDisposable(bridge.preview!.onOpenLink(listener)),
               clearPartition: (partition: string) => bridge.preview!.clearPartition(partition),
+              // Since 1.2 (D1489), when the app's bridge has them.
+              ...(bridge.preview.openDevTools === undefined ||
+              bridge.preview.onDevToolsClosed === undefined
+                ? {}
+                : {
+                    openDevTools: (webContentsId: number) =>
+                      bridge.preview!.openDevTools!(webContentsId),
+                    onDevToolsClosed: (listener: (webContentsId: number) => void) =>
+                      toDisposable(bridge.preview!.onDevToolsClosed!(listener)),
+                  }),
             },
           }),
     };

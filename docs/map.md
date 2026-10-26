@@ -167,7 +167,7 @@ the thread's files are file chips (`plans/t3-parity.md#the-tabbed-right-panel-w4
 
 The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 (built, served only by the app's node): window chrome, native menu items
-(`desktop.shell@1`; 1.1 adds the preview's webviews, D1322), the badge from `client.notifications@1`, and the
+(`desktop.shell@1`; 1.1 adds the preview's webviews, D1322; 1.2 their DevTools, D1489), the badge from `client.notifications@1`, and the
 `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands; the quit hold hint (`app.global`) and its row in `settings.general.behavior`. → `plans/desktop.md`
 
 ## Apps, tests, scripts

@@ -37,6 +37,8 @@ export interface WebviewHostOptions {
   readonly unclaimedMs?: number;
   /** A guest's page opened a window at an http(s) URL. */
   readonly openLink: (link: { webContentsId: number; url: string }) => void;
+  /** A guest's DevTools closed: its page may attach it again (D1489). */
+  readonly devToolsClosed?: (webContentsId: number) => void;
   readonly log: (message: string, fields?: Record<string, unknown>) => void;
 }
 
@@ -247,6 +249,30 @@ export function createWebviewHost(options: WebviewHostOptions) {
     return { endpoint: tab.endpoint };
   };
 
+  /**
+   * Opens a webview's DevTools in a window of their own, or focuses them (T3's
+   * `openDevTools`, D1489). DevTools take the guest's one debugger, so its
+   * relay ends first: the node's tab waits for it again (D1488) until the
+   * page attaches it once they closed.
+   */
+  const openDevTools = (host: WebContents, webContentsId: number) => {
+    const guest = webContents.fromId(webContentsId);
+    if (guest === undefined || guest.isDestroyed() || guest.getType() !== "webview") {
+      throw new Error("No webview of the app has this id.");
+    }
+    if (guest.hostWebContents !== host) throw new Error("The webview is not this page's.");
+    if (guest.isDevToolsOpened()) {
+      guest.devToolsWebContents?.focus();
+      return;
+    }
+    attached.get(webContentsId)?.close();
+    guest.openDevTools({ mode: "detach" });
+    // Registered once they opened: a failed open leaves no listener behind.
+    guest.once("devtools-closed", () => {
+      if (!guest.isDestroyed()) options.devToolsClosed?.(webContentsId);
+    });
+  };
+
   /** Forgets a profile's cookies and storage in the app (D1323). */
   const clearPartition = async (partition: string) => {
     if (!PREVIEW_PARTITION.test(partition)) throw new Error("Not a partition of the preview.");
@@ -259,6 +285,7 @@ export function createWebviewHost(options: WebviewHostOptions) {
     willAttach,
     didAttach,
     attach,
+    openDevTools,
     clearPartition,
     dispose() {
       // A Map may lose entries while it is iterated.

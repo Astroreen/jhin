@@ -193,38 +193,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   contents.session.setPermissionCheckHandler((_contents, permission, origin) =>
     allowed(permission, origin),
   );
-  contents.on("context-menu", (_event, params) => {
-    if (window.isDestroyed()) return;
-    const template: MenuItemConstructorOptions[] = [];
-    if (params.misspelledWord) {
-      for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
-        template.push({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) });
-      }
-      if (params.dictionarySuggestions.length === 0) {
-        template.push({ label: "No suggestions", enabled: false });
-      }
-      template.push({ type: "separator" });
-    }
-    if (parseSafeExternalUrl(params.linkURL) !== undefined) {
-      template.push(
-        { label: "Copy Link", click: () => clipboard.writeText(params.linkURL) },
-        { type: "separator" },
-      );
-    }
-    if (params.mediaType === "image") {
-      template.push(
-        { label: "Copy Image", click: () => contents.copyImageAt(params.x, params.y) },
-        { type: "separator" },
-      );
-    }
-    template.push(
-      { role: "cut", enabled: params.editFlags.canCut },
-      { role: "copy", enabled: params.editFlags.canCopy },
-      { role: "paste", enabled: params.editFlags.canPaste },
-      { role: "selectAll", enabled: params.editFlags.canSelectAll },
-    );
-    Menu.buildFromTemplate(template).popup({ window });
-  });
+  installContextMenu(window, contents);
 
   // --- The preview's webviews: only its partitions, hardened (D1323). ---
   const webviews = options.webviews;
@@ -232,7 +201,11 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     contents.on("will-attach-webview", (event, preferences, params) =>
       webviews.willAttach(event, preferences, params as unknown as Record<string, string>),
     );
-    contents.on("did-attach-webview", (_event, guest) => webviews.didAttach(guest));
+    contents.on("did-attach-webview", (_event, guest) => {
+      webviews.didAttach(guest);
+      // T3's: a guest's right click gets the window's menu, acting in the guest (D1490).
+      installContextMenu(window, guest);
+    });
   }
 
   // --- Links: off-origin pages open in the system browser (D517). ---
@@ -302,6 +275,47 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
 
   loadNode(window, options.node());
   return window;
+}
+
+/**
+ * T3's context menu (D517): spelling suggestions, Copy Link, Copy Image, then
+ * the editing items, on the window's page and on each preview guest (D1490).
+ */
+function installContextMenu(window: BrowserWindow, contents: Electron.WebContents): void {
+  contents.on("context-menu", (_event, params) => {
+    if (window.isDestroyed() || contents.isDestroyed()) return;
+    // The editing items act on the focused page: a guest's own, not the app's.
+    if (contents.getType() === "webview") contents.focus();
+    const template: MenuItemConstructorOptions[] = [];
+    if (params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+        template.push({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) });
+      }
+      if (params.dictionarySuggestions.length === 0) {
+        template.push({ label: "No suggestions", enabled: false });
+      }
+      template.push({ type: "separator" });
+    }
+    if (parseSafeExternalUrl(params.linkURL) !== undefined) {
+      template.push(
+        { label: "Copy Link", click: () => clipboard.writeText(params.linkURL) },
+        { type: "separator" },
+      );
+    }
+    if (params.mediaType === "image") {
+      template.push(
+        { label: "Copy Image", click: () => contents.copyImageAt(params.x, params.y) },
+        { type: "separator" },
+      );
+    }
+    template.push(
+      { role: "cut", enabled: params.editFlags.canCut },
+      { role: "copy", enabled: params.editFlags.canCopy },
+      { role: "paste", enabled: params.editFlags.canPaste },
+      { role: "selectAll", enabled: params.editFlags.canSelectAll },
+    );
+    Menu.buildFromTemplate(template).popup({ window });
+  });
 }
 
 /** Loads a node's web client with its token in the fragment, as `jhin serve --ui` users open it (D513). */

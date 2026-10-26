@@ -200,7 +200,9 @@ export async function attachRunningNode(home = localNodeHome()): Promise<Attache
   }
   if (page === undefined || !page.ok || !page.headers.get("content-type")?.includes("text/html")) {
     throw new Error(
-      `A Jhin node of this home already runs at ${url} without the web client. Stop it, or start it with \`jhin serve --ui\`.`,
+      // runtime.json is written once jhin.http listens, before the web client may serve `/`:
+      // a node still starting says so too, and Try Again finds it ready.
+      `A Jhin node of this home already runs at ${url} without the web client, or is still starting. Stop it, or start it with \`jhin serve --ui\`.`,
     );
   }
   const token = readHomeToken(home);

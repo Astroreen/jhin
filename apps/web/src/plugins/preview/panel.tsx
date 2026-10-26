@@ -1192,6 +1192,10 @@ function TabView(props: {
     if (next !== undefined) adjust({ zoomFactor: next });
   };
 
+  // T3's "Open DevTools" for a tab the app hosts (D1489).
+  const devTools = useSyncExternalStore(services.surfaces.subscribe, () =>
+    services.surfaces.canOpenDevTools(tab.threadId, tab.tabId),
+  );
   const menu = (
     <Menu>
       <Tooltip>
@@ -1219,6 +1223,17 @@ function TabView(props: {
           </>
         )}
         <MenuItem onClick={() => adjust({ hardReload: true })}>Hard reload</MenuItem>
+        {devTools ? (
+          <MenuItem
+            onClick={() =>
+              void services.surfaces
+                .openDevTools(tab.threadId, tab.tabId)
+                .catch(fail("Unable to open DevTools"))
+            }
+          >
+            Open DevTools
+          </MenuItem>
+        ) : null}
         <MenuItem
           onClick={() => {
             if (deviceToolbar) {
