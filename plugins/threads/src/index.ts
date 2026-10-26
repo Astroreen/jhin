@@ -1699,6 +1699,8 @@ export default definePlugin({
           if (prepared !== undefined) hookInput = { ...hookInput, cwd: prepared.cwd };
           // A worktree removed under the thread, and not brought back by a hook (D242).
           if (
+            // Still its worktree: a turn a hook moved to the checkout has no worktree to lose.
+            thread.worktreePath !== undefined &&
             hookInput.cwd !== project.path &&
             !(await Fs.promises.stat(hookInput.cwd).then(
               (stat) => stat.isDirectory(),

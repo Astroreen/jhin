@@ -2770,9 +2770,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const setups = createSetupTracker({
     publish: (snapshot) => {
       const stream = worktreeSetupStream(snapshot.threadId);
-      const kept = setupStreams.events(stream).length;
+      const earlier = setupStreams.events(stream).length;
       setupStreams.append(stream, WORKTREE_SETUP_CHANGED, snapshot as never);
-      if (kept > 0) setupStreams.drop(stream, kept);
+      if (earlier > 0) setupStreams.drop(stream, earlier);
       keepSetup(snapshot);
     },
   });
@@ -3029,12 +3029,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     // Before the agent starts, T3 removes the new worktree: the turn then fails, or works
     // in the project's checkout ("Work locally"). Once it started, only the script stops.
     const agent = snapshot.stages.find((stage) => stage.id === "agent")?.status;
-    const before = agent === "pending" || agent === "running";
     const run = setupRuns.get(threadId);
+    // A first turn not sent yet, or one the script holds: an `async` script's turn has its
+    // agent already, and keeps its worktree.
+    const held = agent === "running" && run?.holdsAgent === true;
+    const before = agent === "pending" || held;
     if (before && snapshot.worktreePath !== null) {
       // Only a first turn held by the script is decided: one not sent yet starts in the
       // checkout the thread works in from now on.
-      if (agent === "running") {
+      if (held) {
         cancelOutcomes.set(threadId, options.workLocally === true ? "local" : "cancelled");
       }
       // Its script stops first: nothing runs in the folder that goes.
