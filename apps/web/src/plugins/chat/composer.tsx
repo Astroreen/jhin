@@ -133,8 +133,11 @@ import { useComposerMenu } from "./use-composer-menu.ts";
 import { type PutAside, usePutAside } from "./put-aside.ts";
 import {
   contextRemovalRanges,
+  decodePullRequestDrag,
   knownRecordsById,
+  PULL_REQUEST_DRAG_TYPE,
   planContextInsertion,
+  pullRequestContextRecord,
   withContexts,
 } from "../../lib/composer-context.ts";
 import { ComposerChipsContext, useComposerChipActions } from "./composer-chips.tsx";
@@ -1049,12 +1052,15 @@ export function Composer(props: ComposerProps) {
     editor.current?.replaceRange(at, at, `${gap}${text}`);
     editor.current?.focus();
   };
-  const insertContext = (record: MessageContextRecord): ContextInsertion => {
+  const insertContext = (
+    record: MessageContextRecord,
+    options: { readonly atEnd?: boolean } = {},
+  ): ContextInsertion => {
     if (literalAnswer || approval !== undefined) return "not-now";
     // What the editor and the records hold now: two inserts in one tick see each other's.
     const plan = planContextInsertion({
       prompt: editor.current?.value() ?? prompt,
-      caret: focused ? (editor.current?.cursor() ?? cursor) : undefined,
+      caret: focused && options.atEnd !== true ? (editor.current?.cursor() ?? cursor) : undefined,
       records: contextsNow.current,
       record,
     });
@@ -1062,7 +1068,8 @@ export function Composer(props: ComposerProps) {
     contextsNow.current = plan.records;
     setContexts(plan.records);
     editor.current?.replaceRange(plan.at, plan.at, plan.text);
-    editor.current?.focus();
+    // A drop puts it at the end and leaves the focus where it was, as T3's drop does.
+    if (options.atEnd !== true) editor.current?.focus();
     return "inserted";
   };
   const removeContext = (contextId: string): boolean => {
@@ -1603,6 +1610,30 @@ export function Composer(props: ComposerProps) {
     }
     return false;
   };
+  /**
+   * A pull request row of the panel (T3's composerMentionDrag, source-control.md D1454), taken
+   * before the prompt editor, which would drop the row's text as well.
+   */
+  const onDropPullRequest = (event: DragEvent<HTMLElement>) => {
+    if (!Array.from(event.dataTransfer.types).includes(PULL_REQUEST_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDragging(false);
+    {
+      const pullRequest = decodePullRequestDrag(event.dataTransfer.getData(PULL_REQUEST_DRAG_TYPE));
+      // A payload that is no pull request is ignored, as T3's decode leaves it.
+      if (
+        pullRequest !== undefined &&
+        insertContext(pullRequestContextRecord(pullRequest), { atEnd: true }) !== "inserted"
+      ) {
+        toasts?.show({
+          type: "error",
+          title: "Unable to add to chat",
+          description: "The composer is busy; try again once it is ready.",
+        });
+      }
+    }
+  };
   const onDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     setDragging(false);
@@ -1737,7 +1768,15 @@ export function Composer(props: ComposerProps) {
                   setDragging(true);
                 }
               }}
+              onDragOverCapture={(event) => {
+                if (!Array.from(event.dataTransfer.types).includes(PULL_REQUEST_DRAG_TYPE)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect = "move";
+                setDragging(true);
+              }}
               onDrop={onDrop}
+              onDropCapture={onDropPullRequest}
               onSubmit={(event) => {
                 event.preventDefault();
                 void send();

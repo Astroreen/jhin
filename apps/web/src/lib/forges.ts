@@ -79,3 +79,16 @@ export function parsePullRequestReference(input: string): string | null {
   if (PULL_REQUEST_URLS.some((pattern) => pattern.test(reference))) return reference;
   return /^#?(\d+)$/.exec(reference)?.[1] ?? null;
 }
+
+/**
+ * Which forge a pull request URL belongs to, by its shape (T3's `findByChangeRequestUrl`):
+ * a link of another host than the project's has no status to say.
+ */
+export function forgeKindOfUrl(url: string): ForgeKind | undefined {
+  if (/\/-\/merge_requests\/\d+/.test(url)) return "gitlab";
+  if (/\/_git\/[^/]+\/pullrequest\/\d+/.test(url)) return "azure-devops";
+  if (/\/pull-requests\/\d+/.test(url)) return "bitbucket";
+  if (/\/pulls\/\d+/.test(url)) return "forgejo";
+  if (/\/pull\/\d+/.test(url)) return "github";
+  return undefined;
+}

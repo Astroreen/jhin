@@ -567,7 +567,7 @@ export const sourceControlPlugin = builtin(
           component: lazyChunk<ChatThreadDetailsProps>(
             () =>
               import("./pull-request-rows.tsx").then((module) =>
-                module.createPullRequestRows(services),
+                module.createPullRequestRows(services, drafts),
               ),
             {
               loading: () => null,
