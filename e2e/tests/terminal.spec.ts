@@ -112,7 +112,7 @@ test("an exited shell closes its tab, as in T3", async ({ page }) => {
   await expect(drawer).toBeHidden();
 });
 
-test("D472–D474: the selection menu adds to the chat, and the terminals move to the right panel", async ({
+test("D472, D473, D1425: the selection menu adds to the chat, and the right panel has terminals of its own", async ({
   page,
 }, info) => {
   await startThread(page, "terminal menus");
@@ -144,19 +144,94 @@ test("D472–D474: the selection menu adds to the chat, and the terminals move t
   await info.attach("terminal-chip", { path: chipShot, contentType: "image/png" });
   await page.keyboard.press("Escape");
 
-  // The right panel's "Terminal" surface shows the thread's terminals right of the chat (D1424).
-  await openSurface(page, "Terminal");
+  // The right panel's "Terminal" starts a terminal of its own beside the drawer's (D1425).
+  const right = await openSurface(page, "Terminal");
   const panel = page.locator('[data-terminal-owner="right-panel"]');
-  await expect(
-    panel.getByRole("group", { name: "Terminal 1" }).locator(".xterm-rows"),
-  ).toContainText("menu-42");
+  const second = panel.getByRole("group", { name: "Terminal 2" });
+  await expect(second.locator(".xterm-rows")).toContainText("$");
+  await expect(right.getByRole("tab", { name: "Terminal 2" })).toBeVisible();
+  await page.keyboard.type("echo panel-$((3*3))");
+  await page.keyboard.press("Enter");
+  await expect(second.locator(".xterm-rows")).toContainText("panel-9");
+  // The drawer keeps its own, beside it.
+  await expect(drawer.getByRole("group", { name: "Terminal 1" })).toBeVisible();
+  await expect(drawer.getByRole("group", { name: "Terminal 2" })).toHaveCount(0);
   const panelShot = info.outputPath("terminal-right-panel.png");
   await page.screenshot({ path: panelShot });
   await info.attach("terminal-right-panel", { path: panelShot, contentType: "image/png" });
 
-  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  // ⌘/Ctrl+D in the surface splits it, the new terminal's id unique beside the drawer's.
+  await page.keyboard.press("ControlOrMeta+d");
+  const third = panel.getByRole("group", { name: "Terminal 3" });
+  await expect(third.locator(".xterm-rows")).toContainText("$");
+  await expect(second).toBeVisible();
+  await expect(drawer.getByRole("group", { name: "Terminal 3" })).toHaveCount(0);
+  await expect(right.getByRole("tab", { name: "Terminal 3" })).toBeVisible();
+
+  // "New Terminal" starts another surface; its last terminal closed, the surface goes.
+  const shown = page.locator('[data-terminal-owner="right-panel"]:visible');
+  await shown.getByRole("button", { name: /^New Terminal/ }).click();
+  await expect(right.getByRole("tab")).toHaveCount(2);
+  await expect(right.getByRole("tab", { name: "Terminal 4" })).toBeVisible();
+  await expect(
+    shown.getByRole("group", { name: "Terminal 4" }).locator(".xterm-rows"),
+  ).toContainText("$");
+  await shown.getByRole("button", { name: /^Close Terminal/ }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText('Close terminal "Terminal 4"?');
+  await confirm.getByRole("button", { name: "Close" }).click();
+  await expect(right.getByRole("tab")).toHaveCount(1);
+  await expect(right.getByRole("tab", { name: "Terminal 3" })).toBeVisible();
+
+  // The surface keeps its layout on this device: after a reload it shows both again.
+  await page.reload();
+  await expect(right.getByRole("tab", { name: "Terminal 3" })).toBeVisible();
+  await expect(panel.getByRole("group", { name: "Terminal 2" })).toBeVisible();
+  await expect(panel.getByRole("group", { name: "Terminal 3" })).toBeVisible();
+
+  // Closing its tab closes its terminals, after T3's question.
+  await right.getByRole("button", { name: "Close Terminal 3", exact: true }).click();
+  await expect(confirm).toContainText("Close 2 terminals?");
+  await expect(confirm).toContainText('"Terminal 2", "Terminal 3"');
+  await confirm.getByRole("button", { name: "Close" }).click();
   await expect(panel).toHaveCount(0);
+  await expect(right).toBeHidden();
   await expect(drawer.getByRole("group", { name: "Terminal 1" })).toBeVisible();
+  const threadId = decodeURIComponent(/[#&]t=([^&]+)/.exec(page.url())![1]!);
+  const { terminals } = await node
+    .client()
+    .call<{ terminals: { terminalId: string }[] }>("terminals.list", { threadId });
+  expect(terminals.map((item) => item.terminalId)).toEqual(["term-1"]);
+});
+
+test("D1425: a terminal surface kept from before D1425 gives way to one with a terminal of its own", async ({
+  page,
+}) => {
+  await startThread(page, "legacy terminal");
+  // The panel's tabs as #299 kept them: one `terminal` surface with no terminal of its own.
+  const hash = new URLSearchParams(new URL(page.url()).hash.slice(1));
+  const place = `${hash.get("n")}|t:${hash.get("t")}`;
+  await page.evaluate((place) => {
+    localStorage.setItem(
+      "jhin:right-panel:v1",
+      JSON.stringify({
+        [place]: { surfaces: [{ kind: "terminal" }], activeId: "terminal", open: true },
+      }),
+    );
+  }, place);
+  hash.set("p", "terminal");
+  hash.delete("s");
+  // A fresh load reads them back.
+  await page.goto("about:blank");
+  await page.goto(`${node.ui}#${hash.toString()}`);
+  const right = page.getByRole("complementary", { name: "Right panel" });
+  await expect(right.getByRole("tab")).toHaveCount(1);
+  await expect(right.getByRole("tab", { name: "Terminal 1" })).toBeVisible();
+  const panel = page.locator('[data-terminal-owner="right-panel"]');
+  await expect(
+    panel.getByRole("group", { name: "Terminal 1" }).locator(".xterm-rows"),
+  ).toContainText("$");
+  expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("s")).toBe("term-1");
 });
 
 test("D965: a path in the output opens in the editor, or says why not", async ({ page }) => {

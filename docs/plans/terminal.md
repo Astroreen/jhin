@@ -487,6 +487,42 @@ read again from a snapshot).
   which the terminal writes into itself as T3's "Unable to open path". The
   terminal offers path links only while that command is there.
 
+## Right-panel terminals as surfaces (W40)
+
+W40 of `t3-roadmap.md` (round 5) takes D474's leftover with a number from its
+range, at T3 Code `eb7b35ac`: `rightPanelStore.ts` (the terminal surface and
+its split), `components/PersistentThreadTerminals.tsx`
+(`PersistentThreadTerminalPanel`), `hooks/useRightPanelSurfaceClose.ts`,
+`lib/terminalCloseConfirm.ts` and the terminal handlers of
+`components/ChatView.tsx`.
+
+- **D1425. Right-panel terminals are surfaces of their own, beside the
+  drawer's,** as in T3; they replace D474's one layout that moved between
+  the two places. "Terminal" (T) in the right panel's "Add panel surface"
+  (`t3-parity.md` D1422) starts a new terminal in a surface of its own,
+  `terminal:<id>` (the id of its first terminal), whose tab is named after
+  its active terminal. A surface is one group: splitting it (the panel's
+  buttons, ⌘/Ctrl+D and ⌘/Ctrl+Shift+D while focus is in it) adds a
+  terminal beside or below, up to four; "New terminal" (⌘/Ctrl+N there)
+  starts another surface; closing a terminal (⌘/Ctrl+W there) asks T3's
+  question and closes it, and the last one closes its surface. Closing a
+  surface's tab closes its terminals after T3's question ("Close terminal
+  "…"?" or "Close N terminals?" with their names). Each surface keeps its
+  layout on this device as the drawer keeps its own (`jhin.terminal.ui`,
+  under the thread's key and the surface's), and terminal ids are unique
+  across the drawer and every surface of the thread. The drawer is the
+  drawer's alone: ⌘/Ctrl+J shows or hides it, also while the panel shows
+  terminals, and none of the panel's terminals appears in it. The card's
+  indicator opens the surface of a running terminal that lives in the
+  panel. `terminal.panel.toggle` shows the thread's first terminal
+  surface (a new one when it has none) or closes the panel on one. On a
+  client without `ui.right-panel@1` D474 stays as it was. A `terminal`
+  surface kept on the device from before D1425 (no resource: D1424's one
+  layout) gives way, when it shows, to a surface with a terminal of its
+  own. The kind id `terminal` and the route's `panel=terminal` stay as they
+  were, so no id is renamed and `deprecations.json` needs no entry; only
+  the surface gained a resource.
+
 ## Deferred
 
 - T3's inline terminal-context chip (D473). Done in `t3-parity.md` (D1009,
@@ -514,8 +550,3 @@ read again from a snapshot).
 - A path in a thread's worktree (D965): `editors.open` opens files of a
   project's folder only, so a terminal in a worktree opens none of its own
   files.
-- Right-panel terminals as surfaces of their own, beside the drawer's
-  (D474): Jhin moves one layout between the two places. The tabs came with
-  `t3-parity.md` D1424, where the thread's terminals are one surface
-  `terminal` showing that layout; in T3 each right-panel terminal group is a
-  surface of its own (W40 takes it next).

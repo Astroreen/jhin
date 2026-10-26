@@ -29,7 +29,23 @@ import { useEffect, type ReactNode } from "react";
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { createDismissedDevices } from "./dismissed.ts";
 import type { DevicePanelProps } from "./panel.tsx";
+import { AndroidIcon, AppleIcon } from "./platform-icons.tsx";
+
+/** A device's surface resource (D1427): its host and id, as T3's `device:<host>:<id>`. */
+const deviceResource = (device: { hostId: string; deviceId: string }): string =>
+  `${encodeURIComponent(device.hostId)}:${encodeURIComponent(device.deviceId)}`;
+
+function parseDeviceResource(resource: string): { hostId: string; deviceId: string } | undefined {
+  const [host, device, ...rest] = resource.split(":");
+  if (host === undefined || device === undefined || rest.length > 0) return undefined;
+  try {
+    return { hostId: decodeURIComponent(host), deviceId: decodeURIComponent(device) };
+  } catch {
+    return undefined;
+  }
+}
 
 /** The route's `panel` while the Device panel shows. */
 const DEVICE_PANEL = "devices";
@@ -202,6 +218,12 @@ export const devicePanelPlugin = builtin(
         );
       }
 
+      /** By place: the device surfaces the user closed (D1427), kept on this device. */
+      const dismissed = createDismissedDevices(
+        typeof localStorage === "undefined" ? undefined : localStorage,
+      );
+      const dismissedKeyOf = (node: string, threadId: string) => `${node}|${threadId}`;
+
       /** By thread: the devices already open, so only one an agent opens brings the panel up. */
       const known =
         context.state.get<Map<string, Set<string>>>("open") ?? new Map<string, Set<string>>();
@@ -211,13 +233,27 @@ export const devicePanelPlugin = builtin(
         useEffect(() => {
           if (thread === undefined || state === undefined) return;
           const key = `${target.node}|${thread.id}`;
-          const open = state.sessions
-            .filter((session) => session.threadId === thread.id)
-            .map((session) => session.deviceId);
+          const sessions = state.sessions.filter((session) => session.threadId === thread.id);
+          const open = sessions.map((session) => session.deviceId);
           const seen = known.get(key);
           known.set(key, new Set(open));
           if (seen === undefined || !open.some((id) => !seen.has(id))) return;
           const route = navigation.current();
+          if (rightPanel !== undefined) {
+            // T3's automatic `openDevice`: each new device's own surface, unless the user closed
+            // it; the last one shows.
+            if (route.thread !== thread.id) return;
+            for (const session of sessions) {
+              if (seen.has(session.deviceId)) continue;
+              const resource = deviceResource(session);
+              if (dismissed.has(dismissedKeyOf(target.node, thread.id), resource)) continue;
+              rightPanel.open(
+                { target: { node: target.node }, threadId: thread.id },
+                { kind: DEVICE_PANEL, resource },
+              );
+            }
+            return;
+          }
           if (route.thread === thread.id && route.panel !== DEVICE_PANEL) {
             const { section: _section, ...rest } = route;
             navigation.navigate({ ...rest, panel: DEVICE_PANEL });
@@ -226,13 +262,19 @@ export const devicePanelPlugin = builtin(
         return null;
       }
 
-      /** The right panel's `devices` surface (D1424). */
+      /**
+       * The right panel's `devices` surface: the list, or one device's (D1424, D1427).
+       */
       function DeviceSurface({ place, surface }: RightPanelSurfaceProps) {
         const node = place.target.node;
         const state = useState(node);
         const connection = useExternal(connections, () => connections.get(node));
         if (place.threadId === undefined || place.target.remote !== undefined) return null;
         if (connection === undefined) return null;
+        const threadId = place.threadId;
+        const shows =
+          surface.resource === undefined ? "list" : parseDeviceResource(surface.resource);
+        if (shows === undefined) return null;
         return (
           <PanelShell embedded>
             <DevicePanel
@@ -241,8 +283,16 @@ export const devicePanelPlugin = builtin(
               nodeUrl={connection.url}
               onClose={() => void rightPanel?.close(place, surface.id)}
               onError={onError}
+              // Opened from the list: its surface becomes the device's (T3's openDevice).
+              onOpened={(device) => {
+                const resource = deviceResource({ hostId: device.hostId, deviceId: device.id });
+                dismissed.forget(dismissedKeyOf(node, threadId), resource);
+                rightPanel?.open(place, { kind: DEVICE_PANEL, resource });
+                if (surface.resource === undefined) void rightPanel?.close(place, surface.id);
+              }}
+              shows={shows}
               state={state}
-              threadId={place.threadId}
+              threadId={threadId}
             />
           </PanelShell>
         );
@@ -320,6 +370,40 @@ export const devicePanelPlugin = builtin(
                           "Devices open on nodes this client connects to; this thread is on another node of the mesh.",
                       }
                     : { available: true },
+            },
+            // T3's device tab: the device's name and its platform's mark.
+            useTab: ({ place, surface }) => {
+              const state = useState(place.target.node);
+              const shows =
+                surface.resource === undefined ? undefined : parseDeviceResource(surface.resource);
+              const device =
+                shows === undefined
+                  ? undefined
+                  : state?.devices.find(
+                      (each) => each.hostId === shows.hostId && each.id === shows.deviceId,
+                    );
+              if (shows === undefined) return { title: "Device" };
+              const Icon =
+                device?.platform === "ios"
+                  ? AppleIcon
+                  : device?.platform === "android"
+                    ? AndroidIcon
+                    : SmartphoneIcon;
+              return {
+                title: device?.name ?? shows.deviceId,
+                icon: <Icon className="size-3 shrink-0" />,
+              };
+            },
+            // A closed device keeps running; an agent does not bring its surface back (D1427).
+            release: (place, closing) => {
+              if (place.threadId === undefined) return true;
+              dismissed.dismiss(
+                dismissedKeyOf(place.target.node, place.threadId),
+                closing.flatMap((surface) =>
+                  surface.resource === undefined ? [] : [surface.resource],
+                ),
+              );
+              return true;
             },
             component: DeviceSurface,
           }),
