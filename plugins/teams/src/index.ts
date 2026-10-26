@@ -591,7 +591,8 @@ export default definePlugin({
             pending.delete(address);
             const left: string[] = [];
             const leaveErrors = [];
-            for (const old of [...pending]) {
+            // Deleting the entry being visited is safe while a Set is iterated.
+            for (const old of pending) {
               const moved = await leaveFrom(old, roster, member, invocation);
               if ("left" in moved) {
                 pending.delete(old);
