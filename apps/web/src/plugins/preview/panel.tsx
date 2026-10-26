@@ -78,7 +78,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { profileName, type BrowserProfile } from "./profiles.tsx";
+import { profileName, type BrowserProfile } from "./profile-settings.ts";
 import { NEW_TAB, tabTitle } from "./tab-title.ts";
 import { BrowserSurface } from "./surface.tsx";
 import { NativeSurface } from "./native-surface.tsx";

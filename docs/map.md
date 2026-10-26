@@ -237,6 +237,11 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 - `apps/web/src/lib/pierre-icons.ts` and `pierre-entry-icon.tsx` — T3's file
   icons: `T3_PIERRE_ICONS` for a `@pierre/trees` tree and `PierreEntryIcon`
   for one file (`plans/source-control.md#D923`); use them wherever a file is shown.
+- `apps/web/src/lib/lazy-chunk.tsx` — `lazyChunk`, a component loaded as a
+  chunk of its own with its loading and "Try again" views, and its `preload`
+  (`plans/t3-parity.md#D440`); `lib/idle-prefetch.ts`'s `prefetchWhenIdle`
+  queues a `preload` for when the page is idle (`plans/loading.md` D1596,
+  D1615). Anything off the first screen loads through them (D1595).
 - `patches/` — pnpm patches of dependencies (`patchedDependencies` in
   `pnpm-workspace.yaml`): T3's `@pierre/diffs` patch, find in the diff
   (`plans/source-control.md#D924`).

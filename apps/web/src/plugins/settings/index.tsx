@@ -50,6 +50,7 @@ import {
 
 import { builtin } from "../../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { prefetchWhenIdle } from "../../lib/idle-prefetch.ts";
 import { useExternal } from "../../lib/hooks.ts";
 
 export interface SettingsServices {
@@ -163,6 +164,8 @@ export const settingsPlugin = builtin(
         dialogs,
       };
       const sections = createSections();
+      // The section the page opens on is fetched while the page is idle (D1596).
+      context.subscriptions.add(prefetchWhenIdle(GeneralSection.preload));
 
       const open = (section?: string) => {
         const { section: _section, ...route } = navigation.current();
