@@ -207,6 +207,11 @@ loading one.
   epoch of the copy the connected node reads it from.
 - `permessage-deflate` with context takeover, if P1's numbers show a large
   gain worth the memory.
+- A smaller `maxPayload` for `jhin.transport-ws` (today `ws`'s 100 MiB,
+  counted after inflation), and fewer bytes held per connection
+  (`memLevel`, `serverMaxWindowBits`): P1 measured about 100 KiB per
+  connection that has received one compressed message. A lower limit needs
+  the largest legitimate request first (inline images of `threads.send`).
 - `zstd` content encoding.
 - Compressing the responses of other plugins' HTTP routes.
 - A service worker that serves the app shell offline.
