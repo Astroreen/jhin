@@ -8,6 +8,7 @@ import { page } from "vite-plus/test/browser";
 import { DiffSettings } from "../src/lib/settings.ts";
 import { useAgentSkills } from "../src/plugins/chat/agent-skills.ts";
 import { FilePanel } from "../src/plugins/chat/file-panel.tsx";
+import { createFileReveals } from "../src/plugins/chat/file-panel-route.ts";
 import { ChatContext, type ChatServices } from "../src/plugins/chat/services.ts";
 
 const target: NodeTarget = { node: "ws://a/rpc" };
@@ -20,10 +21,14 @@ const catalog = {
 /** A node whose answers the test gives: each call waits until the test settles it. */
 function fakeNode() {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
-  const pending: { resolve(value: unknown): void; reject(error: unknown): void }[] = [];
+  const pending: {
+    method: string;
+    resolve(value: unknown): void;
+    reject(error: unknown): void;
+  }[] = [];
   const call = (_target: NodeTarget, method: string, params: Record<string, unknown>) => {
     calls.push({ method, params });
-    return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+    return new Promise((resolve, reject) => pending.push({ method, resolve, reject }));
   };
   return {
     calls,
@@ -34,6 +39,12 @@ function fakeNode() {
     },
     /** Settles the waiting call at `index` (0 the oldest), out of order. */
     async answerAt(index: number, value: unknown) {
+      const [call] = pending.splice(index, 1);
+      await act(async () => call!.resolve(value));
+    },
+    /** Settles the oldest waiting call to `method`. */
+    async answerTo(method: string, value: unknown) {
+      const index = pending.findIndex((waiting) => waiting.method === method);
       const [call] = pending.splice(index, 1);
       await act(async () => call!.resolve(value));
     },
@@ -53,6 +64,7 @@ function services(node: ReturnType<typeof fakeNode>, nodeCatalog: NodeCatalog | 
   return {
     context,
     settings: { values: () => ({}), patch: () => undefined, reset: () => undefined },
+    fileReveals: createFileReveals(),
     threads: {
       call: node.call,
       catalog: () => nodeCatalog,
@@ -203,6 +215,52 @@ describe("the file panel (D1342)", () => {
       .element(page.getByRole("alert"))
       .toHaveTextContent("This file's project is not available.");
     expect(node.calls).toEqual([]);
+  });
+
+  it("opens a project's file in the editor last chosen, or one chosen from its menu (D1429)", async () => {
+    localStorage.removeItem("jhin.lastEditor");
+    const node = fakeNode();
+    await mount(
+      <FilePanel
+        embedded
+        onClose={() => undefined}
+        path="src/app.ts"
+        projectId="p1"
+        target={target}
+        threadId={undefined}
+      />,
+      services(node, catalog),
+    );
+    await node.answerTo("projects.read-file", {
+      path: "src/app.ts",
+      sizeBytes: 26,
+      data: encode("export const port = 8080;\n"),
+      truncated: false,
+    });
+    await node.answerTo("editors.list", {
+      editors: [
+        { id: "vscode", label: "VS Code" },
+        { id: "zed", label: "Zed" },
+        { id: "file-manager", label: "Files" },
+      ],
+    });
+    const openIn = page.getByRole("group", { name: "Open in editor" });
+    await openIn.getByRole("button", { name: "Choose editor" }).click();
+    const zed = page.getByRole("menuitem", { name: "Open in Zed" });
+    await expect.element(zed).toBeVisible();
+    // The node's file manager is not an editor.
+    await expect
+      .element(page.getByRole("menuitem", { name: "Open in Files" }))
+      .not.toBeInTheDocument();
+    await zed.click();
+    await openIn.getByRole("button", { name: "Open file in preferred editor" }).click();
+    const opened = node.calls.filter((call) => call.method === "editors.open");
+    expect(opened.map((call) => call.params)).toEqual([
+      { projectId: "p1", path: "src/app.ts", editor: "zed" },
+      { projectId: "p1", path: "src/app.ts", editor: "zed" },
+    ]);
+    expect(localStorage.getItem("jhin.lastEditor")).toBe("zed");
+    localStorage.removeItem("jhin.lastEditor");
   });
 });
 

@@ -81,6 +81,7 @@ import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { usageLimitFailureLabel } from "../../lib/usage-limits.ts";
 import {
   type MessageContextChips,
+  AgentFileLinksContext,
   MessageContextChipsContext,
   type MessageFileChips,
 } from "./message-context.ts";
@@ -373,6 +374,15 @@ function AssistantMessage(props: {
 }) {
   const { item, streaming } = props;
   const where = useContext(MessageActionsContext);
+  const files = useContext(FileChipsContext);
+  // An agent's links to the thread's files are T3's file chips (D1431).
+  const fileLinks = useMemo(
+    () =>
+      files?.previewFile === undefined || files.workspaceRoot === undefined
+        ? undefined
+        : { workspaceRoot: files.workspaceRoot, open: files.previewFile },
+    [files],
+  );
   return (
     <div className={cn("group/assistant relative min-w-0 px-1 py-0.5", props.paddingClass)}>
       <article
@@ -382,10 +392,12 @@ function AssistantMessage(props: {
         data-assistant-citation-source={where === undefined ? undefined : item.itemId}
         data-assistant-citation-thread={where?.threadId}
       >
-        <MessageText
-          streaming={streaming}
-          text={item.text || (streaming ? "" : "(empty response)")}
-        />
+        <AgentFileLinksContext value={fileLinks}>
+          <MessageText
+            streaming={streaming}
+            text={item.text || (streaming ? "" : "(empty response)")}
+          />
+        </AgentFileLinksContext>
       </article>
       {props.showMeta ? (
         <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100">

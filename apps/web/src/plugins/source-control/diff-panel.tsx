@@ -58,7 +58,7 @@ import { useCatalog, useCommands, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
 import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
-import { DiffComment, DiffCommentAnnotation } from "./diff/comment-annotation.tsx";
+import { DiffComment, DiffCommentAnnotation } from "../../lib/comment-annotation.tsx";
 import {
   annotationAnchor,
   restoreReviewCommentRange,
@@ -489,8 +489,21 @@ export function createDiffPanel(services: SourceControlServices) {
      */
     const openDiffFile = (filePath: string) => {
       const path = workspacePath(filePath);
+      if (path === null) return false;
+      // In the right panel the file opens beside the diff, in T3's file panel (D1433).
+      const panel = services.rightPanel;
+      if (props.embedded && panel !== undefined) {
+        panel.open(
+          {
+            target,
+            ...(threadId === undefined ? { projectId } : { threadId }),
+          },
+          { kind: "file", resource: path },
+        );
+        return true;
+      }
       const editor = preferredEditor(editors);
-      if (path === null || editor === undefined) return false;
+      if (editor === undefined) return false;
       void services.editors.open(target, projectId, path, editor);
       return true;
     };

@@ -34,6 +34,8 @@ import {
   Kbd,
   Menu,
   MenuItem,
+  Sheet,
+  SheetPopup,
   MenuPopup,
   MenuSeparator,
   MenuShortcut,
@@ -46,6 +48,7 @@ import {
   TooltipPopup,
   TooltipTrigger,
   cn,
+  useMediaQuery,
 } from "@jhin/ui";
 import {
   ChevronDownIcon,
@@ -93,11 +96,51 @@ function readWidth(): number {
   return Number.isFinite(stored) && stored >= MIN_WIDTH ? stored : DEFAULT_WIDTH;
 }
 
+/** T3's `RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY`: narrower than this, the panel is a sheet. */
+const SHEET_MEDIA_QUERY = "(max-width: 980px)";
+
+/**
+ * T3's RightPanelSheet (D1434): on a narrow window the panel slides over the chat from the right,
+ * and closing the sheet closes the panel.
+ */
+function PanelSheet(props: { children: ReactNode; onClose: () => void }) {
+  return (
+    <Sheet
+      onOpenChange={(open) => {
+        if (!open) props.onClose();
+      }}
+      open
+    >
+      <SheetPopup
+        className="w-[min(42vw,28rem)] min-w-80 max-w-[28rem] max-[760px]:w-[min(88vw,24rem)] max-[760px]:min-w-0"
+        showCloseButton={false}
+        side="right"
+      >
+        <div
+          aria-label="Right panel"
+          className="flex h-full min-h-0 min-w-0 flex-col bg-background"
+          data-preview-panel-mode="sheet"
+          data-right-panel=""
+          role="complementary"
+        >
+          {props.children}
+        </div>
+      </SheetPopup>
+    </Sheet>
+  );
+}
+
 /** T3's PreviewPanelShell: inline right of the chat with its resize handle, or over it. */
-function PanelShell(props: { children: ReactNode; maximized: boolean }) {
+function PanelShell(props: {
+  children: ReactNode;
+  maximized: boolean;
+  sheet: boolean;
+  onClose: () => void;
+}) {
   const [width, setWidth] = useState(readWidth);
   const drag = useRef<{ startX: number; startWidth: number } | undefined>(undefined);
   const shown = Math.min(width, maxWidth());
+  if (props.sheet) return <PanelSheet onClose={props.onClose}>{props.children}</PanelSheet>;
   return (
     <aside
       aria-label="Right panel"
@@ -581,6 +624,8 @@ export interface RightPanelViewProps {
   onCloseAll(): void;
   onMove(id: string, index: number): void;
   onToggleMaximized(): void;
+  /** Closes the panel (the sheet's own closing, D1434). */
+  onClosePanel(): void;
   onError(kind: string, error: unknown): void;
 }
 
@@ -684,10 +729,12 @@ export function RightPanelView(props: RightPanelViewProps) {
   };
 
   const maximizeLabel = state.maximized ? "Restore panel size" : "Maximize panel";
+  // T3's sheet on a narrow window, which cannot be maximized (`canMaximizeRightPanel`).
+  const sheet = useMediaQuery(SHEET_MEDIA_QUERY);
   const ActiveKind = active === undefined ? undefined : byId.get(active.kind);
   const Body = ActiveKind?.component as ComponentType<RightPanelSurfaceProps> | undefined;
   return (
-    <PanelShell maximized={state.maximized}>
+    <PanelShell maximized={state.maximized && !sheet} onClose={props.onClosePanel} sheet={sheet}>
       {probes}
       <div
         className="flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pr-2 pl-2"
@@ -848,27 +895,29 @@ export function RightPanelView(props: RightPanelViewProps) {
             </Button>
           </div>
         ) : null}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                aria-label={maximizeLabel}
-                className="shrink-0"
-                onPressedChange={props.onToggleMaximized}
-                pressed={state.maximized}
-                size="sm"
-                variant="ghost"
-              />
-            }
-          >
-            {state.maximized ? (
-              <Minimize2Icon className="size-4" />
-            ) : (
-              <Maximize2Icon className="size-4" />
-            )}
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">{maximizeLabel}</TooltipPopup>
-        </Tooltip>
+        {sheet ? null : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  aria-label={maximizeLabel}
+                  className="shrink-0"
+                  onPressedChange={props.onToggleMaximized}
+                  pressed={state.maximized}
+                  size="sm"
+                  variant="ghost"
+                />
+              }
+            >
+              {state.maximized ? (
+                <Minimize2Icon className="size-4" />
+              ) : (
+                <Maximize2Icon className="size-4" />
+              )}
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">{maximizeLabel}</TooltipPopup>
+          </Tooltip>
+        )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col" data-right-panel-surface-content="">
         {active === undefined || Body === undefined ? (

@@ -39,6 +39,14 @@ export function useAttachmentLoader(target: NodeTarget): AttachmentLoader {
 export const AttachmentLoaderContext = createContext<AttachmentLoader | undefined>(undefined);
 
 /**
+ * Opens a sent message's file in the right panel (t3-parity.md D1435); absent without one, where
+ * the file opens in its dialog.
+ */
+export const AttachmentPanelContext = createContext<
+  ((attachment: StoredAttachment) => void) | undefined
+>(undefined);
+
+/**
  * An attachment's object URL once loaded, or undefined while it loads, when it
  * cannot, or until `enabled` (a video waits until it is in view).
  */

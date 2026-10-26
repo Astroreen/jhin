@@ -137,6 +137,7 @@ export const sourceControlPlugin = builtin(
         drafts: context.services.tryGet<ChatDrafts>(CHAT_DRAFTS_CAPABILITY),
         timestampFormat: () => readSection(context, CHAT_SECTION, ChatSettings).timestampFormat,
         shortcut: () => keybindings?.labelFor("diff.toggle"),
+        rightPanel: context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY),
       };
       context.subscriptions.add(scopes.register(turnScopeProvider(services)));
 

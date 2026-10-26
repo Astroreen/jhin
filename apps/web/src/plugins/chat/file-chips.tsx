@@ -29,15 +29,17 @@ export function FileMentionChip(
   props: {
     readonly path: string;
     readonly onPreview?: ((path: string) => void) | undefined;
+    /** In place of the basename: T3's `fileLinkLabel` of an agent's link ("a.ts · L12"). */
+    readonly label?: string;
   } & Omit<ComponentProps<typeof ContextChip>, "kind" | "children">,
 ) {
-  const { path, onPreview, ...rest } = props;
+  const { path, onPreview, label, ...rest } = props;
   const theme = useResolvedTheme();
   const folder = /[\\/]$/.test(path);
   const content = (
     <>
       <PierreEntryIcon kind={folder ? "directory" : "file"} pathValue={path} theme={theme} />
-      <ContextChipLabel>{basename(path)}</ContextChipLabel>
+      <ContextChipLabel>{label ?? basename(path)}</ContextChipLabel>
     </>
   );
   const preview = folder ? undefined : onPreview;

@@ -46,7 +46,7 @@ import {
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { FileIcon, MessageSquareDashedIcon, PlusIcon } from "lucide-react";
+import { FileIcon, FilesIcon, MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
@@ -80,8 +80,18 @@ import {
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createDetailsVisibility, registerThreadDetails } from "./thread-details.tsx";
-import type { FilePanelProps } from "./file-panel.tsx";
-import { FILE_PANEL } from "./file-panel-route.ts";
+import type {
+  AttachmentPanel as AttachmentPanelComponent,
+  FilePanelProps,
+  FilesPanel as FilesPanelComponent,
+} from "./file-panel.tsx";
+import {
+  ATTACHMENT_PANEL,
+  createFileReveals,
+  FILE_PANEL,
+  FILES_PANEL,
+  parseAttachmentResource,
+} from "./file-panel-route.ts";
 import { basename } from "./file-chips.tsx";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
@@ -284,6 +294,26 @@ const Transcript = lazyChunk(
   },
 );
 
+/** T3's file explorer as a surface (D1428), in the file panel's chunk. */
+const FilesPanel = lazyChunk<Parameters<typeof FilesPanelComponent>[0]>(
+  () => import("./file-panel.tsx").then((module) => module.FilesPanel),
+  {
+    loading: () => null,
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load the files.</ChunkFailed>,
+  },
+);
+
+/** A message's file in the right panel (D1435), in the file panel's chunk. */
+const AttachmentPanel = lazyChunk<Parameters<typeof AttachmentPanelComponent>[0]>(
+  () => import("./file-panel.tsx").then((module) => module.AttachmentPanel),
+  {
+    loading: () => null,
+    failed: (_props, retry) => (
+      <ChunkFailed retry={retry}>Couldn't load the file preview.</ChunkFailed>
+    ),
+  },
+);
+
 /** A mentioned file beside the thread (D1342), a chunk of its own loaded when it first opens. */
 const FilePanel = lazyChunk<FilePanelProps>(
   () => import("./file-panel.tsx").then((module) => module.FilePanel),
@@ -365,6 +395,8 @@ export const chatPlugin = builtin(
       const attachmentUrls = createAttachmentUrls();
       context.subscriptions.add({ dispose: () => attachmentUrls.dispose() });
       const services: ChatServices = {
+        fileReveals: createFileReveals(),
+        rightPanel: context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY),
         context,
         connections,
         navigation,
@@ -929,7 +961,75 @@ export const chatPlugin = builtin(
                     embedded
                     key={`${place.target.node}|${place.target.remote ?? ""}|${place.threadId ?? place.projectId ?? ""}`}
                     onClose={() => void rightPanel.close(place, surface.id)}
+                    onOpenFile={(path) =>
+                      rightPanel.open(place, { kind: FILE_PANEL, resource: path })
+                    }
                     path={surface.resource}
+                    projectId={place.threadId === undefined ? place.projectId : undefined}
+                    target={place.target}
+                    threadId={place.threadId}
+                  />
+                </ChatContext.Provider>
+              );
+            },
+          }),
+        );
+      }
+      if (rightPanel !== undefined) {
+        // A message's file, T3's `attachment:<id>` surface (D1435): offered by no entry.
+        context.subscriptions.add(
+          rightPanel.register({
+            id: ATTACHMENT_PANEL,
+            title: "Attachment",
+            icon: FileIcon,
+            useTab: ({ surface }) => {
+              const theme = useResolvedTheme();
+              const name = parseAttachmentResource(surface.resource ?? "")?.name ?? "Attachment";
+              return {
+                title: name,
+                icon: (
+                  <PierreEntryIcon className="size-3" kind="file" pathValue={name} theme={theme} />
+                ),
+              };
+            },
+            component: function AttachmentSurface({ place, surface }: RightPanelSurfaceProps) {
+              const attachment = parseAttachmentResource(surface.resource ?? "");
+              if (attachment === undefined) return null;
+              return (
+                <ChatContext.Provider value={services}>
+                  <AttachmentPanel attachment={attachment} target={place.target} />
+                </ChatContext.Provider>
+              );
+            },
+          }),
+        );
+        // T3's "Files" (F): the explorer, which a file opened from it takes the place of (D1428).
+        context.subscriptions.add(
+          rightPanel.register({
+            id: FILES_PANEL,
+            title: "Files",
+            icon: FilesIcon,
+            offer: {
+              label: "Files",
+              shortcut: "F",
+              order: 30,
+              useAvailability: (place) =>
+                place.threadId === undefined && place.projectId === undefined
+                  ? {
+                      available: false,
+                      reason: "Files are only available when a project is open.",
+                      hint: "Available when a project is open.",
+                    }
+                  : { available: true },
+            },
+            component: function FilesSurface({ place, surface }: RightPanelSurfaceProps) {
+              return (
+                <ChatContext.Provider value={services}>
+                  <FilesPanel
+                    onOpenFile={(path) => {
+                      rightPanel.open(place, { kind: FILE_PANEL, resource: path });
+                      void rightPanel.close(place, surface.id);
+                    }}
                     projectId={place.threadId === undefined ? place.projectId : undefined}
                     target={place.target}
                     threadId={place.threadId}

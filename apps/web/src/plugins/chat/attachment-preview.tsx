@@ -21,6 +21,7 @@ import {
   cn,
 } from "@jhin/ui";
 import {
+  Table2Icon,
   CheckIcon,
   ChevronRightIcon,
   Code2Icon,
@@ -34,6 +35,8 @@ import {
   XIcon,
 } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+
+import { DelimitedTablePreview, filePreviewDelimiter } from "./delimited-table.tsx";
 
 import { formatAttachmentSize } from "../../lib/attachment-files.ts";
 import {
@@ -86,7 +89,7 @@ function PlainSource(props: { name: string; text: string; wordWrap: boolean }) {
 const FILE_SURFACE_SUBHEADER_CLASS =
   "flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3";
 
-function FileSurfaceAction(props: {
+export function FileSurfaceAction(props: {
   readonly label: string;
   readonly pressed?: boolean;
   readonly disabled?: boolean;
@@ -179,8 +182,9 @@ export function FileSurfaceFailure(props: {
   );
 }
 
-function renderedToggleLabel(mode: "markdown" | "html", rendered: boolean): string {
+function renderedToggleLabel(mode: "markdown" | "html" | "table", rendered: boolean): string {
   if (mode === "markdown") return rendered ? "Show markdown source" : "Show rendered markdown";
+  if (mode === "table") return rendered ? "Show source" : "Show table";
   return rendered ? "Show HTML source" : "Show rendered page";
 }
 
@@ -285,11 +289,24 @@ export function AttachmentFilePreview(
     readonly trail?: readonly string[];
     readonly onRemove?: () => void;
     readonly onClose?: () => void;
+    /** More actions of the subheader, before Close (the file panel's, t3-parity.md D1428). */
+    readonly actions?: ReactNode;
+    /** Beside the preview, right of it: T3's file explorer in the file panel (D1428). */
+    readonly aside?: ReactNode;
+    /** A line of its text to show (D1430). */
+    readonly reveal?: { readonly line: number; readonly id: number } | undefined;
+    /** In place of the read-only source of a whole text: the file panel's editor (D1438). */
+    readonly renderSource?:
+      | ((source: { text: string; wordWrap: boolean }) => ReactNode)
+      | undefined;
   },
 ) {
   const chat = useChat();
   const kind = filePreviewKind(props);
-  const renderedMode = kind === "markdown" ? "markdown" : kind === "html" ? "html" : null;
+  // T3's table of a CSV or TSV file, its source a toggle away (D1436).
+  const delimiter = kind === "text" ? filePreviewDelimiter(props) : null;
+  const renderedMode =
+    kind === "markdown" ? "markdown" : kind === "html" ? "html" : delimiter ? "table" : null;
   const [rendered, setRendered] = useState(true);
   const [revision, setRevision] = useState(0);
   const [content, setContent] = useState<{ text: string; truncated: boolean } | null>(null);
@@ -332,7 +349,11 @@ export function AttachmentFilePreview(
   const [mediaError, setMediaError] = useState<string | null>(null);
   const shownFailure = failure ?? mediaError;
   const showsRawText =
-    shownFailure === null && needsText && content !== null && !(kind === "markdown" && rendered);
+    shownFailure === null &&
+    needsText &&
+    content !== null &&
+    !(kind === "markdown" && rendered) &&
+    !(delimiter !== null && rendered);
   const canSave =
     props.file !== undefined || (props.stored !== undefined && props.loader !== undefined);
 
@@ -372,12 +393,21 @@ export function AttachmentFilePreview(
   ) : needsText ? (
     content === null ? (
       <FileSurfaceLoading />
+    ) : delimiter !== null && rendered ? (
+      <DelimitedTablePreview delimiter={delimiter} name={props.name} text={content.text} />
     ) : kind === "markdown" && rendered ? (
       <ScrollArea className="min-h-0 flex-1">
         <MessageText className="mx-auto max-w-4xl px-6 py-5" text={content.text} />
       </ScrollArea>
+    ) : props.renderSource !== undefined && !content.truncated ? (
+      props.renderSource({ text: content.text, wordWrap })
     ) : (
-      <SourcePreview name={props.name} text={content.text} wordWrap={wordWrap} />
+      <SourcePreview
+        name={props.name}
+        reveal={props.reveal}
+        text={content.text}
+        wordWrap={wordWrap}
+      />
     )
   ) : kind === "unsupported" ? (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center">
@@ -461,7 +491,13 @@ export function AttachmentFilePreview(
             onPress={() => setRendered((value) => !value)}
             pressed={rendered}
           >
-            {rendered ? <Code2Icon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
+            {rendered ? (
+              <Code2Icon className="size-3.5" />
+            ) : renderedMode === "table" ? (
+              <Table2Icon className="size-3.5" />
+            ) : (
+              <EyeIcon className="size-3.5" />
+            )}
           </FileSurfaceAction>
         ) : null}
         {showsRawText ? (
@@ -490,6 +526,7 @@ export function AttachmentFilePreview(
             <DownloadIcon className="size-3.5" />
           </FileSurfaceAction>
         ) : null}
+        {props.actions}
         {props.onRemove ? (
           <FileSurfaceAction label="Remove from draft" onPress={props.onRemove}>
             <Trash2Icon className="size-3.5" />
@@ -508,7 +545,14 @@ export function AttachmentFilePreview(
           the file to read it in full.
         </FileSurfaceNotice>
       ) : null}
-      {body}
+      {props.aside === undefined ? (
+        body
+      ) : (
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{body}</div>
+          {props.aside}
+        </div>
+      )}
     </div>
   );
 }

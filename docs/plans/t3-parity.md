@@ -2411,6 +2411,102 @@ panel and devices are in `terminal.md`, `source-control.md` and
   each `app.panel` contribution of theirs shows its panel as before only on
   a client without `ui.right-panel@1`.
 
+- **D1428. T3's file explorer, as a surface and beside a file.** "Files"
+  (F) in "Add panel surface" opens the surface `files`, T3's
+  `FileBrowserPanel` on `@pierre/trees`: the project's folder, or the
+  thread's worktree, a folder read when it opens (four at once, T3's
+  `useDirectoryEntries`) through the new `projects.list-entries` (a
+  folder's own files and folders, never inside `.git` nor out of the
+  project through a link, the ones git ignores marked and shown dimmed as
+  T3 does), "Refresh workspace files", "Search files" (the matches of
+  `projects.search-entries` shown in the tree, T3's "No matching files." and
+  "More matches available. Refine your search.") and "Expand all folders" /
+  "Collapse all folders". Picking a file opens it as a surface
+  `file:<path>` in the explorer's place (T3's `openFile` replaces the
+  standalone explorer); a file's subheader then has T3's "Show file
+  explorer" / "Hide file explorer", the explorer beside it with the file
+  selected and its folders opened, open by default and kept on this device
+  (`jhin:file-explorer-open`, T3's `fileExplorerOpen`). Several files are
+  several tabs (D1424). T3's tree context menu ("Copy mention", "Add to
+  chat", "Open with") and dragging a row into the composer wait
+  (Deferred).
+- **D1429. "Open in" an editor from the file panel,** T3's `OpenInPicker`
+  there: "Open file in preferred editor" (the editor last chosen on this
+  device, `jhin.lastEditor`, as the diff panel's D286) and "Choose editor",
+  a menu of the node's editors (`editors.list`), through `editors.open`. A
+  file of a thread's worktree has no such action yet: editors open a
+  project folder's files only (`terminal.md`'s Deferred, D965).
+
+- **D1430. A link's line is revealed,** as T3's `revealLine`: a file opened
+  at a line (an agent's `src/a.ts:12`, `src/a.ts#L12` or `a.ts:12:3`) shows
+  its source with that line centred and tinted (T3's `useFileLineReveal`,
+  `data-file-link-reveal` and its tint), the line past a file's end being
+  its last (T3's `clampFileLine`). The request goes beside the route, kept
+  for the page by the chat plugin, so opening the same line again shows it
+  again; rendered markdown and media show from their top.
+- **D1431. File chips in an agent's message,** as T3's `ChatMarkdown`: a link
+  (`[a.ts](src/a.ts:12)`, a `file:` URL, an absolute path) or inline code
+  (`` `src/a.ts` ``, T3's `inlineCodeFilePathCandidate`) that names a file
+  inside the thread's folder (its worktree, else its project's), read with
+  T3's `markdownLinks.ts` and `fileLinks.ts` (`lib/file-links.ts`), is T3's
+  file chip: the file's icon and name, "· L12" with a line, the path in its
+  tooltip, and pressed it opens the file in the right panel at that line.
+  A path outside the folder stays a link or code. T3's chip menu (Copy
+  relative path, Copy full path, Open in editor, ⌘-click to the editor) and
+  its parent folder suffix for names that collide wait (Deferred).
+
+- **D1434. The right panel is a sheet on a narrow window,** as T3's
+  `RightPanelSheet` below its `RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY`
+  (980 px wide): the same strip and surfaces slide over the chat from the
+  right (`min(42vw, 28rem)`, `min(88vw, 24rem)` under 760 px), closing the
+  sheet closes the panel, and it cannot be maximized. It is also the diff's
+  pop-out mode of `source-control.md`'s Deferred (D1433).
+
+- **D1435. A message's file opens in the right panel,** as T3's
+  `openAttachment`, where D854 opened a dialog: pressing a sent message's
+  file opens it as a surface `attachment:<id>` (its size, type and name in
+  the resource, so a reload shows it again), with D854's preview and
+  "Attachment" as its breadcrumb; its tab is its name and icon. A
+  composer's file keeps D854's dialog, as in T3, and so does a client
+  without `ui.right-panel@1`.
+- **D1436. T3's table of a CSV or TSV file:** a file named `.csv` or
+  `.tsv`, or typed `text/csv` or `text/tab-separated-values` (T3's
+  `filePreviewDelimiter`), shows as a table, its first row the header, at
+  most 100 rows and 30 columns of 2000 characters with T3's notice "Table
+  limited to the first 100 rows and 30 columns. Switch to source for the
+  rest."; "Show source" / "Show table" switch, as T3's
+  `parseDelimitedPreview` and `DelimitedTablePreview` do. It is so in the
+  file panel, a message's file and the composer's dialog alike.
+- **D1437. A file's text shows through T3's virtualizer,** `@pierre/diffs`'
+  `Virtualizer`, so only the rows in view are in the page, the first MiB of
+  a larger file as before (D1003's notice); a revealed line far down
+  (D1430) is scrolled to by where the virtualizer puts it.
+
+- **D1438. A project's file is edited and saved in place,** as T3's
+  `EditableFileSurface`: in the right panel a file's whole text (not one cut
+  at its first MiB) opens in Pierre's editor (`@pierre/diffs/edit`, in T3's
+  virtualizer), and each change is written half a second after the last
+  one, one write at a time and the newest winning, what is left written when
+  the file closes (T3's `FileSaveCoordinator`), through `projects.write-file`,
+  which now writes into a thread's worktree too (`threadId`). A failed
+  write says so ("Unable to save file", also for the write on closing) and
+  the next change writes again; like T3's, nothing retries by itself. The
+  editor keeps the text it opened with: a change made on disk meanwhile (an
+  agent's edit) shows when the file opens again, and a change typed before
+  that writes over it, until T3's merge of such a change lands (below).
+  Rendered markdown and HTML stay previews, as T3's (it ticks markdown's
+  task boxes, which waits); T3's pending dot on the tab, its "Read-only
+  connection" notice and its merge of a change made on disk meanwhile wait
+  (Deferred).
+- **D1439. Comments on a file's own contents,** T3's
+  `buildFileReviewComment`: in the editor, the gutter's "+" or a selection of
+  lines opens D285's comment form under them; "Comment" puts a
+  `review-comment` record into the open thread's composer, its section
+  "File comment" (`file:<path>`), its range `L3` or `L3 to L5` and its "diff"
+  the lines themselves, as D1284's chips show it, and the comment stays
+  under its lines, following them as the text is edited; "Delete comment"
+  takes it out of the composer again (D1286).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -2423,8 +2519,7 @@ panel and devices are in `terminal.md`, `source-control.md` and
 ## Deferred
 
 - The right panel (D1421–D1424): T3's reopening of a closed view
-  (`view.reopenClosed`, ⌘/Ctrl+Shift+T), its sheet over the chat on a narrow
-  window, its open and close animation, a browser tab's audio and mute, a
+  (`view.reopenClosed`, ⌘/Ctrl+Shift+T), its open and close animation, a browser tab's audio and mute, a
   device tab's renaming, and forgetting a deleted thread's tabs (the 200
   places changed last are kept).
 - T3's Usage page beyond its "Limits" view (D1308): the token and cost
@@ -2447,9 +2542,12 @@ panel and devices are in `terminal.md`, `source-control.md` and
     editor opening at the quote's place in the message right after "Cite",
     "Save and send" (Mod+Enter), the quote highlighted after its thread
     opens from another one, and the legacy text for a node from before D1010;
-  - T3's file panel beyond D1342 and D1424 (several files as tabs): editing
-    and saving, the file explorer, "Open in" an editor, a link's line
-    revealed, and file chips in an agent's message;
+  - T3's file panel beyond D1342 and D1428–D1439: the
+    explorer's context menu and dragging its rows into the composer, "Open
+    in" for a file of a thread's worktree, an agent's file chip's menu,
+    ⌘-click and parent folder suffix, the editor's pending dot on its tab,
+    its "Read-only connection" notice, a change made on disk while it is
+    edited, and ticking a rendered markdown's task boxes;
   - a sent message's skills (D1341) are asked once per thread view, on any
     `$word` (a `$HOME` too), and not asked again when the agent's skills
     change while the thread shows (T3 keeps its providers' skills current);
@@ -2463,8 +2561,7 @@ panel and devices are in `terminal.md`, `source-control.md` and
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's captured window context on screenshots (D1013: with
-  the desktop SnapShot, `desktop.md` D510); T3's right-hand file panel for a message's file (D854 opens a dialog), its table
-  preview of CSV and TSV, and its virtualized preview of text past 1 MiB; a bound on the page's cache
+  the desktop SnapShot, `desktop.md` D510); a bound on the page's cache
   of attachment bytes (a video is read whole to show its first frame, D855). A live Claude Code session starts again
   when a turn's attachments add their folder to `additionalDirectories`.
 - Thread history (W2, D220–D228): Claude Code rewinds and forks its own
