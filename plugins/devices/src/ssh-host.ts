@@ -471,7 +471,14 @@ export function createSshHost(options: SshHostOptions) {
         }
       }
       if (ready !== undefined) return ready;
-      const probe = await probeSshHost(config, owner, options);
+      let probe: SshProbe;
+      try {
+        probe = await probeSshHost(config, owner, options);
+      } catch (error) {
+        // Unreachable, or no Node.js or npm there: the host shows why, and Retry (D1497).
+        status({ status: "failed", detail: (error as Error).message });
+        throw error;
+      }
       summary = { ...summary, platforms: probe.platforms };
       status(
         probe.hubInstalled

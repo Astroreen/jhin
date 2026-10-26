@@ -174,7 +174,12 @@ describe("device hosts over SSH (D1494–D1499)", { timeout: 60_000 }, () => {
     await remote.reconcile();
     await remote.refresh("mac");
     expect(remote.devices()).toEqual([]);
-    expect(remote.statuses().mac).toBeUndefined();
+    // It says why, for the settings' details and Retry (D1497, D1500).
+    expect(remote.statuses().mac).toMatchObject({ status: "failed" });
+    expect(remote.statuses().mac?.detail).toContain("Connection refused");
+    // A failed host is not tried again by every list, only when asked.
+    await remote.refresh();
+    expect(remote.statuses().mac?.status).toBe("failed");
     await expect(probeSshHost(MAC, OWNER, { ssh: tools.ssh })).rejects.toThrow(
       "Connection refused",
     );

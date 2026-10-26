@@ -284,7 +284,14 @@ export default definePlugin({
         if (allowed !== agentsAllowed) {
           agentsAllowed = allowed;
           if (allowed) hub.warmAgent();
-          else
+          else {
+            void remote
+              .stopAgents()
+              .catch((error: unknown) =>
+                context.log.warn("device hosts' agent tools not stopped", { error: String(error) }),
+              );
+          }
+          if (!allowed)
             void hub
               .stopAgent()
               .then(publish)

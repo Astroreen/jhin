@@ -232,10 +232,23 @@ export function createRemoteHosts(options: RemoteHostsOptions) {
       const waited: Promise<void>[] = [];
       for (const host of hosts.values()) {
         if (only !== undefined && host.id !== only) continue;
+        // A failed host is tried again only when asked (T3's `retryHostId`, D1497).
+        if (
+          only === undefined &&
+          host.current() === undefined &&
+          statuses.get(host.id)?.status === "failed"
+        ) {
+          continue;
+        }
         const listing = listOne(host);
         if (only !== undefined || host.current() !== undefined) waited.push(listing);
       }
       await Promise.all(waited);
+    },
+
+    /** Agents may no longer use agent-device (D1329): every host's daemon stops, hubs run on. */
+    async stopAgents(): Promise<void> {
+      await Promise.all([...hosts.values()].map((host) => host.stopAgent()));
     },
 
     /** The hub was turned off (D1206): every host's tunnel and helpers stop at once. */
