@@ -193,7 +193,6 @@ export interface ScriptsControlServices {
   ): Promise<readonly T3ProjectFileScript[]>;
   /** The script last run in the project on this device. */
   lastRun(target: NodeTarget, projectId: string): string | undefined;
-  /** The shortcut of a client command, as shown, and as a rule's key. */
   /** The shortcut of a client command as shown, kept current as shortcuts change. */
   useShortcutLabel(command: string | undefined): string | undefined;
   shortcutKey(command: string): string | null;
@@ -666,9 +665,15 @@ function ScriptEditorDialog(props: {
               onClick={() => {
                 if (request?.scriptId == null) return;
                 const scriptId = request.scriptId;
-                void props.onDelete(scriptId, name).then((deleted) => {
-                  if (deleted) props.onClose();
-                });
+                void props.onDelete(scriptId, name).then(
+                  (deleted) => {
+                    if (deleted) props.onClose();
+                  },
+                  (failure: unknown) =>
+                    setError(
+                      failure instanceof Error ? failure.message : "Failed to delete action.",
+                    ),
+                );
               }}
               type="button"
               variant="destructive-outline"

@@ -31,9 +31,7 @@ test("D1473–D1475: T3's scripts menu adds an action, runs it in a terminal, im
   const project = await node
     .client()
     .call<{ id: string }>("projects.create", { path: dir, name: "acme" });
-  const thread = await node
-    .client()
-    .call<{ id: string }>("threads.create", { projectId: project.id, title: "Scripts" });
+  await node.client().call("threads.create", { projectId: project.id, title: "Scripts" });
   await page.goto(`${node.ui}#token=${node.token}`);
   await page
     .getByRole("navigation", { name: "Sidebar" })
@@ -101,5 +99,4 @@ test("D1473–D1475: T3's scripts menu adds an action, runs it in a terminal, im
   // T3's script.<id>.run by the shortcut saved with it: a second run in the same terminal.
   await page.keyboard.press("Control+Alt+g");
   await expect(drawer.locator(".xterm-rows").last()).toContainText(/greet-42[\s\S]*greet-42/);
-  expect(thread.id).toBeTruthy();
 });

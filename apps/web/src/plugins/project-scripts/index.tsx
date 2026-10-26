@@ -40,10 +40,12 @@ import { ProjectScriptsControl, type ScriptsControlServices } from "./control.ts
 /** The script last run in each project on this device (T3's `lastInvokedScriptByProjectId`). */
 const LAST_RUN_KEY = "jhin:project-scripts:last-run";
 
+const LastRun = z.record(z.string(), z.string());
+
 function readLastRun(): Record<string, string> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(LAST_RUN_KEY) ?? "{}") as unknown;
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, string>) : {};
+    const parsed = LastRun.safeParse(JSON.parse(localStorage.getItem(LAST_RUN_KEY) ?? "{}"));
+    return parsed.success ? parsed.data : {};
   } catch {
     return {};
   }
@@ -111,6 +113,8 @@ export const projectScriptsPlugin = builtin(
             title: `Failed to run script "${script.name}".`,
             description: (error as Error).message,
           });
+          // A caller of `script.<id>.run` (RPC, CLI, MCP) hears the failure too.
+          throw error;
         }
       };
 
@@ -118,7 +122,7 @@ export const projectScriptsPlugin = builtin(
       const customRules = () =>
         readSection(context, KEYBINDINGS_CONFIG_SECTION, KeybindingsConfig).rules;
       const services: ScriptsControlServices = {
-        run: (target, thread, script) => void run(target, thread, script),
+        run: (target, thread, script) => void run(target, thread, script).catch(() => undefined),
         save: async (target, projectId, scripts) => {
           await threads.call(target, "projects.scripts.set", { projectId, scripts });
         },
@@ -139,8 +143,14 @@ export const projectScriptsPlugin = builtin(
           keybindings?.list().findLast((rule) => rule.command === command)?.key ?? null,
         // This device's rule, as Settings → Keybindings records one (D1475).
         setShortcut: async (command, key) => {
+          // The action is saved already: a shortcut this client cannot keep is said, not thrown.
           if (settings === undefined) {
-            throw new Error("This client keeps no shortcuts: the action was saved without one.");
+            toasts?.show({
+              type: "warning",
+              title: "Saved without a shortcut",
+              description: "This client keeps no shortcuts.",
+            });
+            return;
           }
           settings.patch(KEYBINDINGS_CONFIG_SECTION, {
             rules: [
