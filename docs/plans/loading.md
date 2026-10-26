@@ -230,6 +230,9 @@ loading one.
   "renders every turn" and the page-wide find (D801), so it needs its own
   decisions first.
 - A cached timeline snapshot (D1588 stores raw events).
+- Forgetting at boot a node removed while no tab ran: `client.connections`
+  has no "loaded" moment to compare against, so such streams go with D1593's
+  30-day eviction, and its catalog with the next clear.
 - A thread followed from the cache while its node could not be asked checks
   the head on every acceptance and asks again once; a database reset whose
   stream has grown past the kept sequence is caught only at the next open.
