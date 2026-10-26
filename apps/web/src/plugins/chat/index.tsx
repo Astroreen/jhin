@@ -79,6 +79,7 @@ import {
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { prefetchWhenIdle } from "../../lib/idle-prefetch.ts";
 import { createDetailsVisibility, registerThreadDetails } from "./thread-details.tsx";
 import type {
   AttachmentPanel as AttachmentPanelComponent,
@@ -351,6 +352,8 @@ export const chatPlugin = builtin(
   definePlugin({
     activate(context) {
       context.config.define(CHAT_SECTION, ChatSettings);
+      // The file preview beside the thread is fetched while the page is idle (D1596).
+      context.subscriptions.add(prefetchWhenIdle(FilePanel.preload));
       const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);

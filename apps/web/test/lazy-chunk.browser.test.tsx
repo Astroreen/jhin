@@ -174,3 +174,54 @@ describe("lazyChunk (D440)", () => {
     expect(container.textContent).toBe("above: bad message");
   });
 });
+
+describe("lazyChunk's preload (D1596)", () => {
+  it("fetches the chunk before it renders, and the render uses that load", async () => {
+    const { load, attempts } = controlledLoad();
+    const Chunk = lazyChunk(load, {
+      loading: () => <p>loading</p>,
+      failed: () => <p>failed</p>,
+    });
+    const preloaded = Chunk.preload();
+    expect(attempts).toHaveLength(1);
+    attempts[0]!.resolve();
+    await preloaded;
+    const container = await mount(<Chunk name="Ada" />);
+    expect(container.textContent).toBe("Hello Ada");
+    expect(attempts).toHaveLength(1);
+  });
+
+  it("forgets a preload that failed: the first render loads again", async () => {
+    const { load, attempts } = controlledLoad();
+    const Chunk = lazyChunk(load, {
+      loading: () => <p>loading</p>,
+      failed: () => <p>failed</p>,
+    });
+    const preloaded = Chunk.preload();
+    attempts[0]!.reject(new Error("offline"));
+    await preloaded;
+    const container = await mount(<Chunk name="Ada" />);
+    expect(container.textContent).toBe("loading");
+    expect(attempts).toHaveLength(2);
+    await act(async () => attempts[1]!.resolve());
+    expect(container.textContent).toBe("Hello Ada");
+  });
+
+  it("is the render's load when the render came first: its failure shows the retry", async () => {
+    const { load, attempts } = controlledLoad();
+    const Chunk = lazyChunk(load, {
+      loading: () => <p>loading</p>,
+      failed: (_props, retry) => (
+        <button onClick={retry} type="button">
+          retry
+        </button>
+      ),
+    });
+    const container = await mount(<Chunk name="Ada" />);
+    const preloaded = Chunk.preload();
+    expect(attempts).toHaveLength(1);
+    await act(async () => attempts[0]!.reject(new Error("offline")));
+    await preloaded;
+    expect(container.textContent).toBe("retry");
+  });
+});

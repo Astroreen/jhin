@@ -51,10 +51,11 @@ import { builtin } from "../../lib/builtin.ts";
 import { CHAT_SECTION, ChatSettings, readSection } from "../../lib/settings.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { prefetchWhenIdle } from "../../lib/idle-prefetch.ts";
 import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
 import { createRunningActions } from "./running.ts";
 import { createChangedFilesFooter } from "./checkpoints.tsx";
-import { createWorktreeSetupHeader } from "./worktree-setup.tsx";
+import { createWorktreeSetupHeader } from "./worktree-setup-header.tsx";
 import { createWatchedWork } from "./work.ts";
 import { createEditors, pathInside, preferredEditor } from "./diff/editors.tsx";
 import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
@@ -410,6 +411,8 @@ export const sourceControlPlugin = builtin(
         loading: () => null,
         failed: diffFailed,
       });
+      // Fetched while the page is idle, so it opens without waiting (D1596).
+      context.subscriptions.add(prefetchWhenIdle(DiffPanel.preload));
       function DiffPanelSlot() {
         const route = useExternal(navigation, navigation.current);
         // Beside the right panel the diff is one of its surfaces (D1424).
@@ -512,6 +515,7 @@ export const sourceControlPlugin = builtin(
         () => pullRequestsChunk().then((panel) => panel.PullRequestsPanel),
         { loading: () => null, failed: pullRequestsFailed },
       );
+      context.subscriptions.add(prefetchWhenIdle(PullRequestsPanel.preload));
       function PullRequestsPanelSlot() {
         const route = useExternal(navigation, navigation.current);
         return route.panel === PULL_REQUESTS_PANEL && rightPanel === undefined ? (
