@@ -42,5 +42,7 @@ export function detectorLabel(warning: Pick<Warning, "detector">): string {
       return "Recursive proof loop";
     case "mind-virus":
       return "Mind virus";
+    case "away":
+      return "A node is away";
   }
 }

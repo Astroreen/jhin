@@ -212,6 +212,7 @@ const REASONS: Readonly<Record<string, string>> = {
   blocked: "blocked",
   orphaned: "a dependency was dropped",
   elsewhere: "assignee on another node",
+  away: "the assignee's node is away",
   "handoff-failed": "handoff failed",
 };
 

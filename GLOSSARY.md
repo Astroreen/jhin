@@ -407,6 +407,10 @@ Words about Jhin:
 - **Mission's node** — the node whose `missions` stream holds a mission.
   Its slices may go to agents of any node; a command about the mission run
   elsewhere names it with `node` and is forwarded there (agents.md D1542).
+- **Away** — a node of the mesh that `mesh.streams@1.1`'s members list
+  unreachable, or no longer list. A slice whose assignee's node is away
+  waits for a decision (`away`), health warns of it, and its sender's inbox
+  items wait for the node to come back (agents.md D1547–D1549).
 - **Slice** — one change in a mission: a **spec** (what must work), an
   assignee (an agent's or the owner's address), a status, the threads working
   on it, and a **proof** recorded when it is done (commands with output,

@@ -218,6 +218,11 @@ export function InboxPage(props: { view: InboxView; target: NodeTarget; messageI
         </p>
       ) : null}
       <p className="max-w-3xl text-sm whitespace-pre-wrap">{message.body}</p>
+      {item.away === true ? (
+        <p className="text-xs text-warning-foreground" data-sender-away="">
+          Its sender's node is away: an answer cannot reach it until the node is back.
+        </p>
+      ) : null}
       <form
         className="flex max-w-3xl flex-col gap-2"
         onSubmit={(event) => {

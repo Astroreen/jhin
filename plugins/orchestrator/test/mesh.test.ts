@@ -13,12 +13,18 @@ import {
 } from "@jhin/agent-api";
 import { MISSIONS_STREAM, type Mission, type Slice } from "@jhin/missions-api";
 import type { StoredEvent } from "@jhin/storage-api";
-import { createMemoryNetwork, mockCapability, startMeshNode } from "@jhin/testing";
+import {
+  createMemoryNetwork,
+  memoryStoragePlugin,
+  mockCapability,
+  startMeshNode,
+} from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import fake from "@jhin/plugin-agent-fake";
 import threads from "@jhin/plugin-threads";
 import agents from "@jhin/plugin-agents";
+import health from "@jhin/plugin-health";
 import { manifest, watch } from "../../agents/test/support.ts";
 import missions from "@jhin/plugin-missions";
 import orchestration from "@jhin/plugin-orchestration";
@@ -42,9 +48,23 @@ afterEach(async () => {
   for (const stop of stops.splice(0)) await stop();
 });
 
-async function meshNode(network: ReturnType<typeof createMemoryNetwork>, id: string) {
-  const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), `jhin-mesh-missions-${id}-`));
+/** What a node leaves behind to start again on: its data folder and storage. */
+interface Restart {
+  readonly data: string;
+  readonly storage: ReturnType<typeof memoryStoragePlugin>;
+}
+
+async function meshNode(
+  network: ReturnType<typeof createMemoryNetwork>,
+  id: string,
+  restart: Restart = {
+    data: Fs.mkdtempSync(Path.join(Os.tmpdir(), `jhin-mesh-missions-${id}-`)),
+    storage: memoryStoragePlugin(),
+  },
+) {
+  const { data, storage } = restart;
   const node = await startMeshNode(network, id, {
+    storage,
     config: {
       node: {
         "jhin.threads": { defaultAgent: "jhin.agent-fake" },
@@ -69,11 +89,18 @@ async function meshNode(network: ReturnType<typeof createMemoryNetwork>, id: str
       { manifest: manifest("missions"), definition: missions },
       { manifest: manifest("orchestration"), definition: orchestration },
       { manifest: manifest("orchestrator"), definition: orchestrator },
+      { manifest: manifest("health"), definition: health },
     ],
   });
-  stops.push(() => node.stop());
+  let stopped = false;
+  const stop = async () => {
+    if (stopped) return;
+    stopped = true;
+    await node.stop();
+  };
+  stops.push(stop);
   const { client } = node.connect();
-  return { node, client, data };
+  return { node, client, data, stop, restart };
 }
 
 /** Nodes a and b joined, and a mission on a with its project's intent. */
@@ -385,5 +412,104 @@ describe("a lead on another node (D1544, D1545)", () => {
       from: threadAddress("b", lead.id),
       messageId: `report-${mission.id}-${started.workflowId}`,
     });
+  });
+});
+
+describe("a node that goes away mid-mission (D1547–D1550)", () => {
+  it("is a decision for the lead, a warning for the owner, and holds the answers to it", async () => {
+    const network = createMemoryNetwork();
+    const a = await meshNode(network, "a");
+    let b = await meshNode(network, "b");
+    await b.node.join(a.node);
+    const project = await a.client.call<{ id: string }>("projects.create", { path: a.data });
+    const mission = await a.client.call<Mission>("missions.create", {
+      projectId: project.id,
+      title: "Doghouse",
+      outcome: "The dog has a shelter",
+    });
+    const walls = await a.client.call<Slice>("slices.create", {
+      missionId: mission.id,
+      title: "Walls",
+      spec: "It stands",
+      assignee: builderOf("b"),
+    });
+    const lead = await a.client.call<{ id: string }>("threads.create", {
+      title: "Lead",
+      runtimeMode: "full-access",
+    });
+    const missionsFeed = watch(a.client, MISSIONS_STREAM);
+    const workflows = watch(a.client, "orchestration");
+    const healthFeed = watch(a.client, "health");
+    const run = await a.client.call<{ workflowId: string }>("missions.orchestrate", {
+      missionId: mission.id,
+      parentThreadId: lead.id,
+    });
+    const active = await missionsFeed.untilMatch(
+      (event) =>
+        payloadOf(event).slice?.id === walls.id && payloadOf(event).slice.status === "active",
+    );
+    // The builder on b tells a's owner something, then b goes away.
+    const asBuilder = {
+      threadId: payloadOf(active).slice.threads[0].threadId as string,
+      caller: { id: "jhin.agent-fake:builder", permissions: AGENT_GRANTS },
+    };
+    const note = (await b.node.kernel.commands.execute(
+      "agents.send",
+      { to: "jhin://a/owner", body: "The wood is wet" },
+      asBuilder,
+    )) as { message: { messageId: string } };
+    await b.stop();
+
+    // The orchestrator ends at once with the decision for the lead (D1547).
+    const ended = await workflows.untilMatch(
+      (event) =>
+        event.type === "orchestration.workflow.updated" &&
+        payloadOf(event).workflowId === run.workflowId &&
+        payloadOf(event).status !== "running",
+    );
+    expect(payloadOf(ended).result).toMatchObject({
+      outcome: "decide",
+      decisions: [{ sliceId: walls.id, reason: "away" }],
+    });
+    expect(await a.client.call("missions.next", { missionId: mission.id })).toMatchObject({
+      working: [],
+      decisions: [{ sliceId: walls.id, reason: "away" }],
+    });
+    // Health warns the owner (D1548), with nobody asked to analyse it.
+    const raised = await healthFeed.until("health.warning.raised");
+    expect(payloadOf(raised).warning).toMatchObject({
+      detector: "away",
+      subject: `away:${mission.id}:b`,
+      group: { kind: "mission", missionId: mission.id },
+      summary: "1 slice of «Doghouse» wait on node b, which is away",
+    });
+    // The inbox says its sender is away, and keeps the item open (D1549).
+    const { items } = await a.client.call<{ items: { away?: boolean }[] }>("agents.inbox.list", {});
+    expect(items).toEqual([expect.objectContaining({ away: true })]);
+    await expect(
+      a.client.call("agents.inbox.answer", {
+        messageId: note.message.messageId,
+        answer: "Dry it first",
+      }),
+    ).rejects.toMatchObject({ code: "SENDER_AWAY" });
+
+    // b comes back on its data: the warning clears itself, and the answer goes.
+    b = await meshNode(network, "b", b.restart);
+    await b.node.join(a.node);
+    const cleared = await healthFeed.until("health.warning.cleared");
+    expect(payloadOf(cleared)).toMatchObject({
+      warningId: payloadOf(raised).warning.warningId,
+      reason: "node-back",
+    });
+    expect(await a.client.call("missions.next", { missionId: mission.id })).toMatchObject({
+      working: [walls.id],
+      decisions: [],
+    });
+    expect(
+      await a.client.call("agents.inbox.answer", {
+        messageId: note.message.messageId,
+        answer: "Dry it first",
+      }),
+    ).toMatchObject({ item: { status: "answered" } });
   });
 });

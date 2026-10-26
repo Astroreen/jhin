@@ -28,9 +28,11 @@ import {
   EMPTY_MISSIONS,
   MissionEvents,
   applyMissionEvent,
+  nodeOfAddress,
   type MissionsState,
   type Slice,
 } from "@jhin/missions-api";
+import { isAway, type StreamMember } from "@jhin/mesh-api";
 import { OWNER_PRINCIPAL_ID, clientPrincipalId } from "@jhin/auth-api";
 import { SourceControlEvents } from "@jhin/source-control-api";
 import type { StoredEvent } from "@jhin/storage-api";
@@ -91,6 +93,10 @@ export function broaderThanNarrower(
 
 export class Sensors {
   missions: MissionsState = EMPTY_MISSIONS;
+  /** The other members as `mesh.streams@1.1` lists them (D1548); none away without them. */
+  private meshNodes: readonly StreamMember[] | undefined;
+  /** Since when each node away has been away, by node id. */
+  private readonly awaySince = new Map<string, string>();
   private signals: Signal[] = [];
   private readonly groups = new Map<string, HealthGroup>([["node", { kind: "node" }]]);
   /** Proofs recorded on a slice already done, by slice id (D726). */
@@ -179,6 +185,82 @@ export class Sensors {
       for (const thread of slice.threads) threads.add(thread.threadId);
     }
     return threads;
+  }
+
+  /** The members now, and when they were read: a node away since then (D1548). */
+  setMembers(members: readonly StreamMember[] | undefined, at: string): void {
+    this.meshNodes = members;
+    for (const node of new Set([
+      ...this.awaySince.keys(),
+      ...(members ?? []).map((m) => m.nodeId),
+    ])) {
+      if (!isAway(members, node)) this.awaySince.delete(node);
+      else if (!this.awaySince.has(node)) this.awaySince.set(node, at);
+    }
+  }
+
+  /** Open slices waiting on an assignee of an away node, by `away:<mission>:<node>`. */
+  private waitingOnAway(): Map<string, { node: string; slices: Slice[] }> {
+    const waiting = new Map<string, { node: string; slices: Slice[] }>();
+    for (const slice of Object.values(this.missions.slices)) {
+      if (slice.status === "done" || slice.status === "dropped" || slice.assignee === undefined) {
+        continue;
+      }
+      const node = nodeOfAddress(slice.assignee);
+      if (node === undefined || !isAway(this.meshNodes, node)) continue;
+      const subject = `away:${slice.missionId}:${node}`;
+      const entry = waiting.get(subject) ?? { node, slices: [] };
+      entry.slices.push(slice);
+      waiting.set(subject, entry);
+    }
+    return waiting;
+  }
+
+  /**
+   * A mission waiting on a node away (D1548): one finding per mission and
+   * node, unless its warning is open, or was dismissed since the node went away.
+   */
+  awayFindings(health: HealthState): Finding[] {
+    const findings: Finding[] = [];
+    for (const [subject, { node, slices }] of this.waitingOnAway()) {
+      const latest = Object.values(health.warnings)
+        .filter((warning) => warning.detector === "away" && warning.subject === subject)
+        .reduce<Warning | undefined>(
+          (last, warning) =>
+            last === undefined || warning.raisedAt > last.raisedAt ? warning : last,
+          undefined,
+        );
+      if (latest?.status === "open") continue;
+      const since = this.awaySince.get(node) ?? "";
+      if (latest?.status === "dismissed" && (latest.dismissedAt ?? "") >= since) continue;
+      const first = slices[0]!;
+      const title = this.missions.missions[first.missionId]?.title;
+      findings.push({
+        detector: "away",
+        subject,
+        group: {
+          kind: "mission",
+          projectId: first.projectId,
+          missionId: first.missionId,
+          ...(title === undefined ? {} : { title }),
+        },
+        summary: `${slices.length} ${slices.length === 1 ? "slice" : "slices"} of «${title ?? first.missionId}» wait on node ${node}, which is away`,
+        measures: { slices: slices.length },
+        evidence: [],
+      });
+    }
+    return findings;
+  }
+
+  /** Open `away` warnings whose node is back, or on which no open slice waits (D1548). */
+  awayCleared(health: HealthState): { warning: Warning; reason: string }[] {
+    const waiting = this.waitingOnAway();
+    return Object.values(health.warnings).flatMap((warning) => {
+      if (warning.status !== "open" || warning.detector !== "away") return [];
+      if (waiting.has(warning.subject)) return [];
+      const node = warning.subject.slice(warning.subject.indexOf(":", "away:".length) + 1);
+      return [{ warning, reason: isAway(this.meshNodes, node) ? "not-waiting" : "node-back" }];
+    });
   }
 
   /** The corrected ideas, given before the events they should be found in. */
@@ -453,6 +535,8 @@ export class Sensors {
     return Object.values(health.warnings).filter(
       (warning) =>
         warning.status === "open" &&
+        // Away warnings clear by their own reasons (awayCleared).
+        warning.detector !== "away" &&
         !over.has(`${warning.detector}|${warning.subject}`) &&
         // A withdrawn idea or a forgotten slice is not a measure dropping.
         !(

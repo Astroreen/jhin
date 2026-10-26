@@ -77,3 +77,15 @@ export function parseRelayStream(name: string): { owner: string; stream: string 
   if (slash <= 0 || slash === rest.length - 1) return undefined;
   return { owner: rest.slice(0, slash), stream: rest.slice(slash + 1) };
 }
+
+/**
+ * Whether `nodeId` is **away** (agents.md D1547): `members` (`members()` of
+ * `mesh.streams@1.1`) lists it unreachable, or no longer lists it. Without
+ * members (no mesh, or a provider before 1.1) no node is away. Call it for
+ * another node: `members()` never lists this one.
+ */
+export function isAway(members: readonly StreamMember[] | undefined, nodeId: string): boolean {
+  if (members === undefined) return false;
+  const member = members.find((item) => item.nodeId === nodeId);
+  return member === undefined || !member.reachable;
+}

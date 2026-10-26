@@ -486,6 +486,7 @@ const REASON_TEXT: Readonly<Record<string, string>> = {
   blocked: "blocked",
   orphaned: "a dependency was dropped",
   elsewhere: "assignee on another node",
+  away: "its assignee's node is away",
 };
 
 const waitsForReason = (reason: string) => REASON_TEXT[reason] ?? reason;

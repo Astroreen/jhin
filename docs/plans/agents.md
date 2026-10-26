@@ -2489,12 +2489,15 @@ Decisions:
 - **D1549. The inbox says when a sender is away.** `agents.inbox.list` marks
   an open item whose sender lives on an away node `away: true`, and the
   item's page says the answer cannot reach it until its node is back.
-  Answering or dismissing such an item is refused with `SENDER_AWAY` before
-  anything is recorded, so the item stays open and is answered once the node
-  is back.
-- **D1550. The in-memory mesh writes its `mesh` stream.** `startMeshNode`
-  registers `mesh.nodes` and appends `mesh.nodes.changed` as `jhin.mesh`
-  does, so tests see a node go away when its peer stops.
+  Answering it, or dismissing an ask (which tells the asker), is refused
+  with `SENDER_AWAY` before anything is recorded, so the item stays open and
+  is answered once the node is back.
+- **D1550. Away is read from the members, not from a stream.** The
+  orchestrator, health and the inbox ask `mesh.streams@1.1` for the members
+  and hear its `onChange`, which M1 gave plugins for following members
+  (D1522), rather than folding the `mesh` stream `jhin.mesh` writes: one
+  source of reachability, and the in-memory mesh of `@jhin/testing` already
+  provides it, so tests see a node go away when its peer stops.
 
 ### M3. A run across two nodes (D1561–D1580)
 
@@ -2654,6 +2657,14 @@ Decisions:
   arrive (D1526): on a restart they are not replayed in time order with this
   node's streams, so a message sent before a slice was assigned can count
   for it.
+- M2: the inbox's `away` mark (D1549) is read when a node's feed loads
+  `agents.inbox.list`; it does not follow the mesh while the page is open,
+  so an item whose sender went away later says so only through the refused
+  answer.
+- M2: a lead whose own node goes away mid-run. Its run went with it, so
+  nobody is woken; the mission's node still reads the run from the record
+  (D1545), and health warns only of slices waiting on an away node (D1548),
+  not of a lead that is gone.
 - A7: detecting a repeated wrong idea nobody named yet (phrases recurring
   across agents' notes and messages); D727 needs the correction first.
 - A7: an agent naming a corrected idea (`health.write` for an epidemiology

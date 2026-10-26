@@ -379,9 +379,10 @@ export function intentChain(state: MissionsState, sliceId: string): IntentChain 
 /**
  * Why a slice waits for whoever runs the mission (D702): it has no assignee,
  * its assignee set it blocked, a slice it depends on was dropped (it must be
- * re-planned, D651), or its assignee is an agent of another node.
+ * re-planned, D651), its assignee is an agent of another node (only for a
+ * caller that asks so), or its assignee's node is away (D1547).
  */
-export const DECISION_REASONS = ["unassigned", "blocked", "orphaned", "elsewhere"] as const;
+export const DECISION_REASONS = ["unassigned", "blocked", "orphaned", "elsewhere", "away"] as const;
 export const Decision = z.object({
   sliceId: z.string(),
   reason: z.enum(DECISION_REASONS),
@@ -413,11 +414,12 @@ const isOpenSlice = (slice: Slice) => slice.status !== "done" && slice.status !=
  * they have an assignee and none of their dependencies is dropped. A slice
  * whose dependency was dropped is reported in any wave, since it can never
  * start as planned. `nodeId`, when given, reports an agent of another node
- * as `elsewhere` instead of ready.
+ * as `elsewhere` instead of ready. `away`, the nodes away (D1547), reports a
+ * planned or active slice whose assignee lives on one as `away`.
  */
 export function missionProgress(
   slices: readonly Slice[],
-  options: { readonly nodeId?: string } = {},
+  options: { readonly nodeId?: string; readonly away?: ReadonlySet<string> } = {},
 ): MissionProgress {
   const byId = new Map(slices.map((slice) => [slice.id, slice]));
   const open = slices.filter(isOpenSlice);
@@ -432,6 +434,15 @@ export function missionProgress(
       continue;
     }
     if (slice.wave !== wave) continue;
+    const node = slice.assignee === undefined ? undefined : nodeOfAddress(slice.assignee);
+    if (
+      node !== undefined &&
+      options.away?.has(node) === true &&
+      (slice.status === "active" || slice.status === "planned")
+    ) {
+      decisions.push({ sliceId: slice.id, reason: "away" });
+      continue;
+    }
     if (slice.status === "active") working.push(slice.id);
     else if (slice.status === "blocked") decisions.push({ sliceId: slice.id, reason: "blocked" });
     else if (slice.assignee === undefined)
@@ -445,6 +456,10 @@ export function missionProgress(
   }
   return { wave, ready, working, decisions, total: slices.length, slicesDone: open.length === 0 };
 }
+
+/** The node of a `jhin://<nodeId>/…` address. */
+export const nodeOfAddress = (address: string): string | undefined =>
+  /^jhin:\/\/([^/?#]+)\//.exec(address)?.[1];
 
 const slicesInOrder = (slices: readonly Slice[]) =>
   slices.toSorted((a, b) => a.wave - b.wave || a.createdAt.localeCompare(b.createdAt));
