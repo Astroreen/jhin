@@ -35,6 +35,9 @@ class ChunkBoundary extends Component<
   }
 }
 
+/** A chunk's component, and a way to fetch it before it first renders (D1596). */
+export type LazyChunk<P extends object> = ComponentType<P> & { preload(): Promise<void> };
+
 /**
  * A component loaded as a chunk of its own on first render (D440). While it
  * loads, `loading` shows in its place; if it fails to load (the network, or a
@@ -48,15 +51,25 @@ export function lazyChunk<P extends object>(
     loading: (props: P) => ReactNode;
     failed: (props: P, retry: () => void) => ReactNode;
   },
-): ComponentType<P> {
+): LazyChunk<P> {
   // Whether the current load has its component: errors after that are the component's.
   let resolved = false;
-  const fresh = () => {
-    resolved = false;
-    return lazy(async () => {
-      const component = await load();
+  // The current load's import, started by its first render or by `preload`, whichever is first.
+  let pending: Promise<{ default: ComponentType<P> }> | undefined;
+  // Whether a render waits on `pending`: a failed preload nobody waited on is forgotten.
+  let rendered = false;
+  const start = () =>
+    (pending ??= load().then((component) => {
       resolved = true;
       return { default: component };
+    }));
+  const fresh = () => {
+    resolved = false;
+    pending = undefined;
+    rendered = false;
+    return lazy(() => {
+      rendered = true;
+      return start();
     });
   };
   // The current load and its generation change together, outside render.
@@ -75,7 +88,7 @@ export function lazyChunk<P extends object>(
     Loaded = fresh();
     for (const listener of listeners) listener();
   };
-  return function Chunk(props: P) {
+  function Chunk(props: P) {
     // Reads the current load at each render: the compiler must not keep an element of an old one.
     "use no memo";
     const seen = useSyncExternalStore(subscribe, current);
@@ -99,7 +112,19 @@ export function lazyChunk<P extends object>(
         </Suspense>
       </ChunkBoundary>
     );
+  }
+  // Fetches the chunk ahead of its first render (D1596). A failure is the next render's to show:
+  // that render loads again.
+  const preload = (): Promise<void> => {
+    const loading = start();
+    return loading.then(
+      () => undefined,
+      () => {
+        if (!rendered && pending === loading) pending = undefined;
+      },
+    );
   };
+  return Object.assign(Chunk, { preload });
 }
 
 /** What a chunk that failed to load says in its place, with a way to load it again. */

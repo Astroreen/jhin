@@ -262,3 +262,47 @@ test("D440: the entry chunk stays under 500 kB; the markdown renderer loads with
   // 40 px is the timeline's own "at the end" threshold (useStickToEnd in thread-view.tsx).
   expect(gap).toBeLessThanOrEqual(40);
 });
+
+test("D1595, D1596: settings are fetched while the page is idle; a page that fails to load says so and offers a retry", async ({
+  page,
+}, info) => {
+  // The settings page's first section and the browser panel come in after the first screen,
+  // before anyone opens them.
+  const general = page.waitForRequest((sent) =>
+    /\/assets\/general-[\w-]+\.js$/.test(new URL(sent.url()).pathname),
+  );
+  const browser = page.waitForRequest((sent) =>
+    /\/assets\/panel-[\w-]+\.js$/.test(new URL(sent.url()).pathname),
+  );
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+  await general;
+  await browser;
+
+  // Settings still open, on their first section.
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("navigation", { name: "Settings breadcrumb" })).toContainText(
+    "General",
+  );
+  await expect(page.getByRole("heading", { name: "Behavior", exact: true })).toBeVisible();
+  const settings = info.outputPath("settings.png");
+  await page.screenshot({ path: settings });
+  await info.attach("settings", { path: settings, contentType: "image/png" });
+  await page.getByRole("button", { name: "Back" }).click();
+
+  // The Usage page is a chunk of its own: when it fails to load, its place says so.
+  const usageChunk = /\/assets\/usage-page-[\w-]+\.js$/;
+  await page.route(usageChunk, (route) => route.abort());
+  const usage = page
+    .getByRole("navigation", { name: "Sidebar" })
+    .getByRole("button", { name: "Usage" });
+  await usage.click();
+  const failed = page.getByRole("alert").filter({ hasText: "Couldn't load the usage." });
+  await expect(failed).toBeVisible();
+  await expect(failed.getByRole("button", { name: "Try again" })).toBeVisible();
+  const shot = info.outputPath("chunk-failed.png");
+  await page.screenshot({ path: shot });
+  await info.attach("a chunk that failed to load", { path: shot, contentType: "image/png" });
+  // Only this page failed: the sidebar and the rest of the app still work.
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+});

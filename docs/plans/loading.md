@@ -4,7 +4,7 @@ Status: **in progress** (P2 done: #304–#306). The owner asked (2026-10-24) tha
 reach the screen faster and move fewer bytes. Three ways: compress what the
 node sends, keep what a device has already received and ask only for what is
 new, and load first what the first screen shows. Decisions D1581–D1620
-(D1581–D1600 used so far). Three workstreams: P1 compression, P2 the history
+(D1581–D1600 and D1615–D1616 used so far). Three workstreams: P1 compression, P2 the history
 cache, P3 chunks and prefetch.
 
 It continues `foundation.md` (D26 history sync, the event log), `t3-parity.md`
@@ -225,6 +225,35 @@ What the node does today (2026-10-24, `08eeb571`):
   page and of the panels in the right panel, so opening them later does
   not wait for the network. It fetches nothing when the browser asks to save
   data (`navigator.connection.saveData`).
+- **D1615. The idle fetches wait their turn.** They start after the page's
+  `load` event, one chunk per idle callback, the next once the last has
+  settled, so the first screen has the network and the main thread first.
+  Where the browser has no `requestIdleCallback` (Safari) the next task takes
+  its place. The queue holds the settings page's first section (General),
+  the browser panel, the diff panel, the pull requests panel and the file
+  preview. Not the terminal: D440 proves a thread never fetches xterm.js
+  until a terminal opens. Not the device panel: it opens only with a device.
+  A fetch that fails is forgotten: the chunk loads again when it first
+  renders, and only a failure there shows its "Try again" (D440). Chromium
+  keeps a failed `import()` in its module map, though: a prefetch that
+  failed on a flaky network fails the first open too, until the retry of the
+  Deferred list below imports a fresh URL. The idle fetches also widen a race
+  that was there before: "New thread" is enabled once the node's connection
+  opens, but did nothing while its projects were still loading (#324 makes
+  it wait). A chunk is
+  fetched ahead through its `preload` (`apps/web/src/lib/lazy-chunk.tsx`), and
+  `prefetchWhenIdle` (`apps/web/src/lib/idle-prefetch.ts`) returns a disposable
+  that takes it off the queue.
+- **D1616. What P3 moved off the first screen.** The settings page's Browser
+  section with its import wizard (`preview/profiles.tsx`; the profiles
+  themselves stay in `preview/profile-settings.ts`, which the panel reads),
+  the worktree setup card (`source-control/worktree-setup.tsx`, loaded by
+  `worktree-setup-header.tsx` for a thread that has a setup) and the Usage page
+  (`usage-page.tsx`). The desktop app's webviews stay in the first load: as a
+  chunk their host subscribed late, and a tab the agent opened right after
+  start went headless (the desktop E2E, D1321–D1324, caught it). The
+  settings sections, the scheduled tasks page, the panels and the dialogs
+  that were already chunks (D440) stay as they are.
 
 ## Workstreams
 
@@ -232,7 +261,7 @@ What the node does today (2026-10-24, `08eeb571`):
 | --- | ------------------------------------------------------ | ---------------------------------------------- |
 | P1  | HTTP compression and validators, WebSocket compression | D1582–D1587, D1597, D1598; landed (#303, #309) |
 | P2  | the history cache: threads, the sidebar, its setting   | D1588–D1594                                    |
-| P3  | chunks for routes off the first screen, idle prefetch  | D1595–D1596                                    |
+| P3  | chunks for routes off the first screen, idle prefetch  | D1595–D1596, D1615–D1616                       |
 
 D1597–D1620 are free for decisions the workstreams find they need.
 
@@ -268,3 +297,16 @@ loading one.
 - `zstd` content encoding.
 - Compressing the responses of other plugins' HTTP routes.
 - A service worker that serves the app shell offline.
+- The rest of the first load is shared modules, not the entry chunk:
+  `@jhin/ui` re-exports every component (Base UI, about 530 kB raw) and
+  `@jhin/sdk` the whole `z` namespace with every Zod locale (about 210 kB),
+  because user plugins import them by bare name (D16). Splitting them needs
+  a decision on what a user plugin may import.
+- "Try again" after a real network failure (D440). Chromium keeps a failed
+  `import()` in its module map: the retry rejects again without a request,
+  as P3's Playwright run shows (one request for the aborted chunk). The
+  failed view and its button show; recovering needs a retry that imports
+  the chunk's URL afresh (a query of its own), for every chunk's loader.
+- The file icon sprite (`lib/pierre-icons.ts`, about 60 kB raw) loads with the
+  first file chip's module; it could load on first use, with Lucide's file
+  icon in its place until then.

@@ -49,13 +49,13 @@ import { useExternal, useShortcutLabels } from "../../lib/hooks.ts";
 import { createTabFeeds } from "./feed.ts";
 import { readSection, useSection } from "../../lib/settings.ts";
 import {
-  BrowserProfilesSection,
   PREVIEW_BROWSER_SECTION,
   PreviewBrowserSettings,
   resolveBrowserProfiles,
   type ProfilesServices,
-} from "./profiles.tsx";
+} from "./profile-settings.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { prefetchWhenIdle } from "../../lib/idle-prefetch.ts";
 import type { BrowserPanelProps, BrowserSurfaceViewProps, PanelServices } from "./panel.tsx";
 import { NEW_TAB, tabTitle } from "./tab-title.ts";
 import { browserSurfaceResources, releaseBrowserTabs } from "./surfaces.ts";
@@ -111,6 +111,15 @@ const BrowserPanel = lazyChunk<BrowserPanelProps>(
         <ChunkFailed retry={retry}>Couldn't load the browser.</ChunkFailed>
       </PanelPlaceholder>
     ),
+  },
+);
+
+// The settings page's "Browser" section, a chunk of its own (D1595).
+const BrowserProfilesSection = lazyChunk<{ readonly services: ProfilesServices }>(
+  () => import("./profiles.tsx").then((module) => module.BrowserProfilesSection),
+  {
+    loading: () => null,
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load this section.</ChunkFailed>,
   },
 );
 
@@ -194,6 +203,8 @@ export const previewPanelPlugin = builtin(
           desktopShell()?.preview?.clearPartition(previewProfilePartition(profileId)),
         use: () => useSection(context, PREVIEW_BROWSER_SECTION, PreviewBrowserSettings),
       };
+      // The browser panel is fetched while the page is idle (D1596).
+      context.subscriptions.add(prefetchWhenIdle(BrowserPanel.preload));
       const pages = context.services.tryGet<SettingsPages>(UI_SETTINGS_CAPABILITY);
       if (pages !== undefined && deviceSettings !== undefined) {
         context.subscriptions.add(

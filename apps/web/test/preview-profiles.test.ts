@@ -6,7 +6,7 @@ import {
   PreviewBrowserSettings,
   profileName,
   resolveBrowserProfiles,
-} from "../src/plugins/preview/profiles.tsx";
+} from "../src/plugins/preview/profile-settings.ts";
 
 describe("browser profiles of this device (D953)", () => {
   it("puts T3's built-in profiles first, then the user's, each id once", () => {
