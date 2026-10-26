@@ -634,6 +634,25 @@ adapt to it, as the rules for every workstream say.
   release path's hardening that needs no secrets (a protected environment
   for them, actions pinned to commit SHAs, a dry run when the app's sources
   change, packaging checked as `pnpm pack:smoke` checks).
+  **Done** (D1481–D1500): #285 the release path's protected environment
+  `release`, actions pinned to commit SHAs, dry runs for the app's own
+  sources and a weekly one of `main`, and packaging that fails on a version
+  the lockfile lacks (`desktop.md` D1481–D1485); #291 the app attaches to a
+  node of its home that already runs and keeps another port when its own is
+  taken, with `jhin serve --port` (D1486, D1487); #319 a desktop tab that
+  outlives its webview (DevTools, a reload of the window), T3's "Open
+  DevTools" and a guest's context menu (D1488–D1490); #322 T3's element
+  annotation (its Select tool) into the composer, a user's download into
+  the Downloads folder as T3 does instead of a toast, and T3's separate
+  window of a tab the app hosts (D1491–D1493); #320 device hosts over SSH
+  with T3's remote script, tunnels, multi-host proxy and Settings → Devices'
+  "Device hosts" (`preview.md` D1494–D1500). Left in `desktop.md`'s
+  Deferred: the `release` environment's settings and signing itself (the
+  owner's), pinning the other workflows' actions, T3's chrome for an
+  attached node, the annotation's Region, Draw and Erase tools and style
+  panel, Copy Image inside a guest's subframe; in `preview.md`'s: a host's
+  tool versions and agent-device shim, several environments' hosts, and a
+  run against a real Mac or Android host over SSH.
 - **W44:** delegating to an agent on another mesh node (`target.node`),
   ending a `mode: "wait"` delegation when its caller goes away, pruning old
   task and workflow records, smaller workflow events, saved workflows of the

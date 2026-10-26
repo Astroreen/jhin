@@ -1123,10 +1123,10 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
 
 ## Deferred
 
-- Of T3's desktop runtime, beside its webview per tab (`desktop.md` D1321–D1324)
-  and its DevTools (`desktop.md` D1489): separate windows and
-  picture-in-picture, annotation of elements, "Open in {environment}'s
-  browser".
+- Of T3's desktop runtime, beside its webview per tab (`desktop.md` D1321–D1324),
+  its DevTools (D1489), its annotation's Select tool (D1491) and its separate
+  window (D1493): the annotation's other tools (`desktop.md`'s Deferred) and
+  "Open in {environment}'s browser".
 - Of the cookie import (D1204, D1205): opening the node's System Settings
   at Full Disk Access and watching for the grant (T3's `SafariPermission`
   and `checkSystemPermission`; a browser client cannot reach the node's
@@ -1153,9 +1153,7 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
 - Around the floating mini player (D1202, D1326, D1327): keeping it clear
   of T3's inline thread details card (with that card, W38): the layout keeps
   T3's card branches as T3 wrote them, unused until the thread view passes a
-  card, and its own card cases come with it; popping out a
-  tab the desktop app hosts (T3's separate always-on-top window fed by the
-  guest's captured frames); a floating device (`jhin.device-panel` shows devices in a panel of its own);
+  card, and its own card cases come with it; a floating device (`jhin.device-panel` shows devices in a panel of its own);
   the control strip inside the player (control is taken in the panel);
   moving and resizing the player from the keyboard (T3's are pointer only
   too); dropping a deleted thread's floating entry, which stays in the
