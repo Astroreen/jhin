@@ -532,9 +532,8 @@ export function registerMessaging(
     },
   });
 
-  /** The inbox, folded from its stream, and the head it reflects (D626). */
-  /** Whether an item's sender lives on a node away now (D1549), by `mesh.streams@1.1`'s members. */
-  async function awayCheck(): Promise<(item: InboxItem) => boolean> {
+  /** Whether an item's sender lives on a node away now (D1549), by `mesh.streams@1.1`'s members (D1551). */
+  function awayCheck(): (item: InboxItem) => boolean {
     const members = shared?.members?.();
     return (item) => {
       const sender = parseMessageAddress(item.message.from)?.nodeId;
@@ -543,7 +542,7 @@ export function registerMessaging(
   }
   /** Refuses to send to an item's sender while its node is away: the item stays open (D1549). */
   const assertSenderHere = async (item: InboxItem) => {
-    if ((await awayCheck())(item)) {
+    if (awayCheck()(item)) {
       throw new AgentsError(
         "SENDER_AWAY",
         `The node of ${item.message.from} is away: answer once it is back`,
@@ -552,6 +551,7 @@ export function registerMessaging(
     }
   };
 
+  /** The inbox, folded from its stream, and the head it reflects (D626). */
   async function inbox(): Promise<{ head: number; items: Map<string, InboxItem> }> {
     const head = await log.head(INBOX_STREAM);
     const items = new Map<string, InboxItem>();
@@ -590,7 +590,7 @@ export function registerMessaging(
     handler: async ({ status, from }) => {
       const { head, items } = await inbox();
       const wanted = status ?? "open";
-      const away = await awayCheck();
+      const away = awayCheck();
       return {
         head,
         items: [...items.values()]
@@ -821,8 +821,8 @@ export function registerMessaging(
           });
         }
         let sent: { message: AgentMessage; delivery?: MessageDelivery } | undefined;
+        await assertSenderHere(item);
         if (item.message.kind === "ask") {
-          await assertSenderHere(item);
           sent = (await context.commands.execute(
             "agents.send",
             {

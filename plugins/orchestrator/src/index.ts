@@ -512,9 +512,11 @@ export default definePlugin({
           return node === undefined || node === nodeId ? [] : [node];
         }),
       );
-    /** The nodes of these slices' assignees that are away now. */
-    const awayOf = (slices: readonly Slice[]) =>
-      new Set([...assigneeNodes(slices)].filter((node) => isAway(members, node)));
+    /** The nodes of these slices' assignees that are away now, read afresh (D1551). */
+    const awayOf = (slices: readonly Slice[]) => {
+      const now = membersNow();
+      return new Set([...assigneeNodes(slices)].filter((node) => isAway(now, node)));
+    };
     const changes = meshStreams?.onChange?.(() => {
       if (disposed) return;
       const before = members;

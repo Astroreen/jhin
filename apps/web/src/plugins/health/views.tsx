@@ -473,7 +473,9 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
                     ? "the node is back"
                     : warning.clearedReason === "not-waiting"
                       ? "no slice waits on the node any more"
-                      : warning.clearedReason}
+                      : warning.clearedReason === "members-unknown"
+                        ? "the node no longer knows its mesh"
+                        : warning.clearedReason}
               {warning.clearedAt === undefined
                 ? null
                 : `, ${new Date(warning.clearedAt).toLocaleString()}`}

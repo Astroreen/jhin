@@ -471,10 +471,29 @@ describe("a node that goes away mid-mission (D1547–D1550)", () => {
       outcome: "decide",
       decisions: [{ sliceId: walls.id, reason: "away" }],
     });
-    expect(await a.client.call("missions.next", { missionId: mission.id })).toMatchObject({
+    const next = await a.client.call<{ head: number }>("missions.next", {
+      missionId: mission.id,
+    });
+    expect(next).toMatchObject({
       working: [],
       decisions: [{ sliceId: walls.id, reason: "away" }],
     });
+    // A wait ends at once while the mission waits on it, and nothing is handed there.
+    expect(
+      await a.client.call("missions.wait", { missionId: mission.id, after: next.head }),
+    ).toMatchObject({ changed: true });
+    const roof = await a.client.call<Slice>("slices.create", {
+      missionId: mission.id,
+      title: "Roof",
+      spec: "It keeps the rain out",
+      wave: 1,
+      assignee: builderOf("b"),
+    });
+    await expect(a.client.call("slices.handoff", { sliceId: roof.id })).rejects.toMatchObject({
+      code: "SLICE_NOT_READY",
+      details: { reason: "away" },
+    });
+    await a.client.call("slices.delete", { sliceId: roof.id });
     // Health warns the owner (D1548), with nobody asked to analyse it.
     const raised = await healthFeed.until("health.warning.raised");
     expect(payloadOf(raised).warning).toMatchObject({

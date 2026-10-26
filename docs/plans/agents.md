@@ -2478,7 +2478,8 @@ Decisions:
   holding the mission's open slices goes away or comes back, so the
   orchestrator ends with `decide` at once and wakes the lead, who reassigns
   or waits. A handoff to an away node is `SLICE_NOT_READY` with reason
-  `away`.
+  `away`. How a node
+  is away: D1551.
 - **D1548. Health warns of a mission waiting on an away node.** The
   detector `away` raises a warning on the mission's group for each away node
   holding open slices of it: "N slices of «mission» wait on node B, which is
@@ -2489,15 +2490,27 @@ Decisions:
 - **D1549. The inbox says when a sender is away.** `agents.inbox.list` marks
   an open item whose sender lives on an away node `away: true`, and the
   item's page says the answer cannot reach it until its node is back.
-  Answering it, or dismissing an ask (which tells the asker), is refused
-  with `SENDER_AWAY` before anything is recorded, so the item stays open and
-  is answered once the node is back.
-- **D1550. Away is read from the members, not from a stream.** The
-  orchestrator, health and the inbox ask `mesh.streams@1.1` for the members
-  and hear its `onChange`, which M1 gave plugins for following members
-  (D1522), rather than folding the `mesh` stream `jhin.mesh` writes: one
-  source of reachability, and the in-memory mesh of `@jhin/testing` already
-  provides it, so tests see a node go away when its peer stops.
+  Answering or dismissing such an item is refused with `SENDER_AWAY` before
+  anything is recorded, so the item stays open and is answered once the node
+  is back.
+- **D1550. The in-memory mesh writes its `mesh` stream.** `startMeshNode`
+  registers `mesh.nodes` and appends `mesh.nodes.changed` as `jhin.mesh`
+  does, so tests see a node go away when its peer stops. Superseded by D1551.
+- **D1551. Away is read from the members, not from a stream.** M1 gave
+  plugins `members()` and `onChange` of `mesh.streams@1.1` (D1522) while
+  this was built, so D1547's away and D1550's stream are replaced by them:
+  one source of reachability, which `jhin.mesh` and `@jhin/testing`'s
+  in-memory mesh already provide, so the `mesh` stream keeps its old shape
+  and the in-memory mesh needs no change. A node is away when `members()`
+  lists it unreachable (`isAway` in `@jhin/mesh-api`). A node it does not
+  list is not known yet, not away: a node starting before its mesh connects,
+  or a slice assigned to a node that never joined, raises nothing. The
+  orchestrator reads the members afresh for each answer and hears
+  `onChange` for its waits; health and the inbox read them the same way.
+  Health counts every open slice assigned to the away node (planned, active
+  or blocked, any wave), since all of them wait on it; the orchestrator
+  decides only for the slices of its current wave (D1547). A warning whose
+  node's members cannot be read any more clears as `members-unknown`.
 
 ### M3. A run across two nodes (D1561–D1580)
 
@@ -2661,6 +2674,9 @@ Decisions:
   `agents.inbox.list`; it does not follow the mesh while the page is open,
   so an item whose sender went away later says so only through the refused
   answer.
+- M2: since when a node is away is kept in memory (D1548): after a restart
+  of the mission's node, a node away all along counts from the restart, so
+  an `away` warning dismissed before is raised once more.
 - M2: a lead whose own node goes away mid-run. Its run went with it, so
   nobody is woken; the mission's node still reads the run from the record
   (D1545), and health warns only of slices waiting on an away node (D1548),

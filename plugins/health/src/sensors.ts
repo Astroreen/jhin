@@ -259,7 +259,13 @@ export class Sensors {
       if (warning.status !== "open" || warning.detector !== "away") return [];
       if (waiting.has(warning.subject)) return [];
       const node = warning.subject.slice(warning.subject.indexOf(":", "away:".length) + 1);
-      return [{ warning, reason: isAway(this.meshNodes, node) ? "not-waiting" : "node-back" }];
+      const reason =
+        this.meshNodes === undefined
+          ? "members-unknown"
+          : isAway(this.meshNodes, node)
+            ? "not-waiting"
+            : "node-back";
+      return [{ warning, reason }];
     });
   }
 
