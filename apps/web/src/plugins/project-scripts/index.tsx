@@ -18,6 +18,7 @@ import {
   type Keybindings,
   type Navigation,
   type NodeTarget,
+  type ProjectScriptRecord,
   type ThreadRecord,
   type ThreadsCatalog,
 } from "@jhin/client-api";
@@ -138,7 +139,9 @@ export const projectScriptsPlugin = builtin(
           keybindings?.list().findLast((rule) => rule.command === command)?.key ?? null,
         // This device's rule, as Settings → Keybindings records one (D1475).
         setShortcut: async (command, key) => {
-          if (settings === undefined) return;
+          if (settings === undefined) {
+            throw new Error("This client keeps no shortcuts: the action was saved without one.");
+          }
           settings.patch(KEYBINDINGS_CONFIG_SECTION, {
             rules: [
               ...customRules().filter((rule) => rule.command !== command),
@@ -146,9 +149,10 @@ export const projectScriptsPlugin = builtin(
             ],
           });
         },
+        // Without a dialog to ask in, nothing is deleted.
         confirmDelete: async (name) =>
           dialogs === undefined
-            ? true
+            ? false
             : dialogs.confirm({
                 title: `Delete action "${name}"?`,
                 description: "This action cannot be undone.",
@@ -211,7 +215,7 @@ export const projectScriptsPlugin = builtin(
           followed = open === undefined ? undefined : threads.subscribe(open.target, sync);
         }
         const ids = new Set(
-          ((open?.project.scripts ?? []) as readonly ProjectScript[]).flatMap((script) => {
+          ((open?.project.scripts ?? []) as readonly ProjectScriptRecord[]).flatMap((script) => {
             const command = commandForProjectScript(script.id);
             return command === undefined ? [] : [script.id];
           }),
@@ -234,9 +238,9 @@ export const projectScriptsPlugin = builtin(
               output: z.object({}),
               handler: async () => {
                 const now = openThread();
-                const script = ((now?.project.scripts ?? []) as readonly ProjectScript[]).find(
-                  (entry) => entry.id === id,
-                );
+                const script = (
+                  (now?.project.scripts ?? []) as readonly ProjectScriptRecord[]
+                ).find((entry) => entry.id === id);
                 if (now !== undefined && script !== undefined) {
                   await run(now.target, now.thread, script);
                 }
