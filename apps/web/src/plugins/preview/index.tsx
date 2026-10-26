@@ -782,7 +782,18 @@ export const previewPanelPlugin = builtin(
           })),
         };
         try {
-          await context.commands.execute("chat.composer.insert-context", { record });
+          const inserted = (await context.commands.execute("chat.composer.insert-context", {
+            record,
+          })) as { inserted?: boolean };
+          // No composer takes it (none open): nothing is attached or sent without it.
+          if (inserted.inserted !== true) {
+            toasts?.show({
+              type: "warning",
+              title: "The annotation was not added",
+              description: "Open the thread's composer, then annotate again.",
+            });
+            return;
+          }
           if (screenshot === null) {
             toasts?.show({
               type: "warning",
