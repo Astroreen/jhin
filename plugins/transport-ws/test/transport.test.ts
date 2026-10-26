@@ -217,7 +217,7 @@ describe("jhin.transport-ws", () => {
       expect(events.map((event) => (event.payload as { index: number }).index)).toEqual(
         Array.from({ length: 50 }, (_, index) => index),
       );
-      // A large request: the client deflates it too, and the node inflates it.
+      // A large request over the negotiated socket arrives whole.
       const large = text(400);
       expect(await created.call("app.echo", { text: large })).toEqual({ text: large });
       return { extensions, bytes: socket!.bytesRead };
