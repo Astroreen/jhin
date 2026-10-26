@@ -95,7 +95,7 @@ export const historyCachePlugin = builtin(
         context.subscriptions.add(
           slots.contribute("settings.general.behavior", {
             id: "jhin.history-cache.setting",
-            component: historyCacheRow(context, settings, cache),
+            component: historyCacheRow(context, settings, cache, available),
           }),
         );
       }

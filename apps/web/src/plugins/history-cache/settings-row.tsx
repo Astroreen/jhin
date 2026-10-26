@@ -24,6 +24,8 @@ export function historyCacheRow(
   context: PluginContext,
   settings: DeviceSettings,
   cache: Pick<HistoryCacheControl, "onCleared">,
+  /** Whether this browser has IndexedDB at all. */
+  available = true,
 ) {
   return function HistoryCacheRow() {
     const { enabled } = useSection(context, HISTORY_CACHE_SECTION, HistoryCacheSettings);
@@ -47,13 +49,15 @@ export function historyCacheRow(
     const kept =
       status === undefined
         ? ""
-        : enabled && !status.enabled
-          ? " Paused for this session: this browser has no room left for it, so threads load from their nodes."
-          : status.entries === 0
-            ? " Nothing is kept now."
-            : enabled
-              ? ` Now ${status.entries} ${status.entries === 1 ? "thread" : "threads"}, about ${formatAttachmentSize(status.bytes)}.`
-              : "";
+        : enabled && !available
+          ? " This browser does not let the page store it, so threads load from their nodes."
+          : enabled && !status.enabled
+            ? " Paused for this session: this browser has no room left for it, so threads load from their nodes."
+            : status.entries === 0
+              ? " Nothing is kept now."
+              : enabled
+                ? ` Now ${status.entries} ${status.entries === 1 ? "thread" : "threads"}, about ${formatAttachmentSize(status.bytes)}.`
+                : "";
     return (
       <SettingsRow
         control={

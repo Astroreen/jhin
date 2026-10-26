@@ -193,7 +193,9 @@ What the node does today (2026-10-24, `08eeb571`):
 - **D1612. A cache stopped over the quota says so.** `history-cache.status`
   answers `enabled: false` while the setting is on, and the settings row says
   the cache is paused for this session because the browser has no room left.
-  What is kept stays: the next session reads it and makes room again.
+  What is kept stays: the next session reads it and makes room again. A browser
+  without IndexedDB is told apart: the row says the browser does not let
+  the page store the history.
 
 ### P3. Chunks and prefetch
 
