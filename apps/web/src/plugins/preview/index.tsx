@@ -995,6 +995,30 @@ export const previewPanelPlugin = builtin(
         const draftProfiles = new Map<string, string>();
         const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
 
+        // T3's openUrlInPreview for a project script's preview URL (source-control.md D1473, D1480).
+        context.subscriptions.add(
+          context.commands.register({
+            name: "preview.open-url",
+            title: "Open URL in preview",
+            description:
+              "Opens a URL in a new browser tab of the thread on screen and shows it in the right panel, as a project script's preview URL opens (T3's openUrlInPreview); null without a thread on screen",
+            input: z.object({ url: z.string().trim().min(1).max(2048) }),
+            output: z.object({ tabId: z.string().nullable() }),
+            handler: async ({ url }) => {
+              const place = panel.current();
+              if (place?.threadId === undefined || place.target.remote !== undefined) {
+                return { tabId: null };
+              }
+              const tab = await threads.call<PreviewTab>(place.target, "preview.tab.open", {
+                threadId: place.threadId,
+                url,
+              });
+              panel.open(place, { kind: BROWSER_PANEL, resource: tab.tabId });
+              return { tabId: tab.tabId };
+            },
+          }),
+        );
+
         // The route names the tab on screen: the plugin's own choice follows it.
         const followRoute = () => {
           const route = navigation.current();
