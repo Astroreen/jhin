@@ -2360,6 +2360,130 @@ Decisions (M1):
   inbox and health say about its slices and asks, so the owner is told
   rather than left waiting.
 
+Decisions:
+
+- **D1541. The mission's node hands a slice to an assignee of any node.**
+  A mission lives on one node, its `missions` stream's. Its orchestrator
+  hands a ready slice to an agent or owner of another node as to one of its
+  own: `agents.send` already reaches them through `mesh.call` (D623), and
+  its delivery names the node and thread that took the message, so the
+  slice links that thread with its `nodeId`. Readiness no longer depends on
+  where the assignee is: the orchestrator and the panel call
+  `missionProgress` without `nodeId`. The option, the decision `elsewhere`
+  and the code `AGENT_ELSEWHERE` stay for callers that use them (rule 8),
+  but `jhin.orchestrator` no longer produces them. Handing an active slice
+  again answers with its linked thread on whatever node it is, with its
+  `nodeId` when that is not the mission's node.
+- **D1542. Missions commands take the mission's `node`.** Every command of
+  `jhin.missions` and of `jhin.orchestrator` about a mission, its slices or
+  its project takes an optional `node`: the node the mission lives on. For
+  another node the command runs there through `mesh.call`, with the
+  permissions the command needs (the caller held them here; D416
+  intersects them there), and answers what that node answers. Naming the
+  node needs no `mesh.call` grant of the caller's own, as A2's messages to
+  another node need none (D628): the command reaches that node only. A call
+  that came from another node is sent back to that node only, never relayed
+  to a third with this node's membership (`RELAY_REFUSED`). So an agent
+  of another node works on its slice with the same tools: the handoff tells
+  it to pass `node` with `slices_update`, `slices_prove` and
+  `slices_review`, and a lead on another node plans and orchestrates the
+  same way (D1545). `slices.list` and `refocus.brief` keep `nodeId` for a
+  thread's node; `node` is never a thread's. The helper that adds `node` and
+  forwards is `onMissionNode` in `@jhin/missions-api`.
+- **D1543. Refocus of a thread on another node runs on the thread's
+  node.** The mission's node knows the slice; the thread's node sees the
+  thread's compactions and turns, and holds its project's lore. When the
+  mission's orchestrator sees an open slice linking a thread of another
+  node, it asks that node to follow it: `refocus.follow { threadId, node }`
+  (`threads.write`, and only the node named may ask, since its briefs go
+  into the thread: `MESH_ONLY` otherwise), kept in that node's `storage.kv`, asked again after a
+  restart and when the node comes back (D1547). The thread's node follows it
+  as one of its own (D710, D711, its own config): on a compaction or the
+  interval it reads the brief from the mission's node (`refocus.brief
+  { threadId, nodeId }` through `mesh.call`), adds its own lore brief after
+  a compaction, and steers or queues it. A brief that names no open slice
+  ends the following; a mission's node that cannot be reached skips that
+  refocus. `refocus.send` on the thread's node works for a followed thread
+  too.
+- **D1544. `missions.stop { missionId }` stops a mission's work on every
+  node.** It stops the mission's run on the node it runs on, then
+  `agents.stop` on each agent assigned an active slice of the mission, on
+  its node (`mesh.call` with `agents.write`), and answers per agent
+  `stoppedAt` and `interrupted`, or the error of a node that refused or
+  cannot be reached; a run whose node cannot be reached carries its error
+  too, and the agents are stopped all the same. It takes `missions.write`, `agents.write` and
+  `threads.write`. The panel's Stop mission calls it, so the dialog names
+  the agents of every node, by title when the directory knows them. Pause
+  stays `workflows.stop` on the run's node (D1090).
+- **D1545. A lead on another node runs the mission's orchestrator.**
+  `missions.orchestrate { missionId, node }` runs the workflow on the
+  caller's node, from its thread (W10 runs a script from a thread of its own
+  node, and only for a caller of that node), with `node` in its arguments,
+  so each of its commands carries `node` (D1542). Waits go to the mission's
+  node in parts of at most 20 seconds, under `mesh.call`'s deadline, until
+  the mission moves or the wait's own timeout. `slices.handoff { node }` is
+  the one command not forwarded whole: the lead's node reads the slice, its
+  mission and their hold there, sends the message itself, as the lead, and
+  writes the link and the slice's status there. A node may send only as its
+  own parties (D622), so the mission's node cannot send for a lead of
+  another node to a third. The lead's node records the run on the mission's
+  node with `missions.orchestration.record { missionId, workflowId, status,
+  parentThreadId?, lead?, error? }`, which only a mesh caller may call and
+  which takes the run's node from the caller. A run that starts must name a
+  lead of that node, for an open mission no other run is working on
+  (`MESH_ONLY`, `MISSION_CLOSED`, `RUN_ACTIVE`); when recording fails, the
+  lead's node stops the workflow it just started, so no run goes unseen. It
+  calls the command again when its run fails or is stopped. So the mission's node finds the run for
+  `missions.orchestration` (with the run's `nodeId`, read through
+  `workflows.list` there), reports a run that failed or was stopped as the
+  lead (D1222), reads the lead's escalations in its own inbox and the lead
+  node's (D1223), and refuses a delete while the run is active (D1395). The
+  panel says where a run runs and pauses it there. Its Run from lists the
+  agents its directory knows, this node's (D1082): starting from an agent
+  of another node waits for M1's directory and a connection open to that
+  node, since a call through a relay is a mesh caller, which W10 refuses
+  (Deferred).
+- **D1546. A member moved to another node leaves the old one.**
+  `teams.up` compares the roster it last put up with the new one. A member
+  whose address changed is put on its new node first, then its old node
+  runs `teams.leave { teamId, member, roster }` (`teams.write` and
+  `agents.write`, through `mesh.call` for another node): it stops the
+  team's agent there, removes its definition (`agents.remove`; its
+  generations and knowledge stay, D611), forgets its seat and keeps the new
+  roster. An agent the team did not put there is left alone. A node that
+  cannot be reached keeps the leave pending in the `teams.up` node's
+  `storage.kv`, and every later `teams.up` tries it again; the answer says
+  per member `left` or `leaveError`.
+- **D1547. A node away is a decision of the mission.** `jhin.mesh` keeps
+  writing `mesh.nodes.changed` to the `mesh` stream on every change of the
+  mesh; its name, its event and the node view move to `@jhin/mesh-api`
+  (`MESH_STREAM`, `MeshEvents`, `MeshNodeView`). A node is **away** when the
+  latest such event lists it unreachable or no longer lists it; a node
+  without that stream (no mesh) has none away. `missionProgress` takes
+  `away` (node ids) and reports an open slice of the current wave whose
+  assignee lives on an away node as the decision `away`, planned or active,
+  instead of ready or working. `missions.wait` also ends when a node
+  holding the mission's open slices goes away or comes back, so the
+  orchestrator ends with `decide` at once and wakes the lead, who reassigns
+  or waits. A handoff to an away node is `SLICE_NOT_READY` with reason
+  `away`.
+- **D1548. Health warns of a mission waiting on an away node.** The
+  detector `away` raises a warning on the mission's group for each away node
+  holding open slices of it: "N slices of «mission» wait on node B, which is
+  away". It clears by itself (D1383) when the node comes back
+  (`node-back`) or no open slice waits on it any more (`not-waiting`). No
+  analyst is asked: nobody on the mesh knows more than the owner about a
+  machine that went away. The owner hears it as any new warning (D731).
+- **D1549. The inbox says when a sender is away.** `agents.inbox.list` marks
+  an open item whose sender lives on an away node `away: true`, and the
+  item's page says the answer cannot reach it until its node is back.
+  Answering or dismissing such an item is refused with `SENDER_AWAY` before
+  anything is recorded, so the item stays open and is answered once the node
+  is back.
+- **D1550. The in-memory mesh writes its `mesh` stream.** `startMeshNode`
+  registers `mesh.nodes` and appends `mesh.nodes.changed` as `jhin.mesh`
+  does, so tests see a node go away when its peer stops.
+
 ### M3. A run across two nodes (D1561–D1580)
 
 - Before the run, the L3 run's leaks that would spoil it: which setting
@@ -2555,23 +2679,35 @@ Decisions (M1):
   choose their node.
 - ~~A8: leaving generations out of `threads.search` as well: D745 filters the lists
   and catalogs only, so a search can still find a generation's text.~~ A8, D1276.
-- A6: handing off a slice whose assignee is on another node (D702's
+- ~~A6: handing off a slice whose assignee is on another node (D702's
   `elsewhere`): `agents.send` reaches it, but the slice's thread link and
-  refocus follow only this node's threads.
+  refocus follow only this node's threads.~~ M2, D1541–D1543.
 - A6: refocus as an `agents.send` message rather than a steer or queued
   message of the thread (D708), once a message can be steered.
 - A6: an orchestrator that survives a node restart by itself; today the run
   fails (D376) and the lead starts it again (D707).
-- A6: refocusing threads of other nodes linked to a slice; only this node's
-  threads are followed (D710).
+- ~~A6: refocusing threads of other nodes linked to a slice; only this node's
+  threads are followed (D710).~~ M2, D1543.
 - A6: a refocus interval in minutes for long turns (D711 counts turns).
 - ~~A6: a row in the chat for `agent.context.compacted` (D709).~~ A6, D1271.
 - ~~A6: the orchestrator in Civilization mode, beside A3's mission view (D712).~~
   C2, D1086–D1090.
 - C2: a real pause in W10 (a run that stops between steps and continues
   itself); Pause ends the run for now (D1090).
-- C2: stopping agents of other nodes that hold a mission's slices, and
-  running the orchestrator from a thread on another node (D1089, D1090).
+- ~~C2: stopping agents of other nodes that hold a mission's slices, and
+  running the orchestrator from a thread on another node (D1089, D1090).~~
+  M2, D1544, D1545; the panel's start from an agent of another node is the
+  item below.
+- M2: starting a run from the panel with an agent of another node. The
+  server runs it (D1545), but Run from lists this node's agents (D1082) and
+  a start through a relay is a mesh caller, which W10 refuses: it needs M1's
+  directory of every node and a connection open to the agent's node.
+- M2: a proof or review an agent of another node records names its node
+  (`by: node:<X>`), not the agent: the forwarded call runs as the node
+  (D1542, D416).
+- M2: a review across nodes. `slices.review` and the reviewer's brief read
+  the files and diff of the mission's node (D1242, D1244), so work done in a
+  thread of another node is not what they see.
 - A6: ending a `missions.wait` when its caller goes away: commands get no
   cancellation signal (as W10's waits), so a stopped run's wait ends at its
   timeout.
@@ -2777,3 +2913,8 @@ Each workstream lists its PRs here as they merge.
 - L3 #267, #269, #270, #272: the crew's four missions, 27 Deferred items
   (D1271–D1278, D1381–D1399).
 - L3: the L3 run note, the lore stories "workaround" and "toll road".
+- M2 #297: a slice handed to an assignee of any node keeps its thread link
+  there, every missions command takes the mission's `node` (`onMissionNode`),
+  refocus of a thread of another node on its own node (`refocus.follow`),
+  `missions.stop` on every node, and a lead on another node running the
+  orchestrator (`missions.orchestration.record`) (D1541–D1545).
