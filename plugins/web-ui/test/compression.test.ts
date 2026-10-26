@@ -157,6 +157,12 @@ describe("jhin.web-ui compression (loading.md D1582–D1586)", () => {
       expect(reply.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
       expect(reply.headers["etag"]).toBeUndefined();
     }
+    const refused = await request(`${url}/assets/app-abc123.js`, {
+      "accept-encoding": "br;q=0, gzip;q=0",
+    });
+    expect(refused.headers["content-encoding"]).toBeUndefined();
+    expect(refused.headers["vary"]).toBe("accept-encoding");
+    expect(refused.text).toBe(APP);
     const icon = await request(`${url}/favicon.png`, { "accept-encoding": "br" });
     expect(icon.headers["content-encoding"]).toBeUndefined();
     expect(icon.headers["vary"]).toBeUndefined();
@@ -182,6 +188,9 @@ describe("jhin.web-ui compression (loading.md D1582–D1586)", () => {
     expect(again.status).toBe(304);
     expect(again.raw.length).toBe(0);
     expect(again.headers["etag"]).toBe(tag);
+    // A strong-form tag names the same representation: weak comparison (RFC 9110 §13.1.2).
+    const strong = await request(`${url}/`, { "if-none-match": tag!.replace(/^W\//, "") });
+    expect(strong.status).toBe(304);
 
     const head = await request(`${url}/threads/t1`, { "accept-encoding": "gzip" }, "HEAD");
     expect(head.status).toBe(200);

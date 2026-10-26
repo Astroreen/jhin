@@ -66,9 +66,8 @@ What the node does today (2026-10-24, `08eeb571`):
 - **D1586. `jhin.web-ui.compression` turns it off.** A boolean, default
   `true`, in the `jhin.web-ui` config section (shown in settings as
   advanced). Off, the node sends files as they are, as before this plan;
-  the validators of D1585 stay. Turned on behind a reverse proxy that
-  compresses too, nothing breaks: proxies (nginx, Caddy) do not compress
-  a response that already has a `content-encoding` again.
+  the validators of D1585 stay. A reverse proxy that compresses on its own
+  leaves a response that already has a `content-encoding` alone.
 - **D1587. `jhin.transport-ws` negotiates `permessage-deflate`.** Messages
   of 1 KiB and more are deflated (zlib level 3); smaller ones are sent as
   they are. Both sides use no context takeover, so a connection holds no

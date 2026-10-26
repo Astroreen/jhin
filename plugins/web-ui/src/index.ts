@@ -160,8 +160,13 @@ export default definePlugin({
       // Also on a plain body: a cache in between must not hand it a compressed one (D1583).
       if (zipped) headers["vary"] = "accept-encoding";
       if (!hashed && validated(request, response, headers, fileTag(stat))) return;
-      const available = zipped ? siblings(target, stat) : new Map<Coding, number>();
-      const coding = negotiate(request.headers["accept-encoding"], [...available.keys()]);
+      // Siblings are looked up only for a request that accepts one of them.
+      const accept = request.headers["accept-encoding"];
+      const available =
+        zipped && negotiate(accept) !== undefined
+          ? siblings(target, stat)
+          : new Map<Coding, number>();
+      const coding = negotiate(accept, [...available.keys()]);
       const body = coding === undefined ? target : `${target}${SIBLING[coding]}`;
       if (coding !== undefined) headers["content-encoding"] = coding;
       headers["content-length"] = coding === undefined ? stat.size : available.get(coding)!;
@@ -308,7 +313,13 @@ export default definePlugin({
           return;
         }
         response.writeHead(200, { ...headers, "content-encoding": coding });
-        Stream.pipeline(Fs.createReadStream(real), compressor(coding), response, () => undefined);
+        Stream.pipeline(Fs.createReadStream(real), compressor(coding), response, (error) => {
+          if (error !== undefined && error !== null && !response.destroyed)
+            context.log.error("sending a client plugin file failed", {
+              file: relative,
+              error: String(error),
+            });
+        });
       }),
     );
     context.subscriptions.add(
