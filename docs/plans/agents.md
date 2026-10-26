@@ -2758,9 +2758,10 @@ Decisions:
   M2, D1544, D1545; the panel's start from an agent of another node is the
   item below.
 - M2: starting a run from the panel with an agent of another node. The
-  server runs it (D1545), but Run from lists this node's agents (D1082) and
-  a start through a relay is a mesh caller, which W10 refuses: it needs M1's
-  directory of every node and a connection open to the agent's node.
+  server runs it (D1545), and M1's directory now reads every node's agents
+  (`others`, D1532), but Run from offers this node's only: a start through a
+  relay is a mesh caller, which W10 refuses, so it needs a connection open to
+  the agent's node.
 - M2: a proof or review an agent of another node records names its node
   (`by: node:<X>`), not the agent: the forwarded call runs as the node
   (D1542, D416).
