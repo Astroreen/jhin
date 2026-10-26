@@ -6,5 +6,5 @@
     "types": ["node"],
     "noUncheckedSideEffectImports": false
   },
-  "include": ["src", "test", "vite.config.ts", "shared-modules.ts"]
+  "include": ["src", "test", "vite.config.ts", "shared-modules.ts", "precompress.ts"]
 }

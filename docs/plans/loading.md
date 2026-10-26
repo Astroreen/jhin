@@ -57,7 +57,8 @@ What the node does today (2026-10-24, `08eeb571`):
   under the same type and 1 KiB rules. Server-sent events
   (`/client/events`) are never compressed: a compressor buffers, and an
   event must arrive when it is written.
-- **D1585. What is `no-cache` gets a validator.** `index.html`, client plugin
+- **D1585. What is `no-cache` gets a validator** (file tags amended by
+  D1598). `index.html`, client plugin
   files and `/client/config` carry an `etag` (a weak tag of size and
   modification time for files, a hash for JSON), and a request whose
   `if-none-match` matches gets `304` with no body. The tag names the
@@ -84,6 +85,13 @@ What the node does today (2026-10-24, `08eeb571`):
   deflated like any other message of 1 KiB and more. A binary frame of
   already compressed bytes, once a plugin sends one, is sent with
   `compress: false`.
+- **D1598. A file's validator is a hash of its bytes.** It replaces D1585's
+  "size and modification time for files": a packed install (`npm pack`
+  stamps every file with one fixed time) and a new build of the same size
+  would give two versions of `index.html` one tag, and a browser would keep
+  the old one on `304`. `jhin.web-ui` hashes a file once and keeps the tag
+  while its size, times and inode stay the same. It is still a weak tag, so
+  every encoding of the file shares it.
 
 ### P2. The history cache
 
