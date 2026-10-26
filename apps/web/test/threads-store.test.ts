@@ -410,10 +410,16 @@ describe("client.threads@1 with the history cache (loading.md D1591)", () => {
     });
     const { cache, written } = catalogCache(kept);
     const { kernel, store } = await start(node.client, cache);
-    follow(store);
+    const shown: string[] = [];
+    store.subscribe({ node: "ws://a/rpc" }, () => {
+      const catalog = store.catalog({ node: "ws://a/rpc" });
+      shown.push(`${catalog.status}:${catalog.threads.map((item) => item.id).join(",")}`);
+    });
     await node.subscribed();
     expect(node.calls).toEqual(["threads.epoch", "threads.catalog"]);
     expect(node.subscriptions.map((entry) => entry.after)).toEqual([3]);
+    // The other database's catalog leaves the screen as soon as the epoch says so.
+    expect(shown).toEqual(["ready:t1,t2", "loading:", "ready:t9"]);
     expect(store.catalog({ node: "ws://a/rpc" }).threads.map((item) => item.id)).toEqual(["t9"]);
     expect(await written(1)).toMatchObject({ epoch: "e2", head: 3 });
     await kernel.stop();

@@ -1,4 +1,4 @@
-import { ThreadEvents, THREADS_STREAM } from "@jhin/agent-api";
+import { ThreadEvents, THREADS_STREAM, threadStream } from "@jhin/agent-api";
 import {
   CONNECTIONS_CAPABILITY,
   HISTORY_CACHE_CAPABILITY,
@@ -197,7 +197,7 @@ export const threadsStorePlugin = builtin(
           const kept = new Set(after.threads.map((thread) => thread.id));
           for (const thread of before.threads) {
             if (!kept.has(thread.id))
-              void cache?.drop(connection, `thread/${thread.id}`).catch(() => undefined);
+              void cache?.drop(connection, threadStream(thread.id)).catch(() => undefined);
           }
         };
         const update = (catalog: NodeCatalog) => {
@@ -238,6 +238,9 @@ export const threadsStorePlugin = builtin(
                     head = kept.head;
                     keeping = kept.epoch;
                     followingKept = true;
+                  } else if (now !== undefined) {
+                    // Another database (or one gone back): its catalog is not this node's.
+                    set(feed, LOADING);
                   }
                 }
               }
