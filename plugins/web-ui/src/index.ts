@@ -19,7 +19,7 @@ import {
   compress,
   compressible,
   compressor,
-  fileTag,
+  fileTagger,
   matches,
   negotiate,
   type Coding,
@@ -92,6 +92,7 @@ export default definePlugin({
         Path.join(Path.dirname(require.resolve("@jhin/web/package.json")), "dist"),
     );
     const index = Path.join(dir, "index.html");
+    const fileTag = fileTagger();
     const compression = () =>
       context.config.get<z.output<typeof Config>>("jhin.web-ui").compression !== false;
     /**
@@ -159,7 +160,7 @@ export default definePlugin({
       };
       // Also on a plain body: a cache in between must not hand it a compressed one (D1583).
       if (zipped) headers["vary"] = "accept-encoding";
-      if (!hashed && validated(request, response, headers, fileTag(stat))) return;
+      if (!hashed && validated(request, response, headers, fileTag(target, stat))) return;
       // Siblings are looked up only for a request that accepts one of them.
       const accept = request.headers["accept-encoding"];
       const available =
@@ -301,7 +302,7 @@ export default definePlugin({
           "x-content-type-options": "nosniff",
         };
         if (zipped) headers["vary"] = "accept-encoding";
-        if (validated(request, response, headers, fileTag(stat))) return;
+        if (validated(request, response, headers, fileTag(real, stat))) return;
         // Not built by @jhin/web, so compressed as it is read (D1584).
         const coding =
           zipped && stat.size >= MIN_COMPRESS_BYTES

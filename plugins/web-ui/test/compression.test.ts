@@ -199,6 +199,21 @@ describe("jhin.web-ui compression (loading.md D1582–D1586)", () => {
     expect(Number(head.headers["content-length"])).toBe(Zlib.gzipSync(INDEX).length);
   });
 
+  it("tags a file by its bytes: a rewrite of the same size and time gets a new tag (D1598)", async () => {
+    const url = await startNode();
+    const first = await request(`${url}/`);
+    const file = Path.join(dist, "index.html");
+    const { mtime } = Fs.statSync(file);
+    Fs.writeFileSync(file, INDEX.replace("compress me", "compress m2"));
+    Fs.utimesSync(file, mtime, mtime);
+    const second = await request(`${url}/`, { "if-none-match": first.headers["etag"]! });
+    expect(second.status).toBe(200);
+    expect(second.headers["etag"]).not.toBe(first.headers["etag"]);
+    for (const header of ["*", `W/"other", ${second.headers["etag"]}`]) {
+      expect((await request(`${url}/`, { "if-none-match": header })).status).toBe(304);
+    }
+  });
+
   it("skips a sibling older than its file", async () => {
     const url = await startNode();
     const file = Path.join(dist, "index.html");

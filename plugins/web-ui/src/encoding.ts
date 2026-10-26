@@ -1,5 +1,5 @@
 import * as Crypto from "node:crypto";
-import type * as Fs from "node:fs";
+import * as Fs from "node:fs";
 import * as Zlib from "node:zlib";
 
 /** Content codings the node sends, in the order it prefers them (loading.md D1583). */
@@ -50,9 +50,22 @@ export function negotiate(
   });
 }
 
-/** A weak tag of a file: its size and modification time (loading.md D1585). */
-export const fileTag = (stat: Fs.Stats): string =>
-  `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+/**
+ * Tags of files by their bytes (loading.md D1598), kept while the file's
+ * size, times and inode stay: a packed install stamps every file with one
+ * mtime, so size and mtime alone can name two versions of `index.html`.
+ */
+export function fileTagger(): (file: string, stat: Fs.Stats) => string {
+  const tags = new Map<string, { readonly key: string; readonly tag: string }>();
+  return (file, stat) => {
+    const key = `${stat.size}-${stat.mtimeMs}-${stat.ctimeMs}-${stat.ino}`;
+    const known = tags.get(file);
+    if (known?.key === key) return known.tag;
+    const tag = bodyTag(Fs.readFileSync(file));
+    tags.set(file, { key, tag });
+    return tag;
+  };
+}
 
 /** A weak tag of a body: a hash of its bytes (loading.md D1585). */
 export const bodyTag = (body: string | Buffer): string =>
