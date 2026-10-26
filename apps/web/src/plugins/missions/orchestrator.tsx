@@ -299,16 +299,19 @@ export function OrchestratorPanel(props: MissionAsideProps & { services: Orchest
     act(async () => {
       const stopped = await call("missions.stop", { missionId: mission.id });
       // A node that refused or cannot be reached is named, so the owner knows who still works.
-      const failed = (
-        stopped as { agents?: { address: string; error?: { message: string } }[] }
-      ).agents?.filter((agent) => agent.error !== undefined);
-      if (failed !== undefined && failed.length > 0) {
-        throw new Error(
-          failed
-            .map((agent) => `${assigneeLabel(agent.address, titles)}: ${agent.error!.message}`)
-            .join("; "),
-        );
-      }
+      const answer = stopped as {
+        run?: { nodeId?: string; error?: { message: string } } | null;
+        agents?: { address: string; error?: { message: string } }[];
+      };
+      const failed = [
+        ...(answer.run?.error === undefined
+          ? []
+          : [`The run on node ${answer.run.nodeId ?? "?"}: ${answer.run.error.message}`]),
+        ...(answer.agents ?? [])
+          .filter((agent) => agent.error !== undefined)
+          .map((agent) => `${assigneeLabel(agent.address, titles)}: ${agent.error!.message}`),
+      ];
+      if (failed.length > 0) throw new Error(failed.join("; "));
     });
   };
 

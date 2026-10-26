@@ -1198,10 +1198,24 @@ export default definePlugin({
             nodeId: runNode,
             lead,
           });
+          // A run that ended before its start was recorded is reported now.
+          const early = (await kv.get(NAMESPACE, `ended/${runNode}/${workflowId}`)) as
+            | { status: string; error?: string }
+            | undefined;
+          if (early !== undefined) {
+            await kv.delete(NAMESPACE, `ended/${runNode}/${workflowId}`);
+            if (early.status === "failed" || early.status === "stopped") {
+              reportLater(missionId, early.status, workflowId, early.error);
+            }
+          }
           return { recorded: true };
         }
-        // An end: only the current run speaks for the mission (D1222).
+        // An end before its start was recorded waits for it (the run ended at once).
         if (current?.workflowId !== workflowId || current.nodeId !== runNode) {
+          await kv.set(NAMESPACE, `ended/${runNode}/${workflowId}`, {
+            status,
+            ...(error === undefined ? {} : { error }),
+          });
           return { recorded: false };
         }
         if ((status === "failed" || status === "stopped") && !isClosed(mission.status)) {
@@ -1610,17 +1624,25 @@ export default definePlugin({
     };
     /** Threads of other nodes asked to follow their slice, by `<node>/<thread>` (D1543). */
     const asked = new Map<string, Promise<void>>();
+    /** When an ask that failed may be made again, by key: a minute later, then longer. */
+    const retryAt = new Map<string, { at: number; wait: number }>();
     function askToFollow(node: string, threadId: string): Promise<void> {
       const key = `${node}/${threadId}`;
       const known = asked.get(key);
       if (known !== undefined) return known;
+      const retry = retryAt.get(key);
+      if (retry !== undefined && Date.now() < retry.at) return Promise.resolve();
       const asking = onNode(node, "refocus.follow", { threadId, node: nodeId }, [
         "threads.write",
       ]).then(
-        () => undefined,
+        () => {
+          retryAt.delete(key);
+        },
         (error: unknown) => {
-          // Asked again on the next change of the missions or the mesh.
+          // Asked again on a later change of the missions, after a growing pause.
           asked.delete(key);
+          const wait = Math.min((retry?.wait ?? 30_000) * 2, 30 * 60_000);
+          retryAt.set(key, { at: Date.now() + wait, wait });
           if (!disposed) {
             context.log.warn("a thread of another node is not refocused", {
               node,
@@ -1649,6 +1671,7 @@ export default definePlugin({
       }
       // A link that left or a slice that closed is asked again if it comes back.
       for (const key of asked.keys()) if (!remote.has(key)) asked.delete(key);
+      for (const key of retryAt.keys()) if (!remote.has(key)) retryAt.delete(key);
       for (const [threadId, subscription] of watched) {
         if (wanted.has(threadId)) continue;
         subscription.dispose();

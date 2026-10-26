@@ -40,6 +40,9 @@
   },
   "devDependencies": {
     "@jhin/plugin-agent-fake": "workspace:*",
+    "@jhin/plugin-agents": "workspace:*",
+    "@jhin/plugin-missions": "workspace:*",
+    "@jhin/plugin-orchestration": "workspace:*",
     "@jhin/plugin-threads": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/testing": "workspace:*",

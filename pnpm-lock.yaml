@@ -1334,6 +1334,15 @@ importers:
       '@jhin/plugin-agent-fake':
         specifier: workspace:*
         version: link:../agent-fake
+      '@jhin/plugin-agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@jhin/plugin-missions':
+        specifier: workspace:*
+        version: link:../missions
+      '@jhin/plugin-orchestration':
+        specifier: workspace:*
+        version: link:../orchestration
       '@jhin/plugin-threads':
         specifier: workspace:*
         version: link:../threads

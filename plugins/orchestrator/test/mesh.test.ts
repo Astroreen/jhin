@@ -18,10 +18,10 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import fake from "@jhin/plugin-agent-fake";
 import threads from "@jhin/plugin-threads";
-import agents from "../../agents/src/index.ts";
+import agents from "@jhin/plugin-agents";
 import { manifest, watch } from "../../agents/test/support.ts";
-import missions from "../../missions/src/index.ts";
-import orchestration from "../../orchestration/src/index.ts";
+import missions from "@jhin/plugin-missions";
+import orchestration from "@jhin/plugin-orchestration";
 import orchestrator from "../src/index.ts";
 
 /** What a thread's agent holds over MCP (mcp-api's AGENT_PERMISSIONS). */
@@ -240,6 +240,44 @@ describe("what only the mission's node may ask (D1543, D1545)", () => {
         params: { node: "b" },
       }),
     ).rejects.toMatchObject({ code: "RELAY_REFUSED" });
+  });
+});
+
+describe("a run's end that comes before its start (D1545)", () => {
+  it("is reported once the start is recorded", async () => {
+    const network = createMemoryNetwork();
+    const a = await meshNode(network, "a");
+    const b = await meshNode(network, "b");
+    await b.node.join(a.node);
+    const lead = await b.client.call<{ id: string }>("threads.create", { title: "Lead" });
+    const project = await a.client.call<{ id: string }>("projects.create", { path: a.data });
+    const mission = await a.client.call<Mission>("missions.create", {
+      projectId: project.id,
+      title: "Doghouse",
+      outcome: "The dog has a shelter",
+    });
+    const inbox = watch(a.client, INBOX_STREAM);
+    const record = (params: Record<string, unknown>) =>
+      b.client.call("mesh.call", {
+        node: "a",
+        method: "missions.orchestration.record",
+        params: { missionId: mission.id, workflowId: "w-1", ...params },
+      });
+    expect(await record({ status: "failed", error: "the script broke" })).toMatchObject({
+      recorded: false,
+    });
+    expect(
+      await record({
+        status: "running",
+        parentThreadId: lead.id,
+        lead: threadAddress("b", lead.id),
+      }),
+    ).toMatchObject({ recorded: true });
+    const report = await inbox.untilMatch((event) => event.type === MessageEvents.received);
+    expect(payloadOf(report).message).toMatchObject({
+      from: threadAddress("b", lead.id),
+      messageId: `report-${mission.id}-w-1`,
+    });
   });
 });
 
