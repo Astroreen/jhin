@@ -742,7 +742,12 @@ export default definePlugin({
     let selfNode: Promise<string | undefined> | undefined;
     const selfNodeId = () => {
       selfNode ??= context.commands.execute("host.identity", {}).then(
-        (answer) => (answer as { nodeId?: string }).nodeId,
+        (answer) => {
+          const id = (answer as { nodeId?: string }).nodeId;
+          // An answer without an id is asked again next time.
+          if (id === undefined) selfNode = undefined;
+          return id;
+        },
         (error: unknown) => {
           selfNode = undefined;
           context.log.info("this node's id is not known yet", { error: String(error) });
@@ -828,11 +833,19 @@ export default definePlugin({
       };
       followRemote = () => {
         if (!active) return;
+        const members = follower.members!();
         const reachable = new Set(
-          follower.members!()
-            .filter((member) => member.reachable)
-            .map((member) => member.nodeId),
+          members.filter((member) => member.reachable).map((member) => member.nodeId),
         );
+        // A node that left the mesh is followed no more; one out of reach is
+        // kept, its relay waiting for a route (D499).
+        const known = new Set(members.map((member) => member.nodeId));
+        for (const [name, followed] of remote) {
+          const owner = parseRelayStream(name)?.owner;
+          if (owner === undefined || known.has(owner)) continue;
+          followed.dispose();
+          remote.delete(name);
+        }
         for (const node of reachable) {
           followOne(node, MISSIONS_STREAM, (event) => {
             sensors.ingestForeignMission(node, event);

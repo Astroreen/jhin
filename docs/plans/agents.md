@@ -2635,6 +2635,9 @@ Decisions:
   `source-control`, `health` and `missions` from their start (D1526), however
   long they are; a cursor kept across restarts, or a window's worth only,
   would bound it.
+- M1: a member whose data was wiped starts its streams again at sequence 1
+  (D1526): what this node counted from the old ones stays, and the new
+  events reuse their sequences in evidence and dismissal cuts.
 - M1: another node's events count with the missions as they are when they
   arrive (D1526): on a restart they are not replayed in time order with this
   node's streams, so a message sent before a slice was assigned can count
