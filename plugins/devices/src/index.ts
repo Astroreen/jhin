@@ -8,7 +8,12 @@ import {
   OWNER_PRINCIPAL_ID,
   type AuthVerifier,
 } from "@jhin/auth-api";
-import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import {
+  HOST_IDENTITY_CAPABILITY,
+  HOST_PATHS_CAPABILITY,
+  type HostIdentity,
+  type HostPaths,
+} from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import {
   DEVICES_STREAM,
@@ -20,6 +25,8 @@ import {
   DeviceDetail,
   DeviceError,
   DeviceEvents,
+  DeviceHostTestInput,
+  DeviceHostTestResult,
   DeviceHubAccessInput,
   DeviceHubAccessResult,
   DeviceInputResult,
@@ -49,6 +56,7 @@ import {
 import { definePlugin, toDisposable, z, describePermissions } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog, type Json } from "@jhin/storage-api";
 
+import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as NodePath from "node:path";
 
@@ -58,6 +66,8 @@ import { HUB_SPEC, runProgram, toolEnvironment, toolPaths } from "./toolchain.ts
 import { createDeviceHub } from "./hub.ts";
 import { resolveNode } from "./hub-host.ts";
 import { createKeyedQueue } from "./keyed-queue.ts";
+import { createRemoteHosts } from "./remote-hosts.ts";
+import { SshDeviceHostConfig, isLocalSshHost, probeSshHost } from "./ssh-host.ts";
 
 const CONFIG_SECTION = "jhin.devices";
 /** A watched device's screen is taken again this long after the last one. */
@@ -101,6 +111,25 @@ const Config = z
       title: "npm",
       description:
         "The npm that installs the device hub; npm on PATH when unset. Takes effect with the next install.",
+      advanced: true,
+    }),
+    sshHosts: z
+      .array(SshDeviceHostConfig)
+      .default([])
+      .refine(
+        (hosts) => new Set(hosts.map((host) => host.id)).size === hosts.length,
+        "Device host ids must be unique.",
+      )
+      .meta({
+        title: "Device hosts",
+        description:
+          "Add remote machines with simulator or emulator runtimes installed, and this node will connect over SSH and set up device tools automatically (with the device hub on). Changes apply at once.",
+        advanced: true,
+      }),
+    ssh: Path.meta({
+      title: "ssh",
+      description:
+        "The ssh that reaches device hosts; ssh on PATH when unset. Takes effect when the plugin restarts.",
       advanced: true,
     }),
   })
@@ -147,31 +176,62 @@ export default definePlugin({
     /** Whether agent-device runs; the hub below answers once it exists. */
     let agentToolsReady = () => false;
 
-    const state = (): DeviceState => ({
-      hosts: [host.summary()],
-      devices,
-      sessions,
-      booting,
-      ...(detail === undefined ? {} : { detail }),
-      ...(hubStatus === undefined ? {} : { hostStatuses: { [LOCAL_DEVICE_HOST_ID]: hubStatus } }),
-      setup: {
-        hubEnabled: config().hub,
-        agentAccessEnabled: agentAccess(),
-        onboardingCompleted: config().onboardingCompleted,
-        // Allowed now, not only still running: a stop under way already reads as not ready.
-        agentToolsReady: config().hub && agentAccess() && agentToolsReady(),
-      },
+    // Device hosts over SSH (preview.md D1494–D1499).
+    const identity = context.services.tryGet<HostIdentity>(HOST_IDENTITY_CAPABILITY);
+    const homeOf = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY)?.home ?? "";
+    /** T3's owner: the node, its home and the host, so two nodes never share a host's state. */
+    const ownerOf = (hostId: string) =>
+      Crypto.createHash("sha256")
+        .update(`${identity?.nodeId ?? ""}\0${homeOf}\0${hostId}`)
+        .digest("hex")
+        .slice(0, 24);
+    const remote = createRemoteHosts({
+      configs: () => config().sshHosts,
+      enabled: () => config().hub,
+      agentAccess: () => agentAccess(),
+      ssh: config().ssh,
+      owner: (hostId) => ownerOf(hostId),
+      onChange: () => publish(),
+      log: (message, fields) => context.log.debug(message, fields),
     });
+    void remote.reconcile();
+    context.onDeactivate(() => remote.stop());
+    /** Whether a host id names a host over SSH. */
+    const isRemote = (hostId: string | undefined) =>
+      hostId !== undefined && hostId !== LOCAL_DEVICE_HOST_ID;
+
+    const state = (): DeviceState => {
+      const hostStatuses = {
+        ...remote.statuses(),
+        ...(hubStatus === undefined ? {} : { [LOCAL_DEVICE_HOST_ID]: hubStatus }),
+      };
+      return {
+        hosts: [host.summary(), ...remote.summaries()],
+        devices: [...devices, ...remote.devices()],
+        sessions,
+        booting,
+        ...(detail === undefined ? {} : { detail }),
+        ...(Object.keys(hostStatuses).length === 0 ? {} : { hostStatuses }),
+        setup: {
+          hubEnabled: config().hub,
+          agentAccessEnabled: agentAccess(),
+          onboardingCompleted: config().onboardingCompleted,
+          // Allowed now, not only still running: a stop under way already reads as not ready.
+          agentToolsReady: config().hub && agentAccess() && agentToolsReady(),
+        },
+      };
+    };
     const publish = () => {
       streams.clear(DEVICES_STREAM);
       streams.append(DEVICES_STREAM, DeviceEvents.state, { state: state() as unknown as Json });
     };
-    const refresh = async () => {
-      const listed = await host.list();
+    /** The local host's devices, and those of the hosts over SSH (one failing leaves the rest). */
+    const refresh = async (retryHostId?: string) => {
+      const [listed] = await Promise.all([host.list(), remote.refresh(retryHostId)]);
       devices = listed.devices;
       detail = listed.detail;
       publish();
-      return listed.devices;
+      return [...listed.devices, ...remote.devices()];
     };
     context.services.provide(DEVICE_HOSTS_CAPABILITY, { state, refresh });
 
@@ -187,6 +247,7 @@ export default definePlugin({
       androidSdk: () => host.androidSdk(),
       summary: () => host.summary(),
       adbInput: (device, input) => host.input(device, input),
+      remote: { has: remote.has, origin: remote.origin, ensure: remote.ensure },
       http: context.services.tryGet<HttpServer>(HTTP_SERVER_CAPABILITY),
       verifier: context.services.tryGet<AuthVerifier>(AUTH_VERIFIER_CAPABILITY),
       onStatus: (next) => {
@@ -205,7 +266,14 @@ export default definePlugin({
     let agentsAllowed = config().hub && agentAccess();
     context.subscriptions.add(
       context.config.onDidChange(CONFIG_SECTION, () => {
+        void remote.reconcile();
         if (!config().hub) {
+          // The consent goes for the hosts over SSH too (D1206, D1494).
+          void remote
+            .disable()
+            .catch((error: unknown) =>
+              context.log.warn("device hosts not stopped", { error: String(error) }),
+            );
           void hub
             .disable()
             .catch((error: unknown) =>
@@ -216,7 +284,14 @@ export default definePlugin({
         if (allowed !== agentsAllowed) {
           agentsAllowed = allowed;
           if (allowed) hub.warmAgent();
-          else
+          else {
+            void remote
+              .stopAgents()
+              .catch((error: unknown) =>
+                context.log.warn("device hosts' agent tools not stopped", { error: String(error) }),
+              );
+          }
+          if (!allowed)
             void hub
               .stopAgent()
               .then(publish)
@@ -238,23 +313,30 @@ export default definePlugin({
     );
 
     /** The device a command means: named, else the thread's latest, as T3 picks. */
-    const target = async (input: { threadId: string; deviceId?: string | undefined }) => {
-      const id =
-        input.deviceId ??
-        sessions.findLast((session) => session.threadId === input.threadId)?.deviceId;
+    const target = async (input: {
+      threadId: string;
+      deviceId?: string | undefined;
+      hostId?: string | undefined;
+    }) => {
+      const latest = sessions.findLast((session) => session.threadId === input.threadId);
+      const id = input.deviceId ?? latest?.deviceId;
+      // A named device is local unless a host is named; the thread's latest keeps its host.
+      const hostId =
+        input.hostId ??
+        (input.deviceId === undefined ? latest?.hostId : undefined) ??
+        LOCAL_DEVICE_HOST_ID;
       if (id === undefined) {
         throw new DeviceError(
           "DEVICE_NOT_FOUND",
           "No device is open in this thread. Call device_open first.",
         );
       }
-      const known =
-        devices.find((device) => device.id === id) ??
-        (await refresh()).find((device) => device.id === id);
+      const mine = (device: DeviceSummary) => device.id === id && device.hostId === hostId;
+      const known = [...devices, ...remote.devices()].find(mine) ?? (await refresh()).find(mine);
       if (known === undefined) {
         throw new DeviceError(
           "DEVICE_NOT_FOUND",
-          `No device ${id} on host ${LOCAL_DEVICE_HOST_ID}. Call device_list for current ids.`,
+          `No device ${id} on host ${hostId}. Call device_list for current ids.`,
         );
       }
       return known;
@@ -266,13 +348,18 @@ export default definePlugin({
     const loops = new Map<string, Promise<void>>();
     // Neither simctl nor adb tells when a screen changes, so a watched device's screen is
     // taken again after each one (no two at once), until nobody watches it.
-    const capture = async (deviceId: string) => {
-      const stream = `${DEVICE_STREAM_PREFIX}${LOCAL_DEVICE_HOST_ID}/${encodeURIComponent(deviceId)}`;
-      while (!lifetime.disposed && (watchers.get(deviceId) ?? 0) > 0) {
-        const device = byId(devices, deviceId);
+    const capture = async (key: string) => {
+      const [hostId, deviceId] = JSON.parse(key) as [string, string];
+      const stream = `${DEVICE_STREAM_PREFIX}${hostId}/${encodeURIComponent(deviceId)}`;
+      while (!lifetime.disposed && (watchers.get(key) ?? 0) > 0) {
+        const device = isRemote(hostId)
+          ? remote.devices().find((each) => each.hostId === hostId && each.id === deviceId)
+          : byId(devices, deviceId);
         if (device !== undefined && device.booted) {
           try {
-            const png = await host.screenshot(device);
+            const png = isRemote(hostId)
+              ? await remote.screenshot(device)
+              : await host.screenshot(device);
             streams.clear(stream);
             streams.append(stream, DeviceEvents.screen, {
               data: png.toString("base64"),
@@ -302,7 +389,8 @@ export default definePlugin({
         subscribe(stream, listener) {
           const subscription = streams.subscribe(stream, listener);
           if (!stream.startsWith(DEVICE_STREAM_PREFIX)) return subscription;
-          const deviceId = decodeURIComponent(stream.split("/")[2] ?? "");
+          const parts = stream.split("/");
+          const deviceId = JSON.stringify([parts[1] ?? "", decodeURIComponent(parts[2] ?? "")]);
           const before = watchers.get(deviceId) ?? 0;
           watchers.set(deviceId, before + 1);
           if (before === 0) startCapture(deviceId);
@@ -358,9 +446,13 @@ export default definePlugin({
       output: DeviceListResult,
       permissions: ["devices.read"],
       handler: async (input) => {
-        const listed = await refresh();
+        const listed = (await refresh(input.retryHostId)).filter(
+          (device) => input.hostId === undefined || device.hostId === input.hostId,
+        );
         return {
-          hosts: [host.summary()],
+          hosts: [host.summary(), ...remote.summaries()].filter(
+            (each) => input.hostId === undefined || each.id === input.hostId,
+          ),
           devices: listed,
           open: sessions
             .filter(
@@ -380,15 +472,24 @@ export default definePlugin({
       output: DeviceOpenResult,
       permissions: ["devices.write"],
       handler: async (input) => {
-        const summary = host.summary();
-        const listed = await refresh();
+        const hostId = input.hostId ?? LOCAL_DEVICE_HOST_ID;
+        const onSsh = isRemote(hostId);
+        if (onSsh && !remote.has(hostId)) {
+          throw new DeviceError("DEVICE_NOT_FOUND", `No device host ${hostId}. Call device_list.`);
+        }
+        const summary = onSsh
+          ? remote.summaries().find((each) => each.id === hostId)!
+          : host.summary();
+        const listed = (await refresh(onSsh ? hostId : undefined)).filter(
+          (device) => device.hostId === hostId,
+        );
         let device: DeviceSummary | undefined;
         if (input.deviceId !== undefined) {
           device = byId(listed, input.deviceId);
           if (device === undefined) {
             throw new DeviceError(
               "DEVICE_NOT_FOUND",
-              `No device ${input.deviceId} on host ${LOCAL_DEVICE_HOST_ID}. Call device_list for current ids.`,
+              `No device ${input.deviceId} on host ${hostId}. Call device_list for current ids.`,
             );
           }
         } else {
@@ -408,7 +509,7 @@ export default definePlugin({
               "DEVICE_NOT_FOUND",
               input.platform === undefined
                 ? "No simulators or emulators were found. Call device_list to see why."
-                : `No ${input.platform} devices were found on host ${LOCAL_DEVICE_HOST_ID}. Call device_list to see why.`,
+                : `No ${input.platform} devices were found on host ${hostId}. Call device_list to see why.`,
             );
           }
         }
@@ -417,36 +518,49 @@ export default definePlugin({
         if (platform?.available !== true) {
           throw new DeviceError(
             "DEVICE_PLATFORM_UNAVAILABLE",
-            `${chosen.platform} devices are unavailable on host ${LOCAL_DEVICE_HOST_ID}: ${platform?.reason ?? "unknown"}`,
+            `${chosen.platform} devices are unavailable on host ${hostId}: ${platform?.reason ?? "unknown"}`,
           );
         }
         if (!device.booted) {
           const starting = {
-            hostId: LOCAL_DEVICE_HOST_ID,
+            hostId,
             deviceId: device.id,
             threadId: input.threadId,
           };
           booting = [...booting, starting];
           publish();
           const stopped = device;
-          const boot = boots.get(stopped.id) ?? host.boot(stopped);
-          boots.set(stopped.id, boot);
+          const bootKey = `${hostId}\u0000${stopped.id}`;
+          const boot =
+            boots.get(bootKey) ??
+            (onSsh
+              ? // An AVD's id becomes its serial once it runs (T3's `boot`).
+                remote
+                  .boot(stopped)
+                  .then((id) => ({ ...stopped, id, booted: true }) satisfies DeviceSummary)
+              : host.boot(stopped));
+          boots.set(bootKey, boot);
           try {
             device = await boot;
           } finally {
-            boots.delete(stopped.id);
+            boots.delete(bootKey);
             booting = booting.filter((each) => each !== starting);
           }
-          await refresh();
+          await refresh(onSsh ? hostId : undefined);
         }
         const opened = device;
         keepSessions([
           ...sessions.filter(
-            (session) => !(session.threadId === input.threadId && session.deviceId === opened.id),
+            (session) =>
+              !(
+                session.threadId === input.threadId &&
+                session.deviceId === opened.id &&
+                session.hostId === hostId
+              ),
           ),
           {
             threadId: input.threadId,
-            hostId: LOCAL_DEVICE_HOST_ID,
+            hostId,
             deviceId: opened.id,
             platform: opened.platform,
             openedAt: now(),
@@ -454,8 +568,8 @@ export default definePlugin({
         ]);
         publish();
         // The Device panel will ask for the hub's video: it starts now (D1207).
-        hub.warm();
-        const control = host.control(opened);
+        if (!onSsh) hub.warm();
+        const control = onSsh ? remote.control(opened) : host.control(opened);
         return {
           device: opened,
           control: { command: control.command, targetArgs: control.targetArgs },
@@ -474,7 +588,9 @@ export default definePlugin({
       permissions: ["devices.read"],
       handler: async (input) => {
         const device = await target(input);
-        const png = await host.screenshot(device);
+        const png = isRemote(device.hostId)
+          ? await remote.screenshot(device)
+          : await host.screenshot(device);
         return {
           device,
           screenshot: {
@@ -502,7 +618,7 @@ export default definePlugin({
             "device.hub.access issues tickets to a caller; call it over RPC, the CLI or MCP.",
           );
         }
-        return hub.access(invocation.caller);
+        return hub.access(invocation.caller, _input.hostId);
       },
     });
 
@@ -562,7 +678,14 @@ export default definePlugin({
     };
     /** One action or settings read at a time per device (D1332). */
     const actionQueue = createKeyedQueue();
-    const runningDevice = async (input: { threadId: string; deviceId?: string | undefined }) => {
+    /** The programs of the device's own host: this node's, or an SSH host's (D1499). */
+    const actionsFor = (device: DeviceSummary): Promise<ActionHost> =>
+      isRemote(device.hostId) ? remote.actionHost(device.hostId) : Promise.resolve(actionHost());
+    const runningDevice = async (input: {
+      threadId: string;
+      deviceId?: string | undefined;
+      hostId?: string | undefined;
+    }) => {
       const device = await target(input);
       if (!device.booted) {
         throw new DeviceError(
@@ -586,7 +709,7 @@ export default definePlugin({
         const read = await actionQueue.run(`${device.hostId}\u0000${device.id}`, async () => {
           // Still running once its turn comes.
           await runningDevice(input);
-          return readDeviceDetail(actionHost(), device.platform, device.id);
+          return readDeviceDetail(await actionsFor(device), device.platform, device.id);
         });
         return {
           hostId: device.hostId,
@@ -611,7 +734,7 @@ export default definePlugin({
         return actionQueue.run(`${device.hostId}\u0000${device.id}`, async () => {
           // Still running once its turn comes: one closed meanwhile says so, not adb's error.
           await runningDevice(input);
-          const actions = actionHost();
+          const actions = await actionsFor(device);
           await runDeviceAction(actions, device.platform, device.id, input.action);
           // The settings read back after the change, as T3's panel shows them. The action took
           // either way: a read-back that fails answers unknown settings, not a failed action
@@ -632,11 +755,16 @@ export default definePlugin({
 
     /** One input to a thread's device (D1209). */
     const drive = async (
-      input: { threadId: string; deviceId?: string | undefined },
+      input: { threadId: string; deviceId?: string | undefined; hostId?: string | undefined },
       deviceInput: DeviceInput,
     ) => {
       const device = await runningDevice(input);
-      return { device, via: await hub.input(input.threadId, device, deviceInput) };
+      return {
+        device,
+        via: isRemote(device.hostId)
+          ? await remote.input(input.threadId, device, deviceInput)
+          : await hub.input(input.threadId, device, deviceInput),
+      };
     };
     context.commands.register({
       name: "device.tap",
@@ -678,6 +806,44 @@ export default definePlugin({
       handler: (input) => drive(input, { type: "button", button: input.button }),
     });
 
+    // T3's connection check of a device host, before or after it is saved (D1500).
+    context.commands.register({
+      name: "device.hosts.test",
+      title: "Test a device host's connection",
+      description:
+        "Connects to a device host over SSH and reports which platforms it can run and whether its device tools are installed; a host that is this machine is reported as local.",
+      input: DeviceHostTestInput,
+      output: DeviceHostTestResult,
+      permissions: ["devices.write"],
+      handler: async ({ host: candidate }) => {
+        const parsed = SshDeviceHostConfig.safeParse(candidate);
+        if (!parsed.success) {
+          return {
+            status: "failed" as const,
+            error: parsed.error.issues[0]?.message ?? "Invalid host.",
+          };
+        }
+        const options = config().ssh === undefined ? {} : { ssh: config().ssh };
+        if (await isLocalSshHost(parsed.data, options).catch(() => false)) {
+          return { status: "local" as const };
+        }
+        try {
+          const probe = await probeSshHost(parsed.data, ownerOf(parsed.data.id), options);
+          return {
+            status: "connected" as const,
+            platforms: probe.platforms,
+            hubInstalled: probe.hubInstalled,
+            agentDeviceInstalled: probe.agentDeviceInstalled,
+          };
+        } catch (error) {
+          return {
+            status: "failed" as const,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+    });
+
     context.commands.register({
       name: "device.close",
       title: "Close device",
@@ -690,16 +856,23 @@ export default definePlugin({
         const closing = sessions.filter(
           (session) =>
             session.threadId === input.threadId &&
+            (input.hostId === undefined || session.hostId === input.hostId) &&
             (input.deviceId === undefined || session.deviceId === input.deviceId),
         );
         keepSessions(sessions.filter((session) => !closing.includes(session)));
         publish();
         if (input.shutdown === true) {
-          const ids =
-            input.deviceId === undefined ? closing.map((each) => each.deviceId) : [input.deviceId];
-          for (const id of ids) {
-            const device = devices.find((each) => each.id === id);
-            if (device !== undefined) await host.shutdown(device);
+          const targets =
+            input.deviceId === undefined
+              ? closing.map((each) => [each.hostId, each.deviceId] as const)
+              : [[input.hostId ?? LOCAL_DEVICE_HOST_ID, input.deviceId] as const];
+          for (const [hostId, id] of targets) {
+            const device = [...devices, ...remote.devices()].find(
+              (each) => each.hostId === hostId && each.id === id,
+            );
+            if (device === undefined) continue;
+            if (isRemote(hostId)) await remote.shutdown(device);
+            else await host.shutdown(device);
           }
           await refresh();
         }

@@ -18,8 +18,10 @@ import {
   Tooltip,
   TooltipPopup,
   TooltipTrigger,
+  UI_SETTINGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
   UI_TOASTS_CAPABILITY,
+  type SettingsPages,
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
@@ -30,6 +32,7 @@ import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createDismissedDevices } from "./dismissed.ts";
+import { DeviceHostsSection } from "./hosts-settings.tsx";
 import type { DevicePanelProps } from "./panel.tsx";
 import { AndroidIcon, AppleIcon } from "./platform-icons.tsx";
 
@@ -147,7 +150,11 @@ export const devicePanelPlugin = builtin(
       [NAVIGATION_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
     },
-    optional: { [UI_TOASTS_CAPABILITY]: "^1", [RIGHT_PANEL_CAPABILITY]: "^1" },
+    optional: {
+      [UI_TOASTS_CAPABILITY]: "^1",
+      [RIGHT_PANEL_CAPABILITY]: "^1",
+      [UI_SETTINGS_CAPABILITY]: "^1",
+    },
   },
   definePlugin({
     activate(context) {
@@ -158,6 +165,19 @@ export const devicePanelPlugin = builtin(
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const rightPanel = context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY);
       const states = context.subscriptions.add(createDeviceStates(connections));
+      // T3's "Device hosts" in the settings (preview.md D1500).
+      const pages = context.services.tryGet<SettingsPages>(UI_SETTINGS_CAPABILITY);
+      if (pages !== undefined) {
+        context.subscriptions.add(
+          pages.addSection({
+            id: "devices",
+            label: "Devices",
+            icon: SmartphoneIcon,
+            order: 55,
+            component: () => <DeviceHostsSection connections={connections} toasts={toasts} />,
+          }),
+        );
+      }
       const onError = (title: string, error: unknown) =>
         toasts?.show({
           type: "error",

@@ -8,6 +8,7 @@ import type { HttpServer } from "@jhin/http-api";
 import {
   DEVICE_HUB_PATH,
   DeviceError,
+  LOCAL_DEVICE_HOST_ID,
   type DeviceHostStatus,
   type DeviceHostSummary,
   type DeviceHubAccessResult,
@@ -44,6 +45,12 @@ export interface DeviceHubOptions {
   readonly onStatus: (status: DeviceHostStatus) => void;
   /** The agent tools stopped being ready outside a status change (their daemon died). */
   readonly onAgentGone?: () => void;
+  /** Hosts over SSH (preview.md D1498): their hubs, through their tunnels. */
+  readonly remote?: {
+    has(hostId: string): boolean;
+    origin(hostId: string): string | undefined;
+    ensure(hostId: string): Promise<unknown>;
+  };
   readonly log: (message: string, fields?: Record<string, unknown>) => void;
   readonly env?: NodeJS.ProcessEnv;
 }
@@ -96,7 +103,12 @@ export function createDeviceHub(options: DeviceHubOptions) {
           verifier: options.verifier,
           tickets,
           // Off, the hub is gone for clients at once (503), as it stops.
-          origin: () => (options.enabled() ? host.current() : undefined),
+          origin: (hostId) =>
+            !options.enabled()
+              ? undefined
+              : hostId === undefined || hostId === LOCAL_DEVICE_HOST_ID
+                ? host.current()
+                : options.remote?.origin(hostId),
         });
 
   /** Why the hub cannot run here, or undefined when it can (T3's `readinessIfSupported`). */
@@ -135,10 +147,17 @@ export function createDeviceHub(options: DeviceHubOptions) {
     },
 
     /** The hub's path and a ticket for `caller`, once it runs (D1208). */
-    async access(caller: {
-      id: string;
-      permissions: readonly string[];
-    }): Promise<DeviceHubAccessResult> {
+    async access(
+      caller: {
+        id: string;
+        permissions: readonly string[];
+      },
+      hostId: string = LOCAL_DEVICE_HOST_ID,
+    ): Promise<DeviceHubAccessResult> {
+      const remote = hostId === LOCAL_DEVICE_HOST_ID ? undefined : options.remote;
+      if (remote !== undefined && !remote.has(hostId)) {
+        throw new DeviceError("DEVICE_NOT_FOUND", `No device host ${hostId}.`);
+      }
       if (proxy === undefined) {
         throw new DeviceError(
           "DEVICE_UNAVAILABLE",
@@ -147,17 +166,22 @@ export function createDeviceHub(options: DeviceHubOptions) {
       }
       // Watching never installs or starts anything: that takes devices.write (opening a
       // device starts the hub too).
-      if (
-        host?.current() === undefined &&
-        missingPermissions(caller.permissions, ["devices.write"]).length > 0
-      ) {
+      const running =
+        remote === undefined ? host?.current() !== undefined : remote.origin(hostId) !== undefined;
+      if (!running && missingPermissions(caller.permissions, ["devices.write"]).length > 0) {
         throw new DeviceError(
           "DEVICE_UNAVAILABLE",
           "The device hub is not running. Open the device to start it.",
         );
       }
+      const starting =
+        remote === undefined
+          ? ensureHub()
+          : options.enabled()
+            ? remote.ensure(hostId)
+            : Promise.reject(new DeviceError("DEVICE_UNAVAILABLE", unavailable() ?? ""));
       await within(
-        ensureHub().catch((error: unknown) => {
+        starting.catch((error: unknown) => {
           if (error instanceof DeviceError) throw error;
           throw new DeviceError("DEVICE_UNAVAILABLE", failureDetail(error));
         }),
@@ -165,10 +189,12 @@ export function createDeviceHub(options: DeviceHubOptions) {
       );
       const media = tickets.issue(caller, "media");
       const socket = tickets.issue(caller, "socket");
+      // The host rides in every URL the client builds, so the proxy finds its hub (D1498).
+      const hostQuery = remote === undefined ? {} : { hostId };
       return {
         path: DEVICE_HUB_PATH,
-        query: { [TICKET_PARAM]: media.ticket },
-        socketQuery: { [TICKET_PARAM]: socket.ticket },
+        query: { [TICKET_PARAM]: media.ticket, ...hostQuery },
+        socketQuery: { [TICKET_PARAM]: socket.ticket, ...hostQuery },
         expiresAt: media.expiresAt,
       };
     },

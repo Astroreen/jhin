@@ -1004,6 +1004,108 @@ range, at T3 Code `eb7b35ac`: `rightPanelStore.ts` (`openDevice`, the
   the device running, as T3's does. T3's renaming of a device's tab and its tooltip
   (host · version) wait (Deferred).
 
+### Device hosts over SSH (W43)
+
+Workstream W43 of `t3-roadmap.md` continues this plan with decisions from
+its range D1481–D1500 (the desktop app's take D1481–D1493 in `desktop.md`).
+The reference is T3 Code `eb7b35ac`: `apps/server/src/device/SshDeviceHost.ts`,
+`sshDeviceScript.ts`, `localSshDeviceHost.ts`, `DeviceHost.ts`, the hosts'
+parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
+`apps/web/src/components/settings/DeviceHostsSettings.tsx` with
+`DeviceHostEditor.tsx`.
+
+- **D1494. Device hosts are T3's `deviceHosts`, a setting of
+  `jhin.devices`.** `jhin.devices.sshHosts` lists T3's
+  `SshDeviceHostConfig`: `id` (letters, digits, `_` and `-`, not `local`,
+  unique), `label`, `target` (`user@host` or an SSH alias, not starting
+  with `-`), and optional `identityFile` and `port`. As in T3, a host that
+  resolves to this machine (`ssh -G` without a proxy, on port 22, whose
+  addresses are all this machine's, `localSshDeviceHost.ts`) is skipped:
+  its devices are the local host's. `DeviceHostSummary.kind` gets `"ssh"`
+  (additive), and the hosts list, the `devices` stream's `hostStatuses`
+  and every device's `hostId` name SSH hosts beside `local`. As with the
+  local hub (D1206), nothing is installed or started on any host until
+  the user turns the device hub on (`jhin.devices.hub`): that is the
+  consent for the remote hosts too.
+
+- **D1495. A host runs T3's remote script, with Jhin's lockfiles.** The
+  node runs `ssh [-p port] [-i identity] -o BatchMode=yes <target> sh -c
+  '<T3's environment> exec node'` and sends T3's script on stdin
+  (`plugins/devices/src/ssh-script.ts`, from `sshDeviceScript.ts`), in one
+  of T3's modes: `probe` (Node 22+, npm, and which platforms the host can
+  run, with T3's reasons: "iOS needs macOS with Xcode and working xcrun
+  simctl.", "Android SDK missing. Set ANDROID_HOME or put adb on the SSH
+  PATH."), `start` (the hub), `agent-start` (the hub and agent-device's
+  daemon), `stop-agent` and `stop`. Unlike T3, which runs
+  `npm install <package>@<version>`, the script installs each tool with
+  `npm ci` from the lockfile the plugin ships (D1330), sent inside the
+  script, into `~/.jhin/tools/<package>/<version>` on the host with T3's
+  sentinel, lock and staging. Its state is `~/.jhin/device/hosts/<owner>`,
+  where `owner` is T3's: the first 24 hex digits of SHA-256 over the
+  node's id, its home and the host's id. A probe has 45 s; a start, which
+  may install, has T3's 1 300 s.
+
+- **D1496. The hub and the daemon are reached through T3's tunnels.** Once
+  the script has started them, the node reserves two loopback ports and
+  runs `ssh -N -L 127.0.0.1:<port>:127.0.0.1:<remote>` for the hub (and
+  the daemon), on a connection of its own (`ControlMaster=no`,
+  `ControlPath=none`, `ExitOnForwardFailure=yes`, `ServerAliveInterval=10`,
+  `ServerAliveCountMax=3`). It waits for the hub's `/readyz` (and the
+  daemon's `/health`) through the tunnel, at most 15 s, and tries fresh
+  ports twice when the forward cannot bind. Every 10 s it checks both.
+  When the tunnel exits or a check fails, the host's status turns to
+  `starting` with "Reconnecting to device host…", and the node connects
+  again after 1 s, doubling to at most 30 s, with `failed` and the error
+  between attempts, as T3's `SshDeviceHost` does. Deactivating the plugin,
+  turning the hub off or removing the host closes the tunnel and runs the
+  script's `stop`. Devices keep running: the user owns those.
+
+- **D1497. An SSH host's devices go through its hub, as in T3.** The list
+  is the hub's `/api/devices` (simulators and emulators), with the AVDs of
+  `emulator -list-avds` run on the host when Android is available. Booting
+  is `/api/devices/boot` (iOS also `/vendor/serve-sim/grid/api/start`),
+  power off is `/api/devices/shutdown` (iOS `/vendor/serve-sim/grid/api/shutdown`),
+  and a screenshot is the vendor's `/api/screenshot`. The commands take
+  their `hostId` (absent: `local`, as before), and a session keeps its
+  host. One host that fails leaves the others listed, with its own
+  `failed` status. `device.list { retryHostId }` (T3's) tries a failed host
+  again. `device.open`'s answer for a device of an SSH host names the
+  `ssh … adb -s <serial>` or `xcrun simctl … <udid>` invocation pinned to
+  it.
+
+- **D1498. The node's proxy reaches every host's hub (D1208).**
+  `device.hub.access { hostId }` starts that host's hub as for the local
+  one and answers its tickets with `hostId` in both queries, so the
+  client's URLs carry it. The proxy sends a request with `hostId` to that
+  host's tunnel, and one without it to the local hub. The tickets, the
+  allowed paths and the permissions are D1208's for every host.
+
+- **D1499. Input and the device tools run on the host.** `device.tap`,
+  `.swipe`, `.type` and `.button` on an SSH host's device run
+  agent-device's CLI there over SSH with D1209's arguments, against the
+  daemon the script started (`--state-dir` of the host's state).
+  Otherwise they run `adb shell input` there, as D1207 falls back.
+  `device.detail` and `device.action` run their `adb` and `xcrun` there
+  too (T3's `ready.run` over `runSshCommand`), and serve-sim's helpers are
+  the paths the script reports.
+
+- **D1500. T3's "Device hosts" in the settings.** The Devices settings get
+  T3's row "Device hosts" ("Add remote machines with simulator or emulator
+  runtimes installed, and the selected environments will connect over SSH
+  and set up device tools automatically.", "Add host"). Each host is
+  listed with its label, target, "iOS available" / "Android available",
+  its progress ("Installing device support…", "Connecting…"), a failed
+  connection's details, "Edit", "Remove", and "Test connection" or
+  "Retry". The dialog is T3's "Add device host" / "Edit device host": "Name"
+  (placeholder "Mac mini"), "SSH target" ("user@host or SSH alias"), and
+  "SSH options" with "Identity file" and "Port". "Test connection" is the
+  command `device.hosts.test` (`devices.write`, T3's connection check),
+  which answers `connected` with the host's platforms and tool versions,
+  `local` ("Already available locally"), or `failed` with the error.
+  Saving writes `jhin.devices.sshHosts` through `host.config.patch`. One
+  node is one environment here: T3's grouping of several environments'
+  hosts is not ported.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -1098,8 +1200,15 @@ range, at T3 Code `eb7b35ac`: `rightPanelStore.ts` (`openDevice`, the
   app's shortcuts through a focused frame.
 - Viewer ids bound to their caller or their frame subscription (D397).
 - Devices, beside the hub (D1206–D1209):
-  - Device hosts over SSH (T3's `SshDeviceHost`, `sshDeviceScript`): a host
-    model of its own, with the hub and its tickets on another machine.
+  - Of the device hosts over SSH (D1494–D1500): T3's tool versions and their
+    updates on a host, pruning old tools there and its `deviceToolMaintenance`
+    script; `device.open` pointing agents at the host through T3's
+    `AgentDeviceShim` (it names the `ssh … adb`/`xcrun` invocation); T3's
+    grouping of several environments' hosts in the settings (one node is one
+    environment here); the Devices settings' compact per-machine view; a
+    changed `jhin.devices.ssh` taking effect before the plugin restarts; a
+    run against a real Mac or Android host over SSH (CI runs the host's side
+    on its own machine through a fake `ssh`).
   - Pinning what the install scripts download (the hub's `node-datachannel`
     native build): `npm ci` pins the npm tree only (D1330).
   - T3's `canConfigure` in the setup wizard (D1328): its switches disabled

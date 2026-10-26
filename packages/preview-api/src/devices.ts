@@ -26,7 +26,7 @@ export const DeviceEvents = {
  */
 export const DEVICE_HUB_PATH = "/device-hub";
 
-/** The node itself; device hosts over SSH are deferred. */
+/** The node itself; other hosts are reached over SSH (preview.md D1494). */
 export const LOCAL_DEVICE_HOST_ID = "local";
 
 export const DevicePlatform = z.enum(["ios", "android"]);
@@ -54,7 +54,8 @@ export const DevicePlatformAvailability = z.object({
 
 export const DeviceHostSummary = z.object({
   id: z.string(),
-  kind: z.enum(["local"]),
+  /** `ssh`: a machine the node reaches over SSH (D1494). */
+  kind: z.enum(["local", "ssh"]),
   label: z.string(),
   platforms: z.array(DevicePlatformAvailability),
 });
@@ -130,6 +131,8 @@ const ThreadId = z
 export const DeviceListInput = z.object({
   threadId: ThreadId.optional(),
   hostId: DeviceHostId.optional().describe("Limit to one device host. Defaults to all hosts."),
+  /** T3's `retryHostId`: connect a failed host again (D1497). */
+  retryHostId: DeviceHostId.optional(),
 });
 
 export const DeviceListResult = z.object({
@@ -394,3 +397,27 @@ export type DeviceAction = z.infer<typeof DeviceAction>;
 
 export const DeviceActionInput = DeviceTargetInput.extend({ action: DeviceAction });
 export type DeviceActionInput = z.infer<typeof DeviceActionInput>;
+
+/** A device host over SSH, as `jhin.devices.sshHosts` lists it (T3's `SshDeviceHostConfig`, D1494). */
+export const SshDeviceHostConfigInput = z.object({
+  id: DeviceHostId,
+  label: z.string().trim().min(1),
+  target: z.string().trim().min(1),
+  identityFile: z.string().trim().min(1).optional(),
+  port: z.number().int().min(1).max(65_535).optional(),
+});
+
+/** `device.hosts.test`: T3's connection check of a host (D1500). */
+export const DeviceHostTestInput = z.object({ host: SshDeviceHostConfigInput });
+export const DeviceHostTestResult = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("connected"),
+    platforms: z.array(DevicePlatformAvailability),
+    hubInstalled: z.boolean(),
+    agentDeviceInstalled: z.boolean(),
+  }),
+  /** The target is this machine: its devices are the local host's. */
+  z.object({ status: z.literal("local") }),
+  z.object({ status: z.literal("failed"), error: z.string() }),
+]);
+export type DeviceHostTestResult = z.infer<typeof DeviceHostTestResult>;
