@@ -2,7 +2,7 @@
 // packages/contracts/src/scheduledTask.ts and apps/server/src/scheduledTasks/Schedule.ts at
 // v0.1.1-nightly.20261020.3411: the task and trigger schemas, the one-minute interval floor,
 // the next run of a schedule, when a fixed-time run counts as missed and how a schedule reads.
-import { INTERACTION_MODES, RUNTIME_MODES } from "@jhin/agent-api";
+import { INTERACTION_MODES, RUNTIME_MODES, WorkspaceStrategy } from "@jhin/agent-api";
 import { z } from "@jhin/sdk";
 import { SecretRef } from "@jhin/secrets-api";
 
@@ -140,25 +140,11 @@ export const WebhookEndpoint = z.object({
 export type WebhookEndpoint = z.output<typeof WebhookEndpoint>;
 
 /**
- * Where a run's new thread works (T3's launch workspace strategies,
- * orchestration.md D983): the project checkout, a new worktree, or a given
- * checkout. Absent: the project checkout.
+ * Where a run's new thread works (orchestration.md D983): `@jhin/agent-api`'s
+ * one schema of T3's launch strategies (D1513), exported here under the same
+ * name. Absent: the project checkout.
  */
-export const WorkspaceStrategy = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("root"), branch: z.string().min(1).optional() }),
-  z.object({
-    type: z.literal("worktree"),
-    baseRef: z.string().min(1),
-    branch: z.string().min(1).optional(),
-    startFromOrigin: z.boolean().optional(),
-  }),
-  z.object({
-    type: z.literal("existing_worktree"),
-    worktreePath: z.string().min(1),
-    branch: z.string().min(1).optional(),
-  }),
-]);
-export type WorkspaceStrategy = z.output<typeof WorkspaceStrategy>;
+export { WorkspaceStrategy };
 
 /** A value chosen for one of a model's options (D1178, as `tasks.delegate` takes them, D870). */
 const ModelOptions = z

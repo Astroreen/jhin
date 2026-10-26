@@ -25,6 +25,7 @@ import {
   THREADS_STREAM,
   ThreadEvents,
   threadStream,
+  WorkspaceStrategy,
   type InteractionMode,
   type RuntimeMode,
   type WorkflowPatch,
@@ -310,22 +311,6 @@ const TaskView = z.object({
   createdAt: z.string(),
   endedAt: z.string().optional(),
 });
-
-const WorkspaceStrategy = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("root"), branch: z.string().min(1).optional() }),
-  z.object({
-    type: z.literal("existing_worktree"),
-    worktreePath: z.string().min(1),
-    branch: z.string().min(1).optional(),
-  }),
-  z.object({
-    type: z.literal("worktree"),
-    baseRef: z.string().min(1),
-    branch: z.string().min(1).optional(),
-    startFromOrigin: z.boolean().optional(),
-  }),
-]);
-type WorkspaceStrategy = z.infer<typeof WorkspaceStrategy>;
 
 class OrchestrationError extends Error {
   readonly code: string;

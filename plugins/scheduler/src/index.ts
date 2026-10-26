@@ -66,6 +66,12 @@ const WEBHOOK_RATE_LIMIT_PER_MINUTE = 60;
 
 const DEFAULT_TITLE = "Scheduled task";
 
+/** A signed hook whose secret the store cannot give (D1512). */
+const SECRET_UNREADABLE_ANSWER = {
+  error: "secret_unreadable",
+  message: "The webhook's signing secret cannot be read.",
+};
+
 export class SchedulerError extends Error {
   readonly code: string;
   readonly details: Record<string, unknown>;
@@ -80,8 +86,17 @@ export class SchedulerError extends Error {
 /** A task as kept: the public record without its endpoint, plus the webhook's credentials. */
 type StoredTask = Omit<ScheduledTask, "webhook"> & {
   readonly webhookToken?: string;
+  /** The signing secret, on a node whose secret store cannot keep it (D386). */
   readonly webhookSecret?: string;
+  /** The signing secret is in `secrets.store` as `jhin.scheduler/webhook/<id>` (D1512). */
+  readonly webhookSecretInStore?: true;
 };
+
+const hasSecret = (task: StoredTask) =>
+  task.webhookSecret !== undefined || task.webhookSecretInStore === true;
+
+/** A task's signing secret in the secret store (D1512). */
+const secretName = (taskId: string) => `${NAMESPACE}/webhook/${taskId}`;
 
 type Trigger = "scheduled" | "manual" | "webhook";
 
@@ -127,24 +142,24 @@ function storedSchedule(input: ScheduleInput): Schedule {
 
 /**
  * The webhook credentials a save keeps: a token kept from before or a new one,
- * and the secret given now, else the one kept (D386).
+ * and the secret given now (`secret`), else the one kept (`keepSecret`, D386).
  */
 function webhookCredentials(
   input: ScheduleInput,
   existing: StoredTask | undefined,
-): Pick<StoredTask, "webhookToken" | "webhookSecret"> {
+): { readonly token?: string; readonly secret?: string; readonly keepSecret?: true } {
   if (input.type !== "webhook") return {};
   const token = existing?.webhookToken ?? Crypto.randomBytes(32).toString("hex");
   const signature = input.signature ?? null;
-  if (signature === null) return { webhookToken: token };
-  const secret = signature.secret ?? existing?.webhookSecret;
-  if (secret === undefined) {
+  if (signature === null) return { token };
+  if (signature.secret !== undefined) return { token, secret: signature.secret };
+  if (existing === undefined || !hasSecret(existing)) {
     throw new SchedulerError(
       "SECRET_REQUIRED",
       "A webhook signature check needs a signing secret.",
     );
   }
-  return { webhookToken: token, webhookSecret: secret };
+  return { token, keepSecret: true };
 }
 
 export default definePlugin({
@@ -182,7 +197,7 @@ function activateScheduler(context: PluginContext): void {
     return {
       path,
       url: http === undefined || path === null ? null : `${http.url.replace(/\/+$/, "")}${path}`,
-      hasSecret: task.webhookSecret !== undefined,
+      hasSecret: hasSecret(task),
     };
   };
 
@@ -191,9 +206,94 @@ function activateScheduler(context: PluginContext): void {
    * task, so it goes only to callers that may change tasks (`withToken`).
    */
   const toPublic = (task: StoredTask, withToken = true): ScheduledTask => {
-    const { webhookToken: _token, webhookSecret: _secret, ...rest } = task;
+    const {
+      webhookToken: _token,
+      webhookSecret: _secret,
+      webhookSecretInStore: _inStore,
+      ...rest
+    } = task;
     const webhook = webhookEndpoint(task, withToken);
     return ScheduledTask.parse(webhook === undefined ? rest : { ...rest, webhook });
+  };
+
+  // --- Signing secrets (D1512) ----------------------------------------------
+
+  /** How to put back a task's secret in the store, while the change that wrote it is unsaved. */
+  const unsaved = new Map<string, () => void>();
+
+  /** The store's named secrets (1.2), when the node has a store that can be read. */
+  const namedSecrets = ():
+    | Required<Pick<SecretStore, "putSecret" | "getSecret" | "deleteSecret">>
+    | undefined => {
+    const store = context.services.tryGet<SecretStore>(SECRETS_STORE_CAPABILITY);
+    if (
+      store?.readable !== true ||
+      store.putSecret === undefined ||
+      store.getSecret === undefined ||
+      store.deleteSecret === undefined
+    ) {
+      return undefined;
+    }
+    return store as Required<Pick<SecretStore, "putSecret" | "getSecret" | "deleteSecret">>;
+  };
+
+  /**
+   * The credentials a save of task `id` writes: a new secret goes into the
+   * secret store when the node has one that can be read, else into
+   * `storage.kv` as before (D386).
+   */
+  const keptCredentials = (
+    id: string,
+    plan: ReturnType<typeof webhookCredentials>,
+    existing: StoredTask | undefined,
+  ): Pick<StoredTask, "webhookToken" | "webhookSecret" | "webhookSecretInStore"> => {
+    const token = plan.token === undefined ? {} : { webhookToken: plan.token };
+    if (plan.keepSecret === true) {
+      return {
+        ...token,
+        ...(existing?.webhookSecret === undefined ? {} : { webhookSecret: existing.webhookSecret }),
+        ...(existing?.webhookSecretInStore === true ? { webhookSecretInStore: true } : {}),
+      };
+    }
+    if (plan.secret === undefined) return token;
+    const store = namedSecrets();
+    if (store === undefined) return { ...token, webhookSecret: plan.secret };
+    const name = secretName(id);
+    // Put back as it was if the change that wrote it fails before the task is saved.
+    const previous = store.getSecret(name);
+    unsaved.set(id, () =>
+      previous === undefined ? store.deleteSecret(name) : store.putSecret(name, previous),
+    );
+    store.putSecret(name, plan.secret);
+    return { ...token, webhookSecretInStore: true };
+  };
+
+  /** Forgets a task's secret in the store; a failure leaves it there and is logged. */
+  const forgetSecret = (id: string) => {
+    try {
+      const store = context.services.tryGet<SecretStore>(SECRETS_STORE_CAPABILITY);
+      if (store?.deleteSecret === undefined) throw new SecretsError("SECRET_STORE_UNAVAILABLE");
+      store.deleteSecret(secretName(id));
+    } catch (error) {
+      context.log.warn("could not delete a webhook's signing secret", {
+        taskId: id,
+        error: messageOf(error),
+      });
+    }
+  };
+
+  /**
+   * The task's signing secret. One the store keeps but cannot give throws
+   * `SECRET_UNREADABLE`: the delivery answers 503 (D1512).
+   */
+  const signingSecret = (task: StoredTask): string | undefined => {
+    if (task.webhookSecretInStore !== true) return task.webhookSecret;
+    const store = context.services.tryGet<SecretStore>(SECRETS_STORE_CAPABILITY);
+    const value = store?.readable === true ? store.getSecret?.(secretName(task.id)) : undefined;
+    if (value === undefined) {
+      throw new SchedulerError("SECRET_UNREADABLE", "The webhook's signing secret cannot be read.");
+    }
+    return value;
   };
 
   const load = async (id: string): Promise<StoredTask | undefined> =>
@@ -217,7 +317,25 @@ function activateScheduler(context: PluginContext): void {
   const locks = new Map<string, Promise<unknown>>();
   const locked = <T>(id: string, work: () => Promise<T>): Promise<T> => {
     const previous = locks.get(id) ?? Promise.resolve();
-    const next = previous.then(work, work);
+    // A secret written into the store by a change that then failed is put back (D1512).
+    const guarded = async () => {
+      try {
+        return await work();
+      } catch (error) {
+        try {
+          unsaved.get(id)?.();
+        } catch (undoError) {
+          context.log.warn("could not put back a webhook's signing secret", {
+            taskId: id,
+            error: messageOf(undoError),
+          });
+        }
+        throw error;
+      } finally {
+        unsaved.delete(id);
+      }
+    };
+    const next = previous.then(guarded, guarded);
     const tail = next.then(
       () => undefined,
       () => undefined,
@@ -229,10 +347,14 @@ function activateScheduler(context: PluginContext): void {
     return next;
   };
 
-  /** Applies `change` to the task as it is now; undefined from `change` writes nothing. */
+  /**
+   * Applies `change` to the task as it is now; undefined from `change` writes
+   * nothing. `afterSave` runs once it is written, still under the task's lock.
+   */
   const mutate = (
     id: string,
     change: (task: StoredTask) => StoredTask | undefined | Promise<StoredTask | undefined>,
+    afterSave?: (saved: StoredTask, previous: StoredTask) => void,
   ): Promise<StoredTask | undefined> =>
     locked(id, async () => {
       const current = await load(id);
@@ -240,17 +362,18 @@ function activateScheduler(context: PluginContext): void {
       const next = await change(current);
       if (next === undefined) return current;
       await save(next);
+      afterSave?.(next, current);
       return next;
     });
 
   const removeTask = (id: string, guard?: Guard): Promise<boolean> =>
     locked(id, async () => {
-      if (guard !== undefined) {
-        const current = await load(id);
-        if (current !== undefined) await guard(current);
-      }
+      const current = await load(id);
+      if (guard !== undefined && current !== undefined) await guard(current);
       const removed = await kv.delete(NAMESPACE, taskKey(id));
       if (!removed) return false;
+      // Its signing secret goes with it (D1512).
+      if (current?.webhookSecretInStore === true) forgetSecret(id);
       for (const { key } of await kv.list(NAMESPACE, { prefix: deliveryPrefix(id) })) {
         await kv.delete(NAMESPACE, key);
       }
@@ -425,44 +548,13 @@ function activateScheduler(context: PluginContext): void {
         throw skipped;
       }
 
-      let threadId: string | null = null;
-      let error: string | null = null;
       try {
-        // Unique per run, even for two runs in one millisecond.
-        const messageId = `scheduled:${id.slice(0, 64)}:${startedAt}-${++runSequence}`;
-        await dispatch(started, webhook?.prompt ?? started.prompt, messageId, (thread) => {
-          threadId = thread;
-        });
+        return await finishRun(started, startedAt, trigger, webhook);
       } catch (cause) {
-        error = messageOf(cause);
-        context.log.warn("a scheduled task's run failed", { taskId: id, trigger, error });
+        // Its end could not be recorded: released, never left running (D1511).
+        await releaseStuckRun(id, startedAtIso, messageOf(cause));
+        throw cause;
       }
-      const completedAt = Date.now();
-      // Only the run this one marked: a task deleted and recreated meanwhile is not stamped.
-      let stamped = false;
-      const completed = await mutate(id, (current) => {
-        stamped = current.lastRunStatus === "running" && current.lastRunAt === startedAtIso;
-        return stamped
-          ? {
-              ...current,
-              updatedAt: iso(completedAt),
-              nextRunAt: nextRunAt(current, completedAt),
-              lastRunStatus: error === null ? "succeeded" : "failed",
-              lastRunError: error,
-              lastRunThreadId: threadId,
-              runCount: current.runCount + 1,
-            }
-          : undefined;
-      });
-      // Deleted (or deleted and made again) meanwhile: this run's own outcome.
-      const shown: StoredTask = (stamped ? completed : undefined) ?? {
-        ...started,
-        lastRunStatus: error === null ? "succeeded" : "failed",
-        lastRunError: error,
-        lastRunThreadId: threadId,
-        runCount: started.runCount + 1,
-      };
-      return { task: toPublic(shown), threadId: error === null ? threadId : null };
     })();
     activeRuns.set(id, run);
     void run
@@ -472,6 +564,85 @@ function activateScheduler(context: PluginContext): void {
       })
       .catch(() => undefined);
     return run;
+  };
+
+  /** A run marked running: its dispatch and the record of its end. */
+  const finishRun = async (
+    started: StoredTask,
+    startedAt: number,
+    trigger: Trigger,
+    webhook: { readonly prompt: string } | undefined,
+  ): Promise<RunResult> => {
+    const id = started.id;
+    const startedAtIso = iso(startedAt);
+    let threadId: string | null = null;
+    let error: string | null = null;
+    try {
+      // Unique per run, even for two runs in one millisecond.
+      const messageId = `scheduled:${id.slice(0, 64)}:${startedAt}-${++runSequence}`;
+      await dispatch(started, webhook?.prompt ?? started.prompt, messageId, (thread) => {
+        threadId = thread;
+      });
+    } catch (cause) {
+      error = messageOf(cause);
+      context.log.warn("a scheduled task's run failed", { taskId: id, trigger, error });
+    }
+    const completedAt = Date.now();
+    // Only the run this one marked: a task deleted and recreated meanwhile is not stamped.
+    let stamped = false;
+    const completed = await mutate(id, (current) => {
+      stamped = current.lastRunStatus === "running" && current.lastRunAt === startedAtIso;
+      return stamped
+        ? {
+            ...current,
+            updatedAt: iso(completedAt),
+            nextRunAt: nextRunAt(current, completedAt),
+            lastRunStatus: error === null ? "succeeded" : "failed",
+            lastRunError: error,
+            lastRunThreadId: threadId,
+            runCount: current.runCount + 1,
+          }
+        : undefined;
+    });
+    // Deleted (or deleted and made again) meanwhile: this run's own outcome.
+    const shown: StoredTask = (stamped ? completed : undefined) ?? {
+      ...started,
+      lastRunStatus: error === null ? "succeeded" : "failed",
+      lastRunError: error,
+      lastRunThreadId: threadId,
+      runCount: started.runCount + 1,
+    };
+    return { task: toPublic(shown), threadId: error === null ? threadId : null };
+  };
+
+  /**
+   * T3's `releaseStuckRun` (D1511): a run whose end could not be recorded is
+   * written once as failed, its next run counted from now and the attempt
+   * counted, so it is neither left running nor fired again at once (its
+   * dispatch may have gone out). Only the run that `startedAtIso` marked; a
+   * release that fails too leaves it to the next start's recovery (D382).
+   */
+  const releaseStuckRun = async (id: string, startedAtIso: string, error: string) => {
+    try {
+      const now = Date.now();
+      await mutate(id, (current) =>
+        current.lastRunStatus === "running" && current.lastRunAt === startedAtIso
+          ? {
+              ...current,
+              lastRunStatus: "failed",
+              lastRunError: error,
+              nextRunAt: nextRunAt(current, now),
+              updatedAt: iso(now),
+              runCount: current.runCount + 1,
+            }
+          : undefined,
+      );
+    } catch (cause) {
+      context.log.warn("Could not release a stuck scheduled task run", {
+        taskId: id,
+        error: messageOf(cause),
+      });
+    }
   };
 
   /** Only the run judged missed: an update, pause or run since then wins. */
@@ -627,11 +798,32 @@ function activateScheduler(context: PluginContext): void {
     )
     .finally(() => arm());
 
+  // Signing secrets storage.kv still holds move into the store, each removed from
+  // storage.kv only once the store kept it (D1512). Without a store that can be read
+  // they stay where they are.
+  const migrated = (async () => {
+    if (namedSecrets() === undefined) return;
+    for (const task of await loadAll()) {
+      if (task.webhookSecret === undefined) continue;
+      await mutate(task.id, (current) => {
+        const store = namedSecrets();
+        if (current.webhookSecret === undefined || store === undefined) return undefined;
+        store.putSecret(secretName(current.id), current.webhookSecret);
+        const { webhookSecret: _secret, ...rest } = current;
+        return { ...rest, webhookSecretInStore: true };
+      });
+    }
+  })().catch((error: unknown) =>
+    context.log.warn("could not move webhook signing secrets into the secret store", {
+      error: messageOf(error),
+    }),
+  );
+
   context.onDeactivate(async () => {
     stopped = true;
     clearTimeout(timer);
     timer = undefined;
-    await recovered;
+    await Promise.allSettled([recovered, migrated]);
     await Promise.allSettled([...activeRuns.values(), ticking, arming]);
     // Deliveries still queued are marked failed, not run.
     await Promise.allSettled([...webhookQueues.values()].map((queue) => queue.tail));
@@ -950,7 +1142,7 @@ function activateScheduler(context: PluginContext): void {
         lastRunError: null,
         lastRunThreadId: null,
         runCount: 0,
-        ...webhookCredentials(scheduleInput, undefined),
+        ...keptCredentials(id, webhookCredentials(scheduleInput, undefined), undefined),
       };
       return task;
     };
@@ -995,98 +1187,115 @@ function activateScheduler(context: PluginContext): void {
       parsed.threadId === undefined || parsed.threadId === null
         ? undefined
         : await threadProject(parsed.threadId);
-    const updated = await mutate(parsed.id, async (existing) => {
-      if (limits !== undefined) {
-        assertWithin(limits, await runModes(existing));
-        assertWithin(limits, [
-          {
-            runtimeMode: parsed.runtimeMode ?? existing.runtimeMode,
-            interactionMode: parsed.interactionMode ?? existing.interactionMode,
-          },
-        ]);
-        if (typeof parsed.threadId === "string") {
-          assertWithin(limits, [await callingThread(parsed.threadId)]);
+    const updated = await mutate(
+      parsed.id,
+      async (existing) => {
+        if (limits !== undefined) {
+          assertWithin(limits, await runModes(existing));
+          assertWithin(limits, [
+            {
+              runtimeMode: parsed.runtimeMode ?? existing.runtimeMode,
+              interactionMode: parsed.interactionMode ?? existing.interactionMode,
+            },
+          ]);
+          if (typeof parsed.threadId === "string") {
+            assertWithin(limits, [await callingThread(parsed.threadId)]);
+          }
         }
-      }
-      // A ref is consumed for the task's project after this update, under its lock (D1034).
-      const input =
-        parsed.schedule === undefined
-          ? parsed
-          : { ...parsed, schedule: redeem(parsed.schedule, projectId ?? existing.projectId) };
-      const now = Date.now();
-      const enabled = input.enabled ?? existing.enabled;
-      // A webhook schedule sent without `signature` keeps the stored check and
-      // its secret; only an explicit null removes them.
-      const scheduleInput: ScheduleInput | undefined =
-        input.schedule?.type === "webhook" &&
-        input.schedule.signature === undefined &&
-        existing.schedule.type === "webhook"
-          ? { ...input.schedule, signature: existing.schedule.signature }
-          : input.schedule;
-      const schedule =
-        scheduleInput === undefined ? existing.schedule : storedSchedule(scheduleInput);
-      // Only a change of the schedule or of enabled restarts the clock: an
-      // edit of the title or prompt neither postpones nor brings back a run.
-      const unchanged = existing.enabled === enabled && isSameSchedule(existing.schedule, schedule);
-      const { webhookToken: _token, webhookSecret: _secret, ...rest } = existing;
-      const credentials =
-        input.schedule === undefined
-          ? {
-              ...(existing.webhookToken === undefined
-                ? {}
-                : { webhookToken: existing.webhookToken }),
-              ...(existing.webhookSecret === undefined
-                ? {}
-                : { webhookSecret: existing.webhookSecret }),
-            }
-          : webhookCredentials(scheduleInput!, existing);
-      // null clears the agent (and its model) or the model alone (D984).
-      const kept: Partial<typeof rest> = { ...rest };
-      if (input.agentId === null) {
-        delete kept.agentId;
-        delete kept.model;
-      }
-      if (input.model === null) delete kept.model;
-      // Options chosen for another agent or model do not carry over (D297, D1178).
-      const otherModel =
-        (input.agentId !== undefined && input.agentId !== rest.agentId) ||
-        (input.model !== undefined && input.model !== rest.model);
-      if (input.modelOptions === null || (otherModel && input.modelOptions === undefined)) {
-        delete kept.modelOptions;
-      }
-      // Another agent without a model of its own takes none of the old agent's.
-      if (
-        typeof input.agentId === "string" &&
-        input.agentId !== rest.agentId &&
-        input.model === undefined
-      ) {
-        delete kept.model;
-      }
-      return {
-        ...(kept as typeof rest),
-        ...(input.title === undefined ? {} : { title: input.title }),
-        ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
-        ...(input.agentId === undefined || input.agentId === null
-          ? {}
-          : { agentId: input.agentId }),
-        ...(input.model === undefined || input.model === null ? {} : { model: input.model }),
-        ...(input.modelOptions === undefined || input.modelOptions === null
-          ? {}
-          : { modelOptions: input.modelOptions }),
-        ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
-        ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
-        ...(input.workspaceStrategy === undefined
-          ? {}
-          : { workspaceStrategy: input.workspaceStrategy }),
-        ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
-        ...(projectId === undefined ? {} : { projectId }),
-        enabled,
-        schedule,
-        updatedAt: iso(now),
-        nextRunAt: unchanged ? existing.nextRunAt : nextRunAt({ enabled, schedule }, now),
-        ...credentials,
-      };
-    });
+        // A ref is consumed for the task's project after this update, under its lock (D1034).
+        const input =
+          parsed.schedule === undefined
+            ? parsed
+            : { ...parsed, schedule: redeem(parsed.schedule, projectId ?? existing.projectId) };
+        const now = Date.now();
+        const enabled = input.enabled ?? existing.enabled;
+        // A webhook schedule sent without `signature` keeps the stored check and
+        // its secret; only an explicit null removes them.
+        const scheduleInput: ScheduleInput | undefined =
+          input.schedule?.type === "webhook" &&
+          input.schedule.signature === undefined &&
+          existing.schedule.type === "webhook"
+            ? { ...input.schedule, signature: existing.schedule.signature }
+            : input.schedule;
+        const schedule =
+          scheduleInput === undefined ? existing.schedule : storedSchedule(scheduleInput);
+        // Only a change of the schedule or of enabled restarts the clock: an
+        // edit of the title or prompt neither postpones nor brings back a run.
+        const unchanged =
+          existing.enabled === enabled && isSameSchedule(existing.schedule, schedule);
+        const {
+          webhookToken: _token,
+          webhookSecret: _secret,
+          webhookSecretInStore: _inStore,
+          ...rest
+        } = existing;
+        // A new secret goes into the store before the task is written (D1512).
+        const credentials = keptCredentials(
+          existing.id,
+          input.schedule === undefined
+            ? {
+                ...(existing.webhookToken === undefined ? {} : { token: existing.webhookToken }),
+                keepSecret: true,
+              }
+            : webhookCredentials(scheduleInput!, existing),
+          existing,
+        );
+        // null clears the agent (and its model) or the model alone (D984).
+        const kept: Partial<typeof rest> = { ...rest };
+        if (input.agentId === null) {
+          delete kept.agentId;
+          delete kept.model;
+        }
+        if (input.model === null) delete kept.model;
+        // Options chosen for another agent or model do not carry over (D297, D1178).
+        const otherModel =
+          (input.agentId !== undefined && input.agentId !== rest.agentId) ||
+          (input.model !== undefined && input.model !== rest.model);
+        if (input.modelOptions === null || (otherModel && input.modelOptions === undefined)) {
+          delete kept.modelOptions;
+        }
+        // Another agent without a model of its own takes none of the old agent's.
+        if (
+          typeof input.agentId === "string" &&
+          input.agentId !== rest.agentId &&
+          input.model === undefined
+        ) {
+          delete kept.model;
+        }
+        return {
+          ...(kept as typeof rest),
+          ...(input.title === undefined ? {} : { title: input.title }),
+          ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+          ...(input.agentId === undefined || input.agentId === null
+            ? {}
+            : { agentId: input.agentId }),
+          ...(input.model === undefined || input.model === null ? {} : { model: input.model }),
+          ...(input.modelOptions === undefined || input.modelOptions === null
+            ? {}
+            : { modelOptions: input.modelOptions }),
+          ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
+          ...(input.interactionMode === undefined
+            ? {}
+            : { interactionMode: input.interactionMode }),
+          ...(input.workspaceStrategy === undefined
+            ? {}
+            : { workspaceStrategy: input.workspaceStrategy }),
+          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+          ...(projectId === undefined ? {} : { projectId }),
+          enabled,
+          schedule,
+          updatedAt: iso(now),
+          nextRunAt: unchanged ? existing.nextRunAt : nextRunAt({ enabled, schedule }, now),
+          ...credentials,
+        };
+      },
+      (saved, previous) => {
+        // A signature removed, or a secret kept elsewhere now: the store's copy goes (D1512).
+        if (previous.webhookSecretInStore === true && saved.webhookSecretInStore !== true) {
+          forgetSecret(saved.id);
+        }
+      },
+    );
     if (updated === undefined) throw notFound(parsed.id);
     return toPublic(updated);
   };
@@ -1200,7 +1409,7 @@ function activateScheduler(context: PluginContext): void {
 
   type WebhookAnswer =
     | { readonly status: 202; readonly deliveryId: string }
-    | { readonly status: 401 | 404 | 409 | 429; readonly error: string };
+    | { readonly status: 401 | 404 | 409 | 429 | 503; readonly error: string };
 
   /**
    * The webhook task a URL names, if its token matches. A wrong token answers
@@ -1260,11 +1469,18 @@ function activateScheduler(context: PluginContext): void {
     // of a minute is logged, so a flood cannot push real deliveries out.
     const signature = schedule.signature;
     if (signature !== null) {
+      let secret: string | undefined;
+      try {
+        secret = signingSecret(task);
+      } catch {
+        // Not a delivery: nothing is logged (D1512).
+        return { status: 503, error: "secret_unreadable" };
+      }
       const verified =
-        task.webhookSecret !== undefined &&
+        secret !== undefined &&
         verifyWebhookSignature({
           signature,
-          secret: task.webhookSecret,
+          secret,
           headers: request.headers,
           body: request.body,
         });
@@ -1410,6 +1626,20 @@ function activateScheduler(context: PluginContext): void {
         request.resume();
         return;
       }
+      // A signed hook whose secret cannot be read costs no upload either (D1512).
+      if (hook.schedule.type === "webhook" && hook.schedule.signature !== null) {
+        try {
+          signingSecret(hook);
+        } catch (error) {
+          context.log.warn("a webhook's signing secret cannot be read", {
+            taskId: hook.id,
+            error: messageOf(error),
+          });
+          answer(response, 503, SECRET_UNREADABLE_ANSWER);
+          request.resume();
+          return;
+        }
+      }
       const declared = request.headers["content-length"] ?? "0";
       // A length that is no whole number is a bad request, not a large one.
       if (!/^\d+$/.test(declared)) {
@@ -1475,6 +1705,7 @@ function activateScheduler(context: PluginContext): void {
           body,
         });
         if (result.status === 202) answer(response, 202, { deliveryId: result.deliveryId });
+        else if (result.status === 503) answer(response, 503, SECRET_UNREADABLE_ANSWER);
         else answer(response, result.status, { error: result.error });
       } catch (error) {
         context.log.warn("a webhook delivery failed", { taskId, error: messageOf(error) });

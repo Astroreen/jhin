@@ -397,6 +397,53 @@ describe("jhin.scheduler: runs into a thread", () => {
   });
 });
 
+describe("jhin.scheduler: a run whose end cannot be recorded (D1511)", () => {
+  it("is released as failed with its next run advanced, and not fired again at once", async () => {
+    fakeClock(local(19, 10));
+    const { client, storage, task } = await node();
+    const created = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "Any news?",
+      schedule: { type: "interval", everyMs: 5 * MINUTE },
+    });
+    // The write of the run's end fails, once: the release after it goes through.
+    const set = storage.kv.set.bind(storage.kv);
+    let failures = 0;
+    storage.kv.set = async (namespace, key, value) => {
+      const status = (value as { lastRunStatus?: unknown } | null)?.lastRunStatus;
+      if (key === `task/${created.id}` && status === "succeeded" && failures === 0) {
+        failures += 1;
+        throw new Error("disk full");
+      }
+      return set(namespace, key, value);
+    };
+    onTestFinished(() => {
+      storage.kv.set = set;
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    const released = await task((t) => t.id === created.id && t.lastRunStatus === "failed");
+    expect(failures).toBe(1);
+    expect(released).toMatchObject({
+      lastRunError: "disk full",
+      lastRunAt: local(19, 10, 5).toISOString(),
+      runCount: 1,
+      nextRunAt: local(19, 10, 10).toISOString(),
+    });
+    // Its message may have gone out: no second run before the next one is due.
+    await vi.advanceTimersByTimeAsync(5 * MINUTE - 1);
+    expect(
+      await client.call<ScheduledTask>("scheduler.tasks.get", { id: created.id }),
+    ).toMatchObject({ lastRunStatus: "failed", runCount: 1 });
+
+    await vi.advanceTimersByTimeAsync(1);
+    const next = await task((t) => t.id === created.id && t.runCount === 2);
+    expect(next).toMatchObject({
+      lastRunStatus: "succeeded",
+      lastRunAt: local(19, 10, 10).toISOString(),
+    });
+  });
+});
+
 describe("jhin.scheduler: a run's workspace (D983)", () => {
   it("starts each run's thread in the task's workspace, and keeps it on the task", async () => {
     const { client } = await node();

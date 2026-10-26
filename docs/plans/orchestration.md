@@ -978,7 +978,7 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
   `secrets.store` 1.2 adds a plugin's own named secrets (additive):
   `putSecret(name, value)`, `getSecret(name)` and `deleteSecret(name)`,
   `name` being a plugin id, `/` and a name, as `getOrCreateRandom`'s
-  (D1192); values are sealed in the store like any other, and no command
+  (D1192), the name holding further `/` where it needs them; values are sealed in the store like any other, and no command
   returns one (D1022). `jhin.scheduler` takes the store as optional
   (`secrets.store@^1.2`): a signing secret given on create or update (in
   clear or from a `secretRef`, D1034) is kept as `jhin.scheduler/webhook/
@@ -987,7 +987,10 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
   removed, deletes it. On activation, the secrets `storage.kv` still holds
   move into the store, each removed from `storage.kv` only once the store
   kept it. A node without the store, or whose store cannot be read, keeps
-  them in `storage.kv` as before (D386). A signed delivery whose secret
+  them in `storage.kv` as before (D386). A save that fails after its
+  secret went into the store puts the store back as it was. Named secrets
+  are not kept apart per plugin: the node's plugins run as one process
+  and owner, so the plugin id in a name is a convention, not a boundary. A signed delivery whose secret
   cannot be read answers 503 ("The webhook's signing secret cannot be
   read.") before its body is read, and is not logged as a delivery.
 - **D1513. One `WorkspaceStrategy`.** T3's three launch strategies
@@ -1007,18 +1010,10 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
 
 ### Deferred
 
-- One shared `WorkspaceStrategy` contract: threads, orchestration and
-  `@jhin/scheduler-api` each define T3's three strategies.
 - "Edit" of the thread's automations opening that task's editor (the route
   has no task yet).
 - Tasks of mesh members on the settings page: it shows the nodes the client
   is connected to.
-- Releasing a run in-process when its completion cannot be recorded (T3's
-  `releaseStuckRun`): today a storage failure at that write leaves the task
-  marked running until the next start's recovery.
-- The webhook signing secret a save takes (in clear or from a `secretRef`)
-  is kept in `storage.kv` as before (D386), not in `secrets.store@1`
-  (security.md D1021).
 - A public webhook URL through a relay, held deliveries while the node is
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.

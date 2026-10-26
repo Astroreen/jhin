@@ -9,6 +9,7 @@ import * as Path from "node:path";
 
 import {
   CONFIG_SECRET_PATTERN,
+  SECRET_NAME_PATTERN,
   SECRET_REF_PATTERN,
   SECRET_REF_TTL_MS,
   SecretsError,
@@ -45,7 +46,7 @@ interface NamedEntry {
 interface Entries {
   config: Record<string, ConfigEntry>;
   refs: Record<string, RefEntry>;
-  /** The node's own random secrets by name (D1192). */
+  /** The node's own random secrets (D1192) and the plugins' named secrets (D1512), by name. */
   named: Record<string, NamedEntry>;
 }
 
@@ -59,6 +60,9 @@ interface Sealed {
 
 export interface OpenedStore extends SecretStore {
   getOrCreateRandom(name: string, bytes: number): string;
+  putSecret(name: string, value: string): void;
+  getSecret(name: string): string | undefined;
+  deleteSecret(name: string): void;
   status(): SecretsStatus;
   /** Removes the refs older than their time to live (D1030); how many went. */
   sweep(): number;
@@ -198,6 +202,10 @@ export async function openStore(options: {
     if (!readable) throw new SecretsError("SECRET_STORE_UNREADABLE");
   };
   const newId = () => Crypto.randomBytes(16).toString("hex");
+  /** A plugin's own secret name (D1512): a plugin id, `/` and a name. */
+  const secretName = (name: string) => {
+    if (!SECRET_NAME_PATTERN.test(name)) throw new Error("a secret's name is <plugin>/<name>");
+  };
 
   const removeRef = (id: string) => {
     const { [id]: _removed, ...refs } = entries.refs;
@@ -282,6 +290,23 @@ export async function openStore(options: {
       const value = Crypto.randomBytes(bytes).toString("base64url");
       persist({ ...entries, named: { ...entries.named, [name]: { value, savedAt: now() } } });
       return value;
+    },
+    putSecret(name: string, value: string) {
+      writable();
+      secretName(name);
+      persist({ ...entries, named: { ...entries.named, [name]: { value, savedAt: now() } } });
+    },
+    getSecret(name: string) {
+      writable();
+      secretName(name);
+      return Object.hasOwn(entries.named, name) ? entries.named[name]!.value : undefined;
+    },
+    deleteSecret(name: string) {
+      writable();
+      secretName(name);
+      if (!Object.hasOwn(entries.named, name)) return;
+      const { [name]: _removed, ...named } = entries.named;
+      persist({ ...entries, named });
     },
     status() {
       return {
