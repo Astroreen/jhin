@@ -67,4 +67,42 @@ describe("saving a file as it changes", () => {
     await written;
     expect(writes.map((write) => write.contents)).toEqual(["x", "x"]);
   });
+
+  it("after a failed write, the next change writes again", async () => {
+    const { coordinator, writes, wrote, saved, failed } = harness();
+    let written = wrote.next();
+    coordinator.change("x");
+    await written;
+    const error = failed.next();
+    writes[0]!.fail();
+    await error;
+    // Nothing is retried by itself (T3's coordinator): the file stays pending till it changes.
+    expect(writes).toHaveLength(1);
+    written = wrote.next();
+    coordinator.change("xy");
+    await written;
+    const done = saved.next();
+    writes[1]!.done();
+    await done;
+    expect(writes.map((write) => write.contents)).toEqual(["x", "xy"]);
+  });
+
+  it("says so when the write on close fails, for the panel's toast", async () => {
+    const { coordinator, writes, wrote, failed } = harness();
+    let written = wrote.next();
+    coordinator.change("x");
+    await written;
+    written = wrote.next();
+    coordinator.change("xz");
+    coordinator.dispose();
+    writes[0]!.done();
+    await written;
+    const error = failed.next();
+    writes[1]!.fail();
+    await error;
+    expect(writes.map((write) => write.contents)).toEqual(["x", "xz"]);
+    // Closed, it takes no more changes.
+    coordinator.change("ignored");
+    expect(writes).toHaveLength(2);
+  });
 });

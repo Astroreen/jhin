@@ -2489,7 +2489,11 @@ panel and devices are in `terminal.md`, `source-control.md` and
   one, one write at a time and the newest winning, what is left written when
   the file closes (T3's `FileSaveCoordinator`), through `projects.write-file`,
   which now writes into a thread's worktree too (`threadId`). A failed
-  write says so ("Unable to save file") and the next change writes again.
+  write says so ("Unable to save file", also for the write on closing) and
+  the next change writes again; like T3's, nothing retries by itself. The
+  editor keeps the text it opened with: a change made on disk meanwhile (an
+  agent's edit) shows when the file opens again, and a change typed before
+  that writes over it, until T3's merge of such a change lands (below).
   Rendered markdown and HTML stay previews, as T3's (it ticks markdown's
   task boxes, which waits); T3's pending dot on the tab, its "Read-only
   connection" notice and its merge of a change made on disk meanwhile wait
