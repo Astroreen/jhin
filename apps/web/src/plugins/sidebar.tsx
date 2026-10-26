@@ -2522,6 +2522,33 @@ export const sidebarPlugin = builtin(
       /** The scratch project of a node, once its catalog is loaded. */
       const scratchIn = (target: NodeTarget) =>
         threads.catalog(target).projects.find((project) => project.scratch)?.id;
+      /** Waits of "New thread" for a catalog; they end, empty-handed, with the plugin. */
+      const waits = new Set<() => void>();
+      context.subscriptions.add({
+        dispose: () => {
+          for (const end of Array.from(waits)) end();
+        },
+      });
+      /**
+       * The scratch project of a node, waiting for its catalog while it loads: "New thread"
+       * right after the connection opens starts the draft once the projects are there.
+       */
+      const scratchOnceLoaded = (target: NodeTarget) =>
+        new Promise<string | undefined>((resolve) => {
+          if (threads.catalog(target).status !== "loading") {
+            resolve(scratchIn(target));
+            return;
+          }
+          const end = (projectId?: string) => {
+            waits.delete(end);
+            subscription.dispose();
+            resolve(projectId);
+          };
+          const subscription = threads.subscribe(target, () => {
+            if (threads.catalog(target).status !== "loading") end(scratchIn(target));
+          });
+          waits.add(end);
+        });
 
       const failure = (message: string, code: string) =>
         Object.assign(new Error(message), { code });
@@ -3592,11 +3619,11 @@ export const sidebarPlugin = builtin(
         description: "Starts a new thread in the current project",
         input: z.object({}),
         output: z.object({}),
-        handler: () => {
+        handler: async () => {
           const place = placeOf({});
-          const projectId =
-            place === undefined ? undefined : (place.projectId ?? scratchIn(place.target));
-          if (place !== undefined && projectId !== undefined) newThread(place.target, projectId);
+          if (place === undefined) return {};
+          const projectId = place.projectId ?? (await scratchOnceLoaded(place.target));
+          if (projectId !== undefined) newThread(place.target, projectId);
           return {};
         },
       });

@@ -98,10 +98,19 @@ function world() {
     ],
   ]);
   const loading: NodeCatalog = { status: "loading", projects: [], threads: [] };
+  const listeners = new Set<() => void>();
   const threads = {
     catalog: (target: NodeTarget) => catalogs.get(targetKey(target)) ?? loading,
-    subscribe: () => toDisposable(() => undefined),
+    subscribe: (_target: NodeTarget, listener: () => void) => {
+      listeners.add(listener);
+      return toDisposable(() => listeners.delete(listener));
+    },
   } as unknown as ThreadsCatalog;
+  /** A target's catalog arrives, as the threads store reports it. */
+  const load = (target: NodeTarget, catalog: NodeCatalog) => {
+    catalogs.set(targetKey(target), catalog);
+    for (const listener of Array.from(listeners)) listener();
+  };
   let route: Route = {};
   const visited: Route[] = [];
   const navigation: Navigation = {
@@ -112,7 +121,7 @@ function world() {
     },
     subscribe: () => toDisposable(() => undefined),
   };
-  return { connections, mesh, threads, navigation, visited };
+  return { connections, mesh, threads, navigation, visited, load, listeners };
 }
 
 let kernel: TestKernel | undefined;
@@ -139,6 +148,29 @@ async function start(stored: Record<string, string> = {}) {
   const run = (name: string, input: unknown = {}) => kernel!.commands.execute(name, input);
   return { ...w, run };
 }
+
+describe("chat.new", () => {
+  it("waits for a loading node's projects, then starts the draft in its scratch project", async () => {
+    const { run, navigation, visited, load, listeners } = await start();
+    navigation.navigate({ node: LOADING });
+    const started = run("chat.new");
+    load({ node: LOADING }, { status: "ready", projects: [scratch], threads: [] });
+    await started;
+    expect(visited).toEqual([{ node: LOADING }, { node: LOADING, project: "scratch" }]);
+    expect(listeners.size).toBe(0);
+  });
+
+  it("gives up waiting when the sidebar goes away", async () => {
+    const { run, navigation, visited, listeners } = await start();
+    navigation.navigate({ node: LOADING });
+    const started = run("chat.new");
+    await kernel!.stop();
+    kernel = undefined;
+    await started;
+    expect(visited).toEqual([{ node: LOADING }]);
+    expect(listeners.size).toBe(0);
+  });
+});
 
 describe("chat.new-without-project (D72)", () => {
   it("starts a draft in the scratch project of a named node, or of a member of its mesh", async () => {
