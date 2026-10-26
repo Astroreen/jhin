@@ -111,6 +111,11 @@ export class Sensors {
     this.foreign.set(node, applyMissionEvent(this.foreign.get(node) ?? EMPTY_MISSIONS, event));
   }
 
+  /** Forgets another node's missions, to fold them again from the start (a wiped member). */
+  forgetForeign(node: string): void {
+    this.foreign.delete(node);
+  }
+
   /**
    * Whether a slice of any node links this node's thread, so its turns'
    * commits are progress (D723, D1525). A slice of another node names a

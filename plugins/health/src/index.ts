@@ -812,6 +812,8 @@ export default definePlugin({
             following.dispose();
             remote.delete(name);
             remoteHeads.delete(name);
+            // Its missions are folded again from nothing, not over the old ones.
+            if (stream === MISSIONS_STREAM) sensors.forgetForeign(node);
             followOne(node, stream, handle);
           },
           (error: unknown) => {
@@ -958,9 +960,17 @@ export default definePlugin({
       let count = 0;
       // Only a thread a slice links by the turn's end makes progress of a mission,
       // a slice of this node or of another (D1525).
+      const self =
+        sensors.slicesOfThread(input.threadId).length === 0 ? await selfNodeId() : undefined;
+      if (sensors.slicesOfThread(input.threadId).length === 0 && self === undefined) {
+        // Without this node's id no slice of another node can name its thread.
+        context.log.warn("this node's id is unknown: other nodes' slices cannot link its turn", {
+          threadId: input.threadId,
+        });
+      }
       if (
         sensors.slicesOfThread(input.threadId).length === 0 &&
-        !sensors.linksHere(input.threadId, await selfNodeId())
+        !sensors.linksHere(input.threadId, self)
       ) {
         context.events.emit(COMMITS_COUNTED_EVENT, { turnId: input.turnId, count });
         return;
