@@ -401,11 +401,16 @@ function ScopeMenu(props: {
 type CommentDraft =
   | { readonly kind: "draft"; readonly rangeLabel: string }
   | {
-      readonly kind: "comment";
-      readonly rangeLabel: string;
-      readonly contextId: string;
-      readonly text: string;
+      /** The comments that end on one line and side, as T3 groups them (D1459). */
+      readonly kind: "comments";
+      readonly entries: readonly CommentEntry[];
     };
+
+interface CommentEntry {
+  readonly rangeLabel: string;
+  readonly contextId: string;
+  readonly text: string;
+}
 
 /** The chat's command putting text into the open composer (W15, D473), the fallback. */
 const COMPOSER_INSERT = "chat.composer.insert";
@@ -644,22 +649,32 @@ export function createDiffPanel(services: SourceControlServices) {
         const collapsed = collapsedKeys.has(fileKey);
         // The comments already in the message, under their lines while the diff still has them.
         const filePath = resolveFileDiffPath(fileDiff);
-        const persisted = draftComments.flatMap((comment): DiffLineAnnotation<CommentDraft>[] => {
-          if (comment.sectionId !== reviewSectionId || comment.filePath !== filePath) return [];
+        // T3's appendAnnotationEntry: comments ending on the same line and side share one.
+        const persisted: DiffLineAnnotation<CommentDraft>[] = [];
+        for (const comment of draftComments) {
+          if (comment.sectionId !== reviewSectionId || comment.filePath !== filePath) continue;
           const range = restoreReviewCommentRange(fileDiff, comment);
-          if (range === null) return [];
-          return [
-            {
-              ...annotationAnchor(fileDiff, range),
-              metadata: {
-                kind: "comment",
-                rangeLabel: comment.rangeLabel,
-                contextId: comment.contextId,
-                text: comment.text,
-              },
-            },
-          ];
-        });
+          if (range === null) continue;
+          const anchor = annotationAnchor(fileDiff, range);
+          const entry: CommentEntry = {
+            rangeLabel: comment.rangeLabel,
+            contextId: comment.contextId,
+            text: comment.text,
+          };
+          const at = persisted.findIndex(
+            (annotation) =>
+              annotation.side === anchor.side && annotation.lineNumber === anchor.lineNumber,
+          );
+          const shared = at < 0 ? undefined : persisted[at]!.metadata;
+          if (shared?.kind === "comments") {
+            persisted[at] = {
+              ...persisted[at]!,
+              metadata: { kind: "comments", entries: [...shared.entries, entry] },
+            };
+          } else {
+            persisted.push({ ...anchor, metadata: { kind: "comments", entries: [entry] } });
+          }
+        }
         const annotations: DiffLineAnnotation<CommentDraft>[] =
           draft?.fileKey === fileKey
             ? [
@@ -680,7 +695,7 @@ export function createDiffPanel(services: SourceControlServices) {
           version: fnv1a32(
             `${fileVersion}:${collapsed ? "1" : "0"}:${
               draft?.fileKey === fileKey ? `${draft.range.start}-${draft.range.end}` : ""
-            }:${persisted.map((annotation) => (annotation.metadata.kind === "comment" ? annotation.metadata.contextId : "")).join(",")}`,
+            }:${persisted.map((annotation) => (annotation.metadata.kind === "comments" ? annotation.metadata.entries.map((entry) => entry.contextId).join("+") : "")).join(",")}`,
           ),
         };
       },
@@ -761,8 +776,7 @@ export function createDiffPanel(services: SourceControlServices) {
       });
     };
     /** T3's "Delete comment": its chip and record leave the message (D1286). */
-    const deleteComment = (metadata: CommentDraft) => {
-      if (metadata.kind !== "comment") return;
+    const deleteComment = (metadata: CommentEntry) => {
       setSelectedLines(null);
       void services.context.commands
         .execute(COMPOSER_REMOVE_CONTEXT, { contextId: metadata.contextId })
@@ -1202,14 +1216,16 @@ export function createDiffPanel(services: SourceControlServices) {
                         beginComment(range, context.item as CodeViewDiffItem<CommentDraft>),
                     }}
                     renderAnnotation={(annotation) =>
-                      annotation.metadata.kind === "comment" ? (
-                        <div className="py-1">
-                          <DiffComment
-                            onDelete={() => deleteComment(annotation.metadata)}
-                            text={
-                              annotation.metadata.kind === "comment" ? annotation.metadata.text : ""
-                            }
-                          />
+                      annotation.metadata.kind === "comments" ? (
+                        // T3's group: the comments stacked, with dividers between them.
+                        <div className="divide-y divide-border/30 border-y border-border/30">
+                          {annotation.metadata.entries.map((entry) => (
+                            <DiffComment
+                              key={entry.contextId}
+                              onDelete={() => deleteComment(entry)}
+                              text={entry.text}
+                            />
+                          ))}
                         </div>
                       ) : (
                         <div className="py-1">

@@ -1047,9 +1047,34 @@ describe("the diff panel", () => {
     expect(record.contextId).toMatch(/^review-comment_/);
     // The comment in the message shows under its lines, as T3's annotation.
     await expect.element(page.getByText("Why three?")).toBeVisible();
+    // A second one on the same line joins it in one annotation, as T3 groups them (D1459).
+    await userEvent.hover(line);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    await userEvent.fill(page.getByRole("textbox", { name: "Comment on lines +2" }), "Or two?");
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await expect.element(page.getByText("Or two?")).toBeVisible();
+    const annotations = (
+      page.getByText("Why three?").element().closest(".divide-y") ?? document.body
+    ).querySelectorAll("[data-diff-comment-annotation]");
+    expect([...annotations].map((annotation) => annotation.textContent)).toEqual([
+      "Why three?",
+      "Or two?",
+    ]);
+    // Each keeps its own "Delete comment".
+    await userEvent.hover(page.getByText("Or two?"));
+    await userEvent.click(
+      page
+        .elementLocator(
+          page.getByText("Or two?").element().closest("[data-diff-comment-annotation]")!,
+        )
+        .getByRole("button", { name: "Delete comment" }),
+    );
+    await expect.element(page.getByText("Or two?")).not.toBeInTheDocument();
     await userEvent.hover(page.getByText("Why three?"));
     await userEvent.click(page.getByRole("button", { name: "Delete comment" }));
-    expect(removed).toEqual([record.contextId]);
+    // The second comment went first, then the first one.
+    expect(removed).toHaveLength(2);
+    expect(removed[1]).toBe(record.contextId);
     await expect.element(page.getByText("Why three?")).not.toBeInTheDocument();
   });
 

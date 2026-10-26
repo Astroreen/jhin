@@ -261,12 +261,36 @@ test("D280–D285: the diff panel renders with @pierre/diffs, splits, lists file
   await expect(box).toBeHidden();
   // It is T3's review comment chip in the message (D1284), and shows on its line (D1285).
   const message = page.getByRole("textbox", { name: "Message" });
-  const chip = message.getByLabel(/^Review comment, greet\.ts L\d+$/);
+  const chip = message.getByLabel(/^Review comment, greet\.ts L\d+\. Show details$/);
   await expect(chip).toBeVisible();
   await expect(message).not.toContainText("<review_comment");
   const comment = panel.getByText("Say goodbye politely");
   await expect(comment).toBeVisible();
   await shot(page, info, "source-control-diff-comment-sent");
+  // A second comment on the same line joins it in one annotation (D1459).
+  await panel.getByText('export const bye = () => "Bye";').hover();
+  await plus.click();
+  await box.fill("Or wave");
+  await panel.getByRole("button", { name: "Comment", exact: true }).click();
+  await expect(panel.getByText("Or wave")).toBeVisible();
+  await expect(message.getByLabel(/^Review comment, greet\.ts L\d+\. Show details$/)).toHaveCount(
+    2,
+  );
+  await shot(page, info, "source-control-diff-comments-grouped");
+  // The chip opens T3's popover: the file, its lines, the text and the patch (D1458).
+  await chip.first().click();
+  const popover = page.getByRole("dialog", { name: /^Review comment, greet\.ts L\d+$/ });
+  await expect(popover.getByText("src/greet.ts")).toBeVisible();
+  await expect(popover.getByText("Say goodbye politely")).toBeVisible();
+  await shot(page, info, "source-control-review-comment-popover");
+  await page.keyboard.press("Escape");
+  await panel.getByText("Or wave").hover();
+  await panel
+    .locator("[data-diff-comment-annotation]")
+    .filter({ hasText: "Or wave" })
+    .getByRole("button", { name: "Delete comment" })
+    .click();
+  await expect(panel.getByText("Or wave")).toBeHidden();
   // "Delete comment" takes it out of the message too (D1286).
   await comment.hover();
   await panel.getByRole("button", { name: "Delete comment" }).click();
