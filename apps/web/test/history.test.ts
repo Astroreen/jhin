@@ -71,6 +71,8 @@ function setup(options: {
       cycleRuntimeMode: () => undefined,
       togglePlanMode: () => undefined,
       sendAlternate: async () => false,
+      send: async () => false,
+      attach: () => undefined,
       steerNext: () => false,
       editLatest: () => false,
       resume: () => false,

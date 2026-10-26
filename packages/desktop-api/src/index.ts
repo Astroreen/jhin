@@ -121,6 +121,39 @@ export const DesktopPreviewOpenLink = z.object({
 });
 export type DesktopPreviewOpenLink = z.output<typeof DesktopPreviewOpenLink>;
 
+/** An element picked in a webview's page (T3's `PickedElementPayload`, D1491). */
+export const PreviewPickedElement = z.object({
+  selector: z.string().max(2000),
+  tagName: z.string().max(100),
+  text: z.string().max(2000),
+  htmlPreview: z.string().max(4000),
+  rect: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
+});
+export type PreviewPickedElement = z.output<typeof PreviewPickedElement>;
+
+/** T3's `PreviewAnnotationPayload`, its Select tool's part (D1491). */
+export const PreviewAnnotation = z.object({
+  id: z.string().min(1).max(100),
+  pageUrl: z.string().max(4096),
+  pageTitle: z.string().max(1000),
+  comment: z.string().max(20_000),
+  elements: z.array(PreviewPickedElement).min(1).max(20),
+  createdAt: z.string().max(40),
+});
+export type PreviewAnnotation = z.output<typeof PreviewAnnotation>;
+
+/** What annotating a page gives: null when cancelled (T3's `pickElement`). */
+export const PreviewPickResult = z
+  .object({
+    annotation: PreviewAnnotation,
+    /** Enter attaches; Cmd/Ctrl+Enter sends at once. */
+    submission: z.enum(["attach", "send"]),
+    /** The picked area as a PNG; null when it could not be captured. */
+    screenshot: z.object({ dataUrl: z.string(), width: z.number(), height: z.number() }).nullable(),
+  })
+  .nullable();
+export type PreviewPickResult = z.output<typeof PreviewPickResult>;
+
 /** The preview's webviews in the app (docs/plans/desktop.md, D1322). */
 export interface DesktopPreviewBridge {
   /**
@@ -138,6 +171,13 @@ export interface DesktopPreviewBridge {
   openDevTools?(webContentsId: number): Promise<void>;
   /** A webview's DevTools closed: its guest can be attached again (D1489). */
   onDevToolsClosed?(listener: (webContentsId: number) => void): Unsubscribe;
+  /** T3's separate window of a webview's page (D1493). Optional: an older app lacks it. */
+  popOut?(webContentsId: number, title: string): Promise<void>;
+  closePopOut?(webContentsId: number): Promise<void>;
+  onPopOutClosed?(listener: (webContentsId: number) => void): Unsubscribe;
+  /** Annotates elements of a webview's page (D1491); null when cancelled. */
+  pickElement?(webContentsId: number): Promise<PreviewPickResult>;
+  cancelPickElement?(webContentsId: number): Promise<void>;
 }
 
 /** `window.jhinDesktop`, put there by the app's preload (D521). */
@@ -198,5 +238,12 @@ export interface DesktopShell {
     openDevTools?(webContentsId: number): Promise<void>;
     /** Since 1.2: a webview's DevTools closed (D1489). */
     onDevToolsClosed?(listener: (webContentsId: number) => void): Disposable;
+    /** Since 1.3: a webview's separate window (D1493). */
+    popOut?(webContentsId: number, title: string): Promise<void>;
+    closePopOut?(webContentsId: number): Promise<void>;
+    onPopOutClosed?(listener: (webContentsId: number) => void): Disposable;
+    /** Since 1.3: annotating elements of a webview's page (D1491). */
+    pickElement?(webContentsId: number): Promise<PreviewPickResult>;
+    cancelPickElement?(webContentsId: number): Promise<void>;
   };
 }

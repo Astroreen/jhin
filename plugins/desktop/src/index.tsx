@@ -253,6 +253,28 @@ export default definePlugin({
                     onDevToolsClosed: (listener: (webContentsId: number) => void) =>
                       toDisposable(bridge.preview!.onDevToolsClosed!(listener)),
                   }),
+              // Since 1.3 (D1491, D1493).
+              ...(bridge.preview.popOut === undefined ||
+              bridge.preview.closePopOut === undefined ||
+              bridge.preview.onPopOutClosed === undefined
+                ? {}
+                : {
+                    popOut: (webContentsId: number, title: string) =>
+                      bridge.preview!.popOut!(webContentsId, title),
+                    closePopOut: (webContentsId: number) =>
+                      bridge.preview!.closePopOut!(webContentsId),
+                    onPopOutClosed: (listener: (webContentsId: number) => void) =>
+                      toDisposable(bridge.preview!.onPopOutClosed!(listener)),
+                  }),
+              ...(bridge.preview.pickElement === undefined ||
+              bridge.preview.cancelPickElement === undefined
+                ? {}
+                : {
+                    pickElement: (webContentsId: number) =>
+                      bridge.preview!.pickElement!(webContentsId),
+                    cancelPickElement: (webContentsId: number) =>
+                      bridge.preview!.cancelPickElement!(webContentsId),
+                  }),
             },
           }),
     };

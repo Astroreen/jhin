@@ -122,7 +122,8 @@ statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/d
 `packages/desktop-api`: the window and its chrome, the application and context
 menus, the notification badge, the update flow, its state machine and its
 controls, the nightly release notes, the quit hold and its hint, the preview's
-webviews: their CDP relay, guest input, hardening and placement;
+webviews: their CDP relay, guest input, hardening and placement, their DevTools,
+element annotation overlay, separate window and the user's downloads;
 the chat canvas beside a floating preview and the preview's picture-in-picture
 window (`apps/web/src/lib/chat-canvas-layout.ts`, `apps/web/src/plugins/chat/chat-canvas.ts`,
 `apps/web/src/plugins/preview/picture-in-picture.ts`);

@@ -85,6 +85,22 @@ export interface TerminalContextRecord extends ContextRecordBase {
   readonly text: string;
 }
 
+/**
+ * Elements of a preview page the user annotated in the desktop app, with a comment (T3's
+ * `PreviewAnnotationPayload`, desktop.md D1491); its screenshot rides as an attachment.
+ */
+export interface PreviewAnnotationContextRecord extends ContextRecordBase {
+  readonly kind: "preview-annotation";
+  readonly pageUrl: string;
+  readonly pageTitle: string;
+  readonly comment: string;
+  readonly elements: readonly {
+    readonly selector: string;
+    readonly tagName: string;
+    readonly text: string;
+  }[];
+}
+
 /** A kind this version does not know, kept with its payload (T3's UnknownContextRecord). */
 export interface UnknownContextRecord extends ContextRecordBase {
   readonly kind: string;
@@ -94,12 +110,18 @@ export interface UnknownContextRecord extends ContextRecordBase {
 export type KnownContextRecord =
   | ReviewCommentContextRecord
   | ThreadContextRecord
-  | TerminalContextRecord;
+  | TerminalContextRecord
+  | PreviewAnnotationContextRecord;
 
 export type MessageContextRecord = KnownContextRecord | UnknownContextRecord;
 
 /** The kinds `KnownContextRecord` holds; any other kind is an unknown one. */
-export const KNOWN_CONTEXT_KINDS = ["review-comment", "thread", "terminal"] as const;
+export const KNOWN_CONTEXT_KINDS = [
+  "review-comment",
+  "thread",
+  "terminal",
+  "preview-annotation",
+] as const;
 
 /** Structured context riding on a user message (T3's OrchestrationMessageContext). */
 export interface MessageContext {
@@ -295,6 +317,21 @@ function formatPayload(record: KnownContextRecord): string {
       if (record.diff.trim()) {
         lines.push(`${record.fenceLanguage ?? "diff"}:`, indent(record.diff.trimEnd()));
       }
+      return lines.join("\n");
+    }
+    case "preview-annotation": {
+      // T3's <preview_annotation>: its page, the comment, and what was picked.
+      const count = record.elements.length;
+      const lines = [
+        `Id: ${record.contextId}`,
+        `Page: ${record.pageTitle === "" ? record.pageUrl : `${record.pageTitle} (${record.pageUrl})`}`,
+      ];
+      if (record.comment.trim()) lines.push(`Comment: ${record.comment.trim()}`);
+      lines.push(`Targets: ${count} selected ${count === 1 ? "element" : "elements"}`);
+      record.elements.forEach((element, index) => {
+        lines.push(`${index + 1}. <${element.tagName}> ${element.selector}`);
+        if (element.text.trim()) lines.push(indent(element.text.trim().slice(0, 500)));
+      });
       return lines.join("\n");
     }
     case "thread":

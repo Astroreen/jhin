@@ -12,6 +12,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  shell,
   webContents,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -48,6 +49,7 @@ import { createElectronUpdater, hasPackagedFeed } from "./updates/electron-updat
 import { NodeRestarter } from "./node-restart.ts";
 import { makeQuitShortcutHandler } from "./quit-hold.ts";
 import { createMainWindow, loadNode, syncWindowAppearance, zoomMainWindow } from "./window.ts";
+import { createPopOuts } from "./preview/pop-out.ts";
 import { createWebviewHost } from "./preview/webview-host.ts";
 
 const APP_NAME = "Jhin";
@@ -325,6 +327,11 @@ async function main(): Promise<void> {
     openLink: (link) => sendToPage(DESKTOP_CHANNELS.previewOpenLink, link),
     devToolsClosed: (webContentsId) =>
       sendToPage(DESKTOP_CHANNELS.previewDevToolsClosed, webContentsId),
+    downloads: {
+      folder: () => app.getPath("downloads"),
+      reveal: (path) => shell.showItemInFolder(path),
+    },
+    guestPreload: Path.join(import.meta.dirname, "preview-annotate-preload.cjs"),
     log,
   });
   handle(DESKTOP_CHANNELS.previewAttach, z.number().int().positive(), (webContentsId) => {
@@ -340,6 +347,35 @@ async function main(): Promise<void> {
     }
     webviews.openDevTools(mainWindow.webContents, webContentsId);
   });
+  // T3's separate window of a tab the app hosts (D1493).
+  const popOuts = createPopOuts({
+    preload: Path.join(import.meta.dirname, "preview-pop-out-preload.cjs"),
+    platform: process.platform,
+    closed: (webContentsId) => sendToPage(DESKTOP_CHANNELS.previewPopOutClosed, webContentsId),
+    log,
+  });
+  app.on("will-quit", () => popOuts.dispose());
+  const appWindow = () => {
+    if (mainWindow === undefined || mainWindow.isDestroyed()) {
+      throw new Error("The app's window is closed.");
+    }
+    return mainWindow;
+  };
+  handle(
+    DESKTOP_CHANNELS.previewPopOut,
+    z.object({ webContentsId: z.number().int().positive(), title: z.string().max(512) }),
+    ({ webContentsId, title }) => popOuts.open(appWindow().webContents, webContentsId, title),
+  );
+  handle(DESKTOP_CHANNELS.previewClosePopOut, z.number().int().positive(), (webContentsId) =>
+    popOuts.close(webContentsId),
+  );
+  // T3's element annotation (D1491).
+  handle(DESKTOP_CHANNELS.previewPickElement, z.number().int().positive(), (webContentsId) =>
+    webviews.pickElement(appWindow().webContents, webContentsId),
+  );
+  handle(DESKTOP_CHANNELS.previewCancelPick, z.number().int().positive(), (webContentsId) =>
+    webviews.cancelPick(appWindow().webContents, webContentsId),
+  );
   handle(DESKTOP_CHANNELS.previewClearPartition, z.string().max(400), (partition) =>
     webviews.clearPartition(partition),
   );

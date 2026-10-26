@@ -32,4 +32,24 @@ export const DESKTOP_CHANNELS = {
   previewOpenDevTools: "jhin-desktop:preview-open-devtools",
   /** Main to page: a webview's DevTools closed, its guest may be attached again (D1489). */
   previewDevToolsClosed: "jhin-desktop:preview-devtools-closed",
+  /** Opens or closes a webview's separate window (D1493). */
+  previewPopOut: "jhin-desktop:preview-pop-out",
+  previewClosePopOut: "jhin-desktop:preview-close-pop-out",
+  /** Main to page: a webview's separate window closed (D1493). */
+  previewPopOutClosed: "jhin-desktop:preview-pop-out-closed",
+  /** Annotates elements of a webview's page, or cancels it (D1491). */
+  previewPickElement: "jhin-desktop:preview-pick-element",
+  previewCancelPick: "jhin-desktop:preview-cancel-pick",
+} as const;
+
+/** Main to the pop-out window's preload: a frame of the page (D1493). */
+export const POP_OUT_FRAME_CHANNEL = "jhin-desktop:preview-pop-out-frame";
+
+/** Between the main process and the preview's own preload in a guest (D1491). */
+export const GUEST_CHANNELS = {
+  startPick: "jhin-preview:start-pick",
+  cancelPick: "jhin-preview:cancel-pick",
+  elementPicked: "jhin-preview:element-picked",
+  pickCancelled: "jhin-preview:pick-cancelled",
+  annotationCaptured: "jhin-preview:annotation-captured",
 } as const;

@@ -4,5 +4,12 @@
     "lib": ["ESNext", "DOM"],
     "types": ["node"]
   },
-  "include": ["src", "test", "vite.config.ts", "vite.preload.config.ts"]
+  "include": [
+    "src",
+    "test",
+    "vite.config.ts",
+    "vite.preload.config.ts",
+    "vite.annotate-preload.config.ts",
+    "vite.pop-out-preload.config.ts"
+  ]
 }

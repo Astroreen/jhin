@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
-    "build": "vp build && vp build --config vite.preload.config.ts",
+    "build": "vp build && vp build --config vite.preload.config.ts && vp build --config vite.annotate-preload.config.ts && vp build --config vite.pop-out-preload.config.ts",
     "start": "electron .",
     "typecheck": "tsc --noEmit"
   },

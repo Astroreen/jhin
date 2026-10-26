@@ -255,6 +255,81 @@ describe("the app's webview relay (D1322)", () => {
     expect(stray.placed).toEqual({ path: undefined, cancelled: true });
   });
 
+  it("copies the user's download into Downloads and shows it; the agent's stays on the node (D1492)", async () => {
+    const Fs = await import("node:fs");
+    const Os = await import("node:os");
+    const Path = await import("node:path");
+    const nodeFolder = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-node-downloads-"));
+    const downloads = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-user-downloads-"));
+    Fs.writeFileSync(Path.join(downloads, "report.pdf"), "already there");
+    const revealed: string[] = [];
+    let shown: (path: string) => void = () => undefined;
+    const webviews = createWebviewHost({
+      openLink: () => undefined,
+      log: () => undefined,
+      downloads: {
+        folder: () => downloads,
+        reveal: (path) => {
+          revealed.push(path);
+          shown(path);
+        },
+      },
+    });
+    const partition = "persist:jhin-preview-ZGVmYXVsdA";
+    webviews.willAttach({ preventDefault() {} } as never, {}, { partition, src: "about:blank" });
+    const webview = guest(11);
+    const { endpoint } = await webviews.attach(page as never, 11);
+    const node = await connect(endpoint);
+    const say = (message: object) =>
+      new Promise<void>((resolve) => {
+        node.once("message", () => resolve());
+        node.send(JSON.stringify(message));
+      });
+    await say({
+      id: 1,
+      method: "Browser.setDownloadBehavior",
+      params: { behavior: "allowAndName", downloadPath: nodeFolder },
+    });
+    const download = (guid: string) => {
+      webview.debugger.emit(
+        "message",
+        {},
+        "Browser.downloadWillBegin",
+        { guid, url: `http://x/${guid}` },
+        "",
+      );
+      const done = new EventEmitter();
+      let path = "";
+      const item = Object.assign(done, {
+        getURL: () => `http://x/${guid}`,
+        getFilename: () => "report.pdf",
+        getSavePath: () => path,
+        setSavePath: (value: string) => {
+          path = value;
+        },
+        cancel: () => undefined,
+      });
+      sessions.get(partition)!.emit("will-download", {}, item, webview);
+      Fs.writeFileSync(path, guid);
+      item.emit("done", {}, "completed");
+    };
+    // The user clicked a link: no input from the node lately.
+    const copied = new Promise<string>((resolve) => (shown = resolve));
+    download("human");
+    await copied;
+    expect(revealed).toEqual([Path.join(downloads, "report (1).pdf")]);
+    expect(Fs.readFileSync(revealed[0]!, "utf8")).toBe("human");
+    // The agent clicked: the file stays on the node, for the agent.
+    await say({
+      id: 2,
+      method: "Input.dispatchMouseEvent",
+      params: { type: "mousePressed", x: 1, y: 1 },
+    });
+    download("agent");
+    expect(revealed).toHaveLength(1);
+    expect(Fs.existsSync(Path.join(nodeFolder, "agent"))).toBe(true);
+  });
+
   it("leaves no listener on a guest it attached again", async () => {
     const webviews = host();
     const webview = guest(11);

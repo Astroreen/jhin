@@ -758,6 +758,53 @@ export const chatPlugin = builtin(
           return done === "inserted" ? { inserted: true } : { inserted: false, reason: done };
         },
       });
+      // A file into the open thread's message, as the paperclip attaches it (desktop.md D1491).
+      context.commands.register({
+        name: "chat.composer.attach",
+        title: "Attach files to the composer",
+        description:
+          "Attaches files (base64) to the open thread's message, as the paperclip does; an annotation of a preview page attaches its screenshot so",
+        input: z.object({
+          files: z
+            .array(
+              z.object({
+                name: z.string().min(1).max(255),
+                mimeType: z.string().min(1).max(255),
+                data: z.string().max(64 * 1024 * 1024),
+              }),
+            )
+            .min(1)
+            .max(20),
+        }),
+        output: z.object({ attached: z.boolean() }),
+        handler: ({ files }) => {
+          const target = composer.current;
+          if (target === undefined) return { attached: false };
+          target.attach(
+            files.map(
+              (file) =>
+                new File(
+                  [Uint8Array.from(atob(file.data), (char) => char.charCodeAt(0))],
+                  file.name,
+                  {
+                    type: file.mimeType,
+                  },
+                ),
+            ),
+          );
+          return { attached: true };
+        },
+      });
+      // Sends what the composer holds, as Enter does (T3's annotation "Send", desktop.md D1491).
+      context.commands.register({
+        name: "chat.composer.send",
+        title: "Send the message",
+        description:
+          "Sends the open thread's message as Enter does; sent is false when there is nothing to send",
+        input: z.object({}),
+        output: z.object({ sent: z.boolean() }),
+        handler: async () => ({ sent: (await composer.current?.send()) ?? false }),
+      });
       // T3's removeReviewComment (D1286): a record's chips go, with the record.
       context.commands.register({
         name: "chat.composer.remove-context",

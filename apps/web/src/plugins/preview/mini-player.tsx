@@ -279,10 +279,26 @@ export function MiniPlayer(props: MiniPlayerProps) {
   // T3's "Pop into separate window" for a tab the node streams (D1327).
   const pip = props.pictureInPicture;
   const pipKey = useSyncExternalStore(pip?.subscribe ?? noSubscription, () => pip?.key() ?? null);
-  const poppedOut = pipKey === pictureInPictureKey(props.threadId, tab.tabId);
-  const canPopOut = pip !== undefined && !native && supportsPictureInPicture();
+  // A tab the app hosts pops out into T3's separate window instead (desktop.md D1493).
+  const nativePopOut = useSyncExternalStore(props.surfaces.subscribe, () =>
+    native ? props.surfaces.canPopOut(props.threadId, tab.tabId) : false,
+  );
+  const nativePoppedOut = useSyncExternalStore(props.surfaces.subscribe, () =>
+    props.surfaces.isPoppedOut(props.threadId, tab.tabId),
+  );
+  const poppedOut = nativePopOut
+    ? nativePoppedOut
+    : pipKey === pictureInPictureKey(props.threadId, tab.tabId);
+  const canPopOut = nativePopOut || (pip !== undefined && !native && supportsPictureInPicture());
   const sectionRef = useRef<HTMLElement | null>(null);
   const togglePopOut = () => {
+    if (nativePopOut) {
+      const title = tab.navStatus.state === "idle" ? "" : tab.navStatus.title;
+      void props.surfaces
+        .togglePopOut(props.threadId, tab.tabId, title)
+        .catch((error: unknown) => props.onPopOutError?.(error));
+      return;
+    }
     if (pip === undefined) return;
     if (poppedOut) {
       pip.close();

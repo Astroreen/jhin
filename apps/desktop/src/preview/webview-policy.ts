@@ -30,6 +30,8 @@ export const ALLOWED_PREVIEW_PERMISSIONS: ReadonlySet<string> = new Set([
 export function hardenWebview(
   preferences: WebPreferences,
   params: Record<string, string>,
+  /** The app's own preload of the preview, for annotation (D1491); never the page's. */
+  guestPreload?: string,
 ): boolean {
   const partition = params["partition"];
   if (typeof partition !== "string" || !PREVIEW_PARTITION.test(partition)) return false;
@@ -39,6 +41,7 @@ export function hardenWebview(
   // `disablewebsecurity` and `webpreferences` params into `preferences` by now:
   // each is reset here, whatever the page asked for.
   delete preferences.preload;
+  if (guestPreload !== undefined) preferences.preload = guestPreload;
   for (const param of [
     "preload",
     "nodeintegration",
