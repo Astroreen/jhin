@@ -3253,7 +3253,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       action: PullRequestAction,
       mergeMethod: PullRequestMergeMethod.optional(),
     }),
-    output: z.object({ pullRequest: PullRequest }),
+    output: z.object({
+      /** `null` when the pull request could not be read again after the action, which was done. */
+      pullRequest: PullRequest.nullable(),
+    }),
     permissions: ["git.write"],
     handler: async ({ projectId, url, action, mergeMethod }) => {
       const { forge, key } = await forgeOfUrl(projectId, url);
@@ -3264,24 +3267,37 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           { url },
         );
       }
-      if (action === "merge" && mergeMethod !== undefined) {
-        // A method the repository refuses is said so, not left to the forge's own error.
+      // A merge takes a method the repository allows: the one asked for, refused when not
+      // allowed, else "merge" when allowed, else the first allowed (T3's
+      // resolveSelectedMergeMethod).
+      let method = mergeMethod ?? "merge";
+      if (action === "merge") {
         const allowed = await forge.mergeMethods(url).catch(() => undefined);
-        if (allowed !== undefined && !allowed.includes(mergeMethod)) {
-          throw new SourceControlError(
-            "ACTION_UNAVAILABLE",
-            `This repository does not allow the ${mergeMethod} merge method (it allows: ${allowed.join(", ") || "none"}).`,
-            { url },
-          );
+        if (allowed !== undefined && !allowed.includes(method)) {
+          if (mergeMethod !== undefined || allowed.length === 0) {
+            throw new SourceControlError(
+              "ACTION_UNAVAILABLE",
+              `This repository does not allow the ${method} merge method (it allows: ${allowed.join(", ") || "none"}).`,
+              { url },
+            );
+          }
+          method = allowed[0]!;
         }
       }
-      let pullRequest: PullRequest;
       try {
-        await forge.act(url, action, mergeMethod ?? "merge");
-        pullRequest = await forge.at(url);
+        await forge.act(url, action, method);
       } catch (error) {
         throw forgeFailure(error, { url, action });
       }
+      // Done on the forge: a read that fails now answers null, and the next sync reads it.
+      const pullRequest = await forge.at(url).catch((error: unknown) => {
+        context.log.warn("reading a pull request after its action failed", {
+          url,
+          error: String(error),
+        });
+        return null;
+      });
+      if (pullRequest === null) return { pullRequest };
       // Done on the forge: a link that cannot be updated now is read again by the next sync.
       const syncedAt = new Date().toISOString();
       for (const entry of await links.all()) {

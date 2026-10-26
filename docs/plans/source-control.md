@@ -1549,7 +1549,10 @@ and in `apps/web` `components/PullRequestThreadDialog.tsx`,
   mergeMethod? }` → `{ pullRequest }`), T3's `runAction` for those four. It
   and `git.pr.detail` take only the project's own pull requests (of any of
   its remotes) and the ones its threads link, and a merge method the
-  repository does not allow is refused before the forge is asked:
+  repository does not allow is refused before the forge is asked; without one
+  a merge takes "merge" when allowed, else the first allowed method (T3's
+  `resolveSelectedMergeMethod`). `pullRequest` is `null` when the pull
+  request could not be read again after the action, which was done:
   GitHub through `gh pr merge --merge|--squash|--rebase`, `gh pr ready`,
   `gh pr close` and `gh pr reopen` (T3 sends the same GraphQL mutations);
   GitLab `glab mr merge --yes --auto-merge=false [--squash|--rebase]`,

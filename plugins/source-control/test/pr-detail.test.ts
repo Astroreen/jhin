@@ -153,6 +153,10 @@ describe("git.pr.action (D1451)", () => {
     );
     expect(gh.calls().some((call) => call.startsWith("pr merge"))).toBe(false);
 
+    // Without a method asked for, "merge" is not allowed here: the first allowed one is taken.
+    await sc.client.call("git.pr.action", { projectId, url, action: "merge" });
+    expect(gh.calls()).toContain(`pr merge ${url} --squash`);
+
     // Another repository's pull request a thread of the project links is the project's too.
     const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
     gh.view(9, ghPullRequest({ number: 9, url: "https://github.com/other/repo/pull/9" }));
