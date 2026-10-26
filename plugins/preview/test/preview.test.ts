@@ -1329,6 +1329,44 @@ describe("jhin.preview in the desktop app (D1321)", () => {
     tabsStream.subscription.dispose();
   });
 
+  it("opens the tab headless when the app's page stops hosting before it attaches", async () => {
+    const { client } = await ownNode();
+    const host = watch(client, PREVIEW_DESKTOP_STREAM);
+    const opening = client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/second`,
+    });
+    await host.until(() => desktopTabs(host.events).length === 1);
+    host.subscription.dispose();
+    await opening;
+    await client.call("preview.wait.for", { threadId: thread, text: "Second page text" });
+    const { tabs } = await client.call<{ tabs: PreviewTab[] }>("preview.list", {
+      threadId: thread,
+    });
+    expect(tabs[0]?.desktop).toBeUndefined();
+  });
+
+  it("refuses an attach nobody waits for, and an endpoint off this machine", async () => {
+    const { client } = await ownNode();
+    const secret = "a".repeat(32);
+    const unknown = await rejection(
+      client.call("preview.desktop.attach", {
+        threadId: thread,
+        tabId: "tab_1_abcdef01",
+        endpoint: `ws://127.0.0.1:9/${secret}`,
+      }),
+    );
+    expect(unknown.code).toBe("PREVIEW_TAB_NOT_FOUND");
+    const remote = await rejection(
+      client.call("preview.desktop.attach", {
+        threadId: thread,
+        tabId: "tab_1_abcdef01",
+        endpoint: `ws://192.168.1.2:9/${secret}`,
+      }),
+    );
+    expect(remote.code).not.toBe("PREVIEW_TAB_NOT_FOUND");
+  });
+
   it("waits for a page to host tabs again, at once when one does (D1488)", async () => {
     const desktop = createDesktopHost(createMemoryStreams());
     try {

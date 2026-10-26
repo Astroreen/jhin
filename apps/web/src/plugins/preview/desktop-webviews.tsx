@@ -263,6 +263,7 @@ function HostedWebview(props: {
       if (guestId !== undefined) {
         guests.delete(guestId);
         devTools.reattach.delete(guestId);
+        devTools.open.delete(guestId);
         surfaces.guest(tab.threadId, tab.tabId, undefined);
       }
     };

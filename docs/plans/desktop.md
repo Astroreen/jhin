@@ -643,7 +643,7 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   "The tab is waiting for the desktop app's webview." Closing the tab still
   works and ends the wait. A recording, the human's control and a pending
   dialog or file chooser end with the old page, as a recording ends with a
-  closed tab. This replaces D1321's last sentence and D1322's "A dropped
+  closed tab. A page that crashes still ends its tab (D1321). This replaces D1321's last sentence and D1322's "A dropped
   connection is final", and solves the window reload of D1321's Deferred
   item.
 

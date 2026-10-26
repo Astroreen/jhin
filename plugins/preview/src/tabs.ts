@@ -631,15 +631,13 @@ export function createTabs(options: TabsOptions) {
     // Popups become tabs and keep `window.opener`, so sign-in popups can report back.
     page.on("popup", (popup) => void adoptPopup(tab, popup));
     // Playwright cannot reload a crashed page, so it leaves the tab list. A desktop page that
-    // goes (a reload of the window, its DevTools) leaves the tab waiting for the next (D1488).
+    // goes (a reload of the window, its DevTools) leaves the tab waiting for the next (D1488);
+    // one that crashed ends the tab, as before.
     page.on(
       "close",
       () => void (desktop !== null ? reconnectDesktop(tab) : dropTab(tab, "page closed")),
     );
-    page.on(
-      "crash",
-      () => void (desktop !== null ? reconnectDesktop(tab) : dropTab(tab, "page crashed")),
-    );
+    page.on("crash", () => void dropTab(tab, "page crashed"));
     if (desktop !== null) {
       // Through Playwright's own session: the app's relay has one real session for the page.
       await page
