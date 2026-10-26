@@ -647,6 +647,15 @@ export function createTabs(options: TabsOptions) {
         .catch(() => undefined);
       await page.addInitScript(TITLE_WATCH_SCRIPT).catch(() => undefined);
     }
+    // A reconnecting tab closed while its new page was set up stays closed (D1488).
+    if (previous !== undefined && tabs.get(tabKey(tab.threadId, tab.tabId)) !== previous) {
+      if (desktop !== null) await desktop.close().catch(() => undefined);
+      else {
+        await page.close().catch(() => undefined);
+        if (isolated) await context.close().catch(() => undefined);
+      }
+      throw new Error("The tab closed while it reconnected.");
+    }
     tabs.set(tabKey(tab.threadId, tab.tabId), tab);
     if (desktop !== null) options.desktop?.confirm(tab.threadId, tab.tabId);
     tab.viewers = viewerCounts.get(tabKey(tab.threadId, tab.tabId)) ?? 0;
@@ -1039,12 +1048,17 @@ export function createTabs(options: TabsOptions) {
 
   // --- Finding the tab an agent means -------------------------------------------
 
-  /** A tab waiting for the app's webview answers no command but closing (D1488). */
-  const live = <T extends Tab | undefined>(tab: T): T => {
+  /**
+   * A tab waiting for the app's webview answers no command but closing (D1488): an agent
+   * gets T3's wording, the panel plain words.
+   */
+  const live = <T extends Tab | undefined>(tab: T, by: "agent" | "human" = "agent"): T => {
     if (tab !== undefined && tab.reconnect !== null) {
       throw new PreviewError(
         "PREVIEW_TAB_RECONNECTING",
-        "Close preview DevTools before using agent browser control. The tab is waiting for the desktop app's webview.",
+        by === "agent"
+          ? "Close preview DevTools before using agent browser control. The tab is waiting for the desktop app's webview."
+          : "The tab is waiting for the desktop app's webview.",
         { tabId: tab.tabId, instance },
       );
     }
@@ -1421,7 +1435,7 @@ export function createTabs(options: TabsOptions) {
   };
 
   const humanTab = (threadId: string, tabId: string) => {
-    const tab = find(threadId, tabId);
+    const tab = live(findAny(threadId, tabId), "human");
     if (tab === undefined) throw notFound("the panel", tabId);
     return tab;
   };

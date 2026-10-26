@@ -266,10 +266,11 @@ export function createWebviewHost(options: WebviewHostOptions) {
       return;
     }
     attached.get(webContentsId)?.close();
+    guest.openDevTools({ mode: "detach" });
+    // Registered once they opened: a failed open leaves no listener behind.
     guest.once("devtools-closed", () => {
       if (!guest.isDestroyed()) options.devToolsClosed?.(webContentsId);
     });
-    guest.openDevTools({ mode: "detach" });
   };
 
   /** Forgets a profile's cookies and storage in the app (D1323). */
