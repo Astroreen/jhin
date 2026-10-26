@@ -15,6 +15,7 @@ import {
   type Mission,
   type Slice,
 } from "@jhin/missions-api";
+import { isAway } from "@jhin/mesh-api";
 import type { RpcClient } from "@jhin/rpc";
 import { definePlugin, z } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
@@ -236,6 +237,37 @@ describe("missionProgress (D702)", () => {
       total: 8,
       slicesDone: false,
     });
+  });
+
+  it("names a planned or active slice of an away node's assignee, in the current wave (D1547)", () => {
+    const B = "jhin://node-b/agents/x";
+    const progress = missionProgress(
+      [
+        slice("s1", { assignee: B }),
+        slice("s2", { assignee: B, status: "active" }),
+        slice("s3", { assignee: B, status: "blocked" }),
+        slice("s4", { assignee: BUILDER }),
+        slice("s5", { wave: 2, assignee: B }),
+      ],
+      { away: new Set(["node-b"]) },
+    );
+    expect(progress).toMatchObject({
+      ready: ["s4"],
+      working: [],
+      decisions: [
+        { sliceId: "s1", reason: "away" },
+        { sliceId: "s2", reason: "away" },
+        { sliceId: "s3", reason: "blocked" },
+      ],
+    });
+  });
+
+  it("takes a node away only when the members list it unreachable (D1551)", () => {
+    expect(isAway(undefined, "b")).toBe(false);
+    // Not listed yet (a mesh still connecting, a node that never joined): not known, not away.
+    expect(isAway([], "b")).toBe(false);
+    expect(isAway([{ nodeId: "b", reachable: true }], "b")).toBe(false);
+    expect(isAway([{ nodeId: "b", reachable: false }], "b")).toBe(true);
   });
 
   it("is done once no slice is open, and moves on past a finished wave", () => {

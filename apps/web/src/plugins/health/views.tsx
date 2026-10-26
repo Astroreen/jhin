@@ -469,7 +469,13 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
                 ? "back under the threshold"
                 : warning.clearedReason === "narrower"
                   ? "a narrower group warns for the same cause"
-                  : warning.clearedReason}
+                  : warning.clearedReason === "node-back"
+                    ? "the node is back"
+                    : warning.clearedReason === "not-waiting"
+                      ? "no slice waits on the node any more"
+                      : warning.clearedReason === "members-unknown"
+                        ? "the node no longer knows its mesh"
+                        : warning.clearedReason}
               {warning.clearedAt === undefined
                 ? null
                 : `, ${new Date(warning.clearedAt).toLocaleString()}`}

@@ -2478,7 +2478,8 @@ Decisions:
   holding the mission's open slices goes away or comes back, so the
   orchestrator ends with `decide` at once and wakes the lead, who reassigns
   or waits. A handoff to an away node is `SLICE_NOT_READY` with reason
-  `away`.
+  `away`. How a node
+  is away: D1551.
 - **D1548. Health warns of a mission waiting on an away node.** The
   detector `away` raises a warning on the mission's group for each away node
   holding open slices of it: "N slices of «mission» wait on node B, which is
@@ -2494,7 +2495,25 @@ Decisions:
   is back.
 - **D1550. The in-memory mesh writes its `mesh` stream.** `startMeshNode`
   registers `mesh.nodes` and appends `mesh.nodes.changed` as `jhin.mesh`
-  does, so tests see a node go away when its peer stops.
+  does, so tests see a node go away when its peer stops. Superseded by D1551.
+- **D1551. Away is read from the members, not from a stream.** M1 gave
+  plugins `members()` and `onChange` of `mesh.streams@1.1` (D1522) while
+  this was built, so D1547's away and D1550's stream are replaced by them:
+  one source of reachability, which `jhin.mesh` and `@jhin/testing`'s
+  in-memory mesh already provide, so the `mesh` stream keeps its old shape
+  and the in-memory mesh needs no change. A node is away when `members()`
+  lists it unreachable (`isAway` in `@jhin/mesh-api`). A node it does not
+  list is not known yet, not away: a node starting before its mesh connects,
+  or a slice assigned to a node that never joined, raises nothing. The
+  orchestrator reads the members afresh for each answer and hears
+  `onChange` for its waits; D1547's wait that ends at once does so only
+  when the slices the caller saw away (`missions.wait { away }`, from its
+  `missions.next`) are no longer the ones away, so a lead that waits for a
+  node to come back is not answered at once again and again; health and the inbox read them the same way.
+  Health counts every open slice assigned to the away node (planned, active
+  or blocked, any wave), since all of them wait on it; the orchestrator
+  decides only for the slices of its current wave (D1547). A warning whose
+  node's members cannot be read any more clears as `members-unknown`.
 
 ### M3. A run across two nodes (D1561–D1580)
 
@@ -2654,6 +2673,17 @@ Decisions:
   arrive (D1526): on a restart they are not replayed in time order with this
   node's streams, so a message sent before a slice was assigned can count
   for it.
+- M2: the inbox's `away` mark (D1549) is read when a node's feed loads
+  `agents.inbox.list`; it does not follow the mesh while the page is open,
+  so an item whose sender went away later says so only through the refused
+  answer.
+- M2: since when a node is away is kept in memory (D1548): after a restart
+  of the mission's node, a node away all along counts from the restart, so
+  an `away` warning dismissed before is raised once more.
+- M2: a lead whose own node goes away mid-run. Its run went with it, so
+  nobody is woken; the mission's node still reads the run from the record
+  (D1545), and health warns only of slices waiting on an away node (D1548),
+  not of a lead that is gone.
 - A7: detecting a repeated wrong idea nobody named yet (phrases recurring
   across agents' notes and messages); D727 needs the correction first.
 - A7: an agent naming a corrected idea (`health.write` for an epidemiology
@@ -2728,9 +2758,10 @@ Decisions:
   M2, D1544, D1545; the panel's start from an agent of another node is the
   item below.
 - M2: starting a run from the panel with an agent of another node. The
-  server runs it (D1545), but Run from lists this node's agents (D1082) and
-  a start through a relay is a mesh caller, which W10 refuses: it needs M1's
-  directory of every node and a connection open to the agent's node.
+  server runs it (D1545), and M1's directory now reads every node's agents
+  (`others`, D1532), but Run from offers this node's only: a start through a
+  relay is a mesh caller, which W10 refuses, so it needs a connection open to
+  the agent's node.
 - M2: a proof or review an agent of another node records names its node
   (`by: node:<X>`), not the agent: the forwarded call runs as the node
   (D1542, D416).
@@ -2959,3 +2990,7 @@ Each workstream lists its PRs here as they merge.
 - M1 #314: Civilization reads every node of the mesh: roster, missions,
   inbox, health, the offer of the mode, titles and assignees, and the Lead
   view of a lead on another node (D1527–D1533).
+- M2 #312: a node away mid-mission: the decision `away` and an orchestrator
+  woken at once, health's `away` warning that clears itself, inbox items of
+  an away sender (`SENDER_AWAY`), all read from M1's `members()`
+  (D1547–D1551).

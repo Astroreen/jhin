@@ -34,6 +34,7 @@
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
     "@jhin/host-api": "workspace:*",
+    "@jhin/mesh-api": "workspace:*",
     "@jhin/missions-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*"
@@ -41,6 +42,7 @@
   "devDependencies": {
     "@jhin/plugin-agent-fake": "workspace:*",
     "@jhin/plugin-agents": "workspace:*",
+    "@jhin/plugin-health": "workspace:*",
     "@jhin/plugin-missions": "workspace:*",
     "@jhin/plugin-orchestration": "workspace:*",
     "@jhin/plugin-threads": "workspace:*",
@@ -60,6 +62,9 @@
       "host.identity": "^1",
       "storage.kv": "^1",
       "storage.eventlog": "^1"
+    },
+    "optional": {
+      "mesh.streams": "^1"
     }
   }
 }

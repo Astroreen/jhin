@@ -17,6 +17,12 @@ import {
 } from "@jhin/agent-api";
 import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
 import {
+  MESH_STREAMS_CAPABILITY,
+  isAway,
+  type MeshStreams,
+  type StreamMember,
+} from "@jhin/mesh-api";
+import {
   EMPTY_MISSIONS,
   IntentChain,
   MISSIONS_STREAM,
@@ -33,6 +39,7 @@ import {
   intentChain,
   MissionNode,
   missionProgress,
+  nodeOfAddress,
   onMissionNode,
   type MissionNodeOptions,
   REVIEW_TREE_EXCLUDE,
@@ -484,8 +491,55 @@ export default definePlugin({
           .catch(() => undefined);
       }),
     );
-    // An assignee of any node is handed its slice from here (D1541).
-    const progressOf = (mission: Mission) => missionProgress(slicesOf(state, mission.id));
+    // --- Nodes away (D1547) ------------------------------------------------------
+    /** The other members as `mesh.streams@1.1` lists them; none away without it (M1, D1522). */
+    const meshStreams = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
+    const membersNow = () => meshStreams?.members?.();
+    let members: readonly StreamMember[] | undefined = membersNow();
+    type MeshListener = (
+      before: readonly StreamMember[] | undefined,
+      after: readonly StreamMember[] | undefined,
+    ) => void;
+    /** Told the members before and after each change. */
+    const meshChanged = new Set<MeshListener>();
+    const assigneeNodes = (slices: readonly Slice[]) =>
+      new Set(
+        slices.flatMap((slice) => {
+          const node =
+            slice.assignee === undefined || !isOpen(slice)
+              ? undefined
+              : nodeOfAddress(slice.assignee);
+          return node === undefined || node === nodeId ? [] : [node];
+        }),
+      );
+    /** The nodes of these slices' assignees that are away now, read afresh (D1551). */
+    const awayOf = (slices: readonly Slice[]) => {
+      const now = membersNow();
+      return new Set([...assigneeNodes(slices)].filter((node) => isAway(now, node)));
+    };
+    const changes = meshStreams?.onChange?.(() => {
+      if (disposed) return;
+      const before = members;
+      members = membersNow();
+      for (const listener of meshChanged) listener(before, members);
+      // A node back is asked again to follow its threads (D1543).
+      watchThreads();
+    });
+    if (changes !== undefined) context.subscriptions.add(changes);
+
+    /** The away slices of an answer, as one key. */
+    const awayKey = (progress: MissionProgress) =>
+      progress.decisions
+        .filter((item) => item.reason === "away")
+        .map((item) => item.sliceId)
+        .toSorted()
+        .join(",");
+
+    // An assignee of any node is handed its slice from here (D1541), unless its node is away.
+    const progressOf = (mission: Mission) => {
+      const slices = slicesOf(state, mission.id);
+      return missionProgress(slices, { away: awayOf(slices) });
+    };
 
     // --- Where a mission is (D702) ---------------------------------------------
     register({
@@ -498,6 +552,7 @@ export default definePlugin({
       handler: async ({ missionId }) => {
         await sync();
         const mission = getMission(missionId);
+        const progress = progressOf(mission);
         return {
           mission: {
             id: mission.id,
@@ -509,7 +564,7 @@ export default definePlugin({
           steps: mission.process.mission,
           projectSteps: state.intents[mission.projectId]?.process ?? [],
           ...(await holdOf(mission)),
-          ...progressOf(mission),
+          ...progress,
         };
       },
     });
@@ -531,19 +586,31 @@ export default definePlugin({
           missionId: z.string(),
           after: z.number().int().min(0),
           timeoutMs: z.number().int().min(1).max(MAX_WAIT_MS).default(DEFAULT_WAIT_MS),
+          away: z.array(z.string()).optional().meta({
+            description:
+              "The slices missions.next named `away`: the wait ends at once when that is no longer so (D1547)",
+          }),
         }),
         output: z.object({ head: z.number(), changed: z.boolean() }),
         permissions: ["missions.read"],
-        handler: async ({ missionId, after, timeoutMs }) => {
+        handler: async ({ missionId, after, timeoutMs, away }) => {
           let listener: ((event: StoredEvent) => void) | undefined;
           let end: (() => void) | undefined;
           let timer: ReturnType<typeof setTimeout> | undefined;
+          let onNodes: MeshListener | undefined;
           const moved = new Promise<boolean>((resolve) => {
             listener = (event) => {
               if (event.sequence > after && concerns(missionId, event)) resolve(true);
             };
+            // A node holding its open slices went away or came back (D1547).
+            onNodes = (before, now) => {
+              for (const node of assigneeNodes(slicesOf(state, missionId))) {
+                if (isAway(before, node) !== isAway(now, node)) resolve(true);
+              }
+            };
             end = () => resolve(false);
             changed.add(listener);
+            meshChanged.add(onNodes);
             waits.add(end);
             timer = setTimeout(end, timeoutMs);
           });
@@ -552,25 +619,36 @@ export default definePlugin({
             const missed = await log.read(MISSIONS_STREAM, { after });
             apply(missed);
             if (missed.some((event) => concerns(missionId, event))) return { head, changed: true };
+            // A node went away or came back between missions.next and this wait (D1547):
+            // the slices the caller saw away differ from now. The same ones wait on.
+            const mission = state.missions[missionId];
+            if (
+              mission !== undefined &&
+              away !== undefined &&
+              away.toSorted().join(",") !== awayKey(progressOf(mission))
+            ) {
+              return { head, changed: true };
+            }
             if (disposed) return { head, changed: false };
             const hit = await moved;
             return { head, changed: hit };
           } finally {
             if (listener !== undefined) changed.delete(listener);
+            if (onNodes !== undefined) meshChanged.delete(onNodes);
             if (end !== undefined) waits.delete(end);
             clearTimeout(timer);
           }
         },
       },
       // On another node the wait goes in parts under mesh.call's deadline (D1545).
-      async (node, { missionId, after, timeoutMs }, invocation) => {
+      async (node, { missionId, after, timeoutMs, away }, invocation) => {
         const until = Date.now() + timeoutMs;
         for (;;) {
           const part = Math.max(1, Math.min(REMOTE_WAIT_MS, until - Date.now()));
           const answer = await onNode<{ head: number; changed: boolean }>(
             node,
             "missions.wait",
-            { missionId, after, timeoutMs: part },
+            { missionId, after, timeoutMs: part, ...(away === undefined ? {} : { away }) },
             ["missions.read"],
             invocation,
           );
@@ -765,8 +843,8 @@ export default definePlugin({
           handed: false,
         };
       }
-      // An assignee of any node is handed its slice (D1541).
-      const progress = missionProgress(slices);
+      // An assignee of any node is handed its slice (D1541), unless its node is away (D1547).
+      const progress = missionProgress(slices, { away: awayOf(slices) });
       if (!progress.ready.includes(slice.id)) {
         const decision = progress.decisions.find((item) => item.sliceId === slice.id);
         throw new OrchestratorError(

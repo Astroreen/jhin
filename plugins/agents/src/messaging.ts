@@ -27,7 +27,7 @@ import {
   type MessageOrigin,
   type MessageParty,
 } from "@jhin/agent-api";
-import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
+import { MESH_STREAMS_CAPABILITY, isAway, type MeshStreams } from "@jhin/mesh-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { describePermissions, type Invocation, type PluginContext } from "@jhin/sdk";
 import type { EventLog, Json, KeyValueStore, StoredEvent } from "@jhin/storage-api";
@@ -532,6 +532,25 @@ export function registerMessaging(
     },
   });
 
+  /** Whether an item's sender lives on a node away now (D1549), by `mesh.streams@1.1`'s members (D1551). */
+  function awayCheck(): (item: InboxItem) => boolean {
+    const members = shared?.members?.();
+    return (item) => {
+      const sender = parseMessageAddress(item.message.from)?.nodeId;
+      return sender !== undefined && sender !== nodeId && isAway(members, sender);
+    };
+  }
+  /** Refuses to send to an item's sender while its node is away: the item stays open (D1549). */
+  const assertSenderHere = async (item: InboxItem) => {
+    if (awayCheck()(item)) {
+      throw new AgentsError(
+        "SENDER_AWAY",
+        `The node of ${item.message.from} is away: answer once it is back`,
+        { messageId: item.message.messageId, from: item.message.from },
+      );
+    }
+  };
+
   /** The inbox, folded from its stream, and the head it reflects (D626). */
   async function inbox(): Promise<{ head: number; items: Map<string, InboxItem> }> {
     const head = await log.head(INBOX_STREAM);
@@ -571,13 +590,16 @@ export function registerMessaging(
     handler: async ({ status, from }) => {
       const { head, items } = await inbox();
       const wanted = status ?? "open";
+      const away = awayCheck();
       return {
         head,
-        items: [...items.values()].filter(
-          (item) =>
-            (wanted === "all" || item.status === wanted) &&
-            (from === undefined || item.message.from === from),
-        ),
+        items: [...items.values()]
+          .filter(
+            (item) =>
+              (wanted === "all" || item.status === wanted) &&
+              (from === undefined || item.message.from === from),
+          )
+          .map((item) => (item.status === "open" && away(item) ? { ...item, away: true } : item)),
       };
     },
   });
@@ -746,6 +768,7 @@ export function registerMessaging(
             messageId,
           });
         }
+        await assertSenderHere(item);
         const sent = (await context.commands.execute(
           "agents.send",
           { to: item.message.from, body: answer, from: item.message.to, inReplyTo: messageId },
@@ -798,6 +821,7 @@ export function registerMessaging(
           });
         }
         let sent: { message: AgentMessage; delivery?: MessageDelivery } | undefined;
+        await assertSenderHere(item);
         if (item.message.kind === "ask") {
           sent = (await context.commands.execute(
             "agents.send",

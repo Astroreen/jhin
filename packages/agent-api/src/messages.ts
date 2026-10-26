@@ -131,6 +131,11 @@ export const InboxItem = z.object({
   answeredAt: z.string().optional(),
   /** When the owner closed it without an answer (D1274). */
   dismissedAt: z.string().optional(),
+  /**
+   * An open item whose sender's node is away now (D1549): an answer cannot
+   * reach it until the node is back. Set by `agents.inbox.list`, never stored.
+   */
+  away: z.boolean().optional(),
 });
 export type InboxItem = z.output<typeof InboxItem>;
 
@@ -154,6 +159,8 @@ export type ConversationEntry = z.output<typeof ConversationEntry>;
 export type MessageErrorCode =
   /** `to` or `from` is none of an agent's, an owner's or a thread's address. */
   | "ADDRESS_INVALID"
+  /** The inbox item's sender lives on a node that is away: answer it once the node is back (D1549). */
+  | "SENDER_AWAY"
   /** The caller may not send as `from` (D622). `details.expected` names who it is. */
   | "SENDER_MISMATCH"
   /** No such generation of the agent (D625). */

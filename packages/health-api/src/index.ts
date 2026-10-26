@@ -101,7 +101,8 @@ export const EventRef = z.object({
 });
 export type EventRef = z.infer<typeof EventRef>;
 
-export const DETECTORS = ["ceremony", "proof-loop", "mind-virus"] as const;
+/** `away`: a mission's open slices wait on a node that is away (agents.md D1548). */
+export const DETECTORS = ["ceremony", "proof-loop", "mind-virus", "away"] as const;
 export const Detector = z.enum(DETECTORS);
 export type Detector = z.infer<typeof Detector>;
 

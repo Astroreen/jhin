@@ -506,6 +506,8 @@ export default definePlugin({
     const asking = new Set<string>();
     const lookAgain = new Set<string>();
     const analyseOnce = async (warning: Warning) => {
+      // Nobody on the mesh knows more of a machine away than the owner (D1548).
+      if (warning.detector === "away") return;
       await asksReady;
       // Health turned off asks nobody, also for warnings raised before.
       if (!config().enabled) return;
@@ -604,6 +606,11 @@ export default definePlugin({
           narrowerWarningId: narrower.warningId,
         });
       }
+      // A mission waiting on a node away, and the node back (D1548).
+      for (const { warning, reason } of sensors.awayCleared(health)) {
+        await clear(warning.warningId, { reason });
+      }
+      for (const finding of sensors.awayFindings(health)) await raise(finding, evaluatedAt);
     };
     function evaluateSoon() {
       if (scheduled) return;
@@ -895,6 +902,13 @@ export default definePlugin({
       });
     }
 
+    // Nodes going away and coming back (D1548), as `mesh.streams@1.1` lists the members.
+    sensors.setMembers(meshStreams?.members?.(), now());
+    const membersChanged = meshStreams?.onChange?.(() => {
+      sensors.setMembers(meshStreams.members?.(), now());
+      evaluateSoon();
+    });
+    if (membersChanged !== undefined) context.subscriptions.add(membersChanged);
     followThreads();
     evaluateSoon();
     // An open warning without an analysis: never asked (asked now), or asked
