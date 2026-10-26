@@ -113,7 +113,8 @@ export function SettingResetButton({
       <TooltipTrigger
         render={
           <Button
-            aria-label={`Reset ${label} to default`}
+            // "Reset <label> to default", or what the tooltip says it resets to.
+            aria-label={tooltip.replace(/^Reset/, `Reset ${label}`)}
             onClick={(event) => {
               event.stopPropagation();
               onClick();

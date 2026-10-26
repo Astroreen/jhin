@@ -263,12 +263,14 @@ export function InheritanceButton(props: {
   );
 }
 
-/** How many projects set `key` in their entry. */
-export function overridesOf(file: unknown, key: string): number {
+/** How many of `projectIds` set `key` in their entry. */
+export function overridesOf(file: unknown, key: string, projectIds: readonly string[]): number {
   const entries = getAt(file, [PROJECT_SETTINGS_KEY]);
   if (!isObject(entries)) return 0;
-  return Object.values(entries).filter((entry) => isObject(entry) && entry[key] !== undefined)
-    .length;
+  return projectIds.filter((id) => {
+    const entry = entries[id];
+    return isObject(entry) && entry[key] !== undefined;
+  }).length;
 }
 
 interface ScopeOption {

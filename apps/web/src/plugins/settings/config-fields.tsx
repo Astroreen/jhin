@@ -107,10 +107,10 @@ function Errors({ id, messages }: { id: string; messages: readonly string[] }) {
 
 const optionKey = (value: Option["value"] | null) => JSON.stringify(value);
 
-/** A leaf value's control: text, number, switch or select. */
 /** The select item that removes the key. */
 const UNSET = "\u0000unset";
 
+/** A leaf value's control: text, number, switch or select. */
 function LeafControl(props: {
   field: Field;
   label: string;

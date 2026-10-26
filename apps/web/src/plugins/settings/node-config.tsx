@@ -304,7 +304,12 @@ function ConfigEditor({
   const [projectScope, setProjectScope] = useState<string | undefined>();
   const [projects, setProjects] = useState<readonly ScopeProject[]>([]);
   /** The chosen project's `t3.json`, for the settings it backs (D1467). */
-  const [t3File, setT3File] = useState<{ readonly projectId: string; readonly file: unknown }>();
+  /** `failed`: it could not be read, so its layer is not shown (rather than read as empty). */
+  const [t3File, setT3File] = useState<{
+    readonly projectId: string;
+    readonly file: unknown;
+    readonly failed?: boolean;
+  }>();
   const [saving, setSaving] = useState(false);
   /** A save in flight reads the section back itself; a change heard meanwhile is skipped. */
   const savingNow = useRef(false);
@@ -415,9 +420,17 @@ function ConfigEditor({
     if (scoped === undefined || backedBy.size === 0) return;
     let current = true;
     void client
-      .call<{ file: unknown }>("projects.t3-file.get", { projectId: scoped })
-      .then((answer) => current && setT3File({ projectId: scoped, file: answer.file }))
-      .catch(() => current && setT3File({ projectId: scoped, file: null }));
+      .call<{ file: unknown; error?: string }>("projects.t3-file.get", { projectId: scoped })
+      .then(
+        (answer) =>
+          current &&
+          setT3File({
+            projectId: scoped,
+            file: answer.file,
+            ...(answer.error === undefined ? {} : { failed: true }),
+          }),
+      )
+      .catch(() => current && setT3File({ projectId: scoped, file: null, failed: true }));
     return () => {
       current = false;
     };
@@ -566,7 +579,8 @@ function ConfigEditor({
       : projectFormSchema(
           schema,
           entry,
-          (key) => getAt(read?.value, [key]) ?? t3Value(key) ?? nodeDefault(key),
+          // The same layers the popover shows: the node's files as edited, t3.json, the default.
+          (key) => nodeSets(key) ?? t3Value(key) ?? nodeDefault(key),
         );
   const projectForm =
     projectSchema === undefined || loaded === undefined
@@ -607,7 +621,11 @@ function ConfigEditor({
               nodeLabel: connection.label,
               project: getAt(loaded.value, [...entryPath, field.key]),
               node: nodeSets(field.key),
-              t3File: backedBy.has(field.key) ? { value: t3Value(field.key) } : undefined,
+              // A t3.json that could not be read shows no layer: it may hold a value.
+              t3File:
+                backedBy.has(field.key) && t3File?.failed !== true
+                  ? { value: t3Value(field.key) }
+                  : undefined,
               fallback: nodeDefault(field.key),
             });
             const effective = layers.find((layer) => layer.effective);
@@ -629,7 +647,12 @@ function ConfigEditor({
           ...context,
           inheritance: (field) => {
             if (!keys.includes(field.key)) return undefined;
-            const count = overridesOf(loaded?.value, field.key);
+            // The node's projects only: an entry of one removed stays in the JSON view.
+            const count = overridesOf(
+              loaded?.value,
+              field.key,
+              projects.map((project) => project.id),
+            );
             return count === 0
               ? undefined
               : {

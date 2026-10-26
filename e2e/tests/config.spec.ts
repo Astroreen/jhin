@@ -499,9 +499,11 @@ test("D1463: T3's project scope edits a project's own settings, showing what it 
 
   // Reset to inherited value: the entry goes with its last key.
   await section
-    .getByRole("button", { name: "Reset Branch naming instructions to default" })
+    .getByRole("button", { name: "Reset Branch naming instructions to inherited value" })
     .click();
-  await section.getByRole("button", { name: "Reset Worktree branch naming to default" }).click();
+  await section
+    .getByRole("button", { name: "Reset Worktree branch naming to inherited value" })
+    .click();
   await cleanup.click();
   await page.getByRole("option", { name: "Inherit", exact: true }).click();
   await save.click();
