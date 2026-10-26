@@ -326,6 +326,27 @@ describe("mesh", () => {
     await expect(a.mesh.call("b", "app.never", {})).rejects.toMatchObject({ code: "MESH_TIMEOUT" });
   });
 
+  it("uses an inbound link once its dialer has spoken on it (agents.md D1522)", async () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a", { advertise: false });
+    const b = startNode(network, "b", { advertise: false });
+    a.mesh.acceptJoin({ code: a.mesh.invite().code, record: b.mesh.self() });
+    const [mine, theirs] = createPeerPair();
+    a.mesh.accept(theirs, "b");
+    // b has not spoken: a has no link to it yet, so nothing is sent where nobody serves it.
+    expect(view(a, b)?.linked).toBe(false);
+    serveRpc(mine, {
+      caller: { id: "a", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async () => ({ via: "b" }),
+    });
+    // Its first word (here the hello of the side it serves) makes the link.
+    await until([a], () => view(a, b)?.linked === true);
+    expect(await a.mesh.call("b", "app.which", {})).toEqual({ via: "b" });
+  });
+
   it("lets a new inbound link from a node supersede its older one", async () => {
     const network = createMemoryNetwork();
     const a = startNode(network, "a", { advertise: false });
@@ -766,6 +787,27 @@ describe("relays (D499)", () => {
       "after",
     ]);
     expect(relay.events.map((event) => event.sequence)).toEqual([100, 101, 102]);
+  });
+
+  it("attaches a follower started the moment a member becomes reachable (M1, D1522)", async () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a");
+    const b = startNode(network, "b");
+    const sharing = b.mesh.share("missions");
+    await b.log.append("missions", [{ type: "missions.mission.created", payload: 1 }]);
+    const streams = meshStreams(a.mesh);
+    // b dials a: the follower goes out over a's inbound link as soon as it is up.
+    let started = false;
+    const attached = new Promise<number>((resolve, reject) => {
+      a.mesh.onChange(() => {
+        if (started || !streams.members().some((member) => member.reachable)) return;
+        started = true;
+        streams.follow("b", "missions", 0, () => {}).ready.then(resolve, reject);
+      });
+    });
+    await b.mesh.join(a.address, a.mesh.invite().code);
+    expect(await attached).toBe(1);
+    sharing.dispose();
   });
 
   it("lets a plugin follow a member's shared stream, and lists the members (M1, D1522)", async () => {

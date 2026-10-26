@@ -40,7 +40,7 @@ interface Signal {
   readonly kind: SignalKind;
   readonly ref: EventRef;
   readonly time: number;
-  /** Group keys, `node` always among them. */
+  /** Group keys: `node` among them for this node's own events, never for another node's (D1526). */
   readonly groups: readonly string[];
 }
 
@@ -100,6 +100,70 @@ export class Sensors {
   private ideas: readonly Idea[] = [];
   /** Merged pull requests counted, by thread and pull request. */
   private readonly merges = new Map<string, number>();
+  /**
+   * The missions of other nodes of the mesh, by node (M1, D1525): only for the
+   * threads of this node their slices link. Nothing counts for them here.
+   */
+  private readonly foreign = new Map<string, MissionsState>();
+
+  /** An event of another node's `missions` stream (D1525). */
+  ingestForeignMission(node: string, event: StoredEvent): void {
+    this.foreign.set(node, applyMissionEvent(this.foreign.get(node) ?? EMPTY_MISSIONS, event));
+  }
+
+  /** Forgets another node's missions, to fold them again from the start (a wiped member). */
+  forgetForeign(node: string): void {
+    this.foreign.delete(node);
+  }
+
+  /**
+   * Whether a slice of any node links this node's thread, so its turns'
+   * commits are progress (D723, D1525). A slice of another node names a
+   * thread here by this node's id (`SliceThread.nodeId`, D647).
+   */
+  linksHere(threadId: string, selfNode: string | undefined): boolean {
+    if (this.slicesOfThread(threadId).length > 0) return true;
+    if (selfNode === undefined) return false;
+    for (const state of this.foreign.values()) {
+      for (const slice of Object.values(state.slices)) {
+        if (slice.threads.some((t) => t.threadId === threadId && t.nodeId === selfNode)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** This node's slices that link a thread of another node (D647, D1526). */
+  private slicesOfRemoteThread(node: string, threadId: string): Slice[] {
+    return Object.values(this.missions.slices).filter((slice) =>
+      slice.threads.some((thread) => thread.threadId === threadId && thread.nodeId === node),
+    );
+  }
+
+  /**
+   * The threads this node's slices link on a node they name, by node, for the
+   * plugin to follow on the members among them (D1526).
+   */
+  remoteLinkedThreads(): Map<string, Set<string>> {
+    const byNode = new Map<string, Set<string>>();
+    for (const slice of Object.values(this.missions.slices)) {
+      for (const thread of slice.threads) {
+        if (thread.nodeId === undefined) continue;
+        const threads = byNode.get(thread.nodeId) ?? new Set<string>();
+        threads.add(thread.threadId);
+        byNode.set(thread.nodeId, threads);
+      }
+    }
+    return byNode;
+  }
+
+  /** The slices an event of a thread counts for: this node's, or another node's (`node`). */
+  private slicesOf(threadId: string, node: string | undefined): Slice[] {
+    return node === undefined
+      ? this.slicesOfThread(threadId)
+      : this.slicesOfRemoteThread(node, threadId);
+  }
 
   /** The slices a thread works on (D647), so its events count for their missions. */
   slicesOfThread(threadId: string): Slice[] {
@@ -122,8 +186,8 @@ export class Sensors {
     this.ideas = ideas;
   }
 
-  private groupsOf(slices: readonly Slice[]): string[] {
-    const keys = new Set(["node"]);
+  private groupsOf(slices: readonly Slice[], local: boolean): string[] {
+    const keys = new Set(local ? ["node"] : []);
     for (const slice of slices) {
       const title = this.missions.missions[slice.missionId]?.title;
       const mission: HealthGroup = {
@@ -142,18 +206,21 @@ export class Sensors {
     return [...keys];
   }
 
+  /**
+   * Counts an event for the groups of its slices; `node` names the node an
+   * event of another node came from, which counts for this node's missions
+   * and projects only, never its `node` group (D1526).
+   */
   private count(
     kind: SignalKind,
     event: StoredEvent,
     slices: readonly Slice[],
     time = Date.parse(event.at),
+    node?: string,
   ): void {
-    this.signals.push({
-      kind,
-      ref: refOf(event, kind),
-      time,
-      groups: this.groupsOf(slices),
-    });
+    const groups = this.groupsOf(slices, node === undefined);
+    if (groups.length === 0) return;
+    this.signals.push({ kind, ref: refOf(event, kind), time, groups });
   }
 
   /** Who health asked to trace an idea, by idea id: quoting it is their work (D727). */
@@ -234,14 +301,16 @@ export class Sensors {
    * else of its sender, changed last (a message is one piece of work, so it
    * is not multiplied over every mission of an agent); otherwise only for the
    * node. Attribution is the state when the event is read, which a restart
-   * reproduces, since the streams are replayed in time order.
+   * reproduces, since the streams are replayed in time order. A message
+   * delivered on another node (`node`, D1526) counts only for this node's
+   * missions, with the missions as they are when it arrives.
    */
-  ingestMessage(event: StoredEvent): void {
+  ingestMessage(event: StoredEvent, node?: string): void {
     const payload = event.payload as { message?: AgentMessage; delivery?: MessageDelivery } | null;
     const message = payload?.message;
     if (message === undefined) return;
     let slices =
-      payload?.delivery === undefined ? [] : this.slicesOfThread(payload.delivery.threadId);
+      payload?.delivery === undefined ? [] : this.slicesOf(payload.delivery.threadId, node);
     if (slices.length === 0) {
       const assigned = (address: string) =>
         Object.values(this.missions.slices)
@@ -250,14 +319,15 @@ export class Sensors {
       const [slice] = [...assigned(message.to), ...assigned(message.from)];
       slices = slice === undefined ? [] : [slice];
     }
-    this.count(message.kind, event, slices);
+    if (node !== undefined && slices.length === 0) return;
+    this.count(message.kind, event, slices, undefined, node);
     if (parseMessageAddress(message.from)?.kind !== "owner") {
       this.findIdeas(event, message.body, message.from, slices);
     }
   }
 
   /** An event of a slice's thread: approvals asked and queue changes are ceremony. */
-  ingestThread(threadId: string, event: StoredEvent): void {
+  ingestThread(threadId: string, event: StoredEvent, node?: string): void {
     const payload = event.payload as { request?: { kind?: string } } | null;
     const kind: SignalKind | undefined =
       event.type === ThreadEvents.queueUpdated
@@ -265,7 +335,9 @@ export class Sensors {
         : event.type === ThreadEvents.requestOpened && payload?.request?.kind === "approval"
           ? "approval"
           : undefined;
-    if (kind !== undefined) this.count(kind, event, this.slicesOfThread(threadId));
+    if (kind !== undefined) {
+      this.count(kind, event, this.slicesOf(threadId, node), undefined, node);
+    }
   }
 
   /**
@@ -273,7 +345,7 @@ export class Sensors {
    * stream (`git.pr.linked`, `git.pr.updated`): progress once per thread and
    * pull request (D723).
    */
-  ingestSourceControl(event: StoredEvent): void {
+  ingestSourceControl(event: StoredEvent, node?: string): void {
     if (
       event.type !== SourceControlEvents.pullRequestLinked &&
       event.type !== SourceControlEvents.pullRequestUpdated
@@ -287,22 +359,22 @@ export class Sensors {
     const key = payload?.pullRequest?.key;
     if (threadId === undefined || key === undefined) return;
     if (payload?.pullRequest?.snapshot?.state !== "merged") return;
-    const merge = `${threadId}|${key}`;
+    const merge = `${node ?? ""}|${threadId}|${key}`;
     if (this.merges.has(merge)) return;
     // A merge counts at the time it merged, not when its snapshot was published
     // again: a merge already out of the window is out of it however late it is told.
     const mergedAt = Date.parse(payload?.pullRequest?.snapshot?.mergedAt ?? event.at);
     const time = Number.isNaN(mergedAt) ? Date.parse(event.at) : mergedAt;
     this.merges.set(merge, time);
-    this.count("merge", event, this.slicesOfThread(threadId), time);
+    this.count("merge", event, this.slicesOf(threadId, node), time, node);
   }
 
   /** Commits recorded on the `health` stream (D723). */
-  ingestProgress(progress: Progress, event: StoredEvent): void {
+  ingestProgress(progress: Progress, event: StoredEvent, node?: string): void {
     // A turn that commits is one piece of progress, however many commits it
     // made: a rebase or an import is no more progress, and empty commits buy
     // no room under the ceremony threshold (D723).
-    this.count(progress.kind, event, this.slicesOfThread(progress.threadId));
+    this.count(progress.kind, event, this.slicesOf(progress.threadId, node), undefined, node);
   }
 
   /** Counts per group of the signals in the window that `keep` keeps for that group. */

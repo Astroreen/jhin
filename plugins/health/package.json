@@ -60,7 +60,7 @@
     },
     "optional": {
       "rpc.streams": "^1.1",
-      "mesh.streams": "^1"
+      "mesh.streams": "^1.1"
     },
     "entry": "src/index.ts"
   }
