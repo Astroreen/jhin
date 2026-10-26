@@ -21,6 +21,9 @@ catalogs:
     '@dnd-kit/utilities':
       specifier: 3.2.2
       version: 3.2.2
+    '@legendapp/list':
+      specifier: 3.3.5
+      version: 3.3.5
     '@modelcontextprotocol/sdk':
       specifier: 1.32.1
       version: 1.32.1
@@ -436,6 +439,9 @@ importers:
       '@jhin/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@legendapp/list':
+        specifier: 'catalog:'
+        version: 3.3.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@pierre/diffs':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=298e94372dbd51846a4e26ece2ecc3e22eb1f94b0450b1f1a9c6fec127809be7)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1951,6 +1957,18 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@legendapp/list@3.3.5':
+    resolution: {integrity: sha512-XTsLYtpg41SVb5uLBYA+YcDSA3w0tgoPq/W8ZggQ2tx+3lrC/rf+ehTP9KYHea9oFaZIuePAgzACs5/auVMJlQ==}
+    peerDependencies:
+      react: '*'
+      react-dom: '*'
+      react-native: '*'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      react-native:
+        optional: true
 
   '@malept/cross-spawn-promise@2.0.0':
     resolution: {integrity: sha512-1DpKU0Z5ThltBwjNySMC14g0CkbyhCaz9FkhxqNsZI6uAPJXFS8cMXlBKo26FJ8ZuW6S9GCMcR9IO5k2X5/9Fg==}
@@ -6148,6 +6166,13 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@legendapp/list@3.3.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      react: 19.3.1
+      use-sync-external-store: 1.7.0(react@19.3.1)
+    optionalDependencies:
+      react-dom: 19.3.1(react@19.3.1)
 
   '@malept/cross-spawn-promise@2.0.0':
     dependencies:

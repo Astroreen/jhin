@@ -43,6 +43,7 @@ export default defineConfig({
             "@pierre/diffs/worker/worker.js",
             "@pierre/trees",
             "@pierre/trees/react",
+            "@legendapp/list/react",
           ],
         },
         test: {

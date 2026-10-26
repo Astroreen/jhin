@@ -12,3 +12,7 @@ export const SPLIT_GROUP = `flex w-full items-center rounded-lg ${HOVER_SURFACE}
 export const SPLIT_PRIMARY = `${CONTROL_BASE} ${CONTROL} flex-1 justify-start rounded-e-none bg-transparent shadow-none ${HOVER_SURFACE}`;
 export const SPLIT_SECONDARY = `${CONTROL_BASE} ${CONTROL} w-8 justify-center rounded-s-none px-0 bg-transparent shadow-none ${HOVER_SURFACE}`;
 export const SPLIT_SEPARATOR = "h-4 w-px shrink-0 bg-border/65";
+/** A row's icon action (T3's `THREAD_DETAILS_PANEL_ICON_ACTION_CLASS`). */
+export const ICON_ACTION = `${CONTROL_BASE} size-6 justify-center rounded-md border-transparent bg-transparent p-0 shadow-none ${HOVER_SURFACE}`;
+/** A row's meta action, the pull request's second line (T3's `…_META_ACTION_CLASS`). */
+export const META_ACTION = `${CONTROL_BASE} h-6 gap-1 rounded-md border-transparent px-1.5 text-xs font-medium text-muted-foreground bg-transparent shadow-none ${HOVER_SURFACE}`;

@@ -519,6 +519,46 @@ export const chatPlugin = builtin(
       context.subscriptions.add({
         dispose: () => window.removeEventListener("paste", spendPasteAsText),
       });
+      // T3's hand-off into a new thread's draft (`usePullRequestHandoffs`, source-control.md
+      // D1456): the task goes after what the draft holds, then the draft opens.
+      context.commands.register({
+        name: "chat.draft.write",
+        title: "Write into a new thread's draft",
+        description:
+          "Puts a prompt into the draft of a new thread in a project, after the text it holds, and opens that draft unless `open` is false; nothing is sent",
+        input: z.object({
+          node: z.string(),
+          remote: z.string().optional(),
+          projectId: z.string().min(1),
+          prompt: z.string().min(1).max(200_000),
+          open: z.boolean().optional(),
+        }),
+        output: z.object({ written: z.boolean() }),
+        handler: (input) => {
+          const target: NodeTarget = {
+            node: input.node,
+            ...(input.remote === undefined ? {} : { remote: input.remote }),
+          };
+          const key = newThreadDraftKey(target, input.projectId);
+          const shown = composer.current?.draftKey === key ? composer.current : undefined;
+          if (shown !== undefined) {
+            // An open draft's composer holds its text itself: the task goes in there.
+            shown.insert(input.prompt);
+          } else {
+            const kept = services.drafts.get(key);
+            const prompt =
+              kept === undefined || kept.prompt.trim() === ""
+                ? input.prompt
+                : `${kept.prompt}\n\n${input.prompt}`;
+            services.drafts.set(key, { ...(kept ?? { attachments: [] }), prompt });
+            services.drafts.flush();
+          }
+          if (input.open !== false && shown === undefined) {
+            navigation.navigate({ ...target, project: input.projectId });
+          }
+          return { written: true };
+        },
+      });
       // T3's "Discard draft" (D451): a new thread's draft card goes, with an undo.
       const undo = context.services.tryGet<ThreadUndoService>(UNDO_CAPABILITY);
       context.commands.register({

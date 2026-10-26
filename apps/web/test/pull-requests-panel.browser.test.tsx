@@ -1,7 +1,8 @@
 // A thread's pull requests panel and the thread details rows (docs/plans/source-control.md,
-// D1281, D1283): rows by chain, their glyphs and tooltips, the footer, the empty state, the
-// row menu, the current one first and the others behind "Show N more".
-import type { PullRequest, ThreadPullRequest } from "@jhin/source-control-api";
+// D1281, D1283, D1452–D1457): rows by chain, their glyphs and tooltips, the footer, the empty
+// state, the row menu, a row's details, checks popover, speed actions and drag, the current
+// one first and the others behind "Show N more", and the details row's actions.
+import type { PullRequest, PullRequestDetail, ThreadPullRequest } from "@jhin/source-control-api";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -123,6 +124,11 @@ describe("the pull requests panel (D1281)", () => {
     await expect.element(page.getByText(/Created from this thread · 1h ago/)).toBeVisible();
     await userEvent.hover(rows.nth(at("Layer 1")).getByText("2", { exact: true }));
     await expect.element(page.getByText("2 pull requests chained by base branch.")).toBeVisible();
+    // Away from the tooltip, which would stand over the row's menu button.
+    await userEvent.unhover(rows.nth(at("Layer 1")).getByText("2", { exact: true }));
+    await expect
+      .element(page.getByText("2 pull requests chained by base branch."))
+      .not.toBeInTheDocument();
 
     await userEvent.click(page.getByRole("button", { name: "Actions for #1" }));
     await expect.element(page.getByRole("menuitem", { name: "Stop watching" })).toBeVisible();
@@ -210,5 +216,241 @@ describe("the thread details rows (D1283)", () => {
     await expect
       .element(page.getByRole("button", { name: /Stop watching/ }))
       .not.toBeInTheDocument();
+  });
+});
+
+describe("a row's details, checks and speed actions (D1452, D1453, D1457)", () => {
+  it("shows the author, diff stat, review decision and a conflict, and the checks on demand", async () => {
+    const loaded: number[] = [];
+    await render(
+      <ThreadPullRequestsList
+        actions={{
+          copy() {},
+          open() {},
+          setWatching() {},
+          unlink() {},
+          checks: async (item) => {
+            loaded.push(item.number);
+            return [
+              { name: "test", status: "failure", description: null, url: "https://ci/1" },
+              { name: "lint", status: "success", description: null, url: null },
+            ];
+          },
+          openUrl() {},
+        }}
+        links={[
+          link(
+            1,
+            snapshot(1, "feature-a", "main", {
+              checks: { state: "failing", passed: 1, failed: 1, pending: 0, total: 2 },
+              author: { login: "octo", name: "Octo Cat", avatarUrl: null },
+              additions: 1200,
+              deletions: 3,
+              reviewDecision: "changes-requested",
+              mergeability: "conflicting",
+            }),
+          ),
+        ]}
+        onLink={undefined}
+      />,
+    );
+    const list = page.getByRole("list", { name: "Linked pull requests" });
+    await expect.element(list.getByText("octo")).toBeVisible();
+    await expect.element(list.getByText("+1,200")).toBeVisible();
+    await expect.element(list.getByText("-3")).toBeVisible();
+    await expect.element(list.getByText("Changes requested")).toBeInTheDocument();
+    await expect
+      .element(list.getByRole("img", { name: "Conflicts with main" }))
+      .toBeInTheDocument();
+    // The checks are read when their popover opens, not before.
+    expect(loaded).toEqual([]);
+    await userEvent.click(
+      list.getByRole("button", { name: "Checks: Some checks were not successful" }),
+    );
+    // As T3's lazy body: the checks without a summary line.
+    await expect.element(page.getByText("Failed")).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Details" })).toBeVisible();
+    // The completed one waits behind "Show all".
+    await expect.element(page.getByText("lint")).not.toBeInTheDocument();
+    await userEvent.click(page.getByRole("button", { name: "Show all" }));
+    await expect.element(page.getByText("lint")).toBeVisible();
+    expect(loaded).toEqual([1]);
+    // Closed, so the next test's page is not held behind it.
+    await userEvent.keyboard("{Escape}");
+    await expect.element(page.getByText("lint")).not.toBeInTheDocument();
+  });
+
+  it("shows the quick actions while Shift alone is held, those the forge has", async () => {
+    const acted: string[] = [];
+    await render(
+      <ThreadPullRequestsList
+        actions={{
+          copy() {},
+          open() {},
+          setWatching() {},
+          unlink() {},
+          act: async (item, action) => {
+            acted.push(`${action} #${item.number}`);
+          },
+        }}
+        links={[
+          link(1, snapshot(1, "feature-a", "main")),
+          link(2, snapshot(2, "feature-b", "main", { isDraft: true })),
+          link(3, snapshot(3, "old", "main", { state: "closed" })),
+          {
+            ...link(8, snapshot(8, "bb", "main")),
+            url: "https://bitbucket.org/acme/app/pull-requests/8",
+            key: "bitbucket.org/acme/app#8",
+          },
+        ]}
+        onLink={undefined}
+      />,
+    );
+    const quick = page.getByRole("group", { name: "Quick actions for pull request #1" });
+    // Hidden, and so out of the accessibility tree, until Shift is held.
+    await expect.element(quick).not.toBeInTheDocument();
+    await userEvent.keyboard("{Shift>}");
+    await expect.element(quick).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Close #1" })).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Ready for review #2" })).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Reopen #3" })).toBeVisible();
+    // Bitbucket has no reopen or ready; its open one merges and closes.
+    await expect.element(page.getByRole("button", { name: "Merge #8" })).toBeVisible();
+    await userEvent.click(page.getByRole("button", { name: "Merge #1" }));
+    await userEvent.keyboard("{/Shift}");
+    await expect.element(quick).not.toBeInTheDocument();
+    expect(acted).toEqual(["merge #1"]);
+  });
+
+  it("carries a row's pull request for the composer when dragged (D1454)", async () => {
+    await render(
+      <ThreadPullRequestsList
+        actions={{ copy() {}, open() {}, setWatching() {}, unlink() {} }}
+        links={[link(4, snapshot(4, "feature-d", "main"))]}
+        onLink={undefined}
+      />,
+    );
+    const anchor = page.getByRole("link").element();
+    const data = new DataTransfer();
+    anchor.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: data }));
+    expect(JSON.parse(data.getData("application/x-jhin-pull-request"))).toEqual({
+      number: 4,
+      title: "Layer 4",
+      url: "https://github.com/acme/app/pull/4",
+      headBranch: "feature-d",
+      baseBranch: "main",
+      state: "open",
+      isDraft: false,
+    });
+  });
+});
+
+describe("the details row's actions (D1456)", () => {
+  const detail = (pr: PullRequest, extra: Partial<PullRequestDetail> = {}): PullRequestDetail => ({
+    pullRequest: pr,
+    checks: [],
+    mergeMethods: ["squash", "rebase"],
+    actions: ["merge", "ready", "close", "reopen"],
+    ...extra,
+  });
+  const access = (answer: PullRequestDetail, log: string[]) => ({
+    detail: async () => answer,
+    act: async (_url: string, action: string, method?: string) => {
+      log.push(method === undefined ? action : `${action} ${method}`);
+    },
+    handoff: async (_url: string, prompt: string) => {
+      log.push(`handoff ${prompt.split("\n")[0]}`);
+    },
+  });
+
+  it("offers Fix for failing checks, with their count, and hands them off", async () => {
+    const log: string[] = [];
+    const pr = snapshot(1, "feature-a", "main", {
+      changedFiles: 3,
+      additions: 10,
+      deletions: 2,
+    });
+    await render(
+      <PullRequestRows
+        access={access(
+          detail(pr, {
+            checks: [
+              { name: "test", status: "failure", description: "2 failed", url: null },
+              { name: "lint", status: "success", description: null, url: null },
+            ],
+          }),
+          log,
+        )}
+        branchPullRequest={null}
+        links={[link(1, pr)]}
+        onStopWatching={() => {}}
+      />,
+    );
+    await expect
+      .element(page.getByRole("button", { name: "Open checks: 1 of 2 failing" }))
+      .toHaveTextContent("1 failed");
+    // With its detail read, T3's row is the title, its number on the line below.
+    await userEvent.hover(page.getByRole("button", { name: "Layer 1" }));
+    await expect.element(page.getByText(/^3 files\+10-2$/)).toBeVisible();
+    // Away from the row, whose tooltip would stand over its second line.
+    await userEvent.unhover(page.getByRole("button", { name: "Layer 1" }));
+    await expect.element(page.getByText(/^3 files\+10-2$/)).not.toBeInTheDocument();
+    await userEvent.click(page.getByRole("button", { name: "Fix" }));
+    expect(log).toEqual([
+      "handoff Fix the actionable findings on PR #1, titled `Layer 1`, at `https://github.com/acme/app/pull/1`.",
+    ]);
+  });
+
+  it("offers Merge behind T3's dialog, Ready for a draft and Resolve for a conflict", async () => {
+    const log: string[] = [];
+    const ready = snapshot(1, "feature-a", "main");
+    await render(
+      <PullRequestRows
+        access={access(
+          detail(ready, {
+            checks: [{ name: "test", status: "success", description: null, url: null }],
+          }),
+          log,
+        )}
+        branchPullRequest={null}
+        links={[link(1, ready)]}
+        onStopWatching={() => {}}
+      />,
+    );
+    await userEvent.click(page.getByRole("button", { name: "Merge" }));
+    const dialog = page.getByRole("alertdialog", { name: "Merge pull request?" });
+    await expect.element(dialog.getByText("This merges #1 using squash.")).toBeVisible();
+    await act(async () =>
+      (dialog.getByRole("button", { name: "Merge" }).element() as HTMLElement).click(),
+    );
+    expect(log).toEqual(["merge squash"]);
+    cleanup?.();
+
+    const draft = snapshot(2, "feature-b", "main", { isDraft: true });
+    await render(
+      <PullRequestRows
+        access={access(detail(draft), log)}
+        branchPullRequest={null}
+        links={[link(2, draft)]}
+        onStopWatching={() => {}}
+      />,
+    );
+    await userEvent.click(page.getByRole("button", { name: "Ready" }));
+    expect(log).toEqual(["merge squash", "ready"]);
+    cleanup?.();
+
+    const conflicting = snapshot(3, "feature-c", "main", { mergeability: "conflicting" });
+    await render(
+      <PullRequestRows
+        access={access(detail(conflicting), log)}
+        branchPullRequest={null}
+        links={[link(3, conflicting)]}
+        onStopWatching={() => {}}
+      />,
+    );
+    await userEvent.click(page.getByRole("button", { name: "Resolve" }));
+    expect(log.at(-1)).toBe(
+      "handoff PR #3 (https://github.com/acme/app/pull/3) conflicts with its base branch `main`. Its branch `feature-c` is the checkout prepared for this thread.",
+    );
   });
 });

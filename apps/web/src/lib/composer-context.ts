@@ -320,3 +320,58 @@ export function draftContextsReader() {
   };
 }
 const NO_CONTEXTS: readonly MessageContextRecord[] = [];
+
+/**
+ * A pull request dragged into the composer (T3's `COMPOSER_PULL_REQUEST_DRAG_TYPE` in
+ * `composerMentionDrag.ts`, source-control.md D1454): a public id, carrying the pull request's
+ * metadata as JSON.
+ */
+export const PULL_REQUEST_DRAG_TYPE = "application/x-jhin-pull-request";
+
+export function encodePullRequestDrag(input: PullRequestContextMetadata): string {
+  return JSON.stringify({
+    number: input.number,
+    title: input.title,
+    url: input.url,
+    headBranch: input.headBranch,
+    baseBranch: input.baseBranch,
+    state: input.state,
+    isDraft: input.isDraft,
+  });
+}
+
+/** The dragged pull request, or `undefined` for anything that is not one. */
+export function decodePullRequestDrag(text: string): PullRequestContextMetadata | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const raw = value as Partial<Record<keyof PullRequestContextMetadata, unknown>> | null;
+  const short = (item: unknown): item is string => typeof item === "string" && item.length <= 2_048;
+  if (
+    raw === null ||
+    typeof raw !== "object" ||
+    typeof raw.number !== "number" ||
+    !Number.isInteger(raw.number) ||
+    raw.number <= 0 ||
+    !short(raw.title) ||
+    !short(raw.url) ||
+    !short(raw.headBranch) ||
+    !short(raw.baseBranch) ||
+    (raw.state !== "open" && raw.state !== "closed" && raw.state !== "merged") ||
+    typeof raw.isDraft !== "boolean"
+  ) {
+    return undefined;
+  }
+  return {
+    number: raw.number,
+    title: raw.title,
+    url: raw.url,
+    headBranch: raw.headBranch,
+    baseBranch: raw.baseBranch,
+    state: raw.state,
+    isDraft: raw.isDraft,
+  };
+}

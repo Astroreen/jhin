@@ -1580,9 +1580,10 @@ and in `apps/web` `components/PullRequestThreadDialog.tsx`,
   those the forge has (D1450), as T3's `pullRequestQuickActions`. They run
   `git.pr.action` with T3's toasts ("Merge requested", "Could not merge this
   pull request" and its hint, …); a merge takes "merge" when allowed, else the
-  first allowed method (read from `git.pr.detail` on the click), and a
-  stack's layer cannot be merged from there ("Open this pull request to merge
-  its stack"). T3's sweep to close several rows by dragging is not ported.
+  first allowed method (read from `git.pr.detail` on the click). T3 holds
+  back the merge of a native stack's layer; Jhin's stacks are chains by base
+  branch (D270), which T3 merges from a row too. T3's sweep to close several
+  rows by dragging is not ported.
 - **D1454. A row drags into the composer** (T3's `composerMentionDrag.ts`):
   its link carries T3's pull request payload under
   `application/x-jhin-pull-request` (the number, title, URL, branches, state
@@ -1900,14 +1901,15 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   thread on a mesh member is D1289); a member followed for D1289 stays
   followed until its connection goes, also after it leaves the mesh or no
   card shows its threads.
-- The pull request panel and rows (D1281–D1283): a row's author, diff stat
-  and review decision, T3's speed actions under Shift, dragging a row into
-  the composer, the virtualized list, T3's proactive opening of the panel
-  (its tab strip is `t3-parity.md` D1421–D1424: the pull requests are its
-  surface `pull-requests`); the details rows' Merge, Ready, Fix and
-  Resolve, checks popover and files count (T3's pull request detail
-  queries); native stacks of a forge (and their "Dismiss from thread") and
-  the instructions that tell agents to link what they open.
+- The pull request panel and rows (D1281–D1283; the rows' details, speed
+  actions, drag, virtualized list, details row actions and checks popover
+  since D1452–D1457; its tab strip is `t3-parity.md` D1421–D1424, the pull
+  requests being its surface `pull-requests`): T3's proactive opening of the
+  panel (W40), T3's sweep that closes several rows by dragging across them,
+  the details rows' periodic reads (T3 reads every ten minutes and polls
+  running checks; Jhin reads again when the link's snapshot moves), native
+  stacks of a forge (and their "Dismiss from thread") and the instructions
+  that tell agents to link what they open.
 - A pull request's details and actions (D1449–D1451): GitHub's avatars (`gh pr
   view` names no avatar; the row shows the login's initial, T3's fallback),
   T3's other actions (draft, update branch, auto-merge, revert, delete
