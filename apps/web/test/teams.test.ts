@@ -183,6 +183,57 @@ describe("the conversation with the lead (C1, D1061–D1063)", () => {
     expect(node.state.listener).toBeUndefined();
   });
 
+  it("follows a lead on another node too, again when it moves, and says when its node fails (D1533)", async () => {
+    const node = conversationNode([
+      () =>
+        Promise.resolve({
+          head: 1,
+          owner: "o",
+          entries: [],
+          elsewhere: { nodeId: "b", head: 5 },
+        }),
+      () =>
+        Promise.resolve({
+          head: 1,
+          owner: "o",
+          entries: [entry("m1", "o", "message")],
+          elsewhere: { nodeId: "c", head: 2 },
+        }),
+    ]);
+    const followed: { nodeId: string; after: number; disposed: boolean }[] = [];
+    const listeners: (() => void)[] = [];
+    const errors: ((error: unknown) => void)[] = [];
+    const views: ConversationView[] = [];
+    const following = followConversation(
+      node.client,
+      "lead@workshop",
+      (view) => views.push(view),
+      (nodeId, after, onEvent, onError) => {
+        const entry = { nodeId, after, disposed: false };
+        followed.push(entry);
+        listeners.push(onEvent);
+        errors.push(onError);
+        return toDisposable(() => (entry.disposed = true));
+      },
+    );
+    await drain();
+    expect(views.at(-1)?.elsewhere).toBe("b");
+    expect(followed).toEqual([{ nodeId: "b", after: 5, disposed: false }]);
+    // An event of the lead's node reads the conversation again; the lead moved to c.
+    listeners[0]!();
+    await drain();
+    expect(views.at(-1)?.entries).toHaveLength(1);
+    expect(followed).toEqual([
+      { nodeId: "b", after: 5, disposed: true },
+      { nodeId: "c", after: 2, disposed: false },
+    ]);
+    // Its node's stream failing says so; this node's half still shows.
+    errors[1]!(new Error("relay gone"));
+    expect(views.at(-1)).toMatchObject({ status: "ready", elsewhereError: "relay gone" });
+    following.dispose();
+    expect(followed[1]?.disposed).toBe(true);
+  });
+
   it("lets no overtaken read speak, and says when the node has no conversation", async () => {
     let fail: (error: unknown) => void = () => {};
     const node = conversationNode([

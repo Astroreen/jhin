@@ -2,7 +2,7 @@
 // C1: D1065), a chunk of its own (D440): `agents.define` and `agents.update`,
 // the same commands the CLI and MCP use.
 import type { AgentRecord } from "@jhin/agent-api";
-import type { AgentInfo } from "@jhin/client-api";
+import { targetKey, type AgentInfo, type NodeTarget } from "@jhin/client-api";
 import {
   Button,
   Input,
@@ -18,6 +18,7 @@ import { BotIcon } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
+import { targetFields } from "../../lib/mesh-targets.ts";
 import { defineInput, draftOf, draftProblem, updateInput, type AgentDraft } from "./definition.ts";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 import { agentRoute } from "./route.ts";
@@ -81,10 +82,14 @@ function Field(props: {
  * The form of a new agent (`agentId` undefined) or of one to edit, in
  * `civilization.views` on the panel `agent-definition` (D1065).
  */
-export function AgentForm(props: { view: AgentsView; node: string; agentId?: string | undefined }) {
-  const { view, node } = props;
+export function AgentForm(props: {
+  view: AgentsView;
+  target: NodeTarget;
+  agentId?: string | undefined;
+}) {
+  const { view, target } = props;
   const nodes = useExternal(storeOf(view), storeOf(view).snapshot);
-  const state = nodes.get(node);
+  const state = nodes.get(targetKey(target));
   const agent =
     props.agentId === undefined
       ? undefined
@@ -98,25 +103,26 @@ export function AgentForm(props: { view: AgentsView; node: string; agentId?: str
       </p>
     );
   }
-  return <Form agent={agent} key={agent?.agentId ?? ""} node={node} view={view} />;
+  return <Form agent={agent} key={agent?.agentId ?? ""} target={target} view={view} />;
 }
 
-function Form(props: { view: AgentsView; node: string; agent: AgentRecord | undefined }) {
-  const { view, node, agent } = props;
+function Form(props: { view: AgentsView; target: NodeTarget; agent: AgentRecord | undefined }) {
+  const { view, target, agent } = props;
+  const node = targetKey(target);
   const isNew = agent === undefined;
   const [draft, setDraft] = useState<AgentDraft>(() => draftOf(agent));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [runtimes, setRuntimes] = useState<readonly AgentInfo[] | undefined>();
   const [runtimesError, setRuntimesError] = useState<string | undefined>();
-  const catalog = useCatalog(view.threads, { node });
+  const catalog = useCatalog(view.threads, target);
   const projects = catalog?.projects ?? [];
 
   // The node's runtimes, for the runtime and its models.
   useEffect(() => {
     let current = true;
     view.threads
-      .call<AgentInfo[]>({ node }, "agents.list", {})
+      .call<AgentInfo[]>(target, "agents.list", {})
       .then((list) => {
         if (!current) return;
         const own = list.filter((item) => item.kind !== "defined");
@@ -144,7 +150,9 @@ function Form(props: { view: AgentsView; node: string; agent: AgentRecord | unde
   const problem = draftProblem(draft, isNew);
   const back = () =>
     view.navigation.navigate(
-      agent === undefined ? { node, mode: CIVILIZATION_MODE } : agentRoute(node, agent.agentId),
+      agent === undefined
+        ? { ...targetFields(target), mode: CIVILIZATION_MODE }
+        : agentRoute(target, agent.agentId),
     );
 
   const save = async () => {
@@ -154,13 +162,13 @@ function Form(props: { view: AgentsView; node: string; agent: AgentRecord | unde
     try {
       if (isNew) {
         const input = defineInput(draft);
-        await view.threads.call({ node }, "agents.define", input);
+        await view.threads.call(target, "agents.define", input);
         // The page reads the store, which learns of the agent from the stream.
         await known(storeOf(view), node, input.agentId);
-        view.navigation.navigate(agentRoute(node, input.agentId));
+        view.navigation.navigate(agentRoute(target, input.agentId));
       } else {
         const input = updateInput(agent, draft);
-        if (input !== undefined) await view.threads.call({ node }, "agents.update", input);
+        if (input !== undefined) await view.threads.call(target, "agents.update", input);
         back();
       }
     } catch (failure) {

@@ -1,10 +1,12 @@
 import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
+  MESH_CAPABILITY,
   MODES_CAPABILITY,
   NAVIGATION_CAPABILITY,
   type Connections,
   type Keybindings,
+  type MeshMembership,
   type Modes,
   type Navigation,
 } from "@jhin/client-api";
@@ -17,6 +19,7 @@ import { AGENTS_STREAM } from "@jhin/agent-api";
 import { askAgents } from "../lib/agents-presence.ts";
 import { builtin } from "../lib/builtin.ts";
 import { ChunkFailed, lazyChunk } from "../lib/lazy-chunk.tsx";
+import { createMeshTargets } from "../lib/mesh-targets.ts";
 import { CIVILIZATION_MODE } from "../lib/modes.ts";
 import type { CivilizationShell } from "./civilization-shell.tsx";
 
@@ -42,7 +45,7 @@ export const CivilizationConfig = z
     enabled: z.enum(["auto", "on", "off"]).default("auto").meta({
       title: "Civilization mode",
       description:
-        "auto: offered once a connected node has a defined agent (agents.catalog); on: always; off: never.",
+        "auto: offered once a node of the mesh has a defined agent (agents.catalog); on: always; off: never.",
     }),
   })
   .meta({
@@ -65,7 +68,7 @@ export const civilizationPlugin = builtin(
       [NAVIGATION_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
     },
-    optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
+    optional: { [KEYBINDINGS_CAPABILITY]: "^1", [MESH_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
@@ -75,9 +78,13 @@ export const civilizationPlugin = builtin(
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       context.config.define(CIVILIZATION_SECTION, CivilizationConfig);
+      // Every node of the mesh is asked, members of a connection too (M1, D1531).
+      const targets = context.subscriptions.add(
+        createMeshTargets(connections, context.services.tryGet<MeshMembership>(MESH_CAPABILITY)),
+      );
 
       // --- Whether to offer the mode (D747) ----------------------------------
-      /** Connections whose node has agents, as last asked while it was open. */
+      /** Nodes (by `targetKey`) that have agents, as last asked while open. */
       const withAgents = new Map<string, boolean>();
       const asked = new Set<string>();
       /** Each connection's current opening: an answer from an earlier one is dropped. */
@@ -105,7 +112,10 @@ export const civilizationPlugin = builtin(
       const update = () => {
         if (disposed) return;
         const { enabled } = context.config.get<CivilizationConfig>(CIVILIZATION_SECTION);
-        const open = connections.list().filter((connection) => connection.state === "open");
+        const open = targets.snapshot().map((node) => ({
+          id: node.key,
+          client: node.channel,
+        }));
         // Ask each node once per time it opens: plugins may have changed while it was away.
         // An answer that came after its connection closed is forgotten as well.
         for (const id of new Set([
@@ -197,7 +207,10 @@ export const civilizationPlugin = builtin(
           registration = undefined;
         }
       };
+      // Every change of the connections asks again what is not known (D747),
+      // and every change of the nodes shown, members included.
       context.subscriptions.add(connections.subscribe(update));
+      context.subscriptions.add(targets.subscribe(update));
       context.subscriptions.add(
         context.config.onDidChange(CIVILIZATION_SECTION, () => {
           // A changed setting asks every open node afresh, given-up ones too.

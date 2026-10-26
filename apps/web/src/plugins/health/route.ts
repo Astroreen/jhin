@@ -1,14 +1,15 @@
 import type { HealthGroup, Warning } from "@jhin/health-api";
-import type { Route } from "@jhin/client-api";
+import type { NodeTarget, Route } from "@jhin/client-api";
+import { targetFields } from "../../lib/mesh-targets.ts";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 
 /** The route panel of health (agents.md D731). */
 export const HEALTH_PANEL = "health";
 
-/** Health's page: panel `health`; a warning's id as `section`, none for the overview. */
-export function healthRoute(node: string, warningId?: string): Route {
+/** Health's page: panel `health`; a warning's id as `section`, none for the overview (D1530). */
+export function healthRoute(target: NodeTarget, warningId?: string): Route {
   return {
-    node,
+    ...targetFields(target),
     mode: CIVILIZATION_MODE,
     panel: HEALTH_PANEL,
     ...(warningId === undefined ? {} : { section: warningId }),

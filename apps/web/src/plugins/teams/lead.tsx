@@ -1,7 +1,7 @@
 // The conversation with the lead in Civilization mode (docs/plans/agents.md,
 // C1: D1062–D1064), a chunk of its own (D440): loaded once the Lead view shows.
 // The owner talks to the agent (`agents.ask`), never to one of its generations.
-import type { ConversationEntry, TeamRecord } from "@jhin/agent-api";
+import { MESSAGES_STREAM, type ConversationEntry, type TeamRecord } from "@jhin/agent-api";
 import type { Route } from "@jhin/client-api";
 import {
   Badge,
@@ -23,6 +23,7 @@ import { ArrowUpIcon, ClipboardListIcon, CrownIcon, MessageCircleQuestionIcon } 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
+import { nodeChannel } from "../../lib/node-channel.ts";
 import { MessageText } from "../chat/message-text.tsx";
 import { CONVERSATION_LOADING, followConversation, unanswered } from "./conversation.ts";
 import type { ConversationView } from "./conversation.ts";
@@ -113,7 +114,10 @@ function Conversation(props: {
 
   useEffect(() => {
     if (client === undefined) return;
-    const following = followConversation(client, lead, setView);
+    // A lead on another node: its node's messages through this one's relay (D1533).
+    const following = followConversation(client, lead, setView, (nodeId, after, onEvent, onError) =>
+      nodeChannel(client, nodeId).subscribe(MESSAGES_STREAM, { after, onError }, onEvent),
+    );
     return () => following.dispose();
   }, [client, lead, attempt]);
 
@@ -279,6 +283,7 @@ function Conversation(props: {
                 pending={pending.has(entry.message.messageId)}
                 services={services}
                 connection={connection}
+                {...(view.elsewhere === undefined ? {} : { elsewhere: view.elsewhere })}
               />
             ))
           )}
@@ -289,6 +294,12 @@ function Conversation(props: {
               </p>
             ) : null}
           </div>
+          {view.elsewhereError !== undefined && view.status !== "error" ? (
+            <p className="text-xs text-muted-foreground">
+              Only this node's half shows: the lead's node could not be read ({view.elsewhereError}
+              ).
+            </p>
+          ) : null}
           {view.status === "error" ? (
             <p className="flex items-center gap-2 text-sm text-destructive-foreground" role="alert">
               Not live: {view.error}
@@ -390,6 +401,8 @@ function ReportCard(props: {
   headline: string;
   missionId: string;
   connection: string;
+  /** The lead's node, when it is a member: its missions are there (D1533). */
+  elsewhere?: string | undefined;
   services: TeamsServices;
 }) {
   return (
@@ -406,6 +419,7 @@ function ReportCard(props: {
             void props.services.commands
               .execute("civilization.mission.open", {
                 node: props.connection,
+                ...(props.elsewhere === undefined ? {} : { remote: props.elsewhere }),
                 missionId: props.missionId,
               })
               .catch((error: unknown) =>
@@ -442,6 +456,7 @@ function Entry(props: {
   pending: boolean;
   services: TeamsServices;
   connection: string;
+  elsewhere?: string | undefined;
 }) {
   const { entry, owner } = props;
   const { message } = entry;
@@ -474,6 +489,7 @@ function Entry(props: {
       <ReportCard
         body={message.body}
         connection={props.connection}
+        elsewhere={props.elsewhere}
         headline={report.headline}
         missionId={report.missionId}
         services={props.services}

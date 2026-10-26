@@ -1,7 +1,7 @@
 // Health in Civilization mode (docs/plans/agents.md, A7: D731), a chunk of its
 // own (D440): the page loads it once Civilization mode shows it.
 import { HealthEvents, type EventRef, type GroupStatus, type Warning } from "@jhin/health-api";
-import type { Connections, Navigation } from "@jhin/client-api";
+import { targetKey, type Connections, type Navigation, type Route } from "@jhin/client-api";
 import {
   Badge,
   Button,
@@ -44,8 +44,8 @@ export function HealthList({ view }: { view: HealthView }) {
     <SidebarMenu aria-label="Health">
       {stale.length === 0 ? null : (
         <p className="px-2 py-1 text-xs text-destructive">
-          Not live: {stale.map((node) => view.connections.get(node)?.label ?? node).join(", ")}.
-          What shows may be out of date.
+          Not live: {stale.map((node) => view.store.target(node)?.label ?? node).join(", ")}. What
+          shows may be out of date.
         </p>
       )}
       {/* One overview per node with health; the node is named once there are several. */}
@@ -53,14 +53,14 @@ export function HealthList({ view }: { view: HealthView }) {
         <SidebarMenuItem key={node}>
           <SidebarMenuButton
             isActive={
-              route.panel === HEALTH_PANEL && route.node === node && route.section === undefined
+              route.panel === HEALTH_PANEL && keyOf(route) === node && route.section === undefined
             }
-            onClick={() => view.navigation.navigate(healthRoute(node))}
+            onClick={() => view.navigation.navigate(healthRoute(targetOf(view, node)))}
           >
             <ActivityIcon />
             <span className="truncate">
               Ceremony and progress
-              {ready.length > 1 ? ` · ${view.connections.get(node)?.label ?? node}` : ""}
+              {ready.length > 1 ? ` · ${view.store.target(node)?.label ?? node}` : ""}
             </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -85,10 +85,12 @@ export function HealthList({ view }: { view: HealthView }) {
                 className="h-auto py-1.5"
                 isActive={
                   route.panel === HEALTH_PANEL &&
-                  route.node === node &&
+                  keyOf(route) === node &&
                   route.section === warning.warningId
                 }
-                onClick={() => view.navigation.navigate(healthRoute(node, warning.warningId))}
+                onClick={() =>
+                  view.navigation.navigate(healthRoute(targetOf(view, node), warning.warningId))
+                }
               >
                 <TriangleAlertIcon />
                 <span className="flex min-w-0 flex-col">
@@ -161,17 +163,17 @@ function useCall<T>(
     error?: string;
   }>();
   // The call is named by what it calls, not only by the caller's key.
-  // A replaced connection (same node, new client) is called again too.
-  const client = view.connections.get(node)?.client;
+  // A replaced connection (same node, new client) is called again too; a
+  // member is called through its connection (D1530).
+  const client = view.store.target(node)?.channel;
   const call = `${node}|${command}|${JSON.stringify(input)}|${key}|${scope}`;
   useEffect(() => {
     if (!enabled) return;
     let live = true;
-    const connection = view.connections.get(node);
     const answer =
-      connection === undefined
+      client === undefined
         ? Promise.reject(new Error("This node is not connected."))
-        : connection.client.call<T>(command, input);
+        : client.call<T>(command, input);
     answer.then(
       (value) => live && setResult({ key, scope, at: new Date(), value }),
       (error: unknown) =>
@@ -195,6 +197,18 @@ function useCall<T>(
 }
 
 const RANK = { mission: 0, team: 1, project: 2, node: 3 } as const;
+
+/** The key of the node a route names (D1530). */
+const keyOf = (route: Route) =>
+  route.node === undefined
+    ? undefined
+    : targetKey({
+        node: route.node,
+        ...(route.remote === undefined ? {} : { remote: route.remote }),
+      });
+
+/** The node a feed's key names, for its route. */
+const targetOf = (view: HealthView, node: string) => view.store.target(node)?.target ?? { node };
 
 /** Ceremony against progress per group, over the window (D722). */
 function Overview({ view, node }: { view: HealthView; node: string }) {
@@ -376,8 +390,8 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     return <PageEmpty text="The node no longer has this warning." title="No such warning" />;
   }
   const dismiss = async () => {
-    const connection = view.connections.get(node);
-    if (connection === undefined) {
+    const channel = view.store.target(node)?.channel;
+    if (channel === undefined) {
       view.toasts?.show({
         type: "error",
         title: "Couldn't dismiss the warning",
@@ -388,7 +402,7 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
     setDismissing(true);
     let dismissed: Warning;
     try {
-      dismissed = await connection.client.call<Warning>("health.warnings.dismiss", { warningId });
+      dismissed = await channel.call<Warning>("health.warnings.dismiss", { warningId });
     } catch (error) {
       view.toasts?.show({
         type: "error",

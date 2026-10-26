@@ -4,10 +4,13 @@
 import type { Warning } from "@jhin/health-api";
 import {
   CONNECTIONS_CAPABILITY,
+  MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  targetKey,
   type Connections,
+  type MeshMembership,
   type Navigation,
-  type NodeConnection,
+  type NodeTarget,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
@@ -20,6 +23,7 @@ import { HeartPulseIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
+import { routeTarget, targetFields, type MeshTarget } from "../../lib/mesh-targets.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { holdsRead } from "../../lib/node-feeds.ts";
 import { tellOwner } from "../../lib/tell-owner.tsx";
@@ -55,7 +59,7 @@ export const healthPlugin = builtin(
       [CONNECTIONS_CAPABILITY]: "^1",
       [NAVIGATION_CAPABILITY]: "^1",
     },
-    optional: { [UI_TOASTS_CAPABILITY]: "^1" },
+    optional: { [UI_TOASTS_CAPABILITY]: "^1", [MESH_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
@@ -64,10 +68,10 @@ export const healthPlugin = builtin(
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
 
-      const open = (node: string, warningId?: string) =>
-        navigation.navigate(healthRoute(node, warningId));
+      const open = (target: NodeTarget, warningId?: string) =>
+        navigation.navigate(healthRoute(target, warningId));
       /** A new warning: told the owner the way an ask is (D630, D731). */
-      const raised = (connection: NodeConnection, warning: Warning) => {
+      const raised = (node: MeshTarget, warning: Warning) => {
         const told = tellOwner(context.config, toasts, {
           title: `${detectorLabel(warning)}: ${groupLabel(warning.group)}`,
           body: warning.summary,
@@ -78,7 +82,7 @@ export const healthPlugin = builtin(
           open: () =>
             void context.commands
               .execute("civilization.health.open", {
-                node: connection.id,
+                ...targetFields(node.target),
                 warningId: warning.warningId,
               })
               .catch((error: unknown) =>
@@ -89,7 +93,9 @@ export const healthPlugin = builtin(
         if (!told)
           context.log.info("a health warning was not told", { warningId: warning.warningId });
       };
-      const store = createHealthStore(connections, context.log, raised);
+      // Every node of the mesh, members too (M1, D1530).
+      const mesh = context.services.tryGet<MeshMembership>(MESH_CAPABILITY);
+      const store = createHealthStore(connections, context.log, raised, mesh);
       context.subscriptions.add(store);
       const view: HealthView = { store, connections, navigation, toasts, log: context.log };
 
@@ -102,10 +108,14 @@ export const healthPlugin = builtin(
             "Opens Civilization mode's health: a warning with the events behind it, or the overview of ceremony and progress (D731). A warning id the node's health, once read, does not hold is WARNING_NOT_FOUND; while it is still being read the page opens and says so",
           input: z.object({
             node: z.string().min(1).meta({ description: "The connection the warning is on" }),
+            remote: z.string().min(1).optional().meta({
+              description: "A member of that connection's mesh the warning is on (D1530)",
+            }),
             warningId: z.string().min(1).optional(),
           }),
           output: z.object({}),
-          handler: ({ node, warningId }) => {
+          handler: ({ node, remote, warningId }) => {
+            const target = routeTarget({ node, ...(remote === undefined ? {} : { remote }) })!;
             // The client's codes (`connections`, `machines`), and the node's for a warning.
             if (connections.get(node)?.state !== "open") {
               throw Object.assign(new Error(`Not connected to ${node}`), {
@@ -113,7 +123,7 @@ export const healthPlugin = builtin(
                 details: { node },
               });
             }
-            const feed = store.snapshot().get(node);
+            const feed = store.snapshot().get(targetKey(target));
             if (
               warningId !== undefined &&
               feed !== undefined &&
@@ -122,10 +132,10 @@ export const healthPlugin = builtin(
             ) {
               throw Object.assign(new Error(`No warning ${warningId}`), {
                 code: "WARNING_NOT_FOUND",
-                details: { node, warningId },
+                details: { ...target, warningId },
               });
             }
-            open(node, warningId);
+            open(target, warningId);
             return {};
           },
         }),
@@ -135,11 +145,12 @@ export const healthPlugin = builtin(
       const HealthPage = () => {
         const route = useExternal(navigation, navigation.current);
         // Only its own panel: the other views of `civilization.views` render theirs (D750).
-        if (route.panel !== HEALTH_PANEL || route.node === undefined) return null;
+        const target = routeTarget(route);
+        if (route.panel !== HEALTH_PANEL || target === undefined) return null;
         return (
           <Page
-            key={`${route.node}|${route.section ?? ""}`}
-            node={route.node}
+            key={`${targetKey(target)}|${route.section ?? ""}`}
+            node={targetKey(target)}
             view={view}
             {...(route.section === undefined ? {} : { warningId: route.section })}
           />

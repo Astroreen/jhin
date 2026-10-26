@@ -4,12 +4,15 @@
 import type { InboxItem } from "@jhin/agent-api";
 import {
   CONNECTIONS_CAPABILITY,
+  MESH_CAPABILITY,
   MODES_CAPABILITY,
   NAVIGATION_CAPABILITY,
   type Connections,
+  type MeshMembership,
   type Modes,
   type Navigation,
-  type NodeConnection,
+  type NodeTarget,
+  targetKey,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
@@ -21,6 +24,7 @@ import {
 import { MessageCircleQuestionIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
+import { routeTarget, type MeshTarget } from "../../lib/mesh-targets.ts";
 import { CIVILIZATION_MODE } from "../../lib/modes.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
@@ -57,7 +61,11 @@ export const inboxPlugin = builtin(
       [CONNECTIONS_CAPABILITY]: "^1",
       [NAVIGATION_CAPABILITY]: "^1",
     },
-    optional: { [UI_TOASTS_CAPABILITY]: "^1", [MODES_CAPABILITY]: "^1.1" },
+    optional: {
+      [UI_TOASTS_CAPABILITY]: "^1",
+      [MODES_CAPABILITY]: "^1.1",
+      [MESH_CAPABILITY]: "^1",
+    },
   },
   definePlugin({
     activate(context) {
@@ -66,10 +74,10 @@ export const inboxPlugin = builtin(
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
 
-      const open = (node: string, messageId: string) =>
-        navigation.navigate(inboxRoute(node, messageId));
+      const open = (target: NodeTarget, messageId: string) =>
+        navigation.navigate(inboxRoute(target, messageId));
       /** A new item: a toast while the page has focus, else a system notification (D630). */
-      const arrived = (connection: NodeConnection, item: InboxItem) => {
+      const arrived = (node: MeshTarget, item: InboxItem) => {
         const { message } = item;
         const told = tellOwner(context.config, toasts, {
           title:
@@ -80,12 +88,14 @@ export const inboxPlugin = builtin(
           tag: message.messageId,
           icon: <MessageCircleQuestionIcon className="size-4" />,
           actionLabel: "Open inbox",
-          open: () => open(connection.id, message.messageId),
+          open: () => open(node.target, message.messageId),
         });
         // Not lost: it is in the sidebar; the log says it was not told.
         if (!told) context.log.info("an inbox item was not told", { messageId: message.messageId });
       };
-      const store = createInboxStore(connections, context.log, arrived);
+      // Every node of the mesh, members too (M1, D1530).
+      const mesh = context.services.tryGet<MeshMembership>(MESH_CAPABILITY);
+      const store = createInboxStore(connections, context.log, arrived, mesh);
       context.subscriptions.add(store);
       // The open items on Civilization mode's button in the switcher (D1273).
       const badge = context.services.tryGet<Modes>(MODES_CAPABILITY)?.badge(CIVILIZATION_MODE);
@@ -105,11 +115,16 @@ export const inboxPlugin = builtin(
           description: "Opens a message or ask to the owner in Civilization mode's inbox (D630)",
           input: z.object({
             node: z.string().min(1).meta({ description: "The connection the item is on" }),
+            remote: z
+              .string()
+              .min(1)
+              .optional()
+              .meta({ description: "A member of that connection's mesh the item is on (D1530)" }),
             messageId: z.string().min(1),
           }),
           output: z.object({}),
-          handler: ({ node, messageId }) => {
-            open(node, messageId);
+          handler: ({ node, remote, messageId }) => {
+            open(routeTarget({ node, ...(remote === undefined ? {} : { remote }) })!, messageId);
             return {};
           },
         }),
@@ -119,13 +134,14 @@ export const inboxPlugin = builtin(
       const InboxItemView = () => {
         const route = useExternal(navigation, navigation.current);
         // Only its own panel: the other views of `civilization.views` render theirs (D750).
-        if (route.panel !== INBOX_PANEL || route.node === undefined) return null;
+        const target = routeTarget(route);
+        if (route.panel !== INBOX_PANEL || target === undefined) return null;
         if (route.section === undefined) return null;
         return (
           <Page
-            key={`${route.node}|${route.section}`}
+            key={`${targetKey(target)}|${route.section}`}
             messageId={route.section}
-            node={route.node}
+            target={target}
             view={view}
           />
         );

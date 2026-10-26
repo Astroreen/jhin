@@ -383,7 +383,8 @@ function fakeNode(catalog: () => Promise<unknown>) {
 
 function follow(store: ReturnType<typeof createMissionsStore>) {
   const waiting: ((view: MissionsView) => void)[] = [];
-  store.subscribe("ws://a/rpc", () => waiting.shift()?.(store.view("ws://a/rpc")));
+  const target = { node: "ws://a/rpc" };
+  store.subscribe(target, () => waiting.shift()?.(store.view(target)));
   return { next: () => new Promise<MissionsView>((resolve) => waiting.push(resolve)) };
 }
 

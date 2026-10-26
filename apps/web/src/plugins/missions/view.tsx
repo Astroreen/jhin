@@ -60,6 +60,8 @@ import {
 } from "react";
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
+import { targetFields } from "../../lib/mesh-targets.ts";
+import { useMeshTargets } from "../../lib/use-mesh-targets.ts";
 import { useDirectory, type Directory } from "./directory.ts";
 import { DirectoryNotices } from "./notice.tsx";
 import { DeleteButton, IntentDialog, MissionDialog, SliceDialog, type Call } from "./edit.tsx";
@@ -94,12 +96,20 @@ export interface MissionsServices {
   readonly store: MissionsStore;
 }
 
-/** The route's connection, or the first open one when the route names none. */
-function useConnection(services: MissionsServices, route: Route): string | undefined {
+/**
+ * The route's node, a member of its connection's mesh too (D1529), or the
+ * first open connection when the route names none. The same object while it
+ * names the same node.
+ */
+function useTarget(services: MissionsServices, route: Route): NodeTarget | undefined {
   const { connections } = services;
   const nodes = useExternal(connections, connections.list);
-  return (
-    route.node ?? nodes.find((node) => node.state === "open")?.id ?? nodes.at(0)?.id ?? undefined
+  const node =
+    route.node ?? nodes.find((item) => item.state === "open")?.id ?? nodes.at(0)?.id ?? undefined;
+  const remote = route.node === undefined ? undefined : route.remote;
+  return useMemo(
+    () => (node === undefined ? undefined : remote === undefined ? { node } : { node, remote }),
+    [node, remote],
   );
 }
 
@@ -108,17 +118,17 @@ const NO_VIEW: MissionsView = {
   state: { intents: {}, missions: {}, slices: {} },
 };
 
-function useMissions(store: MissionsStore, connection: string | undefined): MissionsView {
+function useMissions(store: MissionsStore, target: NodeTarget | undefined): MissionsView {
   const subscribe = useMemo(
     () => (listener: () => void) => {
-      if (connection === undefined) return () => undefined;
-      const subscription = store.subscribe(connection, listener);
+      if (target === undefined) return () => undefined;
+      const subscription = store.subscribe(target, listener);
       return () => subscription.dispose();
     },
-    [store, connection],
+    [store, target],
   );
   return useSyncExternalStore(subscribe, () =>
-    connection === undefined ? NO_VIEW : store.view(connection),
+    target === undefined ? NO_VIEW : store.view(target),
   );
 }
 
@@ -140,8 +150,8 @@ function useSelfNode(mesh: MeshMembership | undefined, connection: string | unde
 }
 
 /** Project names from the node's catalog; a project it does not list shows its id. */
-function useProjectNames(threads: ThreadsCatalog, connection: string | undefined) {
-  const catalog = useCatalog(threads, connection === undefined ? undefined : { node: connection });
+function useProjectNames(threads: ThreadsCatalog, target: NodeTarget | undefined) {
+  const catalog = useCatalog(threads, target);
   return useMemo(
     () => new Map((catalog?.projects ?? []).map((project) => [project.id, project.name])),
     [catalog],
@@ -169,13 +179,62 @@ function SidebarNote({ children }: { children: ReactNode }) {
   return <p className="px-2 py-1 text-xs text-sidebar-muted-foreground">{children}</p>;
 }
 
+/**
+ * The Missions section (D654): the route's node; with several nodes shown
+ * (members of a connection's mesh too), each node's missions under its label,
+ * as the roster lists agents (D617, D1529).
+ */
 export function MissionsSidebar({ services }: { services: MissionsServices }) {
-  const { navigation, store, threads } = services;
+  const { navigation, connections, mesh } = services;
   const route = useExternal(navigation, navigation.current);
-  const connection = useConnection(services, route);
-  const view = useMissions(store, connection);
-  const names = useProjectNames(threads, connection);
-  const place = placeOf(route);
+  const routed = useTarget(services, route);
+  const nodes = useMeshTargets(connections, mesh);
+  if (nodes.length === 0) return <NodeMissions primary services={services} target={routed} />;
+  const routedKey = routed === undefined ? undefined : targetKey(routed);
+  const primary = nodes.some((node) => node.key === routedKey) ? routedKey : nodes[0]?.key;
+  // Keyed by node, so the node shown first stays mounted when members join it.
+  return (
+    <>
+      {nodes.map((node) => (
+        <NodeMissions
+          key={node.key}
+          {...(nodes.length > 1 ? { label: node.label } : {})}
+          primary={node.key === primary}
+          services={services}
+          target={nodes.length > 1 ? node.target : (routed ?? node.target)}
+        />
+      ))}
+    </>
+  );
+}
+
+/** One node's missions by project; `label` names the node when several show. */
+function NodeMissions({
+  services,
+  target,
+  label,
+  primary,
+}: {
+  services: MissionsServices;
+  target: NodeTarget | undefined;
+  label?: string;
+  /** Whether New mission plans on this node: the route's, else the first. */
+  primary: boolean;
+}) {
+  const { navigation, store, threads } = services;
+  const current = useExternal(navigation, navigation.current);
+  const view = useMissions(store, target);
+  const names = useProjectNames(threads, target);
+  // Places of this node: the route keeps its mode, and names this node.
+  const route: Route =
+    target === undefined
+      ? current
+      : { ...(current.mode === undefined ? {} : { mode: current.mode }), ...targetFields(target) };
+  const here =
+    target !== undefined &&
+    current.node === target.node &&
+    (current.remote ?? undefined) === target.remote;
+  const place = here ? placeOf(current) : undefined;
   const shownMission =
     place?.kind === "mission"
       ? place.missionId
@@ -187,12 +246,26 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
 
   const [creating, setCreating] = useState(false);
 
-  if (view.status === "unavailable") return <SidebarNote>This node has no missions.</SidebarNote>;
-  if (view.status === "loading") return <SidebarNote>Loading missions…</SidebarNote>;
+  const heading =
+    label === undefined ? null : (
+      <p className="truncate px-2 pt-1 text-2xs font-medium uppercase tracking-wide text-sidebar-muted-foreground">
+        {label}
+      </p>
+    );
+  // Among several nodes, one without missions is left out rather than said.
+  if (view.status === "unavailable")
+    return label === undefined ? <SidebarNote>This node has no missions.</SidebarNote> : null;
+  if (view.status === "loading")
+    return (
+      <>
+        {heading}
+        <SidebarNote>Loading missions…</SidebarNote>
+      </>
+    );
   const projects = withDeletedProjects(projectsWithMissions(view.state), names);
   // Planning a mission from the client (D1081): any project of the node's catalog.
   const create =
-    connection === undefined ? null : (
+    target === undefined || !primary ? null : (
       <>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -209,7 +282,7 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
         </SidebarMenu>
         {creating ? (
           <MissionDialog
-            call={(method, input) => threads.call({ node: connection }, method, input)}
+            call={(method, input) => threads.call(target, method, input)}
             onClose={() => setCreating(false)}
             onCreated={(mission) =>
               navigation.navigate(routeOf(route, { kind: "mission", missionId: mission.id }))
@@ -223,6 +296,7 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
   if (projects.length === 0) {
     return (
       <>
+        {heading}
         <SidebarNote>
           {view.status === "error"
             ? `Couldn't load missions: ${view.error ?? "unknown error"}`
@@ -233,7 +307,11 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
     );
   }
   return (
-    <nav aria-label="Missions list">
+    <nav
+      aria-label={label === undefined ? "Missions list" : `Missions list, ${label}`}
+      data-missions-node={target === undefined ? undefined : targetKey(target)}
+    >
+      {heading}
       {projects.map(({ projectId, missions }) => (
         <div key={projectId} data-mission-project={projectId}>
           {projects.length > 1 || names.has(projectId) || projectId === DELETED_PROJECT_GROUP ? (
@@ -438,25 +516,25 @@ export function MissionsMain({ services }: { services: MissionsServices }) {
   const { navigation, store, threads, mesh } = services;
   const route = useExternal(navigation, navigation.current);
   const place = placeOf(route);
-  const connection = useConnection(services, route);
-  const view = useMissions(store, place === undefined ? undefined : connection);
-  const names = useProjectNames(threads, place === undefined ? undefined : connection);
-  const self = useSelfNode(mesh, place === undefined ? undefined : connection);
+  const shownTarget = useTarget(services, route);
+  const routed = place === undefined ? undefined : shownTarget;
+  const view = useMissions(store, routed);
+  const names = useProjectNames(threads, routed);
+  const self = useSelfNode(mesh, routed?.node);
   const shownThread =
-    place?.kind === "slice" && place.thread !== undefined && connection !== undefined
+    place?.kind === "slice" && place.thread !== undefined && routed !== undefined
       ? {
-          target: threadTarget({ node: connection }, place.thread, self),
+          target: threadTarget(routed, place.thread, self),
           threadId: place.thread.threadId,
         }
       : undefined;
   const threadTitle = useThreadTitle(threads, shownThread?.target, shownThread?.threadId);
-  const directory = useDirectory(
-    threads,
-    place === undefined || connection === undefined ? undefined : { node: connection },
-  );
+  // Titles and assignees of every node shown (D1532).
+  const meshNodes = useMeshTargets(services.connections, mesh);
+  const directory = useDirectory(threads, routed, meshNodes);
   // Another contribution's panel (an agent's page): this view shows nothing.
   if (place === undefined) return null;
-  if (connection === undefined) return null;
+  if (routed === undefined) return null;
 
   const body = (() => {
     if (view.status === "loading") {
@@ -492,7 +570,7 @@ export function MissionsMain({ services }: { services: MissionsServices }) {
     crumbs.push({ label: threadTitle ?? "Thread" });
   if (crumbs.length === 0) crumbs.push({ label: "Missions" });
 
-  const target: NodeTarget = { node: connection };
+  const target: NodeTarget = routed;
   const call: Call = (method, input) => threads.call(target, method, input);
   const content =
     body ??
