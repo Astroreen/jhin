@@ -133,11 +133,8 @@ describe("health across the mesh (M1)", () => {
     const b = await meshNode(network, "b");
     await b.node.join(a.node);
     const { client } = a.node.connect();
-    const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-health-mesh-"));
-    const project = await client.call<{ id: string }>("projects.create", { path: data }).catch(
-      // No threads plugin: missions take any project id.
-      () => ({ id: "p1" }),
-    );
+    // No threads plugin: missions take any project id.
+    const project = { id: "p1" };
     const mission = await client.call<Mission>("missions.create", {
       projectId: project.id,
       title: "Doghouse",
@@ -212,6 +209,7 @@ describe("health across the mesh (M1)", () => {
     // slice links the thread (D1525), and a counts them as the mission's
     // progress, which clears the warning (D1383).
     const repo = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-health-mesh-git-"));
+    stops.push(async () => Fs.rmSync(repo, { recursive: true, force: true }));
     const git = (...args: string[]) =>
       ChildProcess.execFileSync("git", args, {
         cwd: repo,
@@ -326,6 +324,16 @@ describe("health across the mesh (M1)", () => {
       });
       network.down(b.node.address);
     });
+    // While b is away its records are not there to read: the drill-down says so, and answers.
+    const away = await client.call<{ events: { payload: unknown; missing?: boolean }[] }>(
+      "health.warnings.get",
+      { warningId: second.warningId },
+    );
+    expect(away.events.map((event) => [event.payload, event.missing])).toEqual([
+      [null, true],
+      [null, true],
+      [null, true],
+    ]);
     await new Promise<void>((resolve) => {
       const back = () =>
         a.node.mesh.members().some((member) => member.record.nodeId === "b" && member.reachable);

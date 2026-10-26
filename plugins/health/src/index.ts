@@ -1062,9 +1062,16 @@ export default definePlugin({
         if (meshStreams?.follow === undefined) return resolve(undefined);
         let done = false;
         let followed: Disposable | undefined;
+        // The member going out of reach ends the read: a relay that waits for a
+        // route would otherwise hold the answer (D499).
+        const away = meshStreams.onChange?.(() => {
+          const member = meshStreams.members?.().find((item) => item.nodeId === node);
+          if (member === undefined || !member.reachable) finish();
+        });
         const finish = (event?: { sequence: number; payload: unknown }) => {
           if (done) return;
           done = true;
+          away?.dispose();
           followed?.dispose();
           resolve(event);
         };
