@@ -2457,8 +2457,9 @@ Decisions:
   generations and knowledge stay, D611), forgets its seat and keeps the new
   roster. An agent the team did not put there is left alone. A node that
   cannot be reached keeps the leave pending in the `teams.up` node's
-  `storage.kv`, and every later `teams.up` tries it again; the answer says
-  per member `left` or `leaveError`.
+  `storage.kv`, and every later `teams.up` tries it again, for every node a member
+  left in a chain of moves; the answer says per member the addresses it
+  `left` and the `leaveErrors` of those it could not leave yet.
 - **D1547. A node away is a decision of the mission.** `jhin.mesh` keeps
   writing `mesh.nodes.changed` to the `mesh` stream on every change of the
   mesh; its name, its event and the node view move to `@jhin/mesh-api`
@@ -2616,9 +2617,9 @@ Decisions:
   the lead reaches the inbox. D688 tells members, it does not enforce it.
 - A5: removing a team's agents. `teams.down` stops them (D689); removing
   each member is `agents.remove` on its node.
-- A5: a member moved to another node: `teams.up` puts it on the new node and
+- ~~A5: a member moved to another node: `teams.up` puts it on the new node and
   rewrites the rosters, but its agent on the old node stays defined (stop it
-  with `teams.down` before the move).
+  with `teams.down` before the move).~~ M2, D1546.
 - A5: installing a plugin, and so a bundle, from npm with a command. Today the
   unpacked package goes into a plugin location (D686).
 - A5: a bundle's skills installed for its members; skills stay names (D613).
@@ -2934,3 +2935,5 @@ Each workstream lists its PRs here as they merge.
   refocus of a thread of another node on its own node (`refocus.follow`),
   `missions.stop` on every node, and a lead on another node running the
   orchestrator (`missions.orchestration.record`) (D1541–D1545).
+- M2 #301: `teams.up` takes a member that moved off its old node
+  (`teams.leave`), at once or once that node is back (D1546).

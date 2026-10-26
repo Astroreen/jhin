@@ -426,6 +426,53 @@ export default definePlugin({
         return { result, resumed, written, address: agentAddress(nodeId, agentId) };
       });
 
+    // --- Leaving: a member that moved to another node (D1546) ------------------------
+    const leave = (input: { roster: TeamRoster; member: string }) =>
+      serial(async () => {
+        const { roster, member } = input;
+        const agentId = teamAgentId(roster.teamId, member);
+        const seat = (await kv.get(NAMESPACE, `seat/${agentId}`)) as Seat | undefined;
+        // An agent the team did not put here, or the member still here, stays.
+        if (
+          seat?.teamId !== roster.teamId ||
+          roster.members[member] === agentAddress(nodeId, agentId)
+        ) {
+          return { left: false };
+        }
+        const stopped = await run<{ stoppedAt: string }>("agents.stop", { agentId }).catch(
+          (error: unknown) => {
+            if ((error as { code?: unknown }).code === "AGENT_NOT_FOUND") return undefined;
+            throw error;
+          },
+        );
+        // Its generations and knowledge stay (D611); its definition goes.
+        if (stopped !== undefined) await run("agents.remove", { agentId });
+        await kv.delete(NAMESPACE, `seat/${agentId}`);
+        await kv.set(NAMESPACE, `roster/${roster.teamId}`, roster as unknown as Json);
+        return { left: true, ...(stopped === undefined ? {} : { stoppedAt: stopped.stoppedAt }) };
+      });
+
+    /** Leaves the node a member moved from, there or through the mesh (D1546). */
+    const leaveFrom = async (
+      old: string,
+      roster: TeamRoster,
+      member: string,
+      invocation: Invocation,
+    ): Promise<
+      { left: string } | { leaveError: ReturnType<typeof errorOf> & { address: string } }
+    > => {
+      try {
+        const from = parseAgentAddress(old)?.nodeId;
+        if (from === undefined)
+          throw new TeamsError("TEAM_INVALID", `${old} is no agent's address`);
+        if (from === nodeId) await leave({ roster, member });
+        else await remote(from, "teams.leave", { roster, member }, invocation, WRITE_PERMISSIONS);
+        return { left: old };
+      } catch (error) {
+        return { leaveError: { address: old, ...errorOf(error) } };
+      }
+    };
+
     // --- Commands (D684–D690) ------------------------------------------------------
     context.commands.register({
       name: "teams.list",
@@ -498,6 +545,24 @@ export default definePlugin({
         const culture = spec.culture ?? files.culture;
         const roster = rosterFor(teamId, spec);
         const owner = ownerAddress(nodeId);
+        // Where members were last put, and the leaves a node away kept pending (D1546).
+        const previous = await rosterOf(teamId);
+        const leavingKey = `leaving/${teamId}`;
+        // Every node a member left while it was away, by member: a chain of moves keeps each.
+        const stored = (await kv.get(NAMESPACE, leavingKey)) as
+          | Record<string, string | string[]>
+          | undefined;
+        const leaving = new Map(
+          Object.entries(stored ?? {}).map(([member, from]) => [
+            member,
+            new Set(typeof from === "string" ? [from] : from),
+          ]),
+        );
+        const pendingOf = (member: string) => {
+          const set = leaving.get(member) ?? new Set<string>();
+          leaving.set(member, set);
+          return set;
+        };
         const members = [];
         for (const member of Object.keys(spec.agents)) {
           const address = roster.members[member]!;
@@ -519,17 +584,42 @@ export default definePlugin({
                     invocation,
                     joinGrants(invocation),
                   );
+            // Put on its new node first, the member leaves every node it moved from.
+            const pending = pendingOf(member);
+            const before = previous?.members[member];
+            if (before !== undefined) pending.add(before);
+            pending.delete(address);
+            const left: string[] = [];
+            const leaveErrors = [];
+            // Deleting the entry being visited is safe while a Set is iterated.
+            for (const old of pending) {
+              const moved = await leaveFrom(old, roster, member, invocation);
+              if ("left" in moved) {
+                pending.delete(old);
+                left.push(old);
+              } else leaveErrors.push(moved.leaveError);
+            }
             members.push({
               member,
               address,
               result: joined.result,
               resumed: joined.resumed,
               written: joined.written,
+              ...(left.length === 0 ? {} : { left }),
+              ...(leaveErrors.length === 0 ? {} : { leaveErrors }),
             });
           } catch (error) {
+            // Not on its new node yet: the node it was on keeps it until a later up.
+            const before = previous?.members[member];
+            if (before !== undefined && before !== address) pendingOf(member).add(before);
             members.push({ member, address, error: errorOf(error) });
           }
         }
+        const kept = Object.fromEntries(
+          [...leaving].filter(([, from]) => from.size > 0).map(([m, from]) => [m, [...from]]),
+        );
+        if (Object.keys(kept).length === 0) await kv.delete(NAMESPACE, leavingKey);
+        else await kv.set(NAMESPACE, leavingKey, kept as Json);
         // This node resolves the aliases too, whether or not a member is on it (D687).
         await kv.set(NAMESPACE, `roster/${teamId}`, roster as unknown as Json);
         const state = await stateOf(teamId);
@@ -583,6 +673,15 @@ export default definePlugin({
       ...TeamCommands["teams.join"],
       permissions: WRITE_PERMISSIONS,
       handler: (input, invocation) => join(input, invocation),
+    });
+
+    context.commands.register({
+      name: "teams.leave",
+      description:
+        "Takes a member of a team off this node once it moved to another: stops the agent the team put here and removes its definition (its generations and knowledge stay), and keeps the new roster. teams.up calls it on the node a member moved from",
+      ...TeamCommands["teams.leave"],
+      permissions: WRITE_PERMISSIONS,
+      handler: (input) => leave(input),
     });
 
     context.commands.register({

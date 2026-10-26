@@ -541,4 +541,87 @@ describe("teams across the mesh (A5)", () => {
     const after = (await b.kernel.commands.execute("projects.list", {})) as { path: string }[];
     expect(after.map((project) => project.path)).not.toContain(other);
   });
+
+  it("takes a moved member off its old node, at once or once that node is back (D1546)", async () => {
+    const network = createMemoryNetwork();
+    const spec = (node: string) => ({
+      teams: { workshop: { lead: "lead", agents: { lead, builder: { ...builder, node } } } },
+    });
+    const a = await meshNode(network, "a", { "jhin.teams": spec("b") });
+    /** A member node that starts again on its own storage and config files. */
+    const restartable = (id: string) => {
+      const layers: Record<string, Record<string, unknown>> = {
+        node: { "jhin.threads": { defaultAgent: FAKE } },
+      };
+      const storage = memoryStoragePlugin();
+      return async () => {
+        const base = nodePlugins(id, layers);
+        const started = await startMeshNode(network, id, {
+          config: layers,
+          plugins: base.plugins,
+          storage,
+        });
+        base.setKernel(started.kernel);
+        stops.push(() => started.stop());
+        await started.join(a);
+        return started;
+      };
+    };
+    const startC = restartable("c");
+    const b = await restartable("b")();
+    let c = await startC();
+    await a.kernel.commands.execute("teams.up", { teamId: "workshop" });
+    const builderOn = (node: typeof b) =>
+      node.kernel.commands.execute("agents.get", { agentId: "workshop-builder" });
+    expect(await builderOn(b)).toMatchObject({ kind: "defined" });
+    const moveTo = async (node: string) => {
+      a.kernel.config.setLayer("node", {
+        "jhin.threads": { defaultAgent: FAKE },
+        "jhin.teams": spec(node),
+      });
+      const up = (await a.kernel.commands.execute("teams.up", { teamId: "workshop" })) as Up;
+      return up.members[1] as Up["members"][number] & {
+        left?: string[];
+        leaveErrors?: { address: string; code: string }[];
+      };
+    };
+
+    // To c: defined there, gone from b, whose aliases follow it.
+    expect(await moveTo("c")).toMatchObject({
+      address: "jhin://c/agents/workshop-builder",
+      result: "defined",
+      left: ["jhin://b/agents/workshop-builder"],
+    });
+    await expect(builderOn(b)).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+    expect(
+      await b.kernel.commands.execute("teams.resolve", { alias: "builder@workshop" }),
+    ).toMatchObject({ address: "jhin://c/agents/workshop-builder" });
+
+    // On to a, then back to b, while c is away: the leave from c waits, a's does not.
+    await c.stop();
+    expect(await moveTo("a")).toMatchObject({
+      address: "jhin://a/agents/workshop-builder",
+      leaveErrors: [
+        expect.objectContaining({
+          address: "jhin://c/agents/workshop-builder",
+          code: "NODE_UNREACHABLE",
+        }),
+      ],
+    });
+    const toB = await moveTo("b");
+    expect(toB).toMatchObject({
+      address: "jhin://b/agents/workshop-builder",
+      left: ["jhin://a/agents/workshop-builder"],
+      leaveErrors: [expect.objectContaining({ address: "jhin://c/agents/workshop-builder" })],
+    });
+    expect(await builderOn(b)).toMatchObject({ kind: "defined" });
+    await expect(builderOn(a)).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+
+    // c is back on its data: the next up takes the member off it, once.
+    c = await startC();
+    expect(await builderOn(c)).toMatchObject({ kind: "defined" });
+    expect(await moveTo("b")).toMatchObject({ left: ["jhin://c/agents/workshop-builder"] });
+    await expect(builderOn(c)).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+    expect(await moveTo("b")).not.toHaveProperty("left");
+  });
 });

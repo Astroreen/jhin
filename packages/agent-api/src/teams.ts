@@ -256,6 +256,10 @@ export const TeamCommands = {
           address: z.string(),
           ...JoinResult.partial().shape,
           error: MemberError.optional(),
+          /** The addresses it had on the nodes it moved from, once its agent left there (D1546). */
+          left: z.array(z.string()).optional(),
+          /** Why it could not leave those nodes yet: the next `teams.up` tries again. */
+          leaveErrors: z.array(MemberError.extend({ address: z.string() })).optional(),
         }),
       ),
     }),
@@ -283,6 +287,18 @@ export const TeamCommands = {
       files: z.array(TeamFile).default([]),
     }),
     output: JoinResult.extend({ address: z.string() }),
+  },
+  "teams.leave": {
+    input: z.object({
+      /** The roster as it is now, the member on its new node. */
+      roster: TeamRoster,
+      member: MemberId,
+    }),
+    output: z.object({
+      /** False when this node holds no agent the team put here for the member. */
+      left: z.boolean(),
+      stoppedAt: z.string().optional(),
+    }),
   },
   "teams.resolve": {
     input: z.object({ alias: z.string().min(1).meta({ description: "`<member>@<team>`" }) }),
