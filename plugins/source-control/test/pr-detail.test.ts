@@ -172,6 +172,48 @@ describe("git.pr.action (D1451)", () => {
     expect(gh.calls()).toContain("pr close https://github.com/other/repo/pull/9");
   });
 
+  it("answers git.pr.detail and runs git.pr.action on GitLab, through the commands", async () => {
+    const glab = fakeCli("glab");
+    // Answers are tried newest first, by prefix: the project's own goes in first.
+    glab.answer("api --hostname gitlab.com projects/acme%2Fdemo", {
+      merge_method: "merge",
+      squash_option: "default_off",
+    });
+    const mr = "api --hostname gitlab.com projects/acme%2Fdemo/merge_requests/5";
+    glab.answer(mr, {
+      iid: 5,
+      title: "Add a",
+      web_url: "https://gitlab.com/acme/demo/-/merge_requests/5",
+      state: "opened",
+      draft: true,
+      source_branch: "feature",
+      target_branch: "main",
+      head_pipeline: { status: "failed", web_url: "https://gitlab.com/acme/demo/-/pipelines/3" },
+    });
+    glab.answer(`${mr}/notes`, []);
+    glab.answer("api --hostname gitlab.com user", { username: "me" });
+    glab.answer("mr update 5", {});
+    const sc = await node();
+    const projectId = await sc.project(repositoryAt("git@gitlab.com:acme/demo.git"));
+    const at = "https://gitlab.com/acme/demo/-/merge_requests/5";
+    const detail = await sc.client.call<PullRequestDetail>("git.pr.detail", { projectId, url: at });
+    expect(detail).toMatchObject({
+      pullRequest: { number: 5, isDraft: true },
+      checks: [
+        {
+          name: "Pipeline",
+          status: "failure",
+          description: null,
+          url: "https://gitlab.com/acme/demo/-/pipelines/3",
+        },
+      ],
+      mergeMethods: ["merge", "squash"],
+      actions: ["merge", "ready", "close", "reopen"],
+    });
+    await sc.client.call("git.pr.action", { projectId, url: at, action: "ready" });
+    expect(glab.calls()).toContain("mr update 5 --repo https://gitlab.com/acme/demo --ready");
+  });
+
   it("refuses an action the forge lacks, with T3's words", async () => {
     const sc = await node({ bitbucketAccessToken: "t" });
     const projectId = await sc.project(repositoryAt("git@bitbucket.org:acme/demo.git"));

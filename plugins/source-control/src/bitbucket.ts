@@ -418,7 +418,7 @@ export function bitbucketForge(
     mergeMethods: () => Promise.resolve(["merge", "squash", "rebase"]),
     // T3's `…/merge` with its strategy, and `…/decline` (D1451).
     act: async (url, action, method) => {
-      const { repository = site.repository, number } = numberedReference(url, forge);
+      const { repository = site.repository, number } = numberedReference(url, forge, 2, site.host);
       const path = `${repo(repository)}/pullrequests/${number}`;
       if (action === "merge") {
         await call(`${path}/merge`, {

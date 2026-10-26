@@ -346,7 +346,7 @@ export function forgejoForge(teaPath: () => string, site: ForgeSite, viewers: Vi
     actions: ["merge", "close", "reopen"],
     // T3's Forgejo merge capabilities: the repository's `allow_*` flags (D1450).
     mergeMethods: async (url) => {
-      const { repository = site.repository } = numberedReference(url, forge);
+      const { repository = site.repository } = numberedReference(url, forge, 2, site.host);
       const raw = ((await tea(`/repos/${repository}`)) ?? {}) as Raw;
       return [
         ...(raw["allow_merge_commits"] !== false ? (["merge"] as const) : []),
@@ -356,7 +356,7 @@ export function forgejoForge(teaPath: () => string, site: ForgeSite, viewers: Vi
     },
     // T3's `POST pulls/<n>/merge` and `PATCH pulls/<n>` (D1451).
     act: async (url, action, method) => {
-      const { repository = site.repository, number } = numberedReference(url, forge);
+      const { repository = site.repository, number } = numberedReference(url, forge, 2, site.host);
       const path = `/repos/${repository}/pulls/${number}`;
       if (action === "merge") {
         await tea(`${path}/merge`, { method: "POST", body: { Do: method }, empty: true });

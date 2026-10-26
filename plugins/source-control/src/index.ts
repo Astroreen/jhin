@@ -3223,15 +3223,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           forge.at(url),
           forge.checks !== undefined
             ? forge.checks(url)
-            : (forge.watch?.(url) ?? Promise.resolve(undefined)).then((watched) =>
-                (watched?.checks ?? []).map((check) => ({
-                  name: check.name,
-                  status: check.status,
-                  description: null,
-                  url: check.url ?? null,
-                  ...(check.required === undefined ? {} : { required: check.required }),
-                })),
-              ),
+            : // A watch read that fails leaves the checks unknown, as a failed merge-methods read.
+              (forge.watch?.(url) ?? Promise.resolve(undefined))
+                .catch(() => undefined)
+                .then((watched) =>
+                  (watched?.checks ?? []).map((check) => ({
+                    name: check.name,
+                    status: check.status,
+                    description: null,
+                    url: check.url ?? null,
+                    ...(check.required === undefined ? {} : { required: check.required }),
+                  })),
+                ),
           // Without them only Merge is missing; the rest of the detail stands.
           forge.mergeMethods(url).catch((): PullRequestMergeMethod[] => []),
         ]);
