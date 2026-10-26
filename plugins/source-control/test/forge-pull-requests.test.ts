@@ -189,6 +189,31 @@ describe("jhin.source-control: Bitbucket listed, watched and resolved (D1441–D
     );
   });
 
+  it("follows no redirect, so the token stays with the API", async () => {
+    const seen: (string | undefined)[] = [];
+    const elsewhere = Http.createServer((request, response) => {
+      seen.push(request.headers.authorization);
+      response.end("{}");
+    });
+    await new Promise<void>((resolve) => elsewhere.listen(0, "127.0.0.1", resolve));
+    servers.push({ close: () => new Promise((resolve) => elsewhere.close(resolve)) });
+    const { port } = elsewhere.address() as { port: number };
+    const redirecting = Http.createServer((_request, response) => {
+      response.statusCode = 302;
+      response.setHeader("location", `http://127.0.0.1:${port}/steal`);
+      response.end();
+    });
+    await new Promise<void>((resolve) => redirecting.listen(0, "127.0.0.1", resolve));
+    servers.push({ close: () => new Promise((resolve) => redirecting.close(resolve)) });
+    const base = `http://127.0.0.1:${(redirecting.address() as { port: number }).port}/2.0`;
+    const sc = await node({ bitbucketAccessToken: "t", bitbucketApiBaseUrl: base });
+    const projectId = await sc.project(repositoryAt("git@bitbucket.org:acme/demo.git"));
+    await expect(sc.client.call("git.pr.search", { projectId })).rejects.toThrow(
+      "Bitbucket answered a redirect (302)",
+    );
+    expect(seen).toEqual([]);
+  });
+
   it("resolves a number or a URL, and refuses a branch with T3's words", async () => {
     const server = await start();
     server.answer("/repositories/acme/demo/pullrequests/8", bitbucketPr());

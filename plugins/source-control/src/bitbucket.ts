@@ -187,11 +187,19 @@ export function bitbucketForge(
         },
         ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
         signal: AbortSignal.timeout(30_000),
+        // A redirect would carry the token along: it is refused, not followed.
+        redirect: "manual",
       });
     } catch (error) {
       throw new ForgeUnavailable(
         "failed",
         `Bitbucket could not be reached: ${(error as Error).message}`,
+      );
+    }
+    if (response.status >= 300 && response.status < 400) {
+      throw new ForgeUnavailable(
+        "failed",
+        `Bitbucket answered a redirect (${response.status}); the node's token is not sent on`,
       );
     }
     if (response.status === 403) {
