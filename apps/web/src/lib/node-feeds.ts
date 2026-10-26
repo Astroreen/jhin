@@ -295,7 +295,7 @@ export function createNodeFeeds<S>(
           // What arrived while the stream was down is told now, not lost.
           if (again) {
             try {
-              source.reread?.(connection, shown, state);
+              source.reread?.(feeds.get(id)?.node ?? connection, shown, state);
             } catch (error) {
               log.warn("a feed's listener failed", { stream: source.stream, error: String(error) });
             }
@@ -338,7 +338,8 @@ export function createNodeFeeds<S>(
           if (after !== before) set(id, (feed) => ({ ...feed, value: after }));
           // What hears the events (a notification) never breaks the feed.
           try {
-            source.seen?.(connection, event, before, after);
+            // The node as it is now: a label changed since the feed started counts.
+            source.seen?.(feeds.get(id)?.node ?? connection, event, before, after);
           } catch (error) {
             log.warn("a feed's listener failed", {
               stream: source.stream,

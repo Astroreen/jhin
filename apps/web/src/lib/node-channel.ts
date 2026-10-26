@@ -44,7 +44,21 @@ function memberChannel(client: RpcClient, member: string, relayless: string): No
       let disposed = false;
       void client.call<{ stream: string }>("mesh.relay", { node: member, stream }).then(
         ({ stream: relayed }) => {
-          if (!disposed) inner = client.subscribe(relayed, options, onEvent);
+          if (disposed) return;
+          try {
+            inner = client.subscribe(relayed, options, onEvent);
+          } catch (error) {
+            // A client that throws instead of subscribing fails the subscription.
+            options.onError?.(
+              error instanceof RpcError
+                ? error
+                : new RpcError({
+                    code: ErrorCodes.SERVER_ERROR,
+                    message: String(error),
+                    data: { code: "INTERNAL" },
+                  }),
+            );
+          }
         },
         (error: unknown) => {
           if (disposed) return;
