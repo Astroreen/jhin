@@ -36,6 +36,7 @@ import {
   type Toasts,
 } from "@jhin/ui";
 import { PanelRightIcon, TerminalIcon, TerminalSquareIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { useCatalog, useConfig, useExternal, useShortcutLabels } from "../../lib/hooks.ts";
@@ -652,9 +653,25 @@ export const terminalPlugin = builtin(
       }
 
       /** The right panel's `terminal` surface (t3-parity.md D1424). */
+      /**
+       * A `terminal` surface kept from before D1425, with no terminal of its own: it gives way to
+       * a surface that has one, as "Terminal" in "Add panel surface" starts.
+       */
+      function LegacyTerminalSurface({ place }: { place: RightPanelSurfaceProps["place"] }) {
+        const replaced = useRef(false);
+        useEffect(() => {
+          if (replaced.current || place.threadId === undefined || rightPanel === undefined) return;
+          replaced.current = true;
+          addTerminalSurface(place.target, place.threadId);
+          void rightPanel.close(place, TERMINAL_PANEL);
+        }, []);
+        return null;
+      }
+
       function TerminalSurface({ place, surface }: RightPanelSurfaceProps) {
         const catalog = useCatalog(threads, place.target);
-        if (place.threadId === undefined || surface.resource === undefined) return null;
+        if (surface.resource === undefined) return <LegacyTerminalSurface place={place} />;
+        if (place.threadId === undefined) return null;
         const thread = catalog?.threads.find((item) => item.id === place.threadId);
         const project = catalog?.projects.find((item) => item.id === thread?.projectId);
         if (project === undefined) return null;
@@ -824,6 +841,8 @@ export const terminalPlugin = builtin(
               const feed = terminals.of(place.target);
               const sessions = useExternal(feed, feed.sessions);
               const id = state.activeTerminalId || surface.resource || "";
+              // A surface from before D1425 (LegacyTerminalSurface) until it gives way.
+              if (surface.resource === undefined) return { title: "Terminal" };
               return {
                 title: terminalSessionLabel(
                   id,

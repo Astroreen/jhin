@@ -240,11 +240,13 @@ export const devicePanelPlugin = builtin(
           if (seen === undefined || !open.some((id) => !seen.has(id))) return;
           const route = navigation.current();
           if (rightPanel !== undefined) {
-            // T3's automatic `openDevice`: the device's own surface, unless the user closed it.
-            const fresh = sessions.findLast((session) => !seen.has(session.deviceId))!;
-            const resource = deviceResource(fresh);
-            if (dismissed.has(dismissedKeyOf(target.node, thread.id), resource)) return;
-            if (route.thread === thread.id) {
+            // T3's automatic `openDevice`: each new device's own surface, unless the user closed
+            // it; the last one shows.
+            if (route.thread !== thread.id) return;
+            for (const session of sessions) {
+              if (seen.has(session.deviceId)) continue;
+              const resource = deviceResource(session);
+              if (dismissed.has(dismissedKeyOf(target.node, thread.id), resource)) continue;
               rightPanel.open(
                 { target: { node: target.node }, threadId: thread.id },
                 { kind: DEVICE_PANEL, resource },

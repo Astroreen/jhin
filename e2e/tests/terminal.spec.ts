@@ -190,7 +190,7 @@ test("D472, D473, D1425: the selection menu adds to the chat, and the right pane
   await expect(panel.getByRole("group", { name: "Terminal 3" })).toBeVisible();
 
   // Closing its tab closes its terminals, after T3's question.
-  await right.getByRole("button", { name: "Close Terminal 3" }).click();
+  await right.getByRole("button", { name: "Close Terminal 3", exact: true }).click();
   await expect(confirm).toContainText("Close 2 terminals?");
   await expect(confirm).toContainText('"Terminal 2", "Terminal 3"');
   await confirm.getByRole("button", { name: "Close" }).click();
@@ -202,6 +202,36 @@ test("D472, D473, D1425: the selection menu adds to the chat, and the right pane
     .client()
     .call<{ terminals: { terminalId: string }[] }>("terminals.list", { threadId });
   expect(terminals.map((item) => item.terminalId)).toEqual(["term-1"]);
+});
+
+test("D1425: a terminal surface kept from before D1425 gives way to one with a terminal of its own", async ({
+  page,
+}) => {
+  await startThread(page, "legacy terminal");
+  // The panel's tabs as #299 kept them: one `terminal` surface with no terminal of its own.
+  const hash = new URLSearchParams(new URL(page.url()).hash.slice(1));
+  const place = `${hash.get("n")}|t:${hash.get("t")}`;
+  await page.evaluate((place) => {
+    localStorage.setItem(
+      "jhin:right-panel:v1",
+      JSON.stringify({
+        [place]: { surfaces: [{ kind: "terminal" }], activeId: "terminal", open: true },
+      }),
+    );
+  }, place);
+  hash.set("p", "terminal");
+  hash.delete("s");
+  // A fresh load reads them back.
+  await page.goto("about:blank");
+  await page.goto(`${node.ui}#${hash.toString()}`);
+  const right = page.getByRole("complementary", { name: "Right panel" });
+  await expect(right.getByRole("tab")).toHaveCount(1);
+  await expect(right.getByRole("tab", { name: "Terminal 1" })).toBeVisible();
+  const panel = page.locator('[data-terminal-owner="right-panel"]');
+  await expect(
+    panel.getByRole("group", { name: "Terminal 1" }).locator(".xterm-rows"),
+  ).toContainText("$");
+  expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("s")).toBe("term-1");
 });
 
 test("D965: a path in the output opens in the editor, or says why not", async ({ page }) => {

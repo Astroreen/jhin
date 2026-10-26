@@ -992,12 +992,16 @@ range, at T3 Code `eb7b35ac`: `rightPanelStore.ts` (`openDevice`, the
   `openDevice` replaces its placeholder, and an already open device's
   surface shows instead. A device's tab is its name with T3's platform icon
   (Apple, Android); its body is D408's screen with "Power off device" and
-  "Close device panel". A device an agent opens for the thread adds and
-  shows its surface (`jhin.device.reveal`), unless the user closed that
+  "Close device panel". Each device an agent opens for the thread on
+  screen adds and shows its surface (`jhin.device.reveal`; the last one
+  opened shows; a thread off screen gets none, as the panel opens surfaces
+  through the route), unless the user closed that
   device's surface before: T3's dismissed devices, kept per thread on this
   device, so an agent cannot bring back what the user put away; opening it
-  by hand again forgets that. Closing a device's surface leaves the device
-  running, as T3's does. T3's renaming of a device's tab and its tooltip
+  by hand again (from the `devices` list) forgets that. A device's surface
+  whose device is gone shows the list, as T3's `DevicePanel` does, and a
+  device picked there opens beside it. Closing a device's surface leaves
+  the device running, as T3's does. T3's renaming of a device's tab and its tooltip
   (host · version) wait (Deferred).
 
 ### Proof

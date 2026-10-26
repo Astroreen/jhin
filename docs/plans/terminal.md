@@ -516,7 +516,12 @@ its split), `components/PersistentThreadTerminals.tsx`
   indicator opens the surface of a running terminal that lives in the
   panel. `terminal.panel.toggle` shows the thread's first terminal
   surface (a new one when it has none) or closes the panel on one. On a
-  client without `ui.right-panel@1` D474 stays as it was.
+  client without `ui.right-panel@1` D474 stays as it was. A `terminal`
+  surface kept on the device from before D1425 (no resource: D1424's one
+  layout) gives way, when it shows, to a surface with a terminal of its
+  own. The kind id `terminal` and the route's `panel=terminal` stay as they
+  were, so no id is renamed and `deprecations.json` needs no entry; only
+  the surface gained a resource.
 
 ## Deferred
 
