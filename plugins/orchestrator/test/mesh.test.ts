@@ -511,10 +511,23 @@ describe("a node that goes away mid-mission (D1547–D1551)", () => {
         answer: "Dry it first",
       }),
     ).rejects.toMatchObject({ code: "SENDER_AWAY" });
+    await expect(
+      a.client.call("agents.inbox.dismiss", { messageId: note.message.messageId }),
+    ).rejects.toMatchObject({ code: "SENDER_AWAY" });
+    // A lead that saw walls away and waits for b is answered when b is back, not before.
+    const now = await a.client.call<{ head: number }>("missions.next", {
+      missionId: mission.id,
+    });
+    const waiting = a.client.call<{ changed: boolean }>("missions.wait", {
+      missionId: mission.id,
+      after: now.head,
+      away: [walls.id],
+    });
 
     // b comes back on its data: the warning clears itself, and the answer goes.
     b = await meshNode(network, "b", b.restart);
     await b.node.join(a.node);
+    expect(await waiting).toMatchObject({ changed: true });
     const cleared = await healthFeed.until("health.warning.cleared");
     expect(payloadOf(cleared)).toMatchObject({
       warningId: payloadOf(raised).warning.warningId,
