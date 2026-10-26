@@ -228,11 +228,11 @@ What the node does today (2026-10-24, `08eeb571`):
 
 ## Workstreams
 
-| Id  | Scope                                                  | Decisions   |
-| --- | ------------------------------------------------------ | ----------- |
-| P1  | HTTP compression and validators, WebSocket compression | D1582–D1587 |
-| P2  | the history cache: threads, the sidebar, its setting   | D1588–D1594 |
-| P3  | chunks for routes off the first screen, idle prefetch  | D1595–D1596 |
+| Id  | Scope                                                  | Decisions                                      |
+| --- | ------------------------------------------------------ | ---------------------------------------------- |
+| P1  | HTTP compression and validators, WebSocket compression | D1582–D1587, D1597, D1598; landed (#303, #309) |
+| P2  | the history cache: threads, the sidebar, its setting   | D1588–D1594                                    |
+| P3  | chunks for routes off the first screen, idle prefetch  | D1595–D1596                                    |
 
 D1597–D1620 are free for decisions the workstreams find they need.
 
