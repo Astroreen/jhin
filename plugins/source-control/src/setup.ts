@@ -252,7 +252,7 @@ export function wrapCommandForCompletion(
  * The script's variables, set inside its block: a terminal opened with an
  * `env` of its own would refuse the drawer's later open of it (`TERMINAL_ENV_MISMATCH`).
  */
-export function exportsFor(shell: CompletionShell, env: Readonly<Record<string, string>>): string {
+function exportsFor(shell: CompletionShell, env: Readonly<Record<string, string>>): string {
   return Object.entries(env)
     .map(([name, value]) => {
       switch (shell) {
