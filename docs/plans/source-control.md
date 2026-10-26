@@ -1927,11 +1927,9 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
   minutes), with no way to stop it from the client. T3 has none either (at
   D53 and at `v0.1.2-nightly.20261021.3457`), so W21 leaves it until T3 does.
-- What D1284–D1286 leave of T3's review comments: a comment's chip opens
-  no popover with its lines and text (T3's `ReviewCommentChip` details),
-  several comments on one line show apart rather than as T3's grouped
-  annotation, and comments on a file's own contents (T3's file panel,
-  `buildFileReviewComment`) wait for that panel.
+- What D1284–D1286 leave of T3's review comments (the chip's popover and the
+  grouped annotation are D1458, D1459): comments on a file's own contents
+  (T3's file panel, `buildFileReviewComment`) wait for that panel (W40).
 - What W5 leaves of T3's diff panel: its in-app file preview (at D53 a click
   on a file's name opens T3's file panel; Jhin has none, so it opens the
   editor, D286), loading the patches of a truncated diff file by file

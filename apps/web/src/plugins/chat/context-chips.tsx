@@ -1,6 +1,8 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac:
 // apps/web/src/components/contextChipParts.tsx (PullRequestChip, UnresolvedChip),
 // apps/web/src/components/PullRequestContextDetails.tsx, apps/web/src/components/ThreadContextChip.tsx,
+// apps/web/src/components/composerContextPresentation.tsx (ComposerReviewCommentDetails: a review
+// comment's popover, source-control.md D1458),
 // apps/web/src/components/chat/TerminalContextInlineChip.tsx and the context chips of
 // apps/web/src/components/composerContextPresentation.tsx and chat/MessagesTimeline.tsx.
 //
@@ -35,6 +37,7 @@ import {
 } from "lucide-react";
 
 import { pullRequestDisplayState, pullRequestKindLabel } from "../../lib/composer-context.ts";
+import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { resolvePullRequestState } from "../../lib/pull-request.ts";
 
 /** What a record's chip can do where it shows; without them it only shows. */
@@ -206,6 +209,55 @@ function TerminalContextChip(props: { readonly record: TerminalContextRecord }) 
   );
 }
 
+/**
+ * The comment's text as markdown. Loaded on demand: the markdown module renders these chips
+ * itself, so a static import would make the two modules import each other.
+ */
+const CommentMarkdown = lazyChunk(
+  () => import("./markdown.tsx").then((module) => module.ChatMarkdown),
+  {
+    loading: (props) => <p className="whitespace-pre-wrap text-sm">{props.text}</p>,
+    failed: (props) => <p className="whitespace-pre-wrap text-sm">{props.text}</p>,
+  },
+);
+
+/** A comment's patch, highlighted as T3's ReadOnlySourcePreview shows it: a chunk of its own. */
+const PatchPreview = lazyChunk(
+  () => import("./attachment-source.tsx").then((module) => module.ReadOnlySourcePreview),
+  {
+    loading: () => null,
+    failed: (props) => (
+      <pre className="min-h-0 flex-1 overflow-auto p-2 font-mono text-xs whitespace-pre">
+        {props.text}
+      </pre>
+    ),
+  },
+);
+
+/**
+ * T3's ComposerReviewCommentDetails: the file, "section · range", the comment's text and its
+ * patch.
+ */
+function ReviewCommentDetails(props: { readonly comment: ReviewCommentContextRecord }) {
+  const { comment } = props;
+  return (
+    <div className="space-y-2 overflow-hidden rounded-lg border border-border/70 bg-background/70 p-3">
+      <div className="space-y-1">
+        <div className="truncate text-xs font-medium text-foreground">{comment.filePath}</div>
+        <div className="text-2xs text-secondary-label">
+          {comment.sectionTitle} · {comment.rangeLabel}
+        </div>
+      </div>
+      {comment.text.trim() ? <CommentMarkdown text={comment.text.trim()} /> : null}
+      {comment.diff.trim() ? (
+        <div className="flex h-64 min-h-0 flex-col overflow-hidden rounded-md border border-border">
+          <PatchPreview name="review.diff" text={comment.diff} wordWrap={false} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** T3's UnresolvedChip: a reference whose record is gone. */
 function UnresolvedChip(props: { readonly label: string; readonly tooltip: string }) {
   return (
@@ -235,13 +287,14 @@ export function ContextRecordChip(props: {
       return <PullRequestChip actions={props.actions} record={comment} />;
     }
     return (
-      <ContextChipShell
-        aria-label={`Review comment, ${comment.label}`}
+      <ContextChipPopover
+        accessibleLabel={`Review comment, ${comment.label}`}
         icon={comment.filePath.startsWith("PR #") ? <GitPullRequestIcon /> : <MessageCircleIcon />}
         kind="review-comment"
         label={comment.label}
-        tooltip={comment.text.trim() || undefined}
-      />
+      >
+        <ReviewCommentDetails comment={comment} />
+      </ContextChipPopover>
     );
   }
   if (record?.kind === "thread" && "threadId" in record) {
