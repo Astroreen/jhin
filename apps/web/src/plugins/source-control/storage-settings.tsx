@@ -13,7 +13,7 @@ import {
   type Toasts,
 } from "@jhin/ui";
 import { ChevronRightIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../lib/format.ts";
 import { useExternal } from "../../lib/hooks.ts";
@@ -110,18 +110,24 @@ export function CleanupSection(props: {
   const [open, setOpen] = useState(false);
   const ids = nodes.map((node) => node.id).join("\n");
 
+  /** The latest read of each node: an older answer that lands later is dropped. */
+  const reads = useRef(new Map<string, number>());
+  const mounted = useRef(true);
   const read = async (node: NodeConnection) => {
-    try {
-      const next = await node.client.call<NodeState>("git.worktree.cleanup.report", {});
-      setStates((current) => new Map(current).set(node.id, next));
-    } catch {
-      setStates((current) =>
-        new Map(current).set(node.id, { report: null, rulesOn: false, failed: true }),
-      );
-    }
+    const ticket = (reads.current.get(node.id) ?? 0) + 1;
+    reads.current.set(node.id, ticket);
+    const next = await node.client
+      .call<NodeState>("git.worktree.cleanup.report", {})
+      .catch((): NodeState => ({ report: null, rulesOn: false, failed: true }));
+    if (!mounted.current || reads.current.get(node.id) !== ticket) return;
+    setStates((current) => new Map(current).set(node.id, next));
   };
   useEffect(() => {
+    mounted.current = true;
     for (const node of nodes) void read(node);
+    return () => {
+      mounted.current = false;
+    };
   }, [ids]);
 
   const hasRules = nodes.some((node) => states.get(node.id)?.rulesOn === true);

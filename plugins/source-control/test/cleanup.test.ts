@@ -4,7 +4,12 @@ import * as Path from "node:path";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { judge, type CleanupCandidate, type WorktreeCleanupRules } from "../src/cleanup.ts";
+import {
+  judge,
+  orphanEntries,
+  type CleanupCandidate,
+  type WorktreeCleanupRules,
+} from "../src/cleanup.ts";
 import { createGit } from "../src/git.ts";
 import { memoryStoragePlugin } from "@jhin/testing";
 
@@ -276,6 +281,31 @@ describe("jhin.source-control: the last run and T3's orphan report (D1469, D1470
       report: swept,
       rulesOn: false,
     });
+  });
+});
+
+describe("T3's orphan report (D1470)", () => {
+  it("leaves out what a thread uses, a project's folder, and what is new; finds both layouts", async () => {
+    const root = Fs.realpathSync(temp("jhin-sc-orphans-"));
+    const old = Date.now() / 1000 - 7200;
+    const folder = (path: string, gitFile = false) => {
+      Fs.mkdirSync(path, { recursive: true });
+      if (gitFile) Fs.writeFileSync(Path.join(path, ".git"), "gitdir: /nowhere\n");
+      Fs.utimesSync(path, old, old);
+      return path;
+    };
+    const used = folder(Path.join(root, "acme", "used"), true);
+    const deleted = folder(Path.join(root, "acme", "deleted"), true);
+    const project = folder(Path.join(root, "acme", "project"));
+    const stale = folder(Path.join(root, "acme", "stale"), true);
+    const direct = folder(Path.join(root, "direct"), true);
+    Fs.mkdirSync(Path.join(root, "acme", "fresh"));
+    Fs.utimesSync(Path.join(root, "acme"), old, old);
+    const entries = await orphanEntries(root, new Set([used, deleted]), [project], Date.now());
+    expect(entries.map((entry) => entry.path).toSorted()).toEqual([stale, direct].toSorted());
+    expect(
+      await orphanEntries(root, new Set([used, deleted, stale, direct]), [project], Date.now()),
+    ).toEqual([]);
   });
 });
 

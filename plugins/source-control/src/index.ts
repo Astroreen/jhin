@@ -1630,7 +1630,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       // A record this version cannot read decides nothing, and is kept for one that can.
       if (!parsed.success) continue;
       const record = parsed.data;
-      referenced.add(record.path);
+      // Real paths, as the live worktrees' are (a worktrees directory behind a link).
+      referenced.add(await realPath(record.path));
       // Without its project's delete rule it decides nothing: kept for when it is on, not reported.
       if (!cleanupRulesOf(record.projectId).onDelete) continue;
       const project = projectPath.get(record.projectId);
@@ -1749,9 +1750,16 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       const projectRoots = await Promise.all([...projectPath.values()].map(realPath));
       entries.push(...(await orphanEntries(root, referenced, projectRoots, Date.now())));
     }
-    // T3's "Last run": kept, so a restart still shows it (D1469).
+    // T3's "Last run": kept, so a restart still shows it (D1469). A sweep cut short by the
+    // plugin stopping is no last run; one that could not be kept still answers.
     const finished = { ...report(), finishedAt: new Date().toISOString() };
-    await kv.set(NAMESPACE, LAST_REPORT_KEY, finished as unknown as Json);
+    if (!stopped) {
+      await kv
+        .set(NAMESPACE, LAST_REPORT_KEY, finished as unknown as Json)
+        .catch((error: unknown) =>
+          context.log.warn("could not keep the cleanup's report", { error: String(error) }),
+        );
+    }
     return finished;
   }
 
