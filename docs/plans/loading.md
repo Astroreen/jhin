@@ -57,7 +57,8 @@ What the node does today (2026-10-24, `08eeb571`):
   under the same type and 1 KiB rules. Server-sent events
   (`/client/events`) are never compressed: a compressor buffers, and an
   event must arrive when it is written.
-- **D1585. What is `no-cache` gets a validator.** `index.html`, client plugin
+- **D1585. What is `no-cache` gets a validator** (file tags amended by
+  D1598). `index.html`, client plugin
   files and `/client/config` carry an `etag` (a weak tag of size and
   modification time for files, a hash for JSON), and a request whose
   `if-none-match` matches gets `304` with no body. The tag names the
