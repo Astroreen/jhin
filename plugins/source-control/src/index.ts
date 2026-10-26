@@ -1493,6 +1493,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   });
   type DeletedWorktree = z.output<typeof DeletedWorktree>;
   const DELETED_PREFIX = "cleanup/deleted/";
+  /** How many orphaned folders a report lists (D1470). */
+  const MAX_ORPHANS = 200;
   /** The last sweep's report (D1469). */
   const LAST_REPORT_KEY = "cleanup/last-report";
 
@@ -1748,7 +1750,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (entries.some((entry) => entry.outcome === "removed")) await syncWorktrees();
     if (!stopped) {
       const projectRoots = await Promise.all([...projectPath.values()].map(realPath));
-      entries.push(...(await orphanEntries(root, referenced, projectRoots, Date.now())));
+      // The report is kept and sent whole: a crowded worktrees directory lists its first ones.
+      const orphans = await orphanEntries(root, referenced, projectRoots, Date.now());
+      entries.push(...orphans.slice(0, MAX_ORPHANS));
+      if (orphans.length > MAX_ORPHANS) {
+        context.log.info("listed the first orphaned worktree folders", {
+          listed: MAX_ORPHANS,
+          found: orphans.length,
+        });
+      }
     }
     // T3's "Last run": kept, so a restart still shows it (D1469). A sweep cut short by the
     // plugin stopping is no last run; one that could not be kept still answers.

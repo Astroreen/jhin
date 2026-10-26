@@ -120,7 +120,13 @@ export function CleanupSection(props: {
       .call<NodeState>("git.worktree.cleanup.report", {})
       .catch((): NodeState => ({ report: null, rulesOn: false, failed: true }));
     if (!mounted.current || reads.current.get(node.id) !== ticket) return;
-    setStates((current) => new Map(current).set(node.id, next));
+    // A read that failed keeps the report already shown: the cleanup still ran.
+    setStates((current) => {
+      const shown = current.get(node.id);
+      const kept =
+        next.failed === true && shown?.report != null ? { ...shown, failed: true } : next;
+      return new Map(current).set(node.id, kept);
+    });
   };
   useEffect(() => {
     mounted.current = true;
