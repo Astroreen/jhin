@@ -174,7 +174,8 @@ export interface HubProxyOptions {
   readonly verifier: AuthVerifier;
   readonly tickets: ReturnType<typeof createTickets>;
   /** The running hub's origin, or undefined when none runs (503, as T3 answers). */
-  readonly origin: () => string | undefined;
+  /** The hub of a host: `hostId` from the request's query, absent for the local one (D1498). */
+  readonly origin: (hostId: string | undefined) => string | undefined;
 }
 
 const bearer = (request: Http.IncomingMessage) => {
@@ -260,7 +261,7 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
     if (missingPermissions(caller.permissions, controlsDevice ? CONTROL : READ).length > 0) {
       return text(response, 403, "Forbidden");
     }
-    const origin = options.origin();
+    const origin = options.origin(url.searchParams.get("hostId") ?? undefined);
     if (origin === undefined) return text(response, 503, "Device hub is not running");
     const outgoing = Http.request(`${origin}${upstream(url)}`, {
       method: request.method,
@@ -384,7 +385,7 @@ export function serveHubProxy(options: HubProxyOptions): Disposable & {
       // Spent only once it is good for this socket.
       const ticket = url.searchParams.get(TICKET_PARAM);
       if (ticket !== null && ticket.trim() !== "") tickets.consume(ticket);
-      const origin = options.origin();
+      const origin = options.origin(url.searchParams.get("hostId") ?? undefined);
       if (origin === undefined) return refuse(socket, "503 Service Unavailable");
       if (socket.destroyed) return;
       const upstreamSocket = new WebSocket(`${origin.replace(/^http/, "ws")}${upstream(url)}`, {

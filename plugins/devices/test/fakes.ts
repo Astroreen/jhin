@@ -25,6 +25,18 @@ export interface FakeTools {
   adbInputs(): string[];
   /** The running fake hub's arguments, once one started. */
   hubArgs(): { args: string[]; pid: number } | undefined;
+  /** The hub's device actions a host over SSH asked for (`/api/devices/boot`, `/shutdown`). */
+  hubActions(): string[];
+  /**
+   * A fake `ssh` (D1494–D1496): runs the remote command here, with `remoteHome` as the host's
+   * home and these fakes on its PATH, forwards `-L` ports to this machine, and answers `-G`.
+   */
+  readonly ssh: string;
+  readonly remoteHome: string;
+  /** Makes every later connection fail as ssh does (exit 255). */
+  unreachable(): void;
+  /** The running tunnels' pids. */
+  tunnels(): number[];
 }
 
 const lines = (file: string) =>
@@ -69,6 +81,22 @@ const server = Http.createServer((request, response) => {
     response.writeHead(200, { "content-type": "multipart/x-mixed-replace; boundary=frame" });
     response.write("--frame\\r\\n", () => response.socket.destroy());
     return;
+  }
+  // The hub's device list and actions, as a host over SSH uses them (D1497).
+  if (url.pathname === "/api/devices" && request.method === "GET") {
+    response.writeHead(200, { "content-type": "application/json" });
+    return response.end(JSON.stringify({ simulators: [], emulators: [
+      { id: "emulator-5554", name: "Pixel_7_API_34", version: "14", platform: "android", booted: true, physical: false },
+    ] }));
+  }
+  if ((url.pathname === "/api/devices/boot" || url.pathname === "/api/devices/shutdown") && request.method === "POST") {
+    Fs.appendFileSync(${JSON.stringify(at("hub-actions.log"))}, url.pathname + "\\n");
+    response.writeHead(200, { "content-type": "application/json" });
+    return response.end(JSON.stringify({ ok: true, serial: "emulator-5556" }));
+  }
+  if (url.pathname === "/vendor/serve-emu/api/screenshot" && url.searchParams.has("device")) {
+    response.writeHead(200, { "content-type": "image/png" });
+    return response.end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   }
   if (url.pathname === "/vendor/serve-emu/api/accessibility") {
     response.writeHead(302, { location: "https://elsewhere.example/x" });
@@ -150,6 +178,10 @@ console.log(JSON.stringify({ success: true }));
 const Fs = require("node:fs");
 const Path = require("node:path");
 const args = process.argv.slice(2);
+if (args[0] === "--version") {
+  console.log("11.0.0");
+  process.exit(0);
+}
 const prefix = args[args.indexOf("--prefix") + 1];
 // \`npm ci\` of the plugin's lockfile (D1330): the tool is the manifest's one dependency.
 if (args[0] !== "ci" || !Fs.existsSync(Path.join(prefix, "package-lock.json"))) process.exit(2);
@@ -180,6 +212,7 @@ Fs.copyFileSync(source, target);
     adb,
     `#!/bin/sh
 case "$1" in
+  version) echo "Android Debug Bridge version 1.0.41"; exit 0;;
   devices) echo "List of devices attached"; echo "emulator-5554 device product:sdk model:sdk_gphone64 device:emu"; exit 0;;
   -s) shift 2;;
 esac
@@ -193,11 +226,68 @@ esac
     { mode: 0o755 },
   );
 
+  // ssh: the "host" is this machine, with a home of its own.
+  const remoteHome = Path.join(dir, "remote-home");
+  Fs.mkdirSync(remoteHome);
+  const ssh = at("ssh");
+  Fs.writeFileSync(
+    ssh,
+    `#!${process.execPath}
+const Fs = require("node:fs");
+const Net = require("node:net");
+const { spawn } = require("node:child_process");
+const args = process.argv.slice(2);
+if (Fs.existsSync(${JSON.stringify(at("ssh-unreachable"))})) {
+  process.stderr.write("ssh: connect to host mac.test port 22: Connection refused\\n");
+  process.exit(255);
+}
+if (args[0] === "-G") {
+  process.stdout.write("hostname mac.test\\nport 22\\n");
+  process.exit(0);
+}
+const forwards = [];
+let index = 0;
+let noCommand = false;
+while (index < args.length && args[index] !== "--") {
+  if (args[index] === "-N") noCommand = true;
+  if (args[index] === "-L") forwards.push(args[index + 1]);
+  index += ["-o", "-p", "-i", "-L"].includes(args[index]) ? 2 : 1;
+}
+const remote = args.slice(index + 2);
+if (noCommand) {
+  Fs.appendFileSync(${JSON.stringify(at("tunnels.log"))}, process.pid + "\\n");
+  for (const forward of forwards) {
+    const [, localPort, , remotePort] = forward.split(":");
+    Net.createServer((socket) => {
+      const upstream = Net.connect(Number(remotePort), "127.0.0.1");
+      socket.pipe(upstream).pipe(socket);
+      upstream.on("error", () => socket.destroy());
+      socket.on("error", () => upstream.destroy());
+    }).listen(Number(localPort), "127.0.0.1");
+  }
+  process.on("SIGTERM", () => process.exit(0));
+  return;
+}
+// ssh hands the joined words to the host's shell.
+const child = spawn("sh", ["-c", remote.join(" ")], {
+  stdio: "inherit",
+  env: { ...process.env, HOME: ${JSON.stringify(remoteHome)}, PATH: ${JSON.stringify(dir)} + ":" + process.env.PATH },
+});
+child.on("exit", (code) => process.exit(code ?? 1));
+`,
+    { mode: 0o755 },
+  );
+
   return {
     dir,
     home,
     npm,
     adb,
+    ssh,
+    remoteHome,
+    unreachable: () => Fs.writeFileSync(at("ssh-unreachable"), ""),
+    tunnels: () => lines(at("tunnels.log")).map(Number),
+    hubActions: () => lines(at("hub-actions.log")),
     failNpm: () => Fs.writeFileSync(at("npm-fails"), ""),
     killDaemon: () => Fs.writeFileSync(at("daemon-dead"), ""),
     reviveDaemon: () => Fs.rmSync(at("daemon-dead"), { force: true }),

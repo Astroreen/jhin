@@ -132,7 +132,8 @@ packaging configuration, signing and the release workflow), and the devices
 `apps/web/src/plugins/devices`: the device tools and their errors, the device
 setup wizard and its copy, the device actions and the tools panel, the device
 hub's toolchain, host, proxy and agent-device input, its stream client, flat
-stream view and control rail). The device hub (`expo-device-hub`) and
+stream view and control rail, the device hosts over SSH with their remote
+script and tunnels, and the settings' "Device hosts"). The device hub (`expo-device-hub`) and
 `agent-device` themselves are not part of Jhin: the node downloads them from
 npm on first use (`docs/plans/preview.md` D1206), under their own MIT licenses.
 `packages/qr-code/src/qr-code.ts` is Project Nayuki's QR Code generator (MIT,

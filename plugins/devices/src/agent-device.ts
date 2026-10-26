@@ -117,6 +117,54 @@ export async function runAgentDeviceInput(options: {
       { cause: String(cause) },
     );
   });
+  answer(result, options.input);
+}
+
+/**
+ * Runs one input through agent-device on an SSH host (preview.md D1499): its CLI there, with the
+ * host's Node.js, against the daemon of the host's state folder, with D1209's arguments.
+ */
+export async function runRemoteAgentDeviceInput(options: {
+  readonly run: (
+    command: string,
+    args: readonly string[],
+  ) => Promise<{ code: number; stdout: string; stderr: string }>;
+  readonly nodePath: string;
+  readonly entryPath: string;
+  readonly stateDir: string;
+  readonly threadId: string;
+  readonly device: DeviceSummary;
+  readonly input: DeviceInput;
+}): Promise<void> {
+  const { device } = options;
+  const result = await options.run(options.nodePath, [
+    options.entryPath,
+    ...agentDeviceTargetArgs(device),
+    "--state-dir",
+    options.stateDir,
+    "--session",
+    agentDeviceSession(options.threadId, device.hostId, device.id),
+    "--json",
+    "--",
+    ...agentDeviceArgs(options.input),
+  ]);
+  // ssh's own failure (127: no connection, no ssh) means the command never ran there.
+  if (result.code === 127 || result.code === 255) {
+    throw new DeviceError(
+      "DEVICE_UNAVAILABLE",
+      `Device agent-device ${describe(options.input)} failed: The device command could not run.`,
+      { cause: result.stderr.slice(0, 2000) },
+    );
+  }
+  answer(result, options.input);
+}
+
+/** What agent-device's exit and JSON answer mean (D1209). */
+function answer(
+  result: { code: number | null; stdout: string; stderr: string },
+  input: DeviceInput,
+): void {
+  const options = { input };
   if (result.code === 0) return;
   let reason = `The device command failed (exit code ${result.code ?? "unknown"}).`;
   let code: unknown;

@@ -261,6 +261,32 @@ function inputTextPieces(typed: string): string[] {
 const quoteForInput = (piece: string) =>
   `'${piece.replaceAll(" ", "%s").replaceAll("'", "'\\''")}'`;
 
+/**
+ * `adb shell input …` for an input (D1209): `tap`, `swipe`, `text` in pieces (`input text`
+ * reads `%s` as a space and types no newline) and `keyevent`; also run on SSH hosts (D1499).
+ */
+export function adbInputs(input: DeviceInput): string[][] {
+  switch (input.type) {
+    case "tap":
+      return [["tap", String(Math.round(input.x)), String(Math.round(input.y))]];
+    case "swipe":
+      return [
+        [
+          "swipe",
+          ...[input.from.x, input.from.y, input.to.x, input.to.y].map((value) =>
+            String(Math.round(value)),
+          ),
+        ],
+      ];
+    case "text":
+      return inputTextPieces(input.text).map((piece) =>
+        piece === "\n" ? ["keyevent", "66"] : ["text", quoteForInput(piece)],
+      );
+    case "button":
+      return [["keyevent", input.button === "home" ? "3" : input.button === "back" ? "4" : "187"]];
+  }
+}
+
 // --- The host -----------------------------------------------------------------------------
 
 /** The node's own simulators and emulators. */
@@ -318,30 +344,8 @@ export function createLocalHost(paths: () => ToolPaths) {
           `android devices are unavailable on host local: ${tools().androidReason ?? "adb was not found."}`,
         );
       }
-      const shell = (args: string[]) => run(adb, ["-s", device.id, "shell", "input", ...args]);
-      switch (input.type) {
-        case "tap":
-          await shell(["tap", String(Math.round(input.x)), String(Math.round(input.y))]);
-          return;
-        case "swipe":
-          await shell([
-            "swipe",
-            ...[input.from.x, input.from.y, input.to.x, input.to.y].map((value) =>
-              String(Math.round(value)),
-            ),
-          ]);
-          return;
-        case "text":
-          for (const piece of inputTextPieces(input.text)) {
-            await shell(piece === "\n" ? ["keyevent", "66"] : ["text", quoteForInput(piece)]);
-          }
-          return;
-        case "button":
-          await shell([
-            "keyevent",
-            input.button === "home" ? "3" : input.button === "back" ? "4" : "187",
-          ]);
-          return;
+      for (const args of adbInputs(input)) {
+        await run(adb, ["-s", device.id, "shell", "input", ...args]);
       }
     },
 
