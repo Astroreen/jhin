@@ -77,7 +77,12 @@ import {
 import { Chromium } from "./chromium.ts";
 import { createDesktopHost } from "./desktop-host.ts";
 import { createTabs, sessionKey } from "./tabs.ts";
-import { createLocalServerScanner, DiscoveredLocalServer, nodeScanHost } from "./local-servers.ts";
+import {
+  createLocalServerScanner,
+  DiscoveredLocalServer,
+  nodeScanHost,
+  normalizeConfiguredUrls,
+} from "./local-servers.ts";
 import { createHeadlessShell, headlessShellRelease } from "./headless-shell.ts";
 
 /** How long one local server scan answers every panel (D950). */
@@ -236,6 +241,8 @@ export default definePlugin({
     let lastScan:
       | {
           finishedAt?: number;
+          /** The configured URLs it probed, normalized: another set scans again. */
+          readonly configured: string;
           readonly result: Promise<{ servers: DiscoveredLocalServer[]; scannedAt: string }>;
         }
       | undefined;
@@ -243,16 +250,20 @@ export default definePlugin({
       name: "preview.servers.list",
       title: "List local servers",
       description:
-        "Lists the browser-ready servers on this node that its terminals started (a process of a terminal listens on a local port and answers HTTP or HTTPS with a page), by port, with the terminal each runs in",
-      input: z.object({}),
+        "Lists the browser-ready servers on this node that its terminals started (a process of a terminal listens on a local port and answers HTTP or HTTPS with a page), by port, with the terminal each runs in; configuredUrls (a project's script preview URLs) that answer are listed too, in place of a listener on their host and port",
+      input: z.object({
+        configuredUrls: z.array(z.string().max(2048)).max(50).optional(),
+      }),
       output: z.object({ servers: z.array(DiscoveredLocalServer), scannedAt: z.string() }),
       // It tells which threads' terminals run what: reading terminals is asked for too.
       permissions: [...read, "terminals.read"],
       // Every open panel asks every 3 s: one scan serves them all for a while (T3 scans once per tick).
-      handler: () => {
+      handler: ({ configuredUrls = [] }) => {
+        const configured = JSON.stringify(normalizeConfiguredUrls(configuredUrls).toSorted());
         // A scan still running is shared however long it takes; a finished one for 2 s.
         if (
           lastScan !== undefined &&
+          lastScan.configured === configured &&
           (lastScan.finishedAt === undefined || Date.now() - lastScan.finishedAt < SCAN_REUSE_MS)
         ) {
           return lastScan.result;
@@ -265,9 +276,12 @@ export default definePlugin({
           }
         }
         const result = scanner
-          .scan(owners)
+          .scan(owners, configuredUrls)
           .then((servers) => ({ servers, scannedAt: new Date().toISOString() }));
-        const scan: { finishedAt?: number; result: typeof result } = { result };
+        const scan: { finishedAt?: number; configured: string; result: typeof result } = {
+          configured,
+          result,
+        };
         lastScan = scan;
         void result.then(
           () => (scan.finishedAt = Date.now()),

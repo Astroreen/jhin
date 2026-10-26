@@ -213,6 +213,8 @@ export interface PanelServices {
   readonly focusUrlRequests: { current: number; subscribe(listener: () => void): () => void };
   /** Runs a command on the thread's node. */
   call<T>(method: string, params: unknown): Promise<T>;
+  /** The preview URLs of the thread's project scripts, probed with the port scan (D1480). */
+  readonly configuredUrls?: readonly string[];
   readonly shortcut: (command: string) => string | undefined;
   readonly onError: (title: string, error: unknown) => void;
   /** The tab of this panel's thread that floats over the chat (D1202). */
@@ -746,8 +748,11 @@ interface LocalServer {
 const LOCAL_SERVERS_SCAN_MS = 3_000;
 
 /** The node's local servers, rescanned while the empty state shows (T3's port discovery). */
-function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalServer[] {
+function useLocalServers(
+  services: Pick<PanelServices, "call" | "configuredUrls">,
+): readonly LocalServer[] {
   const [servers, setServers] = useState<readonly LocalServer[]>([]);
+  const configured = JSON.stringify(services.configuredUrls ?? []);
   // The latest services, so a new object each render does not restart the scans.
   const latest = useRef(services);
   latest.current = services;
@@ -761,24 +766,30 @@ function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalS
         document.addEventListener("visibilitychange", scan, { once: true });
         return;
       }
-      latest.current.call<{ servers: LocalServer[] }>("preview.servers.list", {}).then(
-        (result) => {
-          if (!live) return;
-          failures = 0;
-          setServers((current) =>
-            JSON.stringify(current) === JSON.stringify(result.servers) ? current : result.servers,
-          );
-          timer = setTimeout(scan, LOCAL_SERVERS_SCAN_MS);
-        },
-        // A failure (a reconnecting socket, a node without the command) waits longer each time.
-        () => {
-          if (!live) return;
-          // A node that does not answer offers no servers that may be gone.
-          setServers((current) => (current.length === 0 ? current : []));
-          failures += 1;
-          timer = setTimeout(scan, Math.min(LOCAL_SERVERS_SCAN_MS * 2 ** failures, 60_000));
-        },
-      );
+      const configuredUrls = latest.current.configuredUrls ?? [];
+      latest.current
+        .call<{ servers: LocalServer[] }>(
+          "preview.servers.list",
+          configuredUrls.length === 0 ? {} : { configuredUrls },
+        )
+        .then(
+          (result) => {
+            if (!live) return;
+            failures = 0;
+            setServers((current) =>
+              JSON.stringify(current) === JSON.stringify(result.servers) ? current : result.servers,
+            );
+            timer = setTimeout(scan, LOCAL_SERVERS_SCAN_MS);
+          },
+          // A failure (a reconnecting socket, a node without the command) waits longer each time.
+          () => {
+            if (!live) return;
+            // A node that does not answer offers no servers that may be gone.
+            setServers((current) => (current.length === 0 ? current : []));
+            failures += 1;
+            timer = setTimeout(scan, Math.min(LOCAL_SERVERS_SCAN_MS * 2 ** failures, 60_000));
+          },
+        );
     };
     scan();
     return () => {
@@ -786,13 +797,13 @@ function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalS
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", scan);
     };
-  }, []);
+  }, [configured]);
   return servers;
 }
 
 function EmptyState(props: {
   onOpen: (url: string) => void;
-  services: Pick<PanelServices, "call">;
+  services: Pick<PanelServices, "call" | "configuredUrls">;
 }) {
   const [recent, setRecent] = useState(readRecentUrls);
   const servers = useLocalServers(props.services);

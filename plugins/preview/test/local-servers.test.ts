@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   createLocalServerScanner,
+  normalizeConfiguredUrls,
   parseProcNetTcp,
   parseTasklistProcessName,
   type ScanHost,
@@ -213,6 +214,48 @@ describe("local server discovery (D950)", () => {
     clock.now = 15_000;
     await scanner.scan(owners);
     expect(probed).toHaveLength(2);
+  });
+
+  it("lists a script's configured URL that answers, in place of its listener (D1480)", async () => {
+    const { host } = fakeHost({
+      programs: { lsof: LSOF },
+      probes: {
+        "http://localhost:5173/app": html,
+        "http://localhost:5173": html,
+        "http://localhost:3000/": html,
+      },
+    });
+    const servers = await createLocalServerScanner(host).scan(new Map([[4242, TERMINAL]]), [
+      "http://0.0.0.0:5173/app",
+      "http://localhost:3000",
+      "http://localhost:9999",
+      "ftp://localhost:21",
+    ]);
+    expect(servers).toEqual([
+      {
+        host: "localhost",
+        port: 3000,
+        url: "http://localhost:3000/",
+        processName: null,
+        pid: null,
+        terminal: null,
+      },
+      {
+        host: "localhost",
+        port: 5173,
+        url: "http://localhost:5173/app",
+        processName: "node",
+        pid: 4242,
+        terminal: TERMINAL,
+      },
+    ]);
+    // A configured URL needs no terminal of its own.
+    expect(
+      await createLocalServerScanner(host).scan(new Map(), ["http://localhost:3000"]),
+    ).toMatchObject([{ port: 3000 }]);
+    expect(normalizeConfiguredUrls(["http://localhost:3000", "http://localhost:3000/"])).toEqual([
+      "http://localhost:3000/",
+    ]);
   });
 
   it("runs nothing while no terminal runs a process", async () => {

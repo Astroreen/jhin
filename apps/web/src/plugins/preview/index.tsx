@@ -829,12 +829,22 @@ export const previewPanelPlugin = builtin(
       };
 
       /** What the panel's chunk asks of the plugin, for a thread on `target`. */
+      /** The preview URLs of the thread's project scripts: T3's configured URLs (D1480). */
+      const configuredUrlsOf = (target: NodeTarget, threadId: string) => {
+        const catalog = threads.catalog(target);
+        const projectId = catalog.threads.find((thread) => thread.id === threadId)?.projectId;
+        return (
+          catalog.projects.find((project) => project.id === projectId)?.scripts ?? []
+        ).flatMap((script) => (script.previewUrl === undefined ? [] : [script.previewUrl]));
+      };
       const servicesFor = (
         target: NodeTarget,
         shortcut: (command: string) => string | undefined,
+        threadId: string,
       ): PanelServices => ({
         viewer,
         onAnnotation: (_tab, result) => void addAnnotation(result),
+        configuredUrls: configuredUrlsOf(target, threadId),
         activeTab: (panelKey) => active.get(panelKey),
         setActiveTab,
         focusUrlRequests,
@@ -883,7 +893,7 @@ export const previewPanelPlugin = builtin(
             </PanelPlaceholder>
           );
         }
-        const services = servicesFor(props.target, shortcut);
+        const services = servicesFor(props.target, shortcut, props.threadId);
         return (
           <BrowserPanel
             client={connection.client}
@@ -1088,7 +1098,7 @@ export const previewPanelPlugin = builtin(
               panelKey={key}
               profileId={draftProfiles.get(key)}
               resource={resource}
-              services={servicesFor(place.target, shortcut)}
+              services={servicesFor(place.target, shortcut, place.threadId)}
               tabs={tabs}
               threadId={place.threadId}
             />

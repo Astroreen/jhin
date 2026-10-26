@@ -336,50 +336,115 @@ export function createLocalServerScanner(host: ScanHost) {
     );
   }
 
-  return {
-    /** The browser-ready servers the given terminal processes listen on, by port. */
-    async scan(terminals: TerminalByProcessId): Promise<DiscoveredLocalServer[]> {
-      if (terminals.size === 0) return [];
-      if (host.platform === "win32") {
-        const netstat = (protocol: "tcp" | "tcpv6") =>
-          host.run("netstat.exe", ["-ano", "-p", protocol], {
-            timeout: WINDOWS_LISTENER_TIMEOUT_MS,
-            maxBuffer: WINDOWS_NETSTAT_MAX_OUTPUT_BYTES,
-          });
-        // One failed query leaves a partial snapshot: show nothing rather than half.
-        const listeners = await Promise.all([netstat("tcp"), netstat("tcpv6")]).then(
-          ([tcp4, tcp6]) =>
-            tcp4.exitCode !== 0 || tcp6.exitCode !== 0
-              ? []
-              : parseWindowsListenerOutput(`${tcp4.stdout}\n${tcp6.stdout}`, terminals),
-          () => [],
+  /**
+   * T3's `configuredUrls` (D1480): each a project script's preview URL, probed
+   * as a listener is, listed in place of a listener on its host and port.
+   */
+  async function withConfigured(
+    discovered: readonly DiscoveredLocalServer[],
+    configuredUrls: readonly string[],
+  ): Promise<DiscoveredLocalServer[]> {
+    const visible = new Map<string, DiscoveredLocalServer>();
+    const keyOf = (host: string, port: number) => `${host}:${port}`;
+    for (const raw of normalizeConfiguredUrls(configuredUrls)) {
+      const url = new URL(raw);
+      const port = Number(url.port) || (url.protocol === "https:" ? 443 : 80);
+      const key = keyOf(url.hostname, port);
+      if (visible.has(key) || !(await isWeb(raw, null))) continue;
+      const listener = discovered.find(
+        (server) => server.port === port && LOOPBACK_HOSTS.has(url.hostname),
+      );
+      visible.set(key, {
+        host: url.hostname,
+        port,
+        url: raw,
+        processName: listener?.processName ?? null,
+        pid: listener?.pid ?? null,
+        terminal: listener?.terminal ?? null,
+      });
+    }
+    for (const server of discovered) {
+      const key = keyOf(server.host, server.port);
+      const shadowed = [...visible.values()].some(
+        (configured) => configured.port === server.port && LOOPBACK_HOSTS.has(configured.host),
+      );
+      if (!visible.has(key) && !shadowed) visible.set(key, server);
+    }
+    return [...visible.values()].toSorted((left, right) => left.port - right.port);
+  }
+
+  async function scanTerminals(terminals: TerminalByProcessId): Promise<DiscoveredLocalServer[]> {
+    if (terminals.size === 0) return [];
+    if (host.platform === "win32") {
+      const netstat = (protocol: "tcp" | "tcpv6") =>
+        host.run("netstat.exe", ["-ano", "-p", protocol], {
+          timeout: WINDOWS_LISTENER_TIMEOUT_MS,
+          maxBuffer: WINDOWS_NETSTAT_MAX_OUTPUT_BYTES,
+        });
+      // One failed query leaves a partial snapshot: show nothing rather than half.
+      const listeners = await Promise.all([netstat("tcp"), netstat("tcpv6")]).then(
+        ([tcp4, tcp6]) =>
+          tcp4.exitCode !== 0 || tcp6.exitCode !== 0
+            ? []
+            : parseWindowsListenerOutput(`${tcp4.stdout}\n${tcp6.stdout}`, terminals),
+        () => [],
+      );
+      return withWindowsProcessNames(await probeWebServers(listeners));
+    }
+    if (!lsofMissing) {
+      const listeners = await host
+        .run("lsof", ["-iTCP", "-sTCP:LISTEN", "-P", "-n", "-F", "pcn"], {
+          timeout: LSOF_TIMEOUT_MS,
+          // Partial output could hide another app's listener on an owned port.
+          maxBuffer: 1024 * 1024,
+        })
+        .then(
+          // lsof exits 1 after any warning (an unreadable mount) with its output whole (T3).
+          // A failed run that printed nothing (no permission, a broken lsof) tells nothing: /proc then.
+          (result) =>
+            result.exitCode !== 0 && result.stdout.trim() === ""
+              ? null
+              : parseLsofOutput(result.stdout, terminals),
+          (error: unknown) => {
+            if ((error as { code?: unknown }).code === "ENOENT") lsofMissing = true;
+            return null;
+          },
         );
-        return withWindowsProcessNames(await probeWebServers(listeners));
-      }
-      if (!lsofMissing) {
-        const listeners = await host
-          .run("lsof", ["-iTCP", "-sTCP:LISTEN", "-P", "-n", "-F", "pcn"], {
-            timeout: LSOF_TIMEOUT_MS,
-            // Partial output could hide another app's listener on an owned port.
-            maxBuffer: 1024 * 1024,
-          })
-          .then(
-            // lsof exits 1 after any warning (an unreadable mount) with its output whole (T3).
-            // A failed run that printed nothing (no permission, a broken lsof) tells nothing: /proc then.
-            (result) =>
-              result.exitCode !== 0 && result.stdout.trim() === ""
-                ? null
-                : parseLsofOutput(result.stdout, terminals),
-            (error: unknown) => {
-              if ((error as { code?: unknown }).code === "ENOENT") lsofMissing = true;
-              return null;
-            },
-          );
-        if (listeners !== null) return probeWebServers(listeners);
-      }
-      return probeWebServers((await scanProcListeners(terminals)) ?? []);
+      if (listeners !== null) return probeWebServers(listeners);
+    }
+    return probeWebServers((await scanProcListeners(terminals)) ?? []);
+  }
+
+  return {
+    /**
+     * The browser-ready servers the given terminal processes listen on, and
+     * the configured URLs that answer, by port.
+     */
+    async scan(
+      terminals: TerminalByProcessId,
+      configuredUrls: readonly string[] = [],
+    ): Promise<DiscoveredLocalServer[]> {
+      const discovered = await scanTerminals(terminals);
+      return configuredUrls.length === 0 ? discovered : withConfigured(discovered, configuredUrls);
     },
   };
+}
+
+/** T3's `normalizeConfiguredUrls`: http and https only, `0.0.0.0` read as `localhost`, once each. */
+export function normalizeConfiguredUrls(urls: readonly string[]): string[] {
+  const normalized = urls.flatMap((raw) => {
+    if (raw.length > 2048) return [];
+    let url: URL;
+    try {
+      url = new URL(raw.trim());
+    } catch {
+      return [];
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return [];
+    if (url.hostname === "0.0.0.0") url.hostname = "localhost";
+    return [url.href];
+  });
+  return [...new Set(normalized)];
 }
 
 /** This machine, through Node. */
