@@ -89,7 +89,6 @@ export function registerMessaging(
   // Following the streams takes what reading through the commands takes (security.md D415).
   const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
   // The agents stream takes what `agents.catalog` takes (M1, D1521).
-  const guarded = live?.guard !== undefined;
   if (live?.guard !== undefined) {
     context.subscriptions.add(live.guard(AGENTS_STREAM, ["agents.read"]));
     context.subscriptions.add(live.guard(MESSAGES_STREAM, ["agents.read"]));
@@ -98,7 +97,7 @@ export function registerMessaging(
   // Members read the agents, messages and inbox through relays, within their
   // grants and those guards (M1, D1521): never shared without them.
   const shared = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
-  if (shared !== undefined && guarded) {
+  if (shared !== undefined && live?.guard !== undefined) {
     for (const stream of [AGENTS_STREAM, MESSAGES_STREAM, INBOX_STREAM]) {
       context.subscriptions.add(shared.share(stream));
     }
@@ -362,20 +361,27 @@ export function registerMessaging(
 
   /**
    * A reply forwarded to another node is delivered there (D627), so this node
-   * remembers it by the id it answers (M1, D1524).
+   * remembers it by the id it answers (M1, D1524): in memory, as the turns
+   * followed for an answer are (a restart follows none), the newest
+   * `MAX_REPLIES` only.
    */
-  const repliedKey = (messageId: string) => `replied/${messageId}`;
-  const rememberReply = (inReplyTo: string, from: string, to: string) =>
-    kv.set(NAMESPACE, repliedKey(inReplyTo), { from, to });
+  const replies = new Map<string, { from: string; to: string }>();
+  const MAX_REPLIES = 1000;
+  const rememberReply = (inReplyTo: string, from: string, to: string) => {
+    replies.delete(inReplyTo);
+    replies.set(inReplyTo, { from, to });
+    for (const oldest of replies.keys()) {
+      if (replies.size <= MAX_REPLIES) break;
+      replies.delete(oldest);
+    }
+  };
 
   /** Whether the recipient of `message` sent an answer to it (D1262), here or elsewhere (D1524). */
   const repliedTo = async (message: AgentMessage): Promise<boolean> => {
-    const forwarded = (await kv.get(NAMESPACE, repliedKey(message.messageId))) as
-      | { from?: string; to?: string }
-      | undefined;
+    const forwarded = replies.get(message.messageId);
     if (forwarded?.from === message.to && forwarded.to === message.from) {
       // Asked once, at the end of the message's turn: the record has served then.
-      await kv.delete(NAMESPACE, repliedKey(message.messageId));
+      replies.delete(message.messageId);
       return true;
     }
     return (await log.read(MESSAGES_STREAM)).some((event) => {
@@ -431,12 +437,7 @@ export function registerMessaging(
         );
         // Only a reply to an owner can stand for a turn's answer (D1221, D1262).
         if (inReplyTo !== undefined && target.kind === "owner") {
-          await rememberReply(inReplyTo, sender, to).catch((error: unknown) =>
-            context.log.warn("a forwarded reply could not be remembered", {
-              inReplyTo,
-              error: String(error),
-            }),
-          );
+          rememberReply(inReplyTo, sender, to);
         }
         return sent;
       }

@@ -802,6 +802,13 @@ describe("messages across the mesh (D623)", () => {
         { caller: { id: "client:phone", permissions: ["agents.inbox", "agents.read"] } },
       ),
     ).rejects.toMatchObject({ code: "OWNER_MISMATCH" });
+    // An owner's half is named by an owner's address, nothing else.
+    await expect(
+      client.call("agents.conversation", {
+        with: address("builder", "b"),
+        owner: address("lead", "a"),
+      }),
+    ).rejects.toMatchObject({ code: "ADDRESS_INVALID" });
     // Naming a's own owner is the same as naming none: both halves.
     const named = await client.call<Conversation>("agents.conversation", {
       with: address("builder", "b"),

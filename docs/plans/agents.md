@@ -2281,8 +2281,9 @@ Decisions (M1):
   agent of this node, not only this node's owner's, and records the answer
   here, where D1523 reads it. D1262 still holds: the agent's own reply to
   that owner is delivered on the owner's node, so this node remembers each
-  reply to an owner it forwards by the id it answers (`replied/<messageId>`
-  in its storage), and the check reads both and forgets the record.
+  reply to an owner it forwards by the id it answers, in memory (the newest
+  1000, as long as the node runs, like the turns it follows), and the check
+  reads both and forgets the record that matched.
 - **D1525. Every node knows the slices of the mesh.** Health folds the
   `missions` stream of every reachable member besides its own (D1522), keyed
   by node. A turn on this node in a thread that a slice of any node links is
@@ -2422,9 +2423,6 @@ Decisions (M1):
   messages are recorded on the agent's node (D627), so `agents.conversation`
   here misses them (D1061). Reading both nodes, through `mesh.call`, joins it.~~
   M1, D1523.
-- M1: a forwarded reply to an owner is remembered until the turn of the
-  message it answers ends (D1524); one whose message started no turn (an
-  answer to an ask, or a reply sent after the turn) stays in storage.
 - M1: two nodes' clocks: the joined conversation orders its halves by each
   node's `sentAt` (D1523); a skew between them interleaves the halves.
 - A1: agents of a mesh member reached through another node (`remote` in
