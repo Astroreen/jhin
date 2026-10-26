@@ -235,22 +235,22 @@ export default definePlugin({
     // T3's discovered local servers (D950): what terminals of this node serve.
     const scanner = createLocalServerScanner(nodeScanHost);
     /**
-     * The scan running or just done, shared by the panels that ask meanwhile. Only a
-     * cache: lost on a reload, it is not kept in kernel state (rule 5).
+     * The scans running or just done, by the configured URLs they probed (normalized), shared
+     * by the panels that ask meanwhile: panels of projects with other URLs keep their own.
+     * Only a cache: lost on a reload, it is not kept in kernel state (rule 5).
      */
-    let lastScan:
-      | {
-          finishedAt?: number;
-          /** The configured URLs it probed, normalized: another set scans again. */
-          readonly configured: string;
-          readonly result: Promise<{ servers: DiscoveredLocalServer[]; scannedAt: string }>;
-        }
-      | undefined;
+    const scans = new Map<
+      string,
+      {
+        finishedAt?: number;
+        readonly result: Promise<{ servers: DiscoveredLocalServer[]; scannedAt: string }>;
+      }
+    >();
     context.commands.register({
       name: "preview.servers.list",
       title: "List local servers",
       description:
-        "Lists the browser-ready servers on this node that its terminals started (a process of a terminal listens on a local port and answers HTTP or HTTPS with a page), by port, with the terminal each runs in; configuredUrls (a project's script preview URLs) that answer are listed too, in place of a listener on their host and port",
+        "Lists the browser-ready servers on this node that its terminals started (a process of a terminal listens on a local port and answers HTTP or HTTPS with a page), by port, with the terminal each runs in; configuredUrls (a project's script preview URLs, on this machine's loopback only) that answer are listed too, in place of a listener on their port",
       input: z.object({
         configuredUrls: z.array(z.string().max(2048)).max(50).optional(),
       }),
@@ -261,12 +261,18 @@ export default definePlugin({
       handler: ({ configuredUrls = [] }) => {
         const configured = JSON.stringify(normalizeConfiguredUrls(configuredUrls).toSorted());
         // A scan still running is shared however long it takes; a finished one for 2 s.
+        const known = scans.get(configured);
         if (
-          lastScan !== undefined &&
-          lastScan.configured === configured &&
-          (lastScan.finishedAt === undefined || Date.now() - lastScan.finishedAt < SCAN_REUSE_MS)
+          known !== undefined &&
+          (known.finishedAt === undefined || Date.now() - known.finishedAt < SCAN_REUSE_MS)
         ) {
-          return lastScan.result;
+          return known.result;
+        }
+        // Scans long done go: the map stays as small as the sets panels ask with.
+        for (const [key, scan] of scans) {
+          if (scan.finishedAt !== undefined && Date.now() - scan.finishedAt >= SCAN_REUSE_MS) {
+            scans.delete(key);
+          }
         }
         const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
         const owners = new Map<number, { threadId: string; terminalId: string }>();
@@ -278,18 +284,15 @@ export default definePlugin({
         const result = scanner
           .scan(owners, configuredUrls)
           .then((servers) => ({ servers, scannedAt: new Date().toISOString() }));
-        const scan: { finishedAt?: number; configured: string; result: typeof result } = {
-          configured,
-          result,
-        };
-        lastScan = scan;
+        const scan: { finishedAt?: number; result: typeof result } = { result };
+        scans.set(configured, scan);
         void result.then(
           () => (scan.finishedAt = Date.now()),
           () => undefined,
         );
         // A failed scan is not reused.
         result.catch(() => {
-          if (lastScan?.result === result) lastScan = undefined;
+          if (scans.get(configured) === scan) scans.delete(configured);
         });
         return result;
       },

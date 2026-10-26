@@ -430,7 +430,11 @@ export function createLocalServerScanner(host: ScanHost) {
   };
 }
 
-/** T3's `normalizeConfiguredUrls`: http and https only, `0.0.0.0` read as `localhost`, once each. */
+/**
+ * T3's `normalizeConfiguredUrls`: http and https only, `0.0.0.0` read as `localhost`, once
+ * each. Only this machine's loopback is probed: a URL of another host would make the node
+ * a probe of whatever its network reaches, for any caller that may list servers.
+ */
 export function normalizeConfiguredUrls(urls: readonly string[]): string[] {
   const normalized = urls.flatMap((raw) => {
     if (raw.length > 2048) return [];
@@ -442,6 +446,7 @@ export function normalizeConfiguredUrls(urls: readonly string[]): string[] {
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") return [];
     if (url.hostname === "0.0.0.0") url.hostname = "localhost";
+    if (!LOOPBACK_HOSTS.has(url.hostname) && url.hostname !== "[::1]") return [];
     return [url.href];
   });
   return [...new Set(normalized)];

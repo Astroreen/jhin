@@ -370,8 +370,9 @@ W42 of `t3-roadmap.md` (D1461–D1480) gives project scripts T3's preview URL
   through `preview.tab.open` and W40's tab strip), as T3's
   `openUrlInPreview`. And as T3's `configuredUrls`, `preview.servers.list`
   takes `configuredUrls` (additive, the open thread's project's scripts'
-  `previewUrl`s, at most 50, http and https, `0.0.0.0` read as
-  `localhost`): each is probed as D950 probes a listener, and one that
+  `previewUrl`s, at most 50, http and https on this machine's loopback
+  only, `0.0.0.0` read as `localhost`: a URL of another host would make the
+  node a probe of its network for any caller that may list servers): each is probed as D950 probes a listener, and one that
   answers is listed under its configured URL, in place of a listener on
   the same port, the list sorted by port as T3 sorts it. A configured URL
   needs no terminal of its own: the user named it.

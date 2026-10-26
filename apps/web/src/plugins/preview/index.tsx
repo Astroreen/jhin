@@ -828,7 +828,6 @@ export const previewPanelPlugin = builtin(
         }
       };
 
-      /** What the panel's chunk asks of the plugin, for a thread on `target`. */
       /** The preview URLs of the thread's project scripts: T3's configured URLs (D1480). */
       const configuredUrlsOf = (target: NodeTarget, threadId: string) => {
         const catalog = threads.catalog(target);
@@ -837,6 +836,7 @@ export const previewPanelPlugin = builtin(
           catalog.projects.find((project) => project.id === projectId)?.scripts ?? []
         ).flatMap((script) => (script.previewUrl === undefined ? [] : [script.previewUrl]));
       };
+      /** What the panel's chunk asks of the plugin, for a thread on `target`. */
       const servicesFor = (
         target: NodeTarget,
         shortcut: (command: string) => string | undefined,

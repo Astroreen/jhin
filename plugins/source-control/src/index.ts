@@ -1388,6 +1388,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       case ThreadEvents.threadDeleted: {
         const deletedProject = threadDirs.get(id)?.projectId;
         forgetSetup(id);
+        settleClaims.delete(id);
         await kv.delete(NAMESPACE, `${SETTLE_PREFIX}${id}`).catch(() => false);
         // Bookkeeping for the cleanup never keeps the thread's own removal from running.
         await noteDeletedWorktree(id).catch((error: unknown) =>
@@ -3676,7 +3677,12 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   // T3's cleanUpSettledThread (D1476): the settle script, once per settling, in the
   // thread's own worktree; a thread in the project's checkout runs none.
   const SETTLE_PREFIX = "settle-script/";
+  /** The settling each thread's script was claimed for, before anything is awaited. */
+  const settleClaims = new Map<string, string>();
   async function runSettleScript(threadId: string, settledAt: string) {
+    // Every update of a settled thread says so: the first claims the settling, the rest stop.
+    if (settleClaims.get(threadId) === settledAt) return;
+    settleClaims.set(threadId, settledAt);
     if ((await kv.get(NAMESPACE, `${SETTLE_PREFIX}${threadId}`)) === settledAt) return;
     const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
     if (terminals === undefined || stopped) return;

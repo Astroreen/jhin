@@ -256,6 +256,16 @@ describe("local server discovery (D950)", () => {
     expect(normalizeConfiguredUrls(["http://localhost:3000", "http://localhost:3000/"])).toEqual([
       "http://localhost:3000/",
     ]);
+    // This machine's loopback only, http and https: no probe of another host for a caller.
+    expect(
+      normalizeConfiguredUrls([
+        "https://127.0.0.1:8443/app",
+        "http://[::1]:3000",
+        "http://169.254.169.254/latest",
+        "http://intranet.example:80",
+        `http://localhost:1/${"x".repeat(2100)}`,
+      ]),
+    ).toEqual(["https://127.0.0.1:8443/app", "http://[::1]:3000/"]);
   });
 
   it("runs nothing while no terminal runs a process", async () => {
