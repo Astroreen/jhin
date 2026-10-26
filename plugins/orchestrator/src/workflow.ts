@@ -68,6 +68,6 @@ for (;;) {
   }
   const decisions = [...next.decisions, ...failed];
   if (decisions.length > 0) return end("decide", { wave: next.wave, decisions });
-  await command("missions.wait", { missionId, after: next.head, ...on, ...(waitMs === undefined ? {} : { timeoutMs: waitMs }) });
+  await command("missions.wait", { missionId, after: next.head, away: next.decisions.filter((item) => item.reason === "away").map((item) => item.sliceId), ...on, ...(waitMs === undefined ? {} : { timeoutMs: waitMs }) });
 }
 `;

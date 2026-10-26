@@ -2506,7 +2506,10 @@ Decisions:
   list is not known yet, not away: a node starting before its mesh connects,
   or a slice assigned to a node that never joined, raises nothing. The
   orchestrator reads the members afresh for each answer and hears
-  `onChange` for its waits; health and the inbox read them the same way.
+  `onChange` for its waits; D1547's wait that ends at once does so only
+  when the slices the caller saw away (`missions.wait { away }`, from its
+  `missions.next`) are no longer the ones away, so a lead that waits for a
+  node to come back is not answered at once again and again; health and the inbox read them the same way.
   Health counts every open slice assigned to the away node (planned, active
   or blocked, any wave), since all of them wait on it; the orchestrator
   decides only for the slices of its current wave (D1547). A warning whose
@@ -2986,3 +2989,7 @@ Each workstream lists its PRs here as they merge.
 - M1 #314: Civilization reads every node of the mesh: roster, missions,
   inbox, health, the offer of the mode, titles and assignees, and the Lead
   view of a lead on another node (D1527–D1533).
+- M2 #312: a node away mid-mission: the decision `away` and an orchestrator
+  woken at once, health's `away` warning that clears itself, inbox items of
+  an away sender (`SENDER_AWAY`), all read from M1's `members()`
+  (D1547–D1551).

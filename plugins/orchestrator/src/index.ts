@@ -527,6 +527,14 @@ export default definePlugin({
     });
     if (changes !== undefined) context.subscriptions.add(changes);
 
+    /** The away slices of an answer, as one key. */
+    const awayKey = (progress: MissionProgress) =>
+      progress.decisions
+        .filter((item) => item.reason === "away")
+        .map((item) => item.sliceId)
+        .toSorted()
+        .join(",");
+
     // An assignee of any node is handed its slice from here (D1541), unless its node is away.
     const progressOf = (mission: Mission) => {
       const slices = slicesOf(state, mission.id);
@@ -544,6 +552,7 @@ export default definePlugin({
       handler: async ({ missionId }) => {
         await sync();
         const mission = getMission(missionId);
+        const progress = progressOf(mission);
         return {
           mission: {
             id: mission.id,
@@ -555,7 +564,7 @@ export default definePlugin({
           steps: mission.process.mission,
           projectSteps: state.intents[mission.projectId]?.process ?? [],
           ...(await holdOf(mission)),
-          ...progressOf(mission),
+          ...progress,
         };
       },
     });
@@ -577,10 +586,14 @@ export default definePlugin({
           missionId: z.string(),
           after: z.number().int().min(0),
           timeoutMs: z.number().int().min(1).max(MAX_WAIT_MS).default(DEFAULT_WAIT_MS),
+          away: z.array(z.string()).optional().meta({
+            description:
+              "The slices missions.next named `away`: the wait ends at once when that is no longer so (D1547)",
+          }),
         }),
         output: z.object({ head: z.number(), changed: z.boolean() }),
         permissions: ["missions.read"],
-        handler: async ({ missionId, after, timeoutMs }) => {
+        handler: async ({ missionId, after, timeoutMs, away }) => {
           let listener: ((event: StoredEvent) => void) | undefined;
           let end: (() => void) | undefined;
           let timer: ReturnType<typeof setTimeout> | undefined;
@@ -606,11 +619,13 @@ export default definePlugin({
             const missed = await log.read(MISSIONS_STREAM, { after });
             apply(missed);
             if (missed.some((event) => concerns(missionId, event))) return { head, changed: true };
-            // A node away is a decision already, even if it went away before this wait (D1547).
+            // A node went away or came back between missions.next and this wait (D1547):
+            // the slices the caller saw away differ from now. The same ones wait on.
             const mission = state.missions[missionId];
             if (
               mission !== undefined &&
-              progressOf(mission).decisions.some((item) => item.reason === "away")
+              away !== undefined &&
+              away.toSorted().join(",") !== awayKey(progressOf(mission))
             ) {
               return { head, changed: true };
             }
@@ -626,14 +641,14 @@ export default definePlugin({
         },
       },
       // On another node the wait goes in parts under mesh.call's deadline (D1545).
-      async (node, { missionId, after, timeoutMs }, invocation) => {
+      async (node, { missionId, after, timeoutMs, away }, invocation) => {
         const until = Date.now() + timeoutMs;
         for (;;) {
           const part = Math.max(1, Math.min(REMOTE_WAIT_MS, until - Date.now()));
           const answer = await onNode<{ head: number; changed: boolean }>(
             node,
             "missions.wait",
-            { missionId, after, timeoutMs: part },
+            { missionId, after, timeoutMs: part, ...(away === undefined ? {} : { away }) },
             ["missions.read"],
             invocation,
           );

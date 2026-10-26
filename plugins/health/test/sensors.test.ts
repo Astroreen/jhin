@@ -376,3 +376,91 @@ describe("health's sensors (D722)", () => {
     expect(mission).toMatchObject({ progress: 1, byKind: { merge: 1 } });
   });
 });
+
+describe("a mission waiting on a node away (D1548, D1551)", () => {
+  const at = "2026-10-26T10:00:00.000Z";
+  const slice = (id: string, fields: Partial<Slice>): Slice => ({
+    id,
+    missionId: "m1",
+    projectId: "p1",
+    title: id,
+    spec: "",
+    wave: 1,
+    dependsOn: [],
+    status: "planned",
+    threads: [],
+    createdAt: at,
+    updatedAt: at,
+    ...fields,
+  });
+  const warningOf = (subject: string, fields: Partial<Warning>): Warning => ({
+    warningId: "w1",
+    detector: "away",
+    subject,
+    group: { kind: "mission", projectId: "p1", missionId: "m1" },
+    summary: "",
+    measures: {},
+    evidence: [],
+    raisedAt: at,
+    status: "open",
+    ...fields,
+  });
+  const withWarning = (warning: Warning) => ({
+    ...EMPTY_HEALTH,
+    warnings: { [warning.warningId]: warning },
+  });
+
+  it("counts the open slices assigned there, and clears for the reason that holds", () => {
+    const sensors = new Sensors();
+    for (const [n, item] of [
+      slice("s1", { assignee: "jhin://b/agents/x" }),
+      slice("s2", { assignee: "jhin://b/agents/x", status: "blocked", wave: 2 }),
+      slice("s3", { assignee: "jhin://b/agents/x", status: "done" }),
+      slice("s4", { assignee: "jhin://a/agents/y" }),
+    ].entries()) {
+      sensors.ingestMission(
+        event("missions", n + 1, MissionEvents.sliceCreated, at, { slice: item }),
+      );
+    }
+    // Not listed yet: not known, so not away.
+    sensors.setMembers([], at);
+    expect(sensors.awayFindings(EMPTY_HEALTH)).toEqual([]);
+    sensors.setMembers([{ nodeId: "b", reachable: false }], at);
+    expect(sensors.awayFindings(EMPTY_HEALTH)).toEqual([
+      expect.objectContaining({
+        detector: "away",
+        subject: "away:m1:b",
+        measures: { slices: 2 },
+        summary: "2 slices of «m1» wait on node b, which is away",
+      }),
+    ]);
+    const open = withWarning(warningOf("away:m1:b", {}));
+    expect(sensors.awayFindings(open)).toEqual([]);
+    expect(sensors.awayCleared(open)).toEqual([]);
+    sensors.setMembers([{ nodeId: "b", reachable: true }], at);
+    expect(sensors.awayCleared(open)).toEqual([{ warning: open.warnings.w1, reason: "node-back" }]);
+    sensors.setMembers([], at);
+    expect(sensors.awayCleared(open)).toEqual([
+      { warning: open.warnings.w1, reason: "members-unknown" },
+    ]);
+  });
+
+  it("stays quiet after a dismissal until the node goes away again", () => {
+    const sensors = new Sensors();
+    sensors.ingestMission(
+      event("missions", 1, MissionEvents.sliceCreated, at, {
+        slice: slice("s1", { assignee: "jhin://b/agents/x" }),
+      }),
+    );
+    sensors.setMembers([{ nodeId: "b", reachable: false }], "2026-10-26T10:00:00.000Z");
+    const dismissed = withWarning(
+      warningOf("away:m1:b", { status: "dismissed", dismissedAt: "2026-10-26T11:00:00.000Z" }),
+    );
+    expect(sensors.awayFindings(dismissed)).toEqual([]);
+    sensors.setMembers([{ nodeId: "b", reachable: true }], "2026-10-26T12:00:00.000Z");
+    sensors.setMembers([{ nodeId: "b", reachable: false }], "2026-10-26T13:00:00.000Z");
+    expect(sensors.awayFindings(dismissed)).toEqual([
+      expect.objectContaining({ subject: "away:m1:b" }),
+    ]);
+  });
+});

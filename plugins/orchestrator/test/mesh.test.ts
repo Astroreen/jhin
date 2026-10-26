@@ -415,7 +415,7 @@ describe("a lead on another node (D1544, D1545)", () => {
   });
 });
 
-describe("a node that goes away mid-mission (D1547–D1550)", () => {
+describe("a node that goes away mid-mission (D1547–D1551)", () => {
   it("is a decision for the lead, a warning for the owner, and holds the answers to it", async () => {
     const network = createMemoryNetwork();
     const a = await meshNode(network, "a");
@@ -478,9 +478,9 @@ describe("a node that goes away mid-mission (D1547–D1550)", () => {
       working: [],
       decisions: [{ sliceId: walls.id, reason: "away" }],
     });
-    // A wait ends at once while the mission waits on it, and nothing is handed there.
+    // A wait by a caller that saw no node away ends at once, and nothing is handed there.
     expect(
-      await a.client.call("missions.wait", { missionId: mission.id, after: next.head }),
+      await a.client.call("missions.wait", { missionId: mission.id, after: next.head, away: [] }),
     ).toMatchObject({ changed: true });
     const roof = await a.client.call<Slice>("slices.create", {
       missionId: mission.id,

@@ -259,8 +259,10 @@ export class Sensors {
       if (warning.status !== "open" || warning.detector !== "away") return [];
       if (waiting.has(warning.subject)) return [];
       const node = warning.subject.slice(warning.subject.indexOf(":", "away:".length) + 1);
+      // The subject is `away:<mission id, a UUID>:<node>`: the node follows the second colon.
+      const listed = this.meshNodes?.some((member) => member.nodeId === node) === true;
       const reason =
-        this.meshNodes === undefined
+        this.meshNodes === undefined || !listed
           ? "members-unknown"
           : isAway(this.meshNodes, node)
             ? "not-waiting"
