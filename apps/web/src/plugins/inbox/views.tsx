@@ -149,7 +149,14 @@ export function InboxPage(props: { view: InboxView; target: NodeTarget; messageI
   // The item's own node answers it, a member through its connection (D1530).
   const channel = view.store.target(node)?.channel;
   const send = async () => {
-    if (channel === undefined) return;
+    if (channel === undefined) {
+      view.toasts?.show({
+        type: "error",
+        title: "Couldn't send the answer",
+        description: "This node is not reachable now.",
+      });
+      return;
+    }
     setSending(true);
     try {
       await channel.call("agents.inbox.answer", { messageId, answer: answer.trim() });
@@ -165,7 +172,14 @@ export function InboxPage(props: { view: InboxView; target: NodeTarget; messageI
     }
   };
   const dismiss = async () => {
-    if (channel === undefined) return;
+    if (channel === undefined) {
+      view.toasts?.show({
+        type: "error",
+        title: "Couldn't dismiss it",
+        description: "This node is not reachable now.",
+      });
+      return;
+    }
     setDismissing(true);
     try {
       await channel.call("agents.inbox.dismiss", { messageId });

@@ -189,18 +189,19 @@ export function MissionsSidebar({ services }: { services: MissionsServices }) {
   const route = useExternal(navigation, navigation.current);
   const routed = useTarget(services, route);
   const nodes = useMeshTargets(connections, mesh);
-  if (nodes.length <= 1) return <NodeMissions primary services={services} target={routed} />;
+  if (nodes.length === 0) return <NodeMissions primary services={services} target={routed} />;
   const routedKey = routed === undefined ? undefined : targetKey(routed);
   const primary = nodes.some((node) => node.key === routedKey) ? routedKey : nodes[0]?.key;
+  // Keyed by node, so the node shown first stays mounted when members join it.
   return (
     <>
       {nodes.map((node) => (
         <NodeMissions
           key={node.key}
-          label={node.label}
+          {...(nodes.length > 1 ? { label: node.label } : {})}
           primary={node.key === primary}
           services={services}
-          target={node.target}
+          target={nodes.length > 1 ? node.target : (routed ?? node.target)}
         />
       ))}
     </>

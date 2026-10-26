@@ -2,9 +2,7 @@
 import type { Connections, MeshMembership } from "@jhin/client-api";
 import { useMemo, useSyncExternalStore } from "react";
 
-import { createMeshTargets, type MeshTarget } from "./mesh-targets.ts";
-
-const NONE: readonly MeshTarget[] = [];
+import { createMeshTargets, meshTargets, type MeshTarget } from "./mesh-targets.ts";
 
 /** Every open connection and reachable member of its mesh, followed while mounted. */
 export function useMeshTargets(
@@ -12,7 +10,8 @@ export function useMeshTargets(
   mesh: MeshMembership | undefined,
 ): readonly MeshTarget[] {
   const store = useMemo(() => {
-    let last = NONE;
+    // What shows before the first subscription: the open connections as known now.
+    let last: readonly MeshTarget[] = meshTargets(connections.list(), (id) => mesh?.members(id));
     return {
       subscribe(listener: () => void) {
         const followed = createMeshTargets(connections, mesh);

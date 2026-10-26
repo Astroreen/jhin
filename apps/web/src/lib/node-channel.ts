@@ -48,7 +48,7 @@ function memberChannel(client: RpcClient, member: string, relayless: string): No
         },
         (error: unknown) => {
           if (disposed) return;
-          const code = (error as { code?: unknown }).code;
+          const code = (error as { code?: unknown } | null)?.code;
           options.onError?.(
             code === "COMMAND_NOT_FOUND"
               ? new RpcError({

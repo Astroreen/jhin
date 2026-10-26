@@ -143,7 +143,7 @@ export function createNodeFeeds<S>(
   const states = new Map<string, NodeFeed<S>>();
   /** Changes this client applied to a feed while its stream is read again. */
   const rereads = new Map<string, { type: string; payload: unknown }[]>();
-  const feeds = new Map<string, { node: MeshTarget; stop: () => void }>();
+  const feeds = new Map<string, { node: MeshTarget; readonly stop: () => void }>();
   const listeners = new Set<() => void>();
   let snapshot: ReadonlyMap<string, NodeFeed<S>> = new Map();
   const changed = () => {
@@ -364,6 +364,8 @@ export function createNodeFeeds<S>(
       const node = shown.find((item) => item.key === id);
       // What a closed or replaced connection, or a member gone, showed is not live any more.
       if (node === undefined || node.channel !== feed.node.channel) stop(id);
+      // A label or id that changed is taken as is: the feed goes on.
+      else feed.node = node;
     }
     for (const node of shown) if (!feeds.has(node.key)) start(node);
   };

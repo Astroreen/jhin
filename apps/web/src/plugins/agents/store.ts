@@ -312,6 +312,7 @@ export function createAgentsStore(
       const node = shown.find((item) => item.key === id);
       // What a closed or replaced connection, or a member gone, showed is not live any more.
       if (node === undefined || node.channel !== feed.node.channel) stop(id);
+      else feed.node = node;
     }
     for (const node of shown) if (!feeds.has(node.key)) start(node);
     // The order of the nodes may change without a feed changing.

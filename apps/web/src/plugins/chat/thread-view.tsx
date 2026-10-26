@@ -223,7 +223,9 @@ export function ThreadView(props: {
     // Else a member of the thread's connection's mesh, through it (agents.md D1528).
     const member =
       connection === undefined &&
-      chat.mesh?.members(target.node)?.some((item) => item.nodeId === party.nodeId && !item.self)
+      chat.mesh
+        ?.members(target.node)
+        ?.some((item) => item.nodeId === party.nodeId && !item.self && item.reachable)
         ? party.nodeId
         : undefined;
     if (connection === undefined && member === undefined) return undefined;

@@ -85,10 +85,19 @@ test("D1527–D1532: the agents, inbox and missions of a member, read through th
   });
   // The builder's first generation exists: the owner's answer is delivered to it at once.
   await client.call("agents.rotate", { agentId: "builder", reason: "the lamp" });
-  await client.call("agents.send", {
+  const written = await client.call<{ message: { messageId: string } }>("agents.send", {
     to: `jhin://${nodeId}/owner`,
     from: `jhin://${nodeId}/agents/builder`,
     body: "The lamp is ready for a review.",
+  });
+  // The owner's answer, once it is delivered to the builder on the server.
+  const answered = new Promise<void>((resolve) => {
+    const subscription = client.subscribe("agents/messages", {}, (event) => {
+      const message = (event.payload as { message?: { inReplyTo?: string } } | null)?.message;
+      if (message?.inReplyTo !== written.message.messageId) return;
+      subscription.dispose();
+      resolve();
+    });
   });
 
   // The connection shows by its address, the member by its mesh name.
@@ -132,8 +141,9 @@ test("D1527–D1532: the agents, inbox and missions of a member, read through th
   await question.getByRole("textbox", { name: "Your answer" }).fill("Go ahead.");
   await page.screenshot({ path: info.outputPath("mesh-inbox-item.png") });
   await question.getByRole("button", { name: "Send answer" }).click();
-  // The answer goes to the server through the laptop, and starts the builder's turn there.
-  await expect(inbox.getByText("Nothing waits for you.")).toBeVisible({ timeout: 15_000 });
+  // The answer goes to the server through the laptop and is delivered to the builder there.
+  await answered;
+  await expect(inbox.getByText("Nothing waits for you.")).toBeVisible();
 
   // The mission, its slice by its agent's title, and every node's agents to assign (D1532).
   await serverMissions.getByRole("button", { name: "Lighthouse, Active" }).click();

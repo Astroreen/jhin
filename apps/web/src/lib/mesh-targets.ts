@@ -43,9 +43,12 @@ export function meshTargets(
     ]),
   );
   const seen = new Set([...selfOf.values()].filter((id): id is string => id !== undefined));
+  // Members wait until every connection's mesh has answered: a member that is
+  // also connected is known only then, and is not read twice meanwhile.
+  const known = open.every((connection) => membersOf(connection.id) !== undefined);
   return open.flatMap((connection): MeshTarget[] => {
     const self = selfOf.get(connection.id);
-    const members = (membersOf(connection.id) ?? []).filter((member) => {
+    const members = (known ? (membersOf(connection.id) ?? []) : []).filter((member) => {
       if (member.self || !member.reachable || seen.has(member.nodeId)) return false;
       seen.add(member.nodeId);
       return true;

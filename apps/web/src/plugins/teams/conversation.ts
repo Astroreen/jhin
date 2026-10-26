@@ -42,8 +42,9 @@ export function followConversation(
 ): Disposable {
   let stopped = false;
   let subscription: Disposable | undefined;
-  /** The lead's node's stream, once a read named its head (D1533). */
+  /** The lead's node's stream, once a read named its head (D1533), and which node it is. */
   let elsewhere: Disposable | undefined;
+  let elsewhereNode: string | undefined;
   let view = CONVERSATION_LOADING;
   /** Answers come in order of asking: a late answer never replaces a newer one. */
   let asked = 0;
@@ -86,7 +87,13 @@ export function followConversation(
       // tells when they change. A read that could not reach it follows it once
       // a later read does.
       const there = answer.elsewhere;
+      // The lead moved to another node: its old node's stream says nothing now.
+      if (elsewhere !== undefined && there?.nodeId !== elsewhereNode) {
+        elsewhere.dispose();
+        elsewhere = undefined;
+      }
       if (followElsewhere !== undefined && elsewhere === undefined && there?.head !== undefined) {
+        elsewhereNode = there.nodeId;
         elsewhere = followElsewhere(
           there.nodeId,
           there.head,

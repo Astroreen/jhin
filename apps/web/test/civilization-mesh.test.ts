@@ -155,6 +155,12 @@ describe("the nodes Civilization reads (D1527)", () => {
     };
     const shown = meshTargets(connections, (id) => members[id]);
     expect(shown.map((node) => node.key)).toEqual(["one", "one|c", "two"]);
+    // Until every connection's mesh answered, no member is listed: one may be connected too.
+    expect(
+      meshTargets(connections, (id) => (id === "one" ? members.one : undefined)).map(
+        (node) => node.key,
+      ),
+    ).toEqual(["one", "two"]);
     expect(shown[1]).toMatchObject({
       target: { node: "one", remote: "c" },
       label: "node c",
