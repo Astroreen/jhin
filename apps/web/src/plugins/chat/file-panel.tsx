@@ -76,6 +76,8 @@ function readExplorerOpen(): boolean {
 function OpenInEditor(props: { target: NodeTarget; projectId: string; path: string }) {
   const chat = useChat();
   const [editors, setEditors] = useState<readonly EditorInfo[] | undefined>(undefined);
+  // The editor chosen here: the preferred one from then on.
+  const [chosen, setChosen] = useState<string | undefined>(undefined);
   const node = targetKey(props.target);
   useEffect(() => {
     let current = true;
@@ -90,10 +92,11 @@ function OpenInEditor(props: { target: NodeTarget; projectId: string; path: stri
     };
   }, [node]);
   if (editors === undefined || editors.length === 0) return null;
-  const preferred = preferredEditor(editors);
+  const preferred = editors.find((editor) => editor.id === chosen) ?? preferredEditor(editors);
   const open = (editor: EditorInfo | undefined) => {
     if (editor === undefined) return;
     rememberEditor(editor.id);
+    setChosen(editor.id);
     void chat.threads
       .call(props.target, "editors.open", {
         projectId: props.projectId,

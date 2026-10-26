@@ -48,7 +48,7 @@ export function openFilePanel(
 }
 
 /** A line of a file the file panel is asked to show (T3's `revealLine`, D1430). */
-export interface FileReveal {
+interface FileReveal {
   readonly line: number;
   /** Bumped by each request, so the same line is shown again. */
   readonly id: number;

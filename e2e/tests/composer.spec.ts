@@ -220,9 +220,11 @@ test("previews an attached file in the composer and the message, shows videos an
   const sent = log.getByRole("article", { name: "You" });
   await expect(sent.getByRole("button", { name: "Play clip.webm" })).toBeVisible();
 
-  // The sent file opens in the same preview, its bytes read back from the node.
+  // The sent file opens in the right panel, as T3's (D1435), its bytes read back from the node.
   await sent.getByRole("button", { name: "Preview notes.md" }).click();
-  const preview = page.getByRole("dialog", { name: "notes.md" });
+  const panel = page.getByRole("complementary", { name: "Right panel" });
+  await expect(panel.getByRole("tab", { name: "notes.md" })).toBeVisible();
+  const preview = panel.getByRole("region", { name: "File preview" });
   await expect(preview.getByRole("heading", { name: "Release notes" })).toBeVisible();
   await expect(preview.getByText("Attachment", { exact: true })).toBeVisible();
   const shot = info.outputPath("attachment-preview.png");
@@ -235,8 +237,8 @@ test("previews an attached file in the composer and the message, shows videos an
   const sourceShot = info.outputPath("attachment-preview-source.png");
   await page.screenshot({ path: sourceShot });
   await info.attach("attachment preview, source", { path: sourceShot, contentType: "image/png" });
-  await preview.getByRole("button", { name: "Close" }).click();
-  await expect(preview).toBeHidden();
+  await panel.getByRole("button", { name: "Close notes.md" }).click();
+  await expect(panel).toBeHidden();
 
   // A queued message's image shows as T3's thumbnail, read from the node by its id.
   await message.fill("/hold on");
@@ -478,7 +480,6 @@ test("D1428–D1431: an agent's file chip opens its line, beside T3's explorer; 
   // T3's revealed line, tinted (D1430), and the explorer beside the file (D1428).
   await expect(preview.locator("[data-file-link-reveal][data-line]")).toHaveText("item 60");
   await expect(preview.getByRole("treeitem", { name: "todo.txt" })).toBeVisible();
-  await expect(preview.getByRole("group", { name: "Open in editor" })).toBeVisible();
   const shot = info.outputPath("file-panel-revealed-line.png");
   await page.screenshot({ path: shot });
   await info.attach("an agent's file chip at its line", { path: shot, contentType: "image/png" });

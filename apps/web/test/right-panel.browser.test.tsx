@@ -55,7 +55,9 @@ function state(surfaces: readonly RightPanelSurface[], activeId: string | null):
   return { surfaces, activeId, open: true, maximized: false };
 }
 
-async function mount(panel: RightPanelState) {
+/** Mounts the panel in a window `width` wide: inline from 981 px, T3's sheet below (D1434). */
+async function mount(panel: RightPanelState, width = 1280) {
+  await page.viewport(width, 800);
   const calls: string[] = [];
   const container = document.createElement("div");
   container.style.height = "600px";
@@ -158,5 +160,18 @@ describe("the right panel's strip", () => {
     const calls = await mount(state([surfaceOf("browser", "a")], "browser:a"));
     await page.getByRole("button", { name: "Maximize panel" }).click();
     expect(calls).toEqual(["maximize"]);
+  });
+
+  it("is a sheet over the chat on a narrow window, which closes the panel (D1434)", async () => {
+    const calls = await mount(state([surfaceOf("browser", "a")], "browser:a"), 800);
+    const panel = page.getByRole("complementary", { name: "Right panel" });
+    await expect.element(panel).toHaveAttribute("data-preview-panel-mode", "sheet");
+    await expect.element(panel.getByRole("tab", { name: "Browser" })).toBeVisible();
+    // A sheet is not maximized.
+    await expect
+      .element(page.getByRole("button", { name: "Maximize panel" }))
+      .not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(calls).toEqual(["close panel"]);
   });
 });

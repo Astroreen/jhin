@@ -55,7 +55,7 @@ const treePath = (entry: ExplorerEntry) =>
 const depth = (path: string) => path.split("/").filter(Boolean).length;
 
 /** T3's buildFileTreePathUpdates: the tree's removals and additions, parents first. */
-export function treePathUpdates(
+function treePathUpdates(
   previousPaths: readonly string[],
   nextPaths: readonly string[],
 ): FileTreeBatchOperation[] {

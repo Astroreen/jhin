@@ -10,13 +10,13 @@ function isUncPath(value: string): boolean {
   return value.startsWith("\\\\");
 }
 
-export function isWindowsAbsolutePath(value: string): boolean {
+function isWindowsAbsolutePath(value: string): boolean {
   return isUncPath(value) || isWindowsDrivePath(value);
 }
 
 const SLASH_PREFIXED_WINDOWS_DRIVE_PATTERN = /^\/[A-Za-z]:[\\/]/;
 
-export function stripSlashPrefixedWindowsDrive(path: string): string {
+function stripSlashPrefixedWindowsDrive(path: string): string {
   return SLASH_PREFIXED_WINDOWS_DRIVE_PATTERN.test(path) ? path.slice(1) : path;
 }
 
@@ -37,7 +37,7 @@ export function workspaceRelativeFilePath(
   return normalizedPath.slice(normalizedRoot.length + 1);
 }
 
-export function isAbsolutePath(value: string): boolean {
+function isAbsolutePath(value: string): boolean {
   return value.startsWith("/") || isWindowsAbsolutePath(value);
 }
 
@@ -50,9 +50,7 @@ const POSITION_HASH_PATTERN = /^#L(\d+)(?:C(\d+))?$/i;
  * decode every destination in one place do not decode file URLs twice. A
  * non-localhost authority becomes a UNC share.
  */
-export function parseFileUrlHref(
-  href: string,
-): { readonly path: string; readonly hash: string } | null {
+function parseFileUrlHref(href: string): { readonly path: string; readonly hash: string } | null {
   try {
     const parsed = new URL(href);
     if (parsed.protocol.toLowerCase() !== "file:") return null;
@@ -88,7 +86,7 @@ export function splitFilePathPosition(path: string, hash = ""): FilePathPosition
   };
 }
 
-export function formatFilePathPosition(position: FilePathPosition): string {
+function formatFilePathPosition(position: FilePathPosition): string {
   if (!position.line) return position.path;
   return `${position.path}:${position.line}${position.column ? `:${position.column}` : ""}`;
 }
@@ -325,7 +323,7 @@ export function inlineCodeFilePathCandidate(codeText: string): string | null {
   return candidate;
 }
 
-export function safeDecodeURIComponent(value: string): string {
+function safeDecodeURIComponent(value: string): string {
   try {
     return decodeURIComponent(value);
   } catch {
@@ -333,12 +331,12 @@ export function safeDecodeURIComponent(value: string): string {
   }
 }
 
-export function normalizeMarkdownLinkDestination(value: string): string {
+function normalizeMarkdownLinkDestination(value: string): string {
   const trimmed = value.trim();
   return trimmed.startsWith("<") && trimmed.endsWith(">") ? trimmed.slice(1, -1) : trimmed;
 }
 
-export function splitMarkdownLinkSearchAndHash(value: string): {
+function splitMarkdownLinkSearchAndHash(value: string): {
   readonly path: string;
   readonly hash: string;
 } {
@@ -352,7 +350,7 @@ export function splitMarkdownLinkSearchAndHash(value: string): {
   };
 }
 
-export function isRelativeFilePath(path: string): boolean {
+function isRelativeFilePath(path: string): boolean {
   return (
     RELATIVE_PATH_PREFIX_PATTERN.test(path) ||
     (!path.startsWith("/") && !isWindowsAbsolutePath(path))
@@ -383,7 +381,7 @@ function hasExternalScheme(path: string): boolean {
   return !POSITION_ONLY_PATTERN.test(rest);
 }
 
-export function parseMarkdownFileLink(href: string): FilePathPosition | null {
+function parseMarkdownFileLink(href: string): FilePathPosition | null {
   const normalized = normalizeMarkdownLinkDestination(href);
   if (normalized.length === 0 || normalized.startsWith("#") || normalized.startsWith("//")) {
     return null;
