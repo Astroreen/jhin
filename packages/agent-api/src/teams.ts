@@ -256,10 +256,10 @@ export const TeamCommands = {
           address: z.string(),
           ...JoinResult.partial().shape,
           error: MemberError.optional(),
-          /** The address it had on the node it moved from, once its agent left there (D1546). */
-          left: z.string().optional(),
-          /** Why it could not leave that node yet: the next `teams.up` tries again. */
-          leaveError: MemberError.optional(),
+          /** The addresses it had on the nodes it moved from, once its agent left there (D1546). */
+          left: z.array(z.string()).optional(),
+          /** Why it could not leave those nodes yet: the next `teams.up` tries again. */
+          leaveErrors: z.array(MemberError.extend({ address: z.string() })).optional(),
         }),
       ),
     }),

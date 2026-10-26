@@ -2452,8 +2452,9 @@ Decisions:
   generations and knowledge stay, D611), forgets its seat and keeps the new
   roster. An agent the team did not put there is left alone. A node that
   cannot be reached keeps the leave pending in the `teams.up` node's
-  `storage.kv`, and every later `teams.up` tries it again; the answer says
-  per member `left` or `leaveError`.
+  `storage.kv`, and every later `teams.up` tries it again, for every node a member
+  left in a chain of moves; the answer says per member the addresses it
+  `left` and the `leaveErrors` of those it could not leave yet.
 - **D1547. A node away is a decision of the mission.** `jhin.mesh` keeps
   writing `mesh.nodes.changed` to the `mesh` stream on every change of the
   mesh; its name, its event and the node view move to `@jhin/mesh-api`

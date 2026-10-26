@@ -458,14 +458,18 @@ export default definePlugin({
       roster: TeamRoster,
       member: string,
       invocation: Invocation,
-    ): Promise<{ left: string } | { leaveError: ReturnType<typeof errorOf> }> => {
-      const from = parseAgentAddress(old)!.nodeId;
+    ): Promise<
+      { left: string } | { leaveError: ReturnType<typeof errorOf> & { address: string } }
+    > => {
       try {
+        const from = parseAgentAddress(old)?.nodeId;
+        if (from === undefined)
+          throw new TeamsError("TEAM_INVALID", `${old} is no agent's address`);
         if (from === nodeId) await leave({ roster, member });
         else await remote(from, "teams.leave", { roster, member }, invocation, WRITE_PERMISSIONS);
         return { left: old };
       } catch (error) {
-        return { leaveError: errorOf(error) };
+        return { leaveError: { address: old, ...errorOf(error) } };
       }
     };
 
@@ -544,8 +548,20 @@ export default definePlugin({
         // Where members were last put, and the leaves a node away kept pending (D1546).
         const previous = await rosterOf(teamId);
         const leavingKey = `leaving/${teamId}`;
-        const leaving = {
-          ...((await kv.get(NAMESPACE, leavingKey)) as Record<string, string> | undefined),
+        // Every node a member left while it was away, by member: a chain of moves keeps each.
+        const stored = (await kv.get(NAMESPACE, leavingKey)) as
+          | Record<string, string | string[]>
+          | undefined;
+        const leaving = new Map(
+          Object.entries(stored ?? {}).map(([member, from]) => [
+            member,
+            new Set(typeof from === "string" ? [from] : from),
+          ]),
+        );
+        const pendingOf = (member: string) => {
+          const set = leaving.get(member) ?? new Set<string>();
+          leaving.set(member, set);
+          return set;
         };
         const members = [];
         for (const member of Object.keys(spec.agents)) {
@@ -568,29 +584,41 @@ export default definePlugin({
                     invocation,
                     joinGrants(invocation),
                   );
-            // Put on its new node first, the member leaves the one it moved from.
-            const old = [previous?.members[member], leaving[member]].find(
-              (from) => from !== undefined && from !== address,
-            );
-            const moved = old === undefined ? {} : await leaveFrom(old, roster, member, invocation);
-            if (old === undefined || "left" in moved) delete leaving[member];
-            else leaving[member] = old;
+            // Put on its new node first, the member leaves every node it moved from.
+            const pending = pendingOf(member);
+            const before = previous?.members[member];
+            if (before !== undefined) pending.add(before);
+            pending.delete(address);
+            const left: string[] = [];
+            const leaveErrors = [];
+            for (const old of [...pending]) {
+              const moved = await leaveFrom(old, roster, member, invocation);
+              if ("left" in moved) {
+                pending.delete(old);
+                left.push(old);
+              } else leaveErrors.push(moved.leaveError);
+            }
             members.push({
               member,
               address,
               result: joined.result,
               resumed: joined.resumed,
               written: joined.written,
-              ...moved,
+              ...(left.length === 0 ? {} : { left }),
+              ...(leaveErrors.length === 0 ? {} : { leaveErrors }),
             });
           } catch (error) {
-            const old = previous?.members[member];
-            if (old !== undefined && old !== address) leaving[member] ??= old;
+            // Not on its new node yet: the node it was on keeps it until a later up.
+            const before = previous?.members[member];
+            if (before !== undefined && before !== address) pendingOf(member).add(before);
             members.push({ member, address, error: errorOf(error) });
           }
         }
-        if (Object.keys(leaving).length === 0) await kv.delete(NAMESPACE, leavingKey);
-        else await kv.set(NAMESPACE, leavingKey, leaving as Json);
+        const kept = Object.fromEntries(
+          [...leaving].filter(([, from]) => from.size > 0).map(([m, from]) => [m, [...from]]),
+        );
+        if (Object.keys(kept).length === 0) await kv.delete(NAMESPACE, leavingKey);
+        else await kv.set(NAMESPACE, leavingKey, kept as Json);
         // This node resolves the aliases too, whether or not a member is on it (D687).
         await kv.set(NAMESPACE, `roster/${teamId}`, roster as unknown as Json);
         const state = await stateOf(teamId);

@@ -581,8 +581,8 @@ describe("teams across the mesh (A5)", () => {
       });
       const up = (await a.kernel.commands.execute("teams.up", { teamId: "workshop" })) as Up;
       return up.members[1] as Up["members"][number] & {
-        left?: string;
-        leaveError?: { code: string };
+        left?: string[];
+        leaveErrors?: { address: string; code: string }[];
       };
     };
 
@@ -590,25 +590,37 @@ describe("teams across the mesh (A5)", () => {
     expect(await moveTo("c")).toMatchObject({
       address: "jhin://c/agents/workshop-builder",
       result: "defined",
-      left: "jhin://b/agents/workshop-builder",
+      left: ["jhin://b/agents/workshop-builder"],
     });
     await expect(builderOn(b)).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
     expect(
       await b.kernel.commands.execute("teams.resolve", { alias: "builder@workshop" }),
     ).toMatchObject({ address: "jhin://c/agents/workshop-builder" });
 
-    // Back to b while c is away: the leave waits for c.
+    // On to a, then back to b, while c is away: the leave from c waits, a's does not.
     await c.stop();
-    expect(await moveTo("b")).toMatchObject({
+    expect(await moveTo("a")).toMatchObject({
+      address: "jhin://a/agents/workshop-builder",
+      leaveErrors: [
+        expect.objectContaining({
+          address: "jhin://c/agents/workshop-builder",
+          code: "NODE_UNREACHABLE",
+        }),
+      ],
+    });
+    const toB = await moveTo("b");
+    expect(toB).toMatchObject({
       address: "jhin://b/agents/workshop-builder",
-      leaveError: expect.objectContaining({ code: "NODE_UNREACHABLE" }),
+      left: ["jhin://a/agents/workshop-builder"],
+      leaveErrors: [expect.objectContaining({ address: "jhin://c/agents/workshop-builder" })],
     });
     expect(await builderOn(b)).toMatchObject({ kind: "defined" });
+    await expect(builderOn(a)).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
 
     // c is back on its data: the next up takes the member off it, once.
     c = await startC();
     expect(await builderOn(c)).toMatchObject({ kind: "defined" });
-    expect(await moveTo("b")).toMatchObject({ left: "jhin://c/agents/workshop-builder" });
+    expect(await moveTo("b")).toMatchObject({ left: ["jhin://c/agents/workshop-builder"] });
     await expect(builderOn(c)).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
     expect(await moveTo("b")).not.toHaveProperty("left");
   });
