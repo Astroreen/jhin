@@ -546,7 +546,14 @@ export function createTimeline() {
           turn.state = "failed";
           turn.endedAt = at;
           if (payload.error !== undefined) turn.error = payload.error;
-          if (payload.failure?.class === "usage_limit") turn.failure = payload.failure;
+          // A usage limit (D1306), or a workspace not prepared, whose Retry is source
+          // control's (source-control.md D1478).
+          if (
+            payload.failure?.class === "usage_limit" ||
+            payload.failure?.class === "workspace_preparation"
+          ) {
+            turn.failure = payload.failure;
+          }
           changed.add(turn);
           break;
       }

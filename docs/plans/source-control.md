@@ -1817,17 +1817,21 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   (a hook may have moved it). Once the agent has started, Cancel only stops
   the script, as D1124 says (T3 cannot cancel it then).
 - **D1478. T3's "Retry" of a failed preparation.** A first turn that failed
-  because its workspace could not be prepared (a fetch or checkout that
-  failed, an `async: false` setup script that failed, or a cancel) records
-  T3's failure class (`lastTurn.failure.class: "workspace_preparation"`,
-  additive; a start hook says so with the error code
-  `WORKSPACE_PREPARATION_FAILED`, `@jhin/agent-api`). Under its error the
-  timeline shows "Retry" (T3's `RotateCcwIcon` button), which calls
-  `git.worktree.setup.retry { threadId }` (`git.write`): the worktree is
-  made again from the thread's branch when it is gone (D256's way, the
-  setup's stages shown again) and the setup script runs again, then the
-  turn's message is sent again (`threads.regenerate`). One retry at a time
-  per thread; a thread that has a later turn is refused
+  because its workspace could not be prepared (an `async: false` setup
+  script that failed, or a cancel, D1477; a fetch or checkout that fails
+  fails `threads.create` itself here, before any turn) records T3's
+  failure class (`lastTurn.failure.class: "workspace_preparation"`,
+  additive in `AgentTurnFailure`; a start hook says so with an error that
+  carries that `failure`, code `WORKSPACE_PREPARATION_FAILED` of
+  `@jhin/agent-api`). Under it the timeline shows T3's "Retry"
+  (`RotateCcwIcon`, `chat.turn.footer` `jhin.source-control.workspace-retry`,
+  in place of the chat's own Retry of a failed turn), which calls
+  `git.worktree.setup.retry { threadId }` (`git.write`, `threads.write`):
+  the worktree is made again from its branch where the setup left it when
+  it is gone (D256's way), the setup script runs again with its stages
+  shown, then the turn's message is sent again (`threads.regenerate`),
+  its start hook waiting for the script as the first did. A thread whose
+  latest turn is no such failure, or that is being set up, is refused
   (`WORKSPACE_RETRY_INVALID`), as T3 retries only the failed run.
 - **D1479. The finished setup is recorded on the thread.** A setup that
   ends (done, failed or cancelled) is kept in the plugin's store under its

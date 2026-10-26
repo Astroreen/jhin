@@ -57,7 +57,7 @@ import { prefetchWhenIdle } from "../../lib/idle-prefetch.ts";
 import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
 import { createRunningActions } from "./running.ts";
 import { createChangedFilesFooter } from "./checkpoints.tsx";
-import { createWorktreeSetupHeader } from "./worktree-setup-header.tsx";
+import { createWorkspaceRetryFooter, createWorktreeSetupHeader } from "./worktree-setup-header.tsx";
 import { createWatchedWork } from "./work.ts";
 import { createEditors, pathInside, preferredEditor } from "./diff/editors.tsx";
 import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
@@ -511,6 +511,13 @@ export const sourceControlPlugin = builtin(
         slots.contribute<ChatTurnHeaderProps>("chat.turn.header", {
           id: "jhin.source-control.worktree-setup",
           component: createWorktreeSetupHeader(services),
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute<ChatTurnFooterProps>("chat.turn.footer", {
+          id: "jhin.source-control.workspace-retry",
+          order: -10,
+          component: createWorkspaceRetryFooter(services),
         }),
       );
       context.subscriptions.add(

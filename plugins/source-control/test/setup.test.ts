@@ -7,6 +7,7 @@ import {
   type WorktreeSetupSnapshot,
   type WorktreeSetupStageId,
 } from "@jhin/source-control-api";
+import { memoryStoragePlugin } from "@jhin/testing";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -16,7 +17,7 @@ import {
   scriptTerminalId,
   wrapCommandForCompletion,
 } from "../src/setup.ts";
-import { git, node, repository, type Node } from "./support.ts";
+import { git, node, repository, temp, type Node } from "./support.ts";
 
 /** Resolves with the first snapshot of the thread's setup (kept or new) that `match` accepts. */
 function setupUntil(
@@ -339,26 +340,38 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     expect(sc.terminals!.closed).toEqual(["setup-setup"]);
   });
 
-  it("cancels a running setup, and the held agent starts without it", async () => {
-    const sc = await node({ watch: false }, { terminals: true });
+  it("cancels a held setup: the worktree goes, the turn fails, and Retry sets it up again (D1477–D1479)", async () => {
+    const data = temp("jhin-sc-cancel-");
+    const storage = memoryStoragePlugin();
+    const sc = await node({ watch: false }, { terminals: true, data, storage });
     // `cat` reads its input, which never ends: the script runs until it is stopped.
     const projectId = await projectWithScript(sc, { command: "cat", async: false });
     const threadId = "cancelled-thread";
     const running = setupUntil(sc, threadId, (s) => s.setupScript !== null);
-    await sc.client.call("threads.create", {
+    const created = await sc.client.call<{ worktreePath: string }>("threads.create", {
       projectId,
       threadId,
       workspace: { type: "worktree", baseRef: "main" },
     });
     await running;
     await sc.terminals!.typed("setup-setup");
-    const ended = turn(sc, threadId, "hello");
+    // The send answers once the turn started, or failed to.
+    const sent = sc.client.call("threads.send", { threadId, text: "hello" });
+    sent.catch(() => undefined);
     await setupUntil(sc, threadId, (s) => stage(s, "agent")?.status === "running");
 
     expect(
       await sc.client.call<{ cancelled: boolean }>("git.worktree.setup.cancel", { threadId }),
     ).toEqual({ cancelled: true });
-    expect(await ended).toBe("completed");
+    // T3's cancelled preparation: the worktree goes (its branch stays), the thread works in
+    // the project's checkout, and the held turn fails as a workspace not prepared.
+    await expect(sent).rejects.toThrow("Worktree setup cancelled.");
+    expect(Fs.existsSync(created.worktreePath)).toBe(false);
+    const { thread } = await sc.client.call<{
+      thread: { worktreePath?: string; lastTurn?: { failure?: { class: string } } };
+    }>("threads.get", { threadId });
+    expect(thread.worktreePath).toBeUndefined();
+    expect(thread.lastTurn?.failure).toEqual({ class: "workspace_preparation" });
     const snapshot = await sc.client.call<WorktreeSetupSnapshot>("git.worktree.setup.get", {
       threadId,
     });
@@ -369,14 +382,66 @@ describe("jhin.source-control: worktree setup (D1121–D1124)", () => {
     expect(
       await sc.client.call<{ cancelled: boolean }>("git.worktree.setup.cancel", { threadId }),
     ).toEqual({ cancelled: false });
+
+    // The finished setup is kept with the thread: a restart still shows it (D1479).
+    await sc.stop();
+    const after = await node({ watch: false }, { terminals: true, data, storage });
+    expect(
+      (await after.client.call<WorktreeSetupSnapshot>("git.worktree.setup.get", { threadId }))
+        .phase,
+    ).toBe("cancelled");
+
+    // Retry: the worktree again from its branch, the script again, the message again (D1478).
+    await after.client.call("projects.scripts.set", {
+      projectId,
+      scripts: [
+        { id: "setup", name: "Install", command: "true", runOnWorktreeCreate: true, async: false },
+      ],
+    });
+    const done = setupUntil(after, threadId, (s) => s.phase === "done");
+    const retried = await after.client.call<{ turnId: string }>("git.worktree.setup.retry", {
+      threadId,
+    });
+    expect(retried.turnId).toEqual(expect.any(String));
+    expect((await done).worktreePath).toBe(created.worktreePath);
+    expect(Fs.existsSync(created.worktreePath)).toBe(true);
+    await expect(after.client.call("git.worktree.setup.retry", { threadId })).rejects.toMatchObject(
+      { code: "WORKSPACE_RETRY_INVALID" },
+    );
+
     // A deleted thread's setup goes with it.
-    await sc.client.call("threads.delete", { threadId });
-    await sc.until(
+    await after.client.call("threads.delete", { threadId });
+    await after.until(
       (event) =>
         event.type === "source-control.thread.removed" &&
         (event.payload as { threadId: string }).threadId === threadId,
     );
-    expect(await sc.client.call("git.worktree.setup.get", { threadId })).toBeNull();
+    expect(await after.client.call("git.worktree.setup.get", { threadId })).toBeNull();
+  });
+
+  it("works locally: the worktree goes and the held turn starts in the project's checkout (D1477)", async () => {
+    const sc = await node({ watch: false }, { terminals: true });
+    const projectId = await projectWithScript(sc, { command: "cat", async: false });
+    const threadId = "local-thread";
+    const running = setupUntil(sc, threadId, (s) => s.setupScript !== null);
+    const created = await sc.client.call<{ worktreePath: string }>("threads.create", {
+      projectId,
+      threadId,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await running;
+    await sc.terminals!.typed("setup-setup");
+    const ended = turn(sc, threadId, "hello");
+    await setupUntil(sc, threadId, (s) => stage(s, "agent")?.status === "running");
+    expect(
+      await sc.client.call("git.worktree.setup.cancel", { threadId, workLocally: true }),
+    ).toEqual({ cancelled: true });
+    expect(await ended).toBe("completed");
+    expect(Fs.existsSync(created.worktreePath)).toBe(false);
+    const { thread } = await sc.client.call<{ thread: { worktreePath?: string } }>("threads.get", {
+      threadId,
+    });
+    expect(thread.worktreePath).toBeUndefined();
   });
 
   it("skips the script stage without a setup script, or without terminals", async () => {
