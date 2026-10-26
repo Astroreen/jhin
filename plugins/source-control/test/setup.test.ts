@@ -116,6 +116,45 @@ describe("scripts.run (D1472)", () => {
   });
 });
 
+describe("settle scripts (D1476)", () => {
+  it("runs the settle script in a settled thread's own worktree, once per settling", async () => {
+    const sc = await node({ watch: false }, { terminals: true });
+    const projectId = await sc.project(repository());
+    await sc.client.call("projects.scripts.set", {
+      projectId,
+      scripts: [{ id: "clean", name: "Clean", command: "touch cleaned", runOnSettle: true }],
+    });
+    const worktree = await sc.client.call<{ id: string; worktreePath: string }>("threads.create", {
+      projectId,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    const local = await sc.client.call<{ id: string }>("threads.create", { projectId });
+
+    const ran = sc.loggedWith("ran a settle script", { threadId: worktree.id });
+    await sc.client.call("threads.settle", { threadId: local.id });
+    await sc.client.call("threads.settle", { threadId: worktree.id });
+    await ran;
+    const opened = sc.terminals!.opened.filter((entry) => entry.terminalId.startsWith("settle-"));
+    // Only the thread with a worktree of its own: the project's checkout is shared.
+    expect(opened).toEqual([
+      {
+        threadId: worktree.id,
+        terminalId: expect.stringMatching(/^settle-clean-[0-9a-f]{8}$/),
+        cwd: worktree.worktreePath,
+      },
+    ]);
+
+    // Taken back up and settled again: a new settling runs it again.
+    await sc.client.call("threads.unsettle", { threadId: worktree.id });
+    const again = sc.loggedWith("ran a settle script", { threadId: worktree.id });
+    await sc.client.call("threads.settle", { threadId: worktree.id });
+    await again;
+    expect(
+      sc.terminals!.opened.filter((entry) => entry.terminalId.startsWith("settle-")),
+    ).toHaveLength(2);
+  });
+});
+
 describe("setup script wrapper", () => {
   it("wraps for the shell the terminal starts", () => {
     expect(completionShellOf("linux", "/usr/bin/fish")).toBe("fish");

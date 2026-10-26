@@ -6,6 +6,7 @@ import * as Path from "node:path";
 import {
   AGENT_REGISTRY_CAPABILITY,
   ProjectScript,
+  settleProjectScript,
   T3_PROJECT_FILE_MAX_BYTES,
   T3_PROJECT_FILE_NAME,
   parseT3ProjectFile,
@@ -1356,6 +1357,17 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         if (typeof projectId === "string" && (await noteDir(id, payload))) {
           await recordThread(id, projectId);
         }
+        if (
+          payload?.["settledOverride"] === "settled" &&
+          typeof payload["settledAt"] === "string"
+        ) {
+          void runSettleScript(id, payload["settledAt"]).catch((error: unknown) =>
+            context.log.warn("could not run a settle script", {
+              threadId: id,
+              error: String(error),
+            }),
+          );
+        }
         const lastTurn = payload?.lastTurn as { turnId?: string; status?: string } | undefined;
         if (typeof projectId !== "string" || lastTurn?.status === undefined) return;
         const key = `${lastTurn.turnId}:${lastTurn.status}`;
@@ -1376,6 +1388,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       case ThreadEvents.threadDeleted: {
         const deletedProject = threadDirs.get(id)?.projectId;
         forgetSetup(id);
+        await kv.delete(NAMESPACE, `${SETTLE_PREFIX}${id}`).catch(() => false);
         // Bookkeeping for the cleanup never keeps the thread's own removal from running.
         await noteDeletedWorktree(id).catch((error: unknown) =>
           context.log.warn("could not note a deleted thread's worktree", {
@@ -3629,6 +3642,85 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   /** Runs of `scripts.run` under way, by thread and script. */
   const scriptRuns = new Map<string, Promise<{ terminalId: string }>>();
 
+  /** Types a script into a thread's terminal, its variables exported before it (D1472). */
+  async function typeScript(
+    terminals: TerminalSessions,
+    input: {
+      readonly threadId: string;
+      readonly terminalId: string;
+      readonly cwd: string;
+      readonly command: string;
+      readonly projectRoot: string;
+      readonly worktreePath: string | undefined;
+    },
+  ) {
+    await terminals.open({
+      threadId: input.threadId,
+      terminalId: input.terminalId,
+      cwd: input.cwd,
+    });
+    terminals.write({
+      threadId: input.threadId,
+      terminalId: input.terminalId,
+      data: `${scriptCommandLine(
+        input.command,
+        completionShellOf(process.platform, terminalShell() ?? process.env.SHELL),
+        {
+          JHIN_PROJECT_ROOT: input.projectRoot,
+          ...(input.worktreePath === undefined ? {} : { JHIN_WORKTREE_PATH: input.worktreePath }),
+        },
+      )}\r`,
+    });
+  }
+
+  // T3's cleanUpSettledThread (D1476): the settle script, once per settling, in the
+  // thread's own worktree; a thread in the project's checkout runs none.
+  const SETTLE_PREFIX = "settle-script/";
+  async function runSettleScript(threadId: string, settledAt: string) {
+    if ((await kv.get(NAMESPACE, `${SETTLE_PREFIX}${threadId}`)) === settledAt) return;
+    const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
+    if (terminals === undefined || stopped) return;
+    const { thread } = (await context.commands.execute("threads.get", { threadId })) as {
+      thread: {
+        projectId: string;
+        worktreePath?: string;
+        settledOverride?: string;
+        settledAt?: string;
+      };
+    };
+    // Taken back up meanwhile, or settled again since: not this settling's to clean.
+    if (thread.settledOverride !== "settled" || thread.settledAt !== settledAt) return;
+    const worktree = thread.worktreePath;
+    if (worktree === undefined || !(await exists(worktree))) return;
+    const projects = (await context.commands.execute("projects.list", {})) as {
+      id: string;
+      path: string;
+      scripts?: unknown[];
+    }[];
+    const project = projects.find((entry) => entry.id === thread.projectId);
+    // The project's own checkout is shared with other threads: no cleanup there.
+    if (project === undefined || Path.resolve(project.path) === Path.resolve(worktree)) return;
+    const script = settleProjectScript(
+      (project.scripts ?? []).flatMap((entry) => {
+        const parsed = ProjectScript.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      }),
+    );
+    await kv.set(NAMESPACE, `${SETTLE_PREFIX}${threadId}`, settledAt);
+    if (script === undefined) return;
+    // A settle shell of an earlier settling may still be busy: a terminal of its own.
+    const terminalId = `settle-${script.id}-${randomUUID().slice(0, 8)}`.slice(0, 128);
+    await typeScript(terminals, {
+      threadId,
+      terminalId,
+      cwd: worktree,
+      command: script.command,
+      projectRoot: project.path,
+      worktreePath: worktree,
+    });
+    context.log.info("ran a settle script", { threadId, terminalId, script: script.id });
+  }
+
   // T3's runProjectScript (D1472): the scripts menu, a script's shortcut, an agent.
   context.commands.register({
     name: "scripts.run",
@@ -3698,18 +3790,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           entry.terminalId === id && (entry.hasRunningSubprocess || folder !== realCwd),
       ),
     );
-    await terminals.open({ threadId, terminalId, cwd });
-    terminals.write({
+    await typeScript(terminals, {
       threadId,
       terminalId,
-      data: `${scriptCommandLine(
-        script.command,
-        completionShellOf(process.platform, terminalShell() ?? process.env.SHELL),
-        {
-          JHIN_PROJECT_ROOT: project.path,
-          ...(thread.worktreePath === undefined ? {} : { JHIN_WORKTREE_PATH: thread.worktreePath }),
-        },
-      )}\r`,
+      cwd,
+      command: script.command,
+      projectRoot: project.path,
+      worktreePath: thread.worktreePath,
     });
     return { terminalId };
   }

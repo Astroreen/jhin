@@ -365,16 +365,16 @@ W42 of `t3-roadmap.md` (D1461–D1480) gives project scripts T3's preview URL
 
 - **D1480. A script's preview URL opens in the preview, and is a configured
   URL of the empty state.** A script run with `autoOpenPreview` and a
-  `previewUrl` opens the preview panel of its thread at that URL (the
-  client's `preview.open-url { url }`, a new client command: the panel's
-  current tab goes there, a new tab when it has none), as T3's
-  `openUrlInPreview`; W40's tab strip takes it as it lands. And as T3's
-  `configuredUrls`, `preview.servers.list` takes `configuredUrls`
-  (additive, the open thread's project's scripts' `previewUrl`s, at most
-  50): each is probed as D950 probes a listener (`0.0.0.0` read as
-  `localhost`), and one that answers is listed first under its configured
-  URL, in place of a listener found on the same host and port. A
-  configured URL needs no terminal of its own: the user named it.
+  `previewUrl` opens that URL in a new browser tab of the thread on screen,
+  shown in the right panel (the client command `preview.open-url { url }`,
+  through `preview.tab.open` and W40's tab strip), as T3's
+  `openUrlInPreview`. And as T3's `configuredUrls`, `preview.servers.list`
+  takes `configuredUrls` (additive, the open thread's project's scripts'
+  `previewUrl`s, at most 50, http and https, `0.0.0.0` read as
+  `localhost`): each is probed as D950 probes a listener, and one that
+  answers is listed under its configured URL, in place of a listener on
+  the same port, the list sorted by port as T3 sorts it. A configured URL
+  needs no terminal of its own: the user named it.
 
 ### The pinned browser (W25)
 
