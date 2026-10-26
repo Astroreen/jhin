@@ -165,7 +165,7 @@ test("D1452–D1457: the panel's rows with their details, checks and speed actio
     .getByRole("dialog", { name: "Command palette" })
     .getByRole("option", { name: "Show linked pull requests" })
     .click();
-  const panel = page.getByRole("complementary", { name: "Pull requests" });
+  const panel = page.getByRole("region", { name: "Pull requests" });
   const list = panel.getByRole("list", { name: "Linked pull requests" });
   const rows = list.getByRole("listitem");
   await expect(rows).toHaveCount(2);
