@@ -159,6 +159,17 @@ describe("chat.new", () => {
     expect(visited).toEqual([{ node: LOADING }, { node: LOADING, project: "scratch" }]);
     expect(listeners.size).toBe(0);
   });
+
+  it("gives up waiting when the sidebar goes away", async () => {
+    const { run, navigation, visited, listeners } = await start();
+    navigation.navigate({ node: LOADING });
+    const started = run("chat.new");
+    await kernel!.stop();
+    kernel = undefined;
+    await started;
+    expect(visited).toEqual([{ node: LOADING }]);
+    expect(listeners.size).toBe(0);
+  });
 });
 
 describe("chat.new-without-project (D72)", () => {

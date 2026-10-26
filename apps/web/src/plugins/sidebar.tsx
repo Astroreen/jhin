@@ -2522,6 +2522,13 @@ export const sidebarPlugin = builtin(
       /** The scratch project of a node, once its catalog is loaded. */
       const scratchIn = (target: NodeTarget) =>
         threads.catalog(target).projects.find((project) => project.scratch)?.id;
+      /** Waits of "New thread" for a catalog; they end, empty-handed, with the plugin. */
+      const waits = new Set<() => void>();
+      context.subscriptions.add({
+        dispose: () => {
+          for (const end of Array.from(waits)) end();
+        },
+      });
       /**
        * The scratch project of a node, waiting for its catalog while it loads: "New thread"
        * right after the connection opens starts the draft once the projects are there.
@@ -2532,11 +2539,15 @@ export const sidebarPlugin = builtin(
             resolve(scratchIn(target));
             return;
           }
-          const subscription = threads.subscribe(target, () => {
-            if (threads.catalog(target).status === "loading") return;
+          const end = (projectId?: string) => {
+            waits.delete(end);
             subscription.dispose();
-            resolve(scratchIn(target));
+            resolve(projectId);
+          };
+          const subscription = threads.subscribe(target, () => {
+            if (threads.catalog(target).status !== "loading") end(scratchIn(target));
           });
+          waits.add(end);
         });
 
       const failure = (message: string, code: string) =>
