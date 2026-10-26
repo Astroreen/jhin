@@ -1062,12 +1062,7 @@ export default definePlugin({
         if (meshStreams?.follow === undefined) return resolve(undefined);
         let done = false;
         let followed: Disposable | undefined;
-        // The member going out of reach ends the read: a relay that waits for a
-        // route would otherwise hold the answer (D499).
-        const away = meshStreams.onChange?.(() => {
-          const member = meshStreams.members?.().find((item) => item.nodeId === node);
-          if (member === undefined || !member.reachable) finish();
-        });
+        let away: Disposable | undefined;
         const finish = (event?: { sequence: number; payload: unknown }) => {
           if (done) return;
           done = true;
@@ -1075,6 +1070,13 @@ export default definePlugin({
           followed?.dispose();
           resolve(event);
         };
+        // The member going out of reach ends the read: a relay that waits for a
+        // route would otherwise hold the answer (D499).
+        away = meshStreams.onChange?.(() => {
+          const member = meshStreams.members?.().find((item) => item.nodeId === node);
+          if (member === undefined || !member.reachable) finish();
+        });
+        if (done) away?.dispose();
         // A relay that ends (the member refused it, the mesh closed) reads nothing.
         const following = meshStreams.follow(
           node,
