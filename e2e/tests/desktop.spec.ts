@@ -787,6 +787,98 @@ test("the app shows its node's browser tabs in a webview the agent and the user 
   }
 });
 
+test("annotates an element of a tab the app hosts into the composer, and pops the tab out (D1491, D1493)", async () => {
+  const info = test.info();
+  const site = Http.createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(
+      `<!doctype html><title>Annotate page</title><style>body{margin:0;font:16px sans-serif}</style><h1 id="hero" style="margin:40px">Hello annotation</h1>`,
+    );
+  });
+  await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${(site.address() as AddressInfo).port}`;
+  try {
+    const launchedApp = await launch();
+    const { app, window } = launchedApp;
+    const client = nodeClient(launchedApp);
+    const thread = await client.call<{ id: string }>("threads.create", {});
+    await window.locator(`[data-thread-item$="|${thread.id}"]`).click();
+    await client.call("preview.open", { threadId: thread.id, url: `${origin}/` });
+    const panel = window.getByRole("complementary", { name: "Right panel" });
+    await expect(panel.getByRole("tab", { name: "Annotate page" })).toBeVisible();
+
+    // T3's "Annotate preview": the overlay comes up inside the guest.
+    const overlay = app.evaluate(({ webContents }) => {
+      const guest = webContents.getAllWebContents().find((each) => each.getType() === "webview")!;
+      return guest.executeJavaScript(`new Promise((resolve) => {
+        const found = () => document.querySelector("jhin-annotation") !== null;
+        if (found()) return resolve(true);
+        new MutationObserver((_, observer) => { if (found()) { observer.disconnect(); resolve(true); } })
+          .observe(document.documentElement, { childList: true });
+      })`);
+    });
+    await panel.getByRole("button", { name: "Annotate preview" }).click();
+    expect(await overlay).toBe(true);
+    await expect(panel.getByRole("button", { name: "Cancel annotation" })).toBeVisible();
+
+    // The user picks the heading, describes the change and presses Enter, in the guest.
+    await app.evaluate(async ({ webContents }) => {
+      const guest = webContents.getAllWebContents().find((each) => each.getType() === "webview")!;
+      const point = (await guest.executeJavaScript(
+        `(() => { const r = document.querySelector("#hero").getBoundingClientRect(); return { x: Math.round(r.left + 20), y: Math.round(r.top + r.height / 2) }; })()`,
+      )) as { x: number; y: number };
+      guest.sendInputEvent({ type: "mouseMove", x: point.x, y: point.y });
+      for (const type of ["mouseDown", "mouseUp"] as const) {
+        guest.sendInputEvent({ type, x: point.x, y: point.y, button: "left", clickCount: 1 });
+      }
+      for (const keyCode of "Bigger") guest.sendInputEvent({ type: "char", keyCode });
+      guest.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+    });
+    // The annotation is a chip of the message, and its crop an attached image.
+    const composer = window.getByRole("form", { name: "Composer" });
+    await expect(composer.getByLabel("Preview annotation, Bigger")).toBeVisible();
+    await expect(
+      composer.getByRole("img", { name: /^preview-annotation-annotation_.*\.png$/ }),
+    ).toBeVisible();
+    const annotated = info.outputPath("desktop-preview-annotation.png");
+    await window.screenshot({ path: annotated });
+    await info.attach("desktop-preview-annotation", { path: annotated, contentType: "image/png" });
+    // Sent, the message shows the annotation's chip (its page and comment on hover).
+    await composer.getByRole("button", { name: "Send message" }).click();
+    const messages = window.getByRole("log", { name: "Messages" });
+    await expect(messages.getByLabel("Preview annotation, Bigger")).toBeVisible();
+    // The agent reads it as T3's annotation: its page, comment and the picked element.
+    await expect(messages.getByText(/Targets: 1 selected element/)).toBeVisible();
+
+    // T3's separate window of the tab, from the More menu, and closed from there again.
+    const created = app.evaluate(
+      ({ app: electronApp }) =>
+        new Promise<string>((resolve) =>
+          electronApp.once("browser-window-created", (_event, popOut) =>
+            resolve(popOut.getTitle()),
+          ),
+        ),
+    );
+    await panel.getByRole("button", { name: "Preview menu" }).click();
+    await window.getByRole("menuitem", { name: "Open separate preview window" }).click();
+    expect(await created).toBe("Preview · Annotate page");
+    const closed = app.evaluate(
+      ({ BrowserWindow }) =>
+        new Promise<number>((resolve) => {
+          const popOut = BrowserWindow.getAllWindows().find((each) =>
+            each.getTitle().startsWith("Preview · "),
+          )!;
+          popOut.once("closed", () => resolve(BrowserWindow.getAllWindows().length));
+        }),
+    );
+    await panel.getByRole("button", { name: "Preview menu" }).click();
+    await window.getByRole("menuitem", { name: "Close separate preview window" }).click();
+    expect(await closed).toBe(1);
+  } finally {
+    await new Promise((resolve) => site.close(resolve));
+  }
+});
+
 test("the Device panel streams a simulator from the device hub in the app, with touches (D1206–D1208)", async () => {
   const info = test.info();
   const tools = fakeTools();

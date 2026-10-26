@@ -49,6 +49,15 @@ const bridge: DesktopBridge = {
     openDevTools: (webContentsId) =>
       ipcRenderer.invoke(DESKTOP_CHANNELS.previewOpenDevTools, webContentsId),
     onDevToolsClosed: (listener) => listen(DESKTOP_CHANNELS.previewDevToolsClosed, listener),
+    popOut: (webContentsId, title) =>
+      ipcRenderer.invoke(DESKTOP_CHANNELS.previewPopOut, { webContentsId, title }),
+    closePopOut: (webContentsId) =>
+      ipcRenderer.invoke(DESKTOP_CHANNELS.previewClosePopOut, webContentsId),
+    onPopOutClosed: (listener) => listen(DESKTOP_CHANNELS.previewPopOutClosed, listener),
+    pickElement: (webContentsId) =>
+      ipcRenderer.invoke(DESKTOP_CHANNELS.previewPickElement, webContentsId),
+    cancelPickElement: (webContentsId) =>
+      ipcRenderer.invoke(DESKTOP_CHANNELS.previewCancelPick, webContentsId),
   },
 };
 

@@ -267,6 +267,10 @@ export interface ComposerHandleApi {
   togglePlanMode(): void;
   /** Sends the message the other way while a turn runs: queued instead of steered, or back. */
   sendAlternate(): Promise<boolean>;
+  /** Sends the message as Enter does; false when there is nothing to send. */
+  send(): Promise<boolean>;
+  /** Attaches files as the paperclip does (an annotation's screenshot, desktop.md D1491). */
+  attach(files: readonly File[]): void;
   /** Steers the first queued message into the running turn; false when it cannot. */
   steerNext(): boolean;
   /** Edits the last queued message in the composer; false when it cannot (T3's editLatest). */
@@ -1192,6 +1196,8 @@ export function Composer(props: ComposerProps) {
     togglePlanMode,
     // True once the message went: not for an edit, an answer, or nothing to send.
     sendAlternate: () => send(true),
+    send: () => send(false),
+    attach: (files) => void addFiles(files),
     steerNext() {
       const next = queued[0];
       const actions = props.queueActions;

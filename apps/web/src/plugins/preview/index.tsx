@@ -23,7 +23,12 @@ import {
   type RightPanelSurfaceProps,
   type ThreadsCatalog,
 } from "@jhin/client-api";
-import { DESKTOP_SHELL_CAPABILITY, type DesktopShell } from "@jhin/desktop-api";
+import { toKindScopedContextId } from "@jhin/agent-api";
+import {
+  DESKTOP_SHELL_CAPABILITY,
+  type DesktopShell,
+  type PreviewPickResult,
+} from "@jhin/desktop-api";
 import { previewProfilePartition, type PreviewTab } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { definePlugin, z, type Disposable } from "@jhin/sdk";
@@ -508,6 +513,20 @@ export const previewPanelPlugin = builtin(
         if (!supportsPictureInPicture()) return "unsupported" as const;
         return { shown, state, client: connection.client };
       };
+      /** The tab the app hosts that floats on screen, for T3's separate window (D1493). */
+      const appTabOnScreen = (): { threadId: string; tabId: string; title: string } | undefined => {
+        const shown = threadOnScreen();
+        const state = shown === undefined ? undefined : players.get(shown.key);
+        const threadId = shown?.route.thread;
+        if (shown === undefined || state === undefined || threadId === undefined) return undefined;
+        const tab = shown.feed.tabs().find((each) => each.tabId === state.tabId);
+        if (tab === undefined || !surfaces.canPopOut(threadId, tab.tabId)) return undefined;
+        return {
+          threadId,
+          tabId: tab.tabId,
+          title: tab.navStatus.state === "idle" ? "" : tab.navStatus.title,
+        };
+      };
       context.commands.register({
         name: "preview.pop-out",
         title: "Pop into separate window",
@@ -534,6 +553,14 @@ export const previewPanelPlugin = builtin(
             .optional(),
         }),
         handler: async () => {
+          // The app's own window needs no gesture (D1493).
+          const appTab = floatingOnScreen() === "app-tab" ? appTabOnScreen() : undefined;
+          if (appTab !== undefined) {
+            if (!surfaces.isPoppedOut(appTab.threadId, appTab.tabId)) {
+              await surfaces.togglePopOut(appTab.threadId, appTab.tabId, appTab.title);
+            }
+            return { poppedOut: true };
+          }
           // Only a user's gesture opens the window: over RPC, the CLI or MCP it says so, as an
           // answer rather than the browser's own error.
           if (navigator.userActivation?.isActive === false) {
@@ -729,12 +756,63 @@ export const previewPanelPlugin = builtin(
         return <PanelFor target={{ node: route.node }} threadId={route.thread} />;
       }
 
+      /**
+       * T3's `handlePickElement` (desktop.md D1491): the annotation becomes a context record in
+       * the composer and its crop an image attached beside it; "send" sends at once.
+       */
+      const addAnnotation = async (result: NonNullable<PreviewPickResult>) => {
+        const { annotation, screenshot, submission } = result;
+        const record = {
+          version: 1 as const,
+          kind: "preview-annotation" as const,
+          contextId: toKindScopedContextId("preview-annotation", annotation.id),
+          // T3's label: the comment, else the page's title, else "Preview annotation".
+          label: (
+            annotation.comment.trim() ||
+            annotation.pageTitle.trim() ||
+            "Preview annotation"
+          ).slice(0, 200),
+          pageUrl: annotation.pageUrl,
+          pageTitle: annotation.pageTitle,
+          comment: annotation.comment,
+          elements: annotation.elements.map(({ selector, tagName, text }) => ({
+            selector,
+            tagName,
+            text,
+          })),
+        };
+        try {
+          await context.commands.execute("chat.composer.insert-context", { record });
+          if (screenshot === null) {
+            toasts?.show({
+              type: "warning",
+              title: "Could not capture the picked element",
+              description: "The annotation was kept without the screenshot.",
+            });
+          } else {
+            await context.commands.execute("chat.composer.attach", {
+              files: [
+                {
+                  name: `preview-annotation-${annotation.id}.png`,
+                  mimeType: "image/png",
+                  data: screenshot.dataUrl.slice(screenshot.dataUrl.indexOf(",") + 1),
+                },
+              ],
+            });
+          }
+          if (submission === "send") await context.commands.execute("chat.composer.send", {});
+        } catch (error) {
+          onError("Unable to add the annotation", error);
+        }
+      };
+
       /** What the panel's chunk asks of the plugin, for a thread on `target`. */
       const servicesFor = (
         target: NodeTarget,
         shortcut: (command: string) => string | undefined,
       ): PanelServices => ({
         viewer,
+        onAnnotation: (_tab, result) => void addAnnotation(result),
         activeTab: (panelKey) => active.get(panelKey),
         setActiveTab,
         focusUrlRequests,

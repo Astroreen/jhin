@@ -57,8 +57,13 @@
       "entry": [
         "src/main.ts",
         "src/preload.ts",
+        // The preview's guests' and its pop-out window's preloads (D1491, D1493).
+        "src/preview-annotate-preload.ts",
+        "src/preview-pop-out-preload.ts",
         "vite.config.ts",
         "vite.preload.config.ts",
+        "vite.annotate-preload.config.ts",
+        "vite.pop-out-preload.config.ts",
         // Run as a child process by local-node.test.ts.
         "test/fixtures/*.mjs",
       ],

@@ -1,6 +1,7 @@
 // Placing a tab's webview where a surface shows it follows T3 Code (MIT, see
 // THIRD_PARTY_NOTICES.md): apps/web/src/browser/browserSurfaceStore.ts and
 // hostedBrowserWebviewStyle.ts.
+import type { PreviewPickResult } from "@jhin/desktop-api";
 import type { RpcClient } from "@jhin/rpc";
 import { toDisposable, type Disposable } from "@jhin/sdk";
 
@@ -33,6 +34,18 @@ export function createNativeSurfaces() {
   /** Each hosted tab's guest, for its DevTools (D1489). */
   const guests = new Map<string, number>();
   let devTools: ((webContentsId: number) => Promise<void>) | undefined;
+  /** The app's separate windows of guests (D1493), and the tabs popped out now. */
+  let popOuts:
+    | {
+        open(webContentsId: number, title: string): Promise<void>;
+        close(webContentsId: number): Promise<void>;
+      }
+    | undefined;
+  const poppedOut = new Set<string>();
+  /** The app's annotation of a guest's page (D1491). */
+  let annotate: ((webContentsId: number) => Promise<PreviewPickResult>) | undefined;
+  let cancelAnnotation: ((webContentsId: number) => Promise<void>) | undefined;
+  const annotating = new Set<string>();
   const listeners = new Set<() => void>();
   let version = 0;
   const changed = () => {
@@ -112,6 +125,79 @@ export function createNativeSurfaces() {
         return Promise.reject(new Error("This tab's page is not shown in the app."));
       }
       return devTools(id);
+    },
+    /** The app's separate windows, while the host has them (D1493). */
+    popOuts(actions: typeof popOuts): Disposable {
+      popOuts = actions;
+      changed();
+      return toDisposable(() => {
+        if (popOuts !== actions) return;
+        popOuts = undefined;
+        poppedOut.clear();
+        changed();
+      });
+    },
+    canPopOut(threadId: string, tabId: string): boolean {
+      return popOuts !== undefined && guests.has(keyOf(threadId, tabId));
+    },
+    isPoppedOut: (threadId: string, tabId: string) => poppedOut.has(keyOf(threadId, tabId)),
+    /** The guest's window closed (by the user, or with its guest). */
+    poppedIn(webContentsId: number): void {
+      for (const [key, id] of guests) {
+        if (id === webContentsId && poppedOut.delete(key)) changed();
+      }
+    },
+    /** Opens or closes the tab's separate window (T3's toggle). */
+    async togglePopOut(threadId: string, tabId: string, title: string): Promise<void> {
+      const key = keyOf(threadId, tabId);
+      const id = guests.get(key);
+      if (popOuts === undefined || id === undefined) {
+        throw new Error("This tab's page is not shown in the app.");
+      }
+      if (poppedOut.has(key)) {
+        await popOuts.close(id);
+        if (poppedOut.delete(key)) changed();
+        return;
+      }
+      await popOuts.open(id, title);
+      poppedOut.add(key);
+      changed();
+    },
+    /** The app's annotation, while the host has it (D1491). */
+    annotation(pick: typeof annotate, cancel: typeof cancelAnnotation): Disposable {
+      annotate = pick;
+      cancelAnnotation = cancel;
+      changed();
+      return toDisposable(() => {
+        if (annotate !== pick) return;
+        annotate = undefined;
+        cancelAnnotation = undefined;
+        changed();
+      });
+    },
+    canAnnotate(threadId: string, tabId: string): boolean {
+      return annotate !== undefined && guests.has(keyOf(threadId, tabId));
+    },
+    isAnnotating: (threadId: string, tabId: string) => annotating.has(keyOf(threadId, tabId)),
+    /** Annotates the tab's page; null when cancelled (T3's `pickElement`). */
+    async annotate(threadId: string, tabId: string): Promise<PreviewPickResult> {
+      const key = keyOf(threadId, tabId);
+      const id = guests.get(key);
+      if (annotate === undefined || id === undefined) {
+        throw new Error("This tab's page is not shown in the app.");
+      }
+      annotating.add(key);
+      changed();
+      try {
+        return await annotate(id);
+      } finally {
+        annotating.delete(key);
+        changed();
+      }
+    },
+    async cancelAnnotation(threadId: string, tabId: string): Promise<void> {
+      const id = guests.get(keyOf(threadId, tabId));
+      if (id !== undefined) await cancelAnnotation?.(id);
     },
     version: () => version,
     subscribe(listener: () => void): () => void {

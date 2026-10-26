@@ -13,6 +13,7 @@ import type {
   AssistantCitation,
   MessageContextRecord,
   ReviewCommentContextRecord,
+  PreviewAnnotationContextRecord,
   TerminalContextRecord,
   ThreadContextRecord,
 } from "@jhin/agent-api";
@@ -33,6 +34,7 @@ import {
   GitPullRequestIcon,
   MessageCircleIcon,
   MessagesSquareIcon,
+  MousePointerClickIcon,
   TerminalIcon,
 } from "lucide-react";
 
@@ -308,6 +310,21 @@ export function ContextRecordChip(props: {
   }
   if (record?.kind === "terminal" && "terminalLabel" in record) {
     return <TerminalContextChip record={record as TerminalContextRecord} />;
+  }
+  // An annotation of a preview page (desktop.md D1491): its page and comment on hover.
+  if (record?.kind === "preview-annotation" && "pageUrl" in record) {
+    const annotation = record as PreviewAnnotationContextRecord;
+    return (
+      <ContextChipShell
+        aria-label={`Preview annotation, ${annotation.label}`}
+        icon={<MousePointerClickIcon />}
+        kind="preview-annotation"
+        label={annotation.label}
+        tooltip={[annotation.pageTitle || annotation.pageUrl, annotation.comment.trim()]
+          .filter((line) => line !== "")
+          .join("\n")}
+      />
+    );
   }
   return <UnresolvedChip label={props.label} tooltip={props.unavailable} />;
 }

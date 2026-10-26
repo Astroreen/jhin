@@ -674,6 +674,60 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   inside a subframe (`ContextMenuImage.ts`, fetching and decoding it) is
   Deferred.
 
+- **D1491. T3's element annotation, its Select tool first.** T3 annotates
+  a page the app hosts from the preview's toolbar ("Annotate preview",
+  "Annotate elements, regions, and drawings"; "Cancel annotation",
+  "Cancel annotation (Esc)"): an overlay inside the guest lets the user
+  pick elements, write "Describe the change…" and attach the result with
+  a screenshot of the picked area (`PickPreload.ts`, `Manager.ts`'s
+  `pickElement`). Here the preview's webviews get the app's own preload
+  (`preview-annotate-preload.cjs`; `hardenWebview` sets it instead of
+  removing every preload, the guest stays sandboxed and isolated), which
+  draws T3's overlay in a closed shadow root: hovering outlines an element
+  with its tag, a click selects it and Shift adds more, Enter attaches
+  ("Attach", "Attach annotation and screenshot (Enter)"), Cmd/Ctrl+Enter
+  sends at once, Esc cancels, and the button reads "Capturing…" meanwhile.
+  The main process captures the guest (`capturePage`) and crops it to the
+  selection, as T3 does, through the bridge's `preview.pickElement`
+  (`desktop.shell@1` 1.3). The page puts the annotation into the composer
+  as a context record of the new kind `preview-annotation` (its page, its
+  comment and each element's selector, tag and text, which an agent reads
+  as T3's `<preview_annotation>` lists them), and the crop as an image
+  attachment through the chat's new command `chat.composer.attach`
+  (`{ files: [{ name, mimeType, data }] }`, base64), named
+  `preview-annotation-<id>.png`; a failed crop keeps the annotation and
+  says "Could not capture the picked element" / "The annotation was kept
+  without the screenshot.". T3's Region, Draw and Erase tools, its style
+  panel and the component source lookup (`react-grab`) are Deferred.
+
+- **D1492. A human's download from a tab the app hosts lands in the
+  Downloads folder, as in T3.** T3 offers no toast for a desktop tab: when
+  a download was started by the user rather than the agent (no input,
+  navigation or script from the node's connection within the last 5 s,
+  T3's `humanStartedDownload`), it copies the finished file into the
+  system's Downloads folder (`name (1).ext` and so on when taken, T3's
+  dedupe) and shows it in the file manager (`shell.showItemInFolder`). The
+  node still saves its copy as for any tab (D1331), so the agent sees it;
+  an agent's download stays on the node only. This replaces the Deferred
+  "download toast" for a tab the app hosts: D1331's toast stays for the
+  node's headless tabs.
+
+- **D1493. Popping out a tab the app hosts is T3's separate window.** The
+  preview's More menu gets T3's "Open separate preview window" / "Close
+  separate preview window" for a tab the app hosts, and the mini player's
+  pop-out button (D1327) opens the same for such a tab instead of
+  refusing. The main process opens T3's window: 480 × 320 (at least
+  240 × 160), titled "Preview · <title>", always on top, without a taskbar
+  entry, shown without taking focus, with a page of one image ("Live
+  browser preview", a content security policy of `default-src 'none';
+  img-src data:`) that its own preload feeds with the guest's frames:
+  `capturePage` about 12 times a second, unchanged frames skipped, JPEG at
+  quality 80, the window's aspect following the page's. While it is open
+  the hidden webview is kept inside the window behind the app
+  (`zIndex: -1`), since Electron stops painting a guest outside it. The
+  window closes with its tab or guest, or from the menu again; the bridge
+  gets `preview.popOut`, `preview.closePopOut` and `onPopOutClosed`.
+
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
@@ -727,11 +781,8 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   T3 does).
 - Telling the app's page from other subscribers of `preview-desktop`
   (D1321): any subscriber holds new tabs for the 10 s wait.
-- T3's download toast for a tab the app hosts (D1324, `preview.md` D1331):
-  the file lands in the node's folder as for any tab, but the webview's
-  surface does not show the offer the frames stream carries, so it is saved
-  through the agent or the headless panel only.
-- Around the preview in the app (D1321–D1324): T3's element annotation,
+- Around the preview in the app (D1321–D1324): T3's annotation Region, Draw
+  and Erase tools, its style panel and component source lookup (D1491);
   passkeys and favicon capture of a guest; Copy Image of an image inside a
   guest's subframe (T3's `ContextMenuImage.ts`, D1490); a reconnected tab
   keeping its recording, the human's control and the popups it opened

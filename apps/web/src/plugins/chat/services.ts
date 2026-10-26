@@ -176,6 +176,10 @@ export interface ComposerHandle {
         togglePlanMode(): void;
         /** Sends the composer's message the other way while a turn runs (queue or steer). */
         sendAlternate(): Promise<boolean>;
+        /** Sends the composer's message as Enter does (desktop.md D1491). */
+        send(): Promise<boolean>;
+        /** Attaches files as the paperclip does (desktop.md D1491). */
+        attach(files: readonly File[]): void;
         /** Steers the first queued message into the running turn; false when there is none. */
         steerNext(): boolean;
         /** Loads the last queued message into the composer to edit it; false when it cannot. */

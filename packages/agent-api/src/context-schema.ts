@@ -76,6 +76,24 @@ const TerminalRecord = z
   })
   .refine((record) => record.lineEnd >= record.lineStart);
 
+const PreviewAnnotationRecord = z.object({
+  ...Base,
+  kind: z.literal("preview-annotation"),
+  pageUrl: z.string().max(4096),
+  pageTitle: z.string().max(1000),
+  comment: z.string().max(20_000),
+  elements: z
+    .array(
+      z.object({
+        selector: z.string().max(2000),
+        tagName: z.string().max(100),
+        text: z.string().max(2000),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+
 /** A kind this node does not know: kept with its JSON payload, up to 64 000 characters. */
 const UnknownRecord = z.object({
   ...Base,
@@ -95,8 +113,16 @@ const UnknownRecord = z.object({
 
 /** One record: T3's known kinds by their shapes, any other kind with a JSON payload. */
 export const MessageContextRecordSchema: z.ZodType<MessageContextRecord> = z
-  .union([ReviewCommentRecord, ThreadRecord, TerminalRecord, UnknownRecord])
-  .describe("A context record (t3-parity.md D1006): review-comment, thread, terminal or other");
+  .union([
+    ReviewCommentRecord,
+    ThreadRecord,
+    TerminalRecord,
+    PreviewAnnotationRecord,
+    UnknownRecord,
+  ])
+  .describe(
+    "A context record (t3-parity.md D1006): review-comment, thread, terminal, preview-annotation or other",
+  );
 
 /** The records' JSON, at most 16 MB together (T3's bound). */
 const MAX_SERIALIZED_CHARS = 16_000_000;

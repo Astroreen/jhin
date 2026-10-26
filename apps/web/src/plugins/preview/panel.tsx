@@ -61,6 +61,7 @@ import {
   HistoryIcon,
   MinusIcon,
   MoreVerticalIcon,
+  MousePointerClickIcon,
   PictureInPicture2Icon,
   PlusIcon,
   RadioTowerIcon,
@@ -82,6 +83,8 @@ import { profileName, type BrowserProfile } from "./profiles.tsx";
 import { NEW_TAB, tabTitle } from "./tab-title.ts";
 import { BrowserSurface } from "./surface.tsx";
 import { NativeSurface } from "./native-surface.tsx";
+import type { PreviewPickResult } from "@jhin/desktop-api";
+
 import type { NativeSurfaces } from "./native-surfaces.ts";
 
 // --- Recently used pages (T3's browser history) ----------------------------------
@@ -195,6 +198,8 @@ function IconButton(props: {
 
 export interface PanelServices {
   readonly viewer: string;
+  /** An annotation of a tab's page the app hosts, for the composer (desktop.md D1491). */
+  onAnnotation?(tab: PreviewTab, result: NonNullable<PreviewPickResult>): void;
   /** T3's "Downloaded <file>" toast with Save, for the viewer holding control (D1331). */
   offerDownload(
     client: RpcClient,
@@ -629,6 +634,8 @@ function ChromeRow(props: {
   leading?: ReactNode;
   /** T3's "Float preview over chat" toggle (D1202). */
   float?: { readonly floating: boolean; readonly disabled: boolean; readonly onToggle: () => void };
+  /** T3's "Annotate preview" for a page the app hosts (desktop.md D1491). */
+  annotate?: { readonly active: boolean; readonly onToggle: () => void };
 }) {
   const refresh = props.services.shortcut("preview.refresh");
   return (
@@ -668,6 +675,29 @@ function ChromeRow(props: {
         services={props.services}
         url={props.url}
       />
+      {props.annotate === undefined ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                aria-label={props.annotate.active ? "Cancel annotation" : "Annotate preview"}
+                aria-pressed={props.annotate.active ? "true" : "false"}
+                onClick={props.annotate.onToggle}
+                size="icon-xs"
+                type="button"
+                variant={props.annotate.active ? "secondary" : "ghost"}
+              />
+            }
+          >
+            <MousePointerClickIcon className={cn(props.annotate.active && "text-primary")} />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            {props.annotate.active
+              ? "Cancel annotation (Esc)"
+              : "Annotate elements, regions, and drawings"}
+          </TooltipPopup>
+        </Tooltip>
+      )}
       {props.float === undefined ? null : (
         <Tooltip>
           <TooltipTrigger
@@ -1196,6 +1226,29 @@ function TabView(props: {
   const devTools = useSyncExternalStore(services.surfaces.subscribe, () =>
     services.surfaces.canOpenDevTools(tab.threadId, tab.tabId),
   );
+  // T3's separate window (D1493) and annotation (D1491) of a tab the app hosts.
+  const popOut = useSyncExternalStore(services.surfaces.subscribe, () =>
+    services.surfaces.canPopOut(tab.threadId, tab.tabId),
+  );
+  const poppedOut = useSyncExternalStore(services.surfaces.subscribe, () =>
+    services.surfaces.isPoppedOut(tab.threadId, tab.tabId),
+  );
+  const canAnnotate = useSyncExternalStore(services.surfaces.subscribe, () =>
+    services.surfaces.canAnnotate(tab.threadId, tab.tabId),
+  );
+  const annotating = useSyncExternalStore(services.surfaces.subscribe, () =>
+    services.surfaces.isAnnotating(tab.threadId, tab.tabId),
+  );
+  const toggleAnnotation = () => {
+    if (annotating) {
+      void services.surfaces.cancelAnnotation(tab.threadId, tab.tabId);
+      return;
+    }
+    void services.surfaces
+      .annotate(tab.threadId, tab.tabId)
+      .then((result) => (result === null ? undefined : services.onAnnotation?.(tab, result)))
+      .catch(fail("Unable to annotate the page"));
+  };
   const menu = (
     <Menu>
       <Tooltip>
@@ -1223,6 +1276,17 @@ function TabView(props: {
           </>
         )}
         <MenuItem onClick={() => adjust({ hardReload: true })}>Hard reload</MenuItem>
+        {popOut ? (
+          <MenuItem
+            onClick={() =>
+              void services.surfaces
+                .togglePopOut(tab.threadId, tab.tabId, status.state === "idle" ? "" : status.title)
+                .catch(fail("Unable to update popped-out preview"))
+            }
+          >
+            {poppedOut ? "Close separate preview window" : "Open separate preview window"}
+          </MenuItem>
+        ) : null}
         {devTools ? (
           <MenuItem
             onClick={() =>
@@ -1327,6 +1391,7 @@ function TabView(props: {
           disabled: !floating && status.state === "failed",
           onToggle: () => services.float(panelKey, floating ? undefined : tab.tabId),
         }}
+        {...(canAnnotate ? { annotate: { active: annotating, onToggle: toggleAnnotation } } : {})}
         leading={profileBadge}
         loading={status.state === "loading"}
         menu={menu}

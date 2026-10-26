@@ -149,6 +149,23 @@ function Host(
       closed.dispose();
     };
   }, [preview, surfaces]);
+  // T3's separate window (D1493) and annotation (D1491), when the app has them.
+  useEffect(() => {
+    const { popOut, closePopOut, onPopOutClosed } = preview;
+    if (popOut === undefined || closePopOut === undefined || onPopOutClosed === undefined) return;
+    const actions = surfaces.popOuts({ open: popOut, close: closePopOut });
+    const closed = onPopOutClosed((webContentsId) => surfaces.poppedIn(webContentsId));
+    return () => {
+      actions.dispose();
+      closed.dispose();
+    };
+  }, [preview, surfaces]);
+  useEffect(() => {
+    const { pickElement, cancelPickElement } = preview;
+    if (pickElement === undefined || cancelPickElement === undefined) return;
+    const annotation = surfaces.annotation(pickElement, cancelPickElement);
+    return () => annotation.dispose();
+  }, [preview, surfaces]);
   const onError = useRef(props.onError);
   onError.current = props.onError;
   useEffect(() => {
@@ -317,6 +334,9 @@ function HostedWebview(props: {
   }, [agentPointer]);
 
   const size = last.current;
+  // Popped out, a page nobody shows here stays inside the window, behind the app, so Electron
+  // keeps painting it for the separate window (T3's `renderingActive`, D1493).
+  const poppedOut = surfaces.isPoppedOut(tab.threadId, tab.tabId);
   const webview = (
     <webview
       {...({ allowpopups: "true" } as object)}
@@ -332,11 +352,12 @@ function HostedWebview(props: {
         placement === undefined
           ? {
               position: "fixed",
-              left: HIDDEN_OFFSET,
-              top: HIDDEN_OFFSET,
+              left: poppedOut ? 0 : HIDDEN_OFFSET,
+              top: poppedOut ? 0 : HIDDEN_OFFSET,
               width: size.width,
               height: size.height,
               pointerEvents: "none",
+              ...(poppedOut ? { zIndex: -1 } : {}),
             }
           : {
               position: "fixed",
