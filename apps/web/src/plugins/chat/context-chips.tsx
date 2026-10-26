@@ -39,7 +39,6 @@ import {
 import { pullRequestDisplayState, pullRequestKindLabel } from "../../lib/composer-context.ts";
 import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { resolvePullRequestState } from "../../lib/pull-request.ts";
-import { ChatMarkdown } from "./markdown.tsx";
 
 /** What a record's chip can do where it shows; without them it only shows. */
 export interface ContextChipActions {
@@ -210,6 +209,18 @@ function TerminalContextChip(props: { readonly record: TerminalContextRecord }) 
   );
 }
 
+/**
+ * The comment's text as markdown. Loaded on demand: the markdown module renders these chips
+ * itself, so a static import would make the two modules import each other.
+ */
+const CommentMarkdown = lazyChunk(
+  () => import("./markdown.tsx").then((module) => module.ChatMarkdown),
+  {
+    loading: (props) => <p className="whitespace-pre-wrap text-sm">{props.text}</p>,
+    failed: (props) => <p className="whitespace-pre-wrap text-sm">{props.text}</p>,
+  },
+);
+
 /** A comment's patch, highlighted as T3's ReadOnlySourcePreview shows it: a chunk of its own. */
 const PatchPreview = lazyChunk(
   () => import("./attachment-source.tsx").then((module) => module.ReadOnlySourcePreview),
@@ -237,7 +248,7 @@ function ReviewCommentDetails(props: { readonly comment: ReviewCommentContextRec
           {comment.sectionTitle} · {comment.rangeLabel}
         </div>
       </div>
-      {comment.text.trim() ? <ChatMarkdown text={comment.text.trim()} /> : null}
+      {comment.text.trim() ? <CommentMarkdown text={comment.text.trim()} /> : null}
       {comment.diff.trim() ? (
         <div className="flex h-64 min-h-0 flex-col overflow-hidden rounded-md border border-border">
           <PatchPreview name="review.diff" text={comment.diff} wordWrap={false} />
