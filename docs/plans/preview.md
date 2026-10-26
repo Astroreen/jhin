@@ -1126,6 +1126,9 @@ range, at T3 Code `eb7b35ac`: `rightPanelStore.ts` (`openDevice`, the
   - Physical iOS devices (agent-device's XCTest runner on a device).
   - A device tab's renaming ("Rename", a double click) and its tooltip with
     the host and the version (D1427).
+  - A device an agent opens for a thread that is not on screen gets no
+    surface (D1427): the right panel opens surfaces through the route, and
+    `jhin.device.reveal` watches only the thread on screen.
   - Hub tickets that follow a caller's grants as they change: the node keeps
     no token to verify again, so a ticket keeps its grants for its five
     minutes, as T3's does.

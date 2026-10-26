@@ -562,6 +562,27 @@ adapt to it, as the rules for every workstream say.
   contents (`buildFileReviewComment`); a message's file in that panel with
   T3's CSV and TSV table preview and its virtualized preview past 1 MiB;
   a device as a surface beside browser tabs.
+  **Done** (D1421–D1439, D1432 and D1440 unused): #299 T3's tabbed right
+  panel `ui.right-panel@1` (`client.navigation@1.1`'s `navigate(…, {replace})`),
+  its strip with T3's context menu, drag, "Add panel surface" and "Open a
+  surface", its commands, and the panels Jhin had as its surfaces
+  (`t3-parity.md` D1421–D1424); #310 right-panel terminals as surfaces of
+  their own beside the drawer's (`terminal.md` D1425), T3's proactive panels
+  (`source-control.md` D1426) and each device as a surface with T3's
+  dismissed devices (`preview.md` D1427); #311 T3's file explorer
+  (`projects.list-entries`), "Open in", a link's revealed line, an agent's
+  file chips, the right panel as a sheet on a narrow window, a message's file
+  as a surface, the CSV/TSV table, the virtualized source, editing and saving
+  a project's file and comments on its own contents (`t3-parity.md`
+  D1428–D1431, D1434–D1439), and a diff's file opened beside the diff
+  (`source-control.md` D1433). Left in the Deferred lists: in `t3-parity.md`,
+  T3's reopening of a closed view, the panel's animation, a browser tab's
+  audio, forgetting a deleted thread's tabs, the explorer's context menu and
+  dragging its rows, "Open in" for a worktree's file, a file chip's menu,
+  ⌘-click and folder suffix, the editor's pending dot, "Read-only connection"
+  notice, merging a change made on disk and ticking markdown's task boxes; in
+  `preview.md`, a device tab's renaming and tooltip, and a device an agent
+  opens for a thread off screen.
 - **W41:** listing and watching pull requests on Bitbucket and Forgejo
   (D849), a typed number found off GitHub, checking a pull request out on
   forges other than GitHub and the dialog's terms there, forges' names in
