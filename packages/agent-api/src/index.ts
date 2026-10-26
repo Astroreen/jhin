@@ -636,6 +636,11 @@ export const ThreadEvents = {
   /** `threads` index: `{ id }`. */
   projectDeleted: "threads.project.deleted",
   /**
+   * Since `agent.registry` 1.7, the stream `threads/epoch`: `{ epoch }`, the id
+   * of the node's database, written once, the first time it is asked for (loading.md D1590).
+   */
+  epochCreated: "threads.epoch.created",
+  /**
    * `{ turnId, agentId, runtimeId?, input, model?, runtimeMode?, interactionMode?, modelOptions?, messageId?,
    * handoff?, origin? }`; `runtimeId` only when the agent is not a runtime itself (D601).
    * `origin` (`MessageOrigin`) names the message between agents the turn answers (agents.md D623).

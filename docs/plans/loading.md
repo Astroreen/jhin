@@ -130,6 +130,34 @@ What the node does today (2026-10-24, `08eeb571`):
   the chats. The setting's description says so. The desktop app keeps its
   cache in its own profile the same way.
 
+#### P2's own decisions
+
+- **D1606. Only threads of the connected node open from the cache.** A
+  thread of another mesh node is read through this node's copy or relay of
+  it (D26, D499), whose sequences and epoch are not the ones `threads.get`
+  answers through `mesh.call`. It opens from 0, as before this plan
+  (Deferred).
+- **D1607. The epoch is written with an append, and `threads.epoch` answers
+  it.** `jhin.threads` writes the epoch the first time it is asked
+  (a database never asked has none yet): one
+  event `threads.epoch.created { epoch }` in the stream `threads/epoch`,
+  appended with `expectedHead: 0` together with the record `epoch`
+  (`storage.eventlog@1.1` records), so two processes sharing the storage
+  agree on one. `agent.registry` 1.7 adds `epoch` to `threads.catalog` and
+  `threads.get`, and the command `threads.epoch` (`{ epoch, head }`, the
+  head of the `threads` index): the cheap question the sidebar asks before
+  it follows the index from a cached catalog (D1591). A node from before
+  1.7 answers no epoch, and nothing of it is cached.
+- **D1608. What is kept starts at 1 and has no gap.** The cache keeps a
+  stream only as its events 1 to its last sequence, in the IndexedDB
+  database `jhin.history-cache` (stores `streams` and `events`, keyed by
+  connection, stream and sequence). A write that would leave a gap drops the
+  stream; one that repeats kept events skips them, so two tabs following
+  the same thread write it once. A read that finds fewer events than its
+  last sequence (a write cut short) drops it. A thread whose own stream says
+  it was deleted is dropped as the event arrives. The entry's size is the
+  UTF-8 size of its events' JSON: an estimate, as `history-cache.status` says.
+
 ### P3. Chunks and prefetch
 
 - **D1595. What the first screen does not show is a chunk of its own.** The
@@ -165,6 +193,11 @@ loading one.
   "renders every turn" and the page-wide find (D801), so it needs its own
   decisions first.
 - A cached timeline snapshot (D1588 stores raw events).
+- A thread followed from the cache while its node could not be asked checks
+  the head on every acceptance and asks again once; a database reset whose
+  stream has grown past the kept sequence is caught only at the next open.
+- Opening a remote mesh node's thread from the cache (D1606): it needs the
+  epoch of the copy the connected node reads it from.
 - `permessage-deflate` with context takeover, if P1's numbers show a large
   gain worth the memory.
 - `zstd` content encoding.
