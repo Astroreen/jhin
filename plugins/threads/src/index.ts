@@ -1677,8 +1677,15 @@ export default definePlugin({
           // A start hook that does not answer fails the turn as one that throws does: the
           // agent never works without what the hooks do first (a checkpoint).
           let late = false;
+          // What the hooks leave is what the turn runs with: one may move it, as "Work
+          // locally" moves a thread's first turn to the project's checkout (D1477).
+          let prepared: TurnHookInput | undefined;
           await withDeadline(
-            context.hooks.run(ThreadHooks.turnStart, hookInput, () => undefined),
+            context.hooks
+              .run<TurnHookInput, TurnHookInput>(ThreadHooks.turnStart, hookInput, (value) => value)
+              .then((value) => {
+                prepared = value;
+              }),
             hookTimeoutMs(),
             () => (late = true),
           );
@@ -1689,15 +1696,10 @@ export default definePlugin({
               { threadId: thread.id, turnId },
             );
           }
-          // A hook may have moved the thread: its worktree setup cancelled to work in the
-          // project's checkout ("Work locally", source-control.md D1477).
-          const moved = await getThread(thread.id).catch(() => thread);
-          if (moved.worktreePath !== thread.worktreePath) {
-            hookInput = { ...hookInput, cwd: moved.worktreePath ?? project.path };
-          }
+          if (prepared !== undefined) hookInput = { ...hookInput, cwd: prepared.cwd };
           // A worktree removed under the thread, and not brought back by a hook (D242).
           if (
-            moved.worktreePath !== undefined &&
+            hookInput.cwd !== project.path &&
             !(await Fs.promises.stat(hookInput.cwd).then(
               (stat) => stat.isDirectory(),
               () => false,

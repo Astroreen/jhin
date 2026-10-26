@@ -1808,22 +1808,24 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   cancelled preparation does: the setup ends "cancelled", its terminal is
   closed, the new worktree is removed (`--force`; its branch stays), and
   the thread works in the project's checkout again (`threads.update`'s
-  `worktreePath: null`); the first turn then fails with T3's "Worktree
-  setup cancelled." `workLocally: true` (additive; the card's "Work
-  locally", T3's `LaptopIcon` button beside Cancel while the setup runs)
-  does the same, but the first turn starts in the project's checkout
-  instead of failing, as T3 sends the message again there. For that the
-  threads plugin reads the thread's directory again after its start hooks
-  (a hook may have moved it). Once the agent has started, Cancel only stops
-  the script, as D1124 says (T3 cannot cancel it then).
+  `worktreePath: null`). A first turn the script holds then fails with
+  T3's "Worktree setup cancelled."; `workLocally: true` (additive; the
+  card's "Work locally", T3's `LaptopIcon` button beside Cancel while the
+  setup runs) starts it in the project's checkout instead, as T3 sends the
+  message again there: the setup's start hook (first among the turn start
+  hooks) hands the turn the checkout as its folder, and the threads plugin
+  starts the turn in the folder its start hooks leave. A first message not
+  sent yet goes to the checkout too. A worktree that cannot be removed
+  stays the thread's, and its turn starts there as D1124 says. Once the
+  agent has started, Cancel only stops the script, as D1124 says (T3
+  cannot cancel it then).
 - **D1478. T3's "Retry" of a failed preparation.** A first turn that failed
   because its workspace could not be prepared (an `async: false` setup
   script that failed, or a cancel, D1477; a fetch or checkout that fails
   fails `threads.create` itself here, before any turn) records T3's
   failure class (`lastTurn.failure.class: "workspace_preparation"`,
   additive in `AgentTurnFailure`; a start hook says so with an error that
-  carries that `failure`, code `WORKSPACE_PREPARATION_FAILED` of
-  `@jhin/agent-api`). Under it the timeline shows T3's "Retry"
+  carries that `failure`, its code `WORKTREE_SETUP_FAILED` as before). Under it the timeline shows T3's "Retry"
   (`RotateCcwIcon`, `chat.turn.footer` `jhin.source-control.workspace-retry`,
   in place of the chat's own Retry of a failed turn), which calls
   `git.worktree.setup.retry { threadId }` (`git.write`, `threads.write`):

@@ -75,9 +75,6 @@ export function turnFailureOf(error: unknown): AgentTurnFailure | undefined {
   return { class: kind, ...(typeof resetAt === "string" ? { resetAt } : {}) };
 }
 
-/** The error code of a start hook that could not prepare the turn's workspace (D1478). */
-export const WORKSPACE_PREPARATION_FAILED = "WORKSPACE_PREPARATION_FAILED";
-
 /** T3's built-in `/usage-limits` (USAGE_LIMITS_COMMAND): answered by the client, never sent. */
 export const USAGE_LIMITS_COMMAND = {
   name: "usage-limits",
