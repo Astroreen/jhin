@@ -80,10 +80,8 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
         opened = undefined;
         reject(opening.error);
       });
-      opening.addEventListener("blocked", () => {
-        opened = undefined;
-        reject(new Error("The history cache is held open by another tab"));
-      });
+      // "blocked" is no failure: another tab holds the older version open, and
+      // its `versionchange` handler closes it, so the open goes on and succeeds.
       opening.addEventListener("success", () => {
         const db = opening.result;
         // A newer version in another tab: let it upgrade, open again next time.
@@ -178,11 +176,16 @@ export function openHistoryStore(factory: IDBFactory = indexedDB): HistoryStore 
 
     async readCatalog(connection) {
       const tx = await transaction("readonly", [CATALOGS]);
-      const kept = (await promised(tx.objectStore(CATALOGS).get(connection))) as
-        | CachedCatalog
-        | undefined;
+      const kept = (await promised(tx.objectStore(CATALOGS).get(connection))) as unknown;
       await done(tx);
-      return kept;
+      // Only what this version writes is read back; anything else is no catalog.
+      const catalog = kept as Partial<CachedCatalog> | undefined;
+      return typeof catalog?.epoch === "string" &&
+        typeof catalog.head === "number" &&
+        Array.isArray(catalog.projects) &&
+        Array.isArray(catalog.threads)
+        ? (catalog as CachedCatalog)
+        : undefined;
     },
 
     async writeCatalog(connection, catalog) {

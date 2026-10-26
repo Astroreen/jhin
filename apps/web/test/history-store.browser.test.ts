@@ -139,4 +139,10 @@ describe("the history cache's IndexedDB store (loading.md D1588, D1590)", () => 
     await store.writeCatalog("node", { epoch: "e1", head: 1, projects: [], threads: [] });
     expect(await store.readCatalog("node")).toMatchObject({ head: 1 });
   });
+
+  it("reads no catalog from a record that is not one", async () => {
+    store = openHistoryStore();
+    await store.writeCatalog("node", { epoch: "e1", head: 1 } as never);
+    expect(await store.readCatalog("node")).toBeUndefined();
+  });
 });
