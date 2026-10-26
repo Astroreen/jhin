@@ -3645,9 +3645,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         .catch(() => undefined)
         .then(() => runScript(threadId, scriptId));
       scriptRuns.set(key, run);
-      void run.finally(() => {
-        if (scriptRuns.get(key) === run) scriptRuns.delete(key);
-      });
+      // The caller hears the run's failure; the bookkeeping only lets go of it.
+      void run
+        .then(
+          () => undefined,
+          () => undefined,
+        )
+        .finally(() => {
+          if (scriptRuns.get(key) === run) scriptRuns.delete(key);
+        });
       return run;
     },
   });
