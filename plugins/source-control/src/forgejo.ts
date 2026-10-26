@@ -196,13 +196,18 @@ export function forgejoForge(teaPath: () => string, site: ForgeSite, viewers: Vi
       return match === undefined ? null : (await full(site.repository, match)).pr;
     },
     at: async (url) => {
-      const { repository = site.repository, number } = numberedReference(url, forge, 2);
+      const { repository = site.repository, number } = numberedReference(url, forge, 2, site.host);
       return (await full(repository, (await tea(`/repos/${repository}/pulls/${number}`)) as Raw))
         .pr;
     },
     // T3's getPull: a number or a pull request URL (D1443).
     resolve: async (reference) => {
-      const { repository = site.repository, number } = numberedReference(reference, forge, 2);
+      const { repository = site.repository, number } = numberedReference(
+        reference,
+        forge,
+        2,
+        site.host,
+      );
       const raw = (await tea(`/repos/${repository}/pulls/${number}`)) as Raw;
       const found = await full(repository, raw);
       const head = raw["head"] as { repo?: { full_name?: unknown } | null } | undefined;
@@ -243,7 +248,7 @@ export function forgejoForge(teaPath: () => string, site: ForgeSite, viewers: Vi
     // What a watch reads (D1442): the pull request, its head's statuses, its comments,
     // reviews and their comments on lines, and the node's account.
     watch: async (url) => {
-      const { repository = site.repository, number } = numberedReference(url, forge, 2);
+      const { repository = site.repository, number } = numberedReference(url, forge, 2, site.host);
       const path = `/repos/${repository}/pulls/${number}`;
       const raw = (await tea(path)) as Raw;
       const found = forgejoRequest(raw, []);

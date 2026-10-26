@@ -234,6 +234,13 @@ describe("jhin.source-control: Bitbucket listed, watched and resolved (D1441–D
     await expect(
       sc.client.call("git.pr.resolve", { projectId, reference: "feature" }),
     ).rejects.toThrow("Specify a pull request number or Bitbucket pull request URL.");
+    // A pull request URL of another host is not this forge's.
+    await expect(
+      sc.client.call("git.pr.resolve", {
+        projectId,
+        reference: "https://bitbucket.example/acme/demo/pull-requests/8",
+      }),
+    ).rejects.toThrow("is not on this repository's Bitbucket host.");
     // A pasted URL whose repository would reach elsewhere in the API is refused.
     for (const reference of [
       "https://bitbucket.org/%2e%2e/user%3f/pull-requests/1",

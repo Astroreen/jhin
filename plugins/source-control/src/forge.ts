@@ -138,6 +138,8 @@ export function numberedReference(
   forge: { readonly name: string; readonly terminology: ChangeRequestTerminology },
   /** How many path segments the forge's repository has (`owner/repo`: 2), when fixed. */
   segments?: number,
+  /** The forge's own host, when known: a URL of another host is not its pull request. */
+  host?: string,
 ): { readonly number: number; readonly host?: string; readonly repository?: string } {
   const trimmed = reference.trim().replace(/^#/, "");
   if (/^\d+$/.test(trimmed) && Number(trimmed) > 0) return { number: Number(trimmed) };
@@ -151,6 +153,16 @@ export function numberedReference(
       parts.some((part) => part === "" || part === "." || part === ".." || /[?#%\\]/.test(part))
     ) {
       throw new ForgeUnavailable("failed", `${trimmed} names no ${forge.name} repository.`);
+    }
+    if (
+      host !== undefined &&
+      host !== "" &&
+      parsed.host !== host.toLowerCase().replace(/:\d+$/, "")
+    ) {
+      throw new ForgeUnavailable(
+        "failed",
+        `${trimmed} is not on this repository's ${forge.name} host.`,
+      );
     }
     return parsed;
   }
