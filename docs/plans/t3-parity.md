@@ -2458,10 +2458,8 @@ panel and devices are in `terminal.md`, `source-control.md` and
     `context`, so its agent reads the references as links;
   - a draft's records on the owner's other devices (D486 shares the text, so
     a reference there shows as unavailable), and in the prompt history a
-    recalled message's records;
-  - listing pull requests on Bitbucket and Forgejo (D849; GitLab and Azure
-    DevOps list since `source-control.md` D1287, D1288), and a typed number
-    found off GitHub (`git.pr.resolve` reads GitHub only).
+    recalled message's records (Bitbucket and Forgejo list, and a typed number
+    is found off GitHub, since `source-control.md` D1441, D1443).
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's captured window context on screenshots (D1013: with

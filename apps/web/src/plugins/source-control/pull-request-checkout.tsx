@@ -1,9 +1,11 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/
-// PullRequestThreadDialog.tsx (the dialog) and packages/client-runtime/src/
-// pullRequestLinkInput.ts with source-control-github's client definition (reading a
-// reference: a URL, `gh pr checkout <x>`, 123 or #123).
+// PullRequestThreadDialog.tsx (the dialog, in the forge's terms and name, D1444, D1445).
 import type { NodeTarget, ThreadsCatalog } from "@jhin/client-api";
-import type { PreparedPullRequest, PullRequest } from "@jhin/source-control-api";
+import type {
+  PreparedPullRequest,
+  PullRequest,
+  PullRequestProvider,
+} from "@jhin/source-control-api";
 import {
   Button,
   Dialog,
@@ -19,22 +21,10 @@ import {
 } from "@jhin/ui";
 import { useEffect, useRef, useState } from "react";
 
+import { forgePresentation, parsePullRequestReference } from "../../lib/forges.ts";
 import { forgeIcon } from "./forge-icons.tsx";
 
-const GITHUB_CHECKOUT_COMMAND = /^gh\s+pr\s+checkout\s+(.+)$/i;
-const GITHUB_PULL_REQUEST_URL = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)([/?#].*)?$/i;
-
-/**
- * T3's parsePullRequestReference for GitHub: a pull request URL as it is, the
- * argument of `gh pr checkout`, or the digits of `123` / `#123`; else null.
- */
-export function parsePullRequestReference(input: string): string | null {
-  const trimmed = input.trim();
-  if (trimmed === "") return null;
-  const reference = GITHUB_CHECKOUT_COMMAND.exec(trimmed)?.[1]?.trim() ?? trimmed;
-  if (GITHUB_PULL_REQUEST_URL.test(reference)) return reference;
-  return /^#?(\d+)$/.exec(reference)?.[1] ?? null;
-}
+export { parsePullRequestReference };
 
 /** T3's pullRequestStatusTone. */
 function statusTone(state: string | undefined): string {
@@ -50,9 +40,6 @@ function statusTone(state: string | undefined): string {
   }
 }
 
-/** The dialog checks pull requests of GitHub out (D902): its mark in the title. */
-const GitHub = forgeIcon({ kind: "github" });
-
 /** How long typing must pause before the reference is resolved (T3's 450 ms). */
 const RESOLVE_DELAY_MS = 450;
 
@@ -60,23 +47,29 @@ export interface PullRequestCheckoutDialogProps {
   readonly open: boolean;
   readonly target: NodeTarget;
   readonly projectId: string;
+  /** The repository's forge: its mark, name and words in the dialog. */
+  readonly provider: PullRequestProvider | null;
   readonly threads: ThreadsCatalog;
   readonly initialReference: string;
   readonly onOpenChange: (open: boolean) => void;
   readonly onPrepared: (prepared: PreparedPullRequest) => void;
 }
 
-/** T3's "Checkout pull request" dialog, for GitHub (D903). */
+/** T3's "Checkout pull request" dialog (D903), in the forge's terms (D1444). */
 export function PullRequestCheckoutDialog({
   open,
   target,
   projectId,
+  provider,
   threads,
   initialReference,
   onOpenChange,
   onPrepared,
 }: PullRequestCheckoutDialogProps) {
   const input = useRef<HTMLInputElement>(null);
+  const { providerName, terminology } = forgePresentation(provider);
+  const { singular } = terminology;
+  const Forge = forgeIcon(provider);
   const [reference, setReference] = useState(initialReference);
   const [dirty, setDirty] = useState(false);
   const [debounced, setDebounced] = useState(initialReference);
@@ -157,7 +150,7 @@ export function PullRequestCheckoutDialog({
       onOpenChange(false);
     } catch (error) {
       setPrepareError(
-        error instanceof Error ? error.message : "Failed to prepare pull request thread.",
+        error instanceof Error ? error.message : `Failed to prepare ${singular} thread.`,
       );
     } finally {
       setPreparing(undefined);
@@ -167,9 +160,9 @@ export function PullRequestCheckoutDialog({
   const validation = !dirty
     ? undefined
     : reference.trim() === ""
-      ? "Paste a pull request URL, checkout command, or enter 123 / #123."
+      ? `Paste a ${singular} URL, checkout command, or enter 123 / #123.`
       : parsed === null
-        ? "Use a pull request URL, checkout command, 123, or #123."
+        ? `Use a ${singular} URL, checkout command, 123, or #123.`
         : undefined;
   const error =
     validation ??
@@ -189,17 +182,17 @@ export function PullRequestCheckoutDialog({
       <DialogPopup className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center">
-            <GitHub className="me-2 size-4" />
-            Checkout pull request
+            <Forge className="me-2 size-4" />
+            Checkout {singular}
           </DialogTitle>
           <DialogDescription>
-            Resolve a GitHub pull request, then create the draft thread in the main repo or in a
-            dedicated worktree.
+            Resolve a {providerName} {singular}, then create the draft thread in the main repo or in
+            a dedicated worktree.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-foreground capitalize">pull request</span>
+            <span className="text-xs font-medium text-foreground capitalize">{singular}</span>
             <Input
               onChange={(event) => {
                 setDirty(true);
@@ -212,7 +205,7 @@ export function PullRequestCheckoutDialog({
                 event.preventDefault();
                 if (!isResolving && !pending) void confirm("worktree");
               }}
-              placeholder="PR URL, checkout command, or #42"
+              placeholder={`${terminology.shortLabel} URL, checkout command, or #42`}
               ref={input}
               value={reference}
             />
@@ -237,7 +230,7 @@ export function PullRequestCheckoutDialog({
           {isResolving ? (
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Spinner className="size-3" />
-              Resolving pull request...
+              Resolving {singular}...
             </div>
           ) : null}
 

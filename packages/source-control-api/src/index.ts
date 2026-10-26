@@ -148,6 +148,8 @@ export type PreparedPullRequest = z.output<typeof PreparedPullRequest>;
  */
 export const PullRequestProvider = z.object({
   kind: z.enum(["github", "gitlab", "azure-devops", "bitbucket", "forgejo"]),
+  /** T3's `providerName` (D1445): "GitHub", "GitLab Self-Hosted", …; absent from older nodes. */
+  name: z.string().optional(),
   available: z.boolean(),
   reason: z.string().optional(),
 });
@@ -690,11 +692,14 @@ export function parsePullRequestUrl(url: string): PullRequestReference | undefin
   for (const pattern of PULL_REQUEST_PATHS) {
     const match = pattern.exec(path);
     if (match === null) continue;
-    return {
-      host: parsed.host,
-      repository: decodeURIComponent(match[1]!),
-      number: Number(match[2]),
-    };
+    let repository: string;
+    try {
+      repository = decodeURIComponent(match[1]!);
+    } catch {
+      // A malformed escape names no repository.
+      return undefined;
+    }
+    return { host: parsed.host, repository, number: Number(match[2]) };
   }
   return undefined;
 }

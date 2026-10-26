@@ -91,8 +91,17 @@ import {
   runStackedAction,
   type PullRequestCreator,
 } from "./actions.ts";
-import { FORGE_KINDS, ForgeUnavailable, forgeKindOf, type Forge, type ForgeKind } from "./forge.ts";
-import { azureForge, bitbucketForge, forgejoForge, gitlabForge, siteOf } from "./forges.ts";
+import {
+  FORGE_KINDS,
+  ForgeUnavailable,
+  forgeKindOf,
+  forgeName,
+  type Forge,
+  type ForgeKind,
+} from "./forge.ts";
+import { bitbucketCredentials, bitbucketForge } from "./bitbucket.ts";
+import { forgejoForge } from "./forgejo.ts";
+import { azureForge, gitlabForge, siteOf } from "./forges.ts";
 import { githubForge, remoteHost } from "./github.ts";
 import type { Viewers } from "./forge.ts";
 import { createLinks, type LinkTarget } from "./links.ts";
@@ -230,6 +239,34 @@ export const Config = z
     teaPath: z.string().default("tea").meta({
       title: "Forgejo and Gitea CLI executable",
       description: "Path to tea, the Gitea CLI (it serves Forgejo too)",
+      advanced: true,
+    }),
+    // Bitbucket's token as the node's secret (D1446): `writeOnly`, so the config file holds a
+    // reference and the value lives in the secret store; the environment is read without it.
+    bitbucketAccessToken: z.string().optional().meta({
+      title: "Bitbucket access token",
+      description:
+        "A Bitbucket Cloud access token (repository, project or workspace) the node reads pull requests with; JHIN_BITBUCKET_ACCESS_TOKEN when unset",
+      writeOnly: true,
+      advanced: true,
+    }),
+    bitbucketEmail: z.string().optional().meta({
+      title: "Bitbucket email",
+      description:
+        "The Atlassian account's email for a Bitbucket API token (with Bitbucket API token); JHIN_BITBUCKET_EMAIL when unset",
+      advanced: true,
+    }),
+    bitbucketApiToken: z.string().optional().meta({
+      title: "Bitbucket API token",
+      description:
+        "An Atlassian API token with Bitbucket scopes, used with Bitbucket email when no access token is set; JHIN_BITBUCKET_API_TOKEN when unset",
+      writeOnly: true,
+      advanced: true,
+    }),
+    bitbucketApiBaseUrl: z.string().optional().meta({
+      title: "Bitbucket API URL",
+      description:
+        "The Bitbucket API's base URL; https://api.bitbucket.org/2.0 (or JHIN_BITBUCKET_API_BASE_URL) when unset",
       advanced: true,
     }),
     watchSweepSeconds: z.number().int().min(0).max(86_400).default(120).meta({
@@ -835,7 +872,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       repo.pullRequests.clear();
     repo.forge = forge;
     if (kind === undefined) repo.provider = null;
-    else if (repo.provider?.kind !== kind) repo.provider = { kind, available: true };
+    else if (repo.provider?.kind !== kind || repo.provider.name !== forgeName(kind, host!)) {
+      repo.provider = { kind, name: forgeName(kind, host!), available: true };
+    }
     const status: ProjectStatus = {
       projectId: repo.project.id,
       isRepo: true,
@@ -1083,7 +1122,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         const since = Date.now() - (repo.unavailableAt ?? 0);
         if (ttl === 0 || since < ttl) return;
       }
-      let provider: PullRequestProvider = { kind: forge.kind, available: true };
+      const name = forgeName(forge.kind, remoteHost(repo.forge!.url) ?? "");
+      let provider: PullRequestProvider = { kind: forge.kind, name, available: true };
       for (const branch of branchesOfInterest(repo, status)) {
         const cached = repo.pullRequests.get(branch);
         const stale =
@@ -1101,7 +1141,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           }
         } catch (error) {
           if (!(error instanceof ForgeUnavailable)) throw error;
-          provider = { kind: forge.kind, available: false, reason: error.message };
+          provider = { kind: forge.kind, name, available: false, reason: error.message };
           if (error.kind === "failed") {
             context.log.warn("reading a pull request failed", {
               projectId: repo.project.id,
@@ -2211,8 +2251,31 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (site === undefined) return undefined;
     if (kind === "azure-devops") return azureForge(tool("azPath"), site, viewers);
     if (kind === "gitlab") return gitlabForge(tool("glabPath"), site, viewers);
-    if (kind === "bitbucket") return bitbucketForge(site);
-    return forgejoForge(tool("teaPath"), site);
+    if (kind === "bitbucket") {
+      return bitbucketForge(
+        site,
+        () => {
+          const current = config();
+          return bitbucketCredentials(
+            {
+              ...(current.bitbucketAccessToken === undefined
+                ? {}
+                : { accessToken: current.bitbucketAccessToken }),
+              ...(current.bitbucketEmail === undefined ? {} : { email: current.bitbucketEmail }),
+              ...(current.bitbucketApiToken === undefined
+                ? {}
+                : { apiToken: current.bitbucketApiToken }),
+              ...(current.bitbucketApiBaseUrl === undefined
+                ? {}
+                : { apiBaseUrl: current.bitbucketApiBaseUrl }),
+            },
+            process.env,
+          );
+        },
+        viewers,
+      );
+    }
+    return forgejoForge(tool("teaPath"), site, viewers);
   }
 
   /** Where the repository's pull requests are created: its remote's forge, when it has one. */
@@ -3180,7 +3243,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         target(input),
         "agent",
       );
-      // Only a forge whose pull requests a watch can read is watched (GitHub, D279).
+      // Only a forge whose pull requests a watch can read is watched (every known one, D1442).
       const forge = await forgeOfLink(input.threadId, pullRequest.host);
       if (forge?.watch === undefined) {
         if (!alreadyLinked) await links.unlink(input.threadId, target(input));

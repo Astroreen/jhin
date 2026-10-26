@@ -1866,7 +1866,7 @@ describe("worktrees in the client", () => {
     });
   });
 
-  it("says what a pull request reference needs, and offers no checkout off GitHub", async () => {
+  it("says what a pull request reference needs, and offers no checkout without a forge", async () => {
     const { value } = services(
       viewWith(status({ provider: { kind: "github", available: true } })),
       {
@@ -1903,6 +1903,55 @@ describe("worktrees in the client", () => {
     await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "#12");
     await expect.element(page.getByRole("option", { name: /Create new ref/ })).toBeVisible();
     expect(document.body.textContent).not.toContain("Checkout pull request");
+  });
+
+  it("checks a merge request out on GitLab in its words and name (D1444, D1445)", async () => {
+    const { value, calls } = services(
+      viewWith(
+        status({ provider: { kind: "gitlab", name: "GitLab Self-Hosted", available: true } }),
+      ),
+      {
+        "git.branches": { branches: [] },
+        "git.pr.resolve": {
+          pullRequest: { ...pr, number: 5, headBranch: "feature", baseBranch: "main" },
+        },
+      },
+    );
+    const Toolbar = createBranchToolbar(value, createDraftWorkspaces());
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    mount(<Toolbar project={project} target={target} />);
+    await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "glab mr checkout 5");
+    const option = page.getByRole("option", { name: /Checkout merge request/ });
+    expect(option.element().querySelector('svg[data-forge="gitlab"]')).not.toBeNull();
+    await userEvent.click(option);
+    const dialog = page.getByRole("dialog", { name: "Checkout merge request" });
+    await expect
+      .element(
+        dialog.getByText(
+          "Resolve a GitLab Self-Hosted merge request, then create the draft thread in the main repo or in a dedicated worktree.",
+        ),
+      )
+      .toBeVisible();
+    expect(
+      dialog
+        .getByRole("heading", { name: "Checkout merge request" })
+        .element()
+        .querySelector('svg[data-forge="gitlab"]'),
+    ).not.toBeNull();
+    await expect.element(dialog.getByPlaceholder("MR URL, checkout command, or #42")).toBeVisible();
+    await expect.element(dialog.getByText("#5 · feature to main")).toBeVisible();
+    expect(calls.find((call) => call.method === "git.pr.resolve")?.params).toEqual({
+      projectId: "app",
+      reference: "5",
+    });
+    await userEvent.fill(dialog.getByRole("textbox"), "not a mr");
+    await expect
+      .element(dialog.getByText("Use a merge request URL, checkout command, 123, or #123."))
+      .toBeVisible();
+    await act(async () =>
+      (dialog.getByRole("button", { name: "Cancel" }).element() as HTMLElement).click(),
+    );
   });
 
   it("asks again after a failed lookup once the reference is edited, and offers no checkout for a worktree's base", async () => {

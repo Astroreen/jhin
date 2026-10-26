@@ -3,7 +3,11 @@
 // terminology of client-runtime's source control clients, and apps/server/src/git/GitManager.ts
 // (resolveBranchHeadContext, matchesBranchHeadContext: a fork's pull request is told apart
 // from a same-named branch of another repository).
-import type { ChangeRequestTerminology, PullRequest } from "@jhin/source-control-api";
+import {
+  parsePullRequestUrl,
+  type ChangeRequestTerminology,
+  type PullRequest,
+} from "@jhin/source-control-api";
 
 import { SpawnError, run, type RunResult } from "./git.ts";
 import type { WatchRead } from "./pr-watch.ts";
@@ -57,6 +61,11 @@ export function matchesHead(found: ForgePullRequest, head: HeadContext): boolean
 export interface CheckoutTarget extends ForgePullRequest {
   /** `owner/name` of a fork's head repository. */
   readonly headRepository?: string;
+  /**
+   * The forge publishes `refs/pull/<n>/head` (GitHub, Forgejo): the fallback when the head
+   * branch cannot be fetched. Azure DevOps, GitLab and Bitbucket publish none (D1444).
+   */
+  readonly pullRefs: boolean;
 }
 
 /** What the plugin asks of a forge, whichever it is. */
@@ -99,6 +108,70 @@ export const MERGE_REQUEST: ChangeRequestTerminology = {
 };
 
 const labels = (host: string) => host.toLowerCase().split(".");
+
+/**
+ * A forge's name as T3's `detectSourceControlProviderFromRemoteUrl` gives it (D1445): GitHub,
+ * GitLab and Bitbucket on another host than their own are "… Self-Hosted".
+ */
+export function forgeName(kind: ForgeKind, host: string): string {
+  const name = host.toLowerCase().replace(/:\d+$/, "");
+  switch (kind) {
+    case "github":
+      return name === "github.com" ? "GitHub" : "GitHub Self-Hosted";
+    case "gitlab":
+      return name === "gitlab.com" ? "GitLab" : "GitLab Self-Hosted";
+    case "bitbucket":
+      return name === "bitbucket.org" ? "Bitbucket" : "Bitbucket Self-Hosted";
+    case "azure-devops":
+      return "Azure DevOps";
+    case "forgejo":
+      return "Forgejo";
+  }
+}
+
+/**
+ * A reference off GitHub (D1443), as T3's `normalizeChangeRequestId` reads one: a number, `#N`
+ * or the forge's pull request URL (then with its repository). A head branch is refused.
+ */
+export function numberedReference(
+  reference: string,
+  forge: { readonly name: string; readonly terminology: ChangeRequestTerminology },
+  /** How many path segments the forge's repository has (`owner/repo`: 2), when fixed. */
+  segments?: number,
+  /** The forge's own host, when known: a URL of another host is not its pull request. */
+  host?: string,
+): { readonly number: number; readonly host?: string; readonly repository?: string } {
+  const trimmed = reference.trim().replace(/^#/, "");
+  if (/^\d+$/.test(trimmed) && Number(trimmed) > 0) return { number: Number(trimmed) };
+  const parsed = parsePullRequestUrl(trimmed);
+  if (parsed !== undefined) {
+    // The repository goes into an API path with the node's token: decoded `%2F`, `..` or a
+    // query would reach elsewhere.
+    const parts = parsed.repository.split("/");
+    if (
+      (segments !== undefined && parts.length !== segments) ||
+      parts.some((part) => part === "" || part === "." || part === ".." || /[?#%\\]/.test(part))
+    ) {
+      throw new ForgeUnavailable("failed", `${trimmed} names no ${forge.name} repository.`);
+    }
+    if (
+      host !== undefined &&
+      host !== "" &&
+      parsed.host !== host.toLowerCase().replace(/:\d+$/, "")
+    ) {
+      throw new ForgeUnavailable(
+        "failed",
+        `${trimmed} is not on this repository's ${forge.name} host.`,
+      );
+    }
+    return parsed;
+  }
+  const singular = forge.terminology.singular;
+  throw new ForgeUnavailable(
+    "failed",
+    `Specify a ${singular} number or ${forge.name} ${singular} URL.`,
+  );
+}
 
 /**
  * Which forge a remote's host is, as T3 Code detects it: a host named in
