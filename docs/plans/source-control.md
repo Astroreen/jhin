@@ -1846,10 +1846,15 @@ W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
   is W41's), and when one of its turns ends with a ready checkpoint of at
   least 3 files or 50 changed lines in a git repository, on the diff's
   "Changes" scope, unless a pull request was linked meanwhile or the panel
-  already shows the diff or the pull requests. Neither opens once the user
-  changed that thread's panel since the turn began or the thread came on
-  screen (`RightPanel.openProactive` with the revision read then, T3's
-  `observeProactivePanelUserChoice`).
+  already shows the diff or the pull requests. As in T3, a thread coming on
+  screen counts as new: its linked pull requests, or its last turn if it
+  ended so, open the panel too, also when they load after it came on screen,
+  and a turn whose checkpoint or repository is still loading is decided once
+  they load (T3's `defer`). Neither opens once the user changed that thread's
+  panel since the turn began or the thread came on screen
+  (`RightPanel.openProactive` with the revision read then, T3's
+  `observeProactivePanelUserChoice`); the decision is
+  `decideProactivePanels` in `source-control/proactive.tsx`.
 
 ## Deferred
 

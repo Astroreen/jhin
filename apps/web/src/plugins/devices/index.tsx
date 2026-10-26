@@ -48,6 +48,8 @@ function parseDeviceResource(resource: string): { hostId: string; deviceId: stri
 
 /** Devices the user closed, by thread: an agent does not bring them back (T3's dismissed). */
 const DISMISSED_KEY = "jhin:device-dismissed:v1";
+/** The threads whose dismissed devices are kept, the latest closed last (as the panel's places). */
+const MAX_DISMISSED_PLACES = 200;
 
 /** The route's `panel` while the Device panel shows. */
 const DEVICE_PANEL = "devices";
@@ -236,16 +238,14 @@ export const devicePanelPlugin = builtin(
         }
       })();
       const saveDismissed = () => {
+        for (const [key, ids] of dismissed) if (ids.size === 0) dismissed.delete(key);
+        for (const key of [...dismissed.keys()].slice(0, -MAX_DISMISSED_PLACES)) {
+          dismissed.delete(key);
+        }
         try {
           localStorage.setItem(
             DISMISSED_KEY,
-            JSON.stringify(
-              Object.fromEntries(
-                [...dismissed]
-                  .filter(([, ids]) => ids.size > 0)
-                  .map(([key, ids]) => [key, [...ids]]),
-              ),
-            ),
+            JSON.stringify(Object.fromEntries([...dismissed].map(([key, ids]) => [key, [...ids]]))),
           );
         } catch {
           // Blocked storage: dismissed for this page only.
@@ -430,6 +430,8 @@ export const devicePanelPlugin = builtin(
               for (const surface of closing) {
                 if (surface.resource !== undefined) ids.add(surface.resource);
               }
+              // The thread closed in last goes last, so the oldest go first.
+              dismissed.delete(key);
               dismissed.set(key, ids);
               saveDismissed();
               return true;
