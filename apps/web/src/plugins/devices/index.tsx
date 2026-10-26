@@ -29,6 +29,7 @@ import { useEffect, type ReactNode } from "react";
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { createDismissedDevices } from "./dismissed.ts";
 import type { DevicePanelProps } from "./panel.tsx";
 import { AndroidIcon, AppleIcon } from "./platform-icons.tsx";
 
@@ -45,11 +46,6 @@ function parseDeviceResource(resource: string): { hostId: string; deviceId: stri
     return undefined;
   }
 }
-
-/** Devices the user closed, by thread: an agent does not bring them back (T3's dismissed). */
-const DISMISSED_KEY = "jhin:device-dismissed:v1";
-/** The threads whose dismissed devices are kept, the latest closed last (as the panel's places). */
-const MAX_DISMISSED_PLACES = 200;
 
 /** The route's `panel` while the Device panel shows. */
 const DEVICE_PANEL = "devices";
@@ -223,34 +219,9 @@ export const devicePanelPlugin = builtin(
       }
 
       /** By place: the device surfaces the user closed (D1427), kept on this device. */
-      const dismissed = (() => {
-        try {
-          const stored = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "{}") as unknown;
-          if (stored === null || typeof stored !== "object") return new Map<string, Set<string>>();
-          return new Map(
-            Object.entries(stored as Record<string, unknown>).map(([key, ids]) => [
-              key,
-              new Set(Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : []),
-            ]),
-          );
-        } catch {
-          return new Map<string, Set<string>>();
-        }
-      })();
-      const saveDismissed = () => {
-        for (const [key, ids] of dismissed) if (ids.size === 0) dismissed.delete(key);
-        for (const key of [...dismissed.keys()].slice(0, -MAX_DISMISSED_PLACES)) {
-          dismissed.delete(key);
-        }
-        try {
-          localStorage.setItem(
-            DISMISSED_KEY,
-            JSON.stringify(Object.fromEntries([...dismissed].map(([key, ids]) => [key, [...ids]]))),
-          );
-        } catch {
-          // Blocked storage: dismissed for this page only.
-        }
-      };
+      const dismissed = createDismissedDevices(
+        typeof localStorage === "undefined" ? undefined : localStorage,
+      );
       const dismissedKeyOf = (node: string, threadId: string) => `${node}|${threadId}`;
 
       /** By thread: the devices already open, so only one an agent opens brings the panel up. */
@@ -272,7 +243,7 @@ export const devicePanelPlugin = builtin(
             // T3's automatic `openDevice`: the device's own surface, unless the user closed it.
             const fresh = sessions.findLast((session) => !seen.has(session.deviceId))!;
             const resource = deviceResource(fresh);
-            if (dismissed.get(dismissedKeyOf(target.node, thread.id))?.has(resource)) return;
+            if (dismissed.has(dismissedKeyOf(target.node, thread.id), resource)) return;
             if (route.thread === thread.id) {
               rightPanel.open(
                 { target: { node: target.node }, threadId: thread.id },
@@ -313,8 +284,7 @@ export const devicePanelPlugin = builtin(
               // Opened from the list: its surface becomes the device's (T3's openDevice).
               onOpened={(device) => {
                 const resource = deviceResource({ hostId: device.hostId, deviceId: device.id });
-                dismissed.get(dismissedKeyOf(node, threadId))?.delete(resource);
-                saveDismissed();
+                dismissed.forget(dismissedKeyOf(node, threadId), resource);
                 rightPanel?.open(place, { kind: DEVICE_PANEL, resource });
                 if (surface.resource === undefined) void rightPanel?.close(place, surface.id);
               }}
@@ -425,15 +395,12 @@ export const devicePanelPlugin = builtin(
             // A closed device keeps running; an agent does not bring its surface back (D1427).
             release: (place, closing) => {
               if (place.threadId === undefined) return true;
-              const key = dismissedKeyOf(place.target.node, place.threadId);
-              const ids = dismissed.get(key) ?? new Set<string>();
-              for (const surface of closing) {
-                if (surface.resource !== undefined) ids.add(surface.resource);
-              }
-              // The thread closed in last goes last, so the oldest go first.
-              dismissed.delete(key);
-              dismissed.set(key, ids);
-              saveDismissed();
+              dismissed.dismiss(
+                dismissedKeyOf(place.target.node, place.threadId),
+                closing.flatMap((surface) =>
+                  surface.resource === undefined ? [] : [surface.resource],
+                ),
+              );
               return true;
             },
             component: DeviceSurface,

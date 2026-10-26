@@ -240,10 +240,33 @@ export const terminalPlugin = builtin(
           ui.get(terminalSurfaceKey(key, resource)).terminalIds.includes(terminalId),
         );
       };
+      /**
+       * Terminals asked to close whose node has not answered yet, by thread: their ids are not
+       * given again until it has, so a late close cannot stop a new terminal of the same id.
+       */
+      const closingIds = new Map<string, Set<string>>();
+      /** Stops a terminal on its node; its id stays taken until the node answers. */
+      const stopOnNode = (target: NodeTarget, threadId: string, terminalId: string) => {
+        const client = connections.get(target.node)?.client;
+        if (client === undefined) return;
+        const key = terminalThreadKey(target, threadId);
+        const closing = closingIds.get(key) ?? new Set<string>();
+        closingIds.set(key, closing.add(terminalId));
+        void terminalChannel(client, target.remote)
+          .call("terminals.close", { threadId, terminalId })
+          .catch((error: unknown) =>
+            context.log.warn("terminal not closed", { terminalId, error: String(error) }),
+          )
+          .finally(() => {
+            closing.delete(terminalId);
+            if (closing.size === 0 && closingIds.get(key) === closing) closingIds.delete(key);
+          });
+      };
       /** A new terminal's id, unique across the drawer, the panel's surfaces and the node. */
       const nextId = (target: NodeTarget, threadId: string): string => {
         const key = terminalThreadKey(target, threadId);
         return nextTerminalId([
+          ...(closingIds.get(key) ?? []),
           ...ui.get(key).terminalIds,
           ...surfaceResources(target, threadId).flatMap((resource) => [
             resource,
@@ -295,13 +318,7 @@ export const terminalPlugin = builtin(
         stateKey = terminalThreadKey(target, threadId),
       ) => {
         dropTab(target, threadId, terminalId, stateKey);
-        const client = connections.get(target.node)?.client;
-        if (client === undefined) return;
-        void terminalChannel(client, target.remote)
-          .call("terminals.close", { threadId, terminalId })
-          .catch((error: unknown) =>
-            context.log.warn("terminal not closed", { terminalId, error: String(error) }),
-          );
+        stopOnNode(target, threadId, terminalId);
       };
       /** T3 asks before closing: the process stops and its history goes. */
       const confirmClose = async (
@@ -854,13 +871,7 @@ export const terminalPlugin = builtin(
               }
               for (const { key, terminalId } of ids) {
                 ui.update(key, (state) => closeThreadTerminal(state, terminalId));
-                const client = connections.get(place.target.node)?.client;
-                if (client === undefined) continue;
-                void terminalChannel(client, place.target.remote)
-                  .call("terminals.close", { threadId, terminalId })
-                  .catch((error: unknown) =>
-                    context.log.warn("terminal not closed", { terminalId, error: String(error) }),
-                  );
+                stopOnNode(place.target, threadId, terminalId);
               }
               return true;
             },

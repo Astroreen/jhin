@@ -160,10 +160,39 @@ test("D472, D473, D1425: the selection menu adds to the chat, and the right pane
   await page.screenshot({ path: panelShot });
   await info.attach("terminal-right-panel", { path: panelShot, contentType: "image/png" });
 
-  // Closing its tab closes its terminal, after T3's question.
-  await right.getByRole("button", { name: "Close Terminal 2" }).click();
+  // ⌘/Ctrl+D in the surface splits it, the new terminal's id unique beside the drawer's.
+  await page.keyboard.press("ControlOrMeta+d");
+  const third = panel.getByRole("group", { name: "Terminal 3" });
+  await expect(third.locator(".xterm-rows")).toContainText("$");
+  await expect(second).toBeVisible();
+  await expect(drawer.getByRole("group", { name: "Terminal 3" })).toHaveCount(0);
+  await expect(right.getByRole("tab", { name: "Terminal 3" })).toBeVisible();
+
+  // "New Terminal" starts another surface; its last terminal closed, the surface goes.
+  const shown = page.locator('[data-terminal-owner="right-panel"]:visible');
+  await shown.getByRole("button", { name: /^New Terminal/ }).click();
+  await expect(right.getByRole("tab")).toHaveCount(2);
+  await expect(right.getByRole("tab", { name: "Terminal 4" })).toBeVisible();
+  await expect(
+    shown.getByRole("group", { name: "Terminal 4" }).locator(".xterm-rows"),
+  ).toContainText("$");
+  await shown.getByRole("button", { name: /^Close Terminal/ }).click();
   const confirm = page.getByRole("alertdialog");
-  await expect(confirm).toContainText('Close terminal "Terminal 2"?');
+  await expect(confirm).toContainText('Close terminal "Terminal 4"?');
+  await confirm.getByRole("button", { name: "Close" }).click();
+  await expect(right.getByRole("tab")).toHaveCount(1);
+  await expect(right.getByRole("tab", { name: "Terminal 3" })).toBeVisible();
+
+  // The surface keeps its layout on this device: after a reload it shows both again.
+  await page.reload();
+  await expect(right.getByRole("tab", { name: "Terminal 3" })).toBeVisible();
+  await expect(panel.getByRole("group", { name: "Terminal 2" })).toBeVisible();
+  await expect(panel.getByRole("group", { name: "Terminal 3" })).toBeVisible();
+
+  // Closing its tab closes its terminals, after T3's question.
+  await right.getByRole("button", { name: "Close Terminal 3" }).click();
+  await expect(confirm).toContainText("Close 2 terminals?");
+  await expect(confirm).toContainText('"Terminal 2", "Terminal 3"');
   await confirm.getByRole("button", { name: "Close" }).click();
   await expect(panel).toHaveCount(0);
   await expect(right).toBeHidden();
