@@ -832,9 +832,14 @@ export const previewPanelPlugin = builtin(
       const configuredUrlsOf = (target: NodeTarget, threadId: string) => {
         const catalog = threads.catalog(target);
         const projectId = catalog.threads.find((thread) => thread.id === threadId)?.projectId;
-        return (
-          catalog.projects.find((project) => project.id === projectId)?.scripts ?? []
-        ).flatMap((script) => (script.previewUrl === undefined ? [] : [script.previewUrl]));
+        // What the node takes: at most 50, none past 2048 characters.
+        return (catalog.projects.find((project) => project.id === projectId)?.scripts ?? [])
+          .flatMap((script) =>
+            script.previewUrl === undefined || script.previewUrl.length > 2048
+              ? []
+              : [script.previewUrl],
+          )
+          .slice(0, 50);
       };
       /** What the panel's chunk asks of the plugin, for a thread on `target`. */
       const servicesFor = (

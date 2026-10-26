@@ -1357,11 +1357,16 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         if (typeof projectId === "string" && (await noteDir(id, payload))) {
           await recordThread(id, projectId);
         }
-        if (
-          payload?.["settledOverride"] === "settled" &&
-          typeof payload["settledAt"] === "string"
-        ) {
-          void runSettleScript(id, payload["settledAt"]).catch((error: unknown) =>
+        // A settling is a change to settled, or to another settling: not every update of a
+        // thread already settled before (a rename, a pin) runs it again.
+        const settledAt =
+          payload?.["settledOverride"] === "settled" && typeof payload["settledAt"] === "string"
+            ? payload["settledAt"]
+            : null;
+        const before = settledSeen.get(id);
+        settledSeen.set(id, settledAt);
+        if (settledAt !== null && settledKnown && before !== settledAt) {
+          void runSettleScript(id, settledAt).catch((error: unknown) =>
             context.log.warn("could not run a settle script", {
               threadId: id,
               error: String(error),
@@ -1389,6 +1394,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         const deletedProject = threadDirs.get(id)?.projectId;
         forgetSetup(id);
         settleClaims.delete(id);
+        settledSeen.delete(id);
         await kv.delete(NAMESPACE, `${SETTLE_PREFIX}${id}`).catch(() => false);
         // Bookkeeping for the cleanup never keeps the thread's own removal from running.
         await noteDeletedWorktree(id).catch((error: unknown) =>
@@ -1800,7 +1806,24 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   // A failure is logged and the hourly sweep tries again.
   const startupSweep = () => {
     if (anyCleanupEnabled()) cleanInBackground();
+    void knowSettled().catch((error: unknown) =>
+      context.log.warn("could not read the settled threads", { error: String(error) }),
+    );
   };
+  /** The threads settled when the plugin starts: their next update is no settling (D1476). */
+  async function knowSettled() {
+    const listed = (await context.commands.execute("threads.list", {
+      includeGenerations: true,
+    })) as { id: string; settledOverride?: string; settledAt?: string }[];
+    for (const thread of listed) {
+      if (settledSeen.has(thread.id)) continue;
+      settledSeen.set(
+        thread.id,
+        thread.settledOverride === "settled" ? (thread.settledAt ?? null) : null,
+      );
+    }
+    settledKnown = true;
+  }
   const answering = () => {
     const names = new Set(context.commands.list().map((command) => command.name));
     return names.has("projects.list") && names.has("threads.list");
@@ -3677,12 +3700,24 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   // T3's cleanUpSettledThread (D1476): the settle script, once per settling, in the
   // thread's own worktree; a thread in the project's checkout runs none.
   const SETTLE_PREFIX = "settle-script/";
+  /** Each thread's settling as last seen, and whether the settled threads were read at start. */
+  const settledSeen = new Map<string, string | null>();
+  let settledKnown = false;
   /** The settling each thread's script was claimed for, before anything is awaited. */
   const settleClaims = new Map<string, string>();
   async function runSettleScript(threadId: string, settledAt: string) {
-    // Every update of a settled thread says so: the first claims the settling, the rest stop.
     if (settleClaims.get(threadId) === settledAt) return;
     settleClaims.set(threadId, settledAt);
+    try {
+      await settleScriptNow(threadId, settledAt);
+    } finally {
+      // A settling it did not get to keep may be tried again by its thread's next update.
+      if ((await kv.get(NAMESPACE, `${SETTLE_PREFIX}${threadId}`)) !== settledAt) {
+        if (settleClaims.get(threadId) === settledAt) settleClaims.delete(threadId);
+      }
+    }
+  }
+  async function settleScriptNow(threadId: string, settledAt: string) {
     if ((await kv.get(NAMESPACE, `${SETTLE_PREFIX}${threadId}`)) === settledAt) return;
     const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
     if (terminals === undefined || stopped) return;

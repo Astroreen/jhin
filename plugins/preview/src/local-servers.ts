@@ -351,9 +351,7 @@ export function createLocalServerScanner(host: ScanHost) {
       const port = Number(url.port) || (url.protocol === "https:" ? 443 : 80);
       const key = keyOf(url.hostname, port);
       if (visible.has(key) || !(await isWeb(raw, null))) continue;
-      const listener = discovered.find(
-        (server) => server.port === port && LOOPBACK_HOSTS.has(url.hostname),
-      );
+      const listener = discovered.find((server) => server.port === port);
       visible.set(key, {
         host: url.hostname,
         port,
@@ -365,9 +363,7 @@ export function createLocalServerScanner(host: ScanHost) {
     }
     for (const server of discovered) {
       const key = keyOf(server.host, server.port);
-      const shadowed = [...visible.values()].some(
-        (configured) => configured.port === server.port && LOOPBACK_HOSTS.has(configured.host),
-      );
+      const shadowed = [...visible.values()].some((configured) => configured.port === server.port);
       if (!visible.has(key) && !shadowed) visible.set(key, server);
     }
     return [...visible.values()].toSorted((left, right) => left.port - right.port);
@@ -446,7 +442,8 @@ export function normalizeConfiguredUrls(urls: readonly string[]): string[] {
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") return [];
     if (url.hostname === "0.0.0.0") url.hostname = "localhost";
-    if (!LOOPBACK_HOSTS.has(url.hostname) && url.hostname !== "[::1]") return [];
+    // An IPv6 URL's hostname keeps its brackets.
+    if (!LOOPBACK_HOSTS.has(url.hostname.replace(/^\[(.*)\]$/, "$1"))) return [];
     return [url.href];
   });
   return [...new Set(normalized)];
