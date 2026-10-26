@@ -1621,8 +1621,9 @@ export function Composer(props: ComposerProps) {
     setDragging(false);
     {
       const pullRequest = decodePullRequestDrag(event.dataTransfer.getData(PULL_REQUEST_DRAG_TYPE));
+      // A payload that is no pull request is ignored, as T3's decode leaves it.
       if (
-        pullRequest === undefined ||
+        pullRequest !== undefined &&
         insertContext(pullRequestContextRecord(pullRequest), { atEnd: true }) !== "inserted"
       ) {
         toasts?.show({
