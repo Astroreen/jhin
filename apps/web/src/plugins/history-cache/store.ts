@@ -9,7 +9,7 @@ const EVENTS = "events";
 const CATALOGS = "catalogs";
 
 /** One kept stream, without its events. */
-interface StreamEntry {
+export interface StreamEntry {
   readonly connection: string;
   readonly stream: string;
   readonly epoch: string;

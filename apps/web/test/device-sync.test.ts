@@ -24,6 +24,7 @@ describe("device settings across devices (D487, D488)", () => {
 
   it("never shares what says what is shared", () => {
     expect(shared("jhin.sync")).toBe(false);
+    expect(shared("jhin.history-cache")).toBe(false);
     expect(shared("jhin.chat")).toBe(true);
   });
 });

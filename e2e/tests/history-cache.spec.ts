@@ -107,3 +107,64 @@ test("a reload opens a thread from the history cache and asks only for the new e
   await page.screenshot({ path });
   await info.attach("from-cache", { path, contentType: "image/png" });
 });
+
+/** How many thread streams the page's history cache keeps (its IndexedDB `streams` store). */
+const keptStreams = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const opening = indexedDB.open("jhin.history-cache");
+        opening.addEventListener("error", () => reject(opening.error));
+        opening.addEventListener("success", () => {
+          const db = opening.result;
+          const counting = db.transaction("streams").objectStore("streams").count();
+          counting.addEventListener("success", () => {
+            db.close();
+            resolve(counting.result);
+          });
+          counting.addEventListener("error", () => reject(counting.error));
+        });
+      }),
+  );
+
+test("turning off “Keep chat history on this device” deletes it, and threads open from 0 (D1592)", async ({
+  page,
+}, info) => {
+  const streams = watchThreadStreams(page);
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  const log = page.getByRole("log", { name: "Messages" });
+  await message.fill("remember me");
+  await message.press("Enter");
+  await expect(log.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
+  const thread = page.url();
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  const setting = page.getByRole("switch", { name: "Keep chat history on this device" });
+  await expect(setting).toBeChecked();
+  await setting.scrollIntoViewIfNeeded();
+  await expect(page.getByText(/Now 1 thread, about \d+ KB\./)).toBeVisible();
+  await expect(page.getByText(/stored unencrypted in this browser profile/)).toBeVisible();
+  const on = info.outputPath("setting-on.png");
+  await page.screenshot({ path: on });
+  await info.attach("setting-on", { path: on, contentType: "image/png" });
+
+  await setting.click();
+  await expect(setting).not.toBeChecked();
+  // Once the clear is done, the row reads what is kept again.
+  await expect(page.getByText(/Nothing is kept now\./)).toBeVisible();
+  expect(await keptStreams(page)).toBe(0);
+  const off = info.outputPath("setting-off.png");
+  await page.screenshot({ path: off });
+  await info.attach("setting-off", { path: off, contentType: "image/png" });
+
+  // The setting stays off after a reload, and the thread is read from 0 again.
+  const before = streams.subscribes.length;
+  await page.goto(thread);
+  await page.reload();
+  const again = await streams.subscribed(before + 1);
+  expect(again.after).toBe(0);
+  await expect(log.getByRole("article", { name: "You" })).toHaveText(["remember me"]);
+  expect(await keptStreams(page)).toBe(0);
+});

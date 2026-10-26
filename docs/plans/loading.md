@@ -172,6 +172,38 @@ What the node does today (2026-10-24, `08eeb571`):
   it was deleted is dropped as the event arrives. The entry's size is the
   UTF-8 size of its events' JSON: an estimate, as `history-cache.status` says.
 
+- **D1609. The setting is the device section `jhin.history-cache`.** One
+  key, `enabled` (default `true`), defined by `jhin.history-cache` and shown
+  as a row of the general settings' Behavior section
+  (`settings.general.behavior`, contribution `jhin.history-cache.setting`),
+  with how many threads are kept and about how large they are. Device sync
+  never shares it (D488's rule for `jhin.sync`): each device decides for
+  itself. Turned off, here or in another tab, everything is deleted;
+  turned on again, threads are kept from their next open.
+- **D1610. Room is made a quarter at a time.** A write over the quota deletes
+  the least recently opened quarter (at least one) of the other kept
+  streams, then is tried once more. The 30 days of D1593 count from when a
+  thread last opened from the cache, kept per stream; the sidebar's catalog
+  of a node goes only with the node (D1593) or the setting.
+- **D1611. Writes and clears take turns.** The cache runs its writes and
+  clears one after another, and a write checks the setting when its turn
+  comes: one in flight when the setting goes off or a node is forgotten
+  lands before the clear and goes with it, and none lands after. Drops,
+  the boot's eviction and `history-cache.status` take their turn too, so the
+  status says what is kept once the queued work is done. The queue is per
+  tab; every tab sees the setting change and clears after its own writes, so
+  no tab's write outlives the setting. Signing
+  out of a node is removing it in this client (removing the page's own node
+  ends its session), so D1593's "signing out" is that removal. Without
+  IndexedDB the plugin provides no service, but `history-cache.status` and
+  `history-cache.clear` still answer (nothing kept, nothing cleared).
+- **D1612. A cache stopped over the quota says so.** `history-cache.status`
+  answers `enabled: false` while the setting is on, and the settings row says
+  the cache is paused for this session because the browser has no room left.
+  What is kept stays: the next session reads it and makes room again. A browser
+  without IndexedDB is told apart: the row says the browser does not let
+  the page store the history.
+
 ### P3. Chunks and prefetch
 
 - **D1595. What the first screen does not show is a chunk of its own.** The
@@ -207,9 +239,15 @@ loading one.
   "renders every turn" and the page-wide find (D801), so it needs its own
   decisions first.
 - A cached timeline snapshot (D1588 stores raw events).
+- Forgetting at boot a node removed while no tab ran: `client.connections`
+  has no "loaded" moment to compare against, so such streams go with D1593's
+  30-day eviction, and its catalog with the next clear.
 - A thread followed from the cache while its node could not be asked checks
   the head on every acceptance and asks again once; a database reset whose
   stream has grown past the kept sequence is caught only at the next open.
+- The settings row's "Now N threads" is read when the page opens, when
+  the setting changes and after a clear; it does not follow writes made
+  while the settings page stays open.
 - Opening a remote mesh node's thread from the cache (D1606): it needs the
   epoch of the copy the connected node reads it from.
 - `permessage-deflate` with context takeover, if P1's numbers show a large
