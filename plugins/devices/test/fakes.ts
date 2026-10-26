@@ -228,7 +228,9 @@ esac
 
   // ssh: the "host" is this machine, with a home of its own.
   const remoteHome = Path.join(dir, "remote-home");
-  Fs.mkdirSync(remoteHome);
+  // T3's environment puts ~/.local/bin first on the host's PATH, before /usr/local/bin where a
+  // runner's real npm lives: the fakes go there, so the host runs them and nothing real.
+  Fs.mkdirSync(Path.join(remoteHome, ".local", "bin"), { recursive: true });
   const ssh = at("ssh");
   Fs.writeFileSync(
     ssh,
@@ -271,12 +273,17 @@ if (noCommand) {
 // ssh hands the joined words to the host's shell.
 const child = spawn("sh", ["-c", remote.join(" ")], {
   stdio: "inherit",
-  env: { ...process.env, HOME: ${JSON.stringify(remoteHome)}, PATH: ${JSON.stringify(dir)} + ":" + process.env.PATH },
+  // The host has no SDK of its own: a runner's (ANDROID_HOME, JAVA_HOME) would go first on PATH.
+  env: { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !["ANDROID_HOME", "ANDROID_SDK_ROOT", "JAVA_HOME"].includes(name))), HOME: ${JSON.stringify(remoteHome)}, PATH: ${JSON.stringify(dir)} + ":" + process.env.PATH },
 });
 child.on("exit", (code) => process.exit(code ?? 1));
 `,
     { mode: 0o755 },
   );
+
+  for (const tool of [npm, adb]) {
+    Fs.symlinkSync(tool, Path.join(remoteHome, ".local", "bin", Path.basename(tool)));
+  }
 
   return {
     dir,
