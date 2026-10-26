@@ -732,63 +732,66 @@ export function createTabs(options: TabsOptions) {
     log.info("preview tab reconnecting", { threadId: old.threadId, tabId: old.tabId });
     const waiting = () => tabs.get(key) === old && !old.closing && !disposed;
     old.reconnect = (async () => {
-      // What ends with the page: the human's control, a recording, the old connection, a
-      // dialog or file chooser it showed.
-      old.dialog = null;
-      old.fileChooser = null;
-      await old.control.close();
-      await stopScreencast(old);
-      const recording = old.recording;
-      old.recording = null;
-      await recording?.encoder
-        .context()
-        .close()
-        .catch(() => undefined);
-      await old.desktop?.close().catch(() => undefined);
-      let page: DesktopPage | null = null;
-      while (waiting()) {
-        if (host === undefined || connect === undefined) break;
-        if (!host.active()) {
-          // A reloaded window subscribes again within T3's wait; else the tab opens headless.
-          if (!(await host.whenActive())) break;
-          continue;
-        }
-        const endpoint = await host.request(
-          desktopTab(old.threadId, old.tabId, old.profileId),
-          null,
-        );
-        if (endpoint === null) continue;
-        if (!waiting()) break;
-        try {
-          page = await connect(endpoint);
-        } catch (error) {
-          log.warn("desktop webview not connected again; the tab opens headless", {
-            tabId: old.tabId,
-            error: String(error),
-          });
-        }
-        break;
-      }
-      if (!waiting()) {
-        await page?.close().catch(() => undefined);
-        return;
-      }
-      if (page === null) host?.forget(old.threadId, old.tabId);
-      const created = createTab({
-        threadId: old.threadId,
-        agentId: old.control.agentId,
-        reveal: false,
-        reuse: { previous: old, desktop: page },
-      });
-      pendingTabs.add(created);
       try {
-        await created;
+        // What ends with the page: the human's control, a recording, the old connection, a
+        // dialog or file chooser it showed.
+        old.dialog = null;
+        old.fileChooser = null;
+        await old.control.close();
+        await stopScreencast(old);
+        const recording = old.recording;
+        old.recording = null;
+        await recording?.encoder
+          .context()
+          .close()
+          .catch(() => undefined);
+        await old.desktop?.close().catch(() => undefined);
+        let page: DesktopPage | null = null;
+        while (waiting()) {
+          if (host === undefined || connect === undefined) break;
+          if (!host.active()) {
+            // A reloaded window subscribes again within T3's wait; else the tab opens headless.
+            if (!(await host.whenActive())) break;
+            continue;
+          }
+          const endpoint = await host.request(
+            desktopTab(old.threadId, old.tabId, old.profileId),
+            null,
+          );
+          if (endpoint === null) continue;
+          if (!waiting()) break;
+          try {
+            page = await connect(endpoint);
+          } catch (error) {
+            log.warn("desktop webview not connected again; the tab opens headless", {
+              tabId: old.tabId,
+              error: String(error),
+            });
+          }
+          break;
+        }
+        if (!waiting()) {
+          await page?.close().catch(() => undefined);
+          return;
+        }
+        if (page === null) host?.forget(old.threadId, old.tabId);
+        const created = createTab({
+          threadId: old.threadId,
+          agentId: old.control.agentId,
+          reveal: false,
+          reuse: { previous: old, desktop: page },
+        });
+        pendingTabs.add(created);
+        try {
+          await created;
+        } finally {
+          pendingTabs.delete(created);
+        }
       } catch (error) {
+        // Whatever failed, the tab does not stay reconnecting for good.
         log.warn("preview tab not reconnected", { tabId: old.tabId, error: String(error) });
         old.reconnect = null;
         await dropTab(old, "not reconnected");
-      } finally {
-        pendingTabs.delete(created);
       }
     })();
     changed(old);

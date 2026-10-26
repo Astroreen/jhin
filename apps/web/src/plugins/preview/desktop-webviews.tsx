@@ -134,7 +134,9 @@ function Host(
     const action = surfaces.devTools((webContentsId) => {
       devTools.current.open.add(webContentsId);
       return openDevTools(webContentsId).catch((error: unknown) => {
+        // The app may have let the relay go before DevTools failed to open: attach again.
         devTools.current.open.delete(webContentsId);
+        devTools.current.reattach.get(webContentsId)?.();
         throw error;
       });
     });

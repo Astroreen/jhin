@@ -431,7 +431,7 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   and the tab's title follows as after the node's own actions. Closing the tab disconnects Playwright (the webview's
   page is the app's to close) and drops the tab from the stream, so the app
   removes the webview; a webview that goes away (closed, crashed, a reload of
-  the window) drops its tab, where T3 reconnects (Deferred).
+  the window) drops its tab, where T3 reconnects (until D1488, which reconnects it too).
 
 - **D1322. The relay is T3's, in the app's main process.** Electron allows
   one debugger per `webContents`, and Playwright speaks to a browser, so the
@@ -449,7 +449,7 @@ the `will-attach-webview` gate of `window/DesktopWindow.ts`,
   process attaches only a webview guest of the app's window whose embedder
   is the asking page, and refuses one DevTools or another debugger holds;
   the endpoint closes with the guest, and the debugger is let go when the
-  node disconnects. A dropped connection is final: the node drops the tab
+  node disconnects. A dropped connection was final until D1488: the node drops the tab
   with it (D1321), so nothing reconnects to the endpoint; the app's page
   removes the webview, and a new tab attaches anew. Two app pages of one node
   both host a new tab; the first attach wins, and the other page drops its
@@ -617,7 +617,9 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   fails the same way, and nothing is kept. `--port` takes 1 to 65535, never
   0, whose port would change with every start. The choice is
   `startOnFreePort` in `apps/desktop/src/local-node.ts`, unit tested with
-  injected starts.
+  injected starts. T3 scans for a free port from its default on every launch
+  (`resolveDesktopBackendPort`); its client's origin is a custom protocol,
+  so the port can change, while here it must be kept.
 
 - **D1488. A desktop tab outlives its webview, as T3 reconnects one.** In
   T3 a preview session lives on the server apart from the page that
@@ -664,16 +666,13 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
 - **D1490. A guest's context menu is the window's (T3).** T3 installs
   the window's context menu on every guest as it attaches
   (`DesktopWindow.ts`, `did-attach-webview`). Here the window's handler of
-  D517 becomes `installContextMenu(contents)` and is installed on each
+  D517 becomes `installContextMenu(window, contents)` and is installed on each
   preview webview's guest too, which first takes focus so the editing
   items act in the page. The items are D517's: spelling suggestions, Copy
   Link, Copy Image (`copyImageAt`, in the guest's own frame), then Cut,
   Copy, Paste and Select All as the page allows. T3's copy of an image
   inside a subframe (`ContextMenuImage.ts`, fetching and decoding it) is
   Deferred.
-  T3 scans for a free port from its default on every launch
-  (`resolveDesktopBackendPort`); its client's origin is a custom protocol,
-  so the port can change, while here it must be kept.
 
 ## Deferred
 
