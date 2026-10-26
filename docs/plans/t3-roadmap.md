@@ -572,6 +572,27 @@ adapt to it, as the rules for every workstream say.
   comment chip's popover and comments on one line grouped as T3's
   annotation; review thread comments on lines and required checks off
   GitHub in watching.
+  **Done** (D1441–D1459, D1460 unused): #289 Bitbucket and Forgejo list and
+  watch pull requests, every forge resolves a typed number or URL and checks
+  a pull request out (`refs/pull` only where published), the checkout dialog
+  in the forge's terms with T3's `providerName`, Bitbucket's token as a config
+  secret (`source-control.md` D1441–D1446; required checks off GitHub are
+  none, as in T3, D1448); #298 review thread comments on lines in a GitHub
+  watch, a snapshot's author, diff stat, review decision and mergeability,
+  `git.pr.detail` and `git.pr.action` (merge, ready, close, reopen) on every
+  forge (D1447, D1449–D1451); #315 the panel's row details, checks popover,
+  speed actions under Shift, a row dragged into the composer, the virtualized
+  list, and the details row's Merge, Ready, Fix and Resolve with T3's
+  hand-off through `chat.draft.write`, as a surface of W40's right panel
+  (D1452–D1457); #317 a review comment chip's popover and comments on one
+  line as one annotation (D1458, D1459). Left in `source-control.md`'s
+  Deferred: Azure DevOps fork checkouts and policy checks, Forgejo servers
+  paging below 50, Bitbucket Server, notes and comments past their first
+  pages, GitHub review threads past 100, GitHub avatars, T3's other pull
+  request actions and merge queue, a per-project merge method, T3's sweep to
+  close several rows, the details rows' periodic reads, the panel's proactive
+  opening (W40), native stacks and comments on a file's own contents (W40's
+  file panel).
 - **W42:** T3's per-project settings and the checked-in `t3.json`; a
   project scope on the settings page and with it T3's scope picker for a
   project's settle settings (`t3-parity.md`); multi-line text in the config
