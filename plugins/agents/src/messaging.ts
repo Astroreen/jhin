@@ -4,6 +4,7 @@
 import * as Crypto from "node:crypto";
 
 import {
+  AGENTS_STREAM,
   INBOX_PERMISSION,
   INBOX_STREAM,
   MESSAGE_PERMISSION,
@@ -26,6 +27,7 @@ import {
   type MessageOrigin,
   type MessageParty,
 } from "@jhin/agent-api";
+import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { describePermissions, type Invocation, type PluginContext } from "@jhin/sdk";
 import type { EventLog, Json, KeyValueStore, StoredEvent } from "@jhin/storage-api";
@@ -86,9 +88,19 @@ export function registerMessaging(
 
   // Following the streams takes what reading through the commands takes (security.md D415).
   const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
+  // The agents stream takes what `agents.catalog` takes (M1, D1521).
   if (live?.guard !== undefined) {
+    context.subscriptions.add(live.guard(AGENTS_STREAM, ["agents.read"]));
     context.subscriptions.add(live.guard(MESSAGES_STREAM, ["agents.read"]));
     context.subscriptions.add(live.guard(INBOX_STREAM, [INBOX_PERMISSION]));
+  }
+  // Members read the agents, messages and inbox through relays, within their
+  // grants and those guards (M1, D1521): never shared without them.
+  const shared = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
+  if (shared !== undefined && live?.guard !== undefined) {
+    for (const stream of [AGENTS_STREAM, MESSAGES_STREAM, INBOX_STREAM]) {
+      context.subscriptions.add(shared.share(stream));
+    }
   }
   describePermissions(context, {
     [MESSAGE_PERMISSION]: {
@@ -347,9 +359,32 @@ export function registerMessaging(
       );
     });
 
-  /** Whether the recipient of `message` sent an answer to it (D1262). */
-  const repliedTo = async (message: AgentMessage): Promise<boolean> =>
-    (await log.read(MESSAGES_STREAM)).some((event) => {
+  /**
+   * A reply forwarded to another node is delivered there (D627), so this node
+   * remembers it by the id it answers (M1, D1524): in memory, as the turns
+   * followed for an answer are (a restart follows none), the newest
+   * `MAX_REPLIES` only.
+   */
+  const replies = new Map<string, { from: string; to: string }>();
+  const MAX_REPLIES = 1000;
+  const rememberReply = (inReplyTo: string, from: string, to: string) => {
+    replies.delete(inReplyTo);
+    replies.set(inReplyTo, { from, to });
+    for (const oldest of replies.keys()) {
+      if (replies.size <= MAX_REPLIES) break;
+      replies.delete(oldest);
+    }
+  };
+
+  /** Whether the recipient of `message` sent an answer to it (D1262), here or elsewhere (D1524). */
+  const repliedTo = async (message: AgentMessage): Promise<boolean> => {
+    const forwarded = replies.get(message.messageId);
+    if (forwarded?.from === message.to && forwarded.to === message.from) {
+      // Asked once, at the end of the message's turn: the record has served then.
+      replies.delete(message.messageId);
+      return true;
+    }
+    return (await log.read(MESSAGES_STREAM)).some((event) => {
       if (event.type !== MessageEvents.delivered) return false;
       const reply = (event.payload as unknown as Delivered).message;
       return (
@@ -358,6 +393,7 @@ export function registerMessaging(
         reply.to === message.from
       );
     });
+  };
 
   const answered = (message: AgentMessage, answeredBy: string, answer: string) =>
     log.append(MESSAGES_STREAM, [
@@ -387,7 +423,7 @@ export function registerMessaging(
       const target = partyOf(to, "to");
       const id = messageId ?? Crypto.randomUUID();
       if (target.nodeId !== nodeId) {
-        return forward(
+        const sent = await forward<{ message: AgentMessage; delivery?: MessageDelivery }>(
           target.nodeId,
           "agents.send",
           {
@@ -399,6 +435,11 @@ export function registerMessaging(
           },
           invocation,
         );
+        // Only a reply to an owner can stand for a turn's answer (D1221, D1262).
+        if (inReplyTo !== undefined && target.kind === "owner") {
+          rememberReply(inReplyTo, sender, to);
+        }
+        return sent;
       }
       const { message, delivery, fresh } = await deliverHere({
         messageId: id,
@@ -412,11 +453,12 @@ export function registerMessaging(
       });
       // What an agent answers the owner's message is meant for the owner: it is
       // recorded with the message, as an ask's answer is, so it never stays
-      // only in the agent's thread (D1221). Nobody waits for it.
+      // only in the agent's thread (D1221). Nobody waits for it. Any owner of
+      // the mesh, not only this node's (M1, D1524).
       if (
         fresh === true &&
         message.kind === "message" &&
-        message.from === ownerAddress(nodeId) &&
+        parseMessageAddress(message.from)?.kind === "owner" &&
         delivery?.agentId !== undefined
       ) {
         void answerIn(delivery.threadId, message.messageId)
@@ -540,61 +582,139 @@ export function registerMessaging(
     },
   });
 
+  /**
+   * The messages between `owner` and `other` this node recorded (D627, D1061),
+   * oldest first; the inbox's state only for this node's owner, whose inbox it is.
+   */
+  async function conversationHere(
+    owner: string,
+    other: string,
+  ): Promise<{ head: number; entries: ConversationEntry[] }> {
+    const head = await log.head(MESSAGES_STREAM);
+    const items = owner === ownerAddress(nodeId) ? (await inbox()).items : new Map();
+    const entries: ConversationEntry[] = [];
+    const asks = new Map<string, number>();
+    // Every message is recorded where it is delivered (D627): the owner's
+    // on the agent's node, the agent's to the owner here.
+    for (const event of await log.read(MESSAGES_STREAM)) {
+      if (event.sequence > head) break;
+      if (event.type === MessageEvents.delivered) {
+        const { message } = event.payload as unknown as Delivered;
+        const between =
+          (message.from === owner && message.to === other) ||
+          (message.from === other && message.to === owner);
+        if (!between) continue;
+        const item = message.to === owner ? items.get(message.messageId) : undefined;
+        // An ask's answer, and the agent's answer to the owner's message (D1221).
+        if (message.kind === "ask" || (message.kind === "message" && message.from === owner)) {
+          asks.set(message.messageId, entries.length);
+        }
+        entries.push({
+          message,
+          ...(item === undefined ? {} : { inbox: item.status }),
+          ...(item?.answer === undefined
+            ? {}
+            : { answer: item.answer, answeredBy: owner, answeredAt: item.answeredAt }),
+        });
+      } else if (event.type === MessageEvents.answered) {
+        const payload = event.payload as {
+          messageId: string;
+          answeredBy: string;
+          answeredAt: string;
+          answer?: string;
+        };
+        const at = asks.get(payload.messageId);
+        if (at === undefined) continue;
+        // An event recorded before D1061 has no text: the ask is answered all the same.
+        entries[at] = {
+          ...entries[at]!,
+          ...(payload.answer === undefined ? {} : { answer: payload.answer }),
+          answeredBy: payload.answeredBy,
+          answeredAt: payload.answeredAt,
+        };
+      }
+    }
+    return { head, entries };
+  }
+
   context.commands.register({
     name: "agents.conversation",
     description:
-      "The messages between this node's owner and an agent (or an alias such as lead@team), oldest first: the owner's messages and asks with their answers, and what the agent sent or asked the owner with the state of its inbox item",
+      "The messages between this node's owner and an agent (or an alias such as lead@team), oldest first: the owner's messages and asks with their answers, and what the agent sent or asked the owner with the state of its inbox item; an agent on another node adds the half recorded there",
     ...MessageCommands["agents.conversation"],
     permissions: [INBOX_PERMISSION, "agents.read"],
-    handler: async ({ with: given, limit }) => {
+    handler: async ({ with: given, owner: asked, limit }, invocation) => {
       const other = await addressOf(given);
-      partyOf(other, "to");
-      const owner = ownerAddress(nodeId);
-      const head = await log.head(MESSAGES_STREAM);
-      const { items } = await inbox();
-      const entries: ConversationEntry[] = [];
-      const asks = new Map<string, number>();
-      // Every message is recorded where it is delivered (D627): the owner's
-      // on the agent's node, the agent's to the owner here.
-      for (const event of await log.read(MESSAGES_STREAM)) {
-        if (event.sequence > head) break;
-        if (event.type === MessageEvents.delivered) {
-          const { message } = event.payload as unknown as Delivered;
-          const between =
-            (message.from === owner && message.to === other) ||
-            (message.from === other && message.to === owner);
-          if (!between) continue;
-          const item = message.to === owner ? items.get(message.messageId) : undefined;
-          // An ask's answer, and the agent's answer to the owner's message (D1221).
-          if (message.kind === "ask" || (message.kind === "message" && message.from === owner)) {
-            asks.set(message.messageId, entries.length);
-          }
-          entries.push({
-            message,
-            ...(item === undefined ? {} : { inbox: item.status }),
-            ...(item?.answer === undefined
-              ? {}
-              : { answer: item.answer, answeredBy: owner, answeredAt: item.answeredAt }),
-          });
-        } else if (event.type === MessageEvents.answered) {
-          const payload = event.payload as {
-            messageId: string;
-            answeredBy: string;
-            answeredAt: string;
-            answer?: string;
-          };
-          const at = asks.get(payload.messageId);
-          if (at === undefined) continue;
-          // An event recorded before D1061 has no text: the ask is answered all the same.
-          entries[at] = {
-            ...entries[at]!,
-            ...(payload.answer === undefined ? {} : { answer: payload.answer }),
-            answeredBy: payload.answeredBy,
-            answeredAt: payload.answeredAt,
-          };
-        }
+      const party = partyOf(other, "to");
+      const owner = asked ?? ownerAddress(nodeId);
+      const ownerParty = partyOf(owner, "from");
+      if (ownerParty.kind !== "owner") {
+        throw new AgentsError("ADDRESS_INVALID", `${owner} is not an owner's address`, { owner });
       }
-      return { head, owner, with: other, entries: entries.slice(-(limit ?? 200)) };
+      // Another owner's half is read only by that owner's node, through the
+      // mesh, or by this node's own code (D1523).
+      const caller = invocation.caller;
+      if (
+        owner !== ownerAddress(nodeId) &&
+        caller !== undefined &&
+        caller.id !== `node:${ownerParty.nodeId}`
+      ) {
+        throw new AgentsError(
+          "OWNER_MISMATCH",
+          `Only node ${ownerParty.nodeId} reads the conversation of ${owner} here`,
+          { owner },
+        );
+      }
+      const here = await conversationHere(owner, other);
+      const keep = limit ?? 200;
+      // Asked by another node for the half recorded here: no further hop.
+      if (party.nodeId === nodeId || owner !== ownerAddress(nodeId)) {
+        return { head: here.head, owner, with: other, entries: here.entries.slice(-keep) };
+      }
+      // The owner's messages to an agent of another node are recorded there
+      // (D627): that node's half joins this one (M1, D1523).
+      let elsewhere: { nodeId: string; head?: number; error?: string };
+      let there: ConversationEntry[] = [];
+      try {
+        const answer = (await context.commands.execute(
+          "mesh.call",
+          {
+            node: party.nodeId,
+            method: "agents.conversation",
+            params: { with: other, owner, limit: keep },
+          },
+          {
+            ...(invocation.traceId === undefined ? {} : { traceId: invocation.traceId }),
+            // The caller's own grants go along (D416); this node's own code
+            // asks with what reading the conversation takes.
+            caller: caller ?? {
+              id: context.plugin.id,
+              permissions: ["mesh.call", INBOX_PERMISSION, "agents.read"],
+            },
+          },
+        )) as { head: number; owner: string; entries: ConversationEntry[] };
+        // A node that does not know `owner` answers for its own owner: not this half.
+        if (answer.owner !== owner) {
+          throw new Error(`${party.nodeId} answered for ${answer.owner}, not ${owner}`);
+        }
+        there = answer.entries;
+        elsewhere = { nodeId: party.nodeId, head: answer.head };
+      } catch (error) {
+        elsewhere = {
+          nodeId: party.nodeId,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+      const seen = new Set(here.entries.map((entry) => entry.message.messageId));
+      const entries = [
+        ...here.entries,
+        ...there.filter((entry) => !seen.has(entry.message.messageId)),
+        // By the time each node stamped (ISO strings compare as text); two
+        // nodes' clocks may differ by a little (D1523).
+      ].toSorted((a, b) =>
+        a.message.sentAt < b.message.sentAt ? -1 : a.message.sentAt > b.message.sentAt ? 1 : 0,
+      );
+      return { head: here.head, owner, with: other, entries: entries.slice(-keep), elsewhere };
     },
   });
 

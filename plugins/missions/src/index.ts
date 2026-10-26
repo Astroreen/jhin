@@ -31,6 +31,7 @@ import {
   REVIEW_TREE_EXCLUDE,
   type ReviewedWork,
 } from "@jhin/missions-api";
+import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z, type Invocation, describePermissions } from "@jhin/sdk";
 import {
@@ -85,6 +86,12 @@ export default definePlugin({
     const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
     if (live?.guard !== undefined) {
       context.subscriptions.add(live.guard(MISSIONS_STREAM, ["missions.read"]));
+    }
+    // Members read it through relays, within their grants and that guard (M1, D1521).
+    const shared = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
+    // Never shared without its guard.
+    if (shared !== undefined && live?.guard !== undefined) {
+      context.subscriptions.add(shared.share(MISSIONS_STREAM));
     }
 
     // --- State: the fold of the stream ------------------------------------------

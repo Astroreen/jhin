@@ -35,6 +35,7 @@ import {
 } from "@jhin/health-api";
 import { MISSIONS_STREAM } from "@jhin/missions-api";
 import { SOURCE_CONTROL_STREAM } from "@jhin/source-control-api";
+import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import { LIVE_STREAMS_CAPABILITY, UNGUARDED_STREAM_PERMISSION, type LiveStreams } from "@jhin/rpc";
 import {
   definePlugin,
@@ -84,6 +85,12 @@ export default definePlugin({
     const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
     if (live?.guard !== undefined) {
       context.subscriptions.add(live.guard(HEALTH_STREAM, [HEALTH_READ_PERMISSION]));
+    }
+    // Members read it through relays, within their grants and that guard (M1, D1521).
+    const meshStreams = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
+    // Never shared without its guard.
+    if (meshStreams !== undefined && live?.guard !== undefined) {
+      context.subscriptions.add(meshStreams.share(HEALTH_STREAM));
     }
     context.subscriptions.add(context.config.define(HEALTH_CONFIG_SECTION, HealthConfig));
     let lastGood = HealthConfig.parse({});

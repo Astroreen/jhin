@@ -167,7 +167,9 @@ export type MessageErrorCode =
   /** `agents.inbox.answer` of an ask already answered. */
   | "ASK_ANSWERED"
   /** `agents.inbox.dismiss` of an item that is not open, or `agents.inbox.answer` of a dismissed one (D1274). */
-  | "ITEM_CLOSED";
+  | "ITEM_CLOSED"
+  /** `agents.conversation` of another node's owner, asked by anyone but that node (M1, D1523). */
+  | "OWNER_MISMATCH";
 
 /** Permission to send and ask (D628); agents hold it through their node's MCP server. */
 export const MESSAGE_PERMISSION = "agents.message";
@@ -244,6 +246,10 @@ export const MessageCommands = {
   "agents.conversation": {
     input: z.object({
       with: Address,
+      owner: Address.optional().meta({
+        description:
+          "The owner whose conversation it is: this node's owner by default; another node's owner when that node asks for the half recorded here (M1, D1523)",
+      }),
       limit: z
         .number()
         .int()
@@ -262,6 +268,18 @@ export const MessageCommands = {
       /** `with` as a full address, an alias resolved. */
       with: z.string(),
       entries: z.array(ConversationEntry),
+      /**
+       * With `with` on another node (M1, D1523): the head of that node's
+       * `agents/messages` its half reflects, or why it could not be read
+       * (then only this node's half is in `entries`).
+       */
+      elsewhere: z
+        .object({
+          nodeId: z.string(),
+          head: z.number().optional(),
+          error: z.string().optional(),
+        })
+        .optional(),
     }),
   },
   "agents.inbox.answer": {
