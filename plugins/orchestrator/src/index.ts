@@ -1100,8 +1100,8 @@ export default definePlugin({
           await kv.set(NAMESPACE, key, { workflowId: started.workflowId, parentThreadId });
         } else {
           // The mission's node keeps the run: its panel, reports and escalations find it (D1545).
-          const { thread } = await getThread(parentThreadId);
           try {
+            const { thread } = await getThread(parentThreadId);
             await onNode(
               node,
               "missions.orchestration.record",
@@ -1199,11 +1199,13 @@ export default definePlugin({
             lead,
           });
           // A run that ended before its start was recorded is reported now.
-          const early = (await kv.get(NAMESPACE, `ended/${runNode}/${workflowId}`)) as
-            | { status: string; error?: string }
+          const early = (await kv.get(NAMESPACE, `ended/${missionId}`)) as
+            | { workflowId: string; node: string; status: string; error?: string }
             | undefined;
           if (early !== undefined) {
-            await kv.delete(NAMESPACE, `ended/${runNode}/${workflowId}`);
+            await kv.delete(NAMESPACE, `ended/${missionId}`);
+            if (early.workflowId !== workflowId || early.node !== runNode)
+              return { recorded: true };
             if (early.status === "failed" || early.status === "stopped") {
               reportLater(missionId, early.status, workflowId, early.error);
             }
@@ -1212,7 +1214,10 @@ export default definePlugin({
         }
         // An end before its start was recorded waits for it (the run ended at once).
         if (current?.workflowId !== workflowId || current.nodeId !== runNode) {
-          await kv.set(NAMESPACE, `ended/${runNode}/${workflowId}`, {
+          // One per mission, the latest: a run ends once.
+          await kv.set(NAMESPACE, `ended/${missionId}`, {
+            workflowId,
+            node: runNode,
             status,
             ...(error === undefined ? {} : { error }),
           });
