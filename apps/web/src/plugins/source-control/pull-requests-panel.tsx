@@ -40,7 +40,7 @@ import {
   UnlinkIcon,
   XIcon,
 } from "lucide-react";
-import { memo, useRef, useState, type ReactNode } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { encodePullRequestDrag, PULL_REQUEST_DRAG_TYPE } from "../../lib/composer-context.ts";
 import { forgeKindOfUrl } from "../../lib/forges.ts";
@@ -250,7 +250,9 @@ function LinkRowImpl({
         onDragStart={
           snapshot === null
             ? undefined
-            : (event) =>
+            : (event) => {
+                // Moved into the composer, or a link copied anywhere else.
+                event.dataTransfer.effectAllowed = "all";
                 event.dataTransfer.setData(
                   PULL_REQUEST_DRAG_TYPE,
                   encodePullRequestDrag({
@@ -262,7 +264,8 @@ function LinkRowImpl({
                     state: snapshot.state,
                     isDraft: snapshot.isDraft,
                   }),
-                )
+                );
+              }
         }
         rel="noopener noreferrer"
         target="_blank"
@@ -448,6 +451,8 @@ export function ThreadPullRequestsList({
   const modifiers = useShortcutModifierState(true);
   const speedMode =
     modifiers.shiftKey && !modifiers.metaKey && !modifiers.ctrlKey && !modifiers.altKey;
+  // What the rows read beyond their line: the list renders them again only when it changes.
+  const extraData = useMemo(() => ({ now, speedMode, actions }), [now, speedMode, actions]);
   const linkButton = (children: ReactNode, size: "sm" | "xs", variant: "outline" | "ghost") =>
     onLink === undefined ? null : (
       <Button onClick={onLink} size={size} variant={variant}>
@@ -482,7 +487,7 @@ export function ThreadPullRequestsList({
         data={lines}
         drawDistance={440}
         estimatedItemSize={44}
-        extraData={{ now, speedMode, actions }}
+        extraData={extraData}
         keyExtractor={lineKey}
         renderItem={({ item }) => (
           <LinkRow actions={actions} line={item} now={now} speedMode={speedMode} />
@@ -535,54 +540,58 @@ export function createPullRequestsPanel(
       const { panel: _panel, section: _section, ...rest } = navigation.current();
       navigation.navigate(rest);
     };
-    const call = (method: string, link: ThreadPullRequest, title: string) =>
-      void threads.call(target, method, { threadId, url: link.url }).catch(failed(title));
-    const openUrl = (url: string) => {
-      const page = webPageUrl(url);
-      if (page !== undefined) window.open(page, "_blank", "noopener,noreferrer");
-    };
     const projectId = thread?.projectId;
-    const detail = (link: ThreadPullRequest) =>
-      threads.call<PullRequestDetail>(target, "git.pr.detail", { projectId, url: link.url });
-    /** T3's usePullRequestActionRunner: the action, then its toast. */
-    const act = async (link: ThreadPullRequest, action: PullRequestAction) => {
-      try {
-        // T3 resolves a merge's method on the click, not for every row in view.
-        const mergeMethod =
-          action === "merge"
-            ? await detail(link).then(({ mergeMethods }) => {
-                if (mergeMethods.length === 0) {
-                  throw new Error("No merge method is available for this repository.");
-                }
-                return resolveSelectedMergeMethod(mergeMethods);
-              })
-            : undefined;
-        await threads.call(target, "git.pr.action", {
-          projectId,
-          url: link.url,
-          action,
-          ...(mergeMethod === undefined ? {} : { mergeMethod }),
-        });
-        toasts?.show({ type: "success", title: ACTION_SUCCESS_LABELS[action] });
-      } catch (error) {
-        toasts?.show({
-          type: "error",
-          title: ACTION_FAILURE_LABELS[action],
-          description: readableFailure(error, ACTION_FAILURE_HINTS[action]),
-        });
-      }
-    };
-    const actions: RowActions = {
-      copy: (link) => void copyText(link.url).catch(failed("Could not copy the link")),
-      open: (link) => openUrl(link.url),
-      setWatching: (link, watching) =>
-        call(watching ? "git.pr.watch" : "git.pr.unwatch", link, "Could not change the watch"),
-      unlink: (link) => call("git.pr.unlink", link, "Could not unlink the pull request"),
-      checks:
-        projectId === undefined ? undefined : (link) => detail(link).then(({ checks }) => checks),
-      act: projectId === undefined ? undefined : act,
-      openUrl,
-    };
+    // The rows are memoized and the list virtualized: one set of actions per thread and project.
+    const actions = useMemo((): RowActions => {
+      const call = (method: string, link: ThreadPullRequest, title: string) =>
+        void threads.call(target, method, { threadId, url: link.url }).catch(failed(title));
+      const openUrl = (url: string) => {
+        const page = webPageUrl(url);
+        if (page !== undefined) window.open(page, "_blank", "noopener,noreferrer");
+      };
+      const detail = (link: ThreadPullRequest) =>
+        threads.call<PullRequestDetail>(target, "git.pr.detail", { projectId, url: link.url });
+      /** T3's usePullRequestActionRunner: the action, then its toast. */
+      const act = async (link: ThreadPullRequest, action: PullRequestAction) => {
+        try {
+          // T3 resolves a merge's method on the click, not for every row in view.
+          const mergeMethod =
+            action === "merge"
+              ? await detail(link).then(({ mergeMethods }) => {
+                  if (mergeMethods.length === 0) {
+                    throw new Error("No merge method is available for this repository.");
+                  }
+                  return resolveSelectedMergeMethod(mergeMethods);
+                })
+              : undefined;
+          await threads.call(target, "git.pr.action", {
+            projectId,
+            url: link.url,
+            action,
+            ...(mergeMethod === undefined ? {} : { mergeMethod }),
+          });
+          toasts?.show({ type: "success", title: ACTION_SUCCESS_LABELS[action] });
+        } catch (error) {
+          toasts?.show({
+            type: "error",
+            title: ACTION_FAILURE_LABELS[action],
+            description: readableFailure(error, ACTION_FAILURE_HINTS[action]),
+          });
+        }
+      };
+      return {
+        copy: (link) => void copyText(link.url).catch(failed("Could not copy the link")),
+        open: (link) => openUrl(link.url),
+        setWatching: (link, watching) =>
+          call(watching ? "git.pr.watch" : "git.pr.unwatch", link, "Could not change the watch"),
+        unlink: (link) => call("git.pr.unlink", link, "Could not unlink the pull request"),
+        checks:
+          projectId === undefined ? undefined : (link) => detail(link).then(({ checks }) => checks),
+        act: projectId === undefined ? undefined : act,
+        openUrl,
+      };
+      // oxlint-disable-next-line react-hooks/exhaustive-deps -- the target's parts are its identity
+    }, [target.node, target.remote, threadId, projectId]);
     const onLink =
       linkPrompt === undefined || status === undefined || !status.isRepo
         ? undefined

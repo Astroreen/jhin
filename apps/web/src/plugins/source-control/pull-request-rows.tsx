@@ -208,7 +208,9 @@ function PullRequestRow({
   access: RowAccess | undefined;
   onStopWatching: (() => void) | undefined;
 }) {
-  const [detail, setDetail] = useState<PullRequestDetail | null>(null);
+  const [read, setDetail] = useState<PullRequestDetail | null>(null);
+  // A snapshot that left "open" (merged, closed elsewhere) outranks a detail read before.
+  const detail = pr !== null && pr.state !== "open" ? null : read;
   const [reads, setReads] = useState(0);
   const [pending, setPending] = useState<"action" | "handoff" | null>(null);
   const [confirmingMerge, setConfirmingMerge] = useState(false);
@@ -220,10 +222,13 @@ function PullRequestRow({
     if (access === undefined || pr === null || pr.state !== "open") return;
     let live = true;
     access.detail(url).then(
-      (read) => {
-        if (live) setDetail(read);
+      (answer) => {
+        if (live) setDetail(answer);
       },
-      () => undefined,
+      // Unread, the row offers no action rather than one from an older read.
+      () => {
+        if (live) setDetail(null);
+      },
     );
     return () => {
       live = false;
@@ -574,14 +579,6 @@ export function rowAccess(
         });
         return;
       }
-      // The draft's thread starts in that worktree (D252's existing worktree), as T3 points it.
-      if (prepared.worktreePath !== null) {
-        drafts.set(draftKey(target, projectId), {
-          mode: "previous",
-          startFromOrigin: false,
-          previous: { path: prepared.worktreePath, branch: prepared.branch },
-        });
-      }
       const written = await context.commands
         .execute("chat.draft.write", {
           node: target.node,
@@ -593,6 +590,15 @@ export function rowAccess(
           () => true,
           () => false,
         );
+      // Once the task is in it, the draft's thread starts in that worktree (D252's existing
+      // worktree), as T3 points it.
+      if (written && prepared.worktreePath !== null) {
+        drafts.set(draftKey(target, projectId), {
+          mode: "previous",
+          startFromOrigin: false,
+          previous: { path: prepared.worktreePath, branch: prepared.branch },
+        });
+      }
       if (!written) {
         settle({
           type: "error",

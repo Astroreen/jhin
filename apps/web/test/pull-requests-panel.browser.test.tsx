@@ -401,6 +401,37 @@ describe("the details row's actions (D1456)", () => {
     ]);
   });
 
+  it("drops a detail read while open once the snapshot says merged", async () => {
+    const open = snapshot(5, "feature-e", "main");
+    const answer = detail(open, {
+      checks: [{ name: "test", status: "success", description: null, url: null }],
+    });
+    const rowAccess = access(answer, []);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const show = (pr: PullRequest) =>
+      act(async () =>
+        root.render(
+          <PullRequestRows
+            access={rowAccess}
+            branchPullRequest={null}
+            links={[link(5, pr)]}
+            onStopWatching={() => {}}
+          />,
+        ),
+      );
+    cleanup = () => {
+      act(() => root.unmount());
+      host.remove();
+    };
+    await show(open);
+    await expect.element(page.getByRole("button", { name: "Merge" })).toBeVisible();
+    await show({ ...open, state: "merged" });
+    await expect.element(page.getByRole("button", { name: "Merge" })).not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: /^#5: / })).toBeVisible();
+  });
+
   it("offers Merge behind T3's dialog, Ready for a draft and Resolve for a conflict", async () => {
     const log: string[] = [];
     const ready = snapshot(1, "feature-a", "main");

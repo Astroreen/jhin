@@ -1622,7 +1622,7 @@ export function Composer(props: ComposerProps) {
     {
       const pullRequest = decodePullRequestDrag(event.dataTransfer.getData(PULL_REQUEST_DRAG_TYPE));
       if (
-        pullRequest !== undefined &&
+        pullRequest === undefined ||
         insertContext(pullRequestContextRecord(pullRequest), { atEnd: true }) !== "inserted"
       ) {
         toasts?.show({
