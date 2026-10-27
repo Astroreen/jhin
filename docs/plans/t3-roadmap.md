@@ -625,6 +625,23 @@ adapt to it, as the rules for every workstream say.
   setup recorded on the thread; per-project "Automatic worktree cleanup",
   its "Last run" report and T3's orphan report; per-project and `t3.json`
   submodule settings.
+  **Done** (D1461–D1480): #294 settings per project as a section's
+  `projects` record, the checked-in `t3.json`, T3's text area in the config
+  form and source control's per-project submodules, branch naming and
+  "Automatic worktree cleanup" (`config-ui.md` D1461–D1462, `t3-parity.md`
+  D1464, `source-control.md` D1465–D1468); #300 T3's project scope on the
+  node config page with its layers (D1463); #307 T3's Storage page: "Delete
+  now", the "Last run" report and the orphan report (D1469–D1470); #313 T3's
+  scripts menu in the chat header, its "Add Action" dialog, `t3.json`
+  imports, shortcuts and `scripts.run` (D1471–D1475); #316 a script's
+  preview URL in the right panel and as a configured URL of the empty state
+  (`preview.md` D1480) and `runOnSettle` scripts (D1476); #318 "Work
+  locally", a cancel that removes the new worktree, T3's Retry and the
+  setup kept with its thread (D1477–D1479). Left in the Deferred lists
+  (`source-control.md#deferred`): `t3.json`'s `iconPath` and
+  `defaultThreadEnvMode`, closing a settled thread's idle terminals, the
+  scripts control's permission hint and T3's other places for it, the
+  bytes a cleanup frees, the setup card for a thread on a mesh member.
 - **W43:** device hosts over SSH (T3's `SshDeviceHost`, its remote script,
   tunnels and multi-host proxy); in the desktop app, a tab that outlives its
   webview (a window reload, DevTools closing), T3's DevTools, element
