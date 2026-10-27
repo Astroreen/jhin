@@ -145,6 +145,7 @@ import {
   ProjectWorktreeCleanup,
   WorktreeCleanupConfig,
   cleanupEnabled,
+  orphanEntries,
   resolveWorktreeCleanup,
   exists,
   judge,
@@ -1492,6 +1493,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   });
   type DeletedWorktree = z.output<typeof DeletedWorktree>;
   const DELETED_PREFIX = "cleanup/deleted/";
+  /** How many orphaned folders a report lists (D1470). */
+  const MAX_ORPHANS = 200;
+  /** The last sweep's report (D1469). */
+  const LAST_REPORT_KEY = "cleanup/last-report";
 
   async function noteDeletedWorktree(threadId: string) {
     // Only under the delete rule: without it the user decided at the deletion
@@ -1620,11 +1625,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         })),
       });
     }
+    /** Worktrees a thread uses, or a deleted one did: no orphans (D1470). */
+    const referenced = new Set(groups.keys());
     for (const { key, value } of await kv.list(NAMESPACE, { prefix: DELETED_PREFIX })) {
       const parsed = DeletedWorktree.safeParse(value);
       // A record this version cannot read decides nothing, and is kept for one that can.
       if (!parsed.success) continue;
       const record = parsed.data;
+      // Real paths, as the live worktrees' are (a worktrees directory behind a link).
+      referenced.add(await realPath(record.path));
       // Without its project's delete rule it decides nothing: kept for when it is on, not reported.
       if (!cleanupRulesOf(record.projectId).onDelete) continue;
       const project = projectPath.get(record.projectId);
@@ -1739,7 +1748,29 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       }
     }
     if (entries.some((entry) => entry.outcome === "removed")) await syncWorktrees();
-    return report();
+    if (!stopped) {
+      const projectRoots = await Promise.all([...projectPath.values()].map(realPath));
+      // The report is kept and sent whole: a crowded worktrees directory lists its first ones.
+      const orphans = await orphanEntries(root, referenced, projectRoots, Date.now());
+      entries.push(...orphans.slice(0, MAX_ORPHANS));
+      if (orphans.length > MAX_ORPHANS) {
+        context.log.info("listed the first orphaned worktree folders", {
+          listed: MAX_ORPHANS,
+          found: orphans.length,
+        });
+      }
+    }
+    // T3's "Last run": kept, so a restart still shows it (D1469). A sweep cut short by the
+    // plugin stopping is no last run; one that could not be kept still answers.
+    const finished = { ...report(), finishedAt: new Date().toISOString() };
+    if (!stopped) {
+      await kv
+        .set(NAMESPACE, LAST_REPORT_KEY, finished as unknown as Json)
+        .catch((error: unknown) =>
+          context.log.warn("could not keep the cleanup's report", { error: String(error) }),
+        );
+    }
+    return finished;
   }
 
   let cleanupTimer: ReturnType<typeof setInterval> | undefined = setInterval(
@@ -3658,6 +3689,20 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       // A sweep asked for meanwhile may start as the running one ends: wait for it too.
       while (cleaning !== undefined) await cleaning.catch(() => undefined);
       return requestCleanup();
+    },
+  });
+
+  context.commands.register({
+    name: "git.worktree.cleanup.report",
+    title: "Last worktree cleanup",
+    description:
+      'The last worktree cleanup\'s report (T3\'s "Last run"), or null before the first; rulesOn says whether a rule of the node or a project is on, which "Delete now" needs',
+    input: z.object({}),
+    output: z.object({ report: CleanupReport.nullable(), rulesOn: z.boolean() }),
+    permissions: ["git.read"],
+    handler: async () => {
+      const parsed = CleanupReport.safeParse(await kv.get(NAMESPACE, LAST_REPORT_KEY));
+      return { report: parsed.success ? parsed.data : null, rulesOn: anyCleanupEnabled() };
     },
   });
 

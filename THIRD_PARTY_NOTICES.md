@@ -29,7 +29,8 @@ script runner (`plugins/source-control/src/setup.ts`, the contracts in
 checked-in `t3.json` (`packages/agent-api/src/project-settings.ts`,
 `t3-project-file.ts`) and the settings page's project scope
 (`apps/web/src/plugins/settings/project-scope.tsx`), the worktree cleanup rules and
-sweep (`plugins/source-control/src/cleanup.ts`), the "Checkout pull request"
+sweep (`plugins/source-control/src/cleanup.ts`) with its Storage settings
+(`apps/web/src/plugins/source-control/storage-settings.tsx`), the "Checkout pull request"
 dialog, the forges' icons, names and reference forms (`apps/web/src/lib/forges.ts`), a thread's pull requests panel and its thread
 details rows (`plugins/source-control/pull-requests-panel.tsx`,
 `pull-request-rows.tsx`, `pull-request-presentation.tsx`,

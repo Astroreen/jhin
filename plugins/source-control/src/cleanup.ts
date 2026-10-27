@@ -3,6 +3,7 @@
 // reasons it keeps a worktree for) and packages/contracts/src/settings.ts
 // (WorktreeCleanupRules).
 import * as Fs from "node:fs/promises";
+import * as Path from "node:path";
 
 import { z } from "@jhin/sdk";
 
@@ -140,6 +141,8 @@ export const CleanupReport = z.object({
     kept: z.number().int(),
     failed: z.number().int(),
   }),
+  /** When the sweep ended (D1469); absent from a sweep no rule let run. */
+  finishedAt: z.string().optional(),
 });
 export type CleanupReport = z.output<typeof CleanupReport>;
 
@@ -375,6 +378,58 @@ export async function judge(
             : // Only the delete rule (or none) for a thread that is still there.
               "no rules apply",
   );
+}
+
+/** Nothing changed in a folder for this long before it is reported as an orphan (T3's grace). */
+const ORPHAN_GRACE_MS = 3_600_000;
+
+/**
+ * T3's `reportOrphanWorktrees` (D1470): the folders under the worktrees
+ * directory, `<root>/<repository>/<branch>` or `<root>/<name>`, that no thread
+ * uses (`referenced`, real paths) and that are no project's own, untouched
+ * for an hour. They are reported, never removed.
+ */
+export async function orphanEntries(
+  root: string,
+  referenced: ReadonlySet<string>,
+  projectRoots: readonly string[],
+  now: number,
+): Promise<CleanupEntry[]> {
+  const inside = (folder: string, path: string) =>
+    path === folder || path.startsWith(`${folder}${Path.sep}`);
+  const directories = async (parent: string) =>
+    (await Fs.readdir(parent, { withFileTypes: true }).catch(() => []))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => Path.join(parent, entry.name));
+  const gitOf = (folder: string) => Fs.stat(Path.join(folder, ".git")).catch(() => undefined);
+  const entries: CleanupEntry[] = [];
+  const report = async (folder: string) => {
+    if (
+      [...referenced].some((path) => inside(folder, path)) ||
+      projectRoots.some((project) => inside(project, folder) || inside(folder, project))
+    ) {
+      return;
+    }
+    const stat = await Fs.stat(folder).catch(() => undefined);
+    if (stat === undefined || stat.mtimeMs > now - ORPHAN_GRACE_MS) return;
+    entries.push({
+      path: folder,
+      outcome: "kept",
+      reason: (await gitOf(folder))?.isFile()
+        ? "No thread uses this worktree."
+        : "No thread uses this folder, and it isn't a git worktree.",
+    });
+  };
+  for (const folder of await directories(root)) {
+    const git = await gitOf(folder);
+    if (git !== undefined) {
+      // A worktree right under the root (`<root>/<name>`); a repository's own folder is no orphan.
+      if (git.isFile()) await report(folder);
+      continue;
+    }
+    for (const worktree of await directories(folder)) await report(worktree);
+  }
+  return entries;
 }
 
 export const exists = (path: string) =>

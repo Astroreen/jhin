@@ -39,13 +39,15 @@ import {
   TooltipPopup,
   TooltipTrigger,
   UI_DIALOGS_CAPABILITY,
+  UI_SETTINGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
   UI_TOASTS_CAPABILITY,
   type Dialogs,
+  type SettingsPages,
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { FileDiffIcon, Link2Icon } from "lucide-react";
+import { FileDiffIcon, HardDriveIcon, Link2Icon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { CHAT_SECTION, ChatSettings, readSection } from "../../lib/settings.ts";
@@ -104,6 +106,7 @@ export const sourceControlPlugin = builtin(
       [CHAT_DRAFTS_CAPABILITY]: "^1.1",
       // The diff and the pull requests as surfaces of the right panel (t3-parity.md D1424).
       [RIGHT_PANEL_CAPABILITY]: "^1",
+      [UI_SETTINGS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -141,6 +144,44 @@ export const sourceControlPlugin = builtin(
         rightPanel: context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY),
       };
       context.subscriptions.add(scopes.register(turnScopeProvider(services)));
+
+      // T3's Storage page: the worktree cleanup's "Delete now" and "Last run" (D1469).
+      const pages = context.services.tryGet<SettingsPages>(UI_SETTINGS_CAPABILITY);
+      if (pages !== undefined) {
+        const StorageSection = lazyChunk(
+          () =>
+            import("./storage-settings.tsx").then(
+              (module) =>
+                function Storage() {
+                  return (
+                    <module.CleanupSection
+                      connections={connections}
+                      titleOf={(node, threadId) =>
+                        threads.catalog({ node }).threads.find((thread) => thread.id === threadId)
+                          ?.title
+                      }
+                      toasts={toasts}
+                    />
+                  );
+                },
+            ),
+          {
+            loading: () => null,
+            failed: (_props, retry) => (
+              <ChunkFailed retry={retry}>Couldn't load this section.</ChunkFailed>
+            ),
+          },
+        );
+        context.subscriptions.add(
+          pages.addSection({
+            id: "storage",
+            label: "Storage",
+            icon: HardDriveIcon,
+            order: 55,
+            component: StorageSection,
+          }),
+        );
+      }
 
       /** Opens or closes the diff panel of the thread (or draft) on screen. */
       const toggle = () => {

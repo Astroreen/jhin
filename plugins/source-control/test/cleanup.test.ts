@@ -4,7 +4,12 @@ import * as Path from "node:path";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { judge, type CleanupCandidate, type WorktreeCleanupRules } from "../src/cleanup.ts";
+import {
+  judge,
+  orphanEntries,
+  type CleanupCandidate,
+  type WorktreeCleanupRules,
+} from "../src/cleanup.ts";
 import { createGit } from "../src/git.ts";
 import { memoryStoragePlugin } from "@jhin/testing";
 
@@ -13,6 +18,7 @@ import { git, node, repository, temp, type Node } from "./support.ts";
 interface Report {
   entries: { path: string; threadId?: string; outcome: string; reason: string }[];
   counts: { removed: number; kept: number; failed: number };
+  finishedAt?: string;
 }
 
 const removed = (threadId: string) => (event: StoredEvent) =>
@@ -225,6 +231,81 @@ describe("jhin.source-control: a project's own worktree cleanup (D1468)", () => 
     expect((await cleanup(sc)).entries).toEqual([]);
     expect(Fs.existsSync(threads.custom.worktreePath)).toBe(true);
     expect(Fs.existsSync(threads.off.worktreePath)).toBe(true);
+  });
+});
+
+describe("jhin.source-control: the last run and T3's orphan report (D1469, D1470)", () => {
+  it("reports folders no thread uses, keeps the last run across a restart", async () => {
+    const data = temp("jhin-sc-report-");
+    const storage = memoryStoragePlugin();
+    const sc = await node({ watch: false, worktreeCleanup: { afterDays: 30 } }, { data, storage });
+    const projectId = await sc.project(repository());
+    const thread = await worktreeThread(sc, projectId);
+    const reportOf = () =>
+      sc.client.call<{ report: Report | null; rulesOn: boolean }>(
+        "git.worktree.cleanup.report",
+        {},
+      );
+    expect((await reportOf()).rulesOn).toBe(true);
+
+    // Beside the thread's worktree: an old worktree nobody uses, an old folder, a new one.
+    const repositoryFolder = Path.dirname(Fs.realpathSync(thread.worktreePath));
+    const old = Date.now() / 1000 - 7200;
+    const stale = Path.join(repositoryFolder, "stale");
+    const junk = Path.join(repositoryFolder, "junk");
+    const fresh = Path.join(repositoryFolder, "fresh");
+    for (const folder of [stale, junk, fresh]) Fs.mkdirSync(folder);
+    Fs.writeFileSync(Path.join(stale, ".git"), "gitdir: /nowhere\n");
+    Fs.utimesSync(stale, old, old);
+    Fs.utimesSync(junk, old, old);
+
+    const swept = await cleanup(sc);
+    expect(swept.entries.filter((entry) => entry.threadId === undefined)).toEqual(
+      expect.arrayContaining([
+        { path: stale, outcome: "kept", reason: "No thread uses this worktree." },
+        {
+          path: junk,
+          outcome: "kept",
+          reason: "No thread uses this folder, and it isn't a git worktree.",
+        },
+      ]),
+    );
+    expect(swept.entries.map((entry) => entry.path)).not.toContain(fresh);
+    // Reported, never removed.
+    expect(Fs.existsSync(stale)).toBe(true);
+    expect(swept.finishedAt).toEqual(expect.any(String));
+
+    await sc.stop();
+    const after = await node({ watch: false }, { data, storage });
+    expect(await after.client.call("git.worktree.cleanup.report", {})).toEqual({
+      report: swept,
+      rulesOn: false,
+    });
+  });
+});
+
+describe("T3's orphan report (D1470)", () => {
+  it("leaves out what a thread uses, a project's folder, and what is new; finds both layouts", async () => {
+    const root = Fs.realpathSync(temp("jhin-sc-orphans-"));
+    const old = Date.now() / 1000 - 7200;
+    const folder = (path: string, gitFile = false) => {
+      Fs.mkdirSync(path, { recursive: true });
+      if (gitFile) Fs.writeFileSync(Path.join(path, ".git"), "gitdir: /nowhere\n");
+      Fs.utimesSync(path, old, old);
+      return path;
+    };
+    const used = folder(Path.join(root, "acme", "used"), true);
+    const deleted = folder(Path.join(root, "acme", "deleted"), true);
+    const project = folder(Path.join(root, "acme", "project"));
+    const stale = folder(Path.join(root, "acme", "stale"), true);
+    const direct = folder(Path.join(root, "direct"), true);
+    Fs.mkdirSync(Path.join(root, "acme", "fresh"));
+    Fs.utimesSync(Path.join(root, "acme"), old, old);
+    const entries = await orphanEntries(root, new Set([used, deleted]), [project], Date.now());
+    expect(entries.map((entry) => entry.path).toSorted()).toEqual([stale, direct].toSorted());
+    expect(
+      await orphanEntries(root, new Set([used, deleted, stale, direct]), [project], Date.now()),
+    ).toEqual([]);
   });
 });
 
