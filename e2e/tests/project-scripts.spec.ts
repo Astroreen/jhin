@@ -1,9 +1,12 @@
 import * as Fs from "node:fs";
+import * as Http from "node:http";
+import type { AddressInfo } from "node:net";
 import * as Path from "node:path";
 
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
+import { openSurface } from "./support/ui.ts";
 
 let node: RunningNode | undefined;
 test.afterEach(async () => {
@@ -99,4 +102,60 @@ test("D1473–D1475: T3's scripts menu adds an action, runs it in a terminal, im
   // T3's script.<id>.run by the shortcut saved with it: a second run in the same terminal.
   await page.keyboard.press("Control+Alt+g");
   await expect(drawer.locator(".xterm-rows").last()).toContainText(/greet-42[\s\S]*greet-42/);
+});
+
+test("D1480: a script's preview URL opens in the right panel, and is a configured URL of its empty state", async ({
+  page,
+}, info) => {
+  // The script's dev server: a page on a free port of this machine.
+  const server = Http.createServer((_request, response) => {
+    response.setHeader("content-type", "text/html");
+    response.end("<title>Dev page</title><h1>dev</h1>");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+  try {
+    node = await startNode({ config: { "jhin.terminal": { shell: "/bin/sh" } } });
+    const dir = Path.join(node.home, "acme");
+    Fs.mkdirSync(dir, { recursive: true });
+    const project = await node
+      .client()
+      .call<{ id: string }>("projects.create", { path: dir, name: "acme" });
+    await node.client().call("projects.scripts.set", {
+      projectId: project.id,
+      scripts: [
+        {
+          id: "dev",
+          name: "Dev",
+          command: "echo serving",
+          icon: "play",
+          runOnWorktreeCreate: false,
+          previewUrl: url,
+          autoOpenPreview: true,
+        },
+      ],
+    });
+    await node.client().call("threads.create", { projectId: project.id, title: "Preview" });
+    await page.goto(`${node.ui}#token=${node.token}`);
+    await page
+      .getByRole("navigation", { name: "Sidebar" })
+      .getByRole("button", { name: /^Preview, / })
+      .click();
+
+    // Configured, the URL is a local server of the empty state though no terminal serves it.
+    const panel = await openSurface(page, "Browser");
+    const servers = panel.getByRole("region", { name: "Local servers" });
+    await expect(servers.getByRole("button", { name: /127\.0\.0\.1:\d+$/ })).toBeVisible();
+    await shot(page, info, "configured-url");
+
+    // Running the script opens its preview URL in a new tab of the right panel.
+    await page
+      .locator("[data-panel-layout-controls]")
+      .getByRole("button", { name: "Run Dev" })
+      .click();
+    await expect(panel.getByRole("textbox", { name: "Address" })).toHaveValue(url);
+    await shot(page, info, "script-preview");
+  } finally {
+    server.close();
+  }
 });

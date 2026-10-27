@@ -1785,16 +1785,20 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   as T3 says ("Shortcuts are environment-wide. Projects using the same
   action share its shortcut." reads "Shortcuts belong to this device." here).
 - **D1476. `runOnSettle` scripts run when their thread settles**, as T3's
-  `cleanUpSettledThread`: once per settling (its `settledAt`), the
-  project's settle script runs in the thread's own worktree, in a new
-  terminal `settle-<id>-<8 hex>` (a settle shell of an earlier settling may
-  still be busy) with T3's wrapper and the setup's variables (D1122); a
-  thread working in the project's checkout, one whose worktree is gone, or
-  one taken back up meanwhile runs none. Source control hears of a settling
-  from the `threads` stream's updates and, for a thread settled by
-  inactivity (which the threads plugin computes at read time, D444), from
-  its hourly pass over `threads.list`. T3 closes the thread's idle
-  terminals first; Jhin leaves them (Deferred).
+  `cleanUpSettledThread`: once per settling (a change of the thread to
+  settled, or to another `settledAt`; the threads settled when the plugin
+  starts are read first, and each settling run is kept in the plugin's
+  store, so neither a restart nor a later update of a settled thread runs
+  it again), the project's settle
+  script is typed into a new terminal `settle-<id>-<8 hex>` of the thread
+  (a settle shell of an earlier settling may still be busy) in the thread's
+  own worktree, with the variables `scripts.run` sets (D1472); a thread
+  working in the project's checkout, one whose worktree is gone, or one
+  taken back up meanwhile runs none. Source control hears of a settling
+  from the `threads` stream's updates: by hand, by its pull request, or by
+  inactivity, which the threads plugin's sweep writes as settled too
+  (D444). T3 closes the thread's idle terminals first; Jhin leaves them
+  (Deferred).
 
 #### The workspace's preparation
 

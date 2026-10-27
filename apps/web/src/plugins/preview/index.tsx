@@ -828,13 +828,28 @@ export const previewPanelPlugin = builtin(
         }
       };
 
+      /** The preview URLs of the thread's project scripts: T3's configured URLs (D1480). */
+      const configuredUrlsOf = (target: NodeTarget, threadId: string) => {
+        const catalog = threads.catalog(target);
+        const projectId = catalog.threads.find((thread) => thread.id === threadId)?.projectId;
+        // What the node takes: at most 50, none past 2048 characters.
+        return (catalog.projects.find((project) => project.id === projectId)?.scripts ?? [])
+          .flatMap((script) =>
+            script.previewUrl === undefined || script.previewUrl.length > 2048
+              ? []
+              : [script.previewUrl],
+          )
+          .slice(0, 50);
+      };
       /** What the panel's chunk asks of the plugin, for a thread on `target`. */
       const servicesFor = (
         target: NodeTarget,
         shortcut: (command: string) => string | undefined,
+        threadId: string,
       ): PanelServices => ({
         viewer,
         onAnnotation: (_tab, result) => void addAnnotation(result),
+        configuredUrls: configuredUrlsOf(target, threadId),
         activeTab: (panelKey) => active.get(panelKey),
         setActiveTab,
         focusUrlRequests,
@@ -883,7 +898,7 @@ export const previewPanelPlugin = builtin(
             </PanelPlaceholder>
           );
         }
-        const services = servicesFor(props.target, shortcut);
+        const services = servicesFor(props.target, shortcut, props.threadId);
         return (
           <BrowserPanel
             client={connection.client}
@@ -984,6 +999,30 @@ export const previewPanelPlugin = builtin(
         /** The profile each place's new tab opens in, when the user picked one. */
         const draftProfiles = new Map<string, string>();
         const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
+
+        // T3's openUrlInPreview for a project script's preview URL (source-control.md D1473, D1480).
+        context.subscriptions.add(
+          context.commands.register({
+            name: "preview.open-url",
+            title: "Open URL in preview",
+            description:
+              "Opens a URL in a new browser tab of the thread on screen and shows it in the right panel, as a project script's preview URL opens (T3's openUrlInPreview); null without a thread on screen",
+            input: z.object({ url: z.string().trim().min(1).max(2048) }),
+            output: z.object({ tabId: z.string().nullable() }),
+            handler: async ({ url }) => {
+              const place = panel.current();
+              if (place?.threadId === undefined || place.target.remote !== undefined) {
+                return { tabId: null };
+              }
+              const tab = await threads.call<PreviewTab>(place.target, "preview.tab.open", {
+                threadId: place.threadId,
+                url,
+              });
+              panel.open(place, { kind: BROWSER_PANEL, resource: tab.tabId });
+              return { tabId: tab.tabId };
+            },
+          }),
+        );
 
         // The route names the tab on screen: the plugin's own choice follows it.
         const followRoute = () => {
@@ -1088,7 +1127,7 @@ export const previewPanelPlugin = builtin(
               panelKey={key}
               profileId={draftProfiles.get(key)}
               resource={resource}
-              services={servicesFor(place.target, shortcut)}
+              services={servicesFor(place.target, shortcut, place.threadId)}
               tabs={tabs}
               threadId={place.threadId}
             />
