@@ -3626,9 +3626,6 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     handler: async ({ threadId }) => setups.get(threadId),
   });
 
-  /** When a run last typed into each thread's terminal, and how long its program may take to show. */
-  const scriptTyped = new Map<string, number>();
-  const SCRIPT_START_MS = 2_000;
   /** Runs of `scripts.run` under way, by thread and script. */
   const scriptRuns = new Map<string, Promise<{ terminalId: string }>>();
 
@@ -3692,19 +3689,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         .filter((entry) => entry.status === "running")
         .map(async (entry) => ({ entry, cwd: await realPath(entry.cwd) })),
     );
-    // A terminal still running a program is left alone, as T3 opens another; so is one a run
-    // typed into a moment ago (its shell may not have started the program yet), and one in
-    // another folder (the thread moved), which would refuse this one.
+    // A terminal still running a program is left alone, as T3 opens another; so is one in
+    // another folder (the thread moved), which would refuse this one. Two runs typed into one
+    // idle shell before its program shows run one after the other, as the shell reads them.
     const terminalId = scriptTerminalId(script.id, (id) =>
       running.some(
         ({ entry, cwd: folder }) =>
-          entry.terminalId === id &&
-          (entry.hasRunningSubprocess ||
-            folder !== realCwd ||
-            Date.now() - (scriptTyped.get(`${threadId}\u0000${id}`) ?? 0) < SCRIPT_START_MS),
+          entry.terminalId === id && (entry.hasRunningSubprocess || folder !== realCwd),
       ),
     );
-    scriptTyped.set(`${threadId}\u0000${terminalId}`, Date.now());
     await terminals.open({ threadId, terminalId, cwd });
     terminals.write({
       threadId,
