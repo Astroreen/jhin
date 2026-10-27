@@ -35,7 +35,9 @@ jobs:
   unit:
     name: Unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Chromium's system packages (--with-deps) take 8–10 minutes on a slow
+    # apt mirror, which alone used to eat most of the job's time.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
@@ -72,7 +74,8 @@ jobs:
   e2e:
     name: E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # As for unit tests: Chromium's install alone can take 10 minutes.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
