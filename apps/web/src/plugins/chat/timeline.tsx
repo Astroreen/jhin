@@ -997,7 +997,10 @@ function TurnView(props: {
                 {turn.error}
               </p>
             )}
-            {props.latest && props.onRetry !== undefined ? (
+            {props.latest &&
+            props.onRetry !== undefined &&
+            // Its own Retry sets the workspace up again first (source control's, D1478).
+            turn.failure?.class !== "workspace_preparation" ? (
               <div className="ms-7 pb-1">
                 <Button
                   disabled={retrying}

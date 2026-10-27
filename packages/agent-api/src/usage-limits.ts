@@ -43,7 +43,11 @@ export interface AgentUsageLimits {
 
 /** Why a turn failed, when the agent says more than its message (T3's failure class). */
 export interface AgentTurnFailure {
-  readonly class: "usage_limit";
+  /**
+   * `usage_limit` from the agent; `workspace_preparation` from a start hook whose
+   * workspace could not be prepared (T3's `workspace_preparation_failed`, source-control.md D1478).
+   */
+  readonly class: "usage_limit" | "workspace_preparation";
   /** ISO time every exhausted window has reset, when the agent knows it. */
   readonly resetAt?: string;
 }
@@ -66,6 +70,7 @@ export function turnFailureOf(error: unknown): AgentTurnFailure | undefined {
   const failure = (error as { failure?: unknown } | null)?.failure;
   if (typeof failure !== "object" || failure === null) return undefined;
   const { class: kind, resetAt } = failure as { class?: unknown; resetAt?: unknown };
+  if (kind === "workspace_preparation") return { class: kind };
   if (kind !== "usage_limit") return undefined;
   return { class: kind, ...(typeof resetAt === "string" ? { resetAt } : {}) };
 }

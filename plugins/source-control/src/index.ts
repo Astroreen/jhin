@@ -2199,23 +2199,125 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         branch: created.branch,
         worktreePath: created.path,
       }));
-      const starting = Promise.withResolvers<void>();
-      setupStarts.set(threadId, starting.promise);
-      void startSetupScript(threadId, projectId, created.path, starting.resolve)
-        .catch((error: unknown) => {
-          setups.stage(threadId, "setup-script", {
-            status: "failed",
-            endedAt: new Date().toISOString(),
-            detail: (error as Error).message,
-          });
-          settleSetup(threadId);
-        })
-        .finally(() => {
-          starting.resolve();
-          if (setupStarts.get(threadId) === starting.promise) setupStarts.delete(threadId);
-        });
+      beginSetupScript(threadId, projectId, created.path);
     }
     return created;
+  }
+
+  /** Starts the project's setup script for a thread's new worktree, in the background. */
+  function beginSetupScript(threadId: string, projectId: string, worktreePath: string) {
+    const starting = Promise.withResolvers<void>();
+    setupStarts.set(threadId, starting.promise);
+    void startSetupScript(threadId, projectId, worktreePath, starting.resolve)
+      .catch((error: unknown) => {
+        setups.stage(threadId, "setup-script", {
+          status: "failed",
+          endedAt: new Date().toISOString(),
+          detail: (error as Error).message,
+        });
+        settleSetup(threadId);
+      })
+      .finally(() => {
+        starting.resolve();
+        if (setupStarts.get(threadId) === starting.promise) setupStarts.delete(threadId);
+      });
+  }
+
+  /**
+   * T3's Retry of a failed preparation (D1478): the worktree made again from its branch
+   * when it is gone, the setup script run again, then the turn's message sent again.
+   */
+  const retrying = new Set<string>();
+  async function retryPreparation(threadId: string): Promise<{ turnId: string }> {
+    if (retrying.has(threadId) || setups.get(threadId)?.phase === "running") {
+      throw new SourceControlError("WORKSPACE_RETRY_INVALID", "The thread is being set up", {
+        threadId,
+      });
+    }
+    retrying.add(threadId);
+    try {
+      const { thread } = (await context.commands.execute("threads.get", { threadId })) as {
+        thread: {
+          projectId: string;
+          worktreePath?: string;
+          lastTurn?: { status: string; failure?: { class: string } };
+        };
+      };
+      if (
+        thread.lastTurn?.status !== "failed" ||
+        thread.lastTurn.failure?.class !== "workspace_preparation"
+      ) {
+        throw new SourceControlError(
+          "WORKSPACE_RETRY_INVALID",
+          "The thread's latest turn is no failed workspace preparation",
+          { threadId },
+        );
+      }
+      const previous = await setupOf(threadId);
+      const path = thread.worktreePath ?? previous?.worktreePath ?? undefined;
+      const branch = previous?.branch ?? threads.get(threadId)?.branch ?? undefined;
+      if (path === undefined) {
+        throw new SourceControlError("WORKSPACE_RETRY_INVALID", "The thread had no worktree", {
+          threadId,
+        });
+      }
+      setups.begin({
+        threadId,
+        branch: branch ?? null,
+        baseRef: previous?.baseRef ?? "",
+        stages: ["checkout", "setup-script", "agent"],
+      });
+      try {
+        if (await exists(path)) {
+          setups.stageStatus(threadId, "checkout", "skipped");
+        } else {
+          if (branch == null) throw new Error("its branch is unknown");
+          setups.stageStatus(threadId, "checkout", "running");
+          const repo = await repoOf(thread.projectId);
+          const { git } = await gitOf(repo);
+          const warning = await recreateWorktree(git, path, branch, submodulesOf(thread.projectId));
+          setups.stageStatus(
+            threadId,
+            "checkout",
+            warning === undefined ? "done" : "warning",
+            warning,
+          );
+        }
+        if (thread.worktreePath !== path) {
+          await context.commands.execute("threads.update", { threadId, worktreePath: path });
+        }
+      } catch (error) {
+        setups.finish(threadId, "failed", (error as Error).message);
+        throw error;
+      }
+      setups.update(threadId, (snapshot) => ({ ...snapshot, worktreePath: path }));
+      beginSetupScript(threadId, thread.projectId, path);
+      // The failed turn's message again: its start hook waits for the script as the first did.
+      try {
+        const { turnId } = (await context.commands.execute("threads.regenerate", {
+          threadId,
+        })) as { turnId: string };
+        return { turnId };
+      } catch (error) {
+        // Refused before its turn took the setup (busy, deleted): the script stops with it, so
+        // nothing is left running and a later Retry is not refused as "being set up".
+        if (setups.get(threadId)?.phase === "running") {
+          const run = setupRuns.get(threadId);
+          setupRuns.delete(threadId);
+          run?.cancel();
+          if (run?.terminalId !== undefined) {
+            await context.services
+              .tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY)
+              ?.close({ threadId, terminalId: run.terminalId })
+              .catch(() => undefined);
+          }
+          setups.finish(threadId, "failed", (error as Error).message);
+        }
+        throw error;
+      }
+    } finally {
+      retrying.delete(threadId);
+    }
   }
 
   async function removeWorktreeNow(
@@ -2640,14 +2742,64 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       }),
     );
   }
+  /** A thread's setup as last kept: a finished one, so a restart still shows it (D1479). */
+  const SETUP_PREFIX = "setup/";
+  const kept = new Map<string, string>();
+  const keepSetup = (snapshot: WorktreeSetupSnapshot) => {
+    // Its start (with its worktree once made) and its end: what a restart needs.
+    const mark = `${snapshot.phase}|${snapshot.worktreePath ?? ""}`;
+    if (kept.get(snapshot.threadId) === mark) return;
+    kept.set(snapshot.threadId, mark);
+    keepInOrder(snapshot.threadId, () =>
+      kv.set(NAMESPACE, `${SETUP_PREFIX}${snapshot.threadId}`, snapshot as unknown as Json),
+    );
+  };
+  /** A thread's writes of its kept setup, one after another: a later one never lands first. */
+  const keeping = new Map<string, Promise<unknown>>();
+  const keepInOrder = (threadId: string, write: () => Promise<unknown>) => {
+    const next = (keeping.get(threadId) ?? Promise.resolve())
+      .then(write)
+      .catch((error: unknown) =>
+        context.log.warn("could not keep a worktree setup", { threadId, error: String(error) }),
+      );
+    keeping.set(threadId, next);
+    void next.then(() => {
+      if (keeping.get(threadId) === next) keeping.delete(threadId);
+    });
+  };
   const setups = createSetupTracker({
     publish: (snapshot) => {
       const stream = worktreeSetupStream(snapshot.threadId);
-      const kept = setupStreams.events(stream).length;
+      const earlier = setupStreams.events(stream).length;
       setupStreams.append(stream, WORKTREE_SETUP_CHANGED, snapshot as never);
-      if (kept > 0) setupStreams.drop(stream, kept);
+      if (earlier > 0) setupStreams.drop(stream, earlier);
+      keepSetup(snapshot);
     },
   });
+  /**
+   * A thread's setup: this run's, else the one kept (D1479); one kept as running was cut
+   * short by a restart, and reads as failed.
+   */
+  async function setupOf(threadId: string): Promise<WorktreeSetupSnapshot | null> {
+    const live = setups.get(threadId);
+    if (live !== null) return live;
+    const parsed = WorktreeSetupSnapshot.safeParse(
+      await kv.get(NAMESPACE, `${SETUP_PREFIX}${threadId}`),
+    );
+    if (!parsed.success) return null;
+    const snapshot = parsed.data;
+    if (snapshot.phase !== "running") return snapshot;
+    const endedAt = new Date().toISOString();
+    return {
+      ...snapshot,
+      phase: "failed",
+      endedAt,
+      error: "The node restarted during the setup.",
+      stages: snapshot.stages.map((stage) =>
+        stage.status === "running" ? { ...stage, status: "failed", endedAt } : stage,
+      ),
+    };
+  }
 
   /** The terminal plugin's configured shell, when it has one (`jhin.terminal.shell`). */
   const terminalShell = (): string | undefined => {
@@ -2787,7 +2939,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     }));
     started.completion.then(exitCode.resolve, exitCode.reject);
     const outcome = await run.exited;
-    if (outcome === "cancelled") return;
+    // Stopped by a cancel that removes the worktree: its exit is no failure of its own.
+    if (outcome === "cancelled" || cancelOutcomes.has(threadId)) return;
     // The first turn's hook reads how it ended; once that hook ran, nobody needs the run.
     const agent = setups.get(threadId)?.stages.find((entry) => entry.id === "agent");
     if (agent?.status !== "pending") forget();
@@ -2818,11 +2971,90 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     }
     setups.forget(threadId);
     setupStreams.delete(worktreeSetupStream(threadId));
+    cancelOutcomes.delete(threadId);
+    kept.delete(threadId);
+    keepInOrder(threadId, () => kv.delete(NAMESPACE, `${SETUP_PREFIX}${threadId}`));
   }
 
-  async function cancelSetup(threadId: string): Promise<boolean> {
-    if (setups.get(threadId)?.phase !== "running") return false;
+  /**
+   * How a first turn waiting for a cancelled setup goes on (D1477): it fails ("cancelled",
+   * T3's "Worktree setup cancelled."), or starts in the project's checkout ("local").
+   */
+  const cancelOutcomes = new Map<string, "cancelled" | "local">();
+
+  /**
+   * T3's cancelled preparation: the new worktree goes (force; its branch stays) and the
+   * thread works in the project's checkout. A removal that fails leaves both as they are.
+   */
+  async function abandonWorktree(threadId: string, worktreePath: string): Promise<boolean> {
+    try {
+      const projectId = await threadProject(threadId);
+      const repo = await repoOf(projectId);
+      const { git } = await gitOf(repo);
+      await git(["worktree", "remove", "--force", "--", worktreePath], { timeoutMs: 300_000 });
+      await context.commands.execute("threads.update", { threadId, worktreePath: null });
+      context.log.info("removed a cancelled setup's worktree", { threadId, worktreePath });
+      return true;
+    } catch (error) {
+      context.log.warn("could not remove a cancelled setup's worktree", {
+        threadId,
+        worktreePath,
+        error: String(error),
+      });
+      return false;
+    }
+  }
+
+  /** Cancels under way, by thread: a first turn waiting for its setup waits for them too. */
+  const cancelling = new Map<string, Promise<boolean>>();
+  function cancelSetup(
+    threadId: string,
+    options: { readonly workLocally?: boolean } = {},
+  ): Promise<boolean> {
+    const running = cancelling.get(threadId);
+    if (running !== undefined) return running.then(() => false);
+    const cancel = cancelSetupNow(threadId, options).finally(() => {
+      if (cancelling.get(threadId) === cancel) cancelling.delete(threadId);
+    });
+    cancelling.set(threadId, cancel);
+    return cancel;
+  }
+
+  async function cancelSetupNow(
+    threadId: string,
+    options: { readonly workLocally?: boolean },
+  ): Promise<boolean> {
+    const snapshot = setups.get(threadId);
+    if (snapshot?.phase !== "running") return false;
+    // Before the agent starts, T3 removes the new worktree: the turn then fails, or works
+    // in the project's checkout ("Work locally"). Once it started, only the script stops.
+    const agent = snapshot.stages.find((stage) => stage.id === "agent")?.status;
     const run = setupRuns.get(threadId);
+    // A first turn not sent yet, or one the script holds: an `async` script's turn has its
+    // agent already, and keeps its worktree.
+    const held = agent === "running" && run?.holdsAgent === true;
+    const before = agent === "pending" || held;
+    if (before && snapshot.worktreePath !== null) {
+      // Only a first turn held by the script is decided: one not sent yet starts in the
+      // checkout the thread works in from now on.
+      if (held) {
+        cancelOutcomes.set(threadId, options.workLocally === true ? "local" : "cancelled");
+      }
+      // Its script stops first: nothing runs in the folder that goes.
+      if (run?.terminalId !== undefined) {
+        const terminalId = run.terminalId;
+        run.terminalId = undefined;
+        await context.services
+          .tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY)
+          ?.close({ threadId, terminalId })
+          .catch(() => undefined);
+      }
+      // A worktree that could not go stays the thread's: its turn starts there (D1124).
+      if (!(await abandonWorktree(threadId, snapshot.worktreePath))) {
+        cancelOutcomes.delete(threadId);
+      }
+    }
+    if (setups.get(threadId)?.phase !== "running") return false;
     setupRuns.delete(threadId);
     setupTerminals.delete(threadId);
     run?.cancel();
@@ -2836,40 +3068,75 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return true;
   }
 
+  /** A project's folder on this node. */
+  async function projectPathOf(projectId: string): Promise<string> {
+    const projects = (await context.commands.execute("projects.list", {})) as {
+      id: string;
+      path: string;
+    }[];
+    const project = projects.find((entry) => entry.id === projectId);
+    if (project === undefined) {
+      throw new SourceControlError("PROJECT_NOT_FOUND", `No project ${projectId} on this node`, {
+        projectId,
+      });
+    }
+    return project.path;
+  }
+
+  /** A first turn whose workspace could not be prepared: T3's Retry offers it again (D1478). */
+  const workspaceFailure = (threadId: string, message: string) =>
+    Object.assign(new SourceControlError("WORKTREE_SETUP_FAILED", message, { threadId }), {
+      failure: { class: "workspace_preparation" as const },
+    });
+
   // The first turn of a thread being set up starts its agent: a script with
   // `async: false` holds it until it exits (T3's release of the prepared run).
   context.subscriptions.add(
-    context.hooks.before<TurnHookInput>(ThreadHooks.turnStart, async (input) => {
-      const snapshot = setups.get(input.threadId);
-      const agent = snapshot?.stages.find((stage) => stage.id === "agent");
-      if (snapshot?.phase !== "running" || agent?.status !== "pending") return input;
-      setups.stageStatus(input.threadId, "agent", "running");
-      await setupStarts.get(input.threadId);
-      const run = setupRuns.get(input.threadId);
-      if (run?.holdsAgent === true) {
-        const outcome = await run.exited.catch(() => null);
-        if (setupRuns.get(input.threadId) === run) setupRuns.delete(input.threadId);
-        // Cancelled while the turn waited: the setup is over as cancelled, and stays so.
-        if (setups.get(input.threadId)?.phase !== "running") return input;
-        if (outcome !== "cancelled" && outcome !== 0) {
-          const message = `Setup script exited with ${outcome ?? "no exit code"}.`;
-          setups.finish(input.threadId, "failed", message);
-          throw new SourceControlError("WORKTREE_SETUP_FAILED", message, {
-            threadId: input.threadId,
-          });
+    context.hooks.before<TurnHookInput>(
+      ThreadHooks.turnStart,
+      async (input) => {
+        const snapshot = setups.get(input.threadId);
+        const agent = snapshot?.stages.find((stage) => stage.id === "agent");
+        if (snapshot?.phase !== "running" || agent?.status !== "pending") return input;
+        setups.stageStatus(input.threadId, "agent", "running");
+        await setupStarts.get(input.threadId);
+        const run = setupRuns.get(input.threadId);
+        if (run?.holdsAgent === true) {
+          const outcome = await run.exited.catch(() => null);
+          // A cancel under way (its script stopped first) is waited for: it decides the turn.
+          await cancelling.get(input.threadId)?.catch(() => false);
+          if (setupRuns.get(input.threadId) === run) setupRuns.delete(input.threadId);
+          // Cancelled while the turn waited: the setup is over as cancelled, and stays so; the
+          // turn fails, or works in the project's checkout (D1477).
+          if (setups.get(input.threadId)?.phase !== "running") {
+            const how = cancelOutcomes.get(input.threadId);
+            cancelOutcomes.delete(input.threadId);
+            if (how === "cancelled") {
+              throw workspaceFailure(input.threadId, "Worktree setup cancelled.");
+            }
+            // "Work locally": the hooks after this one, and the turn, work in the checkout.
+            if (how === "local") return { ...input, cwd: await projectPathOf(input.projectId) };
+            return input;
+          }
+          if (outcome !== "cancelled" && outcome !== 0) {
+            const message = `Setup script exited with ${outcome ?? "no exit code"}.`;
+            setups.finish(input.threadId, "failed", message);
+            throw workspaceFailure(input.threadId, message);
+          }
         }
-      }
-      // A script that is over is read no more; one still running stays cancellable.
-      const script = setups
-        .get(input.threadId)
-        ?.stages.find((stage) => stage.id === "setup-script");
-      if (run !== undefined && script?.status !== "running" && script?.status !== "pending") {
-        if (setupRuns.get(input.threadId) === run) setupRuns.delete(input.threadId);
-      }
-      setups.stageStatus(input.threadId, "agent", "done");
-      settleSetup(input.threadId);
-      return input;
-    }),
+        // A script that is over is read no more; one still running stays cancellable.
+        const script = setups
+          .get(input.threadId)
+          ?.stages.find((stage) => stage.id === "setup-script");
+        if (run !== undefined && script?.status !== "running" && script?.status !== "pending") {
+          if (setupRuns.get(input.threadId) === run) setupRuns.delete(input.threadId);
+        }
+        setups.stageStatus(input.threadId, "agent", "done");
+        settleSetup(input.threadId);
+        return input;
+      },
+      { order: -20 },
+    ),
   );
 
   // --- Commands ---------------------------------------------------------------------------
@@ -3660,7 +3927,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     input: z.object({ threadId: z.string().min(1) }),
     output: WorktreeSetupSnapshot.nullable(),
     permissions: ["git.read", "terminals.read"],
-    handler: async ({ threadId }) => setups.get(threadId),
+    handler: async ({ threadId }) => setupOf(threadId),
   });
 
   /** Runs of `scripts.run` under way, by thread and script. */
@@ -3846,11 +4113,29 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     name: "git.worktree.setup.cancel",
     title: "Cancel worktree setup",
     description:
-      "Stops the running setup of a thread's new worktree: its setup script's terminal is closed and the agent no longer waits for it",
-    input: z.object({ threadId: z.string().min(1) }),
+      "Stops the running setup of a thread's new worktree: its setup script's terminal is closed and the agent no longer waits for it. Before the agent started, the new worktree is removed (its branch stays) and the thread works in the project's checkout; its first turn then fails, or with workLocally starts there (T3's Work locally)",
+    input: z.object({
+      threadId: z.string().min(1),
+      workLocally: z.boolean().optional().meta({
+        description: "The first turn starts in the project's checkout instead of failing",
+      }),
+    }),
     output: z.object({ cancelled: z.boolean() }),
     permissions: ["git.write"],
-    handler: async ({ threadId }) => ({ cancelled: await cancelSetup(threadId) }),
+    handler: async ({ threadId, workLocally }) => ({
+      cancelled: await cancelSetup(threadId, workLocally === undefined ? {} : { workLocally }),
+    }),
+  });
+
+  context.commands.register({
+    name: "git.worktree.setup.retry",
+    title: "Retry worktree setup",
+    description:
+      "T3's Retry of a thread whose first turn failed because its worktree could not be prepared (a setup script that held the agent failed, or the setup was cancelled): makes the worktree again from its branch when it is gone, runs the setup script again and sends the turn's message again",
+    input: z.object({ threadId: z.string().min(1) }),
+    output: z.object({ turnId: z.string() }),
+    permissions: ["git.write", "threads.write"],
+    handler: async ({ threadId }) => retryPreparation(threadId),
   });
 
   context.commands.register({

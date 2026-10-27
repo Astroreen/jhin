@@ -517,3 +517,67 @@ test("D1469, D1470: Storage's Delete now runs the cleanup and its Last run lists
   await expect(cleanup.getByText(/^Search\. /)).toBeVisible();
   await shot(page, info, "storage-last-run");
 });
+
+test("D1477–D1479: Work locally moves a held first turn to the checkout; Retry sets a failed one up again", async ({
+  page,
+}, info) => {
+  const node = await startNode({ mode: "ui" });
+  running.push(node);
+  const dir = Path.join(node.home, "acme");
+  Fs.mkdirSync(dir, { recursive: true });
+  git(dir, "init", "--quiet", "--initial-branch=main");
+  Fs.writeFileSync(Path.join(dir, "README.md"), "acme\n");
+  git(dir, "add", ".");
+  git(dir, "commit", "--quiet", "-m", "first");
+  const client = node.client();
+  const project = await client.call<{ id: string }>("projects.create", { path: dir });
+  const setScript = (command: string) =>
+    client.call("projects.scripts.set", {
+      projectId: project.id,
+      scripts: [
+        { id: "install", name: "Install", command, runOnWorktreeCreate: true, async: false },
+      ],
+    });
+  const open = async (title: string) => {
+    const thread = await client.call<{ id: string; worktreePath: string }>("threads.create", {
+      projectId: project.id,
+      title,
+      workspace: { type: "worktree", baseRef: "main" },
+    });
+    await page
+      .getByRole("navigation", { name: "Sidebar" })
+      .getByRole("button", { name: new RegExp(`^${title}, `) })
+      .click();
+    return thread;
+  };
+  const send = async (text: string) => {
+    const message = page.getByRole("textbox", { name: "Message" });
+    await message.fill(text);
+    await message.press("Enter");
+  };
+  await page.goto(`${node.ui}#token=${node.token}`);
+
+  // A script that holds the agent until it gets an answer: "Work locally" instead.
+  await setScript('read answer; echo "got $answer"');
+  const held = await open("Held");
+  await send("work here");
+  const card = page.getByRole("region", { name: "Worktree setup" });
+  await expect(card.getByText("Setting up worktree…")).toBeVisible();
+  await shot(page, info, "worktree-setup-work-locally");
+  await card.getByRole("button", { name: "Work locally" }).click();
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: work here");
+  await expect(card.getByText("Worktree setup cancelled")).toBeVisible();
+  expect(Fs.existsSync(held.worktreePath)).toBe(false);
+
+  // A script that fails while it holds the agent: the turn fails, and Retry runs it again.
+  await setScript("exit 3");
+  await open("Failing");
+  await send("try again");
+  const retry = page.getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible();
+  await shot(page, info, "worktree-setup-retry");
+  await setScript("true");
+  await retry.click();
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: try again");
+  await expect(retry).toBeHidden();
+});

@@ -475,6 +475,8 @@ export type SourceControlErrorCode =
   | "WORKTREE_MISSING"
   /** A setup script that holds the agent (`async: false`) failed (D1122). */
   | "WORKTREE_SETUP_FAILED"
+  /** `git.worktree.setup.retry` for a thread whose latest turn is no failed preparation. */
+  | "WORKSPACE_RETRY_INVALID"
   /** A handoff of a thread that works in a worktree already. */
   | "ALREADY_IN_WORKTREE"
   | "THREAD_ARCHIVED"

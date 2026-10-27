@@ -300,7 +300,11 @@ export interface ThreadRecord {
     /** What a waiting turn asks the user for. */
     readonly waitingFor?: "approval" | "user-input";
     /** Why a failed turn failed, when its agent classed it (t3-parity.md D1306). */
-    readonly failure?: { readonly class: "usage_limit"; readonly resetAt?: string };
+    readonly failure?: {
+      /** A usage limit, or a workspace that could not be prepared (`source-control.md` D1478). */
+      readonly class: "usage_limit" | "workspace_preparation";
+      readonly resetAt?: string;
+    };
     /** What a running subagent's turn is doing now (orchestration.md D1344). */
     readonly progress?: string;
   };

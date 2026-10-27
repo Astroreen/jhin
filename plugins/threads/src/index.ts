@@ -334,7 +334,11 @@ const Thread = z.object({
       waitingFor: z.enum(["approval", "user-input"]).optional(),
       /** Why a failed turn failed, when its agent classed it (a usage limit, D1306). */
       failure: z
-        .object({ class: z.literal("usage_limit"), resetAt: z.string().optional() })
+        .object({
+          // A usage limit (D1306), or a workspace its start hooks could not prepare (D1478).
+          class: z.enum(["usage_limit", "workspace_preparation"]),
+          resetAt: z.string().optional(),
+        })
         .optional(),
       /** What a running subagent's turn is doing now (orchestration.md D1344). */
       progress: z.string().optional(),
@@ -1673,8 +1677,15 @@ export default definePlugin({
           // A start hook that does not answer fails the turn as one that throws does: the
           // agent never works without what the hooks do first (a checkpoint).
           let late = false;
+          // What the hooks leave is what the turn runs with: one may move it, as "Work
+          // locally" moves a thread's first turn to the project's checkout (D1477).
+          let prepared: TurnHookInput | undefined;
           await withDeadline(
-            context.hooks.run(ThreadHooks.turnStart, hookInput, () => undefined),
+            context.hooks
+              .run<TurnHookInput, TurnHookInput>(ThreadHooks.turnStart, hookInput, (value) => value)
+              .then((value) => {
+                prepared = value;
+              }),
             hookTimeoutMs(),
             () => (late = true),
           );
@@ -1685,9 +1696,12 @@ export default definePlugin({
               { threadId: thread.id, turnId },
             );
           }
+          if (prepared !== undefined) hookInput = { ...hookInput, cwd: prepared.cwd };
           // A worktree removed under the thread, and not brought back by a hook (D242).
           if (
+            // Still its worktree: a turn a hook moved to the checkout has no worktree to lose.
             thread.worktreePath !== undefined &&
+            hookInput.cwd !== project.path &&
             !(await Fs.promises.stat(hookInput.cwd).then(
               (stat) => stat.isDirectory(),
               () => false,
@@ -1714,10 +1728,19 @@ export default definePlugin({
             ...settings,
           });
         } catch (error) {
-          // turn.started is already recorded: close it, keeping the hook's or the agent's error.
+          // turn.started is already recorded: close it, keeping the hook's or the agent's error,
+          // and its class (a workspace a hook could not prepare, D1478).
+          const startFailure = turnFailureOf(error);
           await log
             .append(stream, [
-              { type: ThreadEvents.turnFailed, payload: { turnId, error: String(error) } },
+              {
+                type: ThreadEvents.turnFailed,
+                payload: {
+                  turnId,
+                  error: String(error),
+                  ...(startFailure === undefined ? {} : { failure: { ...startFailure } }),
+                },
+              },
             ])
             .catch((appendError: unknown) =>
               context.log.error("could not record a failed start", {
@@ -1725,7 +1748,14 @@ export default definePlugin({
                 error: String(appendError),
               }),
             );
-          await setTurnStatus(thread.id, turnId, runtime.agentId, "failed");
+          await setTurnStatus(
+            thread.id,
+            turnId,
+            runtime.agentId,
+            "failed",
+            undefined,
+            startFailure,
+          );
           throw error;
         }
       } catch (error) {

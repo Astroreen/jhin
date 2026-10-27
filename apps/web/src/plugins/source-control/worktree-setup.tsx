@@ -15,6 +15,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   CircleIcon,
+  LaptopIcon,
   MinusIcon,
   TerminalIcon,
   XIcon,
@@ -242,12 +243,15 @@ export function WorktreeSetupCard({
   snapshot,
   embedded,
   onCancel,
+  onWorkLocally,
   onOpenTerminal,
 }: {
   snapshot: WorktreeSetupSnapshot;
   /** The agent has started and the setup is over: one summary row. */
   embedded: boolean;
   onCancel: (() => void) | null;
+  /** T3's "Work locally": cancel, and the first turn starts in the project's checkout (D1477). */
+  onWorkLocally: (() => void) | null;
   onOpenTerminal: (() => void) | null;
 }) {
   const running = snapshot.phase === "running";
@@ -339,6 +343,12 @@ export function WorktreeSetupCard({
           <Button onClick={onOpenTerminal} size="xs" type="button" variant="ghost-muted">
             <TerminalIcon aria-hidden />
             Open terminal
+          </Button>
+        ) : null}
+        {onWorkLocally && running ? (
+          <Button onClick={onWorkLocally} size="xs" type="button" variant="ghost-muted">
+            <LaptopIcon aria-hidden />
+            Work locally
           </Button>
         ) : null}
         {onCancel && running ? (
