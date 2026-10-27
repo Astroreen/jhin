@@ -349,6 +349,9 @@ export const Config = z
       worktreeSubmodules: SubmodulesSetting.optional().meta({
         title: "Worktree submodules",
         description: "How this project's new worktrees populate git submodules.",
+        // The t3.json field that backs it, and what applies when nothing is set (D1467).
+        t3File: "worktreeSubmodules",
+        builtIn: "recursive",
       }),
       branchNamingMode: BranchNamingMode.optional().meta(BRANCH_NAMING_MODE_META),
       branchNamePrefix: z.string().trim().optional().meta(BRANCH_NAME_PREFIX_META),
