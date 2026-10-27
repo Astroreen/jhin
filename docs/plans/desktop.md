@@ -763,6 +763,10 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
 - Pinning the other workflows' actions (`ci.yml`, `claude.yml`,
   `claude-review.yml`) to commit SHAs, and a Dependabot configuration that
   proposes the pins' updates (D1483 pins the release path only).
+- Caching Chromium and its system packages in `ci.yml`'s unit and E2E
+  jobs: `playwright install --with-deps chromium` took 8–10 minutes on a
+  slow apt mirror (2026-10-26), so #325 gave those jobs 20 and 25 minutes
+  instead of making the install fast.
 - A test of `scripts/package-desktop.ts`'s orchestration with a fake spawn:
   its pure parts are unit tested and the pull request dry run runs it whole
   on all three systems.
