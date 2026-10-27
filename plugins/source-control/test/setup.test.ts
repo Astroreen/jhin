@@ -9,7 +9,13 @@ import {
 } from "@jhin/source-control-api";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { completionShellOf, runSetupScript, wrapCommandForCompletion } from "../src/setup.ts";
+import {
+  completionShellOf,
+  runSetupScript,
+  scriptCommandLine,
+  scriptTerminalId,
+  wrapCommandForCompletion,
+} from "../src/setup.ts";
 import { git, node, repository, type Node } from "./support.ts";
 
 /** Resolves with the first snapshot of the thread's setup (kept or new) that `match` accepts. */
@@ -64,6 +70,51 @@ async function projectWithScript(sc: Node, script: Record<string, unknown> | und
   }
   return projectId;
 }
+
+describe("scripts.run (D1472)", () => {
+  it("types a project's script into the thread's terminal, its variables set before it", async () => {
+    const sc = await node({ watch: false }, { terminals: true });
+    const dir = repository();
+    const projectId = await sc.project(dir);
+    await sc.client.call("projects.scripts.set", {
+      projectId,
+      scripts: [
+        { id: "dev", name: "Dev", command: "pnpm dev", previewUrl: "http://localhost:5173" },
+      ],
+    });
+    const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    const typed = sc.terminals!.typed("script-dev");
+    expect(await sc.client.call("scripts.run", { threadId: thread.id, scriptId: "dev" })).toEqual({
+      terminalId: "script-dev",
+    });
+    await typed;
+    expect(sc.terminals!.opened.at(-1)).toEqual({
+      threadId: thread.id,
+      terminalId: "script-dev",
+      cwd: Fs.realpathSync(dir),
+    });
+    await expect(
+      sc.client.call("scripts.run", { threadId: thread.id, scriptId: "nope" }),
+    ).rejects.toMatchObject({ code: "SCRIPT_NOT_FOUND" });
+    // Running a script is running a shell command.
+    await expect(
+      sc.as(["git.*", "threads.*"]).call("scripts.run", { threadId: thread.id, scriptId: "dev" }),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+  });
+
+  it("sets the variables in the shell's own syntax, and moves on from a busy terminal", () => {
+    const env = { JHIN_PROJECT_ROOT: "/p/it's" };
+    expect(scriptCommandLine("make\nmake test", "posix", env)).toBe(
+      "export JHIN_PROJECT_ROOT='/p/it'\\''s'; make\rmake test",
+    );
+    expect(scriptCommandLine("make", "powershell", env)).toBe(
+      "$env:JHIN_PROJECT_ROOT = '/p/it''s'; make",
+    );
+    const busy = new Set(["script-dev", "script-dev-2"]);
+    expect(scriptTerminalId("dev", (id) => busy.has(id))).toBe("script-dev-3");
+    expect(scriptTerminalId("a b", () => false)).toBe("script-a-b");
+  });
+});
 
 describe("setup script wrapper", () => {
   it("wraps for the shell the terminal starts", () => {

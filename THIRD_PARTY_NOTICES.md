@@ -27,7 +27,8 @@ script runner (`plugins/source-control/src/setup.ts`, the contracts in
 `packages/source-control-api/src/worktree-setup.ts` and
 `packages/agent-api/src/project-scripts.ts`), settings per project and the
 checked-in `t3.json` (`packages/agent-api/src/project-settings.ts`,
-`t3-project-file.ts`) and the settings page's project scope
+`t3-project-file.ts`), the scripts menu and its "Add Action" dialog
+(`apps/web/src/plugins/project-scripts/`) and the settings page's project scope
 (`apps/web/src/plugins/settings/project-scope.tsx`), the worktree cleanup rules and
 sweep (`plugins/source-control/src/cleanup.ts`) with its Storage settings
 (`apps/web/src/plugins/source-control/storage-settings.tsx`), the "Checkout pull request"

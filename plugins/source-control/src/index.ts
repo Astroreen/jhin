@@ -158,6 +158,8 @@ import {
   completionShellOf,
   createSetupTracker,
   runSetupScript,
+  scriptCommandLine,
+  scriptTerminalId,
   setupTerminalId,
   type FollowTerminal,
 } from "./setup.ts";
@@ -3623,6 +3625,94 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     permissions: ["git.read", "terminals.read"],
     handler: async ({ threadId }) => setups.get(threadId),
   });
+
+  /** Runs of `scripts.run` under way, by thread and script. */
+  const scriptRuns = new Map<string, Promise<{ terminalId: string }>>();
+
+  // T3's runProjectScript (D1472): the scripts menu, a script's shortcut, an agent.
+  context.commands.register({
+    name: "scripts.run",
+    title: "Run project script",
+    description:
+      "Runs one of a project's scripts in a terminal of a thread (T3's scripts menu): typed into the thread's terminal script-<id> in the thread's worktree or the project's folder, a new one when that terminal still runs a program; answers the terminal",
+    input: z.object({ threadId: z.string().min(1), scriptId: z.string().min(1) }),
+    output: z.object({ terminalId: z.string() }),
+    permissions: ["terminals.write"],
+    // One run of a thread's script at a time: two quick runs never type into one free shell.
+    handler: ({ threadId, scriptId }) => {
+      const key = `${threadId}\u0000${scriptId}`;
+      const run = (scriptRuns.get(key) ?? Promise.resolve())
+        .catch(() => undefined)
+        .then(() => runScript(threadId, scriptId));
+      scriptRuns.set(key, run);
+      // The caller hears the run's failure; the bookkeeping only lets go of it.
+      void run
+        .then(
+          () => undefined,
+          () => undefined,
+        )
+        .finally(() => {
+          if (scriptRuns.get(key) === run) scriptRuns.delete(key);
+        });
+      return run;
+    },
+  });
+
+  async function runScript(threadId: string, scriptId: string): Promise<{ terminalId: string }> {
+    const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
+    if (terminals === undefined) {
+      throw new SourceControlError("TERMINALS_UNAVAILABLE", "This node runs no terminals");
+    }
+    const { thread } = (await context.commands.execute("threads.get", { threadId })) as {
+      thread: { projectId: string; worktreePath?: string };
+    };
+    const projects = (await context.commands.execute("projects.list", {})) as {
+      id: string;
+      path: string;
+      scripts?: unknown[];
+    }[];
+    const project = projects.find((entry) => entry.id === thread.projectId);
+    const script = (project?.scripts ?? [])
+      .map((entry) => ProjectScript.safeParse(entry))
+      .find((parsed) => parsed.success && parsed.data.id === scriptId)?.data;
+    if (project === undefined || script === undefined) {
+      throw new SourceControlError("SCRIPT_NOT_FOUND", `The project has no script ${scriptId}`, {
+        threadId,
+        scriptId,
+      });
+    }
+    const cwd = thread.worktreePath ?? project.path;
+    const realCwd = await realPath(cwd);
+    const running = await Promise.all(
+      terminals
+        .list(threadId)
+        .filter((entry) => entry.status === "running")
+        .map(async (entry) => ({ entry, cwd: await realPath(entry.cwd) })),
+    );
+    // A terminal still running a program is left alone, as T3 opens another; so is one in
+    // another folder (the thread moved), which would refuse this one. Two runs typed into one
+    // idle shell before its program shows run one after the other, as the shell reads them.
+    const terminalId = scriptTerminalId(script.id, (id) =>
+      running.some(
+        ({ entry, cwd: folder }) =>
+          entry.terminalId === id && (entry.hasRunningSubprocess || folder !== realCwd),
+      ),
+    );
+    await terminals.open({ threadId, terminalId, cwd });
+    terminals.write({
+      threadId,
+      terminalId,
+      data: `${scriptCommandLine(
+        script.command,
+        completionShellOf(process.platform, terminalShell() ?? process.env.SHELL),
+        {
+          JHIN_PROJECT_ROOT: project.path,
+          ...(thread.worktreePath === undefined ? {} : { JHIN_WORKTREE_PATH: thread.worktreePath }),
+        },
+      )}\r`,
+    });
+    return { terminalId };
+  }
 
   context.commands.register({
     name: "git.worktree.setup.cancel",

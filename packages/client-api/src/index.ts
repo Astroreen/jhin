@@ -258,6 +258,21 @@ export interface ProjectRecord {
   /** The built-in project for chats without a project (D51). */
   readonly scratch: boolean;
   readonly createdAt: string;
+  /** T3's project scripts (`source-control.md` D1121, D1471); absent until set. */
+  readonly scripts?: readonly ProjectScriptRecord[];
+}
+
+/** A project's script as the client reads it (`@jhin/agent-api`'s `ProjectScript`). */
+export interface ProjectScriptRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly command: string;
+  readonly icon: "play" | "test" | "lint" | "configure" | "build" | "debug";
+  readonly runOnWorktreeCreate: boolean;
+  readonly runOnSettle?: boolean;
+  readonly async?: boolean;
+  readonly previewUrl?: string;
+  readonly autoOpenPreview?: boolean;
 }
 
 export type TurnStatus = "running" | "waiting" | "completed" | "interrupted" | "failed";

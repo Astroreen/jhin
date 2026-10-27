@@ -267,6 +267,25 @@ function exportsFor(shell: CompletionShell, env: Readonly<Record<string, string>
     .join("");
 }
 
+/**
+ * A script typed as it is (T3's `runProjectScript`, D1472), its variables set
+ * before it in the shell's own syntax rather than on the terminal.
+ */
+export const scriptCommandLine = (
+  command: string,
+  shell: CompletionShell,
+  env: Readonly<Record<string, string>>,
+) => `${exportsFor(shell, env)}${command.replace(/\r?\n/g, "\r")}`;
+
+/** The terminal a script run from the menu types into, the next free one when it is busy. */
+export function scriptTerminalId(scriptId: string, busy: (terminalId: string) => boolean): string {
+  const base = `script-${scriptId}`.replace(/[^A-Za-z0-9._:-]/g, "-").slice(0, 120);
+  if (!busy(base)) return base;
+  for (let n = 2; ; n += 1) {
+    if (!busy(`${base}-${n}`)) return `${base}-${n}`;
+  }
+}
+
 /** How a session's live stream is followed: its events as the terminal plugin serves them. */
 export type FollowTerminal = (
   threadId: string,

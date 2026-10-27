@@ -1739,10 +1739,13 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   thread** (`jhin.source-control`, `terminals.write`), as T3's
   `runProjectScript`: the script's command is typed into the thread's
   terminal `script-<id>` in the thread's directory (its worktree, else the
-  project's), opened with `JHIN_PROJECT_ROOT` and `JHIN_WORKTREE_PATH` (T3's
-  `projectScriptRuntimeEnv`); a terminal of that id that still runs a
-  program is left alone and the next free `script-<id>-<n>` is used (T3
-  opens a new terminal when the base one is busy). It answers `{ terminalId
+  project's), with `JHIN_PROJECT_ROOT` and `JHIN_WORKTREE_PATH` (T3's
+  `projectScriptRuntimeEnv`) exported before it in the shell's own syntax
+  (a terminal opened with variables of its own would refuse the drawer's
+  open of it, as D1122 says); a terminal of that id that still runs a
+  program, or works in another folder, is left alone and the next free
+  `script-<id>-<n>` is used (T3 opens a new terminal when the base one is
+  busy). It answers `{ terminalId
   }`. A node without terminals refuses it (`TERMINALS_UNAVAILABLE`).
 - **D1473. T3's scripts control in the chat header** (`ProjectScriptsControl`,
   its toolbar mode; at D53 T3 also shows it in the thread details card,
@@ -1757,9 +1760,9 @@ the settings page's project scope are `config-ui.md`'s D1461–D1463.
   name, T3's rule), then "Add action". Running one calls `scripts.run`,
   shows its terminal in the drawer (`terminal.reveal`) and, with
   `autoOpenPreview` and a `previewUrl`, opens the preview at it
-  (`preview.md` D1480). A
-  client without `terminals.write` sees the button disabled with T3's
-  "Pair this client again with permission to run terminal commands.".
+  (`preview.md` D1480); a failure says T3's "Failed to run script
+  "<name>"." in a toast. The menu lists the scripts of the open thread's
+  project, so a draft (no thread yet) can add and edit but not run one.
 - **D1474. T3's "Add Action" dialog** (`ProjectScriptEditorDialog`, its
   words): Name with the icon picker (Play, Test, Lint, Configure, Build,
   Debug), Keybinding ("Press shortcut"; Backspace clears), Command (a text
@@ -1883,6 +1886,12 @@ W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
 - `t3.json` (D1465): its `iconPath` (Jhin has no project icon yet) and
   `defaultThreadEnvMode` (Jhin has no node setting for where new threads
   start; the composer's workspace selector decides).
+- The scripts control (D1473): T3 disables "Run" with "Pair this client
+  again with permission to run terminal commands." for a client without
+  that scope; the web client cannot read its own permissions yet
+  (`preview.md`'s `canConfigure` item), so such a client gets the node's
+  refusal in a toast. T3's other places for it (the thread details card's
+  panel mode, the compact header's menu) are not ported.
 - Settle scripts (D1476): T3 closes a settled thread's idle terminals before
   the script runs (`closeIdle`); Jhin leaves them open.
 - Branch naming (D1126, D1127; a text area and per project since D1466):
