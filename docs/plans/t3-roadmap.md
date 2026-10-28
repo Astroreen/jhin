@@ -723,6 +723,20 @@ app is released unsigned (`allow_unsigned`, D1482).
   "Read-only connection", merging a change made on disk, markdown's task
   boxes); T3's Usage page beyond "Limits"; the matching items of
   `providers.md` and `terminal.md`.
+  **Done** (D1641–D1657): T3's "Reopen Closed Tab", the explorer's row
+  menu and its rows dragged into the composer, a file chip's menu,
+  ⌘/Ctrl-click and folder suffix, "Open in" for a worktree's file (#340);
+  the editor's pending dot, "Read-only connection", disk changes taken
+  while nothing waits and ticking markdown's task boxes (#349); a steer a
+  turn ended before it took, `threads.queue.steer` into an ending turn, the
+  first title outside the queue's lock and idempotent sends (#342); T3's
+  restart as a new attempt, folded as "Superseded attempt" (#345); an
+  account's reset credits and "Use reset" (#350). Left in
+  `t3-parity.md#deferred`: T3's Usage "Cost" and "Tokens" views (D1657),
+  the right panel's animation, audio and device renaming, find in a
+  thread's leftovers, attachments, the details panel's densities, the
+  older Claude Code CLIs' steering, a steered message's removal written
+  twice, and the edge cases each decision lists.
 - **W46:** `source-control.md`'s Deferred list: checkpoints (T3's fast path
   through the real index) and "Roll back" of a checkpoint item; T3's
   "Publish repository" and the git actions' writing style settings,
