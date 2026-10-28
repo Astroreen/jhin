@@ -363,6 +363,7 @@ export default definePlugin({
           : { interactionMode: definition.interactionMode }),
         ...(definition.instructions === undefined ? {} : { instructions: definition.instructions }),
         skills: [...(definition.skills ?? [])],
+        ...(definition.userSettings === undefined ? {} : { userSettings: definition.userSettings }),
         ...(home === undefined
           ? {}
           : {
@@ -478,6 +479,8 @@ export default definePlugin({
                 request.instructions === undefined
                   ? instructions
                   : `${instructions}\n\n${request.instructions}`,
+              // The node user's own settings only when the owner chose them (D1561).
+              userSettings: current.userSettings ?? false,
             });
           // A generation's first turn also starts from the lore (A4, D671).
           return first ? deferredTurn(loreBrief(agentId), begin) : begin("");

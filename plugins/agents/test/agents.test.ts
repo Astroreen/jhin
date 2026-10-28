@@ -83,6 +83,32 @@ describe("defined agents", () => {
     ).rejects.toMatchObject({ code: "AGENT_IS_RUNTIME" });
   });
 
+  it("loads the node user's own settings only when the definition says so (D1561)", async () => {
+    const { client, requests } = await node({
+      agents: { builder: { ...builder, userSettings: true } },
+    });
+    expect(await client.call("agents.get", { agentId: "builder" })).toMatchObject({
+      userSettings: true,
+    });
+    const { generation } = await client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      { agentId: "builder" },
+    );
+    const turns = watch(client, threadStream(generation.threadId));
+    await client.call("threads.send", { threadId: generation.threadId, text: "Go" });
+    await turns.until(ThreadEvents.turnCompleted);
+    expect(requests[0]?.userSettings).toBe(true);
+    // Unset, it takes the default again: off.
+    const updated = await client.call<{ userSettings?: boolean }>("agents.update", {
+      agentId: "builder",
+      unset: ["userSettings"],
+    });
+    expect(updated).not.toHaveProperty("userSettings");
+    await client.call("threads.send", { threadId: generation.threadId, text: "Again" });
+    await turns.until(ThreadEvents.turnCompleted, 1);
+    expect(requests[1]?.userSettings).toBe(false);
+  });
+
   it("runs a generation's turns on its runtime with its role and knowledge", async () => {
     const { client, requests } = await node({ agents: { builder } });
     const rotated = await client.call<{ generation: { number: number; threadId: string } }>(
@@ -132,6 +158,8 @@ describe("defined agents", () => {
     expect(first?.instructions).toContain(`jhin://${NODE_ID}/agents/builder`);
     expect(first?.instructions).toContain("generation 1");
     expect(first?.instructions).toContain(builder.role);
+    // The node user's own settings stay out unless the definition says so (D1561).
+    expect(first?.userSettings).toBe(false);
     // Knowledge first, by file name; only Markdown (D607).
     const text = first?.input.text ?? "";
     expect(text.indexOf("The map comes first.")).toBeLessThan(text.indexOf("smallest proof"));

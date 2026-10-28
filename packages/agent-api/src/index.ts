@@ -94,6 +94,14 @@ export interface TurnRequest {
    */
   readonly instructions?: string;
   /**
+   * Since 1.16: `false` leaves out the settings the node machine's user keeps for
+   * themselves (Claude Code's `~/.claude`: `CLAUDE.md`, memory, skills, plugins,
+   * hooks), so a defined agent works from its project and its instructions only
+   * (D1561). Absent loads them, as before; a runtime that cannot leave them out
+   * still runs the turn and loads them (Codex and OpenCode, for now).
+   */
+  readonly userSettings?: boolean;
+  /**
    * Since 1.2: values chosen for the model's `options`, only of those it
    * declares; its defaults for the rest.
    */
@@ -510,7 +518,7 @@ export interface AgentAuth {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`, 1.15 MCP apps: a tool call's `app` and `mcpApps`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`, 1.15 MCP apps: a tool call's `app` and `mcpApps`; 1.16 a turn's `userSettings`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */

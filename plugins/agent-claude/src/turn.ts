@@ -35,6 +35,7 @@ import type {
   SDKRateLimitInfo,
   SDKResultMessage,
   SDKUserMessage,
+  SettingSource,
 } from "@anthropic-ai/claude-agent-sdk";
 
 import {
@@ -868,6 +869,10 @@ export function claudeTurn(
     ...(deps.settings.binaryPath === undefined
       ? {}
       : { pathToClaudeCodeExecutable: deps.settings.binaryPath }),
+    // A defined agent leaves the node user's ~/.claude out (D1561): part of the launch key.
+    ...(request.userSettings === false
+      ? { settingSources: ["project", "local"] satisfies SettingSource[] }
+      : {}),
     // The config's variables only: the session adds the node's environment (session.ts).
     ...(deps.settings.env === undefined ? {} : { env: { ...deps.settings.env } }),
     systemPrompt: {
