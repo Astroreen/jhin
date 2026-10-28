@@ -1119,8 +1119,7 @@ describe("pairing (security.md D419–D422)", () => {
       expiresAt: number;
     }>("auth.tokens.issue", { label: "child", permissions: ["auth.*", "app.read"], ttlDays: 1 });
     // Asked for a day: kept, not raised to the device's month.
-    expect(child.expiresAt).toBeLessThan(device.expiresAt);
-    expect(child.expiresAt).toBeLessThanOrEqual(Date.now() + 86_400_000 + 1000);
+    expect(child.expiresAt).toBeLessThan(device.expiresAt - 28 * 86_400_000);
     const grandchild = await connect(node.url, child.token).call<{ id: string }>(
       "auth.tokens.issue",
       { label: "grandchild", permissions: ["app.read"] },

@@ -257,11 +257,14 @@ export default definePlugin({
      */
     const standingOf = (principal: string | undefined): ClientRecord | undefined => {
       let record = principal === undefined ? undefined : recordOf(principal);
+      const longest = clients.list().length;
       for (let hops = 0; record?.parent !== undefined; hops++) {
         if (record.parent === OWNER_PRINCIPAL_ID) return undefined;
         const parent = recordOf(record.parent);
-        // A parent that is gone was revoked, and this record with it; a cycle is no file we wrote.
-        if (parent === undefined || hops > clients.list().length) return record;
+        // A parent that is gone was revoked, and this record goes with it (its
+        // revoke cascades): what it issues stands on it and goes too. A cycle
+        // is no file this plugin wrote; the walk stops there.
+        if (parent === undefined || hops > longest) return record;
         record = parent;
       }
       return record;
