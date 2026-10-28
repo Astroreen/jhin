@@ -744,6 +744,28 @@ app is released unsigned (`allow_unsigned`, D1482).
   pinned to commit SHAs with Dependabot, a notice when the weekly dry run
   fails, T3's annotation Region and Draw; `mesh-streams.md`'s relay and
   trimming leftovers as far as the preview's streams need them.
+  **Done** (D1681–D1694; D1683 and D1695–D1700 unused): #330 T3's work
+  log for the preview's, device and HTML tools, "Used browser 3 times",
+  through a new `chat.tools@1` (`preview.md` D1681, D1682); #328
+  `ci.yml`'s Chromium and its packages cached per runner image, every
+  workflow's actions pinned to SHAs with Dependabot, an issue when the
+  weekly dry run fails (`desktop.md` D1684–D1686), with Dependabot's first
+  bump #348 and #354's fix of the two browser tests it tripped on; #332
+  `jhin serve`'s ready message and graceful stop over a Node IPC channel,
+  which Windows lacks a signal for (D1687, D1688); #335 a content security
+  policy for rendered pages in the reader's client (`preview.md` D1689);
+  #346 T3's annotation Region, Draw and Erase (D1690, D1691); #351 the
+  node pushes its local servers to the panels (`preview.md` D1692, D1693);
+  #353 the app leaves the Claude Agent SDK's native binary out and runs
+  `claude` from the PATH, every installer 41–46% smaller (D1694). Left in
+  `preview.md#deferred`: a binary channel for frames and for transfers above
+  64 MiB, the floating player's leftovers, a device tab's renaming and
+  tooltip (the right panel's tab strip is W45's), the pushed list reaching
+  a mesh member's servers, what the page policy cannot stop; in
+  `desktop.md#deferred`: the rest of the app's size (source maps, the
+  client's libraries a node install carries, asar), Region/Draw's style
+  panel and source lookup; `mesh-streams.md`'s relay and trimming leftovers
+  stay as they are: the preview's streams needed none of them.
 - **W48:** `security.md`'s Deferred list: a pairing proof remembered against
   replay and bound to its request, bearer tokens a device with
   `auth.write` can issue, DPoP beyond what the web client pairs by a code,
