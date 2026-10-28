@@ -492,6 +492,70 @@ describe("teams across the mesh (A5)", () => {
     expect(stopped.stoppedAt).toBeDefined();
   });
 
+  it("removes a team's agents on each node with teams.down remove, and tells of one that is away (D1572)", async () => {
+    const network = createMemoryNetwork();
+    const spec = {
+      teams: { workshop: { lead: "lead", agents: { lead, builder: { ...builder, node: "b" } } } },
+    };
+    const a = await meshNode(network, "a", { "jhin.teams": spec });
+    const b = await meshNode(network, "b");
+    await b.join(a);
+    const agentOn = (node: typeof a, agentId: string) =>
+      node.kernel.commands.execute("agents.get", { agentId });
+    const up = () => a.kernel.commands.execute("teams.up", { teamId: "workshop" });
+    const roster = () =>
+      a.kernel.commands.execute("teams.resolve", { alias: "lead@workshop" }) as Promise<unknown>;
+
+    // Without remove, down is as before: stopped, definitions and roster stay.
+    await up();
+    expect(await a.kernel.commands.execute("teams.down", { teamId: "workshop" })).toEqual({
+      members: [
+        expect.objectContaining({ member: "lead", stoppedAt: expect.any(String) }),
+        expect.objectContaining({ member: "builder", stoppedAt: expect.any(String) }),
+      ],
+    });
+    expect(await agentOn(b, "workshop-builder")).toMatchObject({ kind: "defined" });
+    expect(await roster()).toMatchObject({ address: "jhin://a/agents/workshop-lead" });
+
+    // With it, both definitions go, their knowledge stays, and so does the spec.
+    const knowledge = ((await agentOn(a, "workshop-lead")) as AgentRecord).knowledgeDir!;
+    Fs.mkdirSync(knowledge, { recursive: true });
+    Fs.writeFileSync(Path.join(knowledge, "notes.md"), "kept");
+    const removed = (await a.kernel.commands.execute("teams.down", {
+      teamId: "workshop",
+      remove: true,
+    })) as { members: { removed?: boolean; error?: unknown }[] };
+    expect(removed.members).toEqual([
+      expect.objectContaining({ member: "lead", removed: true }),
+      expect.objectContaining({ member: "builder", removed: true }),
+    ]);
+    await expect(agentOn(a, "workshop-lead")).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+    await expect(agentOn(b, "workshop-builder")).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+    expect(Fs.readFileSync(Path.join(knowledge, "notes.md"), "utf8")).toBe("kept");
+    await expect(roster()).rejects.toMatchObject({ code: "TEAM_NOT_UP" });
+
+    // The spec stays: up defines the team afresh.
+    expect(((await up()) as Up).members).toEqual([
+      expect.objectContaining({ result: "defined" }),
+      expect.objectContaining({ result: "defined" }),
+    ]);
+
+    // With b away, its member says so and the local one is still removed.
+    await b.stop();
+    const partial = (await a.kernel.commands.execute("teams.down", {
+      teamId: "workshop",
+      remove: true,
+    })) as { members: { member: string; removed?: boolean; error?: { code: string } }[] };
+    expect(partial.members).toEqual([
+      expect.objectContaining({ member: "lead", removed: true }),
+      expect.objectContaining({
+        member: "builder",
+        error: expect.objectContaining({ code: "NODE_UNREACHABLE" }),
+      }),
+    ]);
+    await expect(agentOn(a, "workshop-lead")).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+  });
+
   it("adds a member's home project on the member's node, with the caller's grant (D1105)", async () => {
     const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-remote-"));
     const other = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-team-remote-"));
