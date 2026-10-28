@@ -211,6 +211,8 @@ interface ConfigFiles {
   readonly project: Record<string, unknown> | undefined;
   /** The node file's comments, then the project file's (D81). */
   readonly comments: readonly Map<string, ConfigComment[]>[];
+  /** The JSON Schema of every defined section, assembled once for the read. */
+  readonly schemas: Readonly<Record<string, unknown>>;
 }
 
 /** JSON with object keys sorted: a file whose keys only moved has not changed. */
@@ -503,10 +505,11 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         node: readLayer(home.config, log),
         project: readLayer(projectConfig, log),
         comments: [commentsOf(home.config), commentsOf(projectConfig)],
+        schemas: (kernel.config.jsonSchema() as { properties: Record<string, unknown> }).properties,
       });
       const readSection = (section: string, files: ConfigFiles): z.output<typeof ConfigRead> => {
         // Secrets never leave the node (security.md D417).
-        const schema = sectionSchema(section);
+        const schema = Object.hasOwn(files.schemas, section) ? files.schemas[section] : undefined;
         const hide = (value: unknown) => redactSecrets(schema, value);
         const raw = {
           node: files.node?.[section],
@@ -593,9 +596,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         permissions: ["host.config.read"],
         handler: ({ sections }) => {
           const files = readFiles();
-          const names =
-            sections ??
-            Object.keys((kernel.config.jsonSchema() as { properties: object }).properties);
+          const names = sections ?? Object.keys(files.schemas);
           return {
             sections: Object.fromEntries(
               names.map((section) => [section, readSection(section, files)]),
