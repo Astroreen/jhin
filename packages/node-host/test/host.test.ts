@@ -606,6 +606,12 @@ export default definePlugin({
       value: { ...hidden, project: "••••••" },
       layers: { node: hidden, project: { project: "••••••" } },
     });
+    // Read with every section at once, the same (config-ui.md D1624).
+    const all = await host.execute("host.config.sections", {});
+    expect(all.value.sections["acme.vault"]).toEqual(read.value);
+    expect(JSON.stringify(all.value)).not.toMatch(
+      /s3cret|1234|a-value|k-one|k-two|project-secret|xyz/,
+    );
     expect(JSON.stringify(read.value)).not.toMatch(
       /s3cret|1234|a-value|k-one|k-two|project-secret/,
     );
@@ -813,6 +819,52 @@ export default definePlugin({
       title: "Example",
       properties: { greeting: { title: "Greeting", default: "Hello" } },
     });
+  });
+
+  it("reads every config section at once, as host.config.get reads each (config-ui.md D1624)", async () => {
+    const home = tempDir("home");
+    const cwd = tempDir("cwd");
+    Fs.writeFileSync(
+      Path.join(home, "config.jsonc"),
+      '{\n  // Mine.\n  "jhin.example": {\n    // Said first.\n    "greeting": "Hello"\n  },\n  "acme.none": { "a": 1 }\n}\n',
+    );
+    Fs.mkdirSync(Path.join(cwd, ".jhin"));
+    Fs.writeFileSync(
+      Path.join(cwd, ".jhin", "config.jsonc"),
+      '{\n  "jhin.example": {\n    "greeting": "Howdy"\n  }\n}\n',
+    );
+    host = new HostProcess({ home, cwd, distribution: [EXAMPLE] });
+    await host.ready();
+
+    const all = await host.execute("host.config.sections", {});
+    const schema = await host.execute("host.config.schema", {});
+    // Every section a plugin defines, and only those.
+    expect(Object.keys(all.value.sections).toSorted()).toEqual(
+      Object.keys(schema.value.properties).toSorted(),
+    );
+    for (const section of Object.keys(all.value.sections)) {
+      const one = await host.execute("host.config.get", { section });
+      expect(all.value.sections[section]).toEqual(one.value);
+    }
+    expect(all.value.sections["jhin.example"]).toEqual({
+      value: { greeting: "Howdy" },
+      layers: { node: { greeting: "Hello" }, project: { greeting: "Howdy" } },
+      comments: [
+        { path: [], text: "Mine." },
+        { path: ["greeting"], text: "Said first." },
+      ],
+    });
+
+    // Named sections, a section no plugin defines among them, answer as host.config.get does.
+    const named = await host.execute("host.config.sections", {
+      sections: ["acme.none", "jhin.example"],
+    });
+    expect(Object.keys(named.value.sections)).toEqual(["acme.none", "jhin.example"]);
+    expect(named.value.sections["acme.none"]).toEqual(
+      (await host.execute("host.config.get", { section: "acme.none" })).value,
+    );
+    // Its schema unknown, every value of it is hidden (security.md D417).
+    expect(named.value.sections["acme.none"].layers).toEqual({ node: { a: "••••••" } });
   });
 
   it("removes the keys a patch unsets, keeping the file's comments", async () => {

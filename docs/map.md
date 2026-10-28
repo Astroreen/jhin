@@ -97,7 +97,8 @@ progress line), and `agent.registry` 1.6 keeps it on the subagent thread's
 | `jhin.example`        | the template for new plugins                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `example.greet`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `plugins/example/README.md`                                    |
 
 The host itself adds `host.inspect`, `host.identity`, `host.commands.list`,
-`host.config.get`, `host.config.patch`, `host.config.edit` (leaf paths, D476),
+`host.config.get`, `host.config.sections` (every section in one read,
+`plans/config-ui.md` D1624), `host.config.patch`, `host.config.edit` (leaf paths, D476),
 `host.config.schema`, `host.config.secrets.migrate` (config secrets into the
 secret store, `plans/security.md` D1027),
 `host.plugins.reload` and `host.plugins.rescan`.
@@ -107,7 +108,9 @@ The builtin `jhin.host-streams` serves the live streams `host/config`
 (`host.config.changed`, `plans/config-ui.md` D483) and `host/device-settings`
 (`host.device-settings.get`/`.patch`, D487).
 `@jhin/host-api`'s `sendConfigChange` sends a config change to a node of any
-age (`configEdits`, `configChange`; `plans/config-ui.md` D475).
+age (`configEdits`, `configChange`; `plans/config-ui.md` D475), and `readConfigSections` reads
+sections from a node of any age (D1624); `configCommentsBySection` (`@jhin/kernel`)
+reads the comments of every section of a file in one pass.
 A config field asks for a control a plugin contributes with
 `.meta({ control })`: the slot `settings.config.control.<name>`
 (`configControlSlot`, `ConfigControlProps` in `@jhin/client-api`; `Slot`'s

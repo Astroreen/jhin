@@ -1,4 +1,4 @@
-import { configComments } from "@jhin/kernel";
+import { configComments, configCommentsBySection } from "@jhin/kernel";
 import { describe, expect, it } from "vite-plus/test";
 
 describe("comments above config keys (D81)", () => {
@@ -85,5 +85,26 @@ describe("comments above config keys (D81)", () => {
     expect(configComments("", "s")).toEqual([]);
     expect(configComments('{ "s": { "a": 1 } }', "s")).toEqual([]);
     expect(configComments('{ "t": { /* x */ "a": 1 } }', "s")).toEqual([]);
+  });
+
+  it("reads every section's comments in one pass, as each alone (config-ui.md D1624)", () => {
+    const text = `{
+  // First.
+  "a": {
+    // Its key.
+    "k": 1,
+  },
+  "b": { "x": [{ /* in an array */ "y": 1 }] },
+  "c": {
+    // Third.
+    "z": true,
+  },
+}`;
+    const all = configCommentsBySection(text);
+    expect([...all.keys()]).toEqual(["a", "c"]);
+    for (const section of ["a", "b", "c"]) {
+      expect(all.get(section) ?? []).toEqual(configComments(text, section));
+    }
+    expect(all.get("c")).toEqual([{ path: ["z"], text: "Third." }]);
   });
 });

@@ -4,7 +4,7 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import {
-  configComments,
+  configCommentsBySection,
   createKernel,
   KernelError,
   parseConfigText,
@@ -195,13 +195,24 @@ function readLayer(file: string, log: Logger): Record<string, unknown> | undefin
   }
 }
 
-/** The comments above the keys of `section` in `file` (D81); none when it is missing or unreadable. */
-function commentsOf(file: string, section: string): ConfigComment[] {
+/** The comments above the keys of each section in `file` (D81); none when it is missing or unreadable. */
+function commentsOf(file: string): Map<string, ConfigComment[]> {
   try {
-    return Fs.existsSync(file) ? configComments(Fs.readFileSync(file, "utf8"), section) : [];
+    return Fs.existsSync(file) ? configCommentsBySection(Fs.readFileSync(file, "utf8")) : new Map();
   } catch {
-    return [];
+    return new Map();
   }
+}
+
+/** The node and project config files as one config read sees them. */
+interface ConfigFiles {
+  /** `undefined` where a file does not parse. */
+  readonly node: Record<string, unknown> | undefined;
+  readonly project: Record<string, unknown> | undefined;
+  /** The node file's comments, then the project file's (D81). */
+  readonly comments: readonly Map<string, ConfigComment[]>[];
+  /** The JSON Schema of every defined section, assembled once for the read. */
+  readonly schemas: Readonly<Record<string, unknown>>;
 }
 
 /** JSON with object keys sorted: a file whose keys only moved has not changed. */
@@ -475,92 +486,137 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         permissions: ["host.config.write"],
         handler: ({ layer }) => migrateSecrets(layer === undefined ? ["node", "project"] : [layer]),
       });
+      /** What `host.config.get` answers (D81, D84); secrets never leave the node (security.md D417). */
+      const ConfigRead = z.object({
+        /** Absent when the section is not defined or its value is invalid. */
+        value: z.unknown().optional(),
+        error: z.string().optional(),
+        /** Why the effective value is invalid, by path inside the section (D84). */
+        issues: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
+        layers: z.object({ node: z.unknown().optional(), project: z.unknown().optional() }),
+        /**
+         * The comment directly above each key of the section in the node
+         * file, then in the project file; the first for a path counts (D81).
+         */
+        comments: z.array(z.object({ path: z.array(z.string()).readonly(), text: z.string() })),
+      });
+      /** Both config files, each read and parsed once, with the comments of every section. */
+      const readFiles = (): ConfigFiles => ({
+        node: readLayer(home.config, log),
+        project: readLayer(projectConfig, log),
+        comments: [commentsOf(home.config), commentsOf(projectConfig)],
+        schemas: (kernel.config.jsonSchema() as { properties: Record<string, unknown> }).properties,
+      });
+      const readSection = (section: string, files: ConfigFiles): z.output<typeof ConfigRead> => {
+        // Secrets never leave the node (security.md D417).
+        const schema = Object.hasOwn(files.schemas, section) ? files.schemas[section] : undefined;
+        const hide = (value: unknown) => redactSecrets(schema, value);
+        const raw = {
+          node: files.node?.[section],
+          project: files.project?.[section],
+        };
+        const shown = { node: hide(raw.node), project: hide(raw.project) };
+        // A refinement's message may quote the value it refused: the files' text,
+        // and the values their secret references resolve to (D1026).
+        const resolved = applied.get(kernel);
+        const secrets = [
+          ...secretTexts(schema, raw.node),
+          ...secretTexts(schema, raw.project),
+          ...secretTexts(schema, resolved?.get("node")?.[section]),
+          ...secretTexts(schema, resolved?.get("project")?.[section]),
+        ];
+        // Issue paths are dotted, as the kernel reports them.
+        const secretAt = new Set(
+          [...secretPaths(schema, raw.node), ...secretPaths(schema, raw.project)].map((path) =>
+            path.join("."),
+          ),
+        );
+        /** An issue about a secret says so without its own message, which may quote it. */
+        const aboutSecret = (path: string) =>
+          [...secretAt].some((secret) => path === secret || path.startsWith(`${secret}.`));
+        const comments: ConfigComment[] = [];
+        const seen = new Set<string>();
+        for (const file of files.comments) {
+          for (const comment of file.get(section) ?? []) {
+            const key = JSON.stringify(comment.path);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            comments.push(comment);
+          }
+        }
+        try {
+          return { value: hide(kernel.config.get(section)), layers: shown, comments };
+        } catch (error) {
+          const issues =
+            error instanceof KernelError && Array.isArray(error.details["issues"])
+              ? (error.details["issues"] as { path: string; message: string }[])
+              : undefined;
+          return {
+            // An invalid value: the summary without the issues' messages, which may
+            // quote a secret. Anything else (a section no plugin defines) as it is.
+            error:
+              error instanceof KernelError && error.code === "CONFIG_INVALID"
+                ? `Config section ${section} is invalid${issues === undefined ? "" : ` (${issues.length} ${issues.length === 1 ? "issue" : "issues"})`}`
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
+            ...(issues === undefined
+              ? {}
+              : {
+                  issues: issues.map((issue) => ({
+                    path: issue.path,
+                    message: aboutSecret(issue.path)
+                      ? "Not valid (a secret, so its message is not shown)"
+                      : scrub(issue.message, secrets),
+                  })),
+                }),
+            layers: shown,
+            comments,
+          };
+        }
+      };
       context.commands.register({
         name: "host.config.get",
         description:
           "A config section of this node: its effective value, what the node and project files set, and the comments above their keys",
         input: z.object({ section: z.string().regex(DOTTED_ID) }),
-        output: z.object({
-          /** Absent when the section is not defined or its value is invalid. */
-          value: z.unknown().optional(),
-          error: z.string().optional(),
-          /** Why the effective value is invalid, by path inside the section (D84). */
-          issues: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
-          layers: z.object({ node: z.unknown().optional(), project: z.unknown().optional() }),
-          /**
-           * The comment directly above each key of the section in the node
-           * file, then in the project file; the first for a path counts (D81).
-           */
-          comments: z.array(z.object({ path: z.array(z.string()).readonly(), text: z.string() })),
-        }),
+        output: ConfigRead,
         permissions: ["host.config.read"],
-        handler: ({ section }) => {
-          // Secrets never leave the node (security.md D417).
-          const schema = sectionSchema(section);
-          const hide = (value: unknown) => redactSecrets(schema, value);
-          const raw = {
-            node: readLayer(home.config, log)?.[section],
-            project: readLayer(projectConfig, log)?.[section],
-          };
-          const files = { node: hide(raw.node), project: hide(raw.project) };
-          // A refinement's message may quote the value it refused: the files' text,
-          // and the values their secret references resolve to (D1026).
-          const resolved = applied.get(kernel);
-          const secrets = [
-            ...secretTexts(schema, raw.node),
-            ...secretTexts(schema, raw.project),
-            ...secretTexts(schema, resolved?.get("node")?.[section]),
-            ...secretTexts(schema, resolved?.get("project")?.[section]),
-          ];
-          // Issue paths are dotted, as the kernel reports them.
-          const secretAt = new Set(
-            [...secretPaths(schema, raw.node), ...secretPaths(schema, raw.project)].map((path) =>
-              path.join("."),
+        handler: ({ section }) => readSection(section, readFiles()),
+      });
+      context.commands.register({
+        name: "host.config.sections",
+        description:
+          "What host.config.get answers for every config section of this node, or for the ones named, keyed by section; each file is read once (config-ui.md D1624)",
+        input: z.object({
+          /** The sections to read; every section a plugin defines when absent. */
+          sections: z.array(z.string().regex(DOTTED_ID)).max(1000).optional(),
+        }),
+        output: z.object({ sections: z.record(z.string(), ConfigRead) }),
+        permissions: ["host.config.read"],
+        handler: ({ sections }) => {
+          const files = readFiles();
+          const names =
+            sections === undefined ? Object.keys(files.schemas) : [...new Set(sections)];
+          return {
+            sections: Object.fromEntries(
+              names.map((section) => {
+                // One section that cannot be read fails alone, as its own host.config.get would.
+                try {
+                  return [section, readSection(section, files)];
+                } catch (error) {
+                  return [
+                    section,
+                    {
+                      error: `Config section ${section} cannot be read: ${error instanceof Error ? error.message : String(error)}`,
+                      layers: {},
+                      comments: [],
+                    },
+                  ];
+                }
+              }),
             ),
-          );
-          /** An issue about a secret says so without its own message, which may quote it. */
-          const aboutSecret = (path: string) =>
-            [...secretAt].some((secret) => path === secret || path.startsWith(`${secret}.`));
-          const comments: ConfigComment[] = [];
-          const seen = new Set<string>();
-          for (const file of [home.config, projectConfig]) {
-            for (const comment of commentsOf(file, section)) {
-              const key = JSON.stringify(comment.path);
-              if (seen.has(key)) continue;
-              seen.add(key);
-              comments.push(comment);
-            }
-          }
-          try {
-            return { value: hide(kernel.config.get(section)), layers: files, comments };
-          } catch (error) {
-            const issues =
-              error instanceof KernelError && Array.isArray(error.details["issues"])
-                ? (error.details["issues"] as { path: string; message: string }[])
-                : undefined;
-            return {
-              // An invalid value: the summary without the issues' messages, which may
-              // quote a secret. Anything else (a section no plugin defines) as it is.
-              error:
-                error instanceof KernelError && error.code === "CONFIG_INVALID"
-                  ? `Config section ${section} is invalid${issues === undefined ? "" : ` (${issues.length} ${issues.length === 1 ? "issue" : "issues"})`}`
-                  : error instanceof Error
-                    ? error.message
-                    : String(error),
-              ...(issues === undefined
-                ? {}
-                : {
-                    issues: issues.map((issue) => ({
-                      path: issue.path,
-                      message: aboutSecret(issue.path)
-                        ? "Not valid (a secret, so its message is not shown)"
-                        : scrub(issue.message, secrets),
-                    })),
-                  }),
-              layers: files,
-              comments,
-            };
-          }
+          };
         },
       });
       const DeviceSection = z.object({

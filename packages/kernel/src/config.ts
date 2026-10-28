@@ -11,6 +11,8 @@ type Values = Record<string, unknown>;
 interface Section {
   readonly plugin: string;
   readonly schema: z.ZodType;
+  /** Its JSON Schema, converted once: converting is most of a config read (config-ui.md D1621). */
+  json?: unknown;
 }
 
 interface Listener {
@@ -58,6 +60,15 @@ export function parseConfigText(text: string, source = "config"): Values {
   return value;
 }
 
+/** `value` and everything in it frozen: a shared JSON Schema cannot be changed by one reader. */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const item of Object.values(value)) deepFreeze(item);
+  }
+  return value;
+}
+
 /** A comment written directly above a key of a config file. */
 export interface ConfigComment {
   /** The key's path inside its section; `[]` for the section's own key. */
@@ -85,7 +96,12 @@ function commentText(raw: string): string {
  * paragraph. A file that does not parse gives what was read before the error.
  */
 export function configComments(text: string, section: string): ConfigComment[] {
-  const found: ConfigComment[] = [];
+  return configCommentsBySection(text).get(section) ?? [];
+}
+
+/** {@link configComments} of every section of the file, read in one pass (config-ui.md D1624). */
+export function configCommentsBySection(text: string): Map<string, ConfigComment[]> {
+  const found = new Map<string, ConfigComment[]>();
   /** Comment lines read since the last token, with the line each ends on. */
   let pending: { text: string; endLine: number }[] = [];
   let lastTokenLine = -1;
@@ -116,7 +132,8 @@ export function configComments(text: string, section: string): ConfigComment[] {
         const above = pending.at(-1)?.endLine === line - 1 ? pending : [];
         token(line);
         const path = [...pathSupplier(), property];
-        if (path[0] !== section || path.some((part) => typeof part !== "string")) return;
+        const section = path[0];
+        if (typeof section !== "string" || path.some((part) => typeof part !== "string")) return;
         const words = above
           .map((comment) => comment.text)
           .join("\n")
@@ -124,7 +141,11 @@ export function configComments(text: string, section: string): ConfigComment[] {
           .map((paragraph) => paragraph.split("\n").join(" ").replaceAll(/\s+/g, " ").trim())
           .filter((paragraph) => paragraph !== "")
           .join("\n\n");
-        if (words !== "") found.push({ path: path.slice(1) as string[], text: words });
+        if (words === "") return;
+        const comments = found.get(section);
+        const comment = { path: path.slice(1) as string[], text: words };
+        if (comments === undefined) found.set(section, [comment]);
+        else comments.push(comment);
       },
     },
     { allowTrailingComma: true, disallowComments: false },
@@ -219,13 +240,19 @@ export class ConfigRegistry {
     return toDisposable(() => this.#listeners.delete(entry));
   }
 
-  /** JSON Schema of the whole config, assembled from every defined section. */
+  /**
+   * JSON Schema of the whole config, assembled from every defined section.
+   * Each section's schema is converted once and shared between calls, frozen.
+   */
   jsonSchema(): unknown {
     const properties: Values = {};
     for (const [section, entry] of [...this.#sections.entries()].toSorted(([a], [b]) =>
       a.localeCompare(b),
     )) {
-      properties[section] = z.toJSONSchema(entry.schema, { io: "input", unrepresentable: "any" });
+      entry.json ??= deepFreeze(
+        z.toJSONSchema(entry.schema, { io: "input", unrepresentable: "any" }),
+      );
+      properties[section] = entry.json;
     }
     return { type: "object", properties };
   }
