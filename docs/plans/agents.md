@@ -2553,6 +2553,20 @@ Decisions (M3):
   takes only the `away` marks from the fresh `agents.inbox.list`. Nothing is
   pushed: `away` stays derived by the node from `members()` (D1551), never
   stored or put on the `agents/inbox` stream, so no event type is added.
+- **D1567. A proof or review from another node records the agent.** A
+  forwarded missions command (D1542) carries `by`, the address of the agent
+  whose thread made the call on the calling node (its generation, D622);
+  every missions command's input has it beside `node`. The mission's node
+  honours it only for a call of node X (caller `node:X`) when the address
+  lives on X (D622: a node speaks only for its own parties), and then only
+  the records' `by` names that address (`recordedBy`). The caller stays
+  `node:X`, so a guard that tells a mesh call apart (`RELAY_REFUSED`,
+  `MESH_ONLY`, D416) still sees one. Any other `by`, a local caller's too, is
+  ignored, and the record names the caller, `node:<X>` for another node, as
+  before.
+- **D1568. The forwarding node fills `by`.** It takes it from the call's
+  thread, so an agent cannot name another one; a call without a thread, or
+  from a thread that is no agent's generation, forwards no `by`.
 
 ## Deferred
 
@@ -2787,9 +2801,9 @@ Decisions (M3):
   (`others`, D1532), but Run from offers this node's only: a start through a
   relay is a mesh caller, which W10 refuses, so it needs a connection open to
   the agent's node.
-- M2: a proof or review an agent of another node records names its node
+- ~~M2: a proof or review an agent of another node records names its node
   (`by: node:<X>`), not the agent: the forwarded call runs as the node
-  (D1542, D416).
+  (D1542, D416).~~ M3, D1567.
 - M2: a review across nodes. `slices.review` and the reviewer's brief read
   the files and diff of the mission's node (D1242, D1244), so work done in a
   thread of another node is not what they see.

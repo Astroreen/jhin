@@ -31,6 +31,7 @@ import {
   type MissionsState,
   REVIEW_TREE_EXCLUDE,
   type ReviewedWork,
+  recordedBy,
 } from "@jhin/missions-api";
 import { HOST_IDENTITY_CAPABILITY, type HostIdentity } from "@jhin/host-api";
 import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
@@ -131,7 +132,7 @@ export default definePlugin({
           if (type === undefined) return record;
           const payload = {
             [MISSION_EVENT_RECORD[type]]: record,
-            ...(invocation.caller === undefined ? {} : { by: invocation.caller.id }),
+            ...(recordedBy(invocation) === undefined ? {} : { by: recordedBy(invocation) }),
             ...(invocation.traceId === undefined ? {} : { traceId: invocation.traceId }),
           } as unknown as Json;
           try {
@@ -846,7 +847,7 @@ export default definePlugin({
               proof: {
                 items,
                 recordedAt: at,
-                ...(invocation.caller === undefined ? {} : { by: invocation.caller.id }),
+                ...(recordedBy(invocation) === undefined ? {} : { by: recordedBy(invocation) }),
               },
               updatedAt: at,
             } satisfies Slice,
@@ -918,7 +919,7 @@ export default definePlugin({
                 ...(notes === undefined || notes.trim() === "" ? {} : { notes }),
                 ...(work === undefined ? {} : { work }),
                 recordedAt: at,
-                ...(invocation.caller === undefined ? {} : { by: invocation.caller.id }),
+                ...(recordedBy(invocation) === undefined ? {} : { by: recordedBy(invocation) }),
               },
               updatedAt: at,
             } satisfies Slice,

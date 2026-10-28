@@ -176,7 +176,86 @@ describe("a slice handed to an agent of another node (D1541–D1543)", () => {
     ).toMatchObject({ id: walls.id, status: "done" });
     expect(await a.client.call("slices.get", { sliceId: walls.id })).toMatchObject({
       status: "done",
+      proof: { by: builderOf("b") },
+    });
+  });
+
+  it("records the agent of the calling node, and the node for a party it does not own (D1567–D1568)", async () => {
+    const { a, b, slice } = await mesh();
+    const walls = await slice({ title: "Walls", assignee: builderOf("b") });
+    const roof = await slice({ title: "Roof", assignee: builderOf("b") });
+    const { threadId } = await a.client.call<{ threadId: string }>("slices.handoff", {
+      sliceId: walls.id,
+    });
+    const asBuilder = {
+      threadId,
+      caller: { id: `jhin.agent-fake:${threadId}`, permissions: AGENT_GRANTS },
+    };
+    await b.node.kernel.commands.execute(
+      "slices.prove",
+      { sliceId: walls.id, items: PROOF, node: "a" },
+      asBuilder,
+    );
+    await b.node.kernel.commands.execute(
+      "slices.review",
+      { sliceId: walls.id, verdict: "approved", node: "a" },
+      asBuilder,
+    );
+    expect(await a.client.call("slices.get", { sliceId: walls.id })).toMatchObject({
+      proof: { by: builderOf("b") },
+      review: { by: builderOf("b") },
+    });
+
+    // A call of node b that names an agent of a third node stays node:b.
+    const asNodeB = { caller: { id: "node:b", permissions: ["missions.write"] } };
+    await a.node.kernel.commands.execute(
+      "slices.prove",
+      { sliceId: roof.id, items: PROOF, by: builderOf("c") },
+      asNodeB,
+    );
+    await a.node.kernel.commands.execute(
+      "slices.review",
+      { sliceId: roof.id, verdict: "approved", by: builderOf("c") },
+      asNodeB,
+    );
+    expect(await a.client.call("slices.get", { sliceId: roof.id })).toMatchObject({
       proof: { by: "node:b" },
+      review: { by: "node:b" },
+    });
+  });
+
+  it("keeps a call of node b a call of node b, and takes no agent from a local caller (D1567)", async () => {
+    const { a, slice } = await mesh();
+    const walls = await slice({ title: "Walls", assignee: builderOf("b") });
+    // Naming an agent of b does not make the call local: it is still not relayed to c.
+    await expect(
+      a.node.kernel.commands.execute(
+        "slices.get",
+        { sliceId: walls.id, node: "c", by: builderOf("b") },
+        { caller: { id: "node:b", permissions: ["missions.read", "mesh.call"] } },
+      ),
+    ).rejects.toMatchObject({ code: "RELAY_REFUSED" });
+    // The same through slices.handoff, which passes its invocation on to the agent's node.
+    await expect(
+      a.node.kernel.commands.execute(
+        "slices.handoff",
+        { sliceId: walls.id, node: "c", by: builderOf("b") },
+        {
+          caller: {
+            id: "node:b",
+            permissions: ["missions.write", "threads.write", "agents.message", "mesh.call"],
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "RELAY_REFUSED" });
+    // A caller of this node is not a node: `by` names nobody for it.
+    await a.node.kernel.commands.execute(
+      "slices.prove",
+      { sliceId: walls.id, items: PROOF, by: builderOf("a") },
+      { caller: { id: "owner", permissions: ["missions.write"] } },
+    );
+    expect(await a.client.call("slices.get", { sliceId: walls.id })).toMatchObject({
+      proof: { by: "owner" },
     });
   });
 
