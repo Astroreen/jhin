@@ -306,16 +306,23 @@ export function FilePanel(props: FilePanelProps) {
         }),
       name,
     );
-  /** Reads the file again in place, what shows staying until it comes (D1647). */
-  const refresh = (then?: () => void) => {
+  /** Bumped by each read again: only the newest one's answer shows. */
+  const reads = useRef(0);
+  /**
+   * Reads the file again in place, what shows staying until it comes (D1647). Whichever read
+   * lands, a written copy still shown goes then: it is on disk, and the read has it.
+   */
+  const refresh = () => {
     const at = key;
+    const sequence = (reads.current += 1);
     void readThis().then(
       (file) => {
-        if (keyRef.current !== at) return;
+        if (keyRef.current !== at || reads.current !== sequence) return;
         setRead((shown) => (shown?.key === at ? { key: at, ...file } : shown));
-        then?.();
+        const written = chat.fileEdits.draft(fileKey);
+        if (written?.confirmed === true) chat.fileEdits.settle(fileKey, written);
       },
-      // A failed read again keeps what shows.
+      // A failed read again keeps what shows, the written copy too, until a read lands.
       () => undefined,
     );
   };
@@ -379,8 +386,8 @@ export function FilePanel(props: FilePanelProps) {
       onConfirmed: (contents) => {
         const written = chat.fileEdits.confirm(fileKey, contents);
         if (written === undefined) return false;
-        // T3 reads the file again after its write; the written text shows until then.
-        refreshRef.current(() => chat.fileEdits.settle(fileKey, written));
+        // T3 reads the file again after its write; the written text shows until a read lands.
+        refreshRef.current();
         return true;
       },
       onError: (error) => {
@@ -400,7 +407,7 @@ export function FilePanel(props: FilePanelProps) {
       if (coordinator.current === created) coordinator.current = undefined;
       created.dispose();
     };
-  }, [fileKey, editable, projectId]);
+  }, [fileKey, editable, projectId, props.target, props.threadId]);
   // Edits kept while nothing could be written go out once it can again (T3 queues its unsaved
   // draft when write access returns).
   useEffect(() => {

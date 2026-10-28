@@ -2698,6 +2698,11 @@ steer a Claude Code turn ended before it took go with them.
     read only at a turn's start or end or on reopening the file (Jhin's
     node watches files for source control only, and its events are that
     plugin's own); T3 reads again after each file change inside a turn too;
+    edits kept on a read-only connection (D1646) are written again only by
+    an open file panel, so a closed tab keeps its dot and its draft until
+    the file opens again; a write that fails for another reason is
+    written again with the next change only (as T3's coordinator, which
+    retries nothing by itself);
     the explorer's "Reveal in …" and a chip's
     "Preview media" and "Open in integrated browser" (T3 has them, D1642
     and D1643 leave them out); the explorer reads `editors.list` once per
