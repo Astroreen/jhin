@@ -553,7 +553,7 @@ test("D1622–D1626: every section on one page, jumped to from the navigation, e
   const titles = await entries.allTextContents();
   expect(titles.length).toBeGreaterThan(5);
   // The first section's form, read with every other section in one call (D1624).
-  const first = page.getByRole("region", { name: titles[0], exact: true });
+  const first = page.getByRole("region", { name: titles[0]!, exact: true });
   await expect(first.getByRole("button", { name: "Save" })).toBeVisible();
   info.annotations.push({
     type: "timing",
