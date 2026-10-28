@@ -1,11 +1,13 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac: the browser's part of
 // apps/web/src/rightPanelStore.ts (reconcileBrowserSurfaces and its hidden tabs, as ChatView.tsx
 // computes them) and apps/web/src/hooks/useRightPanelSurfaceClose.ts with
-// agentControlledBrowserCloseConfirmation of components/ChatView.logic.ts.
+// agentControlledBrowserCloseConfirmation of components/ChatView.logic.ts, and what
+// components/preview/closePreviewSession.ts keeps of a closed tab (its URL, viewport, profile).
 //
 // A thread's browser tabs as surfaces of the right panel (t3-parity.md D1424).
 import type { RightPanelSurface } from "@jhin/client-api";
-import type { PreviewTab } from "@jhin/preview-api";
+import { BrowserProfileId, PreviewViewportSetting, type PreviewTab } from "@jhin/preview-api";
+import { z } from "@jhin/sdk";
 
 import { NEW_TAB } from "./tab-title.ts";
 
@@ -63,4 +65,32 @@ export async function releaseBrowserTabs(input: {
   if (question !== undefined && !(await input.confirm(question))) return false;
   const results = await Promise.allSettled(closed.map((tab) => input.close(tab.tabId)));
   return results.every((result) => result.status === "fulfilled");
+}
+
+/** What "Reopen Closed Tab" keeps of a closed browser tab (D1641), as T3's snapshot. */
+const ClosedTab = z.object({
+  url: z.string().min(1).max(2048).optional(),
+  viewport: PreviewViewportSetting.optional(),
+  profileId: BrowserProfileId.optional(),
+});
+export type ClosedTab = z.infer<typeof ClosedTab>;
+
+/** T3's snapshot of a closed tab: the page it was on (none while idle), its viewport and profile. */
+export function closedTabOf(tab: PreviewTab): ClosedTab {
+  return {
+    ...(tab.navStatus.state === "idle" ? {} : { url: tab.navStatus.url }),
+    viewport: tab.viewport,
+    ...(tab.profileId === undefined ? {} : { profileId: tab.profileId }),
+  };
+}
+
+/** A kept snapshot, or undefined for none or a malformed one. */
+export function readClosedTab(kept: string | undefined): ClosedTab | undefined {
+  if (kept === undefined) return undefined;
+  try {
+    const parsed = ClosedTab.safeParse(JSON.parse(kept));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }

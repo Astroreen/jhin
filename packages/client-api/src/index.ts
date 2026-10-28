@@ -1123,6 +1123,8 @@ export interface RightPanelTab {
   readonly title: string;
   /** A React node; the kind's icon without it. */
   readonly icon?: unknown;
+  /** Since 1.1: T3's dot over the icon, while the surface holds unsaved changes (D1645). */
+  readonly pending?: boolean;
 }
 
 /** Whether "Add panel surface" may add a kind's surface here (T3's `*Available`). */
@@ -1190,6 +1192,21 @@ export interface RightPanelSurfaceKind {
   release?(
     place: RightPanelPlace,
     surfaces: readonly RightPanelSurface[],
+  ): boolean | Promise<boolean>;
+  /**
+   * Since 1.1: what "Reopen Closed Tab" keeps of a surface the user closed (D1641), read as
+   * it closes: a string kept with it, `null` to keep nothing (T3 keeps no terminal), or
+   * undefined to keep the surface alone.
+   */
+  remember?(props: RightPanelSurfaceProps): string | null | undefined;
+  /**
+   * Since 1.1: reopens a surface "Reopen Closed Tab" kept, with what `remember` gave (a
+   * browser tab opens its page again); whether it did. Without it the surface opens again.
+   */
+  reopen?(
+    place: RightPanelPlace,
+    surface: RightPanelSurface,
+    kept: string | undefined,
   ): boolean | Promise<boolean>;
   /** A React component filling the panel below the strip while the surface is active. */
   readonly component: RightPanelComponent<RightPanelSurfaceProps>;

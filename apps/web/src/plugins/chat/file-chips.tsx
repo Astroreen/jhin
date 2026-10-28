@@ -5,7 +5,7 @@
 // A file's chip and a skill's, in the prompt (D1003) and in a sent message (t3-parity.md D1341).
 import { ContextChip, ContextChipLabel, Tooltip, TooltipPopup, TooltipTrigger } from "@jhin/ui";
 import { BoxIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, MouseEvent } from "react";
 
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
@@ -23,12 +23,12 @@ export function SkillChipIcon() {
 
 /**
  * A file or folder: its Pierre icon and basename, its path in a tooltip; pressed, `onPreview`
- * (T3's mention chip). A folder opens nothing.
+ * (T3's mention chip), with the click for its ⌘/Ctrl (D1643). A folder opens nothing.
  */
 export function FileMentionChip(
   props: {
     readonly path: string;
-    readonly onPreview?: ((path: string) => void) | undefined;
+    readonly onPreview?: ((path: string, event: MouseEvent<HTMLElement>) => void) | undefined;
     /** In place of the basename: T3's `fileLinkLabel` of an agent's link ("a.ts · L12"). */
     readonly label?: string;
   } & Omit<ComponentProps<typeof ContextChip>, "kind" | "children">,
@@ -53,7 +53,7 @@ export function FileMentionChip(
         {...rest}
         aria-label={`Preview ${path}`}
         kind="mention"
-        onClick={() => preview(path)}
+        onClick={(event: MouseEvent<HTMLElement>) => preview(path, event)}
         render={<button type="button" />}
         spellCheck={false}
       >

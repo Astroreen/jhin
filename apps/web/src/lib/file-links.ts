@@ -1,6 +1,9 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac:
 // packages/shared/src/markdownLinks.ts, fileLinks.ts and path.ts: which links and inline code
-// of an agent's message name a file, and at which line (t3-parity.md D1430, D1431).
+// of an agent's message name a file, and at which line (t3-parity.md D1430, D1431); with
+// apps/web/src/filePathDisplay.ts and markdown-links.ts, how a file chip is labelled, copied and
+// ⌘/Ctrl-clicked (D1643).
+import { isMacPlatform } from "./keybindings.ts";
 
 function isWindowsDrivePath(value: string): boolean {
   return /^[a-zA-Z]:([/\\]|$)/.test(value);
@@ -411,4 +414,261 @@ export function resolveMarkdownFileLinkTarget(
   if (!isRelativeFilePath(pathWithPosition)) return pathWithPosition;
   if (!baseDir) return null;
   return resolvePathLinkTarget(pathWithPosition, baseDir);
+}
+
+const FENCED_CODE_SEGMENT_PATTERN = /(```[\s\S]*?(?:```|$))/;
+
+const INLINE_CODE_SPAN_PATTERN = /`([^`\n]+)`/g;
+
+/** The inline code of a message's markdown, fenced blocks left out (T3's `extractInlineCodeSpans`). */
+export function extractInlineCodeSpans(text: string): string[] {
+  const spans: string[] = [];
+  const segments = text.split(FENCED_CODE_SEGMENT_PATTERN);
+  for (let index = 0; index < segments.length; index += 2) {
+    for (const match of (segments[index] ?? "").matchAll(INLINE_CODE_SPAN_PATTERN)) {
+      const span = match[1]?.trim();
+      if (span) spans.push(span);
+    }
+  }
+  return spans;
+}
+
+function markdownRunEndFinder(markdown: string, delimiter: RegExp) {
+  let runStart = -1;
+  let runEnd = -1;
+  return (start: number) => {
+    if (start >= runStart && start <= runEnd) return runEnd;
+    delimiter.lastIndex = start;
+    runStart = start;
+    runEnd = delimiter.exec(markdown)?.index ?? markdown.length;
+    return runEnd;
+  };
+}
+
+function markdownLinkTailScanner(markdown: string) {
+  const whitespaceEnd = markdownRunEndFinder(markdown, /\S/g);
+  const titleEnd = markdownRunEndFinder(markdown, /["']/g);
+  const titleWhitespaceEnd = markdownRunEndFinder(markdown, /\S/g);
+  return (start: number) => {
+    const end = whitespaceEnd(start);
+    if (markdown[end] === ")") return end + 1;
+    if (end === start || (markdown[end] !== '"' && markdown[end] !== "'")) return null;
+    const quoteEnd = titleEnd(end + 1);
+    if (quoteEnd === markdown.length) return null;
+    const close = titleWhitespaceEnd(quoteEnd + 1);
+    return markdown[close] === ")" ? close + 1 : null;
+  };
+}
+
+function markdownLinkDestinationScanner(markdown: string) {
+  const whitespaceEnd = markdownRunEndFinder(markdown, /\S/g);
+  const angleEnd = markdownRunEndFinder(markdown, /[>\n]/g);
+  const bareEnd = markdownRunEndFinder(markdown, /[\s)]/g);
+  // Separate caches keep each branch's searches moving forward even when an
+  // angle destination fails and falls back to an ordinary destination.
+  const angleTail = markdownLinkTailScanner(markdown);
+  const bareTail = markdownLinkTailScanner(markdown);
+  return (start: number) => {
+    if (markdown[start] !== "(") return null;
+    const hrefStart = whitespaceEnd(start + 1);
+    if (markdown[hrefStart] === "<") {
+      const hrefEnd = angleEnd(hrefStart + 1);
+      if (hrefEnd > hrefStart + 1 && markdown[hrefEnd] === ">") {
+        const end = angleTail(hrefEnd + 1);
+        if (end !== null) return { hrefStart: hrefStart + 1, hrefEnd, end };
+      }
+    }
+    const hrefEnd = bareEnd(hrefStart);
+    if (hrefEnd === hrefStart) return null;
+    const end = bareTail(hrefEnd);
+    return end === null ? null : { hrefStart, hrefEnd, end };
+  };
+}
+
+/** The destinations of a message's markdown links (T3's `extractMarkdownLinkHrefs`). */
+export function extractMarkdownLinkHrefs(markdown: string): string[] {
+  const hrefs: string[] = [];
+  const scanDestination = markdownLinkDestinationScanner(markdown);
+  let cursor = 0;
+  while (cursor < markdown.length) {
+    const labelStart = markdown.indexOf("[", cursor);
+    if (labelStart === -1) break;
+    const labelEnd = markdown.indexOf("]", labelStart + 1);
+    if (labelEnd === -1) break;
+
+    // Nested opening brackets share this closing bracket. On failure, skip the
+    // whole label instead of rescanning its suffix from each opening bracket.
+    cursor = labelEnd + 1;
+    const destination = scanDestination(cursor);
+    if (!destination) continue;
+    cursor = destination.end;
+    const href = markdown.slice(destination.hrefStart, destination.hrefEnd).trim();
+    if (href) hrefs.push(href);
+  }
+  return hrefs;
+}
+
+function fileBasename(path: string): string {
+  const separator = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return separator >= 0 ? path.slice(separator + 1) : path;
+}
+
+function pathParentSegments(path: string): string[] {
+  const normalized = path.replaceAll("\\", "/");
+  const segments = normalized.split("/").filter((segment) => segment.length > 0);
+  return segments.slice(0, -1);
+}
+
+/**
+ * For files of one message that share a name, the shortest tail of their parent folders that
+ * tells them apart, two folders deep at least (t3-parity.md D1643, T3's
+ * `buildFileLinkParentSuffixByPath`).
+ */
+export function buildFileLinkParentSuffixByPath(
+  filePaths: ReadonlyArray<string>,
+): Map<string, string> {
+  const groups = new Map<string, Set<string>>();
+  for (const filePath of filePaths) {
+    const normalizedPath = filePath.replaceAll("\\", "/");
+    const pathSegments = normalizedPath.split("/").filter((segment) => segment.length > 0);
+    const basename = pathSegments[pathSegments.length - 1];
+    if (!basename) continue;
+    const group = groups.get(basename) ?? new Set<string>();
+    group.add(normalizedPath);
+    groups.set(basename, group);
+  }
+
+  const suffixByPath = new Map<string, string>();
+  for (const group of groups.values()) {
+    const uniquePaths = [...group];
+    if (uniquePaths.length < 2) continue;
+
+    const parentSegmentsByPath = new Map(
+      uniquePaths.map((filePath) => [filePath, pathParentSegments(filePath)]),
+    );
+    const minUniqueDepthByPath = new Map<string, number>();
+
+    for (const filePath of uniquePaths) {
+      const segments = parentSegmentsByPath.get(filePath) ?? [];
+      let resolvedDepth = segments.length;
+      for (let depth = 1; depth <= segments.length; depth += 1) {
+        const candidate = segments.slice(-depth).join("/");
+        const collision = uniquePaths.some((otherPath) => {
+          if (otherPath === filePath) return false;
+          const otherSegments = parentSegmentsByPath.get(otherPath) ?? [];
+          return otherSegments.slice(-depth).join("/") === candidate;
+        });
+        if (!collision) {
+          resolvedDepth = depth;
+          break;
+        }
+      }
+      minUniqueDepthByPath.set(filePath, resolvedDepth);
+    }
+
+    for (const filePath of uniquePaths) {
+      const segments = parentSegmentsByPath.get(filePath) ?? [];
+      if (segments.length === 0) continue;
+      const minUniqueDepth = minUniqueDepthByPath.get(filePath) ?? 1;
+      const suffixDepth = Math.min(segments.length, Math.max(minUniqueDepth, 2));
+      suffixByPath.set(filePath, segments.slice(-suffixDepth).join("/"));
+    }
+  }
+
+  return suffixByPath;
+}
+
+/** A file chip's label: its name, its parent suffix, its line and column (`a.ts · src/lib · L12:C3`). */
+export function fileLinkLabel(
+  file: FilePathPosition,
+  parentSuffixByPath: ReadonlyMap<string, string>,
+): string {
+  const suffix = parentSuffixByPath.get(file.path.replaceAll("\\", "/"));
+  return [
+    fileBasename(file.path),
+    suffix,
+    file.line ? `L${file.line}${file.column ? `:C${file.column}` : ""}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * The files an agent's message links to (its links and its inline code, as the chips read them),
+ * by their parent suffixes: T3's `fileLinkParentSuffixByPath` of `ChatMarkdown`.
+ */
+export function messageFileLinkParentSuffixes(
+  text: string,
+  workspaceRoot: string,
+): Map<string, string> {
+  const filePaths: string[] = [];
+  for (const href of extractMarkdownLinkHrefs(text)) {
+    const target = resolveMarkdownFileLinkTarget(href, workspaceRoot);
+    if (target !== null) filePaths.push(splitFilePathPosition(target).path);
+  }
+  for (const span of extractInlineCodeSpans(text)) {
+    const candidate = inlineCodeFilePathCandidate(span);
+    if (candidate === null) continue;
+    filePaths.push(splitFilePathPosition(resolvePathLinkTarget(candidate, workspaceRoot)).path);
+  }
+  return buildFileLinkParentSuffixByPath(filePaths);
+}
+
+function stripRelativePrefixes(path: string): string {
+  return path.replace(/^\.\/+/, "").replace(/^\/+/, "");
+}
+
+/**
+ * A file's path as "Copy relative path" gives it: from the workspace's folder, named first, with
+ * its line and column (T3's `formatWorkspaceRelativePath`).
+ */
+export function formatWorkspaceRelativePath(
+  pathWithPosition: string,
+  workspaceRoot: string | undefined,
+): string {
+  const position = splitFilePathPosition(pathWithPosition);
+  const normalizedPath = stripSlashPrefixedWindowsDrive(position.path.replaceAll("\\", "/"));
+
+  let displayPath = normalizedPath;
+  if (workspaceRoot) {
+    const normalizedWorkspaceRoot = stripSlashPrefixedWindowsDrive(
+      workspaceRoot.replace(/[\\/]+$/, "").replaceAll("\\", "/"),
+    );
+    const workspaceLabel = fileBasename(normalizedWorkspaceRoot);
+    const caseInsensitive = isWindowsAbsolutePath(stripSlashPrefixedWindowsDrive(workspaceRoot));
+    const pathForCompare = caseInsensitive ? normalizedPath.toLowerCase() : normalizedPath;
+    const workspaceForCompare = caseInsensitive
+      ? normalizedWorkspaceRoot.toLowerCase()
+      : normalizedWorkspaceRoot;
+    const workspaceWithSeparator = `${workspaceForCompare}/`;
+    const workspaceLabelWithSeparator = `${caseInsensitive ? workspaceLabel.toLowerCase() : workspaceLabel}/`;
+
+    if (pathForCompare === workspaceForCompare) {
+      displayPath = workspaceLabel;
+    } else if (pathForCompare.startsWith(workspaceWithSeparator)) {
+      const relativeSuffix = normalizedPath.slice(normalizedWorkspaceRoot.length + 1);
+      displayPath = `${workspaceLabel}/${relativeSuffix}`;
+    } else if (!normalizedPath.startsWith("/")) {
+      const relativePath = stripRelativePrefixes(normalizedPath);
+      displayPath = pathForCompare.startsWith(workspaceLabelWithSeparator)
+        ? normalizedPath
+        : `${workspaceLabel}/${relativePath}`;
+    }
+  }
+
+  return formatFilePathPosition({ ...position, path: displayPath });
+}
+
+/**
+ * Whether a click on a file link opens it in the editor instead of the right panel: ⌘-click on
+ * macOS, Ctrl-click elsewhere (T3's `shouldOpenMarkdownFileLinkInEditor`, D1643).
+ */
+export function shouldOpenFileLinkInEditor(
+  event: Pick<MouseEvent, "metaKey" | "ctrlKey">,
+  platform = typeof navigator === "undefined" ? "" : navigator.platform,
+): boolean {
+  if (platform.length === 0) return false;
+  return isMacPlatform(platform)
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey;
 }

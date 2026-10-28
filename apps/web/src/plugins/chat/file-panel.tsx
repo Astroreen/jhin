@@ -71,9 +71,14 @@ function readExplorerOpen(): boolean {
 
 /**
  * T3's OpenInPicker of the file panel (D1429): the preferred editor, and the others in a menu.
- * A thread's worktree has none: editors open a project folder's files only (terminal.md D965).
+ * A thread's file is its worktree's when it has one (D1644).
  */
-function OpenInEditor(props: { target: NodeTarget; projectId: string; path: string }) {
+function OpenInEditor(props: {
+  target: NodeTarget;
+  projectId: string;
+  threadId: string | undefined;
+  path: string;
+}) {
   const chat = useChat();
   const [editors, setEditors] = useState<readonly EditorInfo[] | undefined>(undefined);
   // The editor chosen here: the preferred one from then on.
@@ -100,6 +105,7 @@ function OpenInEditor(props: { target: NodeTarget; projectId: string; path: stri
     void chat.threads
       .call(props.target, "editors.open", {
         projectId: props.projectId,
+        ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
         path: props.path,
         editor: editor.id,
       })
@@ -276,8 +282,13 @@ export function FilePanel(props: FilePanelProps) {
     projectId !== undefined &&
     project !== undefined;
   const openIn =
-    props.embedded === true && projectId !== undefined && record?.worktreePath === undefined ? (
-      <OpenInEditor path={props.path} projectId={projectId} target={props.target} />
+    props.embedded === true && projectId !== undefined ? (
+      <OpenInEditor
+        path={props.path}
+        projectId={projectId}
+        target={props.target}
+        threadId={props.threadId}
+      />
     ) : null;
   const explorerToggle =
     props.embedded === true && props.onOpenFile !== undefined ? (

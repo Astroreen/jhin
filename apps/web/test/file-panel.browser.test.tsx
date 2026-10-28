@@ -7,7 +7,7 @@ import { page } from "vite-plus/test/browser";
 
 import { DiffSettings } from "../src/lib/settings.ts";
 import { useAgentSkills } from "../src/plugins/chat/agent-skills.ts";
-import { FilePanel } from "../src/plugins/chat/file-panel.tsx";
+import { FilePanel, FilesPanel } from "../src/plugins/chat/file-panel.tsx";
 import { createFileReveals } from "../src/plugins/chat/file-panel-route.ts";
 import { ChatContext, type ChatServices } from "../src/plugins/chat/services.ts";
 
@@ -261,6 +261,95 @@ describe("the file panel (D1342)", () => {
     ]);
     expect(localStorage.getItem("jhin.lastEditor")).toBe("zed");
     localStorage.removeItem("jhin.lastEditor");
+  });
+});
+
+describe("the file explorer's context menu (D1642)", () => {
+  async function explorer(composer: ChatServices["composer"]) {
+    const node = fakeNode();
+    const toasts: { title: string; description?: string }[] = [];
+    const chat = {
+      ...services(node, catalog),
+      composer,
+      toasts: { show: (toast: { title: string; description?: string }) => toasts.push(toast) },
+    } as unknown as ChatServices;
+    await mount(
+      <FilesPanel onOpenFile={() => undefined} projectId="p1" target={target} threadId="t1" />,
+      chat,
+    );
+    await node.answerTo("projects.list-entries", {
+      entries: [
+        { path: "src", kind: "directory" },
+        { path: "README.md", kind: "file" },
+      ],
+    });
+    await node.answerTo("editors.list", {
+      editors: [
+        { id: "vscode", label: "VS Code" },
+        { id: "file-manager", label: "Files" },
+      ],
+    });
+    return { node, toasts };
+  }
+  /** A right-click on a row: the tree's rows are in its shadow root, the event is composed. */
+  const rightClick = (name: string) =>
+    act(() => {
+      page
+        .getByRole("treeitem", { name })
+        .element()
+        .dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            button: 2,
+            clientX: 40,
+            clientY: 80,
+          }),
+        );
+    });
+
+  it("opens a file with the node's editors and adds its mention to the chat", async () => {
+    const inserted: { text: string; at: string | undefined }[] = [];
+    const composer = {
+      current: {
+        insert: (text: string, options?: { at?: "cursor" | "end" }) =>
+          inserted.push({ text, at: options?.at }) > 0,
+      },
+    } as unknown as ChatServices["composer"];
+    const { node } = await explorer(composer);
+    await expect.element(page.getByRole("treeitem", { name: "README.md" })).toBeInTheDocument();
+    rightClick("README.md");
+    await page.getByRole("menuitem", { name: "Open with" }).click();
+    await page.getByRole("menuitem", { name: "VS Code" }).click();
+    rightClick("README.md");
+    await page.getByRole("menuitem", { name: "Open", exact: true }).click();
+    rightClick("README.md");
+    await page.getByRole("menuitem", { name: "Add to chat" }).click();
+    expect(
+      node.calls.filter((call) => call.method === "editors.open").map((call) => call.params),
+    ).toEqual([
+      { projectId: "p1", threadId: "t1", path: "README.md", editor: "vscode" },
+      { projectId: "p1", threadId: "t1", path: "README.md", editor: "file-manager" },
+    ]);
+    expect(inserted).toEqual([{ text: "[README.md](README.md) ", at: "end" }]);
+    localStorage.removeItem("jhin.lastEditor");
+  });
+
+  it("offers a folder no editor, and says why a mention cannot go to the chat", async () => {
+    const { toasts } = await explorer({ current: undefined });
+    await expect.element(page.getByRole("treeitem", { name: "src" })).toBeInTheDocument();
+    rightClick("src");
+    await expect.element(page.getByRole("menuitem", { name: "Copy mention" })).toBeVisible();
+    expect(page.getByRole("menuitem", { name: "Open with" }).elements()).toHaveLength(0);
+    await page.getByRole("menuitem", { name: "Add to chat" }).click();
+    expect(toasts).toEqual([
+      {
+        type: "error",
+        title: "Unable to add to chat",
+        description: "Open a chat for this project and try again.",
+      },
+    ]);
   });
 });
 

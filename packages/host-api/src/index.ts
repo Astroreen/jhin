@@ -187,6 +187,8 @@ export type FileManagerRevealKind = "finder" | "file-explorer" | "files";
 /** Error codes of `editors.open`. */
 export type EditorErrorCode =
   | "PROJECT_NOT_FOUND"
+  /** Since D1644: the `threadId` given is not a thread of the project. */
+  | "THREAD_NOT_FOUND"
   | "PATH_OUTSIDE_PROJECT"
   | "EDITOR_NOT_FOUND"
   /** A Windows `.cmd` launcher cannot take the path safely (`"`, `%`, `&`, …). */

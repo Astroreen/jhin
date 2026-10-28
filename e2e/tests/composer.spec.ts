@@ -496,6 +496,61 @@ test("D1428–D1431: an agent's file chip opens its line, beside T3's explorer; 
   await info.attach("the file explorer", { path: explorerShot, contentType: "image/png" });
 });
 
+test("D1641–D1643: a chip's folder suffix and menu, the explorer's menu into the chat, and Reopen Closed Tab", async ({
+  page,
+}, info) => {
+  const scratch = Path.join(node.home, "data", "jhin.threads", "scratch");
+  for (const folder of ["one", "two"]) {
+    Fs.mkdirSync(Path.join(scratch, "src", folder), { recursive: true });
+    Fs.writeFileSync(Path.join(scratch, "src", folder, "a.ts"), `export const ${folder} = 1;\n`);
+  }
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("compare `src/one/a.ts:3:2` and `src/two/a.ts`");
+  await message.press("Enter");
+  const agent = page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "Agent" });
+  // Chips that share a name end with their folders, and a column follows its line (D1643).
+  const one = agent.getByRole("button", { name: "Preview src/one/a.ts" });
+  await expect(one).toHaveText("a.ts · src/one · L3:C2");
+  await expect(agent.getByRole("button", { name: "Preview src/two/a.ts" })).toHaveText(
+    "a.ts · src/two",
+  );
+  await one.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Copy relative path" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Copy full path" })).toBeVisible();
+  const chipShot = info.outputPath("file-chip-menu.png");
+  await page.screenshot({ path: chipShot });
+  await info.attach("a file chip's menu and folder suffixes", {
+    path: chipShot,
+    contentType: "image/png",
+  });
+  await page.keyboard.press("Escape");
+
+  // The explorer's row menu: "Add to chat" puts the mention at the end of the message (D1642).
+  const panel = await openSurface(page, "Files");
+  const files = panel.getByRole("region", { name: "Files" });
+  await files.getByRole("treeitem", { name: "src" }).click();
+  await files.getByRole("treeitem", { name: "one" }).click();
+  await files.getByRole("treeitem", { name: "a.ts" }).click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Copy mention" })).toBeVisible();
+  const menuShot = info.outputPath("file-explorer-menu.png");
+  await page.screenshot({ path: menuShot });
+  await info.attach("the explorer's row menu", { path: menuShot, contentType: "image/png" });
+  await page.getByRole("menuitem", { name: "Add to chat" }).click();
+  await expect(message).toContainText("a.ts");
+
+  // Closing the surface, then ⌘/Ctrl+Shift+T, brings it back (D1641).
+  await panel.getByRole("button", { name: "Close Files" }).click();
+  await expect(panel.getByRole("tab", { name: "Files" })).toHaveCount(0);
+  await page.getByRole("log", { name: "Messages" }).click();
+  await page.keyboard.press("ControlOrMeta+Shift+T");
+  await expect(panel.getByRole("tab", { name: "Files" })).toHaveCount(1);
+  const reopenShot = info.outputPath("reopen-closed-tab.png");
+  await page.screenshot({ path: reopenShot });
+  await info.attach("the Files tab reopened", { path: reopenShot, contentType: "image/png" });
+});
+
 test("spaces a heading as T3 does, and shows a code block's language with its icon", async ({
   page,
 }, info) => {

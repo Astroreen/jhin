@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   detectComposerTrigger,
+  endInsertion,
   fileLinkPath,
   inlineSkillTokens,
   isPathWord,
@@ -302,5 +303,14 @@ describe("a standalone slash command", () => {
     expect(parseStandaloneComposerSlashCommand("/DEFAULT")).toBe("default");
     expect(parseStandaloneComposerSlashCommand("/plan this")).toBeNull();
     expect(parseStandaloneComposerSlashCommand("/model")).toBeNull();
+  });
+});
+
+describe("text put after the prompt (D1642)", () => {
+  it("keeps a space between the prompt and the text, as T3's ensureLeadingBoundary", () => {
+    expect(endInsertion("", "[a.ts](a.ts) ")).toEqual({ at: 0, text: "[a.ts](a.ts) " });
+    expect(endInsertion("look at", "[a.ts](a.ts) ")).toEqual({ at: 7, text: " [a.ts](a.ts) " });
+    expect(endInsertion("look at ", "[a.ts](a.ts) ")).toEqual({ at: 8, text: "[a.ts](a.ts) " });
+    expect(endInsertion("first line\n", "x")).toEqual({ at: 11, text: "x" });
   });
 });

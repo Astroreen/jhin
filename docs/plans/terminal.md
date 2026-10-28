@@ -547,6 +547,6 @@ its split), `components/PersistentThreadTerminals.tsx`
   `security.md` (D1364): it is named as such wherever it is granted; it
   stays one permission, and D461 narrows what a shell inherits, not what
   it can read on the machine.
-- A path in a thread's worktree (D965): `editors.open` opens files of a
-  project's folder only, so a terminal in a worktree opens none of its own
-  files.
+- A path in a thread's worktree (D965). Done in `t3-parity.md` (D1644):
+  `editors.open` takes the thread, so a terminal in a worktree opens its
+  own files.

@@ -167,7 +167,8 @@ export interface ComposerHandle {
         /** What it holds now, before its draft is stored. */
         draft(): ComposerDraft | undefined;
         focus(): void;
-        insert(text: string): void;
+        /** Puts text at the cursor, or with `at: "end"` after the prompt unfocused (D1642). */
+        insert(text: string, options?: { readonly at?: "cursor" | "end" }): boolean;
         /** Puts a context record's reference at the cursor (D1009), or says why it cannot. */
         insertContext(record: MessageContextRecord): ContextInsertion;
         /** Takes a record's chips and the record out of the prompt (D1286). */

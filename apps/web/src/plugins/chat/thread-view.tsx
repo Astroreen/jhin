@@ -22,7 +22,7 @@ import {
   type ProjectRecord,
   type ThreadRecord,
 } from "@jhin/client-api";
-import { Alert, AlertAction, AlertDescription, Button, Slot } from "@jhin/ui";
+import { Alert, AlertAction, AlertDescription, Button, copyText, Slot } from "@jhin/ui";
 import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
 import {
   useCallback,
@@ -66,6 +66,7 @@ import {
 } from "./attachment-media.tsx";
 import { inlineSkillTokens } from "../../lib/composer-trigger.ts";
 import { useAgentSkills } from "./agent-skills.ts";
+import { useNodeEditors } from "./node-editors.ts";
 import {
   ATTACHMENT_PANEL,
   attachmentResource,
@@ -294,7 +295,7 @@ export function ThreadView(props: {
       restore: (draft) => handle.current?.restore(draft),
       draft: () => handle.current?.draft(),
       focus: () => handle.current?.focus(),
-      insert: (text) => handle.current?.insert(text),
+      insert: (text, options) => handle.current?.insert(text, options) ?? false,
       insertContext: (record) => handle.current?.insertContext(record) ?? "not-now",
       removeContext: (contextId) => handle.current?.removeContext(contextId) ?? false,
       insertCitation: (citation) => handle.current?.insertCitation(citation) ?? "not-now",
@@ -533,12 +534,15 @@ export function ThreadView(props: {
     namesSkill,
   );
   const hasProject = props.project !== undefined;
+  const projectId = props.project?.id;
   // The folder an agent's links are read against: the thread's worktree, else its project's.
   const workspaceRoot = thread?.worktreePath ?? props.project?.path;
+  // An agent's file chip opens its file in the editor last chosen (D1643).
+  const editors = useNodeEditors(chat.threads, target, hasProject);
   const fileChips = useMemo(
     () => ({
       skills,
-      ...(hasProject
+      ...(projectId !== undefined
         ? {
             previewFile: (path: string, line?: number) =>
               openFilePanel(
@@ -548,10 +552,47 @@ export function ThreadView(props: {
                 line === undefined ? undefined : { reveals: chat.fileReveals, line },
               ),
             workspaceRoot,
+            editors,
+            // The thread's own folder: its worktree's file when it has one (D1644).
+            openInEditor: (
+              path: string,
+              editor: { id: string },
+              position: { line?: number; column?: number },
+            ) =>
+              void chat.threads
+                .call(target, "editors.open", {
+                  projectId,
+                  threadId,
+                  path,
+                  editor: editor.id,
+                  ...position,
+                })
+                .catch((cause: unknown) =>
+                  chat.toasts?.show({
+                    type: "error",
+                    title: "Unable to open file",
+                    description: cause instanceof Error ? cause.message : "An error occurred.",
+                  }),
+                ),
+            copyPath: (value: string, title: "Relative path" | "Full path") =>
+              void copyText(value).then(
+                () =>
+                  chat.toasts?.show({
+                    type: "success",
+                    title: `${title} copied`,
+                    description: value,
+                  }),
+                (cause: unknown) =>
+                  chat.toasts?.show({
+                    type: "error",
+                    title: `Failed to copy ${title.toLowerCase()}`,
+                    description: cause instanceof Error ? cause.message : "An error occurred.",
+                  }),
+              ),
           }
         : {}),
     }),
-    [skills, hasProject, chat.navigation, target, threadId, workspaceRoot],
+    [skills, projectId, chat.navigation, target, threadId, workspaceRoot, editors],
   );
 
   // Attachments of sent messages, read back from the node once each.
@@ -1001,7 +1042,7 @@ export function DraftView(props: {
       restore: (draft) => handle.current?.restore(draft),
       draft: () => handle.current?.draft(),
       focus: () => handle.current?.focus(),
-      insert: (text) => handle.current?.insert(text),
+      insert: (text, options) => handle.current?.insert(text, options) ?? false,
       insertContext: (record) => handle.current?.insertContext(record) ?? "not-now",
       removeContext: (contextId) => handle.current?.removeContext(contextId) ?? false,
       insertCitation: (citation) => handle.current?.insertCitation(citation) ?? "not-now",

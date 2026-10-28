@@ -2572,10 +2572,11 @@ steer a Claude Code turn ended before it took go with them.
   (`· L12:C3`), as T3 labels them.
 - **D1644. "Open in" for a file of a thread's worktree.** `editors.open`
   takes `threadId` (additive): a relative path is then the thread's
-  worktree's, when it has one, as `projects.read-file` resolves it (D965),
-  else its project's. So the file panel's "Open in" (D1429), a chip's "Open
-  in editor" (D1643) and a terminal's file links in a worktree open the
-  worktree's own file (`terminal.md`'s Deferred).
+  worktree's, when it has one, as `projects.read-file` resolves it, else
+  its project's; a thread of another project is `THREAD_NOT_FOUND`. So the
+  file panel's "Open in" (D1429, now shown in a worktree too), a chip's
+  "Open in editor" (D1643) and a path in a worktree's terminal output
+  (`terminal.md` D965) open the worktree's own file.
 - **D1645. The editor's pending dot,** T3's `onPendingChange` and its tab
   dot. A file's tab shows a dot over its icon from its first unsaved change
   until a write of its latest text succeeds; a failed write leaves it.
@@ -2661,10 +2662,12 @@ steer a Claude Code turn ended before it took go with them.
 
 ## Deferred
 
-- The right panel (D1421–D1424): T3's reopening of a closed view
-  (`view.reopenClosed`, ⌘/Ctrl+Shift+T), its open and close animation, a browser tab's audio and mute, a
-  device tab's renaming, and forgetting a deleted thread's tabs (the 200
-  places changed last are kept).
+- The right panel (D1421–D1424): its open and close animation, a browser
+  tab's audio and mute, a device tab's renaming (and so a reopened device
+  tab's name, D1641), forgetting a deleted thread's tabs (the 200 places
+  changed last are kept), and "Reopen Closed Tab" from a focused browser
+  page in the desktop app (T3 forwards the chord from its webview; D1641
+  hears it only while focus is in the page's chrome).
 - T3's Usage page beyond its "Limits" view (D1308): the token and cost
   views and an account's reset credits, which no Jhin runtime reads yet.
 - The watcher test of `packages/node-host/test/host.test.ts` said to have
@@ -2685,12 +2688,13 @@ steer a Claude Code turn ended before it took go with them.
     editor opening at the quote's place in the message right after "Cite",
     "Save and send" (Mod+Enter), the quote highlighted after its thread
     opens from another one, and the legacy text for a node from before D1010;
-  - T3's file panel beyond D1342 and D1428–D1439: the
-    explorer's context menu and dragging its rows into the composer, "Open
-    in" for a file of a thread's worktree, an agent's file chip's menu,
-    ⌘-click and parent folder suffix, the editor's pending dot on its tab,
-    its "Read-only connection" notice, a change made on disk while it is
-    edited, and ticking a rendered markdown's task boxes;
+  - T3's file panel beyond D1342, D1428–D1439 and D1641–D1644: the
+    editor's pending dot on its tab, its "Read-only connection" notice, a
+    change made on disk while it is edited, and ticking a rendered
+    markdown's task boxes; the explorer's "Reveal in …" and a chip's
+    "Preview media" and "Open in integrated browser" (T3 has them, D1642
+    and D1643 leave them out); the explorer reads `editors.list` once per
+    mount;
   - a sent message's skills (D1341) are asked once per thread view, on any
     `$word` (a `$HOME` too), and not asked again when the agent's skills
     change while the thread shows (T3 keeps its providers' skills current);

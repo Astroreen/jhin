@@ -89,6 +89,7 @@ import { ChatContext } from "./services.ts";
 import { usePresentTool } from "./tool-presentations.ts";
 import { THREAD_FIND_UNFOLD_EVENT } from "./thread-find.tsx";
 import { splitPromptIntoSegments } from "../../lib/composer-trigger.ts";
+import { messageFileLinkParentSuffixes } from "../../lib/file-links.ts";
 import { MessageText } from "./message-text.tsx";
 import type { SavePlan } from "./proposed-plan-card.tsx";
 
@@ -376,13 +377,21 @@ function AssistantMessage(props: {
   const { item, streaming } = props;
   const where = useContext(MessageActionsContext);
   const files = useContext(FileChipsContext);
-  // An agent's links to the thread's files are T3's file chips (D1431).
+  // An agent's links to the thread's files are T3's file chips (D1431), told apart by their
+  // folders when they share a name (D1643).
   const fileLinks = useMemo(
     () =>
       files?.previewFile === undefined || files.workspaceRoot === undefined
         ? undefined
-        : { workspaceRoot: files.workspaceRoot, open: files.previewFile },
-    [files],
+        : {
+            workspaceRoot: files.workspaceRoot,
+            open: files.previewFile,
+            parentSuffixes: messageFileLinkParentSuffixes(item.text, files.workspaceRoot),
+            editors: files.editors ?? [],
+            openInEditor: files.openInEditor,
+            copyPath: files.copyPath,
+          },
+    [files, item.text],
   );
   return (
     <div className={cn("group/assistant relative min-w-0 px-1 py-0.5", props.paddingClass)}>

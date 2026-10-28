@@ -736,14 +736,17 @@ export const chatPlugin = builtin(
         name: "chat.composer.insert",
         title: "Insert into the composer",
         description:
-          "Puts text into the open thread's message box, at the cursor when it has focus, else at the end, as the terminal's Add to chat does",
-        input: z.object({ text: z.string().min(1).max(200_000) }),
+          "Puts text into the open thread's message box, at the cursor when it has focus, else at the end, as the terminal's Add to chat does; at \"end\", after the message without focusing it, as the file explorer's Add to chat does",
+        input: z.object({
+          text: z.string().min(1).max(200_000),
+          // Additive (t3-parity.md D1642): T3's insertTextAtEnd with ensureLeadingBoundary.
+          at: z.enum(["cursor", "end"]).optional(),
+        }),
         output: z.object({ inserted: z.boolean() }),
-        handler: ({ text }) => {
+        handler: ({ text, at }) => {
           const target = composer.current;
           if (target === undefined) return { inserted: false };
-          target.insert(text);
-          return { inserted: true };
+          return { inserted: target.insert(text, at === undefined ? {} : { at }) };
         },
       });
       // T3's addTerminalContext (D1009): a record and its chip, not text.

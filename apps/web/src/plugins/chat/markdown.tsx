@@ -1,11 +1,22 @@
-// The rendering follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/ChatMarkdown.tsx.
+// The rendering follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/ChatMarkdown.tsx
+// (a file chip's menu and ⌘/Ctrl-click from its MarkdownFileLink) and apps/web/src/editorLabels.ts.
 import {
   type AgentSkill,
   type AssistantCitation,
   parseAssistantCitationHref,
   parseContextHref,
 } from "@jhin/agent-api";
-import { Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
+import type { EditorInfo } from "@jhin/host-api";
+import {
+  Button,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  Tooltip,
+  TooltipPopup,
+  TooltipTrigger,
+  cn,
+} from "@jhin/ui";
 import { CheckIcon, CopyIcon, WrapTextIcon } from "lucide-react";
 import {
   Children,
@@ -13,6 +24,7 @@ import {
   isValidElement,
   use,
   useEffect,
+  useMemo,
   useState,
   type ComponentProps,
   type ReactElement,
@@ -30,14 +42,22 @@ import { MessageCitationChip } from "./citation-chips.tsx";
 import { ContextRecordChip } from "./context-chips.tsx";
 import { FileMentionChip, MessageSkillChip } from "./file-chips.tsx";
 import { CHAT_MARKDOWN_CLASS, type ChatMarkdownProps } from "./markdown-style.ts";
-import { AgentFileLinksContext, MessageContextChipsContext } from "./message-context.ts";
 import {
+  type AgentFileLinks,
+  AgentFileLinksContext,
+  MessageContextChipsContext,
+} from "./message-context.ts";
+import {
+  fileLinkLabel,
+  formatWorkspaceRelativePath,
   inlineCodeFilePathCandidate,
   resolveMarkdownFileLinkTarget,
   resolvePathLinkTarget,
+  shouldOpenFileLinkInEditor,
   splitFilePathPosition,
   workspaceRelativeFilePath,
 } from "../../lib/file-links.ts";
+import { preferredEditor } from "../../lib/preferred-editor.ts";
 
 /** The text of a React subtree (a code element's children). */
 function textOf(node: ReactNode): string {
@@ -177,7 +197,7 @@ const COMPONENTS: Components = {
       </a>
     );
     const path = typeof href === "string" ? fileLinkPath(textOf(children), href) : undefined;
-    if (path !== undefined) return <FileReference fallback={link} path={path} />;
+    if (path !== undefined) return <FileReference fallback={link} href={href!} path={path} />;
     return typeof href === "string" ? <AgentFileLink fallback={link} href={href} /> : link;
   },
   code({ children, node: _node, ...props }) {
@@ -281,42 +301,152 @@ function ContextReference(props: { href: string; label: string }) {
   );
 }
 
-/** A file link of a user message (D1341): its chip; elsewhere, the link as before. */
-function FileReference(props: { path: string; fallback: ReactNode }) {
+/**
+ * A file link of a user message (D1341): its chip; in an agent's message the agent's chip
+ * (D1431), elsewhere the link as before.
+ */
+function FileReference(props: { path: string; href: string; fallback: ReactNode }) {
   const chips = use(MessageContextChipsContext);
-  if (chips === undefined) return props.fallback;
+  if (chips === undefined) return <AgentFileLink fallback={props.fallback} href={props.href} />;
   return <FileMentionChip onPreview={chips.previewFile} path={props.path} />;
 }
 
+/** Where an agent's link names a file of the thread's folder (T3's `MarkdownFileLinkMeta`). */
+interface AgentFileTarget {
+  /** Relative to the thread's folder, as the right panel and the editors read it. */
+  readonly path: string;
+  /** The absolute path, without a position: what the parent suffixes are keyed by. */
+  readonly filePath: string;
+  /** The absolute path with its position: "Copy full path". */
+  readonly targetPath: string;
+  readonly line?: number;
+  readonly column?: number;
+}
+
 /**
- * Where an agent's link or inline code names a file of the thread's folder: its path there and
- * its line (T3's `resolveMarkdownFileLinkMeta`); undefined for anything else.
+ * Where an agent's link or inline code names a file of the thread's folder: its path there, its
+ * line and column (T3's `resolveMarkdownFileLinkMeta`); undefined for anything else.
  */
-function agentFileTarget(
-  absolute: string | null,
-  root: string,
-): { path: string; line?: number } | undefined {
+function agentFileTarget(absolute: string | null, root: string): AgentFileTarget | undefined {
   if (absolute === null) return undefined;
-  const { path, line } = splitFilePathPosition(absolute);
+  const { path, line, column } = splitFilePathPosition(absolute);
   const relative = workspaceRelativeFilePath(path, root);
   if (relative === null || relative === ".") return undefined;
-  return { path: relative, ...(line === undefined ? {} : { line }) };
+  return {
+    path: relative,
+    filePath: path,
+    targetPath: absolute,
+    ...(line === undefined ? {} : { line }),
+    ...(column === undefined ? {} : { column }),
+  };
 }
 
-/** T3's MarkdownFileLink in an agent's message (D1431): its chip opens the file at its line. */
-function AgentFileChip(props: { target: { path: string; line?: number }; open: AgentOpen }) {
-  const { path, line } = props.target;
-  const name = path.slice(path.lastIndexOf("/") + 1);
+/** T3's `openInEditorMenuLabel`. */
+function openInEditorMenuLabel(editor: EditorInfo | undefined): string {
+  return editor === undefined || editor.id === "file-manager"
+    ? "Open in editor"
+    : `Open in ${editor.label}`;
+}
+
+/**
+ * T3's MarkdownFileLink in an agent's message (D1431, D1643): its chip opens the file at its line
+ * in the right panel, ⌘/Ctrl-click in the editor last chosen; its menu opens it there or copies
+ * its path.
+ */
+function AgentFileChip(props: { target: AgentFileTarget; links: AgentFileLinks }) {
+  const { target, links } = props;
+  const [menu, setMenu] = useState<{ x: number; y: number } | undefined>(undefined);
+  // One anchor per opened menu: a new one each render would move the menu each time.
+  const anchor = useMemo(
+    () =>
+      menu === undefined
+        ? undefined
+        : {
+            getBoundingClientRect: () =>
+              DOMRect.fromRect({ x: menu.x, y: menu.y, width: 0, height: 0 }),
+          },
+    [menu],
+  );
+  const editors = links.editors.filter((editor) => editor.id !== "file-manager");
+  const openInEditor =
+    links.openInEditor === undefined || editors.length === 0
+      ? undefined
+      : () => {
+          // Read when used: the editor chosen last may have changed since the chip rendered.
+          const editor = preferredEditor(editors);
+          if (editor === undefined) return;
+          links.openInEditor?.(target.path, editor, {
+            ...(target.line === undefined ? {} : { line: target.line }),
+            ...(target.column === undefined ? {} : { column: target.column }),
+          });
+        };
   return (
-    <FileMentionChip
-      label={line === undefined ? name : `${name} · L${line}`}
-      onPreview={() => props.open(path, line)}
-      path={path}
-    />
+    <>
+      <FileMentionChip
+        label={fileLinkLabel(
+          {
+            path: target.filePath,
+            ...(target.line === undefined ? {} : { line: target.line }),
+            ...(target.column === undefined ? {} : { column: target.column }),
+          },
+          links.parentSuffixes,
+        )}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          // From the keyboard the event has no pointer: the menu opens under the chip.
+          if (event.clientX === 0 && event.clientY === 0) {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setMenu({ x: bounds.left, y: bounds.bottom });
+          } else {
+            setMenu({ x: event.clientX, y: event.clientY });
+          }
+        }}
+        onPreview={(path, event) => {
+          if (openInEditor !== undefined && shouldOpenFileLinkInEditor(event)) {
+            openInEditor();
+            return;
+          }
+          links.open(path, target.line);
+        }}
+        path={target.path}
+      />
+      <Menu
+        onOpenChange={(open) => {
+          if (!open) setMenu(undefined);
+        }}
+        open={menu !== undefined}
+      >
+        {menu === undefined ? null : (
+          <MenuPopup align="start" anchor={anchor} side="bottom" sideOffset={2}>
+            {openInEditor === undefined ? null : (
+              <MenuItem onClick={openInEditor}>
+                {openInEditorMenuLabel(preferredEditor(editors))}
+              </MenuItem>
+            )}
+            {links.copyPath === undefined ? null : (
+              <>
+                <MenuItem
+                  onClick={() =>
+                    links.copyPath?.(
+                      formatWorkspaceRelativePath(target.targetPath, links.workspaceRoot),
+                      "Relative path",
+                    )
+                  }
+                >
+                  Copy relative path
+                </MenuItem>
+                <MenuItem onClick={() => links.copyPath?.(target.targetPath, "Full path")}>
+                  Copy full path
+                </MenuItem>
+              </>
+            )}
+          </MenuPopup>
+        )}
+      </Menu>
+    </>
   );
 }
-
-type AgentOpen = (path: string, line?: number) => void;
 
 function AgentFileLink(props: { href: string; fallback: ReactNode }) {
   const links = use(AgentFileLinksContext);
@@ -325,11 +455,7 @@ function AgentFileLink(props: { href: string; fallback: ReactNode }) {
     resolveMarkdownFileLinkTarget(props.href, links.workspaceRoot),
     links.workspaceRoot,
   );
-  return target === undefined ? (
-    props.fallback
-  ) : (
-    <AgentFileChip open={links.open} target={target} />
-  );
+  return target === undefined ? props.fallback : <AgentFileChip links={links} target={target} />;
 }
 
 function AgentFileCode(props: { code: string; fallback: ReactNode }) {
@@ -341,11 +467,7 @@ function AgentFileCode(props: { code: string; fallback: ReactNode }) {
     resolvePathLinkTarget(candidate, links.workspaceRoot),
     links.workspaceRoot,
   );
-  return target === undefined ? (
-    props.fallback
-  ) : (
-    <AgentFileChip open={links.open} target={target} />
-  );
+  return target === undefined ? props.fallback : <AgentFileChip links={links} target={target} />;
 }
 
 /** The `$name`s of the agent's skills in a user message's text, as T3's `SkillInlineText`. */

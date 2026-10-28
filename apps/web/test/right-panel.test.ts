@@ -264,4 +264,40 @@ describe("jhin.right-panel", () => {
     });
     await kernel.stop();
   });
+
+  it("reopens the surfaces the user closed, newest first, with what their kind kept (D1641)", async () => {
+    globalThis.localStorage?.clear();
+    const reopened: { surface: string; kept: string | undefined }[] = [];
+    const { kernel, panel, navigation } = await start({ ...thread, panel: "diff" }, [
+      kind("diff"),
+      kind("terminal", { remember: () => null }),
+      kind("browser", {
+        remember: ({ surface }) => `page of ${surface.resource}`,
+        reopen: (target, surface, kept) => {
+          reopened.push({ surface: surface.id, kept });
+          panel.open(target, { kind: "browser", resource: "tab-2" });
+          return true;
+        },
+      }),
+    ]);
+    navigation.navigate({ ...thread, panel: "terminal" });
+    navigation.navigate({ ...thread, panel: "browser", section: "tab-1" });
+    await kernel.commands.execute("right-panel.surface.close", { id: "terminal" });
+    await kernel.commands.execute("right-panel.surface.close", { id: "browser:tab-1" });
+    await kernel.commands.execute("right-panel.surface.close", { id: "diff" });
+    // A kind's own change (reconciling) is not the user's: nothing is kept for it.
+    navigation.navigate({ ...thread, panel: "browser", section: "tab-9" });
+    panel.reconcile(place, "browser", []);
+    navigation.navigate({ node: "n", thread: "t2" });
+
+    const reopen = () => kernel.commands.execute("right-panel.reopen-closed", {});
+    expect(await reopen()).toEqual({ reopened: true });
+    expect(navigation.current()).toEqual({ ...thread, panel: "diff" });
+    expect(await reopen()).toEqual({ reopened: true });
+    expect(reopened).toEqual([{ surface: "browser:tab-1", kept: "page of tab-1" }]);
+    expect(navigation.current()).toEqual({ ...thread, panel: "browser", section: "tab-2" });
+    // The terminal kept nothing, so nothing is left.
+    expect(await reopen()).toEqual({ reopened: false });
+    await kernel.stop();
+  });
 });

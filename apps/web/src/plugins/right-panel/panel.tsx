@@ -564,6 +564,14 @@ function Tab(props: TabProps) {
             ) : (
               (tab.icon as ReactNode)
             )}
+            {/* T3's dot of unsaved changes (D1645). */}
+            {tab.pending === true ? (
+              <span
+                aria-hidden
+                className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+                data-pending-dot=""
+              />
+            ) : null}
           </span>
           <XIcon className="hidden size-3 group-hover/tab:block group-focus-visible/close:block" />
         </button>

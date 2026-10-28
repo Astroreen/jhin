@@ -1,7 +1,8 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): packages/shared/src/composerTrigger.ts,
 // packages/shared/src/composerInlineTokens.ts, packages/shared/src/composerContextReferences.ts
-// (sanitizeComposerContextLabel, a reference as a markdown link), apps/web/src/composer-logic.ts
-// and apps/web/src/composer-editor-mentions.ts at eb7b35ac.
+// (sanitizeComposerContextLabel, a reference as a markdown link), apps/web/src/composer-logic.ts,
+// apps/web/src/composer-editor-mentions.ts and the leading boundary of
+// apps/web/src/components/chat/ChatComposer.tsx's insertComposerText at eb7b35ac.
 //
 // Pure helpers over the prompt, which is a markdown string: what the caret is typing (a `/`
 // command, a `#` pull request, a `$` skill, an `@` path or thread), how a picked file, pull
@@ -41,6 +42,15 @@ function encodeMarkdownLinkDestination(path: string): string {
 export function serializeComposerFileLink(path: string): string {
   const label = escapeMarkdownLinkLabel(basename(path));
   return `[${label}](${encodeMarkdownLinkDestination(path)})`;
+}
+
+/**
+ * Text put after the prompt (T3's `insertTextAtEnd` with `ensureLeadingBoundary`, D1642): where it
+ * goes, with a space before it when the prompt does not end in whitespace.
+ */
+export function endInsertion(prompt: string, text: string): { at: number; text: string } {
+  const needsLeadingSpace = prompt.length > 0 && !/\s/.test(prompt[prompt.length - 1] ?? "");
+  return { at: prompt.length, text: needsLeadingSpace ? ` ${text}` : text };
 }
 
 const THREAD_ADDRESS_REGEX = /^jhin:\/\/[^/\s]+\/threads\/[^/\s?#]+$/;
