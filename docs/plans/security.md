@@ -1179,7 +1179,8 @@ config files, so these extend the decisions they name.
   (a device token checked: a connect, a ticket, an MCP request) writes
   `clients.json` when the file's `lastSeenAt` of that device is missing or
   an hour old, and `jhin.auth-token` writes what it holds when it stops;
-  a write that fails is logged and never fails the sighting. A sighting a
+  a write that fails is logged, never fails the sighting and is tried
+  again an hour later, not on every sighting. A sighting a
   minute or more after that device's last told one emits
   `auth.clients.changed` (D1188), so the settings page reads the list
   again and "Connected …" moves within a minute. A crash loses at most an

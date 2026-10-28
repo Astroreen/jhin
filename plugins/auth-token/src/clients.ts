@@ -253,8 +253,9 @@ export function createClientStore(
     records = next;
     written = new Map(next.map((record) => [record.id, record.lastSeenAt]));
   };
-  /** When each device's sighting was last told. */
+  /** When each device's sighting was last told, and last tried to write. */
   const told = new Map<string, number>();
+  const attempted = new Map<string, number>();
   /** Writes what is current, telling a failure instead of throwing it. */
   const write = (): unknown => {
     try {
@@ -335,8 +336,13 @@ export function createClientStore(
       // login never fails on the disk (security.md D1708).
       const seen: ClientRecord = { ...record, lastSeenAt: now };
       records = records.map((entry) => (entry === record ? seen : entry));
-      const inFile = written.get(record.id);
-      if (inFile === undefined || now - inFile >= SEEN_WRITE_MS) {
+      // Tried at most hourly per device, also while the disk refuses.
+      const tried = Math.max(
+        written.get(record.id) ?? Number.NEGATIVE_INFINITY,
+        attempted.get(record.id) ?? Number.NEGATIVE_INFINITY,
+      );
+      if (now - tried >= SEEN_WRITE_MS) {
+        attempted.set(record.id, now);
         const failed = write();
         if (failed !== undefined) onSeen(failed);
       }
@@ -356,6 +362,10 @@ export function createClientStore(
     },
     remove(ids) {
       const gone = records.filter((record) => ids.includes(record.id));
+      for (const id of ids) {
+        told.delete(id);
+        attempted.delete(id);
+      }
       if (gone.length > 0) {
         commit(records.filter((record) => !ids.includes(record.id)));
       }
