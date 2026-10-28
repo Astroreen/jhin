@@ -2,6 +2,7 @@ import * as Fs from "node:fs";
 
 import {
   INBOX_STREAM,
+  MAX_MESSAGE_LENGTH,
   MESSAGES_STREAM,
   MessageEvents,
   ThreadEvents,
@@ -320,6 +321,74 @@ describe("slices.handoff (D703)", () => {
       ready: [],
       working: [walls.id],
     });
+  });
+
+  it("hands one assignee's slices together, in one message (D1562)", async () => {
+    const { client, slice } = await node();
+    const walls = await slice({ title: "Walls", spec: "Four walls stand", assignee: BUILDER });
+    const roof = await slice({ title: "Roof", assignee: OWNER });
+    const floor = await slice({ title: "Floor", spec: "A dry floor", assignee: BUILDER });
+    const nobody = await slice({ title: "Door" });
+    const together = await client.call<{
+      handoffs: { slice: Slice; threadId?: string; handed: boolean; delivered: string }[];
+      failed: { sliceId: string; code?: string }[];
+    }>("slices.handoff.together", { sliceIds: [walls.id, roof.id, floor.id, nobody.id] });
+    expect(together.failed).toMatchObject([{ sliceId: nobody.id, code: "SLICE_NOT_READY" }]);
+    expect(together.handoffs.map((item) => [item.slice.id, item.slice.status])).toEqual([
+      [walls.id, "active"],
+      [floor.id, "active"],
+      [roof.id, "active"],
+    ]);
+    const [first, second] = together.handoffs;
+    // Both slices link the one generation that took the one message.
+    expect(second!.threadId).toBe(first!.threadId);
+    const conversation = await client.call<{ entries: { message: { body: string } }[] }>(
+      "agents.conversation",
+      { with: BUILDER },
+    );
+    expect(conversation.entries).toHaveLength(1);
+    const text = conversation.entries[0]!.message.body;
+    expect(text).toContain("[Slices handed to you]");
+    expect(text).toContain("assignee of 2 slices");
+    expect(text).toContain(`Slice \`${walls.id}\``);
+    expect(text).toContain(`Slice \`${floor.id}\``);
+    expect(text).toContain("Four walls stand");
+    expect(text).toContain("A dry floor");
+    const turn = await watch(client, threadStream(first!.threadId!)).until(
+      ThreadEvents.turnStarted,
+    );
+    expect(payloadOf(turn).input.text).toContain(`Slice \`${floor.id}\``);
+    // Handing them again changes nothing and sends nothing.
+    const again = await client.call<{ handoffs: { handed: boolean }[] }>(
+      "slices.handoff.together",
+      { sliceIds: [walls.id, floor.id] },
+    );
+    expect(again.handoffs.map((item) => item.handed)).toEqual([false, false]);
+    expect(
+      (await client.call<{ entries: unknown[] }>("agents.conversation", { with: BUILDER })).entries,
+    ).toHaveLength(1);
+  });
+
+  it("hands a duplicated id once, and keeps a long message under the limit (D1562)", async () => {
+    const { client, slice } = await node();
+    const long = "The walls stand straight. ".repeat(700);
+    const walls = await slice({ title: "Walls", spec: long, assignee: BUILDER });
+    const floor = await slice({ title: "Floor", spec: long, assignee: BUILDER });
+    const together = await client.call<{ handoffs: { slice: Slice }[]; failed: unknown[] }>(
+      "slices.handoff.together",
+      { sliceIds: [walls.id, walls.id, floor.id] },
+    );
+    expect(together.failed).toEqual([]);
+    expect(together.handoffs.map((item) => item.slice.id)).toEqual([walls.id, floor.id]);
+    const { entries } = await client.call<{ entries: { message: { body: string } }[] }>(
+      "agents.conversation",
+      { with: BUILDER },
+    );
+    expect(entries).toHaveLength(1);
+    const body = entries[0]!.message.body;
+    expect(body.length).toBeLessThanOrEqual(MAX_MESSAGE_LENGTH);
+    expect(body).toContain("[Slices handed to you]");
+    expect(body).toContain("missions_get");
   });
 
   it("marks the owner's slice active, and refuses what is not ready here", async () => {

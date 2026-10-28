@@ -2543,6 +2543,26 @@ Decisions (M3):
   again. Runtimes as implicit agents (D601), the owner's own threads, load
   everything as before. Before, in the L3 run, the crew's closing words and
   answers to asks came in Russian from the owner's personal `CLAUDE.md`.
+- **D1562. A wave's slices for one assignee go in one message.**
+  `slices.handoff.together { sliceIds }` hands slices as `slices.handoff`
+  does (readiness, the hold, links, the slice active at its first step,
+  `node` for another node's mission), grouped by mission and assignee: each
+  assignee gets one message for all of its slices, so its runtime takes them
+  in one turn. One slice gets the message `slices.handoff` sends; several get
+  "[Slices handed to you]" with each slice's spec, step and review line, and
+  what they serve once; several review slices share the room left for their
+  briefs (D1245), each cut with its `review_brief` address, or named by it
+  alone when the slices' text leaves too little; the whole message stays
+  under `MAX_MESSAGE_LENGTH`. Its id is a hash of the slices as planned, so a
+  retry delivers it once. A group that cannot be handed fails whole, in
+  `failed` with its error, and the others go on; once the message is sent,
+  each slice is linked and set active on its own, and one whose write fails
+  is in `failed` alone (handing it again sends it again, as a message of its
+  own). A duplicated id is handed once; slices already active answer
+  `handed: false` and send nothing. The
+  orchestrator hands each wave with it. Before, each handoff started a turn
+  of its own: in the L3 run the reviewer did the wave in its first turn and
+  spent the rest answering "Duplicate handoff".
 
 ## Deferred
 
@@ -2841,9 +2861,9 @@ Decisions (M3):
 - A3: deleting asks the `missions.deleting` hook before it appends, so an
   orchestrator run started in between is not refused (D1395); the same
   window as `missions.step`'s review check (D1241).
-- L3: a wave's handoffs to one agent as one message. Each handoff starts a
+- ~~L3: a wave's handoffs to one agent as one message. Each handoff starts a
   turn of its own; an agent that does the whole wave in the first spends the
-  others on "Duplicate handoff" (the L3 run).
+  others on "Duplicate handoff" (the L3 run).~~ M3, D1562.
 - ~~L3: which setting sources a defined agent's runtime loads. Claude Code
   reads the node machine user's own `~/.claude` (`CLAUDE.md`, memory,
   skills), so a team inherits the owner's personal instructions; a choice in

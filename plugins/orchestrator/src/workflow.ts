@@ -57,13 +57,17 @@ for (;;) {
   watched = next.wave;
   phase("Wave " + next.wave);
   const failed = [];
-  for (const sliceId of next.ready) {
+  if (next.ready.length > 0) {
+    // One message per assignee for its slices of the wave (D1562).
     try {
-      const done = await command("slices.handoff", { sliceId, ...on });
-      handed.push(sliceId);
-      log("Handed " + done.slice.title + " to " + done.slice.assignee);
+      const done = await command("slices.handoff.together", { sliceIds: next.ready, ...on });
+      for (const item of done.handoffs) {
+        handed.push(item.slice.id);
+        log("Handed " + item.slice.title + " to " + item.slice.assignee);
+      }
+      for (const item of done.failed) failed.push({ ...item, reason: "handoff-failed" });
     } catch (error) {
-      failed.push({ sliceId, reason: "handoff-failed", code: error.code, message: error.message });
+      for (const sliceId of next.ready) failed.push({ sliceId, reason: "handoff-failed", code: error.code, message: error.message });
     }
   }
   const decisions = [...next.decisions, ...failed];

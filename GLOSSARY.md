@@ -433,7 +433,8 @@ Words about Jhin:
   elsewhere (`missions.next`).
 - **Handoff** — giving a ready slice to its assignee: a message in its
   agent's current generation, and the slice marked active
-  (`slices.handoff`).
+  (`slices.handoff`). An assignee's slices of one wave go in one message
+  (`slices.handoff.together`).
 - **Orchestrator** — the workflow that walks a mission wave by wave for its
   lead: it hands off ready slices, waits for their proofs and ends at every
   decision (`missions.orchestrate`). Not the same as `jhin.orchestration`,
