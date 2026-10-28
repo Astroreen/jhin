@@ -1315,6 +1315,17 @@ A slice a PR, in the order of D1701's risks:
   expiry, revoking the device revokes it while signing the page out does
   not, the owner's and an agent's issued tokens keep no parent, and
   `workflows.run` is described with shell access and its reason.
+- **PR 7b — drafts** (`config-ui.md` D1704). **Done when:** an agent's
+  grants are refused a draft's read and write, and `threads.*` reads it.
+- **PR 7c — a refresh's lost answer** (D1705). **Done when:** a spent
+  refresh token retried within the window while its successor is unused
+  gets a new pair and the lost access token is revoked; after the window,
+  once the successor was used, or from another client, it ends the sign-in.
+- **PR 7d — the marker and orphaned signing secrets** (D1706,
+  `orchestration.md` D1707). **Done when:** `••••••#note` saves as a value
+  while `••••••#/keys/1` keeps its secret, and a signing secret the store
+  could not delete is deleted at the next activation unless its task holds
+  one again.
 
 ## Deferred
 
@@ -1431,8 +1442,9 @@ A slice a PR, in the order of D1701's risks:
   `clients.json` is; a failed write answers the request with an error
   rather than `invalid_grant`. An unreadable `refresh.json` is not
   repaired: every MCP client signs in again.
-- W44's leftovers (D1515–D1519): `jhin pair --tailscale` does not warn when `jhin.http.tailnet` names another tailnet
-  than the one it publishes on, so its link answers 403. The repair of a
+- W44's leftovers (D1515–D1519): `jhin pair --tailscale` does not warn
+  when `jhin.http.tailnet` names another tailnet than the one it
+  publishes on, so its link answers 403. The repair of a
   `clients.json` that is not JSON scans from every unclosed `{` to the end,
   quadratic on a hostile file (D1518). A refresh whose answer is lost
   leaves the client a spent token, whose reuse ends the sign-in (RFC 9700

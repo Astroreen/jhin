@@ -1008,6 +1008,20 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
   scheduler, and a save that keeps the task's model options while its
   model stays (D1178).
 
+### A signing secret left behind (W48)
+
+Round 6 of `t3-roadmap.md` (`security.md` D1701 (5)).
+
+- **D1707. A signing secret the store could not delete is deleted
+  later.** When deleting a task, or removing its signature, cannot delete
+  its secret from the store (the store unreadable then, a failed delete,
+  D1512), `jhin.scheduler` remembers the task's id in `storage.kv`
+  (`secret-orphans`, ids only, never a value) and tries again each time it
+  activates with a store that can be read. An id whose task holds a secret
+  in the store again is dropped from the list without deleting anything; a
+  delete that fails again keeps it listed. The store has no listing of
+  names, so a name nothing remembered is not swept (Deferred).
+
 ### Deferred
 
 - "Edit" of the thread's automations opening that task's editor (the route
@@ -1018,6 +1032,6 @@ Round 5 of `t3-roadmap.md` (D1501–D1520), at D380's nightly tag:
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.
 - Metrics of deliveries (T3 counts them per outcome).
-- A signing secret the store could not delete (unreadable then, or a
-  failed delete) stays in it under its task's name; nothing sweeps names
-  whose task is gone (D1512).
+- Signing secrets nothing remembers (D1707): a node that stops between
+  deleting a task and remembering that its secret could not be deleted
+  leaves the name in the store, and nothing lists names to sweep them.

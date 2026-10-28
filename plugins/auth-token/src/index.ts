@@ -252,7 +252,8 @@ export default definePlugin({
      * The device token a caller stands on (security.md D1703): its own, or the
      * first of its parents that has none, as a page session stands on the token
      * that opened it (D421). None for the owner, a page session the owner
-     * opened, and a caller that is no device token of this node.
+     * opened, and a caller that is no device token of this node. The same walk
+     * as `jhin.mcp-oauth`'s `standingOf`, which answers the owner itself.
      */
     const standingOf = (principal: string | undefined): ClientRecord | undefined => {
       let record = principal === undefined ? undefined : recordOf(principal);

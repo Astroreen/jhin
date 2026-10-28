@@ -1099,10 +1099,42 @@ describe("pairing (security.md D419–D422)", () => {
     })) as { revoked: string[] };
     expect(revoked.toSorted()).toEqual([device.id, direct.id, viaSession.id].toSorted());
     const after = await listed();
-    expect(after.has(fromOwner.id) && after.has(fromAgent.id)).toBe(true);
+    expect(after.has(fromOwner.id)).toBe(true);
+    expect(after.has(fromAgent.id)).toBe(true);
     // The owner token's rotation leaves issued tokens alone (D412).
     await node.kernel.commands.execute("auth.token.rotate", {});
     expect((await listed()).has(fromOwner.id)).toBe(true);
+  });
+
+  it("keeps a shorter expiry, and hangs a token issued by an issued one on the device (security.md D1703)", async () => {
+    const node = await startNode();
+    const device = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "laptop",
+      permissions: ["auth.*", "app.*"],
+      ttlDays: 30,
+    })) as { id: string; token: string; expiresAt: number };
+    const child = await connect(node.url, device.token).call<{
+      id: string;
+      token: string;
+      expiresAt: number;
+    }>("auth.tokens.issue", { label: "child", permissions: ["auth.*", "app.read"], ttlDays: 1 });
+    // Asked for a day: kept, not raised to the device's month.
+    expect(child.expiresAt).toBeLessThan(device.expiresAt);
+    expect(child.expiresAt).toBeLessThanOrEqual(Date.now() + 86_400_000 + 1000);
+    const grandchild = await connect(node.url, child.token).call<{ id: string }>(
+      "auth.tokens.issue",
+      { label: "grandchild", permissions: ["app.read"] },
+    );
+    const { clients } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+      clients: { id: string; parent?: string }[];
+    };
+    expect(clients.find((client) => client.id === grandchild.id)?.parent).toBe(
+      `client:${device.id}`,
+    );
+    const { revoked } = (await node.kernel.commands.execute("auth.clients.revoke", {
+      id: device.id,
+    })) as { revoked: string[] };
+    expect(revoked.toSorted()).toEqual([device.id, child.id, grandchild.id].toSorted());
   });
 
   it("turns the owner's token from #token= into a session too", async () => {
