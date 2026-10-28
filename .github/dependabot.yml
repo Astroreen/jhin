@@ -1,0 +1,17 @@
+# docs/plans/desktop.md, D1685: proposes the updates of the actions every
+# workflow pins to a commit SHA (D1483), with the release in the comment.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: ci

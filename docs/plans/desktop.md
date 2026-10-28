@@ -728,6 +728,43 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   window closes with its tab or guest, or from the menu again; the bridge
   gets `preview.popOut`, `preview.closePopOut` and `onPopOutClosed`.
 
+### CI, the node's start and stop, and the app's rest (W47)
+
+Workstream W47 of `t3-roadmap.md` continues this plan, `preview.md` and
+`mesh-streams.md` with the decision range D1681–D1700. The owner will not
+add the signing secrets, so nothing here waits for them (D1482's
+environment is the owner's choice and nothing here needs it either).
+
+- **D1684. CI keeps Chromium and its system packages in the Actions
+  cache.** The unit and E2E jobs install Chromium through a composite
+  action, `.github/actions/chromium`, keyed by the runner's system, arch,
+  image (`ImageOS`, `ImageVersion`) and Playwright's version. On a miss it
+  runs `playwright install --with-deps chromium` as before, with apt told to
+  keep the packages it downloads in a cached folder; on a hit it installs
+  those packages with `dpkg -i` and no network, and `playwright install
+  chromium` finds the browser already there. The image is in the key
+  because the packages are the ones that image lacked: a newer image may
+  hold newer versions that `dpkg` would downgrade, so each image (GitHub
+  ships one a week) pays the slow install once. A cached set that fails to
+  install falls back to apt with a warning.
+- **D1685. Every workflow's actions are pinned to commit SHAs, and
+  Dependabot proposes their updates.** `ci.yml`, `claude.yml` and
+  `claude-review.yml` pin their actions as D1483 pinned the release path's
+  (the release in a comment); `ci.yml`'s report upload moves to the
+  `upload-artifact` release the release path already pins. A
+  `.github/dependabot.yml` checks the `github-actions` ecosystem weekly (the
+  workflows and `.github/actions/*`) and proposes the updates as one grouped
+  pull request, with the SHA and its comment changed together.
+- **D1686. A failed weekly dry run opens an issue.** GitHub mails a failed
+  scheduled run only to whoever last changed the schedule, and the owner
+  may not be that user. `release-desktop.yml` gets a last job that runs
+  only for the schedule and only when a job before it failed: it opens an
+  issue "Weekly desktop dry run failed" with a link to the run, or comments
+  on that issue while one is still open, so a failure each week stays one
+  thread the repository's watchers are told of. GitHub still disables a
+  schedule after 60 days without activity in the repository; such a
+  repository has nothing new for the dry run to prove.
+
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
@@ -759,16 +796,6 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
   unprotected and uses the repository's secrets. The owner declined both
   (2026-10-28): there are no signing secrets, and a review would put a
   manual step into a workflow the owner wants automatic.
-- A notice when the weekly dry run fails (D1484): GitHub mails only the
-  user who last changed the schedule, and disables a schedule after 60 days
-  without activity in the repository.
-- Pinning the other workflows' actions (`ci.yml`, `claude.yml`,
-  `claude-review.yml`) to commit SHAs, and a Dependabot configuration that
-  proposes the pins' updates (D1483 pins the release path only).
-- Caching Chromium and its system packages in `ci.yml`'s unit and E2E
-  jobs: `playwright install --with-deps chromium` took 8–10 minutes on a
-  slow apt mirror (2026-10-26), so #325 gave those jobs 20 and 25 minutes
-  instead of making the install fast.
 - A test of `scripts/package-desktop.ts`'s orchestration with a fake spawn:
   its pure parts are unit tested and the pull request dry run runs it whole
   on all three systems.

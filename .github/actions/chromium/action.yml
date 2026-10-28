@@ -1,0 +1,52 @@
+# docs/plans/desktop.md, D1684: Playwright's Chromium and the system packages it
+# needs, kept in the Actions cache per runner image and Playwright version, so a
+# slow apt mirror costs one run a week instead of 8–10 minutes of every run.
+name: Chromium
+description: Install Playwright's Chromium and its system packages, from the cache when it has them.
+runs:
+  using: composite
+  steps:
+    - name: Playwright's version
+      id: version
+      shell: bash
+      run: echo "playwright=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+    # The packages are those this runner image lacks: a new image (ImageVersion,
+    # weekly) installs them again, so dpkg never meets newer ones it would downgrade.
+    - name: Restore Chromium
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/ms-playwright
+          ~/.cache/jhin-chromium-debs
+        key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-${{ steps.version.outputs.playwright }}
+    - name: Install Chromium's packages from the cache
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        debs="$HOME/.cache/jhin-chromium-debs"
+        # No network: the cached packages, unpacked and configured together.
+        if compgen -G "$debs/*.deb" > /dev/null && ! sudo dpkg -i "$debs"/*.deb; then
+          echo "::warning::The cached Chromium packages did not install; installing from apt"
+          sudo apt-get update
+          sudo apt-get -f install -y
+          pnpm exec playwright install --with-deps chromium
+        fi
+        # Already there unless the cache lost it.
+        pnpm exec playwright install chromium
+    - name: Install Chromium and keep its packages
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        debs="$HOME/.cache/jhin-chromium-debs"
+        mkdir -p "$debs/partial"
+        # apt keeps the packages it downloads in the cached folder.
+        conf=/etc/apt/apt.conf.d/99jhin-chromium-debs
+        printf 'Dir::Cache::Archives "%s/";\nAPT::Keep-Downloaded-Packages "true";\n' "$debs" | sudo tee "$conf" > /dev/null
+        pnpm exec playwright install --with-deps chromium
+        sudo rm -f "$conf"
+        sudo rm -rf "$debs/partial" "$debs/lock"
+        sudo chown -R "$(id -u):$(id -g)" "$debs"
+        echo "Kept $(find "$debs" -name '*.deb' | wc -l) packages for the cache"

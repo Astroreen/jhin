@@ -339,3 +339,30 @@ jobs:
           fi
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber release/*
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+  # GitHub mails a failed schedule only to whoever last changed it: the weekly
+  # dry run opens an issue instead, or comments on the one still open (D1686).
+  notice:
+    name: Report a failed weekly dry run
+    needs: [meta, build, feeds]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Weekly desktop dry run failed"
+          body="The scheduled dry run of \`release-desktop.yml\` on \`main\` failed: $RUN_URL (commit $GITHUB_SHA)."
+          open="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
+          if [[ -n "$open" ]]; then
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
