@@ -2657,7 +2657,7 @@ steer a Claude Code turn ended before it took go with them.
   used, from the `resetCredits` the agent reports (`AgentUsageLimits`,
   read by Codex since D1305); an agent that reports none shows nothing.
 - **D1656. "Use reset",** T3's `useResetCredit` and `ResetCreditDialog`.
-  `agent.runtime@1.17` (additive): `consumeResetCredit()` redeems one credit
+  `agent.runtime@1.18` (additive): `consumeResetCredit()` redeems one credit
   of the agent's account and answers T3's outcome (`reset`,
   `nothingToReset`, `noCredit`, `alreadyRedeemed`). Codex's asks its app
   server (`account/rateLimitResetCredit/consume`, with an idempotency key
@@ -2696,8 +2696,13 @@ steer a Claude Code turn ended before it took go with them.
   their own until reloaded), and "Reopen Closed Tab" from a focused browser
   page in the desktop app (T3 forwards the chord from its webview; D1641
   hears it only while focus is in the page's chrome).
-- T3's Usage page beyond its "Limits" view (D1308): the token and cost
-  views and an account's reset credits, which no Jhin runtime reads yet.
+- T3's Usage page beyond its "Limits" view (D1308, D1655, D1656): the Cost
+  and Tokens views (D1657); Claude Code's reset credits (Jhin's Claude
+  runtime does not read them); T3's pooled multi-account view (its accounts
+  by email, a segment's popover with "Use reset" in it); and T3's error when
+  a reset was applied but the limits read after it failed ("The reset was
+  applied, but Codex could not confirm the new limits. Refresh to check."):
+  Jhin's page says the outcome and shows what it reads again.
 - The watcher test of `packages/node-host/test/host.test.ts` said to have
   failed once on #180: #180's failed CI attempt failed on the build-mode
   flake instead (D1042), and no failure of `host.test.ts` is in the logs of

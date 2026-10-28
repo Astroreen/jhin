@@ -1,8 +1,8 @@
 // An agent's usage limits and a turn that failed on one (since `agent.runtime` 1.8,
 // providers.md D1141, D1143). The shapes are T3 Code's (MIT, see THIRD_PARTY_NOTICES.md) at
 // eb7b35ac: packages/contracts/src/providerUsageLimits.ts (ServerProviderUsageWindow,
-// ServerProviderResetCredits, ServerProviderUsageLimits) and the `usage_limit` class of
-// OrchestrationV2ProviderFailure.
+// ServerProviderResetCredits, ServerProviderUsageLimits, ProviderConsumeResetCreditOutcome) and
+// the `usage_limit` class of OrchestrationV2ProviderFailure.
 
 /**
  * One window of an allowance. `id` is stable per agent (`primary`, `five_hour`), so a sparse
@@ -24,6 +24,18 @@ export interface AgentResetCredits {
   /** ISO time the first available credit expires. */
   readonly nextExpiresAt?: string;
 }
+
+/**
+ * What redeeming a reset credit did (since 1.17, t3-parity.md D1656): the windows were cleared,
+ * none was there to clear, the account has no credit left, or the credit was already redeemed.
+ */
+export const AGENT_RESET_CREDIT_OUTCOMES = [
+  "reset",
+  "nothingToReset",
+  "noCredit",
+  "alreadyRedeemed",
+] as const;
+export type AgentResetCreditOutcome = (typeof AGENT_RESET_CREDIT_OUTCOMES)[number];
 
 /** What an agent's account may still spend, as the agent last reported it. */
 export interface AgentUsageLimits {

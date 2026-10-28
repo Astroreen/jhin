@@ -10,6 +10,7 @@ import * as Path from "node:path";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
+  AGENT_RESET_CREDIT_OUTCOMES,
   AGENT_RUNTIME_CAPABILITY,
   askAgent,
   parseJsonObject,
@@ -2865,6 +2866,32 @@ export default definePlugin({
         return {
           usageLimits: found === undefined ? null : usageLimitsOf(found),
         };
+      },
+    });
+
+    context.commands.register({
+      name: "agents.reset-credit.consume",
+      description:
+        "Redeems one reset credit of the account an agent runs on, clearing its current usage windows; answers what it did (t3-parity.md D1656)",
+      input: z.object({ agentId: z.string().optional() }),
+      output: z.object({ outcome: z.enum(AGENT_RESET_CREDIT_OUTCOMES) }),
+      // It spends the account, as a turn does (T3 asks for its providers scope).
+      permissions: ["threads.write"],
+      handler: async ({ agentId }) => {
+        const runtime = agentId === undefined ? await defaultRuntime() : registry.get(agentId);
+        if (runtime === undefined) {
+          throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${agentId ?? ""} on this node`, {
+            agentId,
+          });
+        }
+        if (runtime.consumeResetCredit === undefined) {
+          throw new ThreadsError(
+            "RESET_CREDIT_UNSUPPORTED",
+            `Provider '${runtime.name ?? runtime.agentId}' has no reset credits to redeem.`,
+            { agentId: runtime.agentId },
+          );
+        }
+        return { outcome: await runtime.consumeResetCredit() };
       },
     });
 

@@ -2,7 +2,7 @@
 // T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac: packages/shared/src/usageLimits.ts
 // (collectLimitPools, poolWindows, collectLimitNotices, paceOfShares).
 import type { AgentUsageLimits, AgentUsageWindow } from "@jhin/agent-api";
-import { targetKey, type AgentInfo, type ThreadsCatalog } from "@jhin/client-api";
+import { targetKey, type AgentInfo, type NodeTarget, type ThreadsCatalog } from "@jhin/client-api";
 
 import type { ShownNode } from "./nodes.ts";
 import { elapsedShare, limitsNotice, type LimitPace } from "./usage-limits.ts";
@@ -14,6 +14,8 @@ export interface LimitAccount {
   readonly agentId: string;
   readonly agentName: string;
   readonly nodeLabel: string;
+  /** The node it was read from, where its reset credit is redeemed (t3-parity.md D1656). */
+  readonly target: NodeTarget;
   readonly limits: AgentUsageLimits;
 }
 
@@ -222,6 +224,7 @@ export async function readUsage(
                 agentId: agent.agentId,
                 agentName: agent.name,
                 nodeLabel: node.label,
+                target: node.target,
                 limits: usageLimits,
               };
             } catch (error) {
@@ -230,6 +233,7 @@ export async function readUsage(
                 agentId: agent.agentId,
                 agentName: agent.name,
                 nodeLabel: node.label,
+                target: node.target,
                 limits: {
                   checkedAt: new Date(now).toISOString(),
                   windows: [],

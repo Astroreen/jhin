@@ -1,8 +1,9 @@
 // An agent's usage limits as the composer shows them (providers.md D1144). Derived from T3 Code
 // (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac: packages/shared/src/usageLimits.ts
 // (limitsNotice, remainingPercent, elapsedShare, paceOf, formatDuration, formatResetsIn,
-// isUsageLimitsCommand) and apps/web/src/timestampFormat.ts (formatUpcomingTimestamp).
-import type { AgentUsageLimits, AgentUsageWindow } from "@jhin/agent-api";
+// isUsageLimitsCommand), apps/web/src/timestampFormat.ts (formatUpcomingTimestamp) and
+// apps/web/src/components/usage/UsageLimits.tsx (resetCreditsSummary).
+import type { AgentResetCredits, AgentUsageLimits, AgentUsageWindow } from "@jhin/agent-api";
 
 import { formatDayAwareTimestamp, formatShortTimestamp, type TimestampFormat } from "./format.ts";
 
@@ -70,6 +71,17 @@ export function formatResetsIn(window: AgentUsageWindow, now: number): string | 
   if (resetsAt <= now) return "resets now";
   if (resetsAt - now < MINUTE) return "Resets momentarily";
   return `resets in ${formatDuration(resetsAt - now)}`;
+}
+
+/** An account's banked reset credits (t3-parity.md D1655), T3's `resetCreditsSummary`. */
+export function resetCreditsSummary(credits: AgentResetCredits, now: number): string {
+  if (credits.availableCount === 0) return "No reset credits banked";
+  const expires =
+    credits.nextExpiresAt === undefined ? Number.NaN : Date.parse(credits.nextExpiresAt);
+  const expiresIn = Number.isFinite(expires) ? formatDuration(expires - now) : null;
+  return `${credits.availableCount} ${credits.availableCount === 1 ? "reset credit" : "reset credits"} banked${
+    expiresIn ? ` · next expires in ${expiresIn}` : ""
+  }`;
 }
 
 const numericDate = new Intl.DateTimeFormat(undefined, { month: "numeric", day: "numeric" });

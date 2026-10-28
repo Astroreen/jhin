@@ -38,6 +38,8 @@ export interface Scenario {
   readonly resources?: Readonly<Record<string, readonly unknown[]>>;
   /** `mcpServerStatus/list`'s tools, by server (D1402). */
   readonly mcpTools?: Readonly<Record<string, readonly unknown[]>>;
+  /** `account/rateLimitResetCredit/consume`'s outcome (D1656); `reset` when absent. */
+  readonly resetCreditOutcome?: string;
   /** `feedback/upload`'s answer; the thread it was asked for, as `feedback-<id>`, when absent. */
   readonly feedback?: unknown;
   /** `skills/list`'s entries, one per folder. */
@@ -233,6 +235,9 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
     case "account/rateLimits/read":
       if (scenario.rateLimits === undefined) break;
       send({ id, result: scenario.rateLimits });
+      return;
+    case "account/rateLimitResetCredit/consume":
+      send({ id, result: { outcome: scenario.resetCreditOutcome ?? "reset" } });
       return;
     case "skills/list":
       send({ id, result: { data: scenario.skills ?? [] } });

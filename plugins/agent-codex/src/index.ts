@@ -1,19 +1,23 @@
 // The Codex agent runtime (D310–D324). Its status probe is derived from T3 Code
 // (https://github.com/pingdotgg/t3code), apps/server/src/provider/CodexProvider.ts at
 // eb7b35ac (probeCodexAppServerProvider, checkCodexProviderStatus): the account, the model
-// catalog and T3's messages for a Codex that does not start, is signed out or hangs.
+// catalog and T3's messages for a Codex that does not start, is signed out or hangs. Redeeming a
+// reset credit is T3's apps/server/src/provider/Drivers/CodexDriver.ts (consumeResetCredit) and
+// apps/server/src/provider/resetCreditCoordinator.ts (one idempotency key per attempt).
 import * as Crypto from "node:crypto";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
+  AGENT_RESET_CREDIT_OUTCOMES,
   McpAppRequestError,
   THREADS_STREAM,
   ThreadEvents,
   type AgentAuth,
   type AgentModel,
   type AgentRegistry,
+  type AgentResetCreditOutcome,
   type AgentRuntime,
   type AgentRuntimeStatus,
   type AgentSkill,
@@ -108,6 +112,8 @@ const USAGE_TTL_MS = 60_000;
 const FEEDBACK_TIMEOUT_MS = 120_000;
 /** A usage read that takes longer is reported as failed (T3's RATE_LIMITS_PROBE_TIMEOUT_MS). */
 const RATE_LIMITS_TIMEOUT_MS = 5_000;
+/** A reset credit's redemption that takes longer is given up, its key kept (T3's 20 seconds). */
+const RESET_CREDIT_TIMEOUT_MS = 20_000;
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
 export const Config = z
@@ -802,6 +808,65 @@ export function createCodexRuntime(options: {
     };
   };
 
+  // --- Reset credits (t3-parity.md D1656) ----------------------------------------------
+  /**
+   * T3's resetCreditCoordinator: redemptions of the account run one at a time, and one keeps its
+   * idempotency key until Codex answers an outcome, so the press after a lost answer (an error,
+   * a Codex that hung or exited) is the same attempt and cannot spend a second credit. The key
+   * belongs to the home holding the login: another home is another account.
+   */
+  let redemptions: Promise<unknown> = Promise.resolve();
+  let pendingRedemption: { readonly home: string; readonly idempotencyKey: string } | undefined;
+  const redeemResetCredit = async (): Promise<AgentResetCreditOutcome> => {
+    const config = options.config();
+    const home = expandHome(config.homePath) ?? "";
+    if (pendingRedemption?.home !== home) {
+      pendingRedemption = { home, idempotencyKey: Crypto.randomUUID() };
+    }
+    const { idempotencyKey } = pendingRedemption;
+    const connection = launch({
+      binaryPath: config.binaryPath,
+      args: config.args ?? [],
+      cwd: Os.tmpdir(),
+      env: codexEnvironment(config.env, expandHome(config.homePath), config.inheritEnv),
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let outcome: AgentResetCreditOutcome;
+    try {
+      // The limit covers the handshake too: a hung app-server does not hold the account.
+      const response = (await Promise.race([
+        initialize(connection, VERSION).then(() =>
+          connection.request("account/rateLimitResetCredit/consume", { idempotencyKey }),
+        ),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Codex did not answer the reset credit's redemption.")),
+            RESET_CREDIT_TIMEOUT_MS,
+          );
+        }),
+      ])) as { outcome?: unknown } | null;
+      const answered = AGENT_RESET_CREDIT_OUTCOMES.find((known) => known === response?.outcome);
+      if (answered === undefined) throw new Error("Codex did not say what the redemption did.");
+      outcome = answered;
+    } catch (error) {
+      throw new Error("Codex could not redeem the reset credit.", { cause: error });
+    } finally {
+      clearTimeout(timer);
+      connection.close();
+    }
+    if (pendingRedemption?.idempotencyKey === idempotencyKey) pendingRedemption = undefined;
+    // The windows just changed: read them again, after a read that began before the redemption.
+    const key = probeKey();
+    await probing.get(key)?.catch(() => undefined);
+    await refresh(key).catch(() => undefined);
+    return outcome;
+  };
+  const consumeResetCredit = () => {
+    const redeemed = redemptions.then(redeemResetCredit);
+    redemptions = redeemed.catch(() => undefined);
+    return redeemed;
+  };
+
   /**
    * The default model once Codex was asked for its own, waiting at most MODEL_WAIT_MS: a
    * Codex that hangs or cannot start leaves the bundled default, and the turn's own start
@@ -856,6 +921,7 @@ export function createCodexRuntime(options: {
     },
     status,
     usageLimits,
+    consumeResetCredit,
     auth,
     // MCP apps (D1401, D1402): their documents, and their calls on the thread's running Codex.
     ...(options.appDocuments === undefined
