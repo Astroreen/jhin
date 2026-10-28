@@ -50,7 +50,14 @@ import {
   type Disposable,
   type Invocation,
 } from "@jhin/sdk";
-import { EVENTLOG_CAPABILITY, type EventLog, type Json, type StoredEvent } from "@jhin/storage-api";
+import {
+  EVENTLOG_CAPABILITY,
+  KV_CAPABILITY,
+  type EventLog,
+  type Json,
+  type KeyValueStore,
+  type StoredEvent,
+} from "@jhin/storage-api";
 
 import { mergeByTime } from "./merge.ts";
 import { Sensors, broaderThanNarrower, type Finding } from "./sensors.ts";
@@ -87,6 +94,10 @@ function git(cwd: string, args: string[], timeout = 5_000): Promise<string | und
 /** What health reads of `mesh.nodes`: each node's id and name (D1564). */
 const NodeNames = z.array(z.object({ nodeId: z.string(), name: z.string() }).loose());
 
+/** Where since when each node is away is kept (D1570). */
+const AWAY_NAMESPACE = "jhin.health";
+const AWAY_KEY = "awaySince";
+
 export default definePlugin({
   async activate(context) {
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
@@ -116,6 +127,8 @@ export default definePlugin({
     let health: HealthState = EMPTY_HEALTH;
     let healthHead = 0;
     const sensors = new Sensors();
+    /** The writes of since when nodes are away (D1570): a warning is raised once its since is kept. */
+    let keepingAway: Promise<unknown> = Promise.resolve();
     /** Health's asks delivered on this node, by message id, until their first reply or the dismissal of their warning. */
     const asksDelivered = new Map<string, { warningId: string; to: string }>();
     /** Where each warning's dismissal stands in the `health` stream. */
@@ -585,6 +598,41 @@ export default definePlugin({
     let evaluating: Promise<void> = Promise.resolve();
     let scheduled = false;
     let active = true;
+    /**
+     * The runs the mission's node recorded on other nodes (D1571), as
+     * `missions.orchestration` has them, read only while they could matter.
+     */
+    const readRuns = async () => {
+      if (!sensors.needsRuns(health)) return sensors.setRuns(new Map());
+      if (!context.commands.list().some((command) => command.name === "missions.orchestration")) {
+        return;
+      }
+      const runs = new Map<string, { nodeId: string; status: string | undefined }>();
+      for (const [missionId, mission] of Object.entries(sensors.missions.missions)) {
+        // A mission that is over has no run to warn of.
+        if (mission.status === "done" || mission.status === "dropped") continue;
+        let answer: { recorded?: { nodeId?: string; status?: string } } | undefined;
+        try {
+          answer = (await context.commands.execute("missions.orchestration", {
+            missionId,
+            offline: true,
+          })) as typeof answer;
+        } catch (error) {
+          // A read that failed is not a run that ended: what was known stays.
+          const known = sensors.runOf(missionId);
+          if (known !== undefined) runs.set(missionId, known);
+          context.log.warn("health could not read a mission's run", {
+            missionId,
+            error: String(error),
+          });
+          continue;
+        }
+        if (answer?.recorded?.nodeId !== undefined) {
+          runs.set(missionId, { nodeId: answer.recorded.nodeId, status: answer.recorded.status });
+        }
+      }
+      sensors.setRuns(runs);
+    };
     const evaluate = async () => {
       const current = config();
       if (!current.enabled || !active) return;
@@ -609,11 +657,17 @@ export default definePlugin({
           narrowerWarningId: narrower.warningId,
         });
       }
+      await readRuns();
       // A mission waiting on a node away, and the node back (D1548).
-      for (const { warning, reason } of sensors.awayCleared(health)) {
+      for (const { warning, reason } of [
+        ...sensors.awayCleared(health),
+        ...sensors.runAwayCleared(health),
+      ]) {
         await clear(warning.warningId, { reason });
       }
+      await keepingAway;
       for (const finding of sensors.awayFindings(health)) await raise(finding, evaluatedAt);
+      for (const finding of sensors.runAwayFindings(health)) await raise(finding, evaluatedAt);
     };
     function evaluateSoon() {
       if (scheduled) return;
@@ -635,6 +689,7 @@ export default definePlugin({
       }
       timers.clear();
       await evaluating;
+      await keepingAway;
       // Commits being counted finish before the plugin goes (git calls are bounded).
       await Promise.all(countings);
     });
@@ -905,6 +960,30 @@ export default definePlugin({
       });
     }
 
+    // Since when a node is away outlives a restart (D1570): kept in `storage.kv`.
+    const kv = context.services.tryGet<KeyValueStore>(KV_CAPABILITY);
+    if (kv !== undefined) {
+      const kept = await kv.get(AWAY_NAMESPACE, AWAY_KEY).catch(() => undefined);
+      if (kept !== null && typeof kept === "object" && !Array.isArray(kept)) {
+        sensors.restoreAwaySince(
+          Object.fromEntries(
+            Object.entries(kept).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string",
+            ),
+          ),
+        );
+      }
+      // Writes go one after the other, so the last change is the one kept.
+      sensors.onAwaySince = (since) => {
+        keepingAway = keepingAway
+          .then(() => kv.set(AWAY_NAMESPACE, AWAY_KEY, since))
+          .catch((error: unknown) =>
+            context.log.warn("health could not keep since when nodes are away", {
+              error: String(error),
+            }),
+          );
+      };
+    }
     // Nodes going away and coming back (D1548), as `mesh.streams@1.1` lists the members,
     // named as `mesh.nodes` names them (D1564); a node without it keeps the ids.
     // Reads overlap when the members change quickly: only the latest one is kept.

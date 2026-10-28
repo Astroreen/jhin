@@ -62,6 +62,14 @@ export interface NodeFeedSource<S> {
    * before it and what the node holds now: what came meanwhile is new.
    */
   reread?(node: MeshTarget, before: S, after: S): void;
+  /**
+   * For state that depends on the mesh (a mark the node derives from its
+   * members): the feed reads the node again whenever the mesh of its
+   * connection changes, and this merges what that read holds (`fresh`) into
+   * what the feed holds now (`state`), which the stream may have moved on.
+   * Returns `state` itself when nothing changed.
+   */
+  meshChanged?(state: S, fresh: S): S;
 }
 
 /**
@@ -175,8 +183,37 @@ export function createNodeFeeds<S>(
         stopped = true;
         for (const subscription of subscriptions) subscription.dispose();
         waitingRetry?.dispose();
+        meshWatch?.dispose();
       },
     });
+    /** Reads the node again on a change of its connection's mesh, for `meshChanged`. */
+    let meshWatch: Disposable | undefined;
+    /** The latest mesh-triggered read: an older one that answers late is ignored. */
+    let meshReads = 0;
+    const meshChanged = source.meshChanged;
+    if (mesh !== undefined && meshChanged !== undefined) {
+      meshWatch = mesh.subscribe(connection.connection.id, () => {
+        // A feed not ready is read by its own load; one read at a time wins.
+        if (stopped || states.get(id)?.status !== "ready") return;
+        const mine = ++meshReads;
+        void source.load(client).then(
+          ({ state: fresh }) => {
+            if (stopped || mine !== meshReads) return;
+            set(id, (feed) => {
+              if (feed.status !== "ready") return feed;
+              const value = meshChanged(feed.value, fresh);
+              return value === feed.value ? feed : { ...feed, value };
+            });
+          },
+          // The stream's own failure handling covers a node that is down.
+          (error: unknown) =>
+            log.warn("a feed's read on a mesh change failed", {
+              stream: source.stream,
+              error: String(error),
+            }),
+        );
+      });
+    }
     states.set(id, { status: "loading", value: source.empty });
     // A change this client makes during the first load is kept for its state too.
     rereads.set(id, []);

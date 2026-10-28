@@ -11,6 +11,27 @@ export const MissionNode = z.string().min(1).optional().meta({
     "The node the mission lives on, when not this one: the command runs there through the mesh",
 });
 
+/**
+ * `by` of a missions command forwarded from another node: the agent who made
+ * the call there, as its address. The mission's node records it when the
+ * call came from the node the address lives on (D622), else the node.
+ */
+export const MissionCaller = z.string().min(1).optional().meta({
+  description:
+    "The agent who made a call forwarded from another node, as its address; recorded only when the address lives on the calling node",
+});
+
+const AGENT_ADDRESS = /^jhin:\/\/([^/]+)\/agents\/[^/]+$/;
+
+const agents = new WeakMap<Invocation, string>();
+
+/**
+ * Who a record of this call names as `by`: the agent a call of another node
+ * named and its node vouched for (D1567), else the caller.
+ */
+export const recordedBy = (invocation: Invocation): string | undefined =>
+  agents.get(invocation) ?? invocation.caller?.id;
+
 type Execute = (name: string, input: unknown, invocation?: Invocation) => Promise<unknown>;
 
 /**
@@ -61,7 +82,7 @@ export function forwardToNode<T = unknown>(
 
 /** `schema` with `node` added: an object, or each object of a union. */
 function withNode(schema: z.ZodType): z.ZodType {
-  if (schema instanceof z.ZodObject) return schema.extend({ node: MissionNode });
+  if (schema instanceof z.ZodObject) return schema.extend({ node: MissionNode, by: MissionCaller });
   if (schema instanceof z.ZodUnion) {
     const options = (schema.options as readonly z.ZodType[]).map(withNode);
     return z.union(options as [z.ZodType, z.ZodType, ...z.ZodType[]]);
@@ -86,6 +107,27 @@ export interface MissionNodeOptions<I extends z.ZodType, O extends z.ZodType> {
   ) => Promise<z.input<O>> | z.input<O>;
 }
 
+/** The address of the agent whose thread makes the call, if a generation of this node's. */
+async function agentOf(
+  options: { nodeId?: string; execute: Execute },
+  invocation: Invocation,
+): Promise<string | undefined> {
+  if (options.nodeId === undefined || invocation.threadId === undefined) return undefined;
+  if (invocation.caller?.id.startsWith("node:") === true) return undefined;
+  try {
+    const { thread } = (await options.execute(
+      "threads.get",
+      { threadId: invocation.threadId },
+      { caller: { id: "jhin.missions", permissions: ["threads.read"] } },
+    )) as { thread: { generationOf?: string } };
+    return thread.generationOf === undefined
+      ? undefined
+      : `jhin://${options.nodeId}/agents/${thread.generationOf}`;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Adds `node` to a command about a mission, its slices or its project
  * (D1542): without it, or naming this node, the command runs here; naming
@@ -99,19 +141,35 @@ export function onMissionNode<I extends z.ZodType, O extends z.ZodType>(
   return {
     ...definition,
     input: withNode(definition.input),
-    handler: (given, invocation) => {
-      const { node, ...input } = given as { node?: string } & Record<string, unknown>;
+    handler: async (given, invocation) => {
+      const { node, by, ...input } = given as { node?: string; by?: string } & Record<
+        string,
+        unknown
+      >;
       if (node === undefined || node === options.nodeId) {
-        return definition.handler(input as z.output<I>, invocation);
+        // A node speaks only for its own parties (D622): `by` is taken from
+        // a call of node X when its address lives on X, else the node stays.
+        const caller = invocation.caller;
+        const named =
+          caller?.id.startsWith("node:") === true &&
+          by !== undefined &&
+          AGENT_ADDRESS.exec(by)?.[1] === caller.id.slice("node:".length);
+        if (!named || by === undefined) return definition.handler(input as z.output<I>, invocation);
+        // The caller stays `node:X`: relay guards read it. Only records of `by` read the agent.
+        const carried = { ...invocation };
+        agents.set(carried, by);
+        return definition.handler(input as z.output<I>, carried);
       }
       if (options.remote !== undefined) {
         return options.remote(node, input as z.output<I>, invocation);
       }
+      // The agent calling here, so the record there names it, not this node.
+      const agent = await agentOf(options, invocation);
       return forwardToNode<z.input<O>>(
         options.execute,
         node,
         definition.name,
-        input,
+        agent === undefined ? input : { ...input, by: agent },
         invocation,
         definition.permissions ?? [],
         options.callerId,

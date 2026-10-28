@@ -11,6 +11,7 @@ import {
   meshStreams,
   serveRelays,
   type Mesh,
+  type MemberRecord,
 } from "@jhin/mesh-core";
 import { LIVE_STREAMS_CAPABILITY, createLiveStreams, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, type Invocation } from "@jhin/sdk";
@@ -55,6 +56,8 @@ export async function startMeshNode(
     readonly config?: Readonly<Record<string, Record<string, unknown>>>;
     /** The storage plugin to run, to read what the node wrote; a fresh one by default. */
     readonly storage?: ReturnType<typeof memoryStoragePlugin>;
+    /** Members remembered from before a restart, as `jhin.mesh` remembers them: unreachable until a link is up. */
+    readonly members?: readonly MemberRecord[];
     /** Streams relayed at once at most (D502). */
     readonly maxRelays?: number;
     /** What a call or a stream from another node may do here (security.md D416); everything by default. */
@@ -83,6 +86,7 @@ export async function startMeshNode(
     retryDelay: () => 1,
     log,
     streams: live,
+    ...(options.members === undefined ? {} : { members: options.members }),
     ...(options.maxRelays === undefined ? {} : { maxRelays: options.maxRelays }),
     ...(options.memberPermissions === undefined
       ? {}

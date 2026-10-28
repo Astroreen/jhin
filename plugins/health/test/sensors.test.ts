@@ -480,4 +480,44 @@ describe("a mission waiting on a node away (D1548, D1551)", () => {
       expect.objectContaining({ subject: "away:m1:b" }),
     ]);
   });
+
+  describe("across a restart (D1570)", () => {
+    const sliceOnB = () =>
+      event("missions", 1, MissionEvents.sliceCreated, at, {
+        slice: slice("s1", { assignee: "jhin://b/agents/x" }),
+      });
+    const dismissed = withWarning(
+      warningOf("away:m1:b", { status: "dismissed", dismissedAt: "2026-10-26T11:00:00.000Z" }),
+    );
+
+    it("keeps a dismissal quiet for a node away all along, and tells what to keep", () => {
+      const kept: Record<string, string>[] = [];
+      const sensors = new Sensors();
+      sensors.onAwaySince = (since) => kept.push({ ...since });
+      sensors.ingestMission(sliceOnB());
+      sensors.restoreAwaySince({ b: "2026-10-26T10:00:00.000Z" });
+      // The restart's mesh has not listed b yet: it is neither back nor away.
+      sensors.setMembers([], "2026-10-26T14:00:00.000Z");
+      // b listed away: it was away all along, from the kept since.
+      sensors.setMembers([{ nodeId: "b", reachable: false }], "2026-10-26T14:00:01.000Z");
+      expect(sensors.awayFindings(dismissed)).toEqual([]);
+      expect(kept).toEqual([]);
+    });
+
+    it("drops the kept since of a node that came back meanwhile", () => {
+      const kept: Record<string, string>[] = [];
+      const sensors = new Sensors();
+      sensors.onAwaySince = (since) => kept.push({ ...since });
+      sensors.ingestMission(sliceOnB());
+      sensors.restoreAwaySince({ b: "2026-10-26T10:00:00.000Z" });
+      sensors.setMembers([{ nodeId: "b", reachable: true }], "2026-10-26T14:00:00.000Z");
+      expect(kept).toEqual([{}]);
+      // It goes away again: counted from now, so the old dismissal no longer silences it.
+      sensors.setMembers([{ nodeId: "b", reachable: false }], "2026-10-26T15:00:00.000Z");
+      expect(kept.at(-1)).toEqual({ b: "2026-10-26T15:00:00.000Z" });
+      expect(sensors.awayFindings(dismissed)).toEqual([
+        expect.objectContaining({ subject: "away:m1:b" }),
+      ]);
+    });
+  });
 });

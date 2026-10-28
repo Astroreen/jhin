@@ -1,6 +1,6 @@
 # Agents plan: teams of persistent agents
 
-Status: **in progress** (A1–A8, phase 2 (C1–C3) and phase 3 (L1–L3) landed; phase 4: M1 landed, M2 and M3 running). This file records how Jhin grows from "one thread,
+Status: **in progress** (A1–A8, phase 2 (C1–C3), phase 3 (L1–L3) and phase 4 (M1–M3) landed). This file records how Jhin grows from "one thread,
 one agent run" into persistent agents with addresses that message each other
 across the mesh, work in teams on missions, keep and inherit what they learn,
 and stay on the intent while nobody watches. It takes "Agent entity …",
@@ -119,6 +119,12 @@ span the mesh:
 
 M1 and M2 start together; M3 starts once both have landed. Round 5 of
 `t3-roadmap.md` owns D1421–D1520, so phase 4 starts at D1521.
+
+Phase 4 landed by 2026-10-28. Its run across two nodes ([M3 run](#m3-run))
+closed six items in an hour with the team split over a laptop and a server,
+and rode out the server going away mid-mission. It also showed a team that
+stops with every agent idle, each waiting for another
+([nobody's turn](../lore/nobodys-turn.md)), which D1575–D1577 close.
 
 ## Decisions
 
@@ -2528,6 +2534,8 @@ Decisions:
   joined as a mesh, a team split across them, a mission list from Deferred.
   The thread plays the owner, lands what the run breaks, and writes an
   "M3 run" note here, with lore if the run earns it.
+- The run's crew numbered the decisions of the items it closed D1565 and
+  D1567–D1572; D1566, D1573, D1574 and D1578–D1580 are unused.
 
 Decisions (M3):
 
@@ -2591,6 +2599,79 @@ Decisions (M3):
   away (D1548), and what the owner can do, instead of "Waiting for the
   analyst…", which waited for nobody. Found by D1563's scenario, whose
   screenshots showed the server's node id.
+- **D1565. The inbox's away mark follows the mesh.** While the inbox is
+  open, an open item's `away` mark (D1549) changes with no reload when its
+  sender's node goes away or comes back. The client's node feeds
+  (`createNodeFeeds`) gain `meshChanged`: a source that has it reads the
+  node again whenever the mesh of its connection changes (`client.mesh@1`,
+  which Civilization already follows) and merges the fresh read into the
+  feed's state, so what the stream delivered meanwhile is kept. The inbox
+  takes only the `away` marks from the fresh `agents.inbox.list`. Nothing is
+  pushed: `away` stays derived by the node from `members()` (D1551), never
+  stored or put on the `agents/inbox` stream, so no event type is added.
+- **D1567. A proof or review from another node records the agent.** A
+  forwarded missions command (D1542) carries `by`, the address of the agent
+  whose thread made the call on the calling node (its generation, D622);
+  every missions command's input has it beside `node`. The mission's node
+  honours it only for a call of node X (caller `node:X`) when the address
+  lives on X (D622: a node speaks only for its own parties), and then only
+  the records' `by` names that address (`recordedBy`). The caller stays
+  `node:X`, so a guard that tells a mesh call apart (`RELAY_REFUSED`,
+  `MESH_ONLY`, D416) still sees one. Any other `by`, a local caller's too, is
+  ignored, and the record names the caller, `node:<X>` for another node, as
+  before.
+- **D1568. The forwarding node fills `by`.** It takes it from the call's
+  thread, so an agent cannot name another one; a call without a thread, or
+  from a thread that is no agent's generation, forwards no `by`.
+- **D1569. The agent form holds `userSettings`.** D1065's form
+  (`jhin.agents.form`) shows D1561's `userSettings` as a switch, "Load the
+  node user's own settings", off when unset, with a hint saying what it
+  leaves out (the node machine's user's own `CLAUDE.md`, memory, skills,
+  plugins and hooks; Claude Code only for now). A new agent with it on is
+  `agents.define` with `userSettings: true`, one with it off sends nothing;
+  an edit that turns it off is `agents.update` with `userSettings` in
+  `unset`, so the definition is back to unset rather than `false`. It is a
+  field of the existing contribution, so no id is added.
+- **D1570. Since when a node is away survives a restart.** Health keeps
+  since when each node has been away in `storage.kv` (namespace
+  `jhin.health`, key `awaySince`, an optional capability of the plugin) and
+  reads it back when it starts, so a restart of the mission's node does not
+  count a node away all along from the restart: an `away` warning dismissed
+  after that since stays dismissed (D1548). A since read back is held until
+  the mesh lists the node. Listed away, it was away all along and the since
+  stays; listed reachable, it came back while this node was down, so the
+  since is dropped and a later absence counts from then; not listed yet, it
+  waits. A warning is raised only once its since is written.
+- **D1571. Health warns when the node a mission's run runs on is away.**
+  The mission's node keeps the status of a run another node records
+  (`missions.orchestration.record`, D1545), and `missions.orchestration`
+  answers it as `recorded`; asked with `offline`, it does so even when that
+  node cannot be reached, with `run` null, where otherwise it fails as
+  before, so a run is not started twice. Only health asks with `offline`.
+  While a node is away, health reads it for
+  each open mission, and a run that is `running` on an away node gives one
+  warning per mission, detector `away`, subject `away-run:<mission>` (not
+  D1548's `away:<mission>:<node>`): "The run of «mission» runs on node X,
+  which is away; nobody is woken". A dismissal holds until the node goes
+  away again, as D1548's. It clears by itself (D1383) when the run ended
+  (`run-ended`) or its node is back or it is recorded again on a node that
+  is up (`node-back`, `members-unknown` while the members are not known).
+  A read that fails keeps the run as it was last read, so a warning does not
+  clear and rise again on one failed call.
+- **D1572. `teams.down` can remove a team's agents.** It takes an optional
+  `remove`, off when unset, and then it is as before (D689). With it, each
+  member is stopped and its definition removed on its node, as `teams.leave`
+  does (D1546): locally, or through `mesh.call` for another node, with
+  `teams.leave { removing }`, which skips the guard of a member still there
+  and drops that node's roster. The seat guard stays, so a node removes only
+  agents it put there for that team. Generations and knowledge stay. Each
+  member's entry says `removed`, or `error` when it failed, such as one on
+  an away node, and the call goes on with the others. Once every member is
+  removed the roster is dropped, so a later `teams.up` defines the team
+  afresh, and it is recorded as `teams.team.down` with `removed: true`; while
+  a member failed, the roster and its address stay for the next call. The
+  `jhin.teams` spec in config stays.
+  The owner chose this over a new `teams.remove` command and over no change.
 - **D1575. A wave nobody works on wakes the lead.** `missions.next` says
   which working slices have an idle agent (`idle`, additive): its status on
   its node (`agents.get`, through `mesh.call` for another node) is `idle`,
@@ -2612,6 +2693,89 @@ Decisions (M3):
   builder asked for the re-review of a changed test, the reviewer sent its
   approval to the builder, and the lead, whose run had ended, waited for an
   approval nobody sent it until the owner said so.
+
+#### M3 run
+
+On 2026-10-28 a team `crew` of four Claude Code agents ran on two nodes
+started from a checkout (`jhin serve --ui`, each with its own home, joined
+as a mesh): the lead (Opus 5.5) and builder (Sonnet 5.5) on Laptop, builder2
+and reviewer (Sonnet 5.5) on Server, all full access, in one throwaway
+worktree of this repository both nodes shared. The nodes ran main with
+D1561–D1564 (#331, #333, #338, #341). The run took 1 h 07 min (20:20:30 to
+21:27:39 UTC). The owner sent the lead two missions of three Deferred items
+each from the Lead view, answered two escalations in the inbox, asked twice
+why nothing moved, and took Server down for seven minutes mid-mission.
+
+- **What went right.** Six items closed in two missions (37 and 28 minutes),
+  each its own reviewed commit (D1565, D1567–D1572). Work went both ways
+  across the mesh: the lead on Laptop handed slices to Server, builder2 and
+  the reviewer proved and reviewed with the mission's `node` (D1542), and
+  the reviewer's verdicts reached the builder on Laptop. The crew closed in
+  English (D1561), and the reviewer got its two review slices of a wave in
+  one message and did both in one turn, with no "Duplicate handoff" (D1562).
+  The guards caught real faults. The reviewer sent back a first version that
+  rewrote `caller.id` and so defeated `RELAY_REFUSED`, and an item that let
+  `missions.orchestrate` start a second run. The lead sent back a test that
+  used `expect.poll` (AGENTS.md: no polling). Both of the owner's decisions
+  came to the owner: the base branch, and how `teams.down` removes agents.
+  The lead escalated the second before building, with options.
+  - Away (D1547–D1549, D1564): Server stopped at 21:17:04, and Laptop raised
+    "1 slice of «…» waits on node Server, which is away" in the same second.
+    When wave 3 needed the reviewer, the orchestrator ended `decide` at once.
+    The lead waited, as it had told the owner it would. Server came back at
+    21:23:54, the warning cleared `node-back` three seconds later, and six
+    seconds after that the lead ran the orchestrator again. The reviewer on
+    Server had its slice in the next second.
+  - A7: a proof recorded again twice raised a `proof-loop` warning at
+    21:26:40, and the lead, as analyst, answered it in 11 seconds.
+- **Fixed.** Twice the team stopped with every agent idle (lore
+  [nobody's turn](../lore/nobodys-turn.md)). First, the reviewer recorded its
+  verdicts but not its review slice's proof, and the orchestrator's wait
+  timed out every ten minutes and started again, waking nobody, for 14
+  minutes (D1575, D1576, #352). Second, the reviewer sent a re-approval to the
+  builder, who had asked for it, and the lead, whose run had ended, waited
+  for it (D1577, #352). The scenario's screenshots showed the server by its
+  node id and "Waiting for the analyst…" for an `away` warning (D1564, #341).
+  A group's message could outgrow `MAX_MESSAGE_LENGTH` (D1562, found in
+  #333's review).
+- **Not landed as made.** The crew's checkout branched from main, which
+  lacked D1561, though item 1 built on it. The lead found this and asked;
+  the owner chose to merge the unmerged branch in. A run's checkout must hold
+  what its missions build on, and the owner set it up without that. The
+  crew's commits landed through #355, cherry-picked onto the M3 fixes, so
+  their merge commit is not in history. Health credited the lead's commits to
+  whichever turn overlapped them in the shared checkout: the builder's on
+  Laptop, and the reviewer's on Server as well, which counted one commit on
+  both nodes (A7's Deferred item on overlapping turns, now across nodes).
+- **Records.** The missions were `3d9fe42b` and `3d846c75` on Laptop, whose
+  home was thrown away with the run. The streams as the owner read them, the
+  lead's knowledge notes, the crew's commits, Laptop's config and the
+  screenshot of the away warning are on the branch
+  `pr-assets/docs/m3-run-crew`. Cut:
+
+  ```
+  20:20:30 message owner -> crew-lead: Hi, I'm the owner. A mission of three Deferred items …
+  20:21:32 inbox  crew-lead: one decision before item 1 … m3-run-crew branches from main
+  20:22:28 message crew-lead -> Server/crew-builder2: [Slice handed to you] …
+  20:32:41 message Server/crew-reviewer -> crew-lead: … changed my verdict on item 3 to changes-requested
+  20:37:58 (nothing until the owner asks)
+  20:51:30 message owner -> crew-lead: nothing has moved since 20:37 and every agent is idle …
+  20:57:27 inbox  Mission report: M3 crew: three Deferred items from agents.md, done
+  21:14:05 message crew-lead -> Server/crew-reviewer: [Slices handed to you] … 2 slices
+  21:17:03 health.warning.raised away: 1 slice of «M3 crew, mission 2 …» waits on node Server
+  21:23:57 health.warning.cleared node-back
+  21:24:04 message crew-lead -> Server/crew-reviewer: [Slice handed to you] … (Review item 2)
+  21:26:40 health.warning.raised proof-loop; 21:26:51 analysed by crew-lead
+  21:27:39 inbox  Mission report: M3 crew, mission 2 …, done
+  ```
+
+- **Missing.** In one shared checkout the M2 Deferred item on reviews across
+  nodes stayed hidden: the reviewer on Server read the files of Laptop's
+  mission because they were the same files. Two checkouts, one per node,
+  are left for the next run. No compaction came in an hour, so refocus across
+  nodes (D1543) ran only in the tests. The mission report stays an open inbox
+  item until the owner dismisses it (C1's Deferred item). The inbox's page
+  heads a lead's message "Question from" as it does an ask.
 
 ## Deferred
 
@@ -2729,8 +2893,12 @@ Decisions (M3):
 - A4: events when pages change (pages are re-read when their mtime changes).
 - A5: fencing escalation: refusing a member's ask to the owner, so only
   the lead reaches the inbox. D688 tells members, it does not enforce it.
-- A5: removing a team's agents. `teams.down` stops them (D689); removing
-  each member is `agents.remove` on its node.
+- ~~A5: removing a team's agents. `teams.down` stops them (D689); removing
+  each member is `agents.remove` on its node.~~ M3, D1572.
+- M3: a member whose removal failed (its node away) keeps its definition
+  there after `teams.down { remove }` dropped the roster (D1572); a later
+  `teams.up` updates it, or `teams.down { remove }` again once its node is
+  back removes it.
 - ~~A5: a member moved to another node: `teams.up` puts it on the new node and
   rewrites the rosters, but its agent on the old node stays defined (stop it
   with `teams.down` before the move).~~ M2, D1546.
@@ -2757,17 +2925,24 @@ Decisions (M3):
   arrive (D1526): on a restart they are not replayed in time order with this
   node's streams, so a message sent before a slice was assigned can count
   for it.
-- M2: the inbox's `away` mark (D1549) is read when a node's feed loads
+- ~~M2: the inbox's `away` mark (D1549) is read when a node's feed loads
   `agents.inbox.list`; it does not follow the mesh while the page is open,
   so an item whose sender went away later says so only through the refused
-  answer.
-- M2: since when a node is away is kept in memory (D1548): after a restart
+  answer.~~ M3, D1565.
+- ~~M2: since when a node is away is kept in memory (D1548): after a restart
   of the mission's node, a node away all along counts from the restart, so
-  an `away` warning dismissed before is raised once more.
-- M2: a lead whose own node goes away mid-run. Its run went with it, so
+  an `away` warning dismissed before is raised once more.~~ M3, D1570.
+- M3: a node that went away and came back more than once while the
+  mission's node was down counts as away all along (D1570): the mesh keeps
+  no history to tell it by. A node away at a shutdown and never listed again
+  keeps its `awaySince` entry.
+- ~~M2: a lead whose own node goes away mid-run. Its run went with it, so
   nobody is woken; the mission's node still reads the run from the record
   (D1545), and health warns only of slices waiting on an away node (D1548),
-  not of a lead that is gone.
+  not of a lead that is gone.~~ M3, D1571.
+- M3: recording a run emits no event, so a run warning (D1571) clears at
+  health's next evaluation (any event it hears, or a mesh change), not when
+  the run is recorded.
 - A7: detecting a repeated wrong idea nobody named yet (phrases recurring
   across agents' notes and messages); D727 needs the correction first.
 - A7: an agent naming a corrected idea (`health.write` for an epidemiology
@@ -2846,9 +3021,9 @@ Decisions (M3):
   (`others`, D1532), but Run from offers this node's only: a start through a
   relay is a mesh caller, which W10 refuses, so it needs a connection open to
   the agent's node.
-- M2: a proof or review an agent of another node records names its node
+- ~~M2: a proof or review an agent of another node records names its node
   (`by: node:<X>`), not the agent: the forwarded call runs as the node
-  (D1542, D416).
+  (D1542, D416).~~ M3, D1567.
 - M2: a review across nodes. `slices.review` and the reviewer's brief read
   the files and diff of the mission's node (D1242, D1244), so work done in a
   thread of another node is not what they see.
@@ -2920,15 +3095,31 @@ Decisions (M3):
 - M3: `userSettings` for Codex and OpenCode. Codex reads `~/.codex`
   (`AGENTS.md`) and OpenCode its user config whatever the turn says; leaving
   them out takes a home of their own without losing the sign-in (D1561).
-- M3: `userSettings` in Civilization's agent form (D1065); Settings edits it
-  as a field of `jhin.agents` meanwhile.
+- ~~M3: `userSettings` in Civilization's agent form (D1065); Settings edits it
+  as a field of `jhin.agents` meanwhile.~~ M3, D1569.
 - M3: the account's own connectors (Claude Code's claude.ai MCP servers)
   still reach a defined agent without user settings (D1561): they come with
   the sign-in, not from `~/.claude`.
+- M3: an inbox item that arrives while its sender's node is already away
+  has no `away` mark until the mesh changes again (D1565):
+  `agents.inbox.received` does not carry it. Answering it is refused with
+  `SENDER_AWAY` all the same (D1549).
+- M3: a member's inbox read through a connection is read again when that
+  connection's mesh changes (D1565), not when the member's own view of the
+  mesh does, so its mark waits for the connection to notice.
 - L3: refocus after a natural compaction in a long run. The run's 1M-token
   windows never filled in two hours; D710 was proven on a manual `/compact`.
 - M3: an away warning keeps the summary it was raised with (D1564): one
   raised before health first read the mesh's names shows the node's id.
+- M3: a run with a checkout per node. The M3 run's nodes shared one
+  worktree, so the reviewer on Server read the files of Laptop's mission
+  because they were the same files; M2's item on reviews across nodes needs
+  a run that has two.
+- M3: health credits a commit to every turn that overlapped it in the
+  checkout, on every node (A7's item on overlapping turns): in the M3 run
+  one commit of the lead's counted on both Laptop and Server.
+- M3: the inbox's page heads a message from an agent "Question from", as it
+  does an ask; the lead's messages to the owner read as questions.
 - L3: an ask naming the slices it is about. D1263 takes every blocked slice
   to be what the lead's open asks are about, so while a slice is blocked for
   another reason (a builder stuck) an ask cannot hold the whole mission.
@@ -3088,3 +3279,13 @@ Each workstream lists its PRs here as they merge.
   woken at once, health's `away` warning that clears itself, inbox items of
   an away sender (`SENDER_AWAY`), all read from M1's `members()`
   (D1547–D1551).
+- M3 #331: a defined agent works without the node user's own settings
+  (`userSettings`, `agent.runtime@1.16`, D1561).
+- M3 #333: a wave's slices for one assignee in one message
+  (`slices.handoff.together`, D1562).
+- M3 #338: C3's scenario on two nodes, in process and with the UI (D1563).
+- M3 #341: an away warning names the node by its mesh name (D1564).
+- M3 #352: a wave nobody works on wakes the lead (`idle`), the reviewer
+  proves its review slice and tells the lead every verdict (D1575–D1577).
+- M3 #355: the M3 run's crew's six items (D1565, D1567–D1572), the M3 run
+  note and the lore story "nobody's turn".
