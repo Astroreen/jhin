@@ -177,7 +177,8 @@ export function deferredTurn<T>(before: Promise<T>, begin: (value: T) => AgentTu
     },
     steer(input) {
       if (inner?.steer === undefined) throw new Error("The turn is not running yet");
-      inner.steer(input);
+      // The runtime's answer, once the message went in (t3-parity.md D1649).
+      return inner.steer(input);
     },
   };
 }

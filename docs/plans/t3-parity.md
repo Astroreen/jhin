@@ -2608,7 +2608,7 @@ steer a Claude Code turn ended before it took go with them.
   disabled.
 - **D1649. A steer a turn ended before it took fails, and the message starts
   the follow-up turn,** as T3's `ClaudeAdapterV2` ("ended before the steer
-  was sent"). `agent.runtime@1.16` (additive): `AgentTurn.steer` may return
+  was sent"). `agent.runtime@1.17` (additive): `AgentTurn.steer` may return
   a promise, which settles once the message went in, and rejects when the
   turn ended first. The threads plugin awaits it before it records the
   steer, so a message the turn never took is not recorded as steered: it
@@ -2763,10 +2763,6 @@ steer a Claude Code turn ended before it took go with them.
   the turns that changed would keep a long streaming thread cheap. And white
   space counts as one space everywhere but `<pre>`, also in text shown with
   `white-space: pre-wrap` (reading the computed style would match it).
-- A steer Claude Code's turn ended before it took, while its subagents were
-  being moved to the background (D805): the threads plugin recorded it as
-  steered, and the runtime only logs it (T3 fails the steer and starts the
-  follow-up turn; `AgentTurn.steer` is synchronous, D204).
 - T3's restart as a new attempt of the same run (D803): here the stopped
   turn and the restarted one are two turns in the timeline.
 - Steering a Claude Code that does not mark its frames (an older CLI): its
@@ -2774,10 +2770,10 @@ steer a Claude Code turn ended before it took go with them.
   answering loses its answer. And one that sends no idle reports: a result
   passed over for a steer that it never answers leaves the turn waiting until
   Claude Code exits, and the turn then fails ("ended without a result").
-- A slow `threads.title` hook holds the queue: `threads.queue.add` on a
-  free thread with nothing queued starts its turn under the queue's lock,
-  and a thread's first message runs the hook. Edits of that thread's queue
-  wait for it.
+- A slow `threads.title` hook still holds a queue whose first message is
+  delivered from it (a thread whose very first message was refused and
+  queued, then resumed): D1651 names the title outside the lock for
+  `threads.queue.add` only.
 - The e2e test "implements the plan in build mode, or refines it with what
   was typed" failed on CI twice during W27 and passed when run again: an
   Enter pressed 45 ms after `fill("")` sent the text just cleared ("also
@@ -2789,14 +2785,13 @@ steer a Claude Code turn ended before it took go with them.
 - A steered message whose removal from the queue could not be written, twice
   (the steer's write and its retry), is kept from running again only in
   memory: a node restarted before it would start sends it once more.
-- `threads.queue.steer` into a turn that is ending answers `TURN_NOT_RUNNING`,
-  as for an idle thread; a code of its own (or queueing it first, as
-  `threads.steer` does) would let a client tell the two apart.
-- Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
-  but a message that already left the queue (started or cancelled) is taken
-  again; `threads.send` takes no id. So a client that retries a send whose
-  answer was lost can run it twice; the web client retries only after a
-  definite refusal (`TURN_IN_PROGRESS`, `STEER_UNSUPPORTED`), when nothing ran.
+- Idempotent sends (D1652): a message cancelled from the queue is not
+  remembered, so a retry of its add whose answer was lost queues it again;
+  a retry that comes while the first call still runs (before its turn's
+  start is recorded) is refused as any second send is (`TURN_IN_PROGRESS`),
+  or queued. A message of a turn a rollback dropped (D221) still answers
+  that turn. The ids a node knows of a thread are read from its whole log
+  once per run (200 threads kept).
 
 Done since in `t3-roadmap.md`'s W1 (D200–D211): the server-side queue and
 steering, idempotent thread creation and one write for a record and its

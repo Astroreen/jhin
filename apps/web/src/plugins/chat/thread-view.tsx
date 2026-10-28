@@ -407,7 +407,31 @@ export function ThreadView(props: {
   const queueActions: QueueActions = {
     remove: (messageId) => call("threads.queue.cancel", { messageId }, "Not removed"),
     resume: () => call("threads.queue.resume", {}, "Queue not resumed"),
-    steer: (messageId) => call("threads.queue.steer", { messageId }, "Not steered"),
+    steer: async (messageId) => {
+      try {
+        const steered = await chat.threads.call<{ outcome?: string }>(
+          target,
+          "threads.queue.steer",
+          { threadId, messageId },
+        );
+        // The turn ended first (D1650): the message goes next, as a late steer says.
+        if (steered.outcome === "queued") {
+          chat.toasts?.show({
+            type: "info",
+            title: "Queued instead",
+            description: "The turn ended first: it goes next.",
+          });
+        }
+        return true;
+      } catch (failure) {
+        chat.toasts?.show({
+          type: "error",
+          title: "Not steered",
+          description: (failure as Error).message,
+        });
+        return false;
+      }
+    },
     reorder: (messageId, beforeMessageId) =>
       call("threads.queue.reorder", { messageId, beforeMessageId }, "Not moved"),
     edit: (messageId, text, attachments, context) =>
@@ -1072,7 +1096,7 @@ export function DraftView(props: {
     context?: MessageContext,
   ): Promise<boolean> => {
     try {
-      const { threadId, uncertain } = await startThread(
+      const { threadId, uncertain, messageId } = await startThread(
         chat.threads,
         target,
         { projectId: project.id, text, attachments, context, selection },
@@ -1092,6 +1116,7 @@ export function DraftView(props: {
         // The node may have taken it: the thread stays, and offers to send it
         // again until it shows the message.
         chat.unconfirmed.set(visitKey(target, threadId), {
+          id: messageId,
           text,
           attachments,
           context,
