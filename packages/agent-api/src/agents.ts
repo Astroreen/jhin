@@ -109,6 +109,11 @@ export const AgentDefinition = z.object({
     .array(z.string().min(1))
     .optional()
     .meta({ title: "Skills", description: "Skills the agent is told to use, by name (D613)." }),
+  userSettings: z.boolean().optional().meta({
+    title: "Load the node user's own settings",
+    description:
+      "Whether its runtime also loads what the node machine's user keeps for themselves (Claude Code's ~/.claude: CLAUDE.md, memory, skills, plugins, hooks). Off when unset, so a team does not take on its owner's personal instructions (D1561). Claude Code only for now: Codex and OpenCode load their own settings either way.",
+  }),
   project: z.string().min(1).optional().meta({
     title: "Home project",
     description:
@@ -187,6 +192,8 @@ export const AgentRecord = z.object({
   interactionMode: z.enum(INTERACTION_MODES).optional(),
   instructions: z.string().optional(),
   skills: z.array(z.string()),
+  /** Whether its runtime loads the node user's own settings; only when set (D1561). */
+  userSettings: z.boolean().optional(),
   /** The home project's id; absent while the configured project is not on the node. */
   projectId: z.string().optional(),
   /** The knowledge folder on the node, absolute (D607). */
@@ -234,6 +241,7 @@ export const AGENT_OPTIONAL_FIELDS = [
   "interactionMode",
   "instructions",
   "skills",
+  "userSettings",
   "project",
 ] as const;
 
