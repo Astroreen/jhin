@@ -748,6 +748,25 @@ app is released unsigned (`allow_unsigned`, D1482).
   `iconPath` and `defaultThreadEnvMode`, closing a settled thread's idle
   terminals, the scripts control's hint, the bytes a cleanup frees, the
   setup card for a thread on a mesh member).
+  **Done** (D1661–D1671; D1672–D1680 unused): #336 T3's eleven pull
+  request actions on each forge as its `changeRequestActions` give them,
+  a merge into a merge-queue base through auto-merge, T3's pull request
+  menu in a panel row, a merge method per project and the last one chosen
+  on the device, GitHub's avatars (`source-control.md` D1661–D1665); #343
+  T3's writing style for the writer's commit messages and pull requests,
+  `git.publish` on GitHub and GitLab and T3's "Publish repository" dialog
+  (D1666–D1668); #347 a settling thread's idle terminals closed
+  (`terminal.sessions` 1.4, D1669), the bytes a cleanup frees on the
+  Storage page (D1670), checkpoints through the real index (D1671). Left in
+  the Deferred lists (`source-control.md#deferred`): "Roll back" of a
+  checkpoint item (no item inspector yet), sparse checkouts, cancelling a
+  running git action (T3 has none), one worktree per model of a
+  multi-model send, T3's pull request page with "Update branch" and
+  "Approve workflows", viewer permissions, publishing to the other forges,
+  pages past the first for notes, comments and review threads, Bitbucket
+  Server and Azure DevOps' fork checkouts and policy checks, and W42's
+  `iconPath`, `defaultThreadEnvMode`, the scripts control's hint and the
+  setup card for a thread on a mesh member.
 - **W47:** `preview.md`'s Deferred list: a binary channel for frames and for
   downloads and uploads above 64 MiB, a pushed server list instead of the
   client's rescans, T3's work-log presentation of preview tools, the
