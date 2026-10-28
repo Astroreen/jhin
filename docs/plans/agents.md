@@ -2563,6 +2563,25 @@ Decisions (M3):
   orchestrator hands each wave with it. Before, each handoff started a turn
   of its own: in the L3 run the reviewer did the wave in its first turn and
   spent the rest answering "Duplicate handoff".
+- **D1563. C3's scenario runs on two nodes, twice.** In process,
+  `plugins/orchestrator/test/civilization.test.ts` on `@jhin/testing`'s
+  in-memory mesh: a team `crew` put up from node a with its lead and a
+  builder there and builder2 and a reviewer on b, the owner talking to the
+  lead from a client of a, a mission on a with two waves over both nodes
+  (builder2's two slices in one message, D1562), proofs sent as each agent on
+  its own node with the mission's `node` (D1542), builder2's message to the
+  owner, then b stopped mid-mission: the orchestrator's `decide` with
+  `away`, health's `away` warning, the answer refused with `SENDER_AWAY`;
+  b started again on its data: the warning cleared `node-back`, the answer
+  delivered, the next waves run and the lead's report. With the UI,
+  `e2e/tests/civilization-two-nodes.spec.ts` on two real nodes (a laptop with
+  the client, a server joined to it): the team's page, the Lead view's
+  composer, the mission view with both builders' slices by title, the
+  server stopped and started again on its home and port (`startNode`
+  takes `home`), the warning's page, the inbox item's away note and its
+  answer once the server is back, and the mission done. Both wait for
+  records and events, never for time; the agents' acts are commands sent for
+  them (D1102).
 
 ## Deferred
 
