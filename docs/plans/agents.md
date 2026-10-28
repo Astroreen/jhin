@@ -2582,6 +2582,15 @@ Decisions (M3):
   answer once the server is back, and the mission done. Both wait for
   records and events, never for time; the agents' acts are commands sent for
   them (D1102).
+- **D1564. An away warning names the node as the owner calls it.** Health
+  reads the members' names with `mesh.nodes` when the members change (D1551)
+  and names an away node by its mesh name in the warning's summary ("1 slice
+  of «Doghouse» waits on node Server, which is away"), its id only where
+  `mesh.nodes` is missing or fails; the warning keeps the summary it was
+  raised with. The warning's page says that nobody is asked about a node
+  away (D1548), and what the owner can do, instead of "Waiting for the
+  analyst…", which waited for nobody. Found by D1563's scenario, whose
+  screenshots showed the server's node id.
 
 ## Deferred
 
@@ -2897,6 +2906,8 @@ Decisions (M3):
   the sign-in, not from `~/.claude`.
 - L3: refocus after a natural compaction in a long run. The run's 1M-token
   windows never filled in two hours; D710 was proven on a manual `/compact`.
+- M3: an away warning keeps the summary it was raised with (D1564): one
+  raised before health first read the mesh's names shows the node's id.
 - L3: an ask naming the slices it is about. D1263 takes every blocked slice
   to be what the lead's open asks are about, so while a slice is blocked for
   another reason (a builder stuck) an ask cannot hold the whole mission.

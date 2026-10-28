@@ -445,6 +445,23 @@ describe("a mission waiting on a node away (D1548, D1551)", () => {
     ]);
   });
 
+  it("names the node as the mesh names it, and one slice that waits (D1564)", () => {
+    const sensors = new Sensors();
+    sensors.ingestMission(
+      event("missions", 1, MissionEvents.sliceCreated, at, {
+        slice: slice("s1", { assignee: "jhin://b/agents/x" }),
+      }),
+    );
+    sensors.setMembers([{ nodeId: "b", reachable: false }], at);
+    expect(sensors.awayFindings(EMPTY_HEALTH)).toEqual([
+      expect.objectContaining({ summary: "1 slice of «m1» waits on node b, which is away" }),
+    ]);
+    sensors.setNodeNames(new Map([["b", "Server"]]));
+    expect(sensors.awayFindings(EMPTY_HEALTH)).toEqual([
+      expect.objectContaining({ summary: "1 slice of «m1» waits on node Server, which is away" }),
+    ]);
+  });
+
   it("stays quiet after a dismissal until the node goes away again", () => {
     const sensors = new Sensors();
     sensors.ingestMission(

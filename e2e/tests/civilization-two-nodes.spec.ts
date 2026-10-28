@@ -219,7 +219,8 @@ test("D1563: a team split over two nodes runs a mission, and goes on once the se
     (event) =>
       event.type === "health.warning.raised" && payloadOf(event).warning.detector === "away",
   );
-  const summary = `1 slice of «Doghouse» wait on node ${serverId}, which is away`;
+  // Named as the mesh names it (D1564).
+  const summary = "1 slice of «Doghouse» waits on node Server, which is away";
   expect(payloadOf(raised).warning.summary).toBe(summary);
   const healthSection = page.getByRole("region", { name: "Health" });
   const awayWarning = healthSection.getByRole("button", {
@@ -228,6 +229,8 @@ test("D1563: a team split over two nodes runs a mission, and goes on once the se
   await awayWarning.click();
   const warningPage = page.getByRole("region", { name: "Health warning" });
   await expect(warningPage.getByText(summary)).toBeVisible();
+  // Nobody is asked to analyse a node away (D1548): the page says so (D1564).
+  await expect(warningPage.getByText(/^Nobody is asked/)).toBeVisible();
   await page.screenshot({ path: info.outputPath("two-nodes-away-warning.png") });
   // … and the message's answer waits until its sender is back (D1549). The
   // mark is read when the inbox loads (agents.md#deferred, M2).

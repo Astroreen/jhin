@@ -84,6 +84,9 @@ function git(cwd: string, args: string[], timeout = 5_000): Promise<string | und
   });
 }
 
+/** What health reads of `mesh.nodes`: each node's id and name (D1564). */
+const NodeNames = z.array(z.object({ nodeId: z.string(), name: z.string() }).loose());
+
 export default definePlugin({
   async activate(context) {
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
@@ -902,15 +905,29 @@ export default definePlugin({
       });
     }
 
-    // Nodes going away and coming back (D1548), as `mesh.streams@1.1` lists the members.
+    // Nodes going away and coming back (D1548), as `mesh.streams@1.1` lists the members,
+    // named as `mesh.nodes` names them (D1564); a node without it keeps the ids.
+    // Reads overlap when the members change quickly: only the latest one is kept.
+    let namesRead = 0;
+    const readNames = async () => {
+      if (!context.commands.list().some((command) => command.name === "mesh.nodes")) return;
+      const read = ++namesRead;
+      try {
+        const nodes = NodeNames.parse(await context.commands.execute("mesh.nodes", {}));
+        if (read !== namesRead) return;
+        sensors.setNodeNames(new Map(nodes.map((item) => [item.nodeId, item.name])));
+      } catch (error) {
+        context.log.warn("The mesh's node names could not be read", { error: String(error) });
+      }
+    };
     sensors.setMembers(meshStreams?.members?.(), now());
     const membersChanged = meshStreams?.onChange?.(() => {
       sensors.setMembers(meshStreams.members?.(), now());
-      evaluateSoon();
+      void readNames().then(evaluateSoon);
     });
     if (membersChanged !== undefined) context.subscriptions.add(membersChanged);
     followThreads();
-    evaluateSoon();
+    void readNames().then(evaluateSoon);
     // An open warning without an analysis: never asked (asked now), or asked
     // and cut short by a deactivation. That ask reached the analyst and its
     // answer is in the analyst's thread; asking again would ask it twice.
