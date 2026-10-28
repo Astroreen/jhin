@@ -848,7 +848,14 @@ test("draws on and marks a region of a tab the app hosts, each an annotation wit
             clickCount: 1,
           });
           for (const [x, y] of rest)
-            guest.sendInputEvent({ type: "mouseMove", x, y, button: "left" });
+            guest.sendInputEvent({
+              type: "mouseMove",
+              x,
+              y,
+              button: "left",
+              // The button held, as a real drag reports it.
+              modifiers: ["leftButtonDown"],
+            });
           guest.sendInputEvent({
             type: "mouseUp",
             x: last[0],

@@ -795,8 +795,12 @@ environment is the owner's choice and nothing here needs it either).
   selected, and when it holds none it becomes a marked region. Draw draws
   a freehand stroke (T3's 4 px line in the overlay's blue, smoothed as
   T3's `pathFromPoints`); a click without a drag draws nothing. Erase
-  removes the selected element, region or stroke under the pointer. The
-  tools work on pointer events, as T3's. The editor shows as soon as
+  removes the selected element, region or stroke under the pointer, in
+  T3's order (an element, then a region, then a stroke, each by its box).
+  The tools work on pointer events, as T3's; a cancelled pointer drops the
+  drag, and a drag whose button came up outside the page ends where the
+  pointer comes back. The tool keys work while the focus is not in the
+  overlay, as T3's: the page takes no input while it is annotated. The editor shows as soon as
   there is any target, and takes the focus the first time, as T3's
   `updateStatus`; Attach needs at least one target. The screenshot is the
   area of every target (T3's `unionRects`): element outlines, the editor,
