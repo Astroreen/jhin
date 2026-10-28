@@ -1,6 +1,6 @@
 # Loading and caching
 
-Status: **in progress** (P2 done: #304–#306; P3 done: #323). The owner asked (2026-10-24) that the web client
+Status: **in progress** (P2 done: #304–#306; P3 done: #323; P4 done: #326, #344). The owner asked (2026-10-24) that the web client
 reach the screen faster and move fewer bytes. Three ways: compress what the
 node sends, keep what a device has already received and ask only for what is
 new, and load first what the first screen shows. Decisions D1581–D1620
@@ -267,7 +267,7 @@ D1597–D1620 are free for decisions the workstreams find they need.
 
 P4, every config section on one page and read at once, is in
 `config-ui.md` (D1621–D1640): it is a settings page change that is also a
-loading one.
+loading one. P4 landed (#326, #344; D1621–D1629).
 
 ## Deferred
 

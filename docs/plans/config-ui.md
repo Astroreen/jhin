@@ -350,6 +350,8 @@ checked-in `t3.json` and the scripts are `source-control.md`'s
 
 ## Every section on one page (P4)
 
+Status: **landed** (#326: D1621, D1624; #344: D1622, D1623, D1625–D1629).
+
 The owner asked (2026-10-24) for the node config page to stop making them
 pick one section from a dropdown and wait for it. The page shows every section
 at once, with the section list under the page's name in the settings
