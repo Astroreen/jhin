@@ -1,7 +1,8 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac:
 // apps/web/src/lib/composerContextRecords.ts (the records and labels of a mentioned pull request,
-// thread and terminal excerpt) and apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
-// (buildPullRequestReferenceContext, its untrusted-data note).
+// thread and terminal excerpt), apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
+// (buildPullRequestReferenceContext, its untrusted-data note) and
+// apps/web/src/components/chat/composerMentionDrag.ts (a file tree row's mention dragged in).
 //
 // The composer's context records (docs/plans/t3-parity.md D1006–D1008): what a `#` or `@` pick and
 // "Add to chat" put beside the prompt, named in it by a `jhin-context://` reference.
@@ -22,6 +23,7 @@ import {
   toKindScopedContextId,
 } from "@jhin/agent-api";
 import type { NodeTarget } from "@jhin/client-api";
+import { serializeComposerFileLink } from "./composer-trigger.ts";
 
 const TRUNCATION_MARKER = "\n… truncated …";
 
@@ -320,6 +322,25 @@ export function draftContextsReader() {
   };
 }
 const NO_CONTEXTS: readonly MessageContextRecord[] = [];
+
+/**
+ * Rows of the file explorer dragged into the composer (T3's `COMPOSER_MENTION_DRAG_TYPE` in
+ * `composerMentionDrag.ts`, t3-parity.md D1642): a public id, carrying their mentions joined by a
+ * space.
+ */
+export const COMPOSER_MENTION_DRAG_TYPE = "application/x-jhin-composer-mention";
+
+/** A tree row's mention, `[name](path)` (a folder without its trailing `/`); none for the root. */
+export function composerMentionFromTreePath(treePath: string): string | null {
+  const relativePath = treePath.replace(/\/+$/, "");
+  if (relativePath.length === 0) return null;
+  return serializeComposerFileLink(relativePath);
+}
+
+/** Whether a drag carries something the composer drops as a mention or a pull request's chip. */
+export function dataTransferHasComposerMention(types: ReadonlyArray<string>): boolean {
+  return types.includes(COMPOSER_MENTION_DRAG_TYPE) || types.includes(PULL_REQUEST_DRAG_TYPE);
+}
 
 /**
  * A pull request dragged into the composer (T3's `COMPOSER_PULL_REQUEST_DRAG_TYPE` in

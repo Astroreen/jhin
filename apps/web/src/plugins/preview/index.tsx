@@ -31,7 +31,11 @@ import {
   type DesktopShell,
   type PreviewPickResult,
 } from "@jhin/desktop-api";
-import { previewProfilePartition, type PreviewTab } from "@jhin/preview-api";
+import {
+  INCOGNITO_BROWSER_PROFILE_ID,
+  previewProfilePartition,
+  type PreviewTab,
+} from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import { definePlugin, z, type Disposable } from "@jhin/sdk";
 import {
@@ -65,7 +69,12 @@ import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { prefetchWhenIdle } from "../../lib/idle-prefetch.ts";
 import type { BrowserPanelProps, BrowserSurfaceViewProps, PanelServices } from "./panel.tsx";
 import { NEW_TAB, tabTitle } from "./tab-title.ts";
-import { browserSurfaceResources, releaseBrowserTabs } from "./surfaces.ts";
+import {
+  browserSurfaceResources,
+  closedTabOf,
+  readClosedTab,
+  releaseBrowserTabs,
+} from "./surfaces.ts";
 import { describePreviewTools } from "./tool-presentations.ts";
 import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
@@ -1221,6 +1230,33 @@ export const previewPanelPlugin = builtin(
                       throw error;
                     }),
               });
+            },
+            // T3's closed browser view (D1641): its page, viewport and profile, none in incognito.
+            remember: ({ place, surface }) => {
+              if (place.threadId === undefined || place.target.remote !== undefined) return null;
+              if (surface.resource === undefined || surface.resource === NEW_TAB) return undefined;
+              const tab = feeds
+                .of(place.target.node, place.threadId)
+                .tabs()
+                .find((entry) => entry.tabId === surface.resource);
+              if (tab === undefined) return undefined;
+              if (tab.profileId === INCOGNITO_BROWSER_PROFILE_ID) return null;
+              return JSON.stringify(closedTabOf(tab));
+            },
+            // T3's openPreviewSession with the snapshot: a new tab on the page it showed.
+            reopen: async (place, surface, kept) => {
+              if (place.threadId === undefined || place.target.remote !== undefined) return false;
+              const closed = readClosedTab(kept);
+              if (closed === undefined) {
+                panel.open(place, { kind: BROWSER_PANEL, resource: NEW_TAB });
+                return true;
+              }
+              const tab = await threads.call<PreviewTab>(place.target, "preview.tab.open", {
+                threadId: place.threadId,
+                ...closed,
+              });
+              panel.open(place, { kind: BROWSER_PANEL, resource: tab.tabId });
+              return true;
             },
             component: BrowserSurface,
           }),

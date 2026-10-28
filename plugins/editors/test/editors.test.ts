@@ -169,6 +169,27 @@ describe("the editors plugin", () => {
           output: z.array(z.object({ id: z.string(), path: z.string() })),
           handler: () => [{ id: "app", path: "/work/app" }],
         });
+        const threads: Record<string, { projectId: string; worktreePath?: string }> = {
+          t1: { projectId: "app", worktreePath: "/work/trees/t1" },
+          t2: { projectId: "app" },
+          other: { projectId: "elsewhere", worktreePath: "/work/trees/other" },
+        };
+        context.commands.register({
+          name: "threads.get",
+          description: "A thread",
+          input: z.object({ threadId: z.string() }),
+          output: z.object({
+            thread: z.object({ projectId: z.string(), worktreePath: z.string().optional() }),
+          }),
+          handler: ({ threadId }) => {
+            if (threadId === "broken") throw new Error("storage unreadable");
+            const thread = threads[threadId];
+            if (thread === undefined) {
+              throw Object.assign(new Error(`No thread ${threadId}`), { code: "THREAD_NOT_FOUND" });
+            }
+            return { thread };
+          },
+        });
       },
     }),
   };
@@ -214,6 +235,31 @@ describe("the editors plugin", () => {
       }),
     ).toEqual({ editor: "vscode", path: "/work/app/src/a.ts" });
     expect(launches).toEqual([{ command: "code", args: ["--goto", "/work/app/src/a.ts:7"] }]);
+    await kernel.stop();
+  });
+
+  it("opens a file of a thread's worktree, else of its project (D1644)", async () => {
+    const { kernel, launches } = await start(["/opt/bin/code"]);
+    const open = (threadId: string, path = "src/a.ts") =>
+      kernel.commands.execute("editors.open", {
+        projectId: "app",
+        threadId,
+        path,
+        editor: "vscode",
+      });
+    expect(await open("t1")).toEqual({ editor: "vscode", path: "/work/trees/t1/src/a.ts" });
+    expect(await open("t2")).toEqual({ editor: "vscode", path: "/work/app/src/a.ts" });
+    await expect(open("other")).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+    await expect(open("missing")).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+    // Any other failure of reading the thread is that failure, not a missing thread.
+    await expect(open("broken")).rejects.toThrow("storage unreadable");
+    await expect(open("t1", "../../app/secret")).rejects.toMatchObject({
+      code: "PATH_OUTSIDE_PROJECT",
+    });
+    expect(launches).toEqual([
+      { command: "code", args: ["/work/trees/t1/src/a.ts"] },
+      { command: "code", args: ["/work/app/src/a.ts"] },
+    ]);
     await kernel.stop();
   });
 

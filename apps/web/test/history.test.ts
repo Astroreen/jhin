@@ -63,7 +63,7 @@ function setup(options: {
       draft: () => options.draft,
       restore: (draft) => restored.push(draft),
       focus: () => undefined,
-      insert: () => undefined,
+      insert: () => false,
       insertContext: () => "not-now",
       removeContext: () => false,
       insertCitation: () => "not-now",

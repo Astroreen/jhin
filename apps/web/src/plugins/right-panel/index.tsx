@@ -2,7 +2,9 @@
 // (a thread's panel kept per thread, `openProactive` and the user's revision), the right panel's
 // handlers of apps/web/src/components/ChatView.tsx (toggling it, closing it on a surface, its
 // shortcuts), apps/web/src/components/chat/PanelLayoutControls.tsx ("Toggle right panel") and
-// packages/shared/src/keybindings.ts (rightPanel.toggle, rightPanel.new, rightPanel.close).
+// packages/shared/src/keybindings.ts (rightPanel.toggle, rightPanel.new, rightPanel.close,
+// view.reopenClosed), and apps/web/src/components/ReopenClosedViewShortcut.tsx (reopening the
+// newest closed view one at a time, "Could not reopen view").
 //
 // `jhin.right-panel`: one panel right of the chat whose tabs are other plugins' surfaces
 // (t3-parity.md D1421–D1424). The route says what shows; this plugin keeps each place's tabs.
@@ -11,6 +13,7 @@ import {
   NAVIGATION_CAPABILITY,
   RIGHT_PANEL_CAPABILITY,
   RIGHT_PANEL_EMPTY,
+  THREADS_CAPABILITY,
   rightPanelPlaceKey,
   type ChatHeaderActionProps,
   type Keybindings,
@@ -21,6 +24,7 @@ import {
   type RightPanelSurface,
   type RightPanelSurfaceKind,
   type Route,
+  type ThreadsCatalog,
 } from "@jhin/client-api";
 import { definePlugin, toDisposable, z, type Disposable } from "@jhin/sdk";
 import {
@@ -29,13 +33,24 @@ import {
   TooltipPopup,
   TooltipTrigger,
   UI_SLOTS_CAPABILITY,
+  UI_TOASTS_CAPABILITY,
   type SlotRegistry,
+  type Toasts,
 } from "@jhin/ui";
 import { PanelRightIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal, useShortcutLabels } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import {
+  CLOSED_VIEWS_KEY,
+  defer,
+  planNextReopen,
+  readClosedViews,
+  remember,
+  writeClosedViews,
+  type ClosedView,
+} from "./closed-views.ts";
 import type { RightPanelViewProps } from "./panel.tsx";
 import {
   EMPTY_STATE,
@@ -107,15 +122,21 @@ function withoutPanel(route: Route): Route {
 export const rightPanelPlugin = builtin(
   "jhin.right-panel",
   {
-    provides: { [RIGHT_PANEL_CAPABILITY]: "1.0.0" },
+    provides: { [RIGHT_PANEL_CAPABILITY]: "1.1.0" },
     requires: { [UI_SLOTS_CAPABILITY]: "^1", [NAVIGATION_CAPABILITY]: "^1.1" },
-    optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
+    optional: {
+      [KEYBINDINGS_CAPABILITY]: "^1",
+      [THREADS_CAPABILITY]: "^1",
+      [UI_TOASTS_CAPABILITY]: "^1",
+    },
   },
   definePlugin({
     activate(context) {
       const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
+      const threads = context.services.tryGet<ThreadsCatalog>(THREADS_CAPABILITY);
+      const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
 
       // --- Each place's panel, kept on this device (D1421) ---------------------------------
       const places = (() => {
@@ -170,6 +191,48 @@ export const rightPanelPlugin = builtin(
           .toSorted(
             (a, b) => (a.offer?.order ?? 0) - (b.offer?.order ?? 0) || a.id.localeCompare(b.id),
           );
+      };
+
+      // --- Closed views, for "Reopen Closed Tab" (D1641) ----------------------------------
+      let closedViews: readonly ClosedView[] = (() => {
+        try {
+          return readClosedViews(localStorage.getItem(CLOSED_VIEWS_KEY));
+        } catch {
+          return [];
+        }
+      })();
+      const closedListeners = new Set<() => void>();
+      const setClosedViews = (next: readonly ClosedView[]) => {
+        if (next === closedViews) return;
+        closedViews = next;
+        for (const listener of Array.from(closedListeners)) listener();
+        try {
+          localStorage.setItem(CLOSED_VIEWS_KEY, writeClosedViews(next));
+        } catch {
+          // A full or blocked storage only costs reopening them.
+        }
+      };
+      /** Keeps surfaces the user closed, the active one last so it comes back first (T3's order). */
+      const rememberClosed = (
+        place: RightPanelPlace,
+        closed: readonly RightPanelSurface[],
+        activeId: string | null,
+      ) => {
+        const ordered = [
+          ...closed.filter((surface) => surface.id !== activeId),
+          ...closed.filter((surface) => surface.id === activeId),
+        ];
+        let next = closedViews;
+        for (const surface of ordered) {
+          const kept = kinds.get(surface.kind)?.kind.remember?.({ place, surface });
+          if (kept === null) continue;
+          next = remember(
+            next,
+            { place, surface, ...(kept === undefined ? {} : { kept }) },
+            crypto.randomUUID(),
+          );
+        }
+        setClosedViews(next);
       };
 
       // --- The route and the panel follow each other --------------------------------------
@@ -389,6 +452,9 @@ export const rightPanelPlugin = builtin(
         // Only what was released goes: a surface added while a kind asked (a tab an agent
         // opened meanwhile) stays, as its kind was never asked about it.
         const current = stateOf(key);
+        const closed = removed.filter((surface) =>
+          current.surfaces.some((entry) => entry.id === surface.id),
+        );
         change(place, (state) => {
           let next = state;
           for (const surface of removed) next = closeSurface(next, surface.id);
@@ -404,7 +470,66 @@ export const rightPanelPlugin = builtin(
           // (a tab gone from the node) removed the surfaces while it was asked.
           return !after.open && next.open ? { ...next, open: false } : next;
         });
+        rememberClosed(place, closed, before.activeId);
         return stateOf(key) !== current;
+      };
+
+      /** Whether a closed view's place is still there, as its node's threads say. */
+      const ownerOf = (entry: ClosedView) => {
+        if (threads === undefined) return "unknown" as const;
+        const catalog = threads.catalog(entry.place.target);
+        if (catalog.status !== "ready") return "unknown" as const;
+        const present =
+          entry.place.threadId !== undefined
+            ? catalog.threads.some((thread) => thread.id === entry.place.threadId)
+            : catalog.projects.some((project) => project.id === entry.place.projectId);
+        return present ? ("present" as const) : ("gone" as const);
+      };
+      /** T3's `reopenNext`: the newest closed view that can reopen does, its place on screen. */
+      const reopenClosed = async (): Promise<boolean> => {
+        const { drop, restore } = planNextReopen(closedViews, ownerOf, (entry) => {
+          const state = stateOf(rightPanelPlaceKey(entry.place));
+          return state.open && state.surfaces.some((surface) => surface.id === entry.surface.id);
+        });
+        if (drop.length > 0) {
+          setClosedViews(closedViews.filter((entry) => !drop.includes(entry.id)));
+        }
+        if (restore === undefined) return false;
+        const kind = kinds.get(restore.surface.kind)?.kind;
+        // Its kind is not here now (its plugin is off): it waits last, as T3's `defer`.
+        let reopened: boolean;
+        try {
+          reopened =
+            kind === undefined
+              ? false
+              : kind.reopen === undefined
+                ? (open(restore.place, restore.surface), true)
+                : await kind.reopen(restore.place, restore.surface, restore.kept);
+        } catch (error) {
+          // A reopen that failed waits last, so the others stay reachable.
+          setClosedViews(defer(closedViews, restore.id));
+          throw error;
+        }
+        if (!reopened) {
+          setClosedViews(defer(closedViews, restore.id));
+          return false;
+        }
+        setClosedViews(closedViews.filter((entry) => entry.id !== restore.id));
+        return true;
+      };
+      /** One reopen at a time, in the order asked (T3's `enqueueReopen`). */
+      let reopening: Promise<unknown> = Promise.resolve();
+      const enqueueReopen = () => {
+        const next = reopening.then(reopenClosed).catch((error: unknown) => {
+          toasts?.show({
+            type: "error",
+            title: "Could not reopen view",
+            description: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        });
+        reopening = next;
+        return next;
       };
 
       const service: RightPanel = {
@@ -514,6 +639,15 @@ export const rightPanelPlugin = builtin(
         },
       });
       context.commands.register({
+        name: "right-panel.reopen-closed",
+        title: "Reopen Closed Tab",
+        description:
+          "Reopens the right panel's surface closed last, its thread on screen (T3's view.reopenClosed)",
+        input: z.object({}),
+        output: z.object({ reopened: z.boolean() }),
+        handler: async () => ({ reopened: await enqueueReopen() }),
+      });
+      context.commands.register({
         name: "right-panel.surfaces.list",
         title: "List panel surfaces",
         description: "The surfaces of the right panel of the thread on screen, in order",
@@ -614,6 +748,12 @@ export const rightPanelPlugin = builtin(
         context.subscriptions.add(
           keybindings.addDefaults([
             { key: "mod+alt+b", command: "right-panel.toggle" },
+            // Only while something is kept, so the browser's own ⌘⇧T works otherwise, as T3's.
+            {
+              key: "mod+shift+t",
+              command: "right-panel.reopen-closed",
+              when: "hasClosedViews && !terminalFocus",
+            },
             { key: "mod+t", command: "right-panel.new", when: "rightPanelOpen && !terminalFocus" },
             {
               key: "mod+w",
@@ -637,6 +777,24 @@ export const rightPanelPlugin = builtin(
         context.subscriptions.add(service.subscribe(follow));
         context.subscriptions.add({ dispose: () => openKey?.dispose() });
         follow();
+        // `hasClosedViews` while "Reopen Closed Tab" has something to reopen (D1641).
+        let closedKey: Disposable | undefined;
+        const followClosed = () => {
+          if (closedViews.length > 0 && closedKey === undefined) {
+            closedKey = keybindings.setContext("hasClosedViews", true);
+          } else if (closedViews.length === 0 && closedKey !== undefined) {
+            closedKey.dispose();
+            closedKey = undefined;
+          }
+        };
+        closedListeners.add(followClosed);
+        context.subscriptions.add({
+          dispose: () => {
+            closedListeners.delete(followClosed);
+            closedKey?.dispose();
+          },
+        });
+        followClosed();
       }
 
       // --- The UI ------------------------------------------------------------------------

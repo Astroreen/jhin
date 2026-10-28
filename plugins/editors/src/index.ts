@@ -58,6 +58,10 @@ export function launchDetached(launch: Launch): Promise<void> {
 
 const EditorInfo = z.object({ id: z.string(), label: z.string() });
 const Projects = z.array(z.object({ id: z.string(), path: z.string() }));
+/** What `editors.open` reads of `threads.get`: the thread's project and worktree. */
+const ThreadOf = z.object({
+  thread: z.object({ projectId: z.string().optional(), worktreePath: z.string().optional() }),
+});
 
 /** The editors, by T3's order, that the host can start; the file manager last. */
 export function availableEditors(host: Host) {
@@ -117,10 +121,14 @@ export function createEditorsPlugin(
         input: z
           .object({
             projectId: z.string().min(1),
-            path: z
-              .string()
-              .min(1)
-              .meta({ description: "The file, relative to the project's folder" }),
+            path: z.string().min(1).meta({
+              description:
+                "The file, relative to the project's folder, or to the thread's worktree with threadId",
+            }),
+            threadId: z.string().min(1).optional().meta({
+              description:
+                "A thread of the project: a path is its worktree's when it has one (t3-parity.md D1644)",
+            }),
             line: z.number().int().positive().optional(),
             column: z.number().int().positive().optional(),
             editor: z.string().min(1).meta({ description: "An id from editors.list" }),
@@ -153,7 +161,28 @@ export function createEditorsPlugin(
               `No project ${input.projectId} on this node`,
             );
           }
-          const path = resolveInProject(project.path, input.path);
+          // A thread's worktree is the folder its paths are in (D1644), as `projects.read-file`
+          // reads them.
+          let root = project.path;
+          if (input.threadId !== undefined) {
+            const read = await context.commands
+              .execute("threads.get", { threadId: input.threadId })
+              .catch((error: unknown) => {
+                // Only a thread that is not there is THREAD_NOT_FOUND; anything else is the error.
+                const code = (error as { code?: unknown }).code;
+                if (code === "THREAD_NOT_FOUND" || code === "COMMAND_NOT_FOUND") return undefined;
+                throw error;
+              });
+            const thread = ThreadOf.safeParse(read);
+            if (!thread.success || thread.data.thread.projectId !== project.id) {
+              throw new EditorError(
+                "THREAD_NOT_FOUND",
+                `No thread ${input.threadId} in project ${input.projectId}`,
+              );
+            }
+            root = thread.data.thread.worktreePath ?? project.path;
+          }
+          const path = resolveInProject(root, input.path);
           if (path === undefined) {
             throw new EditorError(
               "PATH_OUTSIDE_PROJECT",

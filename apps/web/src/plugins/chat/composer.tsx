@@ -97,6 +97,7 @@ import {
 } from "../../lib/composer-menu.ts";
 import {
   detectComposerTrigger,
+  endInsertion,
   parseStandaloneComposerSlashCommand,
   serializeComposerFileLink,
 } from "../../lib/composer-trigger.ts";
@@ -132,7 +133,9 @@ const PromptEditor = lazy(() =>
 import { useComposerMenu } from "./use-composer-menu.ts";
 import { type PutAside, usePutAside } from "./put-aside.ts";
 import {
+  COMPOSER_MENTION_DRAG_TYPE,
   contextRemovalRanges,
+  dataTransferHasComposerMention,
   decodePullRequestDrag,
   knownRecordsById,
   PULL_REQUEST_DRAG_TYPE,
@@ -248,8 +251,11 @@ export interface ComposerHandleApi {
   /** What is typed and attached now. */
   draft(): ComposerDraft;
   focus(): void;
-  /** Puts text at the cursor (after the prompt when the field is not focused), then focuses. */
-  insert(text: string): void;
+  /**
+   * Puts text at the cursor (after the prompt when the field is not focused), then focuses; with
+   * `at: "end"`, after the prompt and leaving the focus alone (D1642). False when it takes none now.
+   */
+  insert(text: string, options?: { readonly at?: "cursor" | "end" }): boolean;
   /**
    * Puts a context record beside the prompt and its reference at the cursor (T3's
    * addTerminalContext, D1009), or why it cannot.
@@ -1047,14 +1053,23 @@ export function Composer(props: ComposerProps) {
     props.onSelectionChange({ ...props.selection, interactionMode: planMode ? "default" : "plan" });
   };
   /** Puts text into the prompt (Add to chat): at the caret while the editor has focus, else at the end. */
-  const insert = (text: string) => {
+  const insert = (text: string, options: { readonly at?: "cursor" | "end" } = {}): boolean => {
     // A prefilled answer is taken as typed: Add to chat leaves it alone, as T3's does.
-    if (literalAnswer) return;
+    if (literalAnswer) return false;
+    if (options.at === "end") {
+      // T3's insertTextAtEnd with ensureLeadingBoundary: a file explorer's mention, its drop.
+      const prompted = editor.current;
+      if (prompted === undefined || prompted === null || approval !== undefined) return false;
+      const plan = endInsertion(prompted.value(), text);
+      prompted.replaceRange(plan.at, plan.at, plan.text);
+      return true;
+    }
     const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
     const before = prompt.slice(0, at);
     const gap = before.length > 0 && !/\s$/.test(before) ? "\n\n" : "";
     editor.current?.replaceRange(at, at, `${gap}${text}`);
     editor.current?.focus();
+    return true;
   };
   const insertContext = (
     record: MessageContextRecord,
@@ -1617,14 +1632,27 @@ export function Composer(props: ComposerProps) {
     return false;
   };
   /**
-   * A pull request row of the panel (T3's composerMentionDrag, source-control.md D1454), taken
-   * before the prompt editor, which would drop the row's text as well.
+   * A pull request row of the panel (T3's composerMentionDrag, source-control.md D1454) or rows of
+   * the file explorer (D1642), taken before the prompt editor, which would drop the row's text as
+   * well.
    */
-  const onDropPullRequest = (event: DragEvent<HTMLElement>) => {
-    if (!Array.from(event.dataTransfer.types).includes(PULL_REQUEST_DRAG_TYPE)) return;
+  const onDropMention = (event: DragEvent<HTMLElement>) => {
+    const types = Array.from(event.dataTransfer.types);
+    if (!dataTransferHasComposerMention(types)) return;
     event.preventDefault();
     event.stopPropagation();
     setDragging(false);
+    if (!types.includes(PULL_REQUEST_DRAG_TYPE)) {
+      const mention = event.dataTransfer.getData(COMPOSER_MENTION_DRAG_TYPE);
+      if (mention.length > 0 && !insert(`${mention} `, { at: "end" })) {
+        toasts?.show({
+          type: "error",
+          title: "Unable to add to chat",
+          description: "The composer is busy; try again once it is ready.",
+        });
+      }
+      return;
+    }
     {
       const pullRequest = decodePullRequestDrag(event.dataTransfer.getData(PULL_REQUEST_DRAG_TYPE));
       // A payload that is no pull request is ignored, as T3's decode leaves it.
@@ -1775,14 +1803,14 @@ export function Composer(props: ComposerProps) {
                 }
               }}
               onDragOverCapture={(event) => {
-                if (!Array.from(event.dataTransfer.types).includes(PULL_REQUEST_DRAG_TYPE)) return;
+                if (!dataTransferHasComposerMention(Array.from(event.dataTransfer.types))) return;
                 event.preventDefault();
                 event.stopPropagation();
                 event.dataTransfer.dropEffect = "move";
                 setDragging(true);
               }}
               onDrop={onDrop}
-              onDropCapture={onDropPullRequest}
+              onDropCapture={onDropMention}
               onSubmit={(event) => {
                 event.preventDefault();
                 void send();

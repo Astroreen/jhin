@@ -260,11 +260,11 @@ export const sourceControlPlugin = builtin(
           const catalog = threads.catalog(target);
           const thread = catalog.threads.find((item) => item.id === threadId);
           const project = catalog.projects.find((item) => item.id === thread?.projectId);
-          // `editors.open` opens a project folder's files only (terminal.md#deferred).
-          if (thread?.worktreePath !== undefined && pathInside(thread.worktreePath, path)) {
-            throw new Error(`${path} is in the thread's worktree, whose files do not open yet`);
-          }
-          const relative = project === undefined ? undefined : pathInside(project.path, path);
+          // A file of the thread's worktree opens as the worktree's (t3-parity.md D1644).
+          const inWorktree =
+            thread?.worktreePath === undefined ? undefined : pathInside(thread.worktreePath, path);
+          const relative =
+            inWorktree ?? (project === undefined ? undefined : pathInside(project.path, path));
           if (project === undefined || relative === undefined) {
             throw new Error(`${path} is not a file of the thread's project`);
           }
@@ -278,6 +278,7 @@ export const sourceControlPlugin = builtin(
           // Its failure goes to the caller (the terminal writes it), not to a toast.
           await threads.call(target, "editors.open", {
             projectId: project.id,
+            ...(inWorktree === undefined ? {} : { threadId }),
             path: relative,
             editor: editor.id,
             ...(line === undefined ? {} : { line }),
