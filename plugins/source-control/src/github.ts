@@ -825,9 +825,10 @@ async function actionState(ghPath: string, cwd: string, url: string): Promise<Ac
     "graphql",
     "--hostname",
     parsed.host,
-    "-F",
+    // `-f`: a numeric-looking owner or name stays a string.
+    "-f",
     `owner=${owner}`,
-    "-F",
+    "-f",
     `name=${name}`,
     "-F",
     `number=${parsed.number}`,
