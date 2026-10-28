@@ -66,6 +66,64 @@ export function handoffText(input: {
   ].join("\n");
 }
 
+/**
+ * What one assignee is sent for several slices of a wave handed together
+ * (D1562): one message, so its runtime takes them in one turn. Each slice
+ * keeps its own spec, process and review lines; what they serve is said once.
+ */
+export function handoffsText(input: {
+  readonly slices: readonly { readonly slice: Slice; readonly step: string | undefined }[];
+  readonly mission: Mission;
+  readonly intent: string | undefined;
+  readonly node?: string;
+}): string {
+  const { mission } = input;
+  const on = input.node === undefined ? "" : `, node: "${input.node}"`;
+  return [
+    "[Slices handed to you]",
+    "",
+    `You are the assignee of ${input.slices.length} slices of the mission "${mission.title}", handed to you together in this one message. Work on each until its spec works, then record its proof; each slice has its own.`,
+    ...(input.node === undefined
+      ? []
+      : [
+          "",
+          `The mission lives on node \`${input.node}\`, not yours: pass \`node: "${input.node}"\` with every slices_* and missions_* tool you call about it.`,
+        ]),
+    ...input.slices.flatMap(({ slice, step }) => [
+      "",
+      `## Slice: ${slice.title}`,
+      "",
+      `Slice \`${slice.id}\`, wave ${slice.wave}, through ${steps(mission)}${step === undefined ? "" : `; it is at ${step}`}.`,
+      "",
+      slice.spec.trim(),
+      ...(slice.reviews === undefined || slice.reviews.length === 0
+        ? []
+        : [
+            "",
+            `It reviews the work of ${slice.reviews.map((id) => `\`${id}\``).join(", ")}: record each review with slices_review { sliceId: "${slice.id}", verdict, notes${on} }, approved or changes-requested, and in notes what you checked and what you found.`,
+          ]),
+    ]),
+    "",
+    "## What they serve",
+    "",
+    `Mission outcome: ${mission.outcome.trim()}`,
+    "",
+    `Project intent: ${intentLine(input.intent)}`,
+    "",
+    "## Process",
+    "",
+    `Record each step a slice reaches with slices_update { sliceId, step${on} }.`,
+    `When a slice's spec works, record its proof once with slices_prove { sliceId, items${on} }: the smallest proof that shows it works (a command with its output, a screenshot, a link).`,
+    `If you cannot go on with a slice, set it blocked with slices_update { sliceId, status: "blocked"${on} } and say why: whoever runs the mission decides.`,
+    ...(input.slices.some(({ slice }) => (slice.reviews ?? []).length > 0)
+      ? [
+          "A commit or merge of the mission is refused until each reviewed slice is approved after its last change.",
+        ]
+      : []),
+    "",
+  ].join("\n");
+}
+
 const REASONS: Record<RefocusReason, string> = {
   request: "Refocus",
   compaction: "Refocus: your context was compacted",

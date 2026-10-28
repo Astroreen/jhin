@@ -63,7 +63,7 @@ import {
   type StoredEvent,
 } from "@jhin/storage-api";
 
-import { handoffText, refocusText, type RefocusReason } from "./brief.ts";
+import { handoffText, handoffsText, refocusText, type RefocusReason } from "./brief.ts";
 import { reportText, type ReportEnd } from "./report.ts";
 import {
   REVIEW_BRIEF_LENGTH,
@@ -140,7 +140,9 @@ export type OrchestratorErrorCode =
   /** The slice reviews no slice (D1244). */
   | "NOT_A_REVIEW"
   /** Only another node of the mesh records a run it started (D1545). */
-  | "MESH_ONLY";
+  | "MESH_ONLY"
+  /** Slices handed together are of one mission and one assignee (D1562). */
+  | "SLICES_APART";
 
 class OrchestratorError extends Error {
   readonly code: OrchestratorErrorCode;
@@ -810,10 +812,47 @@ export default definePlugin({
           onNode<T>(node, name, input, ["missions.write"], invocation),
       };
     };
-    async function handOff(sliceId: string, invocation: Invocation, node?: string) {
+    const failureOf = (error: unknown) => {
+      const { code, message } = error as { code?: unknown; message?: unknown };
+      return {
+        ...(typeof code === "string" ? { code } : {}),
+        message: String(message ?? error),
+      };
+    };
+    /** What a handoff answers for one slice. */
+    interface Handed {
+      readonly slice: Slice;
+      readonly delivered: "agent" | "owner";
+      readonly threadId?: string;
+      readonly nodeId?: string;
+      readonly handed: boolean;
+    }
+    /**
+     * Hands slices of one mission with one assignee (D703, D1541), in one message
+     * when there are several (D1562): one turn of the assignee's runtime takes them
+     * all, instead of one turn each that finds the rest already done.
+     */
+    async function handOffTogether(
+      sliceIds: readonly string[],
+      invocation: Invocation,
+      node?: string,
+    ): Promise<Handed[]> {
       const place = placeOf(node, invocation);
       const missionNode = node ?? nodeId;
-      const { slice, mission, slices, intent } = await place.load(sliceId);
+      const loaded: HandoffInput[] = [];
+      for (const sliceId of sliceIds) loaded.push(await place.load(sliceId));
+      const { mission, slices, intent } = loaded[0]!;
+      const apart = loaded.find(
+        (item) =>
+          item.mission.id !== mission.id || item.slice.assignee !== loaded[0]!.slice.assignee,
+      );
+      if (apart !== undefined) {
+        throw new OrchestratorError(
+          "SLICES_APART",
+          `Slices handed together belong to one mission and one assignee; ${apart.slice.id} does not`,
+          { sliceId: apart.slice.id, missionId: mission.id },
+        );
+      }
       if (isClosed(mission.status)) {
         throw new OrchestratorError(
           "MISSION_CLOSED",
@@ -823,110 +862,169 @@ export default definePlugin({
           },
         );
       }
-      const agent = slice.assignee === undefined ? undefined : parseAgentAddress(slice.assignee);
+      const assignee = loaded[0]!.slice.assignee;
+      const agent = assignee === undefined ? undefined : parseAgentAddress(assignee);
+      const delivered = agent === undefined ? ("owner" as const) : ("agent" as const);
       /** A linked thread's node, when not the mission's. */
       const linkedOn = (thread: { nodeId?: string | undefined }) =>
         thread.nodeId === undefined || thread.nodeId === missionNode
           ? {}
           : { nodeId: thread.nodeId };
-      if (slice.status === "active") {
-        // Its thread on the assignee's node first, on whatever node that is (D1541).
-        const linked =
-          slice.threads.find((thread) => (thread.nodeId ?? missionNode) === agent?.nodeId) ??
-          slice.threads[0];
-        return {
-          slice,
-          delivered: agent === undefined ? ("owner" as const) : ("agent" as const),
-          ...(agent === undefined || linked === undefined
-            ? {}
-            : { threadId: linked.threadId, ...linkedOn(linked) }),
-          handed: false,
-        };
-      }
+      const answers = new Map<string, Handed>();
+      const toHand: Slice[] = [];
       // An assignee of any node is handed its slice (D1541), unless its node is away (D1547).
       const progress = missionProgress(slices, { away: awayOf(slices) });
-      if (!progress.ready.includes(slice.id)) {
-        const decision = progress.decisions.find((item) => item.sliceId === slice.id);
-        throw new OrchestratorError(
-          "SLICE_NOT_READY",
-          decision === undefined
-            ? `Slice ${sliceId} is ${slice.status} in wave ${slice.wave}; wave ${progress.wave ?? "none"} runs now`
-            : `Slice ${sliceId} waits for a decision: ${decision.reason}`,
-          {
-            sliceId,
-            status: slice.status,
-            wave: slice.wave,
-            current: progress.wave,
-            ...(decision === undefined ? {} : { reason: decision.reason }),
-          },
-        );
+      for (const { slice } of loaded) {
+        if (answers.has(slice.id) || toHand.includes(slice)) continue;
+        if (slice.status === "active") {
+          // Its thread on the assignee's node first, on whatever node that is (D1541).
+          const linked =
+            slice.threads.find((thread) => (thread.nodeId ?? missionNode) === agent?.nodeId) ??
+            slice.threads[0];
+          answers.set(slice.id, {
+            slice,
+            delivered,
+            ...(agent === undefined || linked === undefined
+              ? {}
+              : { threadId: linked.threadId, ...linkedOn(linked) }),
+            handed: false,
+          });
+          continue;
+        }
+        if (!progress.ready.includes(slice.id)) {
+          const decision = progress.decisions.find((item) => item.sliceId === slice.id);
+          throw new OrchestratorError(
+            "SLICE_NOT_READY",
+            decision === undefined
+              ? `Slice ${slice.id} is ${slice.status} in wave ${slice.wave}; wave ${progress.wave ?? "none"} runs now`
+              : `Slice ${slice.id} waits for a decision: ${decision.reason}`,
+            {
+              sliceId: slice.id,
+              status: slice.status,
+              wave: slice.wave,
+              current: progress.wave,
+              ...(decision === undefined ? {} : { reason: decision.reason }),
+            },
+          );
+        }
+        toHand.push(slice);
       }
-      const { escalations, held } = await place.hold(mission);
-      if (held) {
-        throw new OrchestratorError(
-          "ESCALATION_OPEN",
-          `The lead asked the owner and waits for the answer: no slice is handed meanwhile (block the slices the ask is about to let the rest go on)`,
-          { missionId: mission.id, escalations },
-        );
-      }
-      const step = slice.step ?? mission.process.slice[0]?.id;
-      const assigneeNode = parseMessageAddress(slice.assignee!)?.nodeId;
-      // A2's agents.send delivers it: an agent's current generation (its first is
-      // started then, D606), queued while it works; an owner's inbox; on another
-      // node through the mesh (D1541). The id is the slice as it was planned, so a
-      // retry delivers it once.
-      const { delivery } = await run<{ delivery?: { threadId: string; nodeId?: string } }>(
-        "agents.send",
-        {
-          to: slice.assignee,
-          messageId: `handoff-${slice.id}-${slice.updatedAt}`,
-          body: cut(
-            [
-              handoffText({
-                slice,
+      if (toHand.length > 0) {
+        const { escalations, held } = await place.hold(mission);
+        if (held) {
+          throw new OrchestratorError(
+            "ESCALATION_OPEN",
+            `The lead asked the owner and waits for the answer: no slice is handed meanwhile (block the slices the ask is about to let the rest go on)`,
+            { missionId: mission.id, escalations },
+          );
+        }
+        const stepOf = (slice: Slice) => slice.step ?? mission.process.slice[0]?.id;
+        const assigneeNode = parseMessageAddress(assignee!)?.nodeId;
+        // An assignee elsewhere names the mission's node with its tools (D1542).
+        const on =
+          assigneeNode === undefined || assigneeNode === missionNode ? {} : { node: missionNode };
+        // A review slice gets the project to review against (D1246); several share the room.
+        const briefs: { slice: Slice; markdown: string }[] = [];
+        for (const slice of toHand) {
+          if (slice.reviews !== undefined && slice.reviews.length > 0) {
+            briefs.push({ slice, markdown: await place.reviewBrief(slice) });
+          }
+        }
+        const text =
+          toHand.length === 1
+            ? handoffText({ slice: toHand[0]!, mission, intent, step: stepOf(toHand[0]!), ...on })
+            : handoffsText({
+                slices: toHand.map((slice) => ({ slice, step: stepOf(slice) })),
                 mission,
                 intent,
-                step,
-                // An assignee elsewhere names the mission's node with its tools (D1542).
-                ...(assigneeNode === undefined || assigneeNode === missionNode
-                  ? {}
-                  : { node: missionNode }),
-              }),
-              // A review slice gets the project to review against (D1246).
-              ...(slice.reviews === undefined || slice.reviews.length === 0
-                ? []
-                : [await place.reviewBrief(slice)]),
-            ].join("\n"),
-            MAX_MESSAGE_LENGTH,
-            `review_brief { sliceId: "${slice.id}" }`,
-          ),
-        },
-        invocation,
-      );
-      const thread =
-        agent === undefined || delivery === undefined
-          ? undefined
-          : // The delivering node: here when it names none.
-            { threadId: delivery.threadId, ...linkedOn({ nodeId: delivery.nodeId ?? nodeId }) };
-      if (thread !== undefined) {
-        await place.write("slices.link", { sliceId, ...thread });
+                ...on,
+              });
+        const share = Math.floor(
+          (MAX_MESSAGE_LENGTH - text.length - briefs.length * 2) / Math.max(1, briefs.length),
+        );
+        const body =
+          briefs.length <= 1
+            ? cut(
+                [text, ...briefs.map((item) => item.markdown)].join("\n"),
+                MAX_MESSAGE_LENGTH,
+                `review_brief { sliceId: "${briefs[0]?.slice.id ?? toHand[0]!.id}" }`,
+              )
+            : [
+                text,
+                ...briefs.map((item) =>
+                  cut(item.markdown, share, `review_brief { sliceId: "${item.slice.id}" }`),
+                ),
+              ].join("\n\n");
+        // A2's agents.send delivers it: an agent's current generation (its first is
+        // started then, D606), queued while it works; an owner's inbox; on another
+        // node through the mesh (D1541). The id is the slices as they were planned,
+        // so a retry delivers it once.
+        const messageId =
+          toHand.length === 1
+            ? `handoff-${toHand[0]!.id}-${toHand[0]!.updatedAt}`
+            : `handoffs-${Crypto.createHash("sha256")
+                .update(toHand.map((slice) => `${slice.id}@${slice.updatedAt}`).join("\n"))
+                .digest("hex")
+                .slice(0, 32)}`;
+        const { delivery } = await run<{ delivery?: { threadId: string; nodeId?: string } }>(
+          "agents.send",
+          { to: assignee, messageId, body },
+          invocation,
+        );
+        const thread =
+          agent === undefined || delivery === undefined
+            ? undefined
+            : // The delivering node: here when it names none.
+              { threadId: delivery.threadId, ...linkedOn({ nodeId: delivery.nodeId ?? nodeId }) };
+        for (const slice of toHand) {
+          if (thread !== undefined) {
+            await place.write("slices.link", { sliceId: slice.id, ...thread });
+          }
+          const step = stepOf(slice);
+          const updated = await place.write<Slice>("slices.update", {
+            sliceId: slice.id,
+            status: "active",
+            ...(step === undefined ? {} : { step }),
+          });
+          answers.set(slice.id, { slice: updated, delivered, ...thread, handed: true });
+        }
         // Its node follows it for refocus from here on (D1543); the mission's
         // node asks itself when the link reaches its fold.
-        if (node === undefined && "nodeId" in thread) {
+        if (thread !== undefined && node === undefined && "nodeId" in thread) {
           await askToFollow(thread.nodeId, thread.threadId);
         }
       }
-      const updated = await place.write<Slice>("slices.update", {
-        sliceId,
-        status: "active",
-        ...(step === undefined ? {} : { step }),
-      });
-      return {
-        slice: updated,
-        delivered: agent === undefined ? ("owner" as const) : ("agent" as const),
-        ...thread,
-        handed: true,
-      };
+      return [...new Set(sliceIds)].map((sliceId) => answers.get(sliceId)!);
+    }
+    const handOff = async (sliceId: string, invocation: Invocation, node?: string) =>
+      (await handOffTogether([sliceId], invocation, node))[0]!;
+    /** Slices grouped by mission and assignee, in the order they come. */
+    async function handOffGrouped(
+      sliceIds: readonly string[],
+      invocation: Invocation,
+      node?: string,
+    ) {
+      const place = placeOf(node, invocation);
+      const groups = new Map<string, string[]>();
+      const refused: { sliceId: string; code?: string; message: string }[] = [];
+      for (const sliceId of new Set(sliceIds)) {
+        try {
+          const { slice } = await place.load(sliceId);
+          const key = `${slice.missionId}\n${slice.assignee ?? ""}`;
+          groups.set(key, [...(groups.get(key) ?? []), sliceId]);
+        } catch (error) {
+          refused.push({ sliceId, ...failureOf(error) });
+        }
+      }
+      const handoffs: Handed[] = [];
+      for (const group of groups.values()) {
+        try {
+          handoffs.push(...(await handOffTogether(group, invocation, node)));
+        } catch (error) {
+          refused.push(...group.map((sliceId) => ({ sliceId, ...failureOf(error) })));
+        }
+      }
+      return { handoffs, failed: refused };
     }
     register(
       {
@@ -948,6 +1046,31 @@ export default definePlugin({
       },
       // A lead's node hands a slice of another node's mission itself, as the lead (D1545).
       (node, { sliceId }, invocation) => handOff(sliceId, invocation, node),
+    );
+    const HandoffOutput = z.object({
+      slice: Slice,
+      delivered: z.enum(["agent", "owner"]),
+      threadId: z.string().optional(),
+      nodeId: z.string().optional(),
+      handed: z.boolean(),
+    });
+    register(
+      {
+        name: "slices.handoff.together",
+        description:
+          "Hands ready slices of a mission as slices.handoff does, with one message per assignee for all of that assignee's slices, so its agent takes them in one turn. A slice that cannot be handed is in failed with its error, and the others of its assignee with it",
+        input: z.object({ sliceIds: z.array(z.string()).min(1) }),
+        output: z.object({
+          handoffs: z.array(HandoffOutput),
+          failed: z.array(
+            z.object({ sliceId: z.string(), code: z.string().optional(), message: z.string() }),
+          ),
+        }),
+        permissions: ["missions.write", MESSAGE_PERMISSION],
+        handler: ({ sliceIds }, invocation) => handOffGrouped(sliceIds, invocation),
+      },
+      // As slices.handoff: the lead's node sends, the mission's node keeps the slices (D1545).
+      (node, { sliceIds }, invocation) => handOffGrouped(sliceIds, invocation, node),
     );
 
     // --- Review after the last change (D1241) -------------------------------------
