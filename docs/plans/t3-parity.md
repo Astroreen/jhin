@@ -2507,6 +2507,149 @@ panel and devices are in `terminal.md`, `source-control.md` and
   under its lines, following them as the text is edited; "Delete comment"
   takes it out of the composer again (D1286).
 
+### Threads, the composer and the right panel (W45, `t3-roadmap.md`)
+
+Round 6 of `t3-roadmap.md` (D1641–D1660), at T3 Code `eb7b35ac` as D290
+says. It takes from this plan's Deferred list what a T3 Code user notices
+most: the right panel's leftovers W40 named, the queue and steering edge
+cases, T3's restart as a new attempt of the same run and T3's Usage page
+beyond "Limits"; `terminal.md`'s worktree file (D965) and `providers.md`'s
+steer a Claude Code turn ended before it took go with them.
+
+- **D1641. T3's "Reopen Closed Tab"** (`closedViewStore.ts`,
+  `reopenClosedView.ts`, `ReopenClosedViewShortcut.tsx`). A surface the user
+  closes (a tab's close button, its menu, `right-panel.close` and the
+  `right-panel.surface*.close*` commands, never a kind's own reconciling) is
+  remembered with its place, newest first, at most 20, one entry per place
+  and surface, on this device (`localStorage`, `jhin:closed-views:v1`); the
+  active one of a close goes last, so it comes back first, as T3 orders
+  them. The client command `right-panel.reopen-closed` ("Reopen Closed Tab",
+  T3's `view.reopenClosed`, ⌘/Ctrl+Shift+T while focus is not in a terminal)
+  reopens the newest that can be: an entry whose place is gone is dropped
+  once the node's threads are known, one already open is dropped, one that
+  cannot reopen now (its kind is not registered) goes last, as T3's `defer`;
+  the place comes on screen with the surface active. A kind says what
+  closing keeps (`ui.right-panel@1.1`, additive: `remember(props)` gives a
+  string kept with the entry, or `null` to keep nothing, as T3 keeps no
+  terminal) and how it reopens (`reopen(place, surface, kept)`, else the
+  surface opens again): a browser tab keeps its page's address and reopens
+  a new tab there, as T3's `openPreviewSession` with the snapshot's URL; a
+  tab in T3's incognito profile is not kept. The command answers
+  `{ reopened }`; a reopen that fails says "Could not reopen view" with its
+  error, as T3's toast.
+- **D1642. The file explorer's context menu and its rows dragged into the
+  composer,** T3's `FileBrowserPanel` (`showEntryContextMenu`,
+  `fileTreeDragMention.ts`, `composerMentionDrag.ts`). A row's context menu
+  is T3's: for a file, "Open" (the system file manager, when the node has
+  one), "Open with" (a submenu of the node's other editors), then for every
+  row "Copy mention" and "Add to chat". The mention is T3's
+  `serializeComposerFileLink` (`[name](path)`, a folder without its
+  trailing `/`); copying says "Mention copied" (the path) or "Failed to copy
+  mention"; "Add to chat" puts the mention and a space at the end of the
+  open thread's message (with a space before it when the text does not end
+  in one, T3's `ensureLeadingBoundary`) without focusing it, or says T3's
+  "Unable to add to chat" ("Open a chat for this project and try again.",
+  "The chat isn't ready to accept input right now."). An editor that fails
+  says T3's "Could not open file" / "Could not open in <editor>" with the
+  path. Dragging a row (the selection when the row is in it) carries the
+  mentions joined by a space as `application/x-jhin-composer-mention`, and
+  dropping it on the composer inserts them so; while a drag runs the
+  selection opens no file, and its end deselects the dragged rows.
+  `chat.composer.insert` takes `at: "end"` for this (additive; the cursor
+  stays the default).
+- **D1643. A file chip's menu, ⌘/Ctrl-click and the parent folder suffix,**
+  T3's `MarkdownFileLink` and `fileLinks.ts`
+  (`buildFileLinkParentSuffixByPath`). An agent's file chip (D1431) has
+  T3's context menu: "Open in editor" (`Open in <editor>` for the editor
+  last chosen on this device, D1429), "Copy relative path" and "Copy full
+  path", which say "Relative path copied" / "Full path copied" with the
+  value, or "Failed to copy relative path" / "Failed to copy full path";
+  the menu opens at the pointer, or under the chip from the keyboard. ⌘-click
+  on macOS, Ctrl-click elsewhere, opens the file in that editor instead of
+  the right panel. Chips of one message that share a name end with the
+  shortest tail of their parent folders that tells them apart, two folders
+  deep at least (`a.ts · src/lib`), and a link's column shows after its line
+  (`· L12:C3`), as T3 labels them.
+- **D1644. "Open in" for a file of a thread's worktree.** `editors.open`
+  takes `threadId` (additive): a relative path is then the thread's
+  worktree's, when it has one, as `projects.read-file` resolves it (D965),
+  else its project's. So the file panel's "Open in" (D1429), a chip's "Open
+  in editor" (D1643) and a terminal's file links in a worktree open the
+  worktree's own file (`terminal.md`'s Deferred).
+- **D1645. The editor's pending dot,** T3's `onPendingChange` and its tab
+  dot. A file's tab shows a dot over its icon from its first unsaved change
+  until a write of its latest text succeeds; a failed write leaves it.
+  `RightPanelTab` gets `pending` (`ui.right-panel@1.1`, additive), which the
+  strip draws as T3's `RightPanelTabs` does.
+- **D1646. "Read-only connection",** T3's notice in `FilePreviewPanel`. A
+  write the node refuses for want of permission (`FORBIDDEN`, a token
+  without `projects.write`) turns the file read-only: T3's notice
+  "Read-only connection. Unsaved edits are kept until write access
+  returns." shows above it, the text stays as typed, and nothing is written
+  until the connection to that node changes (a new token or a reconnect),
+  when the kept edits are written. Jhin has no way for a client to read its
+  own permissions before writing; asking first waits for one (Deferred).
+- **D1647. A change made on disk while a file is open,** as T3 does it:
+  there is no merge. While the file has no unsaved change, the editor takes
+  the text on disk whenever it changes (an agent's edit, a turn's end, the
+  node's file events), so it never writes over a change it did not show;
+  while a change waits, the editor keeps its own text and its write wins, as
+  in T3, whose write carries no version either.
+- **D1648. Ticking a rendered markdown's task boxes,** T3's
+  `setMarkdownTaskChecked`. In the file panel a project's rendered markdown
+  file has its `- [ ]` boxes enabled ("Toggle task"): a tick swaps the one
+  character between the brackets of that item's first line, found by its
+  offset in the source, and writes the file as an edit does (D1438, D1645);
+  a read-only file (D1646), a message's file and an attachment keep them
+  disabled.
+- **D1649. A steer a turn ended before it took fails, and the message starts
+  the follow-up turn,** as T3's `ClaudeAdapterV2` ("ended before the steer
+  was sent"). `agent.runtime@1.16` (additive): `AgentTurn.steer` may return
+  a promise, which settles once the message went in, and rejects when the
+  turn ended first. The threads plugin awaits it before it records the
+  steer, so a message the turn never took is not recorded as steered: it
+  goes first in the queue, as a steer that came too late (D205), and starts
+  the next turn. Claude Code's turn returns it: its move of the subagents
+  to the background (D805), or the read of uploaded images, can outlast the
+  turn (`providers.md`).
+- **D1650. `threads.queue.steer` into a turn that is ending** puts the
+  message first in the queue, so it starts the follow-up turn, as
+  `threads.steer` queues it (D205), and answers the ending turn's id with
+  `outcome: "queued"`; it answers `outcome` (`steered`, `started` or
+  `queued`) in every case (additive). `TURN_NOT_RUNNING` stays for a thread
+  running no turn.
+- **D1651. A thread's first title is written before the queue's lock.**
+  `threads.queue.add` and `threads.send` on a thread whose first message
+  names it run the `threads.title` hook first, outside the queue's lock, and
+  start the turn with that title; a slow hook holds only that send, not the
+  thread's queue edits.
+- **D1652. Idempotent sends,** as T3's command receipts. `threads.send`
+  takes `messageId` (additive), as `threads.queue.add` and `threads.steer`
+  do; a send, add or steer whose `messageId` already started a turn or was
+  steered into one (its `agent.turn.started` or `agent.turn.steered` names
+  it) answers that turn instead of running the message again. The node
+  reads a thread's message ids once from its log, then keeps them as it
+  records new ones. A message cancelled from the queue is not remembered,
+  so a lost answer's retry after a cancel queues it again (Deferred).
+- **D1653. T3's restart as a new attempt of the same run** (D803; T3's
+  `run-attempt` with `reason: "steering_restart"`, the old attempt
+  `superseded`). The turn a restart's message starts names the stopped
+  turn (`restartOf` on `agent.turn.started`, additive), and the stopped
+  turn's end says it was superseded (`reason: "superseded"` on
+  `agent.turn.interrupted`); the thread's queue is not held by it, as
+  before.
+- **D1654. A superseded attempt folds,** T3's
+  `deriveSupersededAttemptFolds` and `AttemptFoldTimelineRow`. In the
+  timeline the stopped turn's work and answer fold into one collapsed row,
+  "Superseded attempt" with "Cut off by a steer", a chevron that opens it
+  (kept open per turn for the page), in place of "You stopped this
+  response"; the user's messages stay visible, and so does an answer that
+  had finished before the restart (T3's `completeSupersededReplyEntryIds`).
+  Find in a thread (D801) opens a fold whose text matches, as T3's.
+- D1655–D1660 are kept for T3's Usage page beyond "Limits" (its "Cost" and
+  "Tokens" views and an account's reset credits), written when that work
+  starts.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
