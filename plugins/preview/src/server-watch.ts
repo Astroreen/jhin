@@ -15,7 +15,7 @@ import type { DiscoveredLocalServer } from "./local-servers.ts";
 /** T3's `POLL_INTERVAL`. */
 export const SERVER_WATCH_INTERVAL_MS = 3_000;
 /** How many configured-URL sets may be watched at once: each costs a scan per tick. */
-export const SERVER_WATCH_MAX_STREAMS = 20;
+const SERVER_WATCH_MAX_STREAMS = 20;
 
 interface Watched {
   readonly urls: readonly string[];
