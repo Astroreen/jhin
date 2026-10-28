@@ -432,6 +432,19 @@ describe("defined agents", () => {
     expect(begun).toBe(false);
   });
 
+  it("hands the runtime's answer to a steer on, so a steer it never took fails (D1649)", async () => {
+    const turn = deferredTurn(Promise.resolve("lore"), () => ({
+      items: (async function* (): AsyncGenerator<never> {})(),
+      interrupt() {},
+      steer: () => Promise.reject(new Error("ended before the steer was sent")),
+    }));
+    const read = (async () => {
+      for await (const _ of turn.items) throw new Error("no items");
+    })();
+    await read;
+    await expect(turn.steer!({ text: "late" })).rejects.toThrow("ended before the steer was sent");
+  });
+
   it("interrupts the runtime's turn once it runs", async () => {
     let interrupted = false;
     const turn = deferredTurn(Promise.resolve("lore"), () => ({

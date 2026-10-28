@@ -4524,12 +4524,6 @@ export default definePlugin({
       }
     };
 
-    /**
-     * Starts a turn of a thread with a message: what `threads.send` does, and
-     * what delivers a queued message (D202). Throws `TURN_IN_PROGRESS` on a
-     * busy thread. `progress.recorded` says whether the turn's start was
-     * recorded, so the message belongs to that turn even if it then failed.
-     */
     /** What the `threads.title` hook names a thread after its first message's text. */
     function titleFirst(thread: Thread, text: string): Promise<string> {
       const shownText = contextReferencesAsLabels(text);
@@ -4540,6 +4534,12 @@ export default definePlugin({
         .catch(() => titleFromText(shownText));
     }
 
+    /**
+     * Starts a turn of a thread with a message: what `threads.send` does, and
+     * what delivers a queued message (D202). Throws `TURN_IN_PROGRESS` on a
+     * busy thread. `progress.recorded` says whether the turn's start was
+     * recorded, so the message belongs to that turn even if it then failed.
+     */
     async function startTurn(
       threadId: string,
       { text, attachments, origin, context: messageContext, ...requested }: Outgoing,
@@ -5163,11 +5163,17 @@ export default definePlugin({
     ): Promise<{ messageId: string; turnId?: string }> {
       // A first message's title is named before the queue's lock, so a slow `threads.title`
       // hook holds no edit of the queue (D1651).
-      const read = await getThread(threadId);
-      const title =
-        read.lastTurn === undefined && read.title === DEFAULT_THREAD_TITLE && !active.has(threadId)
-          ? await titleFirst(read, message.text)
-          : undefined;
+      // Only for a message that will start at once: a queued one is named when it starts.
+      let title: string | undefined;
+      if (!active.has(threadId)) {
+        const before = await readQueue(threadId);
+        if (before.messages.length === 0 && before.held === undefined) {
+          const read = await getThread(threadId);
+          if (read.lastTurn === undefined && read.title === DEFAULT_THREAD_TITLE) {
+            title = await titleFirst(read, message.text);
+          }
+        }
+      }
       return changeQueue(threadId, async (queue) => {
         if (queue.messages.some((item) => item.id === messageId)) return { messageId };
         if (!active.has(threadId) && queue.messages.length === 0 && queue.held === undefined) {

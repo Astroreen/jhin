@@ -2789,7 +2789,8 @@ steer a Claude Code turn ended before it took go with them.
   remembered, so a retry of its add whose answer was lost queues it again;
   a retry that comes while the first call still runs (before its turn's
   start is recorded) is refused as any second send is (`TURN_IN_PROGRESS`),
-  or queued. The ids a node knows of a thread are read from its whole log
+  or queued. A message of a turn a rollback dropped (D221) still answers
+  that turn. The ids a node knows of a thread are read from its whole log
   once per run (200 threads kept).
 
 Done since in `t3-roadmap.md`'s W1 (D200–D211): the server-side queue and
