@@ -1,0 +1,98 @@
+// T3's "Superseded attempt" (t3-parity.md D1653, D1654): a restart's stopped turn folds its
+// output, keeping what the user sent and an answer that had finished.
+import { ThreadEvents } from "@jhin/agent-api";
+import type { StoredEvent } from "@jhin/storage-api";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { describe, expect, it } from "vite-plus/test";
+import { page } from "vite-plus/test/browser";
+
+import { reduceTimeline } from "../src/lib/timeline.ts";
+import { TimelineView } from "../src/plugins/chat/timeline.tsx";
+
+function stream(...entries: [type: string, payload: unknown][]): StoredEvent[] {
+  return entries.map(([type, payload], index) => ({
+    stream: "thread/t1",
+    sequence: index + 1,
+    type,
+    payload: payload as StoredEvent["payload"],
+    at: new Date(Date.UTC(2026, 9, 28, 12, 0, index)).toISOString(),
+  }));
+}
+
+const events = stream(
+  [ThreadEvents.turnStarted, { turnId: "u1", agentId: "acme.plain", input: { text: "Build it" } }],
+  [ThreadEvents.itemCompleted, { turnId: "u1", itemId: "a", kind: "message", text: "Plan first." }],
+  [ThreadEvents.itemDelta, { turnId: "u1", itemId: "b", kind: "message", text: "Starting the bu" }],
+  [ThreadEvents.turnInterrupted, { turnId: "u1" }],
+  [
+    ThreadEvents.turnStarted,
+    {
+      turnId: "u2",
+      agentId: "acme.plain",
+      input: { text: "Use Rust instead" },
+      restartOf: "u1",
+    },
+  ],
+  [ThreadEvents.itemCompleted, { turnId: "u2", itemId: "c", kind: "message", text: "In Rust." }],
+  [ThreadEvents.turnCompleted, { turnId: "u2" }],
+);
+
+describe("a superseded attempt", () => {
+  it("is a stopped turn whose restart's turn started, and only then", () => {
+    const { turns } = reduceTimeline(events);
+    expect(turns.map((turn) => [turn.turnId, turn.state, turn.superseded])).toEqual([
+      ["u1", "interrupted", true],
+      ["u2", "completed", undefined],
+    ]);
+    // A restart whose message never started leaves an ordinary stop.
+    expect(reduceTimeline(events.slice(0, 4)).turns[0]?.superseded).toBeUndefined();
+  });
+
+  it("shows no fold when nothing of the attempt can fold", async () => {
+    const empty = stream(
+      [ThreadEvents.turnStarted, { turnId: "u1", agentId: "a", input: { text: "Build it" } }],
+      [ThreadEvents.turnInterrupted, { turnId: "u1" }],
+      [
+        ThreadEvents.turnStarted,
+        { turnId: "u2", agentId: "a", input: { text: "Use Rust" }, restartOf: "u1" },
+      ],
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => {
+        root.render(<TimelineView format="locale" timeline={reduceTimeline(empty)} />);
+      });
+      await expect.element(page.getByText("Use Rust")).toBeVisible();
+      expect(page.getByRole("button", { name: /Superseded attempt/ }).query()).toBeNull();
+      expect(page.getByText("You stopped this response").query()).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("folds the cut-off output under T3's row, keeping the messages and a finished answer", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<TimelineView format="locale" timeline={reduceTimeline(events)} />);
+    });
+    const fold = page.getByRole("button", { name: /Superseded attempt/ });
+    await expect.element(fold).toHaveTextContent("Superseded attemptCut off by a steer");
+    await expect.element(fold).toHaveAttribute("aria-expanded", "false");
+    expect(document.body.textContent).not.toContain("You stopped");
+    expect(document.body.textContent).toContain("Build it");
+    expect(document.body.textContent).toContain("Plan first.");
+    expect(document.body.textContent).toContain("Use Rust instead");
+    expect(document.body.textContent).not.toContain("Starting the bu");
+    await fold.click();
+    await expect.element(fold).toHaveAttribute("aria-expanded", "true");
+    expect(document.body.textContent).toContain("Starting the bu");
+    await act(async () => root.unmount());
+    host.remove();
+  });
+});

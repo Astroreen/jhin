@@ -659,7 +659,9 @@ export const ThreadEvents = {
    * `origin` (`MessageOrigin`) names the message between agents the turn answers (agents.md D623).
    * `handoff` (`{ kind: "merge-back", threadId, turnId }`) says the agent got a
    * fork's result before `input.text`. In a fork, events copied from its parent
-   * carry `inheritedAt`, their original time.
+   * carry `inheritedAt`, their original time. `restartOf` (`t3-parity.md`
+   * D1653) names the turn a restart stopped: this turn is a new attempt of
+   * that turn's run, which it supersedes.
    */
   turnStarted: "agent.turn.started",
   /** `{ turnId, messageId, input }`: a message the running turn took (a steer, D205). */

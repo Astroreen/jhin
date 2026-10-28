@@ -166,6 +166,8 @@ export interface TimelineTurn {
   readonly startedAt: string;
   readonly endedAt?: string;
   readonly state: TurnState;
+  /** Stopped by a restart whose turn started: a superseded attempt of its run (D1653). */
+  readonly superseded?: boolean;
   readonly error?: string;
   /** Why it failed, when the agent classed it: a usage limit (providers.md D1143). */
   readonly failure?: AgentTurnFailure;
@@ -209,6 +211,7 @@ interface Payload {
   readonly failure?: AgentTurnFailure;
   readonly goal?: AgentGoal | null;
   readonly reason?: string;
+  readonly restartOf?: string;
   readonly status?: string;
   readonly output?: string;
   readonly app?: AgentMcpApp;
@@ -368,6 +371,12 @@ export function createTimeline() {
         positions.set(turn, new Map());
         turns.push(turn);
         changed.add(turn);
+        // The turn a restart stopped is superseded once the restart's turn started (D1653).
+        const stopped = payload.restartOf === undefined ? undefined : byId.get(payload.restartOf);
+        if (stopped !== undefined) {
+          stopped.superseded = true;
+          changed.add(stopped);
+        }
         continue;
       }
       const extension = isExtensionEvent(event.type);

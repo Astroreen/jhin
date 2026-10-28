@@ -618,7 +618,7 @@ describe("jhin.threads: steering (D204, D205)", () => {
   const starts = (events: readonly StoredEvent[]) =>
     events
       .filter((event) => event.type === ThreadEvents.turnStarted)
-      .map((event) => event.payload as { turnId: string; messageId?: string });
+      .map((event) => event.payload as { turnId: string; messageId?: string; restartOf?: string });
 
   it("lists which agents steer, and restarts the turn of one that cannot with the steer (D803)", async () => {
     const { client, thread, events, watched } = await plainHolding();
@@ -640,6 +640,10 @@ describe("jhin.threads: steering (D204, D205)", () => {
     expect(starts(events)[1]!.turnId).toBe(sent.turnId);
     expect(count(events, ThreadEvents.turnInterrupted)).toBe(1);
     expect(count(events, ThreadEvents.turnSteered)).toBe(0);
+    // A new attempt of the stopped turn's run, which it supersedes (D1653); what was queued
+    // after it is a turn of its own.
+    expect(starts(events)[1]).toMatchObject({ restartOf: starts(events)[0]!.turnId });
+    expect(starts(events)[2]).not.toHaveProperty("restartOf");
     await untilCount(watched, ThreadEvents.turnCompleted, 2);
     expect(lastQueue(events)).toMatchObject({ messages: [] });
     expect(lastQueue(events)?.held).toBeUndefined();

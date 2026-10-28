@@ -1,5 +1,8 @@
 // The queue on the node and steering (docs/plans/t3-parity.md, D201–D210),
 // against the fake agent: "/hold" holds its turn until it is stopped or steered.
+import * as Fs from "node:fs";
+import * as Path from "node:path";
+
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
@@ -200,4 +203,96 @@ test("sends typed text the other way with ⌘/Ctrl+Shift+Enter when ⌘/Ctrl+Ent
   await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText("Holding");
   await expect(log.getByText("Echo: /hold queued")).toHaveCount(0);
   await page.getByRole("button", { name: "Stop generation" }).click();
+});
+
+/** A user plugin whose agent cannot steer: "/hold" holds its turn, anything else is echoed. */
+function writePlainAgent(home: string): void {
+  const root = Path.join(home, "plugins", "acme-plain");
+  Fs.mkdirSync(root, { recursive: true });
+  Fs.writeFileSync(
+    Path.join(root, "package.json"),
+    JSON.stringify({
+      name: "acme-plain",
+      version: "0.1.0",
+      type: "module",
+      jhin: {
+        id: "acme.plain",
+        version: "0.1.0",
+        apiVersion: 1,
+        side: "server",
+        provides: {},
+        requires: { "agent.registry": "^1" },
+        entry: "index.js",
+      },
+    }),
+  );
+  Fs.writeFileSync(
+    Path.join(root, "index.js"),
+    `import { definePlugin } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    const registry = context.services.get("agent.registry");
+    context.subscriptions.add(
+      registry.register({
+        agentId: "acme.plain",
+        name: "Plain",
+        startTurn(request) {
+          let stop;
+          const stopped = new Promise((resolve) => (stop = resolve));
+          const text = request.input.text;
+          return {
+            interrupt: () => stop(),
+            items: (async function* () {
+              if (text.startsWith("/hold")) {
+                yield { kind: "message.delta", itemId: "m1", text: "Writing it in Go" };
+                await stopped;
+                return;
+              }
+              yield { kind: "message.completed", itemId: "m1", text: "Echo: " + text };
+            })(),
+          };
+        },
+      }),
+    );
+  },
+});
+`,
+  );
+}
+
+test("D1653–D1654: a restart for an agent that cannot steer folds the stopped turn as a superseded attempt", async ({
+  page,
+}, info) => {
+  const plain = await startNode({
+    setup: writePlainAgent,
+    config: { "jhin.threads": { defaultAgent: "acme.plain" } },
+  });
+  try {
+    await page.goto(`${plain.ui}#token=${plain.token}`);
+    await page.getByRole("button", { name: "Start a thread" }).click();
+    const message = page.getByRole("textbox", { name: "Message" });
+    await message.fill("/hold build the CLI");
+    await message.press("Enter");
+    const log = page.getByRole("log", { name: "Messages" });
+    await expect(log.getByRole("article", { name: "Agent" })).toHaveText("Writing it in Go");
+    await message.fill("use Rust instead");
+    await message.press("ControlOrMeta+Enter");
+    await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText(
+      "Echo: use Rust instead",
+    );
+    const fold = log.getByRole("button", { name: /Superseded attempt/ });
+    await expect(fold).toHaveText("Superseded attemptCut off by a steer");
+    await expect(log.getByText("You stopped")).toHaveCount(0);
+    await expect(log.getByText("Writing it in Go")).toBeHidden();
+    const shot = info.outputPath("superseded-attempt.png");
+    await page.screenshot({ path: shot });
+    await info.attach("a superseded attempt, folded", { path: shot, contentType: "image/png" });
+    await fold.click();
+    await expect(log.getByText("Writing it in Go")).toBeVisible();
+    const open = info.outputPath("superseded-attempt-open.png");
+    await page.screenshot({ path: open });
+    await info.attach("a superseded attempt, opened", { path: open, contentType: "image/png" });
+  } finally {
+    await plain.stop();
+  }
 });
