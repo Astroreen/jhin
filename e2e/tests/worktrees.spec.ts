@@ -478,7 +478,7 @@ test("D1128–D1130: with the delete rule on, deleting a thread asks nothing and
   expect(git(dir, "branch", "--list", "jhin/*").trim()).not.toBe("");
 });
 
-test("D1469, D1470: Storage's Delete now runs the cleanup and its Last run lists what it found", async ({
+test("D1469, D1470, D1670: Storage's Delete now runs the cleanup and its Last run lists what it found, with sizes", async ({
   page,
 }, info) => {
   const node = await startNode({
@@ -513,9 +513,12 @@ test("D1469, D1470: Storage's Delete now runs the cleanup and its Last run lists
     .click();
   const cleanup = page.getByRole("region", { name: "Cleanup" });
   await cleanup.getByRole("button", { name: "Delete now" }).click();
-  await expect(cleanup.getByText(/^Last run /)).toBeVisible();
+  // T3's "<size> recovered.": nothing was removed by this sweep (D1670).
+  await expect(cleanup.getByText(/^Last run .*\. 0 B recovered\.$/)).toBeVisible();
   await cleanup.getByRole("button", { name: /^Last run/ }).click();
   await expect(cleanup.getByText("No thread uses this worktree.")).toBeVisible();
+  // The orphan's size, its one file "gitdir: /nowhere\n".
+  await expect(cleanup.getByText("17 B", { exact: true })).toBeVisible();
   await expect(cleanup.getByText(/^Search\. /)).toBeVisible();
   await shot(page, info, "storage-last-run");
 });

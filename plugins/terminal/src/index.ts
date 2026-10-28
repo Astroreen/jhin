@@ -217,6 +217,18 @@ export default definePlugin({
       handler: async (input) => ({ closed: await sessions.close(input) }),
     });
     context.commands.register({
+      name: "terminals.close-idle",
+      title: "Close idle terminals",
+      description:
+        "Closes a thread's terminals (or one) that run no command under their shell, read now, and printed and were typed nothing meanwhile (T3's closeIdle).",
+      input: z.object({ threadId: TerminalThreadId, terminalId: TerminalId.optional() }),
+      output: z.object({ closed: z.number().int() }),
+      permissions: ["terminals.write"],
+      handler: async (input) => ({
+        closed: await sessions.closeIdle(input.threadId, input.terminalId),
+      }),
+    });
+    context.commands.register({
       name: "terminals.list",
       title: "List terminals",
       description:

@@ -15,6 +15,7 @@ import {
 import { ChevronRightIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { formatBytes } from "../../lib/format-bytes.ts";
 import { formatRelativeTimeLabel } from "../../lib/format.ts";
 import { useExternal } from "../../lib/hooks.ts";
 
@@ -23,12 +24,16 @@ interface CleanupEntry {
   readonly threadId?: string;
   readonly outcome: "removed" | "kept" | "failed";
   readonly reason: string;
+  /** Its size, `null` when not measured (D1670). */
+  readonly bytes?: number | null;
 }
 
 interface CleanupReport {
   readonly entries: readonly CleanupEntry[];
   readonly counts: { readonly removed: number; readonly kept: number; readonly failed: number };
   readonly finishedAt?: string;
+  /** What the removed worktrees took (D1670). */
+  readonly bytesFreed?: number;
 }
 
 interface NodeState {
@@ -81,6 +86,16 @@ function CleanupResults(props: {
             }
             key={`${entry.path}:${entry.threadId ?? index}`}
             title={`${prefix}${entry.threadId === undefined ? entry.path : name}`}
+            {...((entry.outcome === "removed" || entry.outcome === "kept") &&
+            typeof entry.bytes === "number"
+              ? {
+                  control: (
+                    <span className="text-xs text-muted-foreground">
+                      {formatBytes(entry.bytes)}
+                    </span>
+                  ),
+                }
+              : {})}
           />
         );
       })}
@@ -146,7 +161,7 @@ export function CleanupSection(props: {
       counts: report === null ? "" : countsOf(report),
       description:
         report?.finishedAt !== undefined
-          ? `Last run ${formatRelativeTimeLabel(report.finishedAt)}.${report.counts.failed > 0 ? ` ${report.counts.failed} ${report.counts.failed === 1 ? "item" : "items"} couldn't be removed.` : ""}`
+          ? `Last run ${formatRelativeTimeLabel(report.finishedAt)}.${report.bytesFreed === undefined ? "" : ` ${formatBytes(report.bytesFreed)} recovered.`}${report.counts.failed > 0 ? ` ${report.counts.failed} ${report.counts.failed === 1 ? "item" : "items"} couldn't be removed.` : ""}`
           : state?.failed === true
             ? "Could not load the last run."
             : state === undefined

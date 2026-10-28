@@ -16,9 +16,16 @@ import { memoryStoragePlugin } from "@jhin/testing";
 import { git, node, repository, temp, type Node } from "./support.ts";
 
 interface Report {
-  entries: { path: string; threadId?: string; outcome: string; reason: string }[];
+  entries: {
+    path: string;
+    threadId?: string;
+    outcome: string;
+    reason: string;
+    bytes?: number | null;
+  }[];
   counts: { removed: number; kept: number; failed: number };
   finishedAt?: string;
+  bytesFreed?: number;
 }
 
 const removed = (threadId: string) => (event: StoredEvent) =>
@@ -69,7 +76,11 @@ describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
     // Deleted with the rule off: the user answered D255's question then.
     await sc.client.call("threads.delete", { threadId: thread.id });
     await sc.until(removed(thread.id));
-    expect(await cleanup(sc)).toEqual({ entries: [], counts: { removed: 0, kept: 0, failed: 0 } });
+    expect(await cleanup(sc)).toEqual({
+      entries: [],
+      counts: { removed: 0, kept: 0, failed: 0 },
+      bytesFreed: 0,
+    });
 
     sc.configure({ worktreeCleanup: { onDelete: true } });
     expect(
@@ -171,10 +182,15 @@ describe("jhin.source-control: worktree cleanup (D1128–D1130)", () => {
       {
         path: unchanged.worktreePath,
         threadId: unchanged.id,
+        // Measured just before it went (D1670): README.md and the worktree's `.git` file.
+        bytes: expect.any(Number),
         outcome: "removed",
         reason: "No commits beyond the default branch.",
       },
     ]);
+    const gone = report.entries.find((entry) => entry.outcome === "removed")!;
+    expect(gone.bytes).toBeGreaterThan("one\ntwo\nthree\n".length);
+    expect(report.bytesFreed).toBe(gone.bytes);
     expect(Fs.existsSync(unchanged.worktreePath)).toBe(false);
     // The thread keeps its worktree's path and branch: its next turn checks it out again (D256).
     await sc.client.call("threads.send", { threadId: unchanged.id, text: "/write a.txt back" });
@@ -256,15 +272,24 @@ describe("jhin.source-control: the last run and T3's orphan report (D1469, D1470
     const fresh = Path.join(repositoryFolder, "fresh");
     for (const folder of [stale, junk, fresh]) Fs.mkdirSync(folder);
     Fs.writeFileSync(Path.join(stale, ".git"), "gitdir: /nowhere\n");
+    Fs.writeFileSync(Path.join(junk, "big.bin"), Buffer.alloc(4096));
+    Fs.symlinkSync("/etc", Path.join(junk, "outside"));
     Fs.utimesSync(stale, old, old);
     Fs.utimesSync(junk, old, old);
 
     const swept = await cleanup(sc);
     expect(swept.entries.filter((entry) => entry.threadId === undefined)).toEqual(
       expect.arrayContaining([
-        { path: stale, outcome: "kept", reason: "No thread uses this worktree." },
+        {
+          path: stale,
+          bytes: "gitdir: /nowhere\n".length,
+          outcome: "kept",
+          reason: "No thread uses this worktree.",
+        },
+        // Its size, links not followed (D1670).
         {
           path: junk,
+          bytes: 4096,
           outcome: "kept",
           reason: "No thread uses this folder, and it isn't a git worktree.",
         },

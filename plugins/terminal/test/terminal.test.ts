@@ -836,3 +836,75 @@ describe("the program a terminal runs", () => {
     expect(subprocessOf(table, 100)).toEqual({ running: false, label: "" });
   });
 });
+
+describe("closing idle terminals (source-control.md D1669)", () => {
+  const quiet: Logger = {
+    debug: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+    child: () => quiet,
+  };
+
+  it("closes the thread's terminals that run nothing, keeping one with a command or new output", async () => {
+    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
+    let nextPid = 100;
+    const printers = new Map<number, (data: string) => void>();
+    // Shells that print only when told and exit only when killed.
+    const pty: PtySpawner = {
+      spawn: () => {
+        const pid = nextPid++;
+        const exits = new Set<(exit: { exitCode: number; signal: number | null }) => void>();
+        return {
+          pid,
+          write: () => undefined,
+          resize: () => undefined,
+          kill: () => {
+            for (const exit of exits) exit({ exitCode: 0, signal: 1 });
+          },
+          onData: (listener) => {
+            printers.set(pid, listener);
+            return () => printers.delete(pid);
+          },
+          onExit: (listener) => {
+            exits.add(listener);
+            return () => exits.delete(listener);
+          },
+        };
+      },
+    };
+    let readTable!: () => void;
+    let tableRead = Promise.resolve();
+    const sessions = createSessions({
+      streams: createMemoryStreams(),
+      pty: async () => pty,
+      // Shell 101 runs `vite`; the table is read when asked, after `tableRead` settles.
+      processTable: async () => {
+        await tableRead;
+        return parseProcessTable(
+          ["100 1 sh", "101 1 sh", "102 1 sh", "103 1 sh", "200 101 vite"].join("\n"),
+        );
+      },
+      config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
+      log: quiet,
+    });
+    for (const terminalId of ["term-1", "term-2", "term-3"]) {
+      await sessions.open({ threadId: "t", terminalId, cwd });
+    }
+    await sessions.open({ threadId: "other", terminalId: "term-1", cwd });
+    // term-3 prints while the table is being read: something happened in it, it stays.
+    tableRead = new Promise<void>((resolve) => (readTable = resolve));
+    const closing = sessions.closeIdle("t");
+    printers.get(102)!("done\r\n");
+    readTable();
+    expect(await closing).toBe(1);
+    expect(
+      sessions
+        .list()
+        .map((session) => `${session.threadId}/${session.terminalId}`)
+        .toSorted(),
+    ).toEqual(["other/term-1", "t/term-2", "t/term-3"]);
+    await sessions.dispose();
+    Fs.rmSync(cwd, { recursive: true, force: true });
+  });
+});
