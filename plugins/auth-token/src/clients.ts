@@ -62,7 +62,14 @@ export interface ClientStore {
   verify(token: string, now: number): ClientRecord | undefined;
   /** Removes records; returns the ones that were there. */
   remove(ids: readonly string[]): ClientRecord[];
+  /** Writes sightings the file does not have yet (security.md D1708); a failed write is reported, not thrown. */
+  flush(): void;
 }
+
+/** A sighting this much later than the last one tells the clients list (security.md D1708). */
+const SEEN_TELL_MS = 60_000;
+/** A sighting this much later than the one in the file writes it (security.md D1708). */
+const SEEN_WRITE_MS = 60 * 60_000;
 
 /** What repairing an unreadable `clients.json` did (security.md D1518). */
 export interface ClientRepair {
@@ -204,6 +211,8 @@ export function createClientStore(
   file: string,
   onRepaired: (repair: ClientRepair) => void = () => {},
   clock: () => number = Date.now,
+  /** A device was seen a while after its last sighting; `error` when writing it failed. */
+  onSeen: (error?: unknown) => void = () => {},
 ): ClientStore {
   let records: ClientRecord[] = [];
   let repair: Omit<ClientRepair, "moved"> | undefined;
@@ -228,6 +237,8 @@ export function createClientStore(
       };
     }
   }
+  /** Each record's `lastSeenAt` as the file has it. */
+  let written = new Map(records.map((record) => [record.id, record.lastSeenAt]));
   /**
    * Writes `next` and only then makes it current: a failed write changes
    * nothing, so a revoke that throws has revoked nothing either.
@@ -240,6 +251,18 @@ export function createClientStore(
     });
     Fs.renameSync(temporary, file);
     records = next;
+    written = new Map(next.map((record) => [record.id, record.lastSeenAt]));
+  };
+  /** When each device's sighting was last told. */
+  const told = new Map<string, number>();
+  /** Writes what is current, telling a failure instead of throwing it. */
+  const write = (): unknown => {
+    try {
+      commit(records);
+      return undefined;
+    } catch (error) {
+      return error;
+    }
   };
   if (repair !== undefined) {
     // The unreadable file stays beside the new one, as it was; a copy, so the
@@ -308,11 +331,28 @@ export function createClientStore(
         return undefined;
       }
       if (record.expiresAt !== undefined && record.expiresAt <= now) return undefined;
-      // Kept in memory and written with the next change: a login never waits
-      // for, or fails on, the disk.
+      // Kept in memory, written at most hourly and when the plugin stops: a
+      // login never fails on the disk (security.md D1708).
       const seen: ClientRecord = { ...record, lastSeenAt: now };
       records = records.map((entry) => (entry === record ? seen : entry));
+      const inFile = written.get(record.id);
+      if (inFile === undefined || now - inFile >= SEEN_WRITE_MS) {
+        const failed = write();
+        if (failed !== undefined) onSeen(failed);
+      }
+      // Told at most once a minute per device, however often it is seen.
+      const toldAt = told.get(record.id) ?? record.lastSeenAt;
+      if (toldAt === undefined || now - toldAt >= SEEN_TELL_MS) {
+        told.set(record.id, now);
+        onSeen();
+      }
       return seen;
+    },
+    flush() {
+      if (records.some((record) => written.get(record.id) !== record.lastSeenAt)) {
+        const failed = write();
+        if (failed !== undefined) onSeen(failed);
+      }
     },
     remove(ids) {
       const gone = records.filter((record) => ids.includes(record.id));

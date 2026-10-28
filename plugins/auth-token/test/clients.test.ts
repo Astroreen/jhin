@@ -94,6 +94,65 @@ describe("device token store (security.md D411)", () => {
     }
   });
 
+  it("writes when a device was last seen at most hourly and on flush, and tells the list at most once a minute (security.md D1708)", () => {
+    const file = tempFile();
+    const seen: unknown[] = [];
+    const store = createClientStore(
+      file,
+      undefined,
+      () => 0,
+      (error) => seen.push(error),
+    );
+    const { record, token } = store.issue({
+      label: "phone",
+      permissions: ["*"],
+      method: "issued",
+      now: 0,
+    });
+    const inFile = () => createClientStore(file).get(record.id)?.lastSeenAt;
+    const MINUTE = 60_000;
+
+    // The first sighting is written and told.
+    store.verify(token, MINUTE);
+    expect(inFile()).toBe(MINUTE);
+    expect(seen).toEqual([undefined]);
+    // Seen again within the minute: neither.
+    store.verify(token, MINUTE + 30_000);
+    expect(seen).toHaveLength(1);
+    expect(inFile()).toBe(MINUTE);
+    // A minute after the last telling: told, not yet written.
+    store.verify(token, 2 * MINUTE);
+    expect(seen).toHaveLength(2);
+    expect(store.get(record.id)?.lastSeenAt).toBe(2 * MINUTE);
+    expect(inFile()).toBe(MINUTE);
+    // An hour after the one in the file: written.
+    store.verify(token, 61 * MINUTE);
+    expect(inFile()).toBe(61 * MINUTE);
+    // Stopping writes the latest one.
+    store.verify(token, 62 * MINUTE);
+    expect(inFile()).toBe(61 * MINUTE);
+    store.flush();
+    expect(inFile()).toBe(62 * MINUTE);
+  });
+
+  it("never fails a sighting on the disk; it tells the failure instead (security.md D1708)", () => {
+    const file = tempFile();
+    const seen: unknown[] = [];
+    const store = createClientStore(
+      file,
+      undefined,
+      () => 0,
+      (error) => seen.push(error),
+    );
+    const { token } = store.issue({ label: "phone", permissions: ["*"], method: "issued", now: 0 });
+    // A directory where the temporary file goes: every write fails.
+    Fs.mkdirSync(`${file}.${process.pid}.tmp`);
+    expect(store.verify(token, 1000)).toMatchObject({ lastSeenAt: 1000 });
+    expect(seen[0]).toBeInstanceOf(Error);
+    store.flush();
+    expect(seen.filter((item) => item instanceof Error)).toHaveLength(2);
+  });
+
   it("drops expired tokens with the next write", () => {
     const file = tempFile();
     const store = createClientStore(file);
