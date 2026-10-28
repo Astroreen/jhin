@@ -349,13 +349,13 @@ describe("jhin.threads: the queue under failures (D202)", () => {
     await client.call("threads.send", { threadId: thread.id, text: "again" });
   });
 
-  it("refuses to promote a message while the turn is being stopped, and keeps it", async () => {
+  it("keeps a message promoted while the turn is being stopped first in the queue (D1650)", async () => {
     const { client, thread, events, until, watched } = await holding();
     await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });
     await client.call("threads.interrupt", { threadId: thread.id });
-    await expect(
-      client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" }),
-    ).rejects.toMatchObject({ code: "TURN_NOT_RUNNING" });
+    expect(
+      await client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" }),
+    ).toMatchObject({ messageId: "a", outcome: "queued" });
     await until(ThreadEvents.turnInterrupted);
     await watched.untilMatch(() => lastQueue(events)?.held !== undefined);
     expect(lastQueue(events)?.messages.map((message) => message.id)).toEqual(["a"]);
@@ -733,5 +733,165 @@ describe("jhin.threads: steering (D204, D205)", () => {
     });
     expect(queue.messages.map((message) => message.text)).toEqual(["too late", "queued"]);
     expect(count(events, ThreadEvents.turnSteered)).toBe(0);
+  });
+});
+
+describe("jhin.threads: W45's queue and steering edge cases (D1649–D1652)", () => {
+  /**
+   * A node whose agent steers, but whose turn ends without taking the steer: the fake turn
+   * finishes (it answers a message of its own) and the steer's promise rejects, as Claude Code's
+   * does when the turn read its result while its subagents moved (D1649).
+   */
+  async function lateHolding() {
+    const late: AgentRuntime = {
+      agentId: "acme.late",
+      steering: true,
+      startTurn(request) {
+        const turn = fakeTurn(request);
+        const steer = turn.steer!.bind(turn);
+        return Object.assign(turn, {
+          steer: async () => {
+            steer({ text: "ending" });
+            throw new Error("The turn ended before the steer was sent.");
+          },
+        });
+      },
+    };
+    const running = await node({
+      plugins: [
+        {
+          manifest: testManifest("acme.late", {
+            side: "server",
+            requires: { "agent.registry": "^1" },
+          }),
+          definition: definePlugin({
+            activate(context) {
+              context.subscriptions.add(
+                context.services.get<AgentRegistry>("agent.registry").register(late),
+              );
+            },
+          }),
+        },
+      ],
+    });
+    const thread = await running.client.call<Thread>("threads.create", { agentId: "acme.late" });
+    const watched = watch(running.client, thread.id);
+    await running.client.call("threads.send", { threadId: thread.id, text: "/hold on" });
+    await watched.until(ThreadEvents.itemDelta);
+    return { ...running, thread, watched, ...watched };
+  }
+
+  it("starts the follow-up turn with a steer the turn ended before it took (D1649)", async () => {
+    const { client, thread, events, watched } = await lateHolding();
+    const sent = await client.call("threads.steer", { threadId: thread.id, text: "late" });
+    expect(sent).toMatchObject({ outcome: expect.stringMatching(/^(queued|started)$/) });
+    await untilCount(watched, ThreadEvents.turnCompleted, 2);
+    expect(count(events, ThreadEvents.turnSteered)).toBe(0);
+    expect(started(events)).toEqual(["/hold on", "late"]);
+  });
+
+  it("puts a promoted message first when the turn ends before it took it (D1650)", async () => {
+    const { client, thread, events, watched } = await lateHolding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });
+    await client.call("threads.queue.add", { threadId: thread.id, text: "b", messageId: "b" });
+    const running = (
+      await client.call<{ running?: string }>("threads.get", { threadId: thread.id })
+    ).running;
+    expect(
+      await client.call("threads.queue.steer", { threadId: thread.id, messageId: "b" }),
+    ).toEqual({ messageId: "b", turnId: running, outcome: "queued" });
+    await untilCount(watched, ThreadEvents.turnCompleted, 3);
+    expect(count(events, ThreadEvents.turnSteered)).toBe(0);
+    expect(started(events)).toEqual(["/hold on", "b", "a"]);
+  });
+
+  it("answers how a promoted message went (D1650)", async () => {
+    const { client, thread } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });
+    expect(
+      await client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" }),
+    ).toMatchObject({ messageId: "a", outcome: "steered" });
+  });
+
+  it("names a thread after its first message outside the queue's lock (D1651)", async () => {
+    let release!: () => void;
+    const named = new Promise<void>((resolve) => (release = resolve));
+    let asked!: () => void;
+    const askedOnce = new Promise<void>((resolve) => (asked = resolve));
+    const { client } = await node({
+      plugins: [
+        {
+          manifest: testManifest("acme.slow-title", { side: "server" }),
+          definition: definePlugin({
+            activate(context) {
+              context.hooks.around<{ text: string }, string>("threads.title", async () => {
+                asked();
+                await named;
+                return "Slow title";
+              });
+            },
+          }),
+        },
+      ],
+    });
+    const thread = await client.call<Thread>("threads.create", {});
+    const watched = watch(client, thread.id);
+    const sending = client.call<{ turnId?: string }>("threads.queue.add", {
+      threadId: thread.id,
+      text: "hello",
+      messageId: "m-1",
+    });
+    await askedOnce;
+    // The queue answers its edits while the hook runs.
+    await expect(
+      client.call("threads.queue.cancel", { threadId: thread.id, messageId: "nope" }),
+    ).rejects.toMatchObject({ code: "QUEUED_MESSAGE_NOT_FOUND" });
+    release();
+    expect(await sending).toEqual({ messageId: "m-1", turnId: expect.any(String) });
+    await watched.until(ThreadEvents.turnCompleted);
+    expect(
+      await client.call<{ title: string }>("threads.get", { threadId: thread.id }),
+    ).toMatchObject({ thread: { title: "Slow title" } });
+  });
+
+  it("runs a message once when its send is retried with the same id (D1652)", async () => {
+    const { client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const watched = watch(client, thread.id);
+    const first = await client.call<{ turnId: string }>("threads.send", {
+      threadId: thread.id,
+      text: "once",
+      messageId: "m-1",
+    });
+    await watched.until(ThreadEvents.turnCompleted);
+    expect(
+      await client.call("threads.send", { threadId: thread.id, text: "once", messageId: "m-1" }),
+    ).toEqual(first);
+    // An add retried after its message left the queue, and a steer retried, answer the same.
+    expect(
+      await client.call("threads.queue.add", {
+        threadId: thread.id,
+        text: "once",
+        messageId: "m-1",
+      }),
+    ).toEqual({ messageId: "m-1", turnId: first.turnId });
+    expect(
+      await client.call("threads.steer", { threadId: thread.id, text: "once", messageId: "m-1" }),
+    ).toEqual({ messageId: "m-1", turnId: first.turnId, outcome: "started" });
+    expect(started(watched.events)).toEqual(["once"]);
+  });
+
+  it("answers a retried steer with the turn it went into (D1652)", async () => {
+    const { client, thread, events } = await holding();
+    const steered = await client.call<{ turnId: string; outcome: string }>("threads.steer", {
+      threadId: thread.id,
+      text: "in",
+      messageId: "s-1",
+    });
+    expect(steered.outcome).toBe("steered");
+    expect(
+      await client.call("threads.steer", { threadId: thread.id, text: "in", messageId: "s-1" }),
+    ).toEqual({ messageId: "s-1", turnId: steered.turnId, outcome: "steered" });
+    expect(count(events, ThreadEvents.turnSteered)).toBe(1);
   });
 });

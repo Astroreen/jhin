@@ -21,6 +21,8 @@ export interface OutgoingMessage {
   readonly context?: MessageContext | undefined;
   /** What it was typed with: it goes with these, whatever the composer shows later. */
   readonly settings: MessageSettings;
+  /** Its id, when it was sent before: the node runs a message once (D1652). */
+  readonly id?: string;
 }
 
 /** What sending a message came to. */
@@ -69,6 +71,8 @@ export async function sendMessage(
 ): Promise<SendOutcome> {
   const input = {
     threadId,
+    // Sent again with its id, the node answers what it did the first time (D1652).
+    messageId: message.id ?? crypto.randomUUID(),
     text: message.text,
     ...(message.attachments.length === 0 ? {} : { attachments: message.attachments }),
     ...(message.context === undefined ? {} : { context: message.context }),

@@ -33,10 +33,21 @@ const first = {
 describe("startThread", () => {
   it("creates the thread with the chosen agent and sends its first message", async () => {
     const node = fakeNode();
-    expect(await startThread(node, target, first, "t1")).toEqual({ threadId: "t1" });
+    expect(await startThread(node, target, first, "t1")).toEqual({
+      threadId: "t1",
+      messageId: expect.any(String),
+    });
     expect(node.calls).toEqual([
       ["threads.create", { threadId: "t1", projectId: "scratch", agentId: "jhin.agent-fake" }],
-      ["threads.send", { threadId: "t1", text: "hello", agentId: "jhin.agent-fake" }],
+      [
+        "threads.send",
+        {
+          threadId: "t1",
+          messageId: expect.any(String),
+          text: "hello",
+          agentId: "jhin.agent-fake",
+        },
+      ],
     ]);
   });
 
@@ -59,6 +70,7 @@ describe("startThread", () => {
     expect(await startThread(node, target, first, "t1")).toEqual({
       threadId: "t1",
       uncertain: dropped,
+      messageId: expect.any(String),
     });
     expect(node.calls.map(([method]) => method)).toEqual(["threads.create", "threads.send"]);
   });
@@ -77,7 +89,7 @@ describe("startThread", () => {
     ]);
     expect(node.calls.at(-1)).toEqual([
       "threads.send",
-      { threadId, text: "hello", agentId: "jhin.agent-fake" },
+      { threadId, messageId: expect.any(String), text: "hello", agentId: "jhin.agent-fake" },
     ]);
   });
 

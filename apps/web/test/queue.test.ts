@@ -93,7 +93,12 @@ describe("sending while a turn runs (D209)", () => {
       "threads.send",
       "threads.queue.add",
     ]);
-    expect(calls[0]![1]).toEqual({ threadId: "t", text: "hi", model: "m" });
+    expect(calls[0]![1]).toEqual({
+      threadId: "t",
+      messageId: expect.any(String),
+      text: "hi",
+      model: "m",
+    });
 
     // An agent that refuses steering gets the message queued instead.
     answers["threads.steer"] = undefined;
@@ -169,7 +174,10 @@ describe("resuming a thread (D800)", () => {
     });
     expect(outcome).toEqual({ kind: "resumed" });
     expect(calls).toEqual([
-      ["threads.send", { threadId: "t1", text: RESUME_TEXT, agentId: "fake" }],
+      [
+        "threads.send",
+        { threadId: "t1", messageId: expect.any(String), text: RESUME_TEXT, agentId: "fake" },
+      ],
       ["threads.queue.resume", { threadId: "t1" }],
     ]);
   });

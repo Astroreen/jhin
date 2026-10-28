@@ -1267,33 +1267,37 @@ export function claudeTurn(
       if (interrupted || finished) {
         throw new Error("The turn has ended: Claude Code takes no more messages for it.");
       }
-      // Uploaded images are read first; steers keep their order while they are.
-      steering = steering.then(async () => {
+      // Uploaded images are read first; steers keep their order while they are. The promise
+      // rejects when the turn ended before the message went in (T3's failed steer, D1649).
+      const ended = (at: string) => {
+        deps.log?.("claude code ended the turn before it took a steer", { at });
+        return new Error("Claude Code ended the turn before the steer was sent.");
+      };
+      const sending = steering.then(async () => {
         const message = await userMessage(input.text, input.attachments, (attachment) =>
           deps.log?.("claude takes no such attachment, skipped", {
             name: attachment.name,
             mimeType: attachment.mimeType,
           }),
         );
-        if (finished) return;
+        if (finished) throw ended("attachments");
         // Its foreground subagents keep running: a steer would cancel them (D805).
         await current?.backgroundSubagents();
-        if (finished) {
-          // The turn read its result while Claude Code moved the subagents (see Deferred).
-          deps.log?.("claude code ended the turn before it took a steer", { at: "result" });
-          return;
-        }
+        // The turn read its result while Claude Code moved the subagents.
+        if (finished) throw ended("result");
         // Into the running query now, or after the turn's message once it has one.
         try {
           current?.steer(message);
         } catch (error) {
           if (!(error instanceof LeaseEnded)) throw error;
-          // The turn's messages ended while Claude Code moved the subagents (see Deferred).
-          deps.log?.("claude code ended the turn before it took a steer", { at: "messages" });
-          return;
+          // The turn's messages ended while Claude Code moved the subagents.
+          throw ended("messages");
         }
         steered.push(message);
       });
+      // A steer that failed holds none after it.
+      steering = sending.catch(() => undefined);
+      return sending;
     },
   };
 }

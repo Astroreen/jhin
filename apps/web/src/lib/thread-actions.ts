@@ -85,7 +85,13 @@ export async function startThread(
   /** Adds to what `threads.create` gets (the `thread.create` hook, D253). */
   prepare: (params: Record<string, unknown>) => Promise<Record<string, unknown>> = async (params) =>
     params,
-): Promise<{ readonly threadId: string; readonly uncertain?: Error }> {
+): Promise<{
+  readonly threadId: string;
+  readonly uncertain?: Error;
+  /** The first message's id: sent again with it, the node runs it once (D1652). */
+  readonly messageId: string;
+}> {
+  const messageId = crypto.randomUUID();
   // Prepared once: asking again sends the same thread (and workspace) again.
   const params = await prepare({
     threadId,
@@ -106,6 +112,7 @@ export async function startThread(
   try {
     await threads.call(target, "threads.send", {
       threadId: thread.id,
+      messageId,
       text: first.text,
       ...(first.attachments.length === 0 ? {} : { attachments: first.attachments }),
       ...(first.context === undefined ? {} : { context: first.context }),
@@ -113,13 +120,13 @@ export async function startThread(
     });
   } catch (error) {
     if (UNCERTAIN.has(String((error as { code?: unknown } | null)?.code))) {
-      return { threadId: thread.id, uncertain: error as Error };
+      return { threadId: thread.id, uncertain: error as Error, messageId };
     }
     // The send's error is the one to show; a failed clean-up adds nothing to it.
     await threads.call(target, "threads.delete", { threadId: thread.id }).catch(() => undefined);
     throw error;
   }
-  return { threadId: thread.id };
+  return { threadId: thread.id, messageId };
 }
 
 /** A change to where the sidebar keeps a thread, as the threads plugin's commands take it. */

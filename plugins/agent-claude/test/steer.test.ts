@@ -278,7 +278,7 @@ describe("jhin.agent-claude: steering (D206)", () => {
       expect(answers(items)).toEqual(["working", "steered"]);
     });
 
-    it("logs a steer whose turn ended while Claude Code moved the subagents", async () => {
+    it("fails a steer whose turn ended while Claude Code moved the subagents (D1649)", async () => {
       let answer!: (moved: boolean) => void;
       const { turn, state, whenLogged, details } = start(async function* (player) {
         const first = player.call.prompt[0]!.uuid;
@@ -290,15 +290,16 @@ describe("jhin.agent-claude: steering (D206)", () => {
         await player.nextPrompt();
       });
       state.background = () => new Promise<boolean>((resolve) => (answer = resolve));
-      let sent = false;
+      let steer: Promise<void> | void = undefined;
       const items = await drain(turn, (item) => {
-        if (item.kind === "message.completed" && !sent) {
-          sent = true;
-          turn.steer!({ text: "too late" });
+        if (item.kind === "message.completed" && steer === undefined) {
+          steer = turn.steer!({ text: "too late" });
         }
       });
       expect(answers(items)).toEqual(["working"]);
       answer(true);
+      // The threads plugin then starts the follow-up turn with it (T3's failed steer).
+      await expect(steer).rejects.toThrow("ended the turn before the steer was sent");
       await whenLogged("claude code ended the turn before it took a steer");
       // The turn read its result during the move, not the lease ending under it.
       expect(details.find((line) => line.message.includes("before it took a steer"))?.data).toEqual(

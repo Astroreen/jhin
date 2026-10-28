@@ -356,9 +356,11 @@ export interface AgentTurn {
    * Since 1.2, for runtimes with `steering`: hands a message to the running
    * turn, which takes it into the work it is doing (a steer). Throws when the
    * turn can take nothing more (it ended or is ending): the message then goes
-   * to a turn of its own.
+   * to a turn of its own. Since 1.17 it may return a promise instead, which
+   * settles once the message went in and rejects when the turn ended first
+   * (`t3-parity.md` D1649): the message is then not the turn's either.
    */
-  steer?(input: TurnRequest["input"]): void;
+  steer?(input: TurnRequest["input"]): void | Promise<void>;
   /**
    * Since 1.7: the later work of the turn's backgrounded subagents
    * (`subagent.backgrounded`), read once `items` ended: their `subagent.item`,
@@ -518,7 +520,7 @@ export interface AgentAuth {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`, 1.15 MCP apps: a tool call's `app` and `mcpApps`; 1.16 a turn's `userSettings`).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`, 1.15 MCP apps: a tool call's `app` and `mcpApps`; 1.16 a turn's `userSettings`, 1.17 a `steer` that answers once the message went in).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */

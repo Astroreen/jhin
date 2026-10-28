@@ -71,6 +71,7 @@ describe("implementPlan (D306)", () => {
       method: "threads.send",
       params: {
         threadId: "t1",
+        messageId: expect.any(String),
         text: "PLEASE IMPLEMENT THIS PLAN:\n# Add a cache\n\n1. Read",
         agentId: "acme.claude",
         model: "opus",

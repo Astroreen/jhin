@@ -1667,6 +1667,7 @@ export default definePlugin({
             alongside === undefined ? undefined : { records: alongside.records },
           );
           if (progress !== undefined) progress.recorded = true;
+          if (messageId !== undefined) noteSent(thread.id, messageId, turnId, "started");
         } catch (error) {
           // Never started: the record does not say it runs.
           await setTurnStatus(thread.id, turnId, runtime.agentId, "failed");
@@ -4529,6 +4530,16 @@ export default definePlugin({
      * busy thread. `progress.recorded` says whether the turn's start was
      * recorded, so the message belongs to that turn even if it then failed.
      */
+    /** What the `threads.title` hook names a thread after its first message's text. */
+    function titleFirst(thread: Thread, text: string): Promise<string> {
+      const shownText = contextReferencesAsLabels(text);
+      return context.hooks
+        .run(ThreadHooks.title, { thread, text: shownText }, ({ text: input }) =>
+          titleFromText(input),
+        )
+        .catch(() => titleFromText(shownText));
+    }
+
     async function startTurn(
       threadId: string,
       { text, attachments, origin, context: messageContext, ...requested }: Outgoing,
@@ -4544,6 +4555,8 @@ export default definePlugin({
         prepare?: (thread: Thread) => Promise<Thread>;
         /** A fork merged into the turn being run again (D226); else the thread's pending one. */
         merge?: { readonly threadId: string; readonly turnId: string };
+        /** The thread's first title, named already outside the queue's lock (D1651). */
+        title?: string;
       } = {},
     ): Promise<string> {
       // Early answers for the common cases; the reservation below decides.
@@ -4567,19 +4580,14 @@ export default definePlugin({
       if (runtime === undefined) {
         throw new ThreadsError("NO_AGENT", "No agent runtime is installed on this node");
       }
-      // The text names its context records by links (D1006): a title reads their labels, the
-      // agent the text with the records projected in.
-      const shownText = contextReferencesAsLabels(text);
+      // The text names its context records by links (D1006): a title reads their labels
+      // (`titleFirst`), the agent the text with the records projected in.
       const agentText = projectMessageContext({ text, records: messageContext?.records });
       // A first message names its thread. The hook runs before the thread is
       // taken: one that is slow, or never answers, holds nothing.
       const firstTitle =
         read.lastTurn === undefined && read.title === DEFAULT_THREAD_TITLE
-          ? await context.hooks
-              .run(ThreadHooks.title, { thread: read, text: shownText }, ({ text: input }) =>
-                titleFromText(input),
-              )
-              .catch(() => titleFromText(shownText))
+          ? (options.title ?? (await titleFirst(read, text)))
           : undefined;
       const merge = options.merge;
       const turnId = Crypto.randomUUID();
@@ -4713,11 +4721,16 @@ export default definePlugin({
     context.commands.register({
       name: "threads.send",
       description:
-        "Sends a message and starts a turn; the response arrives as events of the thread. Agent, model and modes default to the thread's. A thread running a turn refuses it: queue it (threads.queue.add) or steer it in (threads.steer)",
-      input: Outgoing,
+        "Sends a message and starts a turn; the response arrives as events of the thread. Agent, model and modes default to the thread's. A thread running a turn refuses it: queue it (threads.queue.add) or steer it in (threads.steer). A messageId that already started a turn answers that turn",
+      input: Outgoing.extend({ messageId: MessageIdInput.optional() }),
       output: z.object({ turnId: z.string() }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, ...given }, invocation) => {
+      handler: async ({ threadId, messageId, ...given }, invocation) => {
+        // A retry of a send whose answer was lost: the turn it started (D1652).
+        if (messageId !== undefined) {
+          const sent = await sentAs(threadId, messageId);
+          if (sent !== undefined) return { turnId: sent.turnId };
+        }
         const named = withNamedContext(given);
         assertMessage(named.text, named.attachments);
         const sent = heldTo(named, await getThread(threadId), invocation);
@@ -4732,9 +4745,57 @@ export default definePlugin({
                   sent.attachments,
                 )) as Outgoing["attachments"],
               };
-        return { turnId: await startTurn(threadId, message) };
+        return {
+          turnId: await startTurn(threadId, message, messageId === undefined ? {} : { messageId }),
+        };
       },
     });
+
+    // --- Idempotent sends (D1652) -------------------------------------------------
+    /** Threads whose sent message ids are known, the least recently read going first. */
+    const MAX_SENT_THREADS = 200;
+    type SentAs = { readonly turnId: string; readonly as: "started" | "steered" };
+    /** By thread: each message id that started a turn or was steered into one. */
+    const sentIds = new Map<string, Map<string, SentAs>>();
+    /** Records a message the node took, once the thread's ids are known (else its log has it). */
+    function noteSent(threadId: string, messageId: string, turnId: string, as: SentAs["as"]) {
+      sentIds.get(threadId)?.set(messageId, { turnId, as });
+    }
+    /** What a message id already did on a thread: read once from its log, then kept. */
+    async function sentAs(threadId: string, messageId: string): Promise<SentAs | undefined> {
+      let known = sentIds.get(threadId);
+      if (known === undefined) {
+        // Kept before the log is read, so a message the node takes meanwhile is noted too.
+        const reading = new Map<string, SentAs>();
+        known = reading;
+        sentIds.set(threadId, reading);
+        const events = await log.read(threadStream(threadId)).catch((error: unknown) => {
+          if (sentIds.get(threadId) === reading) sentIds.delete(threadId);
+          throw error;
+        });
+        for (const event of events) {
+          if (event.type !== ThreadEvents.turnStarted && event.type !== ThreadEvents.turnSteered) {
+            continue;
+          }
+          const payload = event.payload as { turnId?: unknown; messageId?: unknown } | null;
+          if (typeof payload?.messageId !== "string" || typeof payload.turnId !== "string") {
+            continue;
+          }
+          if (reading.has(payload.messageId)) continue;
+          reading.set(payload.messageId, {
+            turnId: payload.turnId,
+            as: event.type === ThreadEvents.turnStarted ? "started" : "steered",
+          });
+        }
+      }
+      sentIds.delete(threadId);
+      sentIds.set(threadId, known);
+      for (const old of sentIds.keys()) {
+        if (sentIds.size <= MAX_SENT_THREADS) break;
+        sentIds.delete(old);
+      }
+      return known.get(messageId);
+    }
 
     // --- Queue and steering (D201–D205) ------------------------------------------
     // A thread's queue lives in the node's storage, so it outlives the page that
@@ -4953,12 +5014,14 @@ export default definePlugin({
         // The runtime reads the uploads' bytes and files; the event keeps their ids.
         const resolved = await attachmentStore.resolve(input.attachments);
         try {
-          turn.steer({
+          // Since `agent.runtime@1.17` a runtime may answer once the message went in (D1649).
+          await turn.steer({
             text: projectMessageContext({ text, records: steerContext?.records }),
             ...(resolved === undefined ? {} : { attachments: resolved }),
           });
         } catch {
-          // It ended before it took the message.
+          // It ended before it took the message: not recorded as steered, it starts the
+          // follow-up turn (T3's failed steer).
           return false;
         }
         // Recorded at once, before anything the agent answers to it; a queued
@@ -4991,6 +5054,7 @@ export default definePlugin({
         current.steering.add(recording);
         await recording;
         current.steering.delete(recording);
+        noteSent(threadId, messageId, current.turnId, "steered");
         return "steered" as const;
       };
       if (message !== "queued") return steer(message);
@@ -5091,17 +5155,30 @@ export default definePlugin({
      * empty and not held (D201). `first` puts it at the head (a steer that
      * came too late).
      */
-    function enqueue(
+    async function enqueue(
       threadId: string,
       messageId: string,
       message: Outgoing,
       first = false,
     ): Promise<{ messageId: string; turnId?: string }> {
+      // A first message's title is named before the queue's lock, so a slow `threads.title`
+      // hook holds no edit of the queue (D1651).
+      const read = await getThread(threadId);
+      const title =
+        read.lastTurn === undefined && read.title === DEFAULT_THREAD_TITLE && !active.has(threadId)
+          ? await titleFirst(read, message.text)
+          : undefined;
       return changeQueue(threadId, async (queue) => {
         if (queue.messages.some((item) => item.id === messageId)) return { messageId };
         if (!active.has(threadId) && queue.messages.length === 0 && queue.held === undefined) {
           try {
-            return { messageId, turnId: await startTurn(threadId, message, { messageId }) };
+            return {
+              messageId,
+              turnId: await startTurn(threadId, message, {
+                messageId,
+                ...(title === undefined ? {} : { title }),
+              }),
+            };
           } catch (error) {
             // Taken by a turn meanwhile: the message waits for it.
             if (codeOf(error) !== "TURN_IN_PROGRESS") throw error;
@@ -5176,6 +5253,11 @@ export default definePlugin({
       output: Sent,
       permissions: ["threads.write"],
       handler: async ({ threadId, messageId, ...sent }, invocation) => {
+        // A retry of an add whose answer was lost, after its message left the queue (D1652).
+        if (messageId !== undefined) {
+          const before = await sentAs(threadId, messageId);
+          if (before !== undefined) return { messageId, turnId: before.turnId };
+        }
         const message = await checkOutgoing(threadId, sent, invocation);
         return enqueue(threadId, messageId ?? Crypto.randomUUID(), message);
       },
@@ -5303,9 +5385,14 @@ export default definePlugin({
     context.commands.register({
       name: "threads.queue.steer",
       description:
-        "Sends a queued message into the thread's running turn instead (a steer); it leaves the queue once the agent took it. For an agent that cannot steer, the turn stops and the message starts the next one",
+        "Sends a queued message into the thread's running turn instead (a steer); it leaves the queue once the agent took it. For an agent that cannot steer, the turn stops and the message starts the next one. When the turn ends before the agent took it, it goes first in the queue and starts the next turn",
       input: QueueTarget,
-      output: z.object({ messageId: z.string(), turnId: z.string() }),
+      output: z.object({
+        messageId: z.string(),
+        turnId: z.string(),
+        /** Since D1650: steered into the turn, started the turn after it, or waiting first. */
+        outcome: z.enum(["steered", "started", "queued"]),
+      }),
       permissions: ["threads.write"],
       handler: async ({ threadId, messageId }) => {
         const queue = await readQueue(threadId);
@@ -5324,9 +5411,7 @@ export default definePlugin({
         steering.add(`${threadId}:${messageId}`);
         try {
           const turnId = active.get(threadId)?.turnId;
-          const steered =
-            turnId === undefined ? false : await steerInto(threadId, messageId, "queued");
-          if (steered === false) {
+          if (turnId === undefined) {
             throw new ThreadsError(
               "TURN_NOT_RUNNING",
               "No turn of this thread is running to steer",
@@ -5335,11 +5420,29 @@ export default definePlugin({
               },
             );
           }
+          const steered = await steerInto(threadId, messageId, "queued");
+          if (steered === false) {
+            // The turn ended before it took the message: it goes first, so it starts the
+            // follow-up turn, as `threads.steer` queues it (D1650).
+            await changeQueue(threadId, async (queue) => {
+              const item = queue.messages.find((entry) => entry.id === messageId);
+              if (item === undefined) throw notQueued(threadId, messageId);
+              if (queue.messages[0]?.id === messageId) return;
+              await writeQueue(threadId, {
+                ...queue,
+                messages: [item, ...queue.messages.filter((entry) => entry.id !== messageId)],
+              });
+            });
+            return { messageId, turnId, outcome: "queued" as const };
+          }
+          if (steered === "steered") return { messageId, turnId, outcome: "steered" as const };
           // Restarted (D803): the turn the message started, once it has; queued
           // behind a restart under way, the running turn's.
           const restarted =
             steered === "restarted" ? await restartedTurn(threadId, messageId) : undefined;
-          return { messageId, turnId: restarted ?? turnId! };
+          return restarted === undefined
+            ? { messageId, turnId, outcome: "queued" as const }
+            : { messageId, turnId: restarted, outcome: "started" as const };
         } finally {
           steering.delete(`${threadId}:${messageId}`);
           // A turn that ended meanwhile left the queue to go on.
@@ -5356,6 +5459,13 @@ export default definePlugin({
       output: Sent.extend({ outcome: z.enum(["steered", "started", "queued"]) }),
       permissions: ["threads.write"],
       handler: async ({ threadId, messageId: given, ...outgoing }, invocation) => {
+        // A retry of a steer whose answer was lost: what the message did then (D1652).
+        if (given !== undefined) {
+          const before = await sentAs(threadId, given);
+          if (before !== undefined) {
+            return { messageId: given, turnId: before.turnId, outcome: before.as };
+          }
+        }
         const message = await checkOutgoing(threadId, outgoing, invocation);
         const messageId = given ?? Crypto.randomUUID();
         const turnId = active.get(threadId)?.turnId;
