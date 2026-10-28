@@ -85,6 +85,9 @@ function notHeld(invocation: Invocation, grants: readonly string[]): string[] {
   return grants.filter((grant) => !holdsPermission(caller.permissions, grant));
 }
 
+/** What `clientPrincipalId` puts before a device token's id. */
+const CLIENT_PRINCIPAL_PREFIX = clientPrincipalId("");
+
 /** 32 random bytes in base64url are 43 characters; anything shorter is not a token we made. */
 const MIN_TOKEN_LENGTH = 43;
 
@@ -240,6 +243,32 @@ export default definePlugin({
         ...(jkt === undefined ? {} : { bound: true }),
       };
     };
+    /** The device token of this node a principal is, if it is one. */
+    const recordOf = (principal: string): ClientRecord | undefined =>
+      principal.startsWith(CLIENT_PRINCIPAL_PREFIX)
+        ? clients.get(principal.slice(CLIENT_PRINCIPAL_PREFIX.length))
+        : undefined;
+    /**
+     * The device token a caller stands on (security.md D1703): its own, or the
+     * first of its parents that has none, as a page session stands on the token
+     * that opened it (D421). None for the owner, a page session the owner
+     * opened, and a caller that is no device token of this node. The same walk
+     * as `jhin.mcp-oauth`'s `standingOf`, which answers the owner itself.
+     */
+    const standingOf = (principal: string | undefined): ClientRecord | undefined => {
+      let record = principal === undefined ? undefined : recordOf(principal);
+      const longest = clients.list().length;
+      for (let hops = 0; record?.parent !== undefined; hops++) {
+        if (record.parent === OWNER_PRINCIPAL_ID) return undefined;
+        const parent = recordOf(record.parent);
+        // A parent that is gone was revoked, and this record goes with it (its
+        // revoke cascades): what it issues stands on it and goes too. A cycle
+        // is no file this plugin wrote; the walk stops there.
+        if (parent === undefined || hops > longest) return record;
+        record = parent;
+      }
+      return record;
+    };
     const revoke = (ids: readonly string[]) => {
       // A page session opened with a revoked token goes with it, and so on down.
       const doomed = new Set(ids);
@@ -293,12 +322,20 @@ export default definePlugin({
         }
         const now = Date.now();
         const days = ttlDays === undefined ? DEFAULT_TTL_DAYS : ttlDays;
+        const asked = days === null ? undefined : Math.ceil(now + days * DAY_MS);
+        // Revoked with the device its caller stands on, and never outliving it (D1703).
+        const issuer = standingOf(invocation.caller?.id);
+        const expiresAt =
+          issuer?.expiresAt === undefined
+            ? asked
+            : Math.min(asked ?? Number.POSITIVE_INFINITY, issuer.expiresAt);
         const { record, token: issued } = clients.issue({
           label,
           permissions,
           method: method ?? "issued",
           now,
-          ...(days === null ? {} : { expiresAt: Math.ceil(now + days * DAY_MS) }),
+          ...(expiresAt === undefined ? {} : { expiresAt }),
+          ...(issuer === undefined ? {} : { parent: clientPrincipalId(issuer.id) }),
           ...(metadata === undefined ? {} : { metadata }),
         });
         context.log.warn("device token issued", {

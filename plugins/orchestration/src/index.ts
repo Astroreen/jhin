@@ -1523,6 +1523,9 @@ export default definePlugin({
       [WORKFLOWS_RUN_PERMISSION]: {
         title: "Run workflow scripts",
         description: "Run scripts that orchestrate agents; a script runs code on this node.",
+        // A script reaches the node's OS user (security.md D1702).
+        shellAccess: true,
+        shellAccessReason: "a script runs code on this machine as the node's user",
       },
     });
     context.commands.register({

@@ -1,3 +1,10 @@
+import {
+  PERMISSIONS_DESCRIBE_HOOK,
+  definePlugin,
+  type PermissionEntry,
+  type PluginContext,
+} from "@jhin/sdk";
+import { testManifest, type TestPlugin } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
 
 import { node, orchestrationFeed, parentThread, scriptedRuntime, watch } from "./support.ts";
@@ -278,5 +285,35 @@ return { listed: agents.some((agent) => agent.agentId === 'jhin.agent-fake'), de
     expect(
       await orchestrationFeed(second.client).task(taskId, (record) => record.endedAt !== undefined),
     ).toMatchObject({ status: "cancelled" });
+  });
+});
+
+describe("workflows.run's grant", () => {
+  it("is named as shell access wherever it is granted (security.md D1702)", async () => {
+    let probe: PluginContext | undefined;
+    const prober: TestPlugin = {
+      manifest: testManifest("app.probe"),
+      definition: definePlugin({
+        activate(context) {
+          probe = context;
+        },
+      }),
+    };
+    await node({ config: FAKE, plugins: [prober] });
+    const described = await probe!.hooks.run<object, PermissionEntry[]>(
+      PERMISSIONS_DESCRIBE_HOOK,
+      {},
+      () => [{ permission: "workflows.run", commands: ["workflows.run"] }],
+    );
+    expect(described).toEqual([
+      {
+        permission: "workflows.run",
+        commands: ["workflows.run"],
+        title: "Run workflow scripts",
+        description: "Run scripts that orchestrate agents; a script runs code on this node.",
+        shellAccess: true,
+        shellAccessReason: "a script runs code on this machine as the node's user",
+      },
+    ]);
   });
 });
