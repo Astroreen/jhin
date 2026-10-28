@@ -42,7 +42,7 @@ export function applyInboxEvent(
  * change) holds; an item it lacks keeps its mark, the stream decides whether
  * it is open. The same array when no mark moved.
  */
-export function applyAwayMarks(
+function applyAwayMarks(
   items: readonly InboxItem[],
   fresh: readonly InboxItem[],
 ): readonly InboxItem[] {
