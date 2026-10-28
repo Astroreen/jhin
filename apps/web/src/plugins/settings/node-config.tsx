@@ -285,16 +285,18 @@ export function NodeConfigSection() {
                   if (next === node.id) return;
                   // Another node's config, once unsaved edits are given up on purpose.
                   void (async () => {
-                    if (
-                      edited.current.length > 0 &&
-                      dialogs !== undefined &&
-                      !(await dialogs.confirm({
-                        ...discardQuestion(edited.current),
-                        confirmLabel: "Discard",
-                        variant: "destructive",
-                      }))
-                    ) {
-                      return;
+                    if (edited.current.length > 0) {
+                      const question = discardQuestion(edited.current);
+                      // Without the dialogs service, the browser's own confirm (D1626).
+                      const ok =
+                        dialogs === undefined
+                          ? window.confirm(`${question.title}\n${question.description}`)
+                          : await dialogs.confirm({
+                              ...question,
+                              confirmLabel: "Discard",
+                              variant: "destructive",
+                            });
+                      if (!ok) return;
                     }
                     edited.current = [];
                     setNodeId(next);

@@ -518,7 +518,9 @@ context.config.define("acme.http", Config);
   route change in `client.navigation`.
 - A section waiting off screen guesses its height from its fields rather than
   its last rendered height (D1625): a rendered section stays rendered, so it
-  has no last height until the page is opened again.
+  has no last height until the page is opened again. A jump can therefore land a
+  little off its section when sections above it render with another height;
+  the browser's scroll anchoring keeps most of it in place.
 - A fan-out through a connected node older than D475: the page sends
   `mesh.config.patch` to its own node, which delivers the change as that
   node's version does (without `edits`, and with `unset` dropped by nodes
