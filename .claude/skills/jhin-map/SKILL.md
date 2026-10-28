@@ -50,6 +50,7 @@ In review a name is enough. Read the story with `jhin lore.get --name <name>`.
 - **moonbase** (`docs/lore/doghouse-moonbase.md`): every step was reasonable; together they built what nobody asked for
 - **just following orders** (`docs/lore/just-following-orders.md`): an approval from someone who lacked the context is not an approval
 - **mind virus** (`docs/lore/mind-viruses.md`): a wrong idea written down spreads to every agent that reads it
+- **nobody's turn** (`docs/lore/nobodys-turn.md`): everyone waits for someone else; nobody holds the next step
 - **own homework** (`docs/lore/own-homework.md`): a review whose checklist the author wrote finds only what it foresaw
 - **reinvent the wheel** (`docs/lore/reinvent-the-wheel.md`): you cannot search for what you do not know exists; read the map first
 - **toll road** (`docs/lore/toll-road.md`): a guard that makes the honest path costly gets routed around
