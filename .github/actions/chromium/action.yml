@@ -6,10 +6,13 @@ description: Install Playwright's Chromium and its system packages, from the cac
 runs:
   using: composite
   steps:
-    - name: Playwright's version
+    # The runner's image comes from its environment variables, which the `env` context lacks.
+    - name: Playwright's version and the runner's image
       id: version
       shell: bash
-      run: echo "playwright=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "playwright=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
     # The packages are those this runner image lacks: a new image (ImageVersion,
     # weekly) installs them again, so dpkg never meets newer ones it would downgrade.
     - name: Restore Chromium
@@ -19,7 +22,7 @@ runs:
         path: |
           ~/.cache/ms-playwright
           ~/.cache/jhin-chromium-debs
-        key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-${{ steps.version.outputs.playwright }}
+        key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.image }}-${{ steps.version.outputs.playwright }}
     - name: Install Chromium's packages from the cache
       if: steps.cache.outputs.cache-hit == 'true'
       shell: bash
