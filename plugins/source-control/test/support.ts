@@ -111,6 +111,8 @@ export function fakeGh(): {
   graphql(value: unknown): void;
   /** What `gh repo view` prints (merge methods, D1450). */
   repo(value: unknown): void;
+  /** What any other `gh api --hostname <host> <path>` prints (D1661); unexpected until set. */
+  rest(value: unknown): void;
   calls(): string[];
 } {
   const dir = temp("jhin-fake-gh-");
@@ -138,6 +140,7 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   if [ -f "${dir}/graphql.json" ]; then cat "${dir}/graphql.json"; else echo '{"data":{}}'; fi
   exit 0
 fi
+if [ "$1" = "api" ] && [ "$2" = "--hostname" ] && [ -f "${dir}/rest.json" ]; then cat "${dir}/rest.json"; exit 0; fi
 if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
   if [ -f "${dir}/repo.json" ]; then cat "${dir}/repo.json"; exit 0; fi
   echo "unexpected gh call: $*" >&2
@@ -180,6 +183,7 @@ exit 1
     dir,
     graphql: (value) => Fs.writeFileSync(Path.join(dir, "graphql.json"), JSON.stringify(value)),
     repo: (value) => Fs.writeFileSync(Path.join(dir, "repo.json"), JSON.stringify(value)),
+    rest: (value) => Fs.writeFileSync(Path.join(dir, "rest.json"), JSON.stringify(value)),
     required: (names) =>
       Fs.writeFileSync(
         Path.join(dir, "required.json"),

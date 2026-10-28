@@ -347,6 +347,107 @@ describe("a row's details, checks and speed actions (D1452, D1453, D1457)", () =
   });
 });
 
+describe("a row menu's pull request actions (D1663, D1664)", () => {
+  const actions = (answer: (number: number) => PullRequestDetail, acted: string[]) => ({
+    copy() {},
+    open() {},
+    setWatching() {},
+    unlink() {},
+    detail: async (item: ThreadPullRequest) => answer(item.number),
+    act: async (item: ThreadPullRequest, action: string, method?: string) => {
+      acted.push([`${action} #${item.number}`, method].filter(Boolean).join(" "));
+    },
+  });
+  const all: PullRequestDetail["actions"] = [
+    "merge",
+    "ready",
+    "draft",
+    "close",
+    "reopen",
+    "delete-branch",
+    "update-branch",
+    "enable-auto-merge",
+    "disable-auto-merge",
+    "revert",
+    "approve-workflows",
+  ];
+  afterEach(() => localStorage.removeItem("jhin.pullRequestMergeMethod"));
+
+  it("offers T3's draft toggle, merge, auto-merge and methods, and asks before merging", async () => {
+    const acted: string[] = [];
+    const prs = [
+      snapshot(1, "feature-a", "main"),
+      snapshot(2, "feature-b", "main", { autoMerge: true }),
+    ];
+    await render(
+      <ThreadPullRequestsList
+        actions={actions(
+          (number) => ({
+            pullRequest: prs[number - 1]!,
+            checks: [],
+            mergeMethods: ["merge", "squash"],
+            actions: all,
+            defaultMergeMethod: "squash",
+          }),
+          acted,
+        )}
+        links={prs.map((pr) => link(pr.number, pr))}
+        onLink={undefined}
+      />,
+    );
+    await userEvent.click(page.getByRole("button", { name: "Actions for #1" }));
+    await expect.element(page.getByRole("menuitem", { name: "Convert to draft" })).toBeVisible();
+    await expect.element(page.getByRole("menuitem", { name: "Enable auto-merge" })).toBeVisible();
+    // The project's default is the one checked.
+    await expect
+      .element(page.getByRole("menuitemradio", { name: "Squash and merge" }))
+      .toBeChecked();
+    await expect.element(page.getByRole("menuitem", { name: "Close pull request" })).toBeVisible();
+    await userEvent.click(page.getByRole("menuitem", { name: "Merge now" }));
+    // The first click arms it; nothing ran yet.
+    await expect.element(page.getByRole("menuitem", { name: "Confirm merge?" })).toBeVisible();
+    expect(acted).toEqual([]);
+    await userEvent.click(page.getByRole("menuitem", { name: "Confirm merge?" }));
+    expect(acted).toEqual(["merge #1 squash"]);
+
+    // An armed one turns auto-merge off; a chosen method is the device's next default.
+    await userEvent.click(page.getByRole("button", { name: "Actions for #2" }));
+    await expect.element(page.getByRole("menuitem", { name: "Disable auto-merge" })).toBeVisible();
+    await userEvent.click(page.getByRole("menuitemradio", { name: "Merge commit" }));
+    expect(localStorage.getItem("jhin.pullRequestMergeMethod")).toBe("merge");
+  });
+
+  it("offers Revert and Delete branch for a merged one, behind T3's dialog", async () => {
+    const acted: string[] = [];
+    const merged = snapshot(3, "feature-c", "main", { state: "merged" });
+    await render(
+      <ThreadPullRequestsList
+        actions={actions(
+          () => ({ pullRequest: merged, checks: [], mergeMethods: ["merge"], actions: all }),
+          acted,
+        )}
+        links={[link(3, merged)]}
+        onLink={undefined}
+      />,
+    );
+    await userEvent.click(page.getByRole("button", { name: "Actions for #3" }));
+    await expect.element(page.getByRole("menuitem", { name: "Revert changes" })).toBeVisible();
+    await expect.element(page.getByRole("menuitem", { name: "Merge now" })).not.toBeInTheDocument();
+    await userEvent.click(page.getByRole("menuitem", { name: /Delete branch/ }));
+    const dialog = page.getByRole("alertdialog", { name: "Delete branch feature-c?" });
+    await expect.element(dialog).toBeVisible();
+    expect(dialog.element().textContent).toContain(
+      "This deletes feature-c from acme/app. Local branches and worktrees are not changed.",
+    );
+    // Clicked in the DOM, as the other dialogs here: without the app's styles the dialog's
+    // backdrop lies over its buttons.
+    await act(async () =>
+      (dialog.getByRole("button", { name: "Delete branch" }).element() as HTMLElement).click(),
+    );
+    expect(acted).toEqual(["delete-branch #3"]);
+  });
+});
+
 describe("the details row's actions (D1456)", () => {
   const detail = (pr: PullRequest, extra: Partial<PullRequestDetail> = {}): PullRequestDetail => ({
     pullRequest: pr,

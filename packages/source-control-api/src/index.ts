@@ -152,6 +152,8 @@ export const PullRequest = z.object({
   /** GitHub's alone, as in T3. */
   reviewDecision: PullRequestReviewDecision.optional(),
   mergeability: PullRequestMergeability.optional(),
+  /** Auto-merge is armed (GitHub, GitLab, Azure DevOps' auto-complete; D1661). */
+  autoMerge: z.boolean().optional(),
 });
 export type PullRequest = z.output<typeof PullRequest>;
 
@@ -177,9 +179,25 @@ export type PullRequestCheck = z.output<typeof PullRequestCheck>;
 export const PullRequestMergeMethod = z.enum(["merge", "squash", "rebase"]);
 export type PullRequestMergeMethod = z.output<typeof PullRequestMergeMethod>;
 
-/** What `git.pr.action` does (T3's `PullRequestAction`, the four W41 ports, D1451). */
-export const PullRequestAction = z.enum(["merge", "ready", "close", "reopen"]);
+/** What `git.pr.action` does (T3's `PullRequestAction`, D1451, D1661). */
+export const PullRequestAction = z.enum([
+  "merge",
+  "ready",
+  "draft",
+  "close",
+  "reopen",
+  "delete-branch",
+  "update-branch",
+  "enable-auto-merge",
+  "disable-auto-merge",
+  "revert",
+  "approve-workflows",
+]);
 export type PullRequestAction = z.output<typeof PullRequestAction>;
+
+/** How `update-branch` brings the base in (T3's `PullRequestUpdateMethod`, D1661). */
+export const PullRequestUpdateMethod = z.enum(["merge", "rebase"]);
+export type PullRequestUpdateMethod = z.output<typeof PullRequestUpdateMethod>;
 
 /** `git.pr.detail` (D1450): T3's pull request detail for the details rows and checks popover. */
 export const PullRequestDetail = z.object({
@@ -189,6 +207,10 @@ export const PullRequestDetail = z.object({
   mergeMethods: z.array(PullRequestMergeMethod),
   /** The actions the forge has (T3's `changeRequestActions`). */
   actions: z.array(PullRequestAction),
+  /** How the forge updates a branch with its base (D1661). */
+  updateMethods: z.array(PullRequestUpdateMethod).optional(),
+  /** The project's own default merge method, when it sets one (D1664). */
+  defaultMergeMethod: PullRequestMergeMethod.optional(),
 });
 export type PullRequestDetail = z.output<typeof PullRequestDetail>;
 

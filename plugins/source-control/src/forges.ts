@@ -13,6 +13,8 @@ import {
   parsePullRequestUrl,
   repositoryOfRemote,
   type PullRequest,
+  type PullRequestAction,
+  type PullRequestMergeMethod,
 } from "@jhin/source-control-api";
 
 import {
@@ -149,6 +151,10 @@ function gitlabDetails(raw: Record<string, unknown>): Partial<PullRequest> {
     ...(Number.isInteger(files) && files >= 0 ? { changedFiles: files } : {}),
     ...(raw["has_conflicts"] !== undefined || raw["merge_status"] !== undefined
       ? { mergeability: gitlabMergeability(raw) }
+      : {}),
+    // Armed to merge when its pipeline succeeds (D1661).
+    ...(typeof raw["merge_when_pipeline_succeeds"] === "boolean"
+      ? { autoMerge: raw["merge_when_pipeline_succeeds"] }
       : {}),
   };
 }
@@ -386,7 +392,18 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Vi
       ".gitlab/merge_request_templates/Default.md",
       ".gitlab/merge_request_templates/default.md",
     ],
-    actions: ["merge", "ready", "close", "reopen"],
+    // T3's GitLab `changeRequestActions` (D1661).
+    actions: [
+      "merge",
+      "ready",
+      "draft",
+      "close",
+      "reopen",
+      "update-branch",
+      "enable-auto-merge",
+      "disable-auto-merge",
+    ],
+    updateMethods: ["rebase"],
     // T3's GitLab merge capabilities: the project's merge method and squash option (D1450).
     mergeMethods: async (url) => {
       const { host, repository } = reference(url);
@@ -404,27 +421,45 @@ export function gitlabForge(glabPath: () => string, site: ForgeSite, viewers: Vi
         ...(method === "rebase_merge" || method === "ff" ? (["rebase"] as const) : []),
       ];
     },
-    // T3's `glab mr <action> <iid> --repo <project>` (D1451).
+    // T3's `glab mr <action> <iid> --repo <project>` (D1451, D1661).
     act: async (url, action, method) => {
       const { host, repository, number } = reference(url);
       const where = ["--repo", `https://${host}/${repository}`];
-      await glabRun(
+      const merge = (auto: boolean) => [
+        "mr",
+        "merge",
+        String(number),
+        ...where,
+        "--yes",
+        `--auto-merge=${auto}`,
+        ...(method === "squash" ? ["--squash"] : method === "rebase" ? ["--rebase"] : []),
+      ];
+      const args =
         action === "merge"
-          ? [
-              "mr",
-              "merge",
-              String(number),
-              ...where,
-              "--yes",
-              "--auto-merge=false",
-              ...(method === "squash" ? ["--squash"] : method === "rebase" ? ["--rebase"] : []),
-            ]
-          : action === "ready"
-            ? ["mr", "update", String(number), ...where, "--ready"]
-            : ["mr", action, String(number), ...where],
-        // A merge waits for GitLab longer than a read.
-        60_000,
-      );
+          ? merge(false)
+          : action === "enable-auto-merge"
+            ? merge(true)
+            : action === "disable-auto-merge"
+              ? [
+                  "api",
+                  "--hostname",
+                  host,
+                  "--method",
+                  "POST",
+                  `${project(repository)}/merge_requests/${number}/cancel_merge_when_pipeline_succeeds`,
+                ]
+              : action === "ready" || action === "draft"
+                ? ["mr", "update", String(number), ...where, `--${action}`]
+                : action === "update-branch"
+                  ? ["mr", "rebase", String(number), ...where]
+                  : action === "close" || action === "reopen"
+                    ? ["mr", action, String(number), ...where]
+                    : undefined;
+      if (args === undefined) {
+        throw new ForgeUnavailable("failed", `GitLab does not expose ${action} through its API.`);
+      }
+      // A merge waits for GitLab longer than a read.
+      await glabRun(args, 60_000);
     },
   };
   return forge;
@@ -463,6 +498,31 @@ function azureRequest(raw: Record<string, unknown>): ForgePullRequest | undefine
   };
 }
 
+/** What `az repos pr update` sets for an action (D1451, D1661). */
+function azureActionArgs(action: PullRequestAction, method: PullRequestMergeMethod): string[] {
+  const squash = ["--squash", method === "squash" ? "true" : "false"];
+  switch (action) {
+    case "merge":
+      return ["--status", "completed", ...squash];
+    case "enable-auto-merge":
+      return ["--auto-complete", "true", ...squash];
+    case "disable-auto-merge":
+      return ["--auto-complete", "false"];
+    case "ready":
+    case "draft":
+      return ["--draft", action === "draft" ? "true" : "false"];
+    case "close":
+      return ["--status", "abandoned"];
+    case "reopen":
+      return ["--status", "active"];
+    default:
+      throw new ForgeUnavailable(
+        "failed",
+        `Azure DevOps does not expose ${action} through its API.`,
+      );
+  }
+}
+
 /** T3's row details of an Azure DevOps pull request (D1449): its author and mergeability. */
 function azureDetails(raw: Record<string, unknown>): Partial<PullRequest> {
   const author = raw["createdBy"] as
@@ -482,6 +542,8 @@ function azureDetails(raw: Record<string, unknown>): Partial<PullRequest> {
           },
         }),
     ...(status === undefined ? {} : { mergeability: azureMergeability(status) }),
+    // Its auto-complete, Azure DevOps' auto-merge (D1661).
+    ...(raw["status"] === "active" ? { autoMerge: raw["autoCompleteSetBy"] != null } : {}),
   };
 }
 
@@ -771,7 +833,16 @@ export function azureForge(azPath: () => string, site: ForgeSite, viewers: Viewe
       "docs/pull_request_template.md",
       "pull_request_template.md",
     ],
-    actions: ["merge", "ready", "close", "reopen"],
+    // T3's Azure DevOps `changeRequestActions` (D1661).
+    actions: [
+      "merge",
+      "ready",
+      "draft",
+      "close",
+      "reopen",
+      "enable-auto-merge",
+      "disable-auto-merge",
+    ],
     // T3's Azure DevOps merge capabilities: a merge or a squash.
     mergeMethods: () => Promise.resolve(["merge", "squash"]),
     // T3's `az repos pr update --id <n>` (D1451).
@@ -789,11 +860,7 @@ export function azureForge(azPath: () => string, site: ForgeSite, viewers: Viewe
         String(number),
         "--organization",
         location.organization,
-        ...(action === "merge"
-          ? ["--status", "completed", "--squash", method === "squash" ? "true" : "false"]
-          : action === "ready"
-            ? ["--draft", "false"]
-            : ["--status", action === "close" ? "abandoned" : "active"]),
+        ...azureActionArgs(action, method),
       ]);
     },
   };

@@ -1876,6 +1876,78 @@ W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
   keeps D286. The diff's pop-out (non-inline) mode is the right panel's
   sheet on a narrow window (`t3-parity.md` D1434).
 
+### Round 6: pull request actions, git actions and W42's leftovers (W46, D1661–D1680)
+
+W46 of `t3-roadmap.md` takes what a T3 Code user notices most of this plan's
+Deferred list, at T3 Code `eb7b35ac` (D53):
+`packages/contracts/src/pullRequest.ts` (`PullRequestAction`),
+`packages/source-control-*/src/client/definition.ts` (`changeRequestActions`),
+`packages/source-control-github/src/server/{GitHubPullRequestApi,GitHubPullRequestProvider}.ts`,
+`apps/web/src/components/pullRequest/{PullRequestDetailPanel,usePullRequestActions,pullRequestDetail.logic}.ts(x)`
+and `apps/web/src/components/settings/ProjectDefaultsSettings.tsx`.
+
+#### A pull request's other actions
+
+- **D1661. `git.pr.action` takes T3's other actions**: `draft`,
+  `update-branch` (with `updateMethod`, `merge` or `rebase`),
+  `enable-auto-merge`, `disable-auto-merge`, `revert`, `delete-branch` and
+  `approve-workflows`, so `PullRequestAction` is T3's eleven words. Each
+  forge offers what T3's `changeRequestActions` give it: GitHub all eleven;
+  GitLab merge, ready, draft, close, reopen, update-branch (rebase only),
+  enable- and disable-auto-merge; Azure DevOps merge, ready, draft, close,
+  reopen, enable- and disable-auto-merge (its auto-complete); Bitbucket merge
+  and close; Forgejo merge, close, reopen and update-branch. GitHub runs them
+  as T3 sends them, through `gh api graphql` with T3's mutations
+  (`convertPullRequestToDraft`, `updatePullRequestBranch` with the head it
+  read, `enablePullRequestAutoMerge`, `disablePullRequestAutoMerge`,
+  `revertPullRequest`) and its REST calls: `delete-branch` deletes the head
+  branch with T3's refusals (an open pull request, a branch named like the
+  base or the head repository's default branch, a head that moved since it
+  was read; a branch already gone is done), `approve-workflows` approves the
+  workflow runs of a fork's head that wait for approval (none for a branch
+  of the repository itself). `update-branch` on a head that is not behind is
+  done without asking. GitLab: `glab mr update --draft`, `glab mr rebase`,
+  `glab mr merge --auto-merge` and the API's
+  `cancel_merge_when_pipeline_succeeds`; Azure DevOps: `--draft true`,
+  `--auto-complete true|false`; Forgejo: `POST pulls/<n>/update?style=`.
+  `git.pr.detail` answers `updateMethods` (the forge's), and a snapshot
+  carries `autoMerge` (armed) where the forge tells (GitHub's
+  `autoMergeRequest`, GitLab's `merge_when_pipeline_succeeds`, Azure DevOps'
+  `autoCompleteSetBy`). The toasts are T3's (`usePullRequestActions.ts`).
+- **D1662. A merge on a base with a merge queue enters the queue**, as T3's
+  `runPullRequestAction` does: GitHub's merge reads the pull request's state
+  first, and where `isMergeQueueEnabled` it enables auto-merge (the queue
+  takes it) instead of merging; `enable-auto-merge` on a pull request that
+  GitHub would merge now (T3's `IMMEDIATELY_MERGEABLE` states) merges it.
+- **D1663. A panel row's menu has T3's pull request menu** (Jhin has no
+  pull request page yet, so its header menu goes where the row's is): when
+  the menu opens it reads `git.pr.detail`, and an open pull request gets
+  "Ready for review" or "Convert to draft", "Merge now" (T3's inline
+  "Confirm merge?"), "Enable auto-merge" ("Confirm auto-merge?") or
+  "Disable auto-merge", and the merge methods as a radio group when more than
+  one is allowed; then the row's own items; then "Close pull request"
+  ("Confirm close?"), "Reopen pull request" for a closed one, "Revert changes"
+  ("Confirm revert?") for a merged one, and "Delete branch" with its branch
+  for one that is not open, behind T3's "Delete branch <b>?" dialog. Each is
+  offered only when the forge has the action. T3's "Update branch" and
+  "Approve workflows" live in its page's summary and checks; Jhin runs them
+  through the command only until that page comes (Deferred).
+- **D1664. A merge method per project, and the last one chosen.** T3's
+  `pullRequestMergeMethod`: the node's `pullRequestMergeMethod` and a
+  project's own in `projects` ("Default pull request merge method"; unset is
+  T3's "Last selected"). `git.pr.detail` answers the project's as
+  `defaultMergeMethod`. The client keeps the last method chosen in the menu
+  (per device, in its local storage under `jhin.pullRequestMergeMethod`, as
+  T3's persisted `uiStateStore.pullRequestMergeMethod`), and every merge picks as T3's
+  `resolvePullRequestMergeMethod`: the project's, else the last chosen, else
+  "merge", each only when allowed, else the first allowed: the speed actions
+  (D1453) and the menu (D1663). The details row's "Merge" keeps T3's
+  "merge" when allowed (`ThreadDetailsPrRow` reads neither). A merge without
+  `mergeMethod` on the node takes the project's, then D1451's rule.
+- **D1665. GitHub's avatars**, as T3's `loginAvatarUrl`: an author whose
+  login is a GitHub login gets `https://<host>/<login>.png?size=80`, so a
+  row shows the picture instead of the initial (kept when it fails to load).
+
 ## Deferred
 
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
@@ -1963,13 +2035,16 @@ W40 of `t3-roadmap.md` (round 5), at T3 Code `eb7b35ac`:
   running checks; Jhin reads again when the link's snapshot moves), native
   stacks of a forge (and their "Dismiss from thread") and the instructions
   that tell agents to link what they open.
-- A pull request's details and actions (D1449–D1451): GitHub's avatars (`gh pr
-  view` names no avatar; the row shows the login's initial, T3's fallback),
-  T3's other actions (draft, update branch, auto-merge, revert, delete
-  branch, approve workflows), GitHub's merge queue (T3 enables auto-merge
-  there), a per-project default merge method and the last one chosen (T3's
-  `pullRequestMergeMethod`), and the review decision off GitHub (T3 has none
-  either).
+- A pull request's details and actions (D1449–D1451; T3's eleven actions, the
+  merge queue, the merge method per project and GitHub's avatars since
+  D1661–D1665): T3's pull request page, where its "Update branch" (with
+  the commits behind) and "Approve workflows" controls live (Jhin runs both
+  through `git.pr.action` only); GitHub's viewer permissions that hide an
+  action the account may not take (T3's `viewerPermissions`; the forge
+  refuses it instead); a GitLab, Azure DevOps or Forgejo branch that is not
+  behind being updated anyway (only GitHub's read says so); T3's removal of
+  agent credits from a merge's message (`removeAgentCreditsOnMerge`); and
+  the review decision off GitHub (T3 has none either).
 - Git actions (D266): T3's "Publish repository", writing style settings, the
   thread details panel and opening a file from the commit dialog. Writer
   turns go through `agent.runtime@1`'s `startTurn` under a throwaway thread

@@ -57,6 +57,10 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
   if [ -f "$file" ]; then cat "$file"; else echo '[]'; fi
   exit 0
 fi
+if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
+  echo '{"mergeCommitAllowed":true,"squashMergeAllowed":true,"rebaseMergeAllowed":false}'
+  exit 0
+fi
 exit 1
 `,
     { mode: 0o755 },
@@ -109,7 +113,7 @@ async function shot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: "image/png" });
 }
 
-test("D260–D274, D1281–D1283: the chat header's git actions commit, push and open a pull request; linking another makes a stack, watched from the menu and listed in the pull requests panel", async ({
+test("D260–D274, D1281–D1283, D1663: the chat header's git actions commit, push and open a pull request; linking another makes a stack, watched from the menu and listed in the pull requests panel", async ({
   page,
 }, info) => {
   const node = await startNode({
@@ -209,7 +213,16 @@ test("D260–D274, D1281–D1283: the chat header's git actions commit, push and
   await rows.nth(1).hover();
   await panel.getByRole("button", { name: "Actions for #43" }).click();
   await expect(page.getByRole("menuitem", { name: "Unlink from thread" })).toBeVisible();
+  // T3's pull request menu, read from the pull request's detail when it opens (D1663).
+  await expect(page.getByRole("menuitem", { name: "Convert to draft" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Merge now" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Enable auto-merge" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Merge commit" })).toBeChecked();
+  await expect(page.getByRole("menuitem", { name: "Close pull request" })).toBeVisible();
   await shot(page, info, "pull-requests-panel");
+  await page.getByRole("menuitem", { name: "Merge now" }).click();
+  await expect(page.getByRole("menuitem", { name: "Confirm merge?" })).toBeVisible();
+  await shot(page, info, "pull-request-menu-confirm-merge");
   await page.keyboard.press("Escape");
 
   // The thread details panel shows the current one, the other behind "Show 1 more" (D1283),
