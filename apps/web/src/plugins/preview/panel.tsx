@@ -11,12 +11,15 @@ import {
   PREVIEW_VIEWPORT_MAX_AREA,
   PREVIEW_VIEWPORT_PRESETS,
   PREVIEW_ZOOM_LEVELS,
+  PreviewEvents,
+  previewServersStream,
   resolveAddressBarInput,
   type PreviewAppearance,
   type PreviewTab,
   type PreviewViewportSetting,
 } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
+import type { Disposable } from "@jhin/sdk";
 import {
   Badge,
   Button,
@@ -213,6 +216,8 @@ export interface PanelServices {
   readonly focusUrlRequests: { current: number; subscribe(listener: () => void): () => void };
   /** Runs a command on the thread's node. */
   call<T>(method: string, params: unknown): Promise<T>;
+  /** The thread's node's client, for its streams; undefined for a node reached through another. */
+  client?(): RpcClient | undefined;
   /** The preview URLs of the thread's project scripts, probed with the port scan (D1480). */
   readonly configuredUrls?: readonly string[];
   readonly shortcut: (command: string) => string | undefined;
@@ -744,12 +749,16 @@ interface LocalServer {
   readonly processName: string | null;
 }
 
-/** T3 rescans every 3 s while the empty state shows. */
+/** T3 rescans every 3 s while the empty state shows: an older node's panel polls this often. */
 const LOCAL_SERVERS_SCAN_MS = 3_000;
 
-/** The node's local servers, rescanned while the empty state shows (T3's port discovery). */
+/**
+ * The node's local servers while the empty state shows (T3's port discovery): pushed by the
+ * node (D1692), or polled when the node does not serve the stream yet. A hidden page does
+ * neither, and looks again as soon as it is shown.
+ */
 function useLocalServers(
-  services: Pick<PanelServices, "call" | "configuredUrls">,
+  services: Pick<PanelServices, "call" | "client" | "configuredUrls">,
 ): readonly LocalServer[] {
   const [servers, setServers] = useState<readonly LocalServer[]>([]);
   const configured = JSON.stringify(services.configuredUrls ?? []);
@@ -760,13 +769,15 @@ function useLocalServers(
     let live = true;
     let failures = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let subscription: Disposable | undefined;
+    let pushed = true;
+    /** The polling round; hiding the page starts a new one, so a scan in flight is dropped. */
+    let round = 0;
+    const configuredUrls = latest.current.configuredUrls ?? [];
+    const apply = (next: readonly LocalServer[]) =>
+      setServers((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
     const scan = () => {
-      // A hidden page does not scan; it looks again as soon as it is shown.
-      if (document.hidden) {
-        document.addEventListener("visibilitychange", scan, { once: true });
-        return;
-      }
-      const configuredUrls = latest.current.configuredUrls ?? [];
+      const mine = round;
       latest.current
         .call<{ servers: LocalServer[] }>(
           "preview.servers.list",
@@ -774,28 +785,67 @@ function useLocalServers(
         )
         .then(
           (result) => {
-            if (!live) return;
+            if (!live || mine !== round) return;
             failures = 0;
-            setServers((current) =>
-              JSON.stringify(current) === JSON.stringify(result.servers) ? current : result.servers,
-            );
-            timer = setTimeout(scan, LOCAL_SERVERS_SCAN_MS);
+            apply(result.servers);
+            timer = setTimeout(look, LOCAL_SERVERS_SCAN_MS);
           },
           // A failure (a reconnecting socket, a node without the command) waits longer each time.
           () => {
-            if (!live) return;
+            if (!live || mine !== round) return;
             // A node that does not answer offers no servers that may be gone.
-            setServers((current) => (current.length === 0 ? current : []));
+            apply([]);
             failures += 1;
-            timer = setTimeout(scan, Math.min(LOCAL_SERVERS_SCAN_MS * 2 ** failures, 60_000));
+            timer = setTimeout(look, Math.min(LOCAL_SERVERS_SCAN_MS * 2 ** failures, 60_000));
           },
         );
     };
-    scan();
+    const watch = (client: RpcClient) => {
+      subscription = client.subscribe(
+        previewServersStream(configuredUrls),
+        {
+          after: 0,
+          // A node without the stream (older than D1692) is polled instead.
+          onError: () => {
+            subscription = undefined;
+            pushed = false;
+            if (live) look();
+          },
+        },
+        (event) => {
+          if (event.type !== PreviewEvents.servers) return;
+          const list = (event.payload as { servers?: LocalServer[] } | null)?.servers;
+          apply(Array.isArray(list) ? list : []);
+        },
+      );
+    };
+    const onVisibility = () => {
+      // Hidden: the node stops scanning for this page; shown: it looks again.
+      if (!document.hidden) return;
+      subscription?.dispose();
+      subscription = undefined;
+      clearTimeout(timer);
+      round += 1;
+      document.addEventListener("visibilitychange", look, { once: true });
+    };
+    function look() {
+      if (!live) return;
+      if (document.hidden) {
+        document.addEventListener("visibilitychange", look, { once: true });
+        return;
+      }
+      const client = pushed ? latest.current.client?.() : undefined;
+      if (client === undefined) scan();
+      else if (subscription === undefined) watch(client);
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    look();
     return () => {
       live = false;
       clearTimeout(timer);
-      document.removeEventListener("visibilitychange", scan);
+      subscription?.dispose();
+      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("visibilitychange", look);
     };
   }, [configured]);
   return servers;
@@ -803,7 +853,7 @@ function useLocalServers(
 
 function EmptyState(props: {
   onOpen: (url: string) => void;
-  services: Pick<PanelServices, "call" | "configuredUrls">;
+  services: Pick<PanelServices, "call" | "client" | "configuredUrls">;
 }) {
   const [recent, setRecent] = useState(readRecentUrls);
   const servers = useLocalServers(props.services);

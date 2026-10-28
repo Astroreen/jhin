@@ -1164,6 +1164,35 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
   HTTPS on a private address, and the frame navigating itself (a GET whose
   answer the page never reads).
 
+### Local servers pushed (W47)
+
+- **D1692. The node pushes the local servers to the panels that watch
+  them,** as T3's `subscribeDiscoveredLocalServers` does, instead of each
+  panel asking every 3 s. `jhin.preview` serves the streams
+  `preview-servers/<configured URLs>` (`previewServersStream`, in
+  `@jhin/preview-api`: the project's configured preview URLs, sorted, as
+  URI-encoded JSON, so a name says what it lists; `preview.read` and
+  `terminals.read`, as `preview.servers.list`). While any of them has a
+  subscriber, the node scans every 3 s (T3's `POLL_INTERVAL`), once per set
+  of configured URLs, with the scan `preview.servers.list` shares, and
+  appends `preview.servers { servers, scannedAt }` to a stream only when
+  its list changed; a new subscriber gets a scan at once (T3's `retain`),
+  and a tick during a scan is skipped. A stream keeps its latest list only,
+  so a subscriber from 0 reads it first; one nobody watches forgets it, and
+  the scanning stops with the last subscriber. Sequences only grow, from the
+  clock (the next is the later of the last one plus one and the time in
+  milliseconds), so a client that resumes after the last list it saw, past
+  a reconnect or a restart of the node, never takes a new list for an old
+  one. At most 20 sets of configured URLs are watched at once (each costs a
+  scan a tick); a 21st subscription is refused. The panel's empty state
+  subscribes while it shows and the page is visible, and unsubscribes when
+  the page is hidden.
+- **D1693. A node without the stream is polled as before.** When the
+  subscription is refused (a node older than D1692), or the thread's node
+  is reached through another (a mesh member), the panel falls back to
+  D950's polling of `preview.servers.list` with its backoff.
+  `preview.servers.list` stays, for agents and those clients.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -1204,8 +1233,9 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
   missing libraries and their setup command, close code 4503).
 - A binary channel for frames (T3's WebSocket with per-frame acks); frames
   travel as base64 JSON events.
-- A pushed server list instead of the client's 3 s rescans (T3's
-  subscription), and a favicon per local server (configured URLs: D1480).
+- A favicon per local server (configured URLs: D1480); the pushed list
+  (D1692) reaching a mesh member's servers through the relay instead of
+  D950's polling.
 - Tests of the panel's local server polling (backoff, the hidden-page pause)
   and of the node's shared scan; the e2e covers the path end to end.
 - Around the floating mini player (D1202, D1326, D1327): keeping it clear
