@@ -1,0 +1,9 @@
+6d86ea19 feat(health): warn when the node a mission's run runs on is away (M3, D1571)
+5094047f feat(teams): teams.down { remove } removes a team's agents too (M3, D1572)
+b7e37ae4 feat(health): since when a node is away survives a restart (M3, D1570)
+20a4b1c7 feat(agents-view): userSettings in the agent form (M3, D1569)
+dd57629e feat(missions): a proof or review from another node records its agent (M3, D1567, D1568)
+53167d28 feat(inbox): the away mark follows the mesh while the inbox is open (M3, D1565)
+ad7ee47c Merge branch 'feat/m3-user-settings' into m3-run-crew
+19677b11 test(agents): userSettings true, unset, and a restart of Claude Code when it changes (D1561)
+5e4e97e5 feat(agents): a defined agent works without the node user's own settings (M3, D1561)

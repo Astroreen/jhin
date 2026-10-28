@@ -1,0 +1,35 @@
+Mission report: M3 crew, mission 2: away-since, a run's node away, removing a team, done
+
+Mission `3d846c75-be4a-494d-9452-25350562d941` · done · 6 done
+
+**Outcome**: Three items move out of docs/plans/agents.md#deferred, each as its own reviewed Conventional Commit on m3-run-crew (never pushed), decisions D1570–D1574 under "Decisions (M3)": (1) since when a node is away survives a restart of the mission's node (D1548); (2) health warns when the node a mission's run runs on is away; (3) teams.down can also remove a team's agents, as the owner decides.
+
+### Committed or merged
+
+On m3-run-crew in /tmp/m3-crew, not pushed:
+- b7e37ae4 feat(health): since when a node is away survives a restart (D1570). Built by builder2 (Server).
+- 5094047f feat(teams): teams.down { remove } removes a team's agents too (D1572, the owner's option A). Built by builder.
+- 6d86ea19 feat(health): warn when the node a mission's run runs on is away (D1571). Built by builder. It was sent back once: the first version let orchestrate start a second run, and the fix makes the new answer opt-in (`offline`).
+Each commit matches the reviewer's recorded tree file by file. Item 1 was committed from that tree while item 2's edits sat in the same files. D1573 and D1574 are unused.
+New M3 Deferred lines: flapping or stale away-since entries (D1570); a failed member keeps its definition (D1572); a run warning clears only at health's next evaluation (D1571).
+The Server outage at 21:17–21:24 went as designed: the away warning was raised, the wait ended when Server came back, and the warning cleared node-back.
+
+### Slices
+
+#### Item 1: since when a node is away survives a restart
+
+done · wave 1 · jhin://ac775d7d-22f9-4634-8866-4c55c9f426a9/agents/crew-builder2
+
+```
+$ vp test run plugins/health (incl. new plugins/health/test/away-restart.test.ts and 2 new cases in sensors.test.ts)
+Test Files  5 passed (5)
+     Tests  45 passed (45)
+Mutation: with Sensors.restoreAwaySince made a no-op, away-restart 'all along' fails: AssertionError: expected [...] to have a length of 1 but got 2 (the dismissed warning is raised again).
+```
+
+```
+$ vp run --filter @jhin/plugin-health typecheck; vp run --filter @jhin/testing typecheck; vp check --fix plugins/health packages/testing; pnpm pack:smoke
+tsc --noEmit: no errors (both packages); vp check: 0 errors (6 pre-existing shadow warnings); pack:smoke: '== ok: the packed CLI runs from node_modules; workspace manifests untouched'
+```
+
+#### Item 3: teams.down can remove a t
