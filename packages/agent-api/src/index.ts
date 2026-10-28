@@ -26,7 +26,7 @@ export * from "./t3-project-file.ts";
 
 import { contextReferencesAsLabels } from "./context.ts";
 import type { InteractionMode, RuntimeMode } from "./modes.ts";
-import type { AgentUsageLimits } from "./usage-limits.ts";
+import type { AgentResetCreditOutcome, AgentUsageLimits } from "./usage-limits.ts";
 
 /** D54's form: an image inlined as a data URL, still accepted and read from older events. */
 export interface InlineImageAttachment {
@@ -520,7 +520,7 @@ export interface AgentAuth {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`, 1.15 MCP apps: a tool call's `app` and `mcpApps`; 1.16 a turn's `userSettings`, 1.17 a `steer` that answers once the message went in).
+ * but `agentId` and `startTurn` is optional (added in 1.1 to 1.3; 1.4 adds subagent items, 1.5 a question's `initialAnswer`, 1.6 `context.compacted`, 1.7 background subagents and `stopSubagent`, 1.8 `usageLimits`, 1.9 an approval's `access` and `decisions`, 1.10 `goal.updated`, 1.11 `auth`, 1.12 `subagent.progress`, 1.13 `accept-always` and an approval's `labels`, 1.14 `uploadFeedback`, 1.15 MCP apps: a tool call's `app` and `mcpApps`; 1.16 a turn's `userSettings`, 1.17 a `steer` that answers once the message went in, 1.18 `consumeResetCredit`).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -568,6 +568,13 @@ export interface AgentRuntime {
    * when it cannot tell now. A runtime without it has no usage limits to show.
    */
   usageLimits?(): Promise<AgentUsageLimits | undefined>;
+  /**
+   * Since 1.18: redeems one reset credit of its account (T3's `consumeResetCredit`,
+   * t3-parity.md D1656), clearing the account's current windows, and reads its limits again;
+   * answers what it did. Throws when the agent could not ask. A runtime without it has no
+   * reset credits to redeem.
+   */
+  consumeResetCredit?(): Promise<AgentResetCreditOutcome>;
   /** Since 1.11: signing its account in and out (providers.md D1151). */
   readonly auth?: AgentAuth;
   /**

@@ -40,6 +40,7 @@ const account = (
   agentId,
   agentName: agentId === "jhin.agent-codex" ? "Codex" : "Claude Code",
   nodeLabel,
+  target: { node: nodeLabel },
   limits: { checkedAt: "now", windows, ...(unavailable === undefined ? {} : { unavailable }) },
 });
 

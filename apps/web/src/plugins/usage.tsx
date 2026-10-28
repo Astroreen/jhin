@@ -20,7 +20,9 @@ import {
   Tooltip,
   TooltipPopup,
   TooltipTrigger,
+  UI_DIALOGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
+  type Dialogs,
   type SlotRegistry,
 } from "@jhin/ui";
 import { ChartNoAxesColumnIcon } from "lucide-react";
@@ -52,12 +54,15 @@ export const usagePlugin = builtin(
       [MESH_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
     },
+    // "Use reset" asks first (t3-parity.md D1656).
+    optional: { [UI_DIALOGS_CAPABILITY]: "^1" },
   },
   definePlugin({
     activate(context) {
       const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
+      const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const shown = createShownNodes(
         context.services.get<Connections>(CONNECTIONS_CAPABILITY),
         context.services.get<MeshMembership>(MESH_CAPABILITY),
@@ -110,7 +115,15 @@ export const usagePlugin = builtin(
       function UsagePageSlot() {
         const route = useExternal(navigation, navigation.current);
         if (route.panel !== USAGE_PANEL) return null;
-        return <UsagePage close={close} log={context.log} shown={shown} threads={threads} />;
+        return (
+          <UsagePage
+            close={close}
+            dialogs={dialogs}
+            log={context.log}
+            shown={shown}
+            threads={threads}
+          />
+        );
       }
 
       context.subscriptions.add(

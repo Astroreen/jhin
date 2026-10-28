@@ -1163,6 +1163,34 @@ describe("jhin.threads: usage limits (providers.md D1141)", () => {
   });
 });
 
+describe("jhin.threads: reset credits (t3-parity.md D1656)", () => {
+  it("redeems one through the agent, and refuses an agent without them or an unknown one", async () => {
+    let redeemed = 0;
+    const credited: AgentRuntime = {
+      agentId: "acme.credited",
+      startTurn: fakeTurn,
+      consumeResetCredit: async () => (++redeemed === 1 ? "reset" : "noCredit"),
+    };
+    const plain: AgentRuntime = { agentId: "acme.plain", name: "Plain", startTurn: fakeTurn };
+    const { client } = await node({ plugins: [registering(credited), registering(plain)] });
+    expect(await client.call("agents.reset-credit.consume", { agentId: "acme.credited" })).toEqual({
+      outcome: "reset",
+    });
+    expect(await client.call("agents.reset-credit.consume", { agentId: "acme.credited" })).toEqual({
+      outcome: "noCredit",
+    });
+    await expect(
+      client.call("agents.reset-credit.consume", { agentId: "acme.plain" }),
+    ).rejects.toMatchObject({
+      code: "RESET_CREDIT_UNSUPPORTED",
+      message: "Provider 'Plain' has no reset credits to redeem.",
+    });
+    await expect(
+      client.call("agents.reset-credit.consume", { agentId: "acme.none" }),
+    ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+  });
+});
+
 describe("jhin.threads: MCP apps (providers.md D1401, D1402)", () => {
   it("says a thread whose agent shows no MCP apps has none", async () => {
     const { client } = await node();

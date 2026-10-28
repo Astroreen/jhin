@@ -224,7 +224,9 @@ Words about Jhin:
 - **Usage limits** — what the account an agent runs on may still spend: its
   usage windows (Session, Weekly, Monthly), each with how much is used and
   when it resets (`agents.usage-limits`, `/usage-limits`). A turn that hits
-  one fails with a **usage-limit failure**, which says when to retry.
+  one fails with a **usage-limit failure**, which says when to retry. An
+  account may bank **reset credits**: redeeming one clears its current
+  windows (`agents.reset-credit.consume`, `t3-parity.md` D1656).
 - **MCP app** — an interactive page an MCP server returns with a tool call
   (the MCP Apps extension's `ui://` resource), shown in the timeline in a
   sandboxed frame. Its **app document** is the page as the agent's runtime

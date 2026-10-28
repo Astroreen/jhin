@@ -10,6 +10,7 @@ import {
   limitsNotice,
   paceOf,
   remainingPercent,
+  resetCreditsSummary,
   usageLimitFailureLabel,
 } from "../src/lib/usage-limits.ts";
 
@@ -90,5 +91,18 @@ describe("usage limits (providers.md D1144)", () => {
       state: "failed",
       failure: { class: "usage_limit", resetAt: "2030-01-01T12:00:00.000Z" },
     });
+  });
+});
+
+describe("reset credits (t3-parity.md D1655)", () => {
+  it("says how many are banked and when the next expires, as T3's resetCreditsSummary", () => {
+    const inDays = new Date(now + (3 * 24 + 4) * 60 * 60_000).toISOString();
+    expect(resetCreditsSummary({ availableCount: 1, nextExpiresAt: inDays }, now)).toBe(
+      "1 reset credit banked · next expires in 3d 4h",
+    );
+    expect(resetCreditsSummary({ availableCount: 2 }, now)).toBe("2 reset credits banked");
+    expect(resetCreditsSummary({ availableCount: 0, nextExpiresAt: inDays }, now)).toBe(
+      "No reset credits banked",
+    );
   });
 });

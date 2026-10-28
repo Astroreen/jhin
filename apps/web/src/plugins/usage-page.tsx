@@ -1,13 +1,16 @@
 // The Usage page's limits (t3-parity.md D1308–D1310), a chunk of its own (D1595). Derived from
 // T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac: apps/web/src/components/usage/UsagePage.tsx
-// (its "Limits" view: the breadcrumb, "Refresh limits") and UsageLimitsPooled.tsx (PoolSection,
-// PoolWindowCard, PoolBar, PoolSegment, LimitNotices).
+// (its "Limits" view: the breadcrumb, "Refresh limits"), UsageLimitsPooled.tsx (PoolSection,
+// PoolWindowCard, PoolBar, PoolSegment, LimitNotices) and UsageLimits.tsx (ResetCredits,
+// ResetCreditDialog, useResetCredit).
+import type { AgentResetCreditOutcome, AgentResetCredits } from "@jhin/agent-api";
 import { targetKey, type ThreadsCatalog } from "@jhin/client-api";
 import type { Logger } from "@jhin/sdk";
 import {
   Alert,
   AlertTitle,
   Button,
+  type Dialogs,
   Spinner,
   Tooltip,
   TooltipPopup,
@@ -29,13 +32,15 @@ import {
   type LimitPoolWindow,
   type UsageRead,
 } from "../lib/usage-pools.ts";
-import { formatResetsIn, remainingPercent } from "../lib/usage-limits.ts";
+import { formatResetsIn, remainingPercent, resetCreditsSummary } from "../lib/usage-limits.ts";
 
 export interface UsagePageProps {
   readonly threads: ThreadsCatalog;
   readonly shown: ReturnType<typeof createShownNodes>;
   readonly close: () => void;
   readonly log: Logger;
+  /** Asks before a reset credit is spent; without it "Use reset" is disabled. */
+  readonly dialogs: Dialogs | undefined;
 }
 
 /** One colour for every agent, as the composer's bars (D1144). */
@@ -145,22 +150,127 @@ function PoolWindowCard(props: { readonly pool: LimitPoolWindow; readonly now: n
   );
 }
 
-function PoolSection(props: { readonly pool: LimitPool; readonly now: number }) {
+const OUTCOME_TEXT: Record<AgentResetCreditOutcome, string> = {
+  reset: "Reset applied. Your windows have cleared.",
+  nothingToReset: "Nothing to reset right now.",
+  noCredit: "No reset credit left.",
+  alreadyRedeemed: "That credit was already redeemed.",
+};
+
+/**
+ * An account's reset credits under its agent's limits (t3-parity.md D1655, D1656): "Use reset"
+ * asks first, since it spends a credit the account was granted, then says what it did and has
+ * the page read the limits again. With every credit used it stays to say so beside the result.
+ */
+export function ResetCredits(props: {
+  readonly account: LimitAccount;
+  readonly credits: AgentResetCredits;
+  readonly now: number;
+  readonly showName: boolean;
+  readonly threads: ThreadsCatalog;
+  readonly dialogs: Dialogs | undefined;
+  readonly log: Logger;
+  /** The redemption ended: the page reads the limits again. */
+  readonly redeemed: () => void;
+}) {
+  const { account, credits, dialogs } = props;
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const redeem = async () => {
+    if (dialogs === undefined) return;
+    const confirmed = await dialogs.confirm({
+      title: "Use a reset credit?",
+      description:
+        "This redeems one credit on your account and clears the current rate-limit windows. It cannot be undone.",
+      confirmLabel: "Use credit",
+    });
+    if (!confirmed) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { outcome } = await props.threads.call<{ outcome: AgentResetCreditOutcome }>(
+        account.target,
+        "agents.reset-credit.consume",
+        { agentId: account.agentId },
+      );
+      setStatus(OUTCOME_TEXT[outcome]);
+    } catch (error) {
+      // T3's one line for any failure; the cause goes to the log.
+      props.log.warn("could not use a reset credit", {
+        agentId: account.agentId,
+        error: String(error),
+      });
+      setStatus("Could not use the reset credit.");
+    } finally {
+      setBusy(false);
+    }
+    props.redeemed();
+  };
+  if (credits.availableCount === 0 && status === null) return null;
   return (
-    <section aria-label={props.pool.agentName} className="flex flex-col gap-3">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      {props.showName ? (
+        <span className="font-medium text-foreground">{account.nodeLabel}</span>
+      ) : null}
+      <span className="tabular-nums">{resetCreditsSummary(credits, props.now)}</span>
+      {credits.availableCount > 0 ? (
+        <Button
+          disabled={busy || dialogs === undefined}
+          onClick={() => void redeem()}
+          size="xs"
+          variant="outline"
+        >
+          {busy ? "Using…" : "Use reset"}
+        </Button>
+      ) : null}
+      {status ? (
+        <span className="text-foreground" role="status">
+          {status}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function PoolSection(props: {
+  readonly pool: LimitPool;
+  readonly now: number;
+  readonly threads: ThreadsCatalog;
+  readonly dialogs: Dialogs | undefined;
+  readonly log: Logger;
+  readonly redeemed: () => void;
+}) {
+  const { pool } = props;
+  return (
+    <section aria-label={pool.agentName} className="flex flex-col gap-3">
       <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
-        <AgentIcon agentId={props.pool.agentId} className="size-4 text-foreground/80" />
-        {props.pool.agentName}
+        <AgentIcon agentId={pool.agentId} className="size-4 text-foreground/80" />
+        {pool.agentName}
       </h2>
-      {props.pool.windows.map((window) => (
+      {pool.windows.map((window) => (
         <PoolWindowCard key={`${window.kind}:${window.id}`} now={props.now} pool={window} />
       ))}
+      {pool.accounts.map((account) =>
+        account.limits.resetCredits === undefined ? null : (
+          <ResetCredits
+            account={account}
+            credits={account.limits.resetCredits}
+            dialogs={props.dialogs}
+            key={account.key}
+            log={props.log}
+            now={props.now}
+            redeemed={props.redeemed}
+            showName={pool.accounts.length > 1}
+            threads={props.threads}
+          />
+        ),
+      )}
     </section>
   );
 }
 
 export function UsagePage(props: UsagePageProps) {
-  const { threads, shown, close, log } = props;
+  const { threads, shown, close, log, dialogs } = props;
   const nodes = useExternal(shown, shown.snapshot);
   const [read, setRead] = useState<UsageRead | undefined>();
   const [refreshing, setRefreshing] = useState(false);
@@ -249,7 +359,15 @@ export function UsagePage(props: UsagePageProps) {
                 </p>
               ) : null}
               {pools.map((pool) => (
-                <PoolSection key={pool.agentId} now={read.now} pool={pool} />
+                <PoolSection
+                  dialogs={dialogs}
+                  key={pool.agentId}
+                  log={log}
+                  now={read.now}
+                  pool={pool}
+                  redeemed={load}
+                  threads={threads}
+                />
               ))}
               {notices.length > 0 ? (
                 <Alert variant="warning">
