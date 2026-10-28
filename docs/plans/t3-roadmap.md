@@ -231,8 +231,10 @@ and D961–D980. W20 took the
 next block, D981–D1000. `agents.md`'s phase 2 takes D1061–D1120 (C1–C3).
 `agents.md`'s phase 3 takes D1221–D1280 (L1–L3). W36 took D1401–D1420 as
 well, and round 5 takes D1421–D1520 (W40–W44); `agents.md`'s phase 4 starts
-at D1521. A workstream that needs more numbers takes the next free block of
-20 above every range named here and in `agents.md`, and writes it here.
+at D1521. `loading.md` takes D1581–D1640 (P1–P4), and round 6 takes
+D1641–D1720 (W45–W48). A workstream that needs more numbers takes the next
+free block of 20 above every range named here and in `agents.md`, and
+writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
@@ -691,3 +693,64 @@ adapt to it, as the rules for every workstream say.
   Deferred: a cancel across `mesh.call`, a workflow `agent()` and the hover
   card on another node, an orphaned signing secret, …) and `security.md`
   (Deferred: `workflows.run` as shell access, a refresh's lost answer, …).
+
+## Round 6
+
+Round 5 left its remainder in the plans' Deferred lists, and what is left
+there is mostly the long tail: edge cases and the last parts of panels a T3
+Code user already has. Round 6 takes four workstreams instead of five, in
+the same way as before. The owner will not register an OAuth client for
+T3's ChatGPT sign-in or add the desktop signing secrets: both stay in the
+Deferred lists (`providers.md`, `desktop.md`) and in no workstream, and the
+app is released unsigned (`allow_unsigned`, D1482).
+
+| Id  | Workstream                                | Plans                                         | Decisions   |
+| --- | ----------------------------------------- | --------------------------------------------- | ----------- |
+| W45 | Threads, the composer and the right panel | `t3-parity.md`, `providers.md`, `terminal.md` | D1641–D1660 |
+| W46 | Source control: checkpoints, git and PRs  | `source-control.md`                           | D1661–D1680 |
+| W47 | Preview, the desktop app and CI           | `preview.md`, `desktop.md`, `mesh-streams.md` | D1681–D1700 |
+| W48 | Security: pairing, tokens and secrets     | `security.md`, `config-ui.md`                 | D1701–D1720 |
+
+- **W45:** what `t3-parity.md`'s Deferred list keeps of threads and the
+  composer: the queue and steering edge cases (a steer a turn ended before
+  it took, idempotent sends, a removal that could not be written, a slow
+  `threads.title` hook holding the queue, steering a CLI that marks no
+  frames), T3's restart as a new attempt of the same run, a thread's
+  history (rewinding and forking), find in a thread and the details panel's
+  leftovers, attachments; the right panel's leftovers W40 named (reopening
+  a closed view, the explorer's context menu and dragging its rows, "Open
+  in" for a worktree's file, a file chip's menu, the editor's pending dot,
+  "Read-only connection", merging a change made on disk, markdown's task
+  boxes); T3's Usage page beyond "Limits"; the matching items of
+  `providers.md` and `terminal.md`.
+- **W46:** `source-control.md`'s Deferred list: checkpoints (T3's fast path
+  through the real index) and "Roll back" of a checkpoint item; T3's
+  "Publish repository" and the git actions' writing style settings,
+  cancelling a running git action; one worktree per model of a
+  multi-model send; T3's other pull request actions and its merge queue, a
+  per-project merge method, GitHub's avatars, pages past the first for
+  notes, comments and review threads, Bitbucket Server and Azure DevOps'
+  fork checkouts and policy checks; W42's leftovers (`t3.json`'s
+  `iconPath` and `defaultThreadEnvMode`, closing a settled thread's idle
+  terminals, the scripts control's hint, the bytes a cleanup frees, the
+  setup card for a thread on a mesh member).
+- **W47:** `preview.md`'s Deferred list: a binary channel for frames and for
+  downloads and uploads above 64 MiB, a pushed server list instead of the
+  client's rescans, T3's work-log presentation of preview tools, the
+  floating player's and a device tab's leftovers, a content security policy
+  for rendered pages; `desktop.md`'s: a machine-readable ready signal from
+  `jhin serve`, a graceful stop of the node on Windows, trimming the
+  packaged app, `ci.yml`'s cached Chromium and the other workflows' actions
+  pinned to commit SHAs with Dependabot, a notice when the weekly dry run
+  fails, T3's annotation Region and Draw; `mesh-streams.md`'s relay and
+  trimming leftovers as far as the preview's streams need them.
+- **W48:** `security.md`'s Deferred list: a pairing proof remembered against
+  replay and bound to its request, bearer tokens a device with
+  `auth.write` can issue, DPoP beyond what the web client pairs by a code,
+  live updates of the authorized clients list, `lastSeenAt` written,
+  W44's leftovers (`workflows.run` as shell access, `refresh.json` written
+  whole, a refresh's lost answer, an orphaned signing secret), the config
+  secret edge cases (a marker that starts a real value, a reference removed
+  by hand, a fan-out carrying a marker); `config-ui.md`'s redaction of
+  secrets in `host.config.get` and the drafts' leftovers that are about
+  who may read them.
